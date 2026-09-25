@@ -1,229 +1,164 @@
-# Your first integration
+# Getting started with Sofabaton X Server
 
-This guide targets **sofabaton-x-server 0.2.1 / API 1**.
+Set up the server, add your hub, try the web remote, save your first
+backup and decide who may change the setup. You can do all of this in the browser after installation; no
+Home Assistant installation or integration code is needed.
 
-Start with **sofabaton-x-server**. It manages hub connections and provides
-HTTP and WebSocket APIs for clients in any language. Use its built-in
-management UI (the **control panel**) for setup, catalog browsing and
-diagnostics, and its web remote for everyday control.
+If you are building a client, continue with
+[Build an integration](first-integration.md) once your hub is working.
 
-Your integration can stay small: let users select an already registered
-hub, expose the actions and state your platform needs, and map remote
-callback presses to automations. Link to the server for management and
-the remote UI. Hub discovery, registration and configuration editors are
-optional features for your client.
+## Before you start
 
-## 1. Set up the server
+- A Sofabaton **X1, X1S or X2** hub connected to your network.
+- A computer on that network that can stay running, with **Python 3.11+**,
+  or Docker on Linux. Run one server for all your hubs.
+- A browser on that computer or another device on your network.
 
-**Run one server for all your hubs.** Add each hub to that server in the
-control panel; your integration uses the same server URL for all of them.
+**Fully close the official Sofabaton app on every phone or tablet before
+initial setup.** A hub connected directly to the app stops advertising
+itself. Keep the app closed until registration and your first control
+test are complete, including when adding a hub by address.
 
-**Before starting, fully close the official Sofabaton app on every phone
-or tablet that could connect to this hub.** While the app is connected
-directly to the hub, the hub stops advertising itself. The server cannot
-discover it during that time, even on the same LAN. Keep the app closed
-through discovery, registration and the first control test.
+If Home Assistant or another proxy already manages the hub, disable that
+hub there before adding it to this server. The hub has one client
+connection for these tools to share.
 
-If a hub is already managed by Home Assistant or another proxy, disable
-that hub there before registering it with this server.
+Until you set up access, anyone on your network can change the server's
+hubs and settings; see [step 5](#5-set-up-access). Reads and the remote
+stay open either way, so keep the server on a trusted LAN, or use an
+[authenticating reverse proxy](running-server.md#behind-a-reverse-proxy-tls).
 
-Use Python 3.11+ on a host on the hub's LAN:
+## 1. Install and start the server
+
+With Python 3.11+ installed, run:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
 sofabaton-x-server
 ```
 
-Open `http://<server>:8480/` (or `http://localhost:8480/` on that host).
+The protocol library and web interface are included. Leave the server
+running while you use the panel. The default data directory is `./data`
+in the directory where you started it; start it from that same directory
+next time, or set a fixed location with `--data-dir`.
 
-1. Open the **hub picker** in the top dock, wait for the hub to appear,
-   then click **Add**. If it is missing, confirm the app is fully closed and
-   scan again. Use **Add by address…** to enter the physical hub's IP;
-   manual entry does not replace closing the app.
-2. Wait for the hub to be controllable with its catalogs ready.
-3. In **Remote**, test an activity or command. Its layout editor saves the
-   remote's settings on the server.
-4. In **Hub**, look up activity, device and command IDs. **Events** shows
-   the live stream; **API** lets you try requests and follow their jobs.
+For Docker, use the [Linux host-network recipe](running-server.md#docker).
+For a source checkout, install from the repository root as described in
+[Running the server](running-server.md#run).
 
-Repeat these steps in the same panel for your other hubs.
+Open `http://localhost:8480/` on the server computer. From another computer,
+phone or tablet, use `http://<server>:8480/`, replacing `<server>` with the
+server computer's IP address. This is the computer running the server,
+not the physical hub's address.
 
-After setup, the official app can connect **through the proxy**. That is
-a different situation: the server keeps its hub connection but switches
-to observe mode while the app owns control. Close the app again before
-sending server commands or changing configuration.
+## 2. Add your hub
 
-Keep the server running. Use a persistent data directory (`--data-dir`)
-so registrations and settings survive restarts. `--hub <physical IP>` is
-an alternative for first startup only: it seeds hubs when `hubs.json`
-does not exist. Later, add hubs through the panel.
+1. Open the **hub picker** at the top of the control panel.
+2. Wait for your hub to appear among discovered hubs, then select **Add**.
+3. If it does not appear, confirm the official app is fully closed and
+   scan again. Choose **Add by address…** to enter the physical hub's IP.
+4. Select the registered hub and wait for it to connect and load its
+   devices and activities. Open **Hub** to see them.
 
-For a checkout, run `python -m pip install . ./sofabaton-x-server` from
-the repository root instead of the PyPI install. For Docker, follow the
-[Linux host-network recipe](../README.md#docker). The server has no
-built-in authentication; keep it on a trusted LAN or behind an
-authenticating reverse proxy.
+Repeat for any other hubs using the same server. Use the picker to switch
+between them. You do not need a separate installation for each hub.
 
-### Connect your client
+## 3. Try the web remote
 
-Ask for the **server base URL**, for example `http://192.168.1.10:8480`,
-then list registered hubs with `GET /api/v1/hubs`. Let the user choose one
-and store its `hub_id`. Wait for the stable MAC form (such as
-`e26a44861b45`); an initial IP-based ID can change after the first connection.
+1. Open **Remote → Card** with your hub selected.
+2. Start an existing activity or send a command to a configured device.
+3. Check that your equipment responds.
 
-The [starter client](../examples/starter.py) makes these calls visible.
-The commands below run from a repository checkout; the examples are not
-installed as commands by pip. They default to `http://localhost:8480`:
+Controls may be unavailable while the hub is connecting, another operation
+is running, or the official app is connected. Wait for the operation to
+finish and close the app before testing again.
 
-```sh
-python sofabaton-x-server/examples/starter.py hubs
-```
+For a remote on its own, open `http://<server>:8480/ui/remote/`, select
+your hub and bookmark the resulting page. You can use this on a phone,
+tablet or wall panel. **Remote → Layout** in the control panel lets you
+customize the web remote and save its layout for that hub.
 
-For another host, put `--server` **before the action**:
+## 4. Save your first backup
 
-```sh
-python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 hubs
-```
+1. Open **Backup → Make**.
+2. Select **Entire hub** and choose **Start backup**.
+3. Wait for **Backup completed**, then choose **Download backup**.
+4. Keep the downloaded file somewhere you can find it again.
 
-Pass the server's address, not the physical hub's. Exclude `/api/v1` from
-the base URL; preserve a reverse-proxy prefix if there is one. All IDs
-below are examples: replace them with values from your own hub.
+**The downloaded file is your backup.** The server keeps a completed
+download available for five minutes, or until another backup starts on
+that hub, it is discarded, or the server restarts. It does not keep a
+backup archive. Saving the server's data directory does not replace this
+hub backup.
 
-## 2. Send your first command
+## 5. Set up access
 
-In the panel's **Hub** view, choose a device and copy its device ID
-and a command ID. You can also list them from the starter client:
+Until you do this, anyone on your network can change your hubs and the
+server's settings, and the panel shows a banner saying so.
 
-```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 devices
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 commands --device 7
-```
+1. Choose **Set up access** in the banner, or open **Server settings →
+   Access** from the cog menu.
+2. Pick a username and a password of at least 8 characters. Tick
+   **Remember me** to stay signed in on this browser for 90 days.
+3. From now on the panel asks you to sign in. The web remote keeps
+   working without one.
 
-Keep the **device ID and command ID together**. If device `7`, command `3`
-is the command you want to test, send it:
+Integrations and scripts that change configuration then need a token:
+choose **Create token** in the same place and copy it right away; it is
+shown only once. Integrations that only
+start activities and send commands need nothing. Forgot the password?
+See [Recovery](running-server.md#recovery). More in
+[Security](running-server.md#security).
 
-```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 send --device 7 --command 3
-```
+<a id="5-make-yourself-at-home"></a>
 
-This calls `POST /api/v1/hubs/{hub_id}/send` with
-`{"entity_id":7,"command_id":3}`. The response
-`{"accepted":true,"mode":"control"}` confirms acceptance for sending;
-check the equipment for the physical result. No snapshot, backup or job
-is needed for a send.
+## 6. Make yourself at home
 
-### What your integration needs
+- **Hub → Devices**: browse and edit commands, button assignments and
+  device configuration.
+- **Hub → Activities**: edit favorites, buttons, macros, power sequences
+  and inputs.
+- **Remote → Layout**: arrange and style your web remote.
+- **Backup → Edit / Restore**: edit a downloaded backup or restore
+  selected devices and activities.
 
-Implement the operations your platform exposes. Paths below are relative
-to `<server base URL>/api/v1`.
+For live configuration edits, review your draft and use **Sync to Hub**.
+Wait for completion and let the physical remote finish synchronizing
+before testing its buttons. See [Managing your hubs](managing-hubs.md)
+for the differences between drafts, hub configuration and server settings.
 
-| Need | Call or link |
-| --- | --- |
-| Select a registered hub | `GET /hubs` |
-| Read availability and current activity | `GET /hubs/{id}/status`; read `enabled` and the nested `status` (which can be null) |
-| Offer activity switches | `GET /hubs/{id}/activities`; use `POST /hubs/{id}/activities/{aid}/start` and `POST /hubs/{id}/activities/{aid}/stop` |
-| Send a selected command | `POST /hubs/{id}/send` with `entity_id` and `command_id` |
-| Update state and receive callbacks | WebSocket `/events?hub_id={id}`; handle `hub_event`, `server_event` and `press` |
-| Open management | `<server base URL>/ui/` |
-| Open the remote | `<server base URL>/ui/remote/?hub={id}` (URL-encode the hub ID) |
+Keep the server running and preserve its data directory. See
+[storage and upgrades](running-server.md#storage-and-upgrades) for keeping
+the installation across restarts and updates.
 
-An activity-only integration needs no callback device; continue to
-[Before shipping](#before-shipping-your-integration). Add remote presses
-when you want buttons to trigger platform actions.
+## Using the official app after setup
 
-## 3. Receive your first remote press
+The server provides a local proxy so the official Sofabaton app can still
+connect. While the app is connected through it, the server observes the
+session and pauses its own control commands and configuration writes.
+Close the app when you want to control or edit through the server again.
+To keep the app away from a hub, use **Turn app proxy off** in **Hub
+settings**.
 
-**The hub does not report ordinary IR or Bluetooth button presses.** To
-trigger your platform, a remote button must run a command on a managed
-Wifi Device. It delivers the press to the server over HTTP or, on X2,
-MQTT. The server forwards a WebSocket `press` event. Your client does not
-need its own HTTP listener or MQTT subscription.
-
-### Set up callbacks once
-
-In **Wifi Commands**, add a Wifi Device, edit a slot, choose its physical
-button and activities, and use **Sync to Hub**. X2 can use MQTT when the
-server and the Sofabaton app are configured with the same broker; otherwise
-use HTTP. Your client receives the same WebSocket `press` events for both.
-
-The setup command below creates or reuses the legacy HTTP callback device
-(key `default`), which is also used by the Hubitat example. It does not
-select a keyed device created with the panel's Add button. Keep this setup
-separate from your integration's normal startup.
-
-Choose an existing activity ID in **Hub** (or run the starter's
-`activities` action). The following example uses activity `101` and
-`PLAY`. **It replaces that button's short and long assignments in that
-activity.** Choose a button you intend to reassign, then close the official
-app before running:
-
-```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 setup-presses --activity 101 --button PLAY
-```
-
-The script creates a callback device if missing, or reuses its first slot
-and existing labels. It waits for each job to finish and prints the
-device ID, labels and deployed destination. `202 Accepted` starts a job;
-only `status: "done"` means the setup succeeded.
-
-The hub must reach the server's callback listener on TCP **8060** by
-default; your client uses the API/WebSocket port **8480**. The X1 always
-uses 8060. Allow the physical remote to finish synchronizing its configuration.
-
-### Listen and dispatch
-
-The listener uses `websockets`, included with the server installation.
-On a separate client machine, install it with
-`python -m pip install "websockets>=12"`. Other starter actions use only
-Python's standard library.
-
-```sh
-python sofabaton-x-server/examples/starter.py --hub-id e26a44861b45 listen
-```
-
-Wait for `Connected to server instance …`, select the chosen activity
-on the physical remote, and press the assigned button. A new setup prints
-`PRESS: Demo (short)` along with the complete event. Holding the button
-uses command `11` and `press_type: "long"`; a short press uses command `1`.
-
-In `listen()`, replace the dispatch comment with your platform action.
-The listener prints presses from **all** managed Wifi Devices on the selected
-hub. Before dispatching real actions, match `hub_id`, `device_key` (for
-example `default`), `device_id`, `command_id` and `press_type`; labels are
-display text and can change. The example dispatches only
-`resolution: "deployed"` and prints other records for diagnosis.
-Activity changes arrive separately as
-`hub_event` with `event.kind: "activity_changed"`.
-
-## Before shipping your integration
-
-- Reconnect with backoff and re-read selected hubs, status and the catalogs
-  you use. Handle hubs disabled, removed or changed through the panel.
-  Keep last-known state separate from availability.
-- Check failures even after a readiness check: the official app can take
-  control between requests. Do not automatically retry a timed-out control
-  command; its physical effect may already have happened.
-- Choose a missed-press policy. The starter stops on disconnect. Production
-  clients can use bounded press history, or deliberately skip missed actions
-  to avoid executing old button presses. De-duplicate by `(instance_id, seq)`
-  and reset tracking after a server restart. See the
-  [event lifecycle](platform-integration.md#5-events).
-
-The [Hubitat example](../examples/hubitat/README.md) demonstrates this small
-integration scope with activity switches, command sending and button events.
-The [platform guide](platform-integration.md) covers the production contract
-and optional setup/editing APIs.
+If you changed configuration in the app, refresh the affected devices or
+activities in **Hub** before editing them in the panel.
 
 ## If something does not work
 
 | Symptom | First check |
 | --- | --- |
-| Physical hub missing from discovery | Fully close the official app on all phones/tablets, then scan again. A hub connected directly to the app does not advertise. |
-| Client lists no registered hubs | Add one in the panel's hub picker after closing the app. `--hub` only seeds a new data directory. |
-| `hub_not_found` | Re-read `/hubs`; an initial IP-based ID may have changed to the MAC. |
-| Not ready, `hub_busy` or `send_refused` | Close the official app; check hub connectivity and that no other proxy owns it. |
-| Send accepted, no equipment response | Verify the device/command pair and equipment reachability. |
-| Setup job fails | Inspect the job's `error` and partial `result` before another write. |
-| Listening, but no press arrives | Check the assignment, selected activity and remote sync; inspect the callback record's `target` and `GET /api/v1/server/callback-listener` (`bound`). Another service may own port 8060. |
+| The panel will not open | Confirm the server is running. Try `http://localhost:8480/` on its computer. From another device, use that computer's LAN address and allow TCP 8480 through its firewall. |
+| A hub is missing from discovery | Fully close the official app everywhere, then scan again. Check that the server and hub can communicate on the LAN. |
+| A registered hub will not connect | Check the hub address, power and network, and disable any other proxy managing it. Allow the hub to reach the server on TCP 8200 by default. |
+| Controls or Sync to Hub are unavailable | Close the official app; wait for the current operation and initial loading to finish. Check the hub's connection state. |
+| The panel shows old configuration | Close the official app, then refresh the affected row or use **Refresh all** in Hub. |
+| Equipment does not respond | Confirm the selected activity or device and command, and check that the equipment can receive the hub's signal. |
+| The backup download expired | Create a new backup and download it as soon as it completes. |
+| Locked out of the panel | Reset the password on the server's computer with `sofabaton-x-server --reset-password`; see [Recovery](running-server.md#recovery). |
+| An integration's changes are refused (401) | Access is set up: give the integration a token from **Server settings → Access**. |
+| A write failed or was interrupted | Read the reported outcome and refresh the hub before deciding what to do next. Some changes may already have reached the hub; see [interrupted changes](managing-hubs.md#if-a-change-is-interrupted). |
 
-See the [networking guide](../../docs/networking.md) for ports and firewalls.
+For ports, containers and proxy configuration, see
+[Running the server](running-server.md). For help, include your server
+version, hub model and firmware, installation method and relevant logs in
+an [issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues).

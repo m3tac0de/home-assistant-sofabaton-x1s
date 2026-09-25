@@ -44,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ADDR",
         help="proxy address/CIDR whose X-Forwarded-* headers are trusted (repeatable)",
     )
+    ap.add_argument(
+        "--allowed-origin",
+        action="append",
+        dest="allowed_origins",
+        metavar="ORIGIN",
+        help="browser origin on another host/port allowed to use the API from a page, e.g. http://nas:8123 (repeatable)",
+    )
     ap.add_argument("--tls-cert", type=Path, help="certificate file (bring your own TLS; a reverse proxy is the usual way)")
     ap.add_argument("--tls-key", type=Path, help="private key file for --tls-cert")
     ap.add_argument(
@@ -58,9 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="UDP port the official app discovers and calls the proxies on (default 8102; keep it for iOS)")
     mqtt = ap.add_argument_group(
         "MQTT (X2 Wifi Devices)",
-        "The broker an X2 publishes button presses to, the one set in the Sofabaton app. Flags and SOFABATON_MQTT_* "
-        "environment variables only: these are never read from or written to server.json. Prefer the environment "
-        "or --mqtt-password-file for the password; a flag is visible in the process list.",
+        "The broker an X2 publishes button presses to, the one set in the Sofabaton app. Also settable in the "
+        "control panel (stored in mqtt.json); any of these flags or SOFABATON_MQTT_* variables override that and make "
+        "the panel read-only. Never read from or written to server.json. Prefer the environment or "
+        "--mqtt-password-file for the password; a flag is visible in the process list.",
     )
     mqtt.add_argument("--mqtt-host", help="broker address; setting it offers the mqtt transport for X2 hubs")
     mqtt.add_argument("--mqtt-port", type=int, help="broker port (default 1883, 8883 with --mqtt-tls)")
@@ -73,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
     mqtt.add_argument("--mqtt-client-id", help="MQTT client id (default: sofabaton-x-server-<random>)")
     ap.add_argument("--log-level", choices=("debug", "info", "warning", "error"), help="log level (default info)")
     ap.add_argument("--print-settings", action="store_true", help="print the effective settings as JSON and exit")
+    ap.add_argument(
+        "--reset-password",
+        action="store_true",
+        help="set a new generated admin password, print it, sign every browser out and exit "
+             "(the username and the tokens are kept; works while the server runs)",
+    )
     return ap
 
 
@@ -85,6 +99,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         "advertise_url": args.advertise_url,
         "root_path": args.root_path,
         "trusted_proxies": tuple(args.trusted_proxies) if args.trusted_proxies else None,
+        "allowed_origins": tuple(args.allowed_origins) if args.allowed_origins else None,
         "tls_cert": args.tls_cert,
         "tls_key": args.tls_key,
         "log_level": args.log_level,
@@ -112,6 +127,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except ValueError as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
+
+    if args.reset_password:
+        return _reset_password(settings)
 
     if args.print_settings:
         import json
@@ -142,6 +160,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ssl_certfile=str(settings.tls_cert) if settings.tls_cert else None,
         ssl_keyfile=str(settings.tls_key) if settings.tls_key else None,
     )
+    return 0
+
+
+def _reset_password(settings: Settings) -> int:
+    """Only the data directory matters here: nothing starts, no port opens."""
+
+    from .auth import AuthError, AuthStore
+
+    store = AuthStore(settings.data_dir)
+    try:
+        password = store.reset_password()
+    except AuthError as err:
+        print(f"error: {err} (in {store.path})", file=sys.stderr)
+        return 1
+    print(f"New password for {store.username!r}: {password}")
+    print("Every browser was signed out; tokens are unchanged. Change the password in the control panel.")
     return 0
 
 

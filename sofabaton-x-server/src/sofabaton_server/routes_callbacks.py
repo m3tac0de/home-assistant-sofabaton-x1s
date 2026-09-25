@@ -146,7 +146,7 @@ class WifiDeviceRequest(CallbackDeviceRequest):
 
     ``PUT /wifi-devices/{key}`` takes the same body; the transport of a
     deployed device is fixed and the field is ignored there. ``mqtt``
-    needs an X2 and a server started with a broker (``--mqtt-host``): the
+    needs an X2 and a server with a broker (set in the control panel, or ``--mqtt-host``): the
     hub then publishes the presses to the broker set in the Sofabaton
     app, no listener and no callback address involved.
     """

@@ -183,8 +183,12 @@ class ActivityCache:
             return None
         return self.activities.get(act_id & 0xFF, {}).get("name")
 
-    def replace_keymap_rows(self, act_lo: int, row_stream: bytes) -> None:
+    def replace_keymap_rows(self, act_lo: int, row_stream: bytes) -> list[int]:
         """Replace the physical-button view for ``act_lo`` from an assembled row stream.
+
+        Returns the button codes of the rows that were neither a known
+        button nor a favorite slot, so the caller can log what the hub
+        sent and we did not keep (the X2 power keys, for instance).
 
         Record-walking uses :func:`commands.iter_keymap_records`, which
         encodes the documented 18-byte fixed-stride layout. The activity-id
@@ -202,13 +206,16 @@ class ActivityCache:
         self.button_details.pop(act_lo, None)
 
         favorites_allowed = True
+        dropped: list[int] = []
 
         for record in iter_keymap_records(row_stream, expected_activity_id=act_lo):
-            favorites_allowed, _ = self._parse_keymap_record(
+            favorites_allowed, handled = self._parse_keymap_record(
                 act_lo,
                 record.raw,
                 favorites_allowed=favorites_allowed,
             )
+            if not handled:
+                dropped.append(record.button_id)
 
         usable = len(row_stream) - (len(row_stream) % KEYMAP_RECORD_SIZE)
         remainder = row_stream[usable:]
@@ -223,6 +230,8 @@ class ActivityCache:
                 padded,
                 favorites_allowed=favorites_allowed,
             )
+
+        return dropped
 
     def _parse_keymap_record(
         self, act_lo: int, record: bytes, *, favorites_allowed: bool

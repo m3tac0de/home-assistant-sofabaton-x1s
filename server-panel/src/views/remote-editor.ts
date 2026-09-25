@@ -3,7 +3,7 @@
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
-import { mdiTune, mdiPalette, mdiSort, mdiChevronDown, mdiDragVerticalVariant } from "@mdi/js";
+import { mdiTune, mdiPalette, mdiSort, mdiChevronDown, mdiDotsHorizontal, mdiDragVerticalVariant } from "@mdi/js";
 import type { RemoteBackend, RemoteSnapshot } from "../../../remote-card/src/backend/remote-backend";
 import type { RemoteCardConfig } from "../../../remote-card/src/remote-card-types";
 import {
@@ -15,9 +15,9 @@ import {
 import {
   applyLayoutConfigPatch, applyShortcutSlotPatch, channelTogglePatch, commandsEnabled, commandsTogglePatch,
   deviceToggleEnabledForEditor, deviceTogglePatch, dvrTogglePatch, editorActivitiesFromState,
-  editorDevicesFromState, editorGroupVisible, favoritesTogglePatch, groupEnabledPatch, groupLabel,
+  editorDevicesFromState, editorGroupVisible, favoriteDeviceNamesForEditor, favoriteDeviceNamesPatch, favoritesTogglePatch, MF_MENU_KEYS, groupEnabledPatch, groupLabel,
   groupOrderListForEditor, isGroupEnabled, layoutConfigForSelection, layoutSelectionNote, macroTogglePatch,
-  mfAsRowsForEditor, mfAsRowsPatch, mfRowVisibleRowsForEditor, mfRowVisibleRowsPatch, moveVisibleGroup,
+  mfAsRowsForEditor, mfAsRowsPatch, mfRowVisibleRowsForEditor, mfRowVisibleRowsPatch, moveVisibleGroup, numpadEnabledForEditor, numpadTogglePatch,
   powerEnabled, powerTogglePatch, resetEditorLayout, volumeTogglePatch,
 } from "../../../remote-card/src/remote-card-editor-layout";
 import {
@@ -26,13 +26,18 @@ import {
 } from "../../../remote-card/src/remote-card-long-press";
 import { longPressGroupLabel } from "../../../remote-card/src/editor-sections/general-options";
 import { str } from "../../../remote-card/src/remote-card-strings";
+import { MDI_ICON_PATHS } from "../../../remote-card/src/shims/mdi-icons";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { PointerReorder } from "../pointer-reorder";
+
+/** Icon names the bundle can draw, for the shortcut icon picker. */
+const ICON_NAMES: readonly string[] = Object.keys(MDI_ICON_PATHS).sort();
 
 export class SbPanelRemoteEditor extends LitElement {
   static properties = {
     config: { attribute: false }, backend: { attribute: false }, snapshot: { attribute: false },
-    selection: { state: true }, _slot: { state: true }, _icon: { state: true }, _command: { state: true },
+    selection: { state: true }, _menu: { state: true }, _slot: { state: true }, _icon: { state: true }, _command: { state: true },
+    _iconOpen: { state: true }, _iconActive: { state: true },
   };
   static styles = [PANEL_BASE_CSS, css`
     :host { display: block; min-width: 0; container-type: inline-size; }
@@ -87,6 +92,12 @@ export class SbPanelRemoteEditor extends LitElement {
     .handle .mdi { width: 20px; height: 20px; }
     .dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px #0003; }
     .shifting { transition: transform 120ms ease; }
+    .group { flex-wrap: wrap; }
+    .menu-btn, .menu-spacer { width: 32px; height: 32px; flex: 0 0 auto; }
+    .menu-btn { display: grid; place-items: center; padding: 0; border-radius: 10px; color: var(--sbp-muted); background: transparent; }
+    .menu-btn .mdi { width: 20px; height: 20px; }
+    .menu-btn[aria-expanded=true] { border-color: var(--sbp-accent); color: var(--sbp-accent); }
+    .row-menu { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; margin: 2px 0 4px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
     .rows-control { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px; margin-top: 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
     .stepper { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sbp-muted); }
     .stepper[aria-disabled=true] { opacity: .45; }
@@ -94,11 +105,30 @@ export class SbPanelRemoteEditor extends LitElement {
     .stepper output { min-width: 24px; text-align: center; font-size: 14px; font-weight: 600; }
     .layout-footer { display: flex; justify-content: flex-end; margin-top: 10px; }
     .layout-footer button { border-radius: 12px; }
-    .slots { display: flex; gap: 8px; margin: 12px 0; }
-    .slots button { flex: 1; min-width: 0; text-transform: capitalize; }
-    .slots button[aria-pressed=true] { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .1); }
-    .slot-editor { border: 1px solid var(--sbp-line); padding: 12px; border-radius: 8px; }
-    .slot-editor button { margin-top: 12px; }
+    /* Shortcuts row (device layouts): the HA card's slot strip and drop-out
+       panel. The three mini buttons fill the row's second cell; the open
+       slot's panel wraps below inside the same row, with a caret under the
+       button that opened it. */
+    .shortcut-strip { display: inline-flex; gap: 8px; min-width: 0; align-self: center; }
+    .shortcut-slot { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 1 auto; width: 40px; min-width: 26px; height: 30px; padding: 0; border: 1px dashed var(--sbp-muted); border-radius: 8px; background: color-mix(in srgb, var(--sbp-text) 5%, transparent); color: var(--sbp-accent); }
+    .shortcut-slot.is-configured { border-style: solid; background: var(--sbp-panel); }
+    .shortcut-slot.is-open { border-color: var(--sbp-accent); box-shadow: 0 0 0 1px var(--sbp-accent) inset; }
+    .shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--sbp-accent); pointer-events: none; }
+    .shortcut-slot ha-icon { --mdc-icon-size: 18px; }
+    .shortcut-panel { flex: 1 0 100%; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; padding: 10px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; background: color-mix(in srgb, var(--sbp-text) 4%, var(--sbp-panel)); }
+    .shortcut-panel .field { margin: 0; }
+    .shortcut-panel-footer { display: flex; justify-content: flex-end; }
+    .shortcut-panel-footer button { border-radius: 12px; }
+    .shortcut-note { font-size: 12px; color: var(--sbp-muted); line-height: 1.35; }
+    .icon-picker { position: relative; }
+    .icon-field { display: flex; align-items: center; gap: 8px; padding: 0 16px 0 12px; }
+    .icon-field ha-icon, .icon-field .icon-blank { flex: 0 0 auto; width: 24px; height: 24px; --mdc-icon-size: 24px; color: var(--sbp-text); }
+    .icon-field input { padding-left: 0; padding-right: 0; }
+    .icon-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 60; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; margin-top: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 0 0 6px 6px; background: var(--sbp-panel); box-shadow: 0 8px 24px #0003; }
+    .icon-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 4px; background: transparent; color: var(--sbp-text); font-size: 14px; text-align: start; }
+    .icon-option ha-icon { --mdc-icon-size: 22px; flex: 0 0 auto; }
+    .icon-option:hover, .icon-option.is-active { background: rgba(var(--sbp-accent-rgb), .1); }
+    .icon-option[aria-selected=true] { color: var(--sbp-accent); }
     .notice { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     @container (max-width: 340px) { .group-options { gap: 6px; } .group { gap: 4px; } .group .option { gap: 5px; font-size: 12px; } .group input[type=checkbox] { width: 38px; } .group input[type=checkbox]:checked::before { transform: translateX(14px); } }
   `];
@@ -107,10 +137,15 @@ export class SbPanelRemoteEditor extends LitElement {
   backend: RemoteBackend | null = null;
   snapshot: RemoteSnapshot | undefined;
   selection = "default";
+  /** Group row whose "..." options panel is folded out, if any. */
+  private _menu: string | null = null;
   private _slot: ShortcutSlot | null = null;
   private _icon = "";
   private _command = "";
-  private _keymaps = new Map<number, { status: string; commands: Array<{ command_id: number; name: string }> }>();
+  /** Icon picker list open + keyboard-active row (shortcut panel). */
+  private _iconOpen = false;
+  private _iconActive = -1;
+  private _keymaps = new Map<number, { status: "loading" | "ready" | "cache_miss" | "error"; commands: Array<{ command_id: number; name: string }> }>();
   private _announcement = "";
   private _sorter = new PointerReorder(
     () => Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-group]")),
@@ -123,12 +158,19 @@ export class SbPanelRemoteEditor extends LitElement {
   protected willUpdate(changed: PropertyValues): void {
     if (changed.has("selection")) {
       this._sorter.cancel();
-      this._slot = null;
+      this._closeSlot();
+      this._menu = null;
     }
     if (changed.has("backend")) {
       this._keymaps.clear();
-      this._slot = null;
+      this._closeSlot();
       this._sorter.cancel();
+    }
+    // Like the HA editor, a concrete device selection fetches its commands
+    // up front so an opened slot shows the command list without a wait.
+    if (changed.has("selection") || changed.has("backend")) {
+      const id = parseDeviceLayoutKey(this.selection);
+      if (id != null) void this._loadCommands(id);
     }
   }
 
@@ -152,11 +194,14 @@ export class SbPanelRemoteEditor extends LitElement {
   private _select(value: string): void {
     this._sorter.cancel();
     this.selection = value;
-    this._slot = null;
+    this._closeSlot();
     this.dispatchEvent(new CustomEvent("layout-selected", { detail: { selection: value }, bubbles: true, composed: true }));
   }
+  private _isX2(): boolean {
+    return String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2");
+  }
   private _visible(key: string): boolean {
-    return editorGroupVisible(this.config, this.selection, key, String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2"));
+    return editorGroupVisible(this.config, this.selection, key, this._isX2());
   }
   private _move(from: number, to: number): void {
     const order = groupOrderListForEditor(this.config, this.selection);
@@ -189,30 +234,60 @@ export class SbPanelRemoteEditor extends LitElement {
     const rows = mfAsRowsForEditor(c, s);
     const order = groupOrderListForEditor(c, s).filter((key) => this._visible(key));
     const toggle = (label: string, value: boolean, patch: (value: boolean) => Record<string, unknown> | null) => this._toggle(label, value, (v) => this._patch(patch(v)));
+    // Shortcuts slots are strictly per device: the strip and its panel show
+    // for a concrete "device:<id>" the devices list knows, never for the
+    // "All devices" layer (shortcuts-row-plan.md).
+    const slotDevice = parseDeviceLayoutKey(s);
+    const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d) => Number(d.id) === slotDevice);
     const cells = (key: string) => {
+      if (key === "shortcuts") return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${slotsOn ? this._slotStrip(slotDevice!) : nothing}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return html`${toggle(e.commands, commandsEnabled(c, s), commandsTogglePatch)}${toggle(e.power, powerEnabled(c, s), powerTogglePatch)}`;
       if (key === "macro_favorites") return html`${toggle(e.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
       if (key === "macros_row") return toggle(e.macros, macrosButtonEnabled(layout), macroTogglePatch);
       if (key === "favorites_row") return toggle(e.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return html`${toggle(e.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
       if (key === "media") return html`${toggle(e.mediaControls, mediaGroupEnabled(layout), (v) => groupEnabledPatch("media", v))}${toggle(e.dvr, dvrGroupEnabled(layout), dvrTogglePatch)}`;
+      // X2 only: the number pad behind the D-pad (numpad-plan.md), the same
+      // second switch the HA editor carries; the server is never the
+      // official integration, so the model is the whole gate.
+      if (key === "dpad" && this._isX2()) return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${toggle(e.numpad, numpadEnabledForEditor(c, s), numpadTogglePatch)}`;
       return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}
         ${key === "activity" && deviceModeEnabledInConfig(c) ? this._toggle(e.modeToggle, isGroupEnabled(c, s, key) && deviceToggleEnabledForEditor(c, s), (v) => this._patch(deviceTogglePatch(v)), "", !isGroupEnabled(c, s, key)) : nothing}`;
+    };
+    // The "..." options on a favorites row (combined or split): device names
+    // on the favorites, only where the devices list can resolve them. As-rows
+    // mode stays in its own control under the list.
+    const menuAvailable = !device && editorDevicesFromState(this.snapshot).length > 0;
+    const hasMenu = (key: string) => menuAvailable && MF_MENU_KEYS.has(key);
+    const menu = (key: string) => html`<div class="row-menu" id=${`row-menu-${key}`}>
+      ${toggle(e.favoriteDeviceNames, favoriteDeviceNamesForEditor(c, s), favoriteDeviceNamesPatch)}
+    </div>`;
+    const menuButton = (key: string) => {
+      if (!hasMenu(key)) return menuAvailable ? html`<span class="menu-spacer" aria-hidden="true"></span>` : nothing;
+      return html`<button class="menu-btn" type="button" aria-label=${e.rowOptions(groupLabel(key))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
+        @click=${() => { this._menu = this._menu === key ? null : key; }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDotsHorizontal}></path></svg></button>`;
     };
     return html`
       ${repeat(order, (key) => key, (key, index) => html`
         <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
           <div class="group-options">${cells(key)}</div>
+          ${menuButton(key)}
           <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
             @pointerdown=${(ev: PointerEvent) => this._sorter.start(ev, index)} @pointermove=${(ev: PointerEvent) => this._sorter.move(ev)}
             @pointerup=${(ev: PointerEvent) => this._sorter.end(ev)} @pointercancel=${(ev: PointerEvent) => this._sorter.cancel(ev)}
             @lostpointercapture=${(ev: PointerEvent) => this._sorter.cancel(ev)}
             @keydown=${(ev: KeyboardEvent) => { if (ev.key === "Escape") this._sorter.cancel(); if (ev.key === "ArrowUp" || ev.key === "ArrowDown") { ev.preventDefault(); this._move(index, index + (ev.key === "ArrowUp" ? -1 : 1)); } }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDragVerticalVariant}></path></svg></button>
+          ${this._menu === key && hasMenu(key) ? menu(key) : nothing}
+          ${key === "shortcuts" && slotsOn && this._slot ? this._slotPanel(slotDevice!) : nothing}
         </div>`)}
       <div class="hint notice" role="status" aria-live="polite">${this._announcement}</div>
-      ${parseDeviceLayoutKey(s) != null ? this._shortcuts() : nothing}
       <div class="rows-control">
-        ${this._toggle(device ? e.commandsAsRows : e.macrosFavoritesAsRows, rows, (v) => this._patch(mfAsRowsPatch(v)))}
+        ${this._toggle(device ? e.commandsAsRows : e.macrosFavoritesAsRows, rows, (v) => {
+          // As rows swaps the combined row for the macros/favorites pair; an
+          // open "..." panel follows the favorites onto the replacing row.
+          if (this._menu && MF_MENU_KEYS.has(this._menu)) this._menu = v ? "favorites_row" : "macro_favorites";
+          this._patch(mfAsRowsPatch(v));
+        })}
         <div class="stepper" aria-disabled=${!rows}><span>${e.visibleRows}</span>
           <button type="button" aria-label="Fewer visible rows" ?disabled=${!rows || mfRowVisibleRowsForEditor(c, s) <= MIN_ROW_VISIBLE_ROWS} @click=${() => this._patch(mfRowVisibleRowsPatch(mfRowVisibleRowsForEditor(c, s) - 1))}>−</button>
           <output aria-label=${e.visibleRows}>${mfRowVisibleRowsForEditor(c, s)}</output>
@@ -225,48 +300,146 @@ export class SbPanelRemoteEditor extends LitElement {
   private async _loadCommands(id: number): Promise<void> {
     if (this._keymaps.has(id) || !this.backend) return;
     const backend = this.backend;
-    this._keymaps.set(id, { status: "Loading commands…", commands: [] });
+    this._keymaps.set(id, { status: "loading", commands: [] });
     this.requestUpdate();
     try {
       const response = await backend.deviceKeymap(id);
       if (this.backend !== backend) return;
-      const commands = (response?.keymap?.commands || []).map((c) => ({ command_id: Number(c.command_id), name: String(c.name || c.command_id) })).filter((c) => Number.isFinite(c.command_id));
-      this._keymaps.set(id, { status: commands.length ? "" : "No cached commands available. Sync this hub's catalog and retry.", commands });
+      if (!response?.keymap) {
+        this._keymaps.set(id, { status: "cache_miss", commands: [] });
+      } else {
+        const commands = (response.keymap.commands || [])
+          .map((c) => ({ command_id: Number(c.command_id), name: String(c.name || "") }))
+          .filter((c) => Number.isFinite(c.command_id) && c.name)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        this._keymaps.set(id, { status: "ready", commands });
+      }
     } catch {
       if (this.backend !== backend) return;
-      this._keymaps.set(id, { status: "Could not load commands. Retry when the hub is available.", commands: [] });
+      this._keymaps.set(id, { status: "error", commands: [] });
     }
     this.requestUpdate();
   }
-  private _openSlot(slot: ShortcutSlot): void {
+
+  // ---------- Shortcuts row: slot strip + drop-out panel (HA editor parity) ----------
+
+  private _closeSlot(): void {
+    this._slot = null;
+    this._icon = "";
+    this._command = "";
+    this._iconOpen = false;
+    this._iconActive = -1;
+  }
+  private _toggleSlot(slot: ShortcutSlot): void {
+    if (this._slot === slot) { this._closeSlot(); return; }
     const id = parseDeviceLayoutKey(this.selection)!;
-    this._slot = this._slot === slot ? null : slot;
     const stored = deviceShortcutsFromConfig(this.config, id)[slot];
-    this._icon = stored?.icon || "";
+    this._slot = slot;
+    this._icon = stored?.icon ?? "";
     this._command = stored ? String(stored.command_id) : "";
-    if (this._slot) void this._loadCommands(id);
+    this._iconOpen = false;
+    this._iconActive = -1;
+    void this._loadCommands(id);
   }
-  private _writeSlot(): void {
+  /**
+   * Draft edit: the slot is written (and the preview updates) the moment
+   * both fields are valid; an incomplete draft leaves the stored slot alone.
+   */
+  private _draft(icon: string, command: string): void {
+    this._icon = icon;
+    this._command = command;
     const id = parseDeviceLayoutKey(this.selection);
-    if (id == null || !this._slot || !this._icon.trim() || !this._command) return;
-    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, { icon: this._icon.trim(), command_id: Number(this._command) }).nextConfig);
+    const commandId = command !== "" && Number.isFinite(Number(command)) ? Number(command) : null;
+    if (id == null || !this._slot || !icon.trim() || commandId == null) return;
+    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon.trim(), command_id: commandId }).nextConfig;
+    if (JSON.stringify(next) !== JSON.stringify(this.config)) this._emit(next);
   }
-  private _shortcuts(): TemplateResult {
-    const id = parseDeviceLayoutKey(this.selection)!;
+  /** Reset clears the stored slot and the draft; the panel stays open. */
+  private _resetSlot(): void {
+    const id = parseDeviceLayoutKey(this.selection);
+    if (id == null || !this._slot) return;
+    this._icon = "";
+    this._command = "";
+    this._iconOpen = false;
+    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
+  }
+  private _slotStrip(id: number): TemplateResult {
+    const e = str().editor;
     const stored = deviceShortcutsFromConfig(this.config, id);
+    const label = (slot: ShortcutSlot) => slot === "left" ? e.shortcutSlotLeft : slot === "middle" ? e.shortcutSlotMiddle : e.shortcutSlotRight;
+    return html`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
+      const icon = stored[slot]?.icon ?? null;
+      const open = this._slot === slot;
+      return html`<button type="button" class="shortcut-slot ${icon ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSlot(slot)}>${icon ? html`<ha-icon icon=${icon}></ha-icon>` : nothing}</button>`;
+    })}</div>`;
+  }
+  private _slotPanel(id: number): TemplateResult {
+    const e = str().editor;
     const keymap = this._keymaps.get(id);
-    const commands = keymap?.commands || [];
-    return html`<h3>Device shortcuts</h3><div class="slots">${SHORTCUT_SLOTS.map((slot) => html`
-      <button type="button" aria-pressed=${this._slot === slot} @click=${() => this._openSlot(slot)}>${stored[slot] ? html`<ha-icon icon=${stored[slot]!.icon}></ha-icon>` : "+"} ${slot}</button>`)}</div>
-      ${this._slot ? html`<div class="slot-editor">
-        <div class="field"><label><span class="field-label">Icon (for example mdi:home)</span><input aria-label="Shortcut icon" placeholder="mdi:home" .value=${live(this._icon)} @input=${(ev: Event) => { this._icon = (ev.target as HTMLInputElement).value; this._writeSlot(); }}></label></div>
-        ${this._selectField("Shortcut command", this._command, [{ value: "", label: "Choose a command" },
-          ...(this._command && !commands.some((c) => String(c.command_id) === this._command) ? [{ value: this._command, label: `Command ${this._command} (stored)` }] : []),
-          ...commands.map((c) => ({ value: String(c.command_id), label: c.name }))], (v) => { this._command = v; this._writeSlot(); })}
-        ${keymap?.status ? html`<div class="hint">${keymap.status}</div>${keymap.status.startsWith("Loading") ? nothing : html`<button @click=${() => { this._keymaps.delete(id); void this._loadCommands(id); }}>Retry commands</button>`}` : nothing}
-        <div class="hint">Both an icon and a command are needed to update this slot.</div>
-        <button @click=${() => { this._emit(applyShortcutSlotPatch(this.config, id, this._slot!, null).nextConfig); this._icon = ""; this._command = ""; }}>Clear shortcut</button>
-      </div>` : nothing}`;
+    const status = keymap?.status ?? "loading";
+    if (status !== "ready") {
+      const note = status === "loading" ? e.shortcutsCommandsLoading
+        : status === "cache_miss" ? "This device's commands are not cached yet. Refresh this device in the Hub tab, then retry."
+        : "Could not load this device's commands. Retry when the hub is available.";
+      return html`<div class="shortcut-panel"><div class="shortcut-note">${note}</div>
+        ${status === "loading" ? nothing : html`<div class="shortcut-panel-footer"><button type="button" @click=${() => { this._keymaps.delete(id); void this._loadCommands(id); }}>Retry</button></div>`}</div>`;
+    }
+    // A stored command id the keymap no longer knows stays listed as
+    // "(missing)" so the user can see and fix it instead of a blank field.
+    const options = keymap!.commands.map((c) => ({ value: String(c.command_id), label: c.name }));
+    if (this._command && !options.some((o) => o.value === this._command)) options.push({ value: this._command, label: e.shortcutCommandMissing(this._command) });
+    return html`<div class="shortcut-panel">
+      ${this._iconPicker()}
+      <ha-select class="shortcut-command" .label=${e.shortcutCommand} .value=${this._command}
+        @selected=${(ev: CustomEvent<{ value: string }>) => { ev.stopPropagation(); this._draft(this._icon, ev.detail.value); }}>
+        ${options.map((o) => html`<mwc-list-item .value=${o.value}>${o.label}</mwc-list-item>`)}
+      </ha-select>
+      <div class="shortcut-panel-footer"><button type="button" @click=${() => this._resetSlot()}>${e.shortcutReset}</button></div>
+    </div>`;
+  }
+  /**
+   * The HA icon selector as a combo box: a text field with the icon drawn in
+   * front of it and a filtered list of icons underneath. The list offers
+   * the icons this bundle ships (the web remote renders only those); any
+   * other mdi name can still be typed.
+   */
+  private _iconPicker(): TemplateResult {
+    const e = str().editor;
+    const icon = this._icon.trim();
+    const query = icon.toLowerCase().replace(/^mdi:/, "");
+    const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
+    const pick = (name: string) => { this._draft(`mdi:${name}`, this._command); this._iconOpen = false; this._iconActive = -1; };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        if (!this._iconOpen) { this._iconOpen = true; this._iconActive = -1; return; }
+        if (!matches.length) return;
+        this._iconActive = ev.key === "ArrowDown" ? Math.min(matches.length - 1, this._iconActive + 1) : Math.max(0, this._iconActive - 1);
+      } else if (ev.key === "Enter" && this._iconOpen && this._iconActive >= 0 && matches[this._iconActive]) {
+        ev.preventDefault();
+        pick(matches[this._iconActive]);
+      } else if (ev.key === "Escape" && this._iconOpen) {
+        ev.preventDefault();
+        this._iconOpen = false;
+        this._iconActive = -1;
+      }
+    };
+    return html`<div class="icon-picker">
+      <div class="field"><label><span class="field-label">${e.shortcutIcon}</span>
+        <div class="icon-field">
+          ${icon ? html`<ha-icon icon=${icon}></ha-icon>` : html`<span class="icon-blank" aria-hidden="true"></span>`}
+          <input role="combobox" aria-label=${e.shortcutIcon} aria-autocomplete="list" aria-expanded=${this._iconOpen ? "true" : "false"} aria-controls="icon-options"
+            autocomplete="off" spellcheck="false" .value=${live(this._icon)}
+            @focus=${() => { this._iconOpen = true; this._iconActive = -1; }}
+            @blur=${() => { this._iconOpen = false; this._iconActive = -1; }}
+            @input=${(ev: Event) => { this._iconOpen = true; this._iconActive = -1; this._draft((ev.target as HTMLInputElement).value, this._command); }}
+            @keydown=${onKey}>
+        </div></label></div>
+      ${matches.length ? html`<div class="icon-options" id="icon-options" role="listbox" aria-label=${e.shortcutIcon}>${matches.map((name, index) => html`
+        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon === `mdi:${name}` ? "true" : "false"}
+          @pointerdown=${(ev: Event) => ev.preventDefault()} @click=${() => pick(name)}><ha-icon icon=${`mdi:${name}`}></ha-icon><span>mdi:${name}</span></button>`)}</div>` : nothing}
+    </div>`;
   }
 
   render(): TemplateResult {

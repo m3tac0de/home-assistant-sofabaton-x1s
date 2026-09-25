@@ -5,7 +5,7 @@ The Python server runs on a separate computer; Hubitat connects to its REST
 API and WebSocket. No Home Assistant, MQTT broker, Maker API token or inbound
 Hubitat HTTP endpoint is needed.
 
-**Example for server 0.2.1 / API 1.**
+**Example for server 0.2.2 / API 1.**
 The sources are compiled and behavior-tested with
 Groovy 2.4.21 and a simulated Hubitat environment. Installation, Hubitat's
 sandbox, actual asynchronous HTTP/WebSocket behavior, and physical devices
@@ -29,7 +29,7 @@ This example follows the recommended integration scope: consume registered
 hubs and callback devices, and keep setup in the server's control panel.
 The button device consumes only `/callback-device` (Wifi Device key
 `default`). It ignores other keyed devices, including ones created by the
-panel's Add button; use the starter setup below to create `default` first.
+panel's Add button; use the optional provisioning script below to create `default` first.
 Use its Hub view to find command IDs and its Remote view for the full
 remote and layout editor. The instructions below cover the separate,
 one-time callback setup needed to receive button presses.
@@ -41,15 +41,15 @@ While it is connected directly to the hub, the hub does not advertise and
 the server cannot discover it. Keep the app closed through registration
 and the first control test.
 
-Follow the [server setup](../../README.md#run) and
-[starter guide](../../docs/getting-started.md). Run one server for all your
+Follow the [server setup](../../docs/getting-started.md) and
+[integration guide](../../docs/first-integration.md). Run one server for all your
 hubs and connect Hubitat to that server. If a hub is already managed by
 Home Assistant or another proxy, disable it there before registering it here.
 
 On the server host:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
 sofabaton-x-server
 ```
 
@@ -67,11 +67,14 @@ addresses in DHCP. A reverse-proxy prefix is supported, such as
 `https://home.example/sofabaton`; do not append `/api/v1`. This example does
 not supply authentication headers or bypass TLS certificate validation.
 
-The server currently has no built-in authentication. Keep it on a trusted
-LAN. Hubitat connects to TCP 8480 by default. Callback presses also require
+This example needs no token, even once access is set up on the server
+(control panel, Server settings > Access): it only reads and uses control
+calls (start and stop activities, send commands), which stay open to the
+network. Tokens are for writes, such as the provisioning script below. Keep
+the server on a trusted LAN. Hubitat connects to TCP 8480 by default. Callback presses also require
 the physical SofaBaton hub to reach TCP 8060 **on the server**, while the
 server's normal discovery and hub-connection ports must remain reachable.
-For containers, use the documented [Linux host-network recipe](../../README.md#docker).
+For containers, use the documented [Linux host-network recipe](../../docs/running-server.md#docker).
 
 ## 2. Install the Hubitat code
 
@@ -122,14 +125,16 @@ the old child devices.
 must execute a callback command that calls the server. The server forwards
 that call to Hubitat over WebSocket.
 
-The [first-press walkthrough](../../docs/getting-started.md#3-receive-your-first-remote-press)
+The [callback provisioning guide](../../docs/callback-provisioning.md)
 provides a runnable setup command. For example, from the repository root:
 
 ```sh
-python sofabaton-x-server/examples/starter.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 setup-presses --activity 101 --button PLAY
+python sofabaton-x-server/examples/provision_callback.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 --activity 101 --button PLAY
 ```
 
-Replace the example addresses/IDs with values from your server. **This
+Once access is set up on the server, this script writes and needs a token:
+make one in the control panel (Server settings > Access) and run it with
+`SOFABATON_TOKEN=<token>` in the environment. Replace the example addresses/IDs with values from your server. **This
 replaces PLAY's existing short and long assignments in activity 101.**
 Choose an activity/button whose assignments you intend to replace. It
 creates a callback device if missing or reuses the existing first slot.

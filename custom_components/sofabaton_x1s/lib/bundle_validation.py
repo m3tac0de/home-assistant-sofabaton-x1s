@@ -19,7 +19,7 @@ from .hub_versions import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
 )
-from .protocol_const import ButtonName
+from .protocol_const import X2_NUMPAD_BUTTON_CODES, ButtonName
 
 ACTIVITY_ID_BASE = 0x65
 POWER_ON_MACRO_BUTTON_ID = 0xC6
@@ -44,6 +44,7 @@ _X2_EXTRA_BUTTONS = {
     ButtonName.DVR,
     ButtonName.PLAY,
     ButtonName.GUIDE,
+    *X2_NUMPAD_BUTTON_CODES,
 }
 _SHARED_BUTTONS = {
     value

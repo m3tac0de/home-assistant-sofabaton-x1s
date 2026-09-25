@@ -1,7 +1,6 @@
 // The device editor's pure parts (docs/internal/server-panel-device-editor-plan.md):
 // the snapshot read as a bundle, the element splice, the draft scope and
-// restore, the name sanitiser per hub model, the firmware floor, the Wifi
-// Events pairing, and the API client's device write with its If-Match.
+// restore, the name sanitiser per hub model, the Wifi Events pairing, and the API client's device write with its If-Match.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -14,7 +13,6 @@ import {
   deviceElement,
   draftElementFor,
   elementsEqual,
-  firmwareUnsupported,
   isLongRecord,
   sanitizeName,
   snapshotAsBundle,
@@ -87,15 +85,6 @@ test("names follow the hub model: the X1 is ASCII only, every model caps at 30 c
   assert.equal(sanitizeName("X1S", "Télé salon!"), "Télé salon!");
   assert.equal(sanitizeName("X1S", "a".repeat(40)).length, 30);
   assert.equal(sanitizeName("X2", null), "");
-});
-
-test("the firmware floor mirrors the library's table", () => {
-  assert.deepEqual(firmwareUnsupported("X1S", 2), { installed: 2, required: 5 });
-  assert.equal(firmwareUnsupported("X1S", 5), null);
-  assert.deepEqual(firmwareUnsupported("X1", 16), { installed: 16, required: 17 });
-  assert.equal(firmwareUnsupported("X2", 9), null);
-  assert.equal(firmwareUnsupported("X1S", null), null, "unknown firmware never blocks");
-  assert.equal(firmwareUnsupported("Y9", 1), null, "unknown model never blocks");
 });
 
 test("the Wifi Events pairing: half the commands are slots, ids above are long records", () => {

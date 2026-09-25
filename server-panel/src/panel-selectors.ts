@@ -6,7 +6,7 @@
 // tests cover them without a DOM.
 
 import type { HubView, JobView } from "./panel-api";
-import { TERMINAL_JOB_STATES } from "./panel-api";
+import { TERMINAL_JOB_STATES, humanizeSlug, problemSummary } from "./panel-api";
 import type { Draft, DraftCheck, HubNotice, HubRuntime, PanelSnapshot } from "./panel-store";
 
 // -- selection ----------------------------------------------------------------------
@@ -48,6 +48,23 @@ export const GATE_LABELS: Record<Exclude<Gate, "pass">, string> = {
   first_sync: "First sync running",
 };
 
+// -- the firmware floor ------------------------------------------------------------------
+
+export interface FirmwareFloor {
+  installed: number | "?";
+  required: number | "?";
+}
+
+/** The hub's firmware is below the library's supported floor (`status.firmware_unsupported`,
+ *  computed by the server): such a hub ACKs writes and silently drops them, so the
+ *  write surfaces (the editors, Wifi Commands, Backup) show the HA card's block in
+ *  their place. Reads stay open, which is why this is not a gate. */
+export function firmwareFloor(hub: HubView | null | undefined): FirmwareFloor | null {
+  const status = hub?.status;
+  if (!status?.firmware_unsupported) return null;
+  return { installed: status.firmware_version ?? "?", required: status.firmware_min_supported ?? "?" };
+}
+
 // -- busy ------------------------------------------------------------------------------
 
 export type Busy = { kind: "job"; job: JobView } | { kind: "local"; key: string; label: string } | null;
@@ -86,6 +103,13 @@ const JOB_LABELS: Record<string, string> = {
   refresh_entity: "Refreshing from the hub",
   sync_device: "Syncing the device to the hub",
   sync_activity: "Syncing the activity to the hub",
+  add_device: "Adding the device",
+  remove_device: "Deleting the device",
+  add_activity: "Adding the activity",
+  remove_activity: "Deleting the activity",
+  reorder_devices: "Reordering the devices",
+  reorder_activities: "Reordering the activities",
+  rename_hub: "Renaming the hub",
   sync_hub: "Applying the document",
   resume_apply: "Resuming the apply",
   backup: "Backing up the hub",
@@ -103,7 +127,7 @@ const JOB_LABELS: Record<string, string> = {
 };
 
 export function jobLabel(kind: string): string {
-  return JOB_LABELS[kind] ?? kind;
+  return JOB_LABELS[kind] ?? humanizeSlug(kind);
 }
 
 export interface JobProgressModel {
@@ -189,7 +213,7 @@ export function noticeForJob(job: JobView, at: number): HubNotice | null {
   const label = jobHeadline(job);
   if (job.status === "failed") {
     const problem = job.error;
-    const head = problem?.title || problem?.type || "failed";
+    const head = problemSummary(problem ? { ...problem, detail: null } : null) || "failed";
     return { tone: "error", label: `${label}: ${head}`, detail: problem?.detail ?? null, jobId: job.job_id, sticky: true, at };
   }
   if (job.status === "cancelled") return { tone: "neutral", label: `${label}: cancelled`, detail: null, jobId: job.job_id, sticky: false, at };
@@ -237,7 +261,7 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, v
   }
   if (runtime?.notice) return { kind: "notice", notice: runtime.notice };
   const stopped = runtime?.stoppedApplies[0];
-  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `An apply stopped (${stopped.status}); ${stopped.resumable ? "resume or discard it" : "discard it"}` };
+  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `${stopped.status === "cancelled" ? "An apply was cancelled partway" : "An apply stopped partway"}; ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };

@@ -5,7 +5,9 @@ Message shapes (JSON objects, ``type`` discriminates):
 * ``hello``        sent once on connect: server identity and the hub list
 * ``hub_event``    a relayed library ``HubEvent`` with its ``hub_id``
 * ``server_event`` the server's own lifecycle: hub added / removed /
-                   enabled / disabled / rekeyed (``kind``) for ``hub_id``
+                   enabled / disabled / rekeyed (``kind``) for ``hub_id``;
+                   ``update_check`` with an empty ``hub_id`` when an
+                   update check finished (re-read ``GET /server``)
 * ``job_event``    a job on ``hub_id`` started, reported progress, or
                    finished (the full ``JobView``)
 * ``dropped``      this client fell behind and ``count`` older messages
@@ -70,6 +72,9 @@ class WsHubEvent:
 
 @dataclass(frozen=True)
 class WsServerEvent:
+    """A server lifecycle event. ``hub_id`` is empty for a server-wide kind
+    (``update_check``); a ``?hub_id=`` filter never receives those."""
+
     hub_id: str
     kind: str
     type: Literal["server_event"] = "server_event"

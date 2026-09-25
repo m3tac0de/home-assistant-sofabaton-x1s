@@ -25,6 +25,7 @@ import {
   mdiChevronDown,
   mdiChevronRight,
   mdiClose,
+  mdiDialpad,
   mdiDragVerticalVariant,
   mdiFormatListNumbered,
   mdiGamepadRoundOutline,
@@ -142,6 +143,7 @@ const ROLE_ICONS: Record<ActivityRoleGroupId, string> = {
   navigation: mdiGamepadRoundOutline,
   playback: mdiPlayPause,
   channels: mdiPound,
+  numpad: mdiDialpad,
 };
 
 function roleLabel(group: ActivityRoleGroupId): string {
@@ -154,6 +156,8 @@ function roleLabel(group: ActivityRoleGroupId): string {
       return B.rolePlayback;
     case "channels":
       return B.roleChannels;
+    case "numpad":
+      return B.roleNumpad;
   }
 }
 

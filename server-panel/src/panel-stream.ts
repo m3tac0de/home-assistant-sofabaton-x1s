@@ -169,7 +169,8 @@ export function summarizeMessage(data: Record<string, unknown>): string {
 const HUB_EVENT_KINDS = new Set(["catalog_ready", "hub_state", "app_state", "status_changed"]);
 
 export function isHubRefreshTrigger(data: Record<string, unknown>): boolean {
-  if (data.type === "server_event") return true;
+  // A hub's lifecycle reloads the list; the server-wide kinds (an update check finished) do not.
+  if (data.type === "server_event") return data.kind !== "update_check";
   if (data.type === "hub_event") {
     const event = data.event as { kind?: string } | undefined;
     return Boolean(event?.kind && HUB_EVENT_KINDS.has(event.kind));

@@ -12,6 +12,9 @@
 #
 # Fully close the official Sofabaton app first: connected hubs do not advertise.
 # Then open http://<server>:8480/ and add hubs in the control panel.
+# Set up access there to require credentials for configuration writes.
+# Keep ./data: it also holds auth.json and, if set in the panel, mqtt.json
+# with the broker password in plain text.
 # SOFABATON_HUBS is an optional seed for first startup only.
 services:
   sofabaton-x-server:
@@ -29,9 +32,12 @@ services:
       # SOFABATON_HUBS: "192.168.1.50,192.168.1.51"
       # SOFABATON_ADVERTISE_URL: "https://sofabaton.home.example"
       # SOFABATON_TRUSTED_PROXIES: "127.0.0.1"
+      # SOFABATON_ALLOWED_ORIGINS: "http://nas:8123"  # only for browser pages calling the API directly
       # SOFABATON_BIND: "127.0.0.1"      # when a reverse proxy on this host fronts it
       SOFABATON_LOG_LEVEL: "info"
-      # X2 only: the MQTT broker set in the Sofabaton app. Environment or flags only, never server.json.
+      # X2 only: use the same MQTT broker as the Sofabaton app. Configure it in
+      # Server settings > MQTT broker, or here (startup settings override the panel).
+      # Never put mqtt_* keys in server.json. Mount the password file if using it.
       # SOFABATON_MQTT_HOST: "192.168.1.20"
       # SOFABATON_MQTT_USERNAME: "sofabaton"
       # SOFABATON_MQTT_PASSWORD_FILE: "/run/secrets/mqtt_password"

@@ -81,6 +81,7 @@ const ROLE_ICONS: Record<ActivityRoleGroupId, string> = {
   navigation: "mdi:gamepad-round-outline",
   playback: "mdi:play-pause",
   channels: "mdi:pound",
+  numpad: "mdi:dialpad",
 };
 
 function roleLabel(group: ActivityRoleGroupId): string {
@@ -93,6 +94,8 @@ function roleLabel(group: ActivityRoleGroupId): string {
       return S.rolePlayback;
     case "channels":
       return S.roleChannels;
+    case "numpad":
+      return S.roleNumpad;
   }
 }
 

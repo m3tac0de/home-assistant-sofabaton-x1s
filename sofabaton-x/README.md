@@ -1,9 +1,10 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.1.** Despite the patch version,
-> `read_payload()` changes its return types for non-IR commands.
-> Read the [0.2.1 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22)
-> before upgrading from 0.2.0. Consumers on 0.1.x also need the
+> **This README describes 0.2.2.** This release adds X2 number keys and
+> firmware status fields, and returns activities and devices in display order.
+> Read the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25).
+> Consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
+> consumers on 0.1.x also need the
 > [0.2.0 migration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#020-2026-09-16).
 
 [![PyPI](https://img.shields.io/pypi/v/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
@@ -19,7 +20,7 @@ This is the protocol engine extracted from the
 the integration is its reference consumer.
 
 **Building your first integration? Start with the
-[server starter guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/getting-started.md).**
+[server starter guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/first-integration.md).**
 The server manages this library and supplies a management UI, web remote
 and HTTP/WebSocket APIs. Your platform can select registered hubs and map
 actions and events without rebuilding setup or remote screens. Use the
@@ -73,7 +74,7 @@ Home Assistant integration provide their own listeners on top.
 ## Install
 
 ```
-python -m pip install "sofabaton-x>=0.2.1,<0.3"
+python -m pip install "sofabaton-x>=0.2.2,<0.3"
 ```
 
 From a checkout, run `python -m pip install .` from the repository root
@@ -204,15 +205,19 @@ dataclasses (each with a `to_dict()`), cached if available, else fetched:
 
 | read                     | returns                                                                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------- |
-| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`                       |
-| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior` |
+| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`, `sort`               |
+| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior`, `sort` |
 | `commands(device_id)`    | `list[Command]`: `command_id`, `label`                                                   |
 | `macros(activity_id)`    | `list[Macro]`: `command_id`, `label`                                                     |
 | `favorites(activity_id)` | `list[Favorite]`: `device_id`, `command_id`, `label`                                     |
 | `buttons(entity_id)`     | `list[Button]`: `button_code`, `name`, `device_id`, `command_id`, `long_press_device_id`, `long_press_command_id` |
 | `current_activity()`     | `{activity_id, name}` or `None` when idle                                                |
 
-Lists are sorted by id. `Device.power_state` is the hub's live power byte
+`activities()` and `devices()` come in the hub's display order, as the
+physical remote and the app show it: the stored sort byte (what
+`reorder_activities` / `reorder_devices` write, carried as `sort`) first,
+rows without one (`sort == 0`) after them by id. The other lists are
+sorted by id. `Device.power_state` is the hub's live power byte
 (0 off, 1 on) as of the last devices fetch, or `None` when the row carried
 no parseable record; the hub commits it with a short lag after a power
 command, so it is not an instantaneous read. `activities(refresh=True)`
@@ -238,6 +243,16 @@ dataclasses with a `to_dict()`:
 refused. `hub_info()` serves the banner known from the session and only
 re-reads it on `refresh=True`, which needs control mode.
 
+Both status reads include `firmware_version`, `firmware_min_supported`,
+`firmware_unsupported` and `firmware_outdated`; `HubInfo` also includes
+`firmware_min_recommended`. These compare the banner against the library's
+supported and recommended firmware floors. Block configuration editing
+in your application when `firmware_unsupported` is true: older firmware
+can acknowledge writes without saving them. `firmware_outdated` alone
+is an update recommendation. The library does not enforce either flag.
+The flags are false when the hub line or installed version is unknown;
+unavailable version/floor values are `None`.
+
 A read that has to fetch and cannot raises a typed error: `HubBusyError`
 (an app holds the hub), `HubNotConnectedError` (no hub session), or
 `FetchTimeoutError` (the reply never landed). They subclass `RuntimeError`
@@ -248,6 +263,12 @@ the wait times out. Complete cached reads remain available.
 
 Control: `send(entity_id, command_id)` (alias `press`),
 `start_activity(act)`, `stop_activity(act)`, `find_remote()`.
+
+For the X2 on-screen number pad, use the package-root `ButtonName`
+constants `NUM_0`–`NUM_9`, `NUM_DASH` and `NUM_ENTER` wherever a button
+code is accepted, for example `await proxy.send(101, ButtonName.NUM_1)`.
+`buttons()` includes these bindings, including long-press assignments.
+They are X2-only; bundle validation rejects these keys for X1/X1S.
 
 ### Events
 
@@ -520,7 +541,7 @@ and inspect the hub, then construct a new edit against the reconciled
 snapshot when the intended changes are clear. There is no rollback.
 
 The server adds persistent apply records but has further
-[restart and retry limitations](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/README.md#recovery-and-retention).
+[restart and retry limitations](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/api-reference.md#recovery-and-retention).
 
 ### Edit helpers
 

@@ -57,6 +57,7 @@ from sofabaton.wifi_device import DEFAULT_WIFI_BRAND
 from .config import Settings
 from .manager import HubDisabled, HubManager, HubNotFound
 from .mqtt_client import MqttState, MqttSubscriber
+from .mqtt_config import MqttConfig, MqttConfigStore, startup_pinned
 from .models import mac_key, now_iso
 
 log = logging.getLogger(__name__)
@@ -616,15 +617,52 @@ class CallbackService:
         self._press_listeners: list[Callable[[Press], Any]] = []
         self._verify_tasks: dict[str, asyncio.Task] = {}
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
-        self.mqtt = MqttSubscriber(
-            host=settings.mqtt_host, port=settings.mqtt_effective_port, username=settings.mqtt_username,
-            password=settings.mqtt_password, tls=settings.mqtt_tls,
-            tls_ca=str(settings.mqtt_tls_ca) if settings.mqtt_tls_ca else None,
-            tls_insecure=settings.mqtt_tls_insecure, client_id=settings.mqtt_client_id,
-            on_message=self.handle_mqtt_message, on_state=self._on_listener_state,
-        )
+        # The broker: the command line / environment when they set any of it,
+        # else what the control panel stored in mqtt.json (mqtt_config.py).
+        self.mqtt_store = MqttConfigStore(settings.data_dir)
+        # (A Settings built in code, as the tests do, has nothing pinned: its host counts as startup too.)
+        if startup_pinned(settings) or settings.mqtt_host:
+            self.mqtt_source = "startup"
+            self.mqtt_config = MqttConfig.from_settings(settings)
+        else:
+            stored = self.mqtt_store.load()
+            self.mqtt_source = "panel" if stored is not None and stored.configured else "none"
+            self.mqtt_config = stored if stored is not None and stored.configured else MqttConfig()
+        self.mqtt = self._subscriber(self.mqtt_config)
         manager.on_hub_event(self._on_hub_event)
         manager.on_server_event(self._on_server_event)
+
+    def _subscriber(self, config: MqttConfig) -> MqttSubscriber:
+        return MqttSubscriber(
+            host=config.host, port=config.effective_port, username=config.username, password=config.password,
+            tls=config.tls, tls_ca=config.tls_ca, tls_insecure=config.tls_insecure, client_id=config.client_id,
+            on_message=self.handle_mqtt_message, on_state=self._on_listener_state,
+        )
+
+    @property
+    def mqtt_editable(self) -> bool:
+        """The panel may change the broker unless the command line / environment set it."""
+
+        return self.mqtt_source != "startup"
+
+    async def apply_mqtt_config(self, config: Optional[MqttConfig]) -> None:
+        """Store (or with None, forget) the panel's broker and reconnect with it now."""
+
+        if not self.mqtt_editable:
+            raise RuntimeError("the broker is set where the server starts")
+        if config is None or not config.configured:
+            self.mqtt_store.clear()
+            self.mqtt_config, self.mqtt_source = MqttConfig(), "none"
+        else:
+            self.mqtt_store.save(config)
+            self.mqtt_config, self.mqtt_source = config, "panel"
+        await self.mqtt.stop()
+        self.mqtt = self._subscriber(self.mqtt_config)
+        await self.mqtt.set_topics(set(self._mqtt_topics()))
+
+    def mqtt_device_count(self) -> int:
+        return sum(1 for hub_id in self._manager.ids() for record in self.records(hub_id)
+                   if record.transport == TRANSPORT_MQTT)
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -751,7 +789,8 @@ class CallbackService:
 
     def mqtt_unavailable_reason(self, hub_id: str, hub_version: Optional[str]) -> Optional[str]:
         if not self.mqtt.configured:
-            return "the server has no MQTT broker (start it with --mqtt-host or SOFABATON_MQTT_HOST)"
+            return ("the server has no MQTT broker (set one in the control panel under Server settings > MQTT broker, "
+                    "or start it with --mqtt-host)")
         if str(hub_version or "") != MQTT_HUB_VERSION:
             return f"only an {MQTT_HUB_VERSION} publishes presses to a broker; this hub is {hub_version or 'of an unknown model'}"
         if self.mqtt_topic_for(hub_id) is None:

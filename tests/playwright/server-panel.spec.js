@@ -87,8 +87,25 @@ function cardRoutes(id) {
 // the remote-card document and what the card itself reads.
 function makeRoutes(state) {
   const find = (id) => state.hubs.find((h) => h.hub_id === id);
+  const UPDATE_LINKS = { release_notes_url: "https://example.test/changelog", upgrade_url: "https://example.test/upgrade", pypi_url: "https://example.test/pypi" };
+  if (!state.update) {
+    state.update = { installed_version: "0.2.0", status: "not_checked", latest_version: null, checked_at: null, checked_by: null, error: null, automatic: false, automatic_pinned: false, next_check_at: null, checking: false, ...UPDATE_LINKS };
+  }
+  const announceUpdateCheck = () => {
+    for (const ws of state.sockets ?? []) ws.send(JSON.stringify({ type: "server_event", hub_id: "", kind: "update_check" }));
+  };
   return {
-    "GET /server": () => ({ status: 200, body: { version: "0.2.0", library_version: "0.2.0", api_version: "1", instance_id: "i1", callback_listener: { wanted: false, bound: false } } }),
+    "GET /server": () => ({ status: 200, body: { version: "0.2.0", library_version: "0.2.0", api_version: "1", instance_id: "i1", callback_listener: { wanted: false, bound: false }, update: state.update } }),
+    "GET /server/updates": () => ({ status: 200, body: state.update }),
+    "POST /server/updates/check": () => {
+      state.update = { ...state.update, status: "update_available", latest_version: "0.2.2", checked_at: "2026-09-23T12:00:00+00:00", checked_by: "manual" };
+      announceUpdateCheck();
+      return { status: 200, body: state.update };
+    },
+    "PUT /server/updates": (body) => {
+      state.update = { ...state.update, automatic: Boolean(body.automatic), next_check_at: body.automatic ? "2026-09-24T12:00:00+00:00" : null };
+      return { status: 200, body: state.update };
+    },
     "GET /openapi.json": () => ({ status: 200, body: { paths: { "/api/v1/hubs/{hub_id}/status": { get: { operationId: "getStatus", summary: "Status" } } } } }),
     "GET /hubs": () => ({ status: 200, body: state.hubs }),
     "GET /discovery/hubs": () => ({ status: 200, body: state.seen }),
@@ -131,6 +148,18 @@ function makeRoutes(state) {
       if (state.jobRuns) return problem(409, "hub_job_running", "job j1 (restore) is running; wait for it to finish", { hub_id: id });
       return { status: 200, body: { accepted: true, mode: "control" } };
     },
+    "POST /hubs/{id}/proxy/enable": (_body, id) => {
+      const hub = find(id); if (!hub) return problem(404, "hub_not_found", null, { hub_id: id });
+      hub.config = { ...hub.config, proxy_enabled: true };
+      if (hub.status) hub.status = { ...hub.status, proxy_enabled: true };
+      return { status: 200, body: hub };
+    },
+    "POST /hubs/{id}/proxy/disable": (_body, id) => {
+      const hub = find(id); if (!hub) return problem(404, "hub_not_found", null, { hub_id: id });
+      hub.config = { ...hub.config, proxy_enabled: false };
+      if (hub.status) hub.status = { ...hub.status, proxy_enabled: false };
+      return { status: 200, body: hub };
+    },
     "DELETE /hubs/{id}": (_body, id) => {
       if (!find(id)) return problem(404, "hub_not_found", null, { hub_id: id });
       state.hubs = state.hubs.filter((h) => h.hub_id !== id);
@@ -145,6 +174,69 @@ function makeRoutes(state) {
     "GET /hubs/{id}/applies": () => ({ status: 200, body: state.applies || [] }),
     "GET /hubs/{id}/jobs": () => ({ status: 200, body: [] }),
     ...cardRoutes(LIVING.hub_id),
+    ...(state.auth ? authRoutes(state) : {}),
+  };
+}
+
+function mqttView(a) {
+  const m = a.mqtt;
+  if (a.mqttStartup) return { source: "startup", editable: false, host: "startup.lan", port: null, effective_port: 1883, username: "hub", password_set: true, tls: false, tls_ca: null, tls_insecure: false, client_id: null, devices_using: 0, password_dropped: false };
+  return { source: m?.host ? "panel" : "none", editable: true, host: m?.host ?? null, port: m?.port ?? null, effective_port: m?.host ? (m.port ?? (m.tls ? 8883 : 1883)) : null,
+    username: m?.username ?? null, password_set: Boolean(m?.password), tls: Boolean(m?.tls), tls_ca: m?.tls_ca ?? null, tls_insecure: Boolean(m?.tls_insecure), client_id: m?.client_id ?? null, devices_using: m?.host ? 2 : 0, password_dropped: false };
+}
+
+// Access (auth plan, section 6): present only when a test sets `state.auth`,
+// so every other test sees an older server's 404 and the panel as before.
+const PASSWORD = "correct horse";
+function authRoutes(state) {
+  const a = state.auth;
+  a.tokens ??= [];
+  a.origins ??= [];
+  const status = () => ({ claimed: a.claimed, signed_in: a.claimed && a.signedIn, username: a.claimed && a.signedIn ? a.username : null, via: a.claimed && a.signedIn ? "session" : null });
+  const needSession = () => (a.claimed && !a.signedIn ? problem(401, "invalid_credentials", "the session expired or was signed out") : null);
+  const port = (running) => ({ running, configured: running, default: running, pinned: false });
+  const settings = () => ({ hub_listen_port: port(8200), app_discovery_port: port(8102), callback_port: port(8060), allowed_origins: { value: a.origins, pinned: false }, restart_required: false });
+  return {
+    "GET /auth": () => ({ status: 200, body: status() }),
+    "POST /auth/setup": (body) => {
+      if (a.claimed) return problem(409, "already_claimed", "sign in instead");
+      Object.assign(a, { claimed: true, signedIn: true, username: body.username, password: body.password, remember: body.remember });
+      return { status: 200, body: status() };
+    },
+    "POST /auth/login": (body) => {
+      if (body.username !== a.username || body.password !== (a.password ?? PASSWORD)) return problem(401, "invalid_credentials", null);
+      Object.assign(a, { signedIn: true, remember: body.remember });
+      return { status: 200, body: status() };
+    },
+    "POST /auth/logout": () => { a.signedIn = false; return { status: 204, body: null }; },
+    "GET /auth/tokens": () => needSession() ?? { status: 200, body: a.tokens },
+    "POST /auth/tokens": (body) => {
+      const token = { id: `tk_${a.tokens.length + 1}`, name: body.name, hint: "q7Zx", created_at: "2026-09-25T10:00:00+00:00", last_used_at: null };
+      a.tokens.push(token);
+      return { status: 201, body: { ...token, token: "sbx_example-secret-q7Zx" } };
+    },
+    "DELETE /auth/tokens/{id}": (_body, id) => { a.tokens = a.tokens.filter((t) => t.id !== id); return { status: 204, body: null }; },
+    "GET /auth/sessions": () => needSession() ?? { status: 200, body: [
+      { id: "ss_1", remember: Boolean(a.remember), created_at: "2026-09-25T09:00:00+00:00", last_seen_at: "2026-09-25T10:00:00+00:00", expires_at: "2026-12-24T10:00:00+00:00", user_agent: "Mozilla/5.0 (Windows NT 10.0) Firefox/130.0", current: true },
+    ] },
+    "DELETE /auth/sessions": () => ({ status: 204, body: null }),
+    "GET /server/settings": () => ({ status: 200, body: settings() }),
+    "GET /server/mqtt": () => ({ status: 200, body: { configured: Boolean(a.mqtt?.host), wanted: false, connected: false, host: a.mqtt?.host ?? null, port: a.mqtt?.host ? (a.mqtt.port ?? 1883) : null, tls: false, username: a.mqtt?.username ?? null, topics: [], last_error: null, connected_at: null, next_retry_at: null } }),
+    "GET /server/mqtt/config": () => ({ status: 200, body: mqttView(a) }),
+    "PUT /server/mqtt/config": (body) => {
+      const before = a.mqtt ?? {};
+      const moved = ["host", "port", "username"].some((k) => (before[k] ?? null) !== (body[k] ?? null));
+      const password = "password" in body ? body.password || null : moved ? null : before.password ?? null;
+      a.mqttBodies = [...(a.mqttBodies ?? []), body];
+      a.mqtt = { ...body, password };
+      return { status: 200, body: { ...mqttView(a), password_dropped: !("password" in body) && moved && Boolean(before.password) } };
+    },
+    "DELETE /server/mqtt/config": () => { a.mqtt = null; return { status: 204, body: null }; },
+    "POST /server/mqtt/test": (body) => ({ status: 200, body: body.password === "wrong" ? { ok: false, error: "bad user name or password", elapsed_ms: 12 } : { ok: true, error: null, elapsed_ms: 9 } }),
+    "PUT /server/settings": (body) => {
+      if (body.allowed_origins) a.origins = body.allowed_origins.map((o) => o.toLowerCase().replace(/\/+$/, ""));
+      return { status: 200, body: settings() };
+    },
   };
 }
 
@@ -163,7 +255,11 @@ async function mockServer(page, state) {
     let handler = routes[`${method} ${rel}`];
     let id = null;
     if (!handler) {
-      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
+      const t = rel.match(/^\/auth\/(tokens|sessions)\/([^/]+)$/);
+      if (t) { id = t[2]; handler = routes[`${method} /auth/${t[1]}/{id}`]; }
+    }
+    if (!handler) {
+      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/proxy\/enable|\/proxy\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
       if (m) { id = m[1]; handler = routes[`${method} /hubs/{id}${m[2] || ""}`]; }
     }
     calls.push({ key: `${method} ${rel}`, body });
@@ -176,6 +272,7 @@ async function mockServer(page, state) {
     await route.fulfill({ status: answer.status, contentType: "application/json", body: JSON.stringify(answer.body) });
   });
   const sockets = [];
+  state.sockets = sockets;
   await page.routeWebSocket(`**${API}/events**`, (ws) => {
     sockets.push(ws);
     ws.send(JSON.stringify({ type: "hello", server_version: "0.2.0", api_version: "1", hubs: state.hubs.map((h) => ({ hub_id: h.hub_id, enabled: h.enabled })), instance_id: "i1" }));
@@ -236,8 +333,10 @@ test.describe("control panel, responsive docks", () => {
       expect(await status.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
       expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).not.toBe("nowrap");
       await expect.poll(() => page.locator(".page").evaluate((el) => {
+        // The dock's height is reserved, plus the same gap the subtab row keeps under the top dock.
         const dock = el.querySelector("#bottom-dock");
-        return parseFloat(getComputedStyle(el).paddingBottom) >= dock.getBoundingClientRect().height + 15;
+        const gap = parseFloat(getComputedStyle(el.querySelector("#subtabs")).marginTop);
+        return gap > 0 && Math.abs(parseFloat(getComputedStyle(el).paddingBottom) - (dock.getBoundingClientRect().height + gap)) < 1;
       })).toBe(true);
 
       await page.mouse.move(0, 400);
@@ -433,17 +532,16 @@ test.describe("control panel, hubs", () => {
     await expect(msg(page)).toHaveText("192.168.1.60: enabled");
     await expect(detail(page)).toContainText("connected, in control");
 
-    // Playwright dismisses dialogs unless a handler accepts them: the
-    // first Remove is cancelled and nothing is sent.
-    await actions(page).getByRole("button", { name: "Remove" }).click();
-    await page.waitForTimeout(200);
+    // Remove asks inline (no native dialog: a suppressed one answers
+    // "cancel" silently); Cancel sends nothing and restores the actions.
+    await actions(page).getByRole("button", { name: "Remove…" }).click();
+    await expect(page.locator("#remove-question")).toContainText("Remove 192.168.1.60?");
+    await actions(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(page.locator("#remove-question")).toHaveCount(0);
     expect(calls.some((c) => c.key === "DELETE /hubs/192.168.1.60")).toBe(false);
 
-    page.once("dialog", (dialog) => {
-      expect(dialog.message()).toContain("Remove hub 192.168.1.60?");
-      dialog.accept();
-    });
-    await actions(page).getByRole("button", { name: "Remove" }).click();
+    await actions(page).getByRole("button", { name: "Remove…" }).click();
+    await page.locator("#remove-confirm").click();
     await expect.poll(() => calls.some((c) => c.key === "DELETE /hubs/192.168.1.60")).toBe(true);
     await expect(msg(page)).toHaveText("192.168.1.60: removed");
     // The selection falls back to the remaining hub; its picker stays interactive.
@@ -470,6 +568,19 @@ test.describe("control panel, hubs", () => {
     await actions(page).getByRole("button", { name: "Disable" }).click();
     await expect(actions(page).getByRole("button", { name: "Enable" })).toBeVisible();
     await expect(actions(page).getByRole("button", { name: "Sync remote" })).toHaveCount(0);
+  });
+
+  test("the app proxy toggles per hub and the detail shows its state", async ({ page }) => {
+    const { calls } = await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/setup`);
+    await expect(detail(page)).toContainText("app proxyon");
+    await actions(page).getByRole("button", { name: "Turn app proxy off" }).click();
+    await expect.poll(() => calls.some((c) => c.key === "POST /hubs/e26a44861b45/proxy/disable")).toBe(true);
+    await expect(msg(page)).toHaveText("e26a44861b45: app proxy off");
+    await expect(detail(page)).toContainText("app proxyoff");
+    await actions(page).getByRole("button", { name: "Turn app proxy on" }).click();
+    await expect.poll(() => calls.some((c) => c.key === "POST /hubs/e26a44861b45/proxy/enable")).toBe(true);
+    await expect(actions(page).getByRole("button", { name: "Turn app proxy off" })).toBeVisible();
   });
 
   test("a discovered hub is added with its advertised configuration", async ({ page }) => {
@@ -522,7 +633,7 @@ test.describe("control panel, hubs", () => {
 
 test.describe("control panel, shell", () => {
   test("tabs and subtabs route by hash, the cog menu opens the tool pages, the theme cycles", async ({ page }) => {
-    await mockServer(page, { hubs: [LIVING], seen: [] });
+    const { calls } = await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(PAGE);
     await expect(page.locator("#view-hub")).toBeVisible();
     await expect(page.locator('#tabs button[data-tab="hub"]')).toHaveClass(/active/);
@@ -562,6 +673,25 @@ test.describe("control panel, shell", () => {
     await expect(page).toHaveURL(/#\/server\/status$/);
     await expect(page.locator("#server-meta")).toContainText("server 0.2.0 · library 0.2.0");
     await expect(page.locator("#server-detail")).toContainText("live");
+
+    // The update check: off and unchecked until asked; one check finds a release, the cog gets its dot.
+    await expect(page.locator("#update-status")).toHaveText("Not checked.");
+    await expect(page.locator("#update-checked")).toHaveText("Never");
+    await expect(page.locator("#update-installed")).toHaveText("0.2.0");
+    await expect(page.locator("#update-dot")).toHaveCount(0);
+    await expect(page.locator("#update-auto")).not.toBeChecked();
+    expect(calls.filter((c) => c.key.startsWith("POST /server/updates")).length).toBe(0);
+    await page.click("#update-check");
+    await expect(page.locator("#update-status")).toContainText("Update available: 0.2.2");
+    await expect(page.locator("#update-links a")).toHaveCount(3);
+    await expect(page.locator("#update-checked")).toContainText("2026");
+    await expect(page.locator("#update-dot")).toBeVisible();
+    await page.click("#cog-btn");
+    await expect(page.locator("#update-badge")).toHaveText("update available");
+    await page.click("#cog-btn");
+    await page.check("#update-auto");
+    await expect(page.locator("#update-next")).toContainText("2026");
+    expect(calls.filter((c) => c.key === "PUT /server/updates").map((c) => c.body)).toEqual([{ automatic: true }]);
 
     // A tab click from a tool page returns to the hub route; the back button walks the history.
     await page.click('#tabs button[data-tab="hub"]');
@@ -679,7 +809,7 @@ test.describe("control panel, shell", () => {
       route.fulfill({ status: 204 });
     });
     await page.goto(PAGE);
-    await expect(page.locator("#dock-status")).toHaveText("An apply stopped (stopped); resume or discard it");
+    await expect(page.locator("#dock-status")).toHaveText("An apply stopped partway; resume or discard it");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--warn/);
     // Discard asks first; a dismissed dialog sends nothing.
     await page.click("#dock-discard");
@@ -997,9 +1127,20 @@ test.describe("control panel, views", () => {
     await selectRemoteLayout(layout, "device:1");
     await expect(editor.locator('[data-group="dpad"] input')).not.toBeChecked();
     await editor.locator('[data-group="dpad"] input').check();
-    await editor.locator(".slots button").first().click();
-    await editor.getByLabel("Shortcut icon", { exact: true }).fill("mdi:home");
-    await editor.getByLabel("Shortcut command", { exact: true }).selectOption("9");
+    // Shortcuts mirror the HA editor: the three slot buttons sit on the row, the open slot drops its panel out of the row.
+    const shortcutsRow = editor.locator('[data-group="shortcuts"]');
+    await expect(shortcutsRow.locator(".shortcut-slot")).toHaveCount(3);
+    await shortcutsRow.getByRole("button", { name: "Left shortcut", exact: true }).click();
+    await expect(shortcutsRow.locator(".shortcut-panel")).toHaveCount(1);
+    const iconField = shortcutsRow.getByRole("combobox", { name: "Icon", exact: true });
+    await iconField.fill("hom");
+    await expect(shortcutsRow.locator(".icon-option").first()).toHaveText("mdi:home");
+    await shortcutsRow.locator(".icon-option").first().click();
+    await expect(iconField).toHaveValue("mdi:home");
+    const commandSelect = shortcutsRow.locator("ha-select.shortcut-command");
+    await expect(commandSelect.locator(".value")).toHaveText("");
+    await selectRemoteLayout(commandSelect, "9");
+    await expect(shortcutsRow.locator(".shortcut-slot.is-configured")).toHaveCount(1);
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("saved");
     expect(state.document).toMatchObject({
@@ -1013,8 +1154,40 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-status")).toContainText("saved");
     expect(state.document.device_mode.layouts["1"]).toBeUndefined();
     expect(state.document.device_mode.shortcuts["1"].left.command_id).toBe(9);
+    // The panel's Reset clears the stored slot and stays open for a new pick.
+    await shortcutsRow.getByRole("button", { name: "Reset", exact: true }).click();
+    await expect(shortcutsRow.locator(".shortcut-panel")).toHaveCount(1);
+    await expect(shortcutsRow.locator(".shortcut-slot.is-configured")).toHaveCount(0);
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document.device_mode.shortcuts).toBeUndefined();
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: shot(testInfo, "remote-device-layout"), fullPage: true });
+  });
+
+  test("remote editor carries the Number pad switch on the D-pad row for an X2 only", async ({ page }) => {
+    const x2 = { ...LIVING, config: { ...LIVING.config, hub_version: "X2" }, status: { ...CONTROL, hub_version: "X2" } };
+    const state = { hubs: [x2], seen: [], document: {} };
+    await mockServer(page, state);
+    // The card's status read is what carries the model to the editor.
+    await page.route(`**${API}/hubs/${x2.hub_id}/status`, (route) => route.fulfill({ json: { ...x2, hub_id: x2.hub_id } }));
+    await page.goto(`${PAGE}#/${x2.hub_id}/remote/layout`);
+    const editor = page.locator("sb-panel-remote-editor");
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    const dpadRow = editor.locator('[data-group="dpad"]');
+    const numpad = dpadRow.getByRole("switch", { name: "Number pad", exact: true });
+    await expect(numpad).toBeChecked();
+    await numpad.uncheck();
+    await expect(dpadRow.getByRole("switch", { name: "Direction pad", exact: true })).toBeChecked();
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document.layouts.default.show_numpad).toBe(false);
+
+    await page.unroute(`**${API}/hubs/${x2.hub_id}/status`);
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/${LIVING.hub_id}/remote/layout`);
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    await expect(editor.locator('[data-group="dpad"]').getByRole("switch", { name: "Number pad", exact: true })).toHaveCount(0);
   });
 
   test("remote editor groups layout choices and keeps field focus clear of labels", async ({ page }, testInfo) => {
@@ -1062,9 +1235,23 @@ test.describe("control panel, views", () => {
     await editor.locator("summary").filter({ hasText: "Layout options" }).press("Enter");
     await expect(editor.locator("details[open]")).toHaveCount(1);
     await expect(general).not.toHaveAttribute("open", "");
+    // Device names live in the Macros/Favorites row's "..." panel; rows mode
+    // keeps its own control under the list.
+    await expect(editor.locator(".rows-control").getByRole("switch", { name: "Macros/Favorites as rows", exact: true })).toHaveCount(1);
+    const menu = editor.getByRole("button", { name: "Macros/Favorites options" });
+    await expect(editor.locator(".menu-btn")).toHaveCount(1);
+    await menu.click();
+    await expect(menu).toHaveAttribute("aria-expanded", "true");
+    await editor.getByRole("switch", { name: "Show device names", exact: true }).check();
+    await expect(editor.getByRole("switch", { name: "Show device names", exact: true })).toBeChecked();
     const increment = editor.getByRole("button", { name: "More visible rows" });
     await expect(increment).toBeDisabled();
     await editor.getByRole("switch", { name: "Macros/Favorites as rows", exact: true }).check();
+    // The combined row splits in two; the panel follows onto the Favorites
+    // row, and the Macros row has no menu (macros carry no device).
+    await expect(editor.getByRole("button", { name: "Favorites row options" })).toHaveAttribute("aria-expanded", "true");
+    await expect(editor.getByRole("button", { name: "Macros row options" })).toHaveCount(0);
+    await expect(editor.getByRole("switch", { name: "Show device names", exact: true })).toBeChecked();
     await expect(increment).toBeEnabled();
     await increment.click();
     await expect(editor.locator(".stepper output")).toHaveText("3");
@@ -1831,7 +2018,8 @@ test.describe("control panel, views", () => {
     await page.locator("#change-order").click();
     await expect(page.locator(".cache-reorder-hint")).toHaveText("Drag activities into the desired order, then sync to the hub.");
     await expect(page.locator("#catalog-footer .cache-footer-btn")).toHaveText(["Sync to Hub", "Cancel"]);
-    await expect(rows.nth(0).locator(".entity-edit")).toHaveCount(0);
+    await expect(rows.nth(0).locator(".entity-edit")).toBeDisabled();
+    await expect(rows.nth(0).locator(".entity-refresh")).toBeDisabled();
     await expect(page.locator("#catalog-refresh-all")).toBeDisabled();
     await rows.nth(0).focus();
     await page.keyboard.press("ArrowDown");
@@ -1997,13 +2185,16 @@ test.describe("control panel, integrated picker", () => {
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     await controls.getByRole("button", { name: "Disable", exact: true }).click();
     await expect(controls.getByRole("button", { name: "Enable", exact: true })).toBeEnabled();
+    // Remove asks inline, never through a native confirm(): a suppressed
+    // dialog (embedded panes, kiosk browsers) answers "cancel" silently.
     await controls.getByRole("button", { name: "Remove…", exact: true }).click();
+    await expect(page.locator("#picker-remove-question")).toContainText("cached state and web remote layout");
+    await controls.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.locator("#picker-remove-question")).toHaveCount(0);
+    await expect(controls.getByRole("button", { name: "Enable", exact: true })).toBeVisible();
     expect(calls.some((c) => c.key === `DELETE /hubs/${OFFICE.hub_id}`)).toBe(false);
-    page.once("dialog", (dialog) => {
-      expect(dialog.message()).toContain("cached state and web remote layout");
-      dialog.accept();
-    });
     await controls.getByRole("button", { name: "Remove…", exact: true }).click();
+    await page.locator("#picker-remove-confirm").click();
     await expect(options(page)).toHaveCount(1);
     // The stale registered_hub_id does not hide a newly unregistered advertisement.
     await expect(page.locator(".picker-seen")).toContainText("Office");
@@ -2288,6 +2479,22 @@ test.describe("control panel, backup", () => {
     });
   }
 
+  test("a hub below the firmware floor shows the card's block on every backup section", async ({ page }) => {
+    const state = { hubs: [{ ...LIVING, status: { ...CONTROL, firmware_version: 2, firmware_min_supported: 5, firmware_unsupported: true, firmware_outdated: true } }], seen: [] };
+    await mockServer(page, state);
+    await snapshotRoute(page);
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    const view = page.locator("sb-panel-backup");
+    await expect(view.locator("#backup-firmware-block")).toContainText("Backup unavailable");
+    await expect(view.locator("#backup-firmware-block")).toContainText("running firmware version 2. Version 5 or newer");
+    await expect(view.locator("#backup-start")).toHaveCount(0);
+    await page.click('#subtabs .subtab-btn:has-text("Restore")');
+    await expect(page).toHaveURL(/#\/e26a44861b45\/backup\/restore$/);
+    await expect(view.locator("#backup-firmware-block")).toBeVisible();
+    await page.click('#subtabs .subtab-btn:has-text("Edit")');
+    await expect(view.locator("#backup-firmware-block")).toBeVisible();
+  });
+
   test("Make: scope and devices, one backup job, the staged bundle downloads, expires and is dropped on Complete", async ({ page }, testInfo) => {
     const state = { hubs: [LIVING], seen: [] };
     const { calls, sockets } = await mockServer(page, state);
@@ -2364,6 +2571,55 @@ test.describe("control panel, backup", () => {
     await expect(page.locator("sb-panel-backup #backup-start")).toBeVisible();
     await expect(page.locator("sb-panel-backup #backup-complete")).toHaveCount(0);
     expect(calls.some((c) => c.key === "GET /hubs")).toBe(true);
+  });
+
+  test("every section fits between the docks: only the list scrolls, the action button stays on screen", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1000, height: 620 });
+    const long = bundle();
+    long.devices = Array.from({ length: 14 }, (_, i) => ({ ...long.devices[0], device: { ...long.devices[0].device, device_id: i + 1, name: `Device ${i + 1}` } }));
+    long.activities = Array.from({ length: 5 }, (_, i) => ({ ...long.activities[0], device: { ...long.activities[0].device, device_id: 101 + i, name: `Activity ${i + 1}` } }));
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.route(`${HUB}/snapshot`, (route) => json(route, 200, { snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, payload_profile: "structural", ...long, complete: true }));
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, []));
+    const view = page.locator("sb-panel-backup");
+    const fit = (buttonId) => view.evaluate((host, id) => {
+      const button = host.shadowRoot.getElementById(id).getBoundingClientRect();
+      const card = host.shadowRoot.querySelector(".selection-card");
+      const dock = document.querySelector("sofabaton-server-panel").shadowRoot.getElementById("bottom-dock");
+      return {
+        buttonAboveDock: button.bottom <= dock.getBoundingClientRect().top,
+        listScrolls: card.scrollHeight > card.clientHeight,
+        pageScrolls: document.scrollingElement.scrollHeight > window.innerHeight + 1,
+      };
+    }, buttonId);
+    const expected = { buttonAboveDock: true, listScrolls: true, pageScrolls: false };
+    // As on the card: scrolled part-way into the activities, their group header stays pinned to the top of the list.
+    const headerPinned = () => view.evaluate((host) => {
+      const card = host.shadowRoot.querySelector(".selection-card");
+      card.scrollTop = 60;
+      const header = card.querySelector(".selection-group-header");
+      return Math.abs(header.getBoundingClientRect().top - card.getBoundingClientRect().top - card.clientTop) < 1;
+    });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    await view.locator(".compat-radio-option", { hasText: "Selected devices" }).click();
+    await expect(view.locator("#backup-device-list .selection-row")).toHaveCount(14);
+    expect(await fit("backup-start")).toEqual(expected);
+    await page.screenshot({ path: shot(testInfo, "backup-fit-make") });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/edit`);
+    await view.locator("#edit-file-input").setInputFiles(asFile("long.json", long));
+    await expect(view.locator("#edit-list .edit-selection-row")).toHaveCount(19);
+    expect(await fit("edit-download")).toEqual(expected);
+    expect(await headerPinned()).toBe(true);
+    await page.screenshot({ path: shot(testInfo, "backup-fit-edit") });
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/restore`);
+    await view.locator("#restore-file-input").setInputFiles(asFile("long.json", long));
+    await expect(view.locator("#restore-list .selection-row")).toHaveCount(19);
+    expect(await fit("restore-start")).toEqual(expected);
+    expect(await headerPinned()).toBe(true);
+    await page.screenshot({ path: shot(testInfo, "backup-fit-restore") });
   });
 
   test("Make: a finished backup is picked up after a reload while its bundle is staged, and a failure is said in place", async ({ page }) => {
@@ -2659,6 +2915,25 @@ test.describe("control panel, wifi commands", () => {
   }
 
   const view = (page) => page.locator("sb-panel-wifi-devices");
+
+  test("a hub below the firmware floor shows the card's block in place of the tab, and the tab opens once the hub reports newer firmware", async ({ page }, testInfo) => {
+    const state = { hubs: [{ ...LIVING, status: { ...CONTROL, firmware_version: 2, firmware_min_supported: 5, firmware_unsupported: true, firmware_outdated: true } }, OFFICE], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    await page.route(`${H}/wifi-devices`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ devices: [wifiDevice()], max_devices: 5, transports: ["http"], effective_destination: null }) }));
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    const block = view(page).locator("#wifi-firmware-block");
+    await expect(block).toContainText("Automation unavailable");
+    await expect(block).toContainText("running firmware version 2. Version 5 or newer is required");
+    await expect(view(page).locator("#wifi-add")).toHaveCount(0);
+    await expect(page.locator("#blocked-scrim")).toHaveCount(0);         // not a gate: the shell does not scrim
+    await page.screenshot({ path: shot(testInfo, "wifi-firmware-block") });
+
+    // The hub row says the firmware is fine now: the roster takes the block's place.
+    state.hubs[0] = { ...LIVING, status: { ...CONTROL, firmware_version: 5, firmware_min_supported: 5, firmware_unsupported: false, firmware_outdated: false } };
+    for (const ws of sockets) ws.send(JSON.stringify({ type: "hub_event", hub_id: LIVING.hub_id, event: { kind: "hub_state", seq: 1 } }));
+    await expect(block).toHaveCount(0);
+    await expect(view(page).locator("#wifi-add")).toBeVisible();
+  });
 
   test("the tab, the roster, and creating a Wifi Device that opens in its detail view", async ({ page }, testInfo) => {
     const { calls } = await wifiServer(page, []);
@@ -2958,5 +3233,166 @@ test.describe("control panel, wifi commands", () => {
     // An unknown key (deleted elsewhere, an old bookmark) lands on the roster.
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/ffffffff`);
     await expect(page).toHaveURL(/wifi\/devices$/);
+  });
+});
+
+test.describe("control panel, access", () => {
+  test("an unclaimed server: the banner sets up access, the Access page then manages a token shown once", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: false, signedIn: false } };
+    await mockServer(page, state);
+    await page.goto(PAGE);
+    await expect(page.locator("#access-banner")).toContainText("Access is not set up");
+    await page.click("#access-banner-setup");
+    await expect(page.locator("#auth-form")).toBeVisible();
+    await page.fill("#auth-username", "marcel");
+    await page.fill("#auth-password", "short");
+    await page.fill("#auth-password2", "short");
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-error")).toContainText("at least 8");
+    await page.fill("#auth-password", PASSWORD);
+    await page.fill("#auth-password2", PASSWORD);
+    await page.check("#auth-remember");
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-form")).toHaveCount(0);
+    await expect(page.locator("#access-banner")).toHaveCount(0);
+    expect(state.auth).toMatchObject({ claimed: true, username: "marcel", remember: true });
+
+    await page.click("#cog-btn");
+    await expect(page.locator("#sign-out")).toContainText("signed in as marcel");
+    await page.keyboard.press("Escape");
+    await page.goto(`${PAGE}#/server/access`);
+    await expect(page.locator("#tokens-empty")).toBeVisible();
+    await page.fill("#token-name", "Hubitat");
+    await page.click("#token-create");
+    await expect(page.locator("#token-created")).toContainText("not shown again");
+    await expect(page.locator("#token-secret")).toHaveValue("sbx_example-secret-q7Zx");
+    await expect(page.locator("#token-example")).toContainText("Authorization: Bearer sbx_example-secret-q7Zx");
+    await expect(page.locator("#tokens-table tr[data-token=tk_1]")).toContainText("Hubitat");
+    await page.screenshot({ path: shot(testInfo, "access-token-created"), fullPage: true });
+    await page.click("#token-done");
+    await expect(page.locator("#token-created")).toHaveCount(0);
+    await page.click("#tokens-table [data-action=revoke]");
+    await page.click("#tokens-table [data-action=confirm-revoke]");
+    await expect(page.locator("#tokens-empty")).toBeVisible();
+    await expect(page.locator("#sessions-table")).toContainText("Firefox on Windows");
+
+    await page.fill("#origins", "HTTP://nas:8123/");
+    await page.click("#origins-save");
+    await expect(page.locator("#origins-msg")).toContainText("in effect now");
+    expect(state.auth.origins).toEqual(["http://nas:8123"]);
+  });
+
+  test("a claimed server shows only the sign-in until this browser signs in; Sign out returns to it", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: false, username: "admin" } };
+    const { calls } = await mockServer(page, state);
+    await page.goto(PAGE);
+    await expect(page.locator("#auth-wall")).toBeVisible();
+    await expect(page.locator("#top-dock")).toHaveCount(0);
+    expect(calls.some((c) => c.key === "GET /hubs")).toBe(false);          // nothing loads behind the wall
+    await page.screenshot({ path: shot(testInfo, "access-wall") });
+    await page.fill("#auth-username", "admin");
+    await page.fill("#auth-password", "wrong password");
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-error")).toContainText("Wrong username or password");
+    await page.fill("#auth-password", PASSWORD);
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-wall")).toHaveCount(0);
+    await expect(chip(page)).toContainText("Living room");
+    await expect(page.locator("#access-banner")).toHaveCount(0);
+
+    await page.click("#cog-btn");
+    await page.click("#sign-out");
+    await expect(page.locator("#auth-wall")).toBeVisible();
+    expect(state.auth.signedIn).toBe(false);
+  });
+
+  test("a session that ends mid-work brings the sign-in over the view, and the view stays", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: true, username: "admin" } };
+    const { sockets } = await mockServer(page, state);
+    await page.goto(`${PAGE}#/server/access`);
+    await expect(page.locator("#access-tokens")).toBeVisible();
+    await page.fill("#token-name", "draft that must survive");
+    // The password changed in another browser: the server says so on the stream.
+    state.auth.signedIn = false;
+    for (const ws of sockets) ws.send(JSON.stringify({ type: "server_event", hub_id: "", kind: "auth" }));
+    await expect(page.locator("#auth-backdrop #auth-form")).toBeVisible();
+    await expect(page.locator("#auth-title")).toHaveText("Signed out");
+    await expect(page.locator("#auth-username")).toHaveValue("admin");
+    await page.fill("#auth-password", PASSWORD);
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-backdrop")).toHaveCount(0);
+    await expect(page.locator("#token-name")).toHaveValue("draft that must survive");
+  });
+
+  test("an older server without /auth: no banner, no wall, the Access page says so", async ({ page }) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/server/access`);
+    await expect(page.locator("#access-unknown")).toBeVisible();
+    await expect(page.locator("#access-banner")).toHaveCount(0);
+  });
+});
+
+test.describe("control panel, MQTT broker", () => {
+  test("a signed-in admin tests, saves and removes the broker; the password is write-only and a moved destination warns", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: true, username: "admin" } };
+    await mockServer(page, state);
+    await page.goto(`${PAGE}#/server/mqtt`);
+    await expect(page.locator("#subtabs [data-sub=mqtt]")).toHaveText(/MQTT broker/);
+    await expect(page.locator("#mqtt-state-text")).toContainText("no broker");
+    await page.fill("#mqtt-host", "192.168.1.20");
+    await page.fill("#mqtt-username", "hub");
+    await page.fill("#mqtt-password", "wrong");
+    await page.click("#mqtt-test");
+    await expect(page.locator("#mqtt-test-result")).toContainText("bad user name or password");
+    await page.fill("#mqtt-password", "s3cret");
+    await page.click("#mqtt-test");
+    await expect(page.locator("#mqtt-test-result")).toContainText("Connected");
+    expect(state.auth.mqtt).toBeUndefined();                                   // a test saves nothing
+    await page.click("#mqtt-save");
+    await expect(page.locator("#mqtt-msg")).toContainText("uses it now");
+    expect(state.auth.mqtt).toMatchObject({ host: "192.168.1.20", username: "hub", password: "s3cret" });
+    await expect(page.locator("#mqtt-password")).toHaveValue("");
+    await expect(page.locator("#mqtt-password")).toHaveAttribute("placeholder", /saved/);
+
+    // Same destination, password left empty: the body carries no password.
+    await page.click("summary");
+    await page.fill("#mqtt-client-id", "sofa-1");
+    await page.click("#mqtt-save");
+    await expect(page.locator("#mqtt-msg")).toContainText("uses it now");
+    expect("password" in state.auth.mqttBodies.at(-1)).toBe(false);
+    expect(state.auth.mqtt.password).toBe("s3cret");
+
+    // Moving the destination without a password warns first, then says it was dropped.
+    await page.fill("#mqtt-host", "broker.lan");
+    await expect(page.locator("#mqtt-drop-warning")).toBeVisible();
+    await page.screenshot({ path: shot(testInfo, "mqtt-drop-warning"), fullPage: true });
+    await page.click("#mqtt-save");
+    await expect(page.locator("#mqtt-msg")).toContainText("password was dropped");
+    expect(state.auth.mqtt.password).toBe(null);
+
+    await page.click("#mqtt-remove");
+    await expect(page.locator("#mqtt-remove-confirm")).toContainText("2 Wifi Devices stop receiving presses");
+    await page.click("#mqtt-remove-confirm");
+    await expect(page.locator("#mqtt-msg")).toContainText("no broker now");
+    expect(state.auth.mqtt).toBe(null);
+  });
+
+  test("before access is set up the page asks for it; flags or environment make it read-only", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: false, signedIn: false } };
+    await mockServer(page, state);
+    await page.goto(`${PAGE}#/server/mqtt`);
+    await expect(page.locator("#mqtt-needs-access")).toContainText("Set up access first");
+    await expect(page.locator("#mqtt-form")).toHaveCount(0);
+    await page.click("#mqtt-setup-access");
+    await expect(page.locator("#auth-form")).toBeVisible();
+
+    const pinned = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: true, username: "admin", mqttStartup: true } };
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await mockServer(page, pinned);
+    await page.goto(`${PAGE}#/server/mqtt`);
+    await page.reload();
+    await expect(page.locator("#mqtt-startup")).toContainText("read-only");
+    await expect(page.locator("#mqtt-startup")).toContainText("startup.lan");
+    await expect(page.locator("#mqtt-form")).toHaveCount(0);
   });
 });

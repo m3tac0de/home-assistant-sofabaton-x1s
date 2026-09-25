@@ -7,19 +7,25 @@
 // the hub list, the selection, the route and the resync points; the
 // shell mirrors the route into the URL hash and forwards the views'
 // events (sb-message, sb-hubs-changed, sb-select-hub, sb-navigate).
+// It also owns access (docs/internal/sofabaton-x-server-auth-plan.md,
+// section 8): it asks GET /auth before anything else, shows the sign-in
+// wall to a signed-out browser of a claimed server (the store is not
+// connected until then), the setup banner and dialog on an unclaimed one,
+// and the sign-in overlay when a session ends mid-work (a 401 from any
+// call, or the stream's `auth` server event), over the mounted view.
 
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 
 import { renderBottomDock, type DockLink } from "./components/bottom-dock";
 import { HUB_PICKER_CSS, renderHubPicker, type HubAction } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
-import { PanelApi, problemText, serverBaseFromPanelUrl, type HubCreate, type HubView, type Problem } from "./panel-api";
+import { PanelApi, problemText, serverBaseFromPanelUrl, type AuthStatus, type HubCreate, type HubView, type Problem } from "./panel-api";
 import { actionOutcome, hubDisplayName } from "./panel-state";
 import { hubContextFor, type HubContext } from "./panel-context";
 import { hashFor, hubRoute, parseRoute, routeScope, toolRoute, type HubTab, type Route, type ToolPage } from "./panel-route";
 import { connectivityFor, dockModel, hasDirtyDraft, selectedHub, selectedRuntime } from "./panel-selectors";
 import { PanelStore, type PanelSnapshot } from "./panel-store";
-import { PanelStream } from "./panel-stream";
+import { PanelStream, type StreamMessage } from "./panel-stream";
 import { PANEL_BASE_CSS } from "./panel-styles";
 import type { SbPanelEntityEditor } from "./views/entity-editor-base";
 import type { SbPanelWifiDevices } from "./views/wifi-devices-view";
@@ -33,6 +39,8 @@ const DOC_LINKS: Record<HubTab, DockLink> = {
   remote: { href: `${README}#web-remote`, label: "Web remote docs" },
   wifi: { href: `${README}#wifi-commands`, label: "Wifi Commands docs" },
 };
+
+const BANNER_DISMISSED_KEY = "sbp.accessBannerDismissed";
 
 function storageOrNull(): Storage | null {
   try {
@@ -51,10 +59,15 @@ export class SofabatonServerPanel extends LitElement {
     _wifiDirty: { state: true },
     _pickerManual: { state: true },
     _pickerActionsHubId: { state: true },
+    _pickerConfirmRemove: { state: true },
     _pickerBusy: { state: true },
     _pickerAdding: { state: true },
     _pickerScanning: { state: true },
     _pickerError: { state: true },
+    _auth: { state: true },
+    _authPhase: { state: true },
+    _authDialog: { state: true },
+    _bannerDismissed: { state: true },
   };
 
   static styles = [
@@ -64,8 +77,10 @@ export class SofabatonServerPanel extends LitElement {
       .page {
         --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
         --page-gutter: 16px;
+        /* The space above the subtab row and under the view: the same on both sides, so the panel sits evenly between the docks. */
+        --view-gap: 10px;
         max-width: 1040px; min-height: 100dvh; margin: 0 auto;
-        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + 16px);
+        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + var(--view-gap));
       }
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
@@ -107,8 +122,15 @@ export class SofabatonServerPanel extends LitElement {
       .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px 8px 10px; min-width: 44px; }
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
+      .cog-wrap { position: relative; display: inline-flex; }
+      .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
+      .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
-      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: 10px var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
+      /* The block space the shell adds around a view's content between the docks: the stage's padding, the view's
+         bottom border, and the page's padding over the bottom dock. A view that fits itself between the docks (the
+         Backup tab) subtracts it; keep it in step with those rules. */
+      .page { --view-chrome-block: calc(12px + 16px + 1px + var(--view-gap)); }
+      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: var(--view-gap) var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
       .subtabs::-webkit-scrollbar { display: none; }
       .subtab-btn { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 16px; border: 0; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 86%, transparent); border-radius: 0; background: transparent; color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
       .subtab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -119,7 +141,8 @@ export class SofabatonServerPanel extends LitElement {
       .subtab-btn.active { color: var(--sbp-text); background: transparent; box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
-      .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
+      /* The view reaches down to the bottom dock's gap even when its content is short, as the card does in HA. */
+      .view { position: relative; margin: 0 var(--connected-inline); min-height: max(40vh, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-gap))); border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
       /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
       .stage[inert] { opacity: 0.5; pointer-events: none; }
@@ -163,6 +186,12 @@ export class SofabatonServerPanel extends LitElement {
       .dock-flash::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: linear-gradient(90deg, transparent 0%, rgba(var(--sbp-accent-rgb), 0.22) 35%, rgba(var(--sbp-accent-rgb), 0.38) 50%, rgba(var(--sbp-accent-rgb), 0.22) 65%, transparent 100%); transform: translateX(-100%); animation: dockPressWipe 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
       @keyframes dockPressWipe { 0% { transform: translateX(-100%); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(280%); opacity: 0; } }
       .stream.lost { color: var(--sbp-warn); }
+
+      /* -- access ----------------------------------------------------------- */
+      .access-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 16px 0; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--sbp-warn) 50%, var(--sbp-line)); border-radius: 12px; background: color-mix(in srgb, var(--sbp-warn) 9%, var(--sbp-panel)); font-size: 12px; line-height: 1.45; }
+      .access-banner span { flex: 1 1 240px; min-width: 0; }
+      .access-banner button { min-height: 32px; }
+      .booting { min-height: 100dvh; display: flex; align-items: center; justify-content: center; color: var(--sbp-muted); font-size: 13px; }
       @media (prefers-reduced-motion: reduce) {
         .dock-progress, .dock-progress[data-indeterminate="true"] { animation: none; }
         .dock-flash::before { animation: none; opacity: 0; }
@@ -171,14 +200,14 @@ export class SofabatonServerPanel extends LitElement {
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand-caption { display: none; }
-        .page { --page-gutter: 12px; }
+        .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
         .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
         .tab-btn { padding-inline: 6px; }
         .tabs-scroll { gap: 0; }
         .page { --connected-inline: 12px; }
-        .subtabs { min-height: 34px; margin-top: 7px; }
+        .subtabs { min-height: 34px; }
         /* Narrow: the label gets every pixel, as on the card; the icon is decorative. */
         .subtab-icon { display: none; }
         .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
@@ -190,6 +219,7 @@ export class SofabatonServerPanel extends LitElement {
         .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
+        .page { --view-chrome-block: calc(12px + 12px + 12px + 1px + var(--view-gap)); }
       }
     `,
     HUB_PICKER_CSS,
@@ -207,10 +237,21 @@ export class SofabatonServerPanel extends LitElement {
   private _wifiDirty = false;
   private _pickerManual = false;
   private _pickerActionsHubId: string | null = null;
+  private _pickerConfirmRemove: string | null = null;
   private _pickerBusy = new Set<string>();
   private _pickerAdding = false;
   private _pickerScanning = false;
   private _pickerError: string | null = null;
+  /** GET /auth's answer; null while unknown (an older server, or not asked yet). */
+  private _auth: AuthStatus | null = null;
+  /** `checking` until GET /auth answers, `wall` for a signed-out browser of a claimed server, then `ready`. */
+  private _authPhase: "checking" | "wall" | "ready" = "checking";
+  /** The setup dialog (unclaimed) or the sign-in overlay (a session that ended mid-work). */
+  private _authDialog: "setup" | "signin" | null = null;
+  private _bannerDismissed = false;
+  /** The account's name while signed in, to fill the sign-in form once signed out. */
+  private _lastUsername = "";
+  private _offAuthStream: (() => void) | null = null;
   private _unsubscribe: (() => void) | null = null;
   private _dockObserver: ResizeObserver | null = null;
   private readonly _onHashChange = () => {
@@ -242,6 +283,12 @@ export class SofabatonServerPanel extends LitElement {
     this.stream = new PanelStream({ apiRoot: this.api.apiRoot });
     this.store = new PanelStore({ api: this.api, stream: this.stream, storage: storageOrNull(), initialRoute: parseRoute(location.hash) });
     this._snapshot = this.store.snapshot;
+    this.api.onSignedOut = () => void this._refreshAuth();
+    try {
+      this._bannerDismissed = storageOrNull()?.getItem(BANNER_DISMISSED_KEY) === "1";
+    } catch {
+      this._bannerDismissed = false;
+    }
   }
 
   connectedCallback(): void {
@@ -256,25 +303,29 @@ export class SofabatonServerPanel extends LitElement {
     window.addEventListener("hashchange", this._onHashChange);
     document.addEventListener("click", this._onDocumentClick);
     document.addEventListener("keydown", this._onKeyDown);
-    this.store.connect();
-    void this.updateComplete.then(() => {
-      if (!this.isConnected) return;
-      this._dockObserver?.disconnect();
-      this._dockObserver = new ResizeObserver((entries) => {
-        // Notices can wrap, actions can take a second row, and safe-area
-        // padding varies by device. Reserve the actual height, not a guess.
-        // The top dock's height is what a view's sticky headers (the Hub
-        // tab's open drawer) pin under, since the page scrolls under it.
-        for (const entry of entries) {
-          const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
-          this.style.setProperty(entry.target.id === "top-dock" ? "--top-dock-height" : "--bottom-dock-height", `${height}px`);
-        }
-      });
-      for (const id of ["#bottom-dock", "#top-dock"]) {
-        const dock = this.renderRoot.querySelector(id);
-        if (dock) this._dockObserver.observe(dock);
+    this._offAuthStream = this.stream.onMessage((message) => this._onAuthStreamMessage(message));
+    void this._bootAuth();
+    void this.updateComplete.then(() => this._observeDocks());
+  }
+
+  /** The docks exist only once the panel renders (not under the sign-in wall). */
+  private _observeDocks(): void {
+    if (!this.isConnected) return;
+    this._dockObserver?.disconnect();
+    this._dockObserver = new ResizeObserver((entries) => {
+      // Notices can wrap, actions can take a second row, and safe-area
+      // padding varies by device. Reserve the actual height, not a guess.
+      // The top dock's height is what a view's sticky headers (the Hub
+      // tab's open drawer) pin under, since the page scrolls under it.
+      for (const entry of entries) {
+        const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+        this.style.setProperty(entry.target.id === "top-dock" ? "--top-dock-height" : "--bottom-dock-height", `${height}px`);
       }
     });
+    for (const id of ["#bottom-dock", "#top-dock"]) {
+      const dock = this.renderRoot.querySelector(id);
+      if (dock) this._dockObserver.observe(dock);
+    }
   }
 
   disconnectedCallback(): void {
@@ -284,9 +335,103 @@ export class SofabatonServerPanel extends LitElement {
     document.removeEventListener("keydown", this._onKeyDown);
     this._unsubscribe?.();
     this._unsubscribe = null;
+    this._offAuthStream?.();
+    this._offAuthStream = null;
     this._dockObserver?.disconnect();
     this._dockObserver = null;
     this.store.disconnect();
+  }
+
+  // -- access ---------------------------------------------------------------------
+
+  private async _fetchAuth(): Promise<AuthStatus | null> {
+    try {
+      const response = await this.api.authStatus();
+      if (response.body?.username) this._lastUsername = response.body.username;
+      return response.ok && response.body ? response.body : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Before anything else: a signed-out browser of a claimed server gets only the sign-in. */
+  private async _bootAuth(): Promise<void> {
+    const auth = await this._fetchAuth();
+    if (!this.isConnected) return;
+    this._auth = auth;
+    if (auth?.claimed && !auth.signed_in) {
+      this._authPhase = "wall";
+      return;
+    }
+    this._enterPanel();
+  }
+
+  private _enterPanel(): void {
+    this._authPhase = "ready";
+    this.store.connect();
+    void this.updateComplete.then(() => this._observeDocks());
+  }
+
+  /** A 401, the stream's `auth` event, or the Access view: ask again, and show the sign-in if this browser lost its session. */
+  private async _refreshAuth(): Promise<void> {
+    const auth = await this._fetchAuth();
+    if (!auth) return;
+    this._auth = auth;
+    if (auth.claimed && !auth.signed_in) {
+      if (this._authPhase === "ready") this._authDialog = "signin";
+    } else if (this._authDialog === "signin") {
+      this._authDialog = null;
+    }
+  }
+
+  private _onAuthStreamMessage(message: StreamMessage): void {
+    if (message.data.type === "server_event" && message.data.kind === "auth") void this._refreshAuth();
+  }
+
+  private _onAuthChanged(event: CustomEvent<AuthStatus>): void {
+    this._auth = event.detail;
+    if (event.detail.username) this._lastUsername = event.detail.username;
+    this._authDialog = null;
+    if (this._authPhase !== "ready") this._enterPanel();
+    else void this.store.refreshAll();
+  }
+
+  private async _signOut(): Promise<void> {
+    this._cogOpen = false;
+    try {
+      await this.api.signOut();
+    } catch {
+      // the cookie is the server's to drop; the wall below asks again either way
+    }
+    this.store.disconnect();
+    this._auth = this._auth ? { ...this._auth, signed_in: false, username: null, via: null } : null;
+    this._authDialog = null;
+    this._authPhase = "wall";
+  }
+
+  private _dismissBanner(): void {
+    this._bannerDismissed = true;
+    try {
+      storageOrNull()?.setItem(BANNER_DISMISSED_KEY, "1");
+    } catch {
+      // private mode: the banner comes back next time, nothing else
+    }
+  }
+
+  private _renderAccessBanner(): TemplateResult | typeof nothing {
+    const auth = this._auth;
+    if (!auth || auth.claimed || this._bannerDismissed) return nothing;
+    return html`<div class="access-banner" id="access-banner" role="note">
+      <span><b>Access is not set up.</b> Anyone on your network can change this server's hubs and settings.</span>
+      <button class="small primary" id="access-banner-setup" type="button" @click=${() => { this._authDialog = "setup"; }}>Set up access</button>
+      <button class="small" id="access-banner-dismiss" type="button" @click=${this._dismissBanner}>Not now</button>
+    </div>`;
+  }
+
+  private _renderAuthDialog(): TemplateResult | typeof nothing {
+    if (!this._authDialog) return nothing;
+    return html`<sb-panel-auth .api=${this.api} mode=${this._authDialog} variant="dialog" .username=${this._auth?.username || this._lastUsername}
+      @sb-auth-changed=${this._onAuthChanged} @sb-auth-cancel=${() => { this._authDialog = null; }}></sb-panel-auth>`;
   }
 
   // -- state --------------------------------------------------------------------
@@ -381,6 +526,7 @@ export class SofabatonServerPanel extends LitElement {
     if (this._pickerOpen) {
       this._pickerManual = false;
       this._pickerActionsHubId = null;
+      this._pickerConfirmRemove = null;
       this._pickerError = null;
       void this.store.refreshSeen();
       void this._scanPicker();
@@ -410,7 +556,12 @@ export class SofabatonServerPanel extends LitElement {
   private async _pickerAct(hub: HubView, action: HubAction): Promise<void> {
     const id = hub.hub_id;
     if (this._pickerBusy.has(id)) return;
-    if (action === "remove" && !confirm(`Remove ${hubDisplayName(hub)}?\n\nThe server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    // Removal asks inline first (never a native confirm(): suppressed
+    // dialogs answer "cancel" silently); the confirm button calls back here.
+    if (action === "remove" && this._pickerConfirmRemove !== id) {
+      this._pickerConfirmRemove = id;
+      return;
+    }
     this._pickerBusy = new Set(this._pickerBusy).add(id);
     this._pickerError = null;
     try {
@@ -429,6 +580,7 @@ export class SofabatonServerPanel extends LitElement {
       const busy = new Set(this._pickerBusy);
       busy.delete(id);
       this._pickerBusy = busy;
+      if (action === "remove") this._pickerConfirmRemove = null;
     }
   }
 
@@ -535,6 +687,14 @@ export class SofabatonServerPanel extends LitElement {
     if (route.kind === "tool") {
       switch (route.page) {
         case "server":
+          if (route.sub === "mqtt") {
+            return html`<sb-panel-mqtt .api=${this.api} .auth=${this._auth} .stream=${this.stream} .reachable=${s.server.reachable}
+              @sb-auth-setup=${() => { this._authDialog = "setup"; }}></sb-panel-mqtt>`;
+          }
+          if (route.sub === "access") {
+            return html`<sb-panel-access .api=${this.api} .auth=${this._auth} .reachable=${s.server.reachable}
+              @sb-auth-setup=${() => { this._authDialog = "setup"; }} @sb-auth-changed=${this._onAuthChanged} @sb-auth-refresh=${() => void this._refreshAuth()}></sb-panel-access>`;
+          }
           return html`<sb-panel-server .api=${this.api} .info=${s.server.info} .error=${s.server.error} .reachable=${s.server.reachable} .streamOn=${s.stream.connected} .hubCount=${s.hubs.length}></sb-panel-server>`;
         case "debug":
           return route.sub === "events"
@@ -563,6 +723,10 @@ export class SofabatonServerPanel extends LitElement {
   }
 
   render(): TemplateResult {
+    if (this._authPhase === "checking") return html`<div class="booting" id="auth-checking">Connecting…</div>`;
+    if (this._authPhase === "wall") {
+      return html`<sb-panel-auth .api=${this.api} mode="signin" variant="wall" .username=${this._auth?.username || this._lastUsername} @sb-auth-changed=${this._onAuthChanged}></sb-panel-auth>`;
+    }
     const s = this._snapshot;
     const ctx = hubContextFor(s, this.api);
     const runtime = selectedRuntime(s);
@@ -588,6 +752,7 @@ export class SofabatonServerPanel extends LitElement {
                 open: this._pickerOpen,
                 manual: this._pickerManual,
                 actionsHubId: this._pickerActionsHubId,
+                confirmRemoveHubId: this._pickerConfirmRemove,
                 busy: this._pickerBusy,
                 adding: this._pickerAdding,
                 scanning: this._pickerScanning,
@@ -599,8 +764,12 @@ export class SofabatonServerPanel extends LitElement {
                   if (!this._confirmLeave({ hubId })) return;
                   this.store.selectHub(hubId);
                 },
-                onActions: (hubId) => { this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId; },
+                onActions: (hubId) => {
+                  this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId;
+                  this._pickerConfirmRemove = null;
+                },
                 onAction: (hub, action) => void this._pickerAct(hub, action),
+                onConfirmRemove: (hubId) => { this._pickerConfirmRemove = hubId; },
                 onAdd: (seen) => void this._pickerAdd({ ...seen.config, enabled: true }),
                 onManual: (show) => void this._showManual(show),
                 onSubmit: (event) => this._pickerSubmit(event),
@@ -614,6 +783,7 @@ export class SofabatonServerPanel extends LitElement {
             cogOpen: this._cogOpen,
             theme: s.theme,
             eventCount: s.stream.messageCount,
+            updateAvailable: s.server.info?.update?.status === "update_available",
             subCounts: route.kind === "hub" && route.tab === "hub" && ctx.hub?.status
               ? { activities: ctx.hub.status.activities_cached, devices: ctx.hub.status.devices_cached }
               : undefined,
@@ -625,9 +795,12 @@ export class SofabatonServerPanel extends LitElement {
             },
             onPage: (page) => this._goPage(page),
             onTheme: () => this.store.cycleTheme(),
+            account: this._auth?.claimed && this._auth.signed_in ? { username: this._auth.username ?? "" } : null,
+            onSignOut: () => void this._signOut(),
           })}
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
+          ${this._renderAccessBanner()}
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
           ${blocked
             ? html`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>`
@@ -659,6 +832,7 @@ export class SofabatonServerPanel extends LitElement {
             if (s.selectedHubId && confirm("Discard your unsaved changes? The hub is not changed.")) this.store.discardDraft(s.selectedHubId);
           },
         })}
+        ${this._renderAuthDialog()}
       </div>
     `;
   }

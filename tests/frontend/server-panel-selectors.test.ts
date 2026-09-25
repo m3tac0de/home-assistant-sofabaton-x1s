@@ -10,6 +10,7 @@ import {
   busyFor,
   connectivityFor,
   dockModel,
+  firmwareFloor,
   gateFor,
   hubsSummary,
   interactionFor,
@@ -110,6 +111,17 @@ test("gates, in the order the panel checks them", () => {
   assert.equal(gateFor(snapshot([]), null), "pass");
 });
 
+test("the firmware floor is the server's verdict, never a gate", () => {
+  const r = runtime();
+  assert.equal(firmwareFloor(hub()), null, "older servers omit the verdict: nothing blocks");
+  assert.equal(firmwareFloor(hub({ status: { firmware_unsupported: false, firmware_outdated: true, firmware_version: 4 } })), null, "outdated only nags");
+  const old = hub({ status: { firmware_unsupported: true, firmware_outdated: true, firmware_version: 2, firmware_min_supported: 5 } });
+  assert.deepEqual(firmwareFloor(old), { installed: 2, required: 5 });
+  assert.deepEqual(firmwareFloor(hub({ status: { firmware_unsupported: true } })), { installed: "?", required: "?" });
+  assert.equal(firmwareFloor(null), null);
+  assert.equal(gateFor(snapshot([r]), runtime(old)), "pass", "reads stay open below the floor");
+});
+
 test("busy: a live job first, then a local call, else nothing; a finished active_job does not count", () => {
   assert.equal(busyFor(null), null);
   assert.equal(busyFor(runtime()), null);
@@ -134,7 +146,10 @@ test("interaction: a gate outranks a job, a job outranks a local call", () => {
 test("job phrases: labels per kind, narration from the progress record, progress percentages", () => {
   assert.equal(jobLabel("refresh"), "Refreshing the hub");
   assert.equal(jobLabel("deploy_callback_device"), "Deploying the callback device");
-  assert.equal(jobLabel("something_new"), "something_new");
+  assert.equal(jobLabel("something_new"), "Something new");
+  assert.equal(jobLabel("remove_device"), "Deleting the device");
+  assert.equal(jobLabel("reorder_activities"), "Reordering the activities");
+  assert.equal(jobLabel("rename_hub"), "Renaming the hub");
   assert.equal(jobNarration(job({ kind: "refresh", status: "queued" })), "Refreshing the hub · queued");
   // A step that restates the headline replaces it: each thing is said once.
   assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 1, total_steps: 4, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 · 1/4");
@@ -190,7 +205,7 @@ test("dockModel precedence: running job, notice, stopped apply, gate, idle", () 
   const noJob = runtime(hub({ status: { mode: "observe" } }), { notice, stoppedApplies: [stopped] });
   assert.deepEqual(dockModel(s, noJob), { kind: "notice", notice });
   const noNotice = runtime(hub({ status: { mode: "observe" } }), { stoppedApplies: [stopped] });
-  assert.deepEqual(dockModel(s, noNotice), { kind: "apply_stopped", applyId: "a1", resumable: true, text: "An apply stopped (stopped); resume or discard it" });
+  assert.deepEqual(dockModel(s, noNotice), { kind: "apply_stopped", applyId: "a1", resumable: true, text: "An apply stopped partway; resume or discard it" });
   // A draft: stale asks, otherwise the dirty banner; both outrank a gate, a stopped apply outranks both.
   const draft = { scope: "hub/devices", snapshotId: "old", data: { x: 1 }, updatedAt: 1 };
   assert.deepEqual(dockModel(s, runtime(hub({ status: { mode: "observe" } }), { draft, draftCheck: "stale" })), { kind: "draft_stale", scope: "hub/devices", text: "Unsaved changes from an older snapshot: the hub moved on" });

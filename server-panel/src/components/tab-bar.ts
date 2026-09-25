@@ -29,6 +29,8 @@ export function renderTabBar(params: {
   cogOpen: boolean;
   theme: ThemeChoice;
   eventCount: number;
+  /** A newer server release is on PyPI (the Server page says which): a dot on the cog, a badge on its item. */
+  updateAvailable?: boolean;
   /** A count pill per subtab (the card's cached activity and device counts); absent subtabs show none. */
   subCounts?: Record<string, number>;
   onTab: (tab: HubTab) => void;
@@ -36,11 +38,14 @@ export function renderTabBar(params: {
   onToggleCog: () => void;
   onPage: (page: ToolPage) => void;
   onTheme: () => void;
+  /** Signed in to a claimed server: the cog menu names the account and offers Sign out. */
+  account?: { username: string } | null;
+  onSignOut?: () => void;
 }): TemplateResult {
   const route = params.route;
   const onTool = route.kind === "tool";
   const pageItem = (page: ToolPage) => html`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
-    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? html` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : nothing}</span></span>
+    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? html` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : nothing}${page === "server" && params.updateAvailable ? html` <span class="badge badge-update" id="update-badge">update available</span>` : nothing}</span></span>
   </button>`;
   return html`
     <div class="tabs" id="tabs">
@@ -52,8 +57,8 @@ export function renderTabBar(params: {
         )}
       </div>
       <div class="tab-menu" id="cog">
-        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-label=${onTool ? `Setup and tools: ${TOOL_LABELS[route.page]}` : "Setup and tools"} aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title="setup and tools" @click=${params.onToggleCog}>
-          <svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
+        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-label=${onTool ? `Setup and tools: ${TOOL_LABELS[route.page]}` : "Setup and tools"} aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title=${params.updateAvailable ? "setup and tools (a server update is available)" : "setup and tools"} @click=${params.onToggleCog}>
+          <span class="cog-wrap"><svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg>${params.updateAvailable ? html`<span class="update-dot" id="update-dot" role="img" aria-label="Server update available"></span>` : nothing}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
         </button>
         ${params.cogOpen
           ? html`<div class="menu cog-menu" id="cog-menu" role="menu">
@@ -63,6 +68,12 @@ export function renderTabBar(params: {
               <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
                 <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
               </button>
+              ${params.account
+                ? html`<div class="menu-sep"></div>
+                  <button class="menu-item" type="button" role="menuitem" id="sign-out" @click=${() => params.onSignOut?.()}>
+                    <span class="menu-main"><span class="menu-title">Sign out</span><span class="menu-sub">signed in as ${params.account.username}</span></span>
+                  </button>`
+                : nothing}
             </div>`
           : nothing}
       </div>

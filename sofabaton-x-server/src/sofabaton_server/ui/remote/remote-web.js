@@ -1413,11 +1413,13 @@ var LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_macros_button",
   "show_favorites_button",
   "show_device_toggle",
   "mf_as_rows",
-  "mf_row_visible_rows"
+  "mf_row_visible_rows",
+  "show_favorite_device_names"
 ];
 var DEVICE_LAYOUT_PREFIX = "device:";
 function deviceLayoutKey(deviceId) {
@@ -1434,6 +1436,7 @@ var DEVICE_LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_commands_button",
   "show_power_button",
   "show_device_toggle",
@@ -1494,6 +1497,7 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_commands_button: true,
   show_power_button: true,
   show_device_toggle: true,
@@ -1602,6 +1606,9 @@ function favoritesButtonEnabled(layout) {
   }
   return true;
 }
+function favoriteDeviceNamesEnabled(layout) {
+  return layout?.show_favorite_device_names === true;
+}
 function mfAsRows(layout) {
   return layout?.mf_as_rows === true;
 }
@@ -1676,8 +1683,43 @@ var ID = {
   RED: 190,
   GREEN: 191,
   YELLOW: 192,
-  BLUE: 193
+  BLUE: 193,
+  // X2-only on-screen numeric keypad (docs/internal/numpad-plan.md). The
+  // hub numbers them E-first (158) down to 1 (169); the card lays them out
+  // in phone order.
+  NUM_ENTER: 158,
+  NUM_0: 159,
+  NUM_DASH: 160,
+  NUM_9: 161,
+  NUM_8: 162,
+  NUM_7: 163,
+  NUM_6: 164,
+  NUM_5: 165,
+  NUM_4: 166,
+  NUM_3: 167,
+  NUM_2: 168,
+  NUM_1: 169
 };
+var NUMPAD_KEY_IDS = Object.freeze([
+  ID.NUM_1,
+  ID.NUM_2,
+  ID.NUM_3,
+  ID.NUM_4,
+  ID.NUM_5,
+  ID.NUM_6,
+  ID.NUM_7,
+  ID.NUM_8,
+  ID.NUM_9,
+  ID.NUM_0,
+  ID.NUM_DASH,
+  ID.NUM_ENTER
+]);
+function numpadEnabled(layout) {
+  if (typeof layout?.show_numpad === "boolean") {
+    return layout.show_numpad;
+  }
+  return true;
+}
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
 var HARD_BUTTON_ID_MAP = {
   up: ID.UP,
@@ -1880,6 +1922,8 @@ var REMOTE_CARD_STRINGS_EN = {
     openOnCurrentActivity: "Current activity",
     macrosFavoritesAsRows: "Macros/Favorites as rows",
     commandsAsRows: "Commands as rows",
+    favoriteDeviceNames: "Show device names",
+    rowOptions: (groupLabel) => `${groupLabel} options`,
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel) => `Move ${groupLabel} up`,
     moveGroupDown: (groupLabel) => `Move ${groupLabel} down`,
@@ -1889,6 +1933,7 @@ var REMOTE_CARD_STRINGS_EN = {
     channel: "Channel",
     mediaControls: "Playback",
     dvr: "DVR",
+    numpad: "Number pad",
     resetDefaultLayout: "Reset layout",
     shortcutSlotLeft: "Left shortcut",
     shortcutSlotMiddle: "Middle shortcut",
@@ -1947,7 +1992,20 @@ var REMOTE_CARD_STRINGS_EN = {
     blue: "Blue",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    // X2 on-screen keypad; digits and dash stay untranslated like A/B/C.
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 var TRANSLATIONS = {};
@@ -2832,6 +2890,43 @@ var REMOTE_CARD_CSS = `
         text-overflow: ellipsis;
       }
 
+      /* Favorites device name band (show_favorite_device_names): a narrow
+         strip along the top edge, clipped by the card's radius; the content
+         below recentres in the remaining height. */
+      .drawer-btn {
+        --sb-device-band-h: 14px;
+      }
+      .drawer-btn__device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--sb-device-band-h);
+        padding: 0 6px;
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--sb-key-label-color, var(--primary-color)) 16%, transparent);
+        color: color-mix(in srgb, var(--primary-text-color) 80%, transparent);
+        font-size: 9px;
+        font-weight: 500;
+        line-height: var(--sb-device-band-h);
+        letter-spacing: 0.02em;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .drawer-btn--custom .drawer-btn__device {
+        padding: 0 12px;
+        text-align: start;
+      }
+      .drawer-btn--banded .drawer-btn__inner--stack {
+        padding-top: calc(var(--sb-device-band-h) + 2px);
+      }
+      .drawer-btn--banded .drawer-btn__inner--row {
+        padding-top: var(--sb-device-band-h);
+      }
+
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
@@ -2842,6 +2937,10 @@ var REMOTE_CARD_CSS = `
       /* D-pad cluster */
       .dpad {
         padding: 12px;
+        position: relative;
+        perspective: 900px;
+      }
+      .dpad-face--keys {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas:
@@ -2857,6 +2956,113 @@ var REMOTE_CARD_CSS = `
       .dpad .area-ok { grid-area: ok; }
       .dpad .area-right { grid-area: right; }
       .dpad .area-down { grid-area: down; }
+
+      /* Number pad face (docs/internal/numpad-plan.md). The keys face stays
+         in flow and sets the group's height; the keypad face is laid over
+         it inside the same padding, twelve square keys in four rows, so the
+         rows below never move (Q1). The small round toggle in the dead
+         corner flips; a tap anywhere outside the group flips back (the
+         card's outside-close handler). */
+      .dpad-face {
+        backface-visibility: hidden;
+        transition:
+          transform 320ms ease,
+          opacity 200ms ease;
+      }
+      .dpad-face--numpad {
+        position: absolute;
+        inset: 12px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+        gap: 6px 10px;
+        align-items: stretch;
+        justify-items: center;
+        transform: rotateX(-180deg);
+        opacity: 0;
+        --sb-key-font-size: clamp(11px, 5.5cqw, 40px);
+      }
+      .dpad-face--numpad .key {
+        width: auto;
+        height: 100%;
+      }
+      .dpad--numpad-open .dpad-face--keys {
+        transform: rotateX(180deg);
+        opacity: 0;
+      }
+      .dpad--numpad-open .dpad-face--numpad {
+        transform: rotateX(0);
+        opacity: 1;
+      }
+      /* The button is the hit box: the visible ring is drawn 8px inside
+         it, so a finger that lands a little off the circle (the corner is
+         dead space anyway) still opens the pad. The ring sits 10px from
+         the frame, as before. */
+      .dpad-numpad-toggle {
+        position: absolute;
+        right: 2px;
+        bottom: 2px;
+        box-sizing: content-box;
+        width: clamp(26px, 7cqw, 34px);
+        height: clamp(26px, 7cqw, 34px);
+        margin: 0;
+        padding: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: 0;
+        background: transparent;
+        color: var(--sb-key-label-color, var(--primary-color));
+        opacity: 0.45;
+        cursor: pointer;
+        --mdc-icon-size: 16px;
+        font-size: 16px;
+        line-height: 1;
+        -webkit-tap-highlight-color: transparent;
+        transition: opacity 200ms ease;
+      }
+      .dpad-numpad-toggle::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 50%;
+        border: 1px solid currentColor;
+        pointer-events: none;
+      }
+      .dpad-numpad-toggle:hover,
+      .dpad-numpad-toggle:focus-visible {
+        opacity: 0.85;
+        outline: none;
+      }
+      .dpad--numpad-open .dpad-numpad-toggle {
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* D-pad off, number pad on: the keypad is the group. */
+      .dpad--numpad-only {
+        perspective: none;
+      }
+      .dpad--numpad-only .dpad-face--numpad {
+        position: static;
+        inset: auto;
+        transform: none;
+        opacity: 1;
+        gap: 10px;
+        align-items: center;
+        justify-items: stretch;
+        --sb-key-font-size: clamp(11px, 7cqw, 50px);
+      }
+      .dpad--numpad-only .dpad-face--numpad .key {
+        width: 100%;
+        height: auto;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dpad-face,
+        .dpad-numpad-toggle {
+          transition: none;
+        }
+      }
 
       /* The UI follows the locale direction, but these are spatial controls:
          changing language must never swap the physical Left/Right keys or the
@@ -3924,7 +4130,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.3";
+var CARD_VERSION = "0.2.4";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -4680,6 +4886,21 @@ var RemoteCardStore = class {
     if (this.enabledButtonsInvalid) return true;
     if (!enabled.length) return true;
     return enabled.some((entry) => entry.command === Number(id));
+  }
+  /**
+   * True when any of `ids` is bound on the current page. Unlike isEnabled
+   * this fails CLOSED without data: it gates an affordance (the number pad
+   * hint), not a key, so "unknown" must not render it.
+   */
+  anyKeyBound(ids) {
+    if (this._mode === "device") {
+      const entry = this.deviceKeymapState();
+      if (!entry || entry.status !== "ready") return false;
+      return ids.some((id) => entry.buttons.includes(id));
+    }
+    if (this.enabledButtonsInvalid) return false;
+    const enabled = this.enabledButtons();
+    return ids.some((id) => enabled.some((entry) => entry.command === id));
   }
   commandTarget(id) {
     const enabled = this.enabledButtons();
@@ -6490,7 +6711,8 @@ var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.EXIT,
   ID.DVR,
   ID.PLAY,
-  ID.GUIDE
+  ID.GUIDE,
+  ...NUMPAD_KEY_IDS
 ]);
 var DPAD_KEYS = [
   { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
@@ -6500,6 +6722,20 @@ var DPAD_KEYS = [
   { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
   { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
   { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" }
+];
+var NUMPAD_KEYS = [
+  { key: "num1", id: ID.NUM_1, cmd: ID.NUM_1, label: "1", icon: "", size: "small" },
+  { key: "num2", id: ID.NUM_2, cmd: ID.NUM_2, label: "2", icon: "", size: "small" },
+  { key: "num3", id: ID.NUM_3, cmd: ID.NUM_3, label: "3", icon: "", size: "small" },
+  { key: "num4", id: ID.NUM_4, cmd: ID.NUM_4, label: "4", icon: "", size: "small" },
+  { key: "num5", id: ID.NUM_5, cmd: ID.NUM_5, label: "5", icon: "", size: "small" },
+  { key: "num6", id: ID.NUM_6, cmd: ID.NUM_6, label: "6", icon: "", size: "small" },
+  { key: "num7", id: ID.NUM_7, cmd: ID.NUM_7, label: "7", icon: "", size: "small" },
+  { key: "num8", id: ID.NUM_8, cmd: ID.NUM_8, label: "8", icon: "", size: "small" },
+  { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
+  { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
+  { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -6563,9 +6799,45 @@ function renderKey(params, spec) {
     ></sb-key-button>
   `;
 }
-function renderDpad(params, visible) {
-  if (!visible) return A;
-  return b2`<div class="dpad">${DPAD_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+function renderDpad(params, visible, numpad = null) {
+  const ready = Boolean(numpad?.available);
+  if (!visible) {
+    if (!ready) return A;
+    return b2`
+      <div class="dpad dpad--numpad-only" ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+        <div class="dpad-face dpad-face--numpad">
+          ${NUMPAD_KEYS.map((k2) => renderKey(params, k2))}
+        </div>
+      </div>
+    `;
+  }
+  const open = ready && Boolean(numpad?.open);
+  const className = [
+    "dpad",
+    ready ? "dpad--numpad-ready" : "",
+    open ? "dpad--numpad-open" : ""
+  ].filter(Boolean).join(" ");
+  return b2`
+    <div class=${className} ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+      <div class="dpad-face dpad-face--keys" ?inert=${open}>
+        ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
+      </div>
+      ${ready ? b2`
+            <div class="dpad-face dpad-face--numpad" ?inert=${!open}>
+              ${NUMPAD_KEYS.map((k2) => renderKey(params, k2))}
+            </div>
+            <button
+              type="button"
+              class="dpad-numpad-toggle"
+              aria-label=${str().editor.numpad}
+              ?inert=${open}
+              @click=${() => numpad.onOpen()}
+            >
+              <ha-icon icon="mdi:dialpad" aria-hidden="true"></ha-icon>
+            </button>
+          ` : A}
+    </div>
+  `;
 }
 function renderNavRow(params, visible) {
   if (!visible) return A;
@@ -6673,11 +6945,15 @@ function customFavoriteButtonModel(favorite, fallbackDeviceId) {
 }
 
 // remote-card/src/sections/macro-favorites.ts
+function deviceBand(name) {
+  return name ? b2`<div class="drawer-btn__device" title=${name}>${name}</div>` : A;
+}
 function renderDrawerButton(params, item, type) {
   const model = drawerButtonModel(item, type, params.currentActivityId);
+  const deviceName = type === "favorites" && params.favoriteDeviceName && Number.isFinite(model.deviceId) ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn"
+      class="drawer-btn${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       ${primaryActionRef(() => {
@@ -6685,6 +6961,7 @@ function renderDrawerButton(params, item, type) {
     params.onDrawerItem({ model, itemType: type, rawItem: item });
   })}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--stack">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -6694,14 +6971,16 @@ function renderDrawerButton(params, item, type) {
 }
 function renderCustomFavoriteButton(params, favorite) {
   const model = customFavoriteButtonModel(favorite, params.currentActivityId);
+  const deviceName = params.favoriteDeviceName && !model.action && favorite.device_id != null ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn drawer-btn--custom"
+      class="drawer-btn drawer-btn--custom${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       style="grid-column: 1 / -1;"
       ${primaryActionRef(() => params.onCustomFavorite({ model, rawFavorite: favorite }))}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--row">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -7080,6 +7359,11 @@ var SofabatonRemoteCard = class extends i4 {
     this._editMode = false;
     // Imperative-edge state (mirrors the legacy fields)
     this._drawerUp = false;
+    // Number pad face behind the D-pad (docs/internal/numpad-plan.md §2.4):
+    // transient, never saved; reset on any page change or when the gate
+    // stops passing.
+    this._numpadOpen = false;
+    this._numpadPageKey = null;
     this._drawerResetTimer = null;
     this._drawerContentResetTimer = null;
     this._closingDrawer = null;
@@ -7107,6 +7391,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._activityRowRef = e5();
     this._loadIndicatorRef = e5();
     this._mfContainerRef = e5();
+    this._dpadRef = e5();
     this._macrosOverlayRef = e5();
     this._favoritesOverlayRef = e5();
     this._commandsOverlayRef = e5();
@@ -7253,6 +7538,13 @@ var SofabatonRemoteCard = class extends i4 {
         const clickedInToggleRow = this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
         if (!(clickedInOverlay || clickedInToggleRow)) {
           this._setActiveDrawer(null);
+        }
+      }
+      if (this._numpadOpen) {
+        const dpad = this._dpadRef.value;
+        if (!(dpad && path.includes(dpad))) {
+          this._numpadOpen = false;
+          this.requestUpdate();
         }
       }
       if (this._store.activityMenuOpen) {
@@ -7410,10 +7702,17 @@ var SofabatonRemoteCard = class extends i4 {
     const deviceId = String(value) === "" ? null : Number(value);
     this._store.setDevice(Number.isFinite(deviceId) ? deviceId : null);
   }
+  _openNumpad() {
+    if (this._numpadOpen) return;
+    this._numpadOpen = true;
+    this._fireEvent("haptic", "light");
+    this.requestUpdate();
+  }
   _handleModeToggle() {
     if (this._editMode) return;
     this._fireEvent("haptic", "light");
     this._setActiveDrawer(null);
+    this._numpadOpen = false;
     this._store.toggleMode();
   }
   _syncLoadIndicator() {
@@ -7664,6 +7963,12 @@ var SofabatonRemoteCard = class extends i4 {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
+    const numpadAvailable = derived.isX2 && !store.isHubIntegration() && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
+    const numpadPageKey = `${derived.mode}:${deviceMode ? derived.deviceId ?? "" : derived.activityId ?? ""}`;
+    if (!numpadAvailable || numpadPageKey !== this._numpadPageKey) {
+      this._numpadOpen = false;
+    }
+    this._numpadPageKey = numpadPageKey;
     const keyParams = {
       isX2: derived.isX2,
       buttonVisibility: runtimeButtonVisibility({
@@ -7702,6 +8007,7 @@ var SofabatonRemoteCard = class extends i4 {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      favoriteDeviceName: favoriteDeviceNamesEnabled(layoutConfig) ? (deviceId) => store.deviceNameForId(deviceId) ?? "" : null,
       renderMacrosContent: store.activeDrawer === "macros" || this._closingDrawer === "macros",
       renderFavoritesContent: store.activeDrawer === "favorites" || this._closingDrawer === "favorites",
       containerRef: this._mfContainerRef,
@@ -7858,7 +8164,12 @@ var SofabatonRemoteCard = class extends i4 {
         itemCount: derived.customFavorites.length + derived.favorites.length,
         emptyText: str().card.noFavorites
       }) : A,
-      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
+      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad), {
+        available: numpadAvailable,
+        open: this._numpadOpen,
+        hostRef: this._dpadRef,
+        onOpen: () => this._openNumpad()
+      }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
       media: () => renderMedia(keyParams, mediaEnabled),
@@ -8187,6 +8498,7 @@ var mdiControllerClassicOutline = "M17.5,7A5.5,5.5 0 0,1 23,12.5A5.5,5.5 0 0,1 1
 var mdiCurtains = "M23 3H1V1H23V3M2 22H6C6 19 4 17 4 17C10 13 11 4 11 4H2V22M22 4H13C13 4 14 13 20 17C20 17 18 19 18 22H22V4Z";
 var mdiCurtainsClosed = "M23 3H1V1H23V3M2 22H11V4H2V22M22 4H13V22H22V4Z";
 var mdiDesktopTower = "M8,2H16A2,2 0 0,1 18,4V20A2,2 0 0,1 16,22H8A2,2 0 0,1 6,20V4A2,2 0 0,1 8,2M8,4V6H16V4H8M16,8H8V10H16V8M16,18H14V20H16V18Z";
+var mdiDialpad = "M12,19A2,2 0 0,0 10,21A2,2 0 0,0 12,23A2,2 0 0,0 14,21A2,2 0 0,0 12,19M6,1A2,2 0 0,0 4,3A2,2 0 0,0 6,5A2,2 0 0,0 8,3A2,2 0 0,0 6,1M6,7A2,2 0 0,0 4,9A2,2 0 0,0 6,11A2,2 0 0,0 8,9A2,2 0 0,0 6,7M6,13A2,2 0 0,0 4,15A2,2 0 0,0 6,17A2,2 0 0,0 8,15A2,2 0 0,0 6,13M18,5A2,2 0 0,0 20,3A2,2 0 0,0 18,1A2,2 0 0,0 16,3A2,2 0 0,0 18,5M12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17A2,2 0 0,0 14,15A2,2 0 0,0 12,13M18,13A2,2 0 0,0 16,15A2,2 0 0,0 18,17A2,2 0 0,0 20,15A2,2 0 0,0 18,13M18,7A2,2 0 0,0 16,9A2,2 0 0,0 18,11A2,2 0 0,0 20,9A2,2 0 0,0 18,7M12,7A2,2 0 0,0 10,9A2,2 0 0,0 12,11A2,2 0 0,0 14,9A2,2 0 0,0 12,7M12,1A2,2 0 0,0 10,3A2,2 0 0,0 12,5A2,2 0 0,0 14,3A2,2 0 0,0 12,1Z";
 var mdiDisc = "M12,14C10.89,14 10,13.1 10,12C10,10.89 10.89,10 12,10C13.11,10 14,10.89 14,12A2,2 0 0,1 12,14M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiDiscPlayer = "M14.5,10.37C15.54,10.37 16.38,9.53 16.38,8.5C16.38,7.46 15.54,6.63 14.5,6.63C13.46,6.63 12.63,7.46 12.63,8.5A1.87,1.87 0 0,0 14.5,10.37M14.5,1A7.5,7.5 0 0,1 22,8.5C22,10.67 21.08,12.63 19.6,14H9.4C7.93,12.63 7,10.67 7,8.5C7,4.35 10.36,1 14.5,1M6,21V22H4V21H2V15H22V21H20V22H18V21H6M4,18V19H13V18H4M15,17V19H17V17H15M19,17A1,1 0 0,0 18,18A1,1 0 0,0 19,19A1,1 0 0,0 20,18A1,1 0 0,0 19,17Z";
 var mdiDishwasher = "M18,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V4A2,2 0 0,0 18,2M10,4A1,1 0 0,1 11,5A1,1 0 0,1 10,6A1,1 0 0,1 9,5A1,1 0 0,1 10,4M7,4A1,1 0 0,1 8,5A1,1 0 0,1 7,6A1,1 0 0,1 6,5A1,1 0 0,1 7,4M18,20H6V8H18V20M14.67,15.33C14.69,16.03 14.41,16.71 13.91,17.21C12.86,18.26 11.15,18.27 10.09,17.21C9.59,16.71 9.31,16.03 9.33,15.33C9.4,14.62 9.63,13.94 10,13.33C10.37,12.5 10.81,11.73 11.33,11L12,10C13.79,12.59 14.67,14.36 14.67,15.33";
@@ -8513,6 +8825,7 @@ var MDI_ICON_PATHS = {
   "curtains": mdiCurtains,
   "curtains-closed": mdiCurtainsClosed,
   "desktop-tower": mdiDesktopTower,
+  "dialpad": mdiDialpad,
   "disc": mdiDisc,
   "disc-player": mdiDiscPlayer,
   "dishwasher": mdiDishwasher,
@@ -9037,7 +9350,7 @@ var SbHaSelect = class extends HTMLElement {
       label: (item.textContent ?? "").trim(),
       defaultLayout: item.classList.contains("sb-option-default")
     }));
-    if (!this._options.some((option) => option.value === current)) {
+    if (current !== "" && !this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
     }
     this._renderValue();
@@ -9396,6 +9709,8 @@ var REMOTE_CARD_STRINGS_AR = {
     openOnCurrentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u062D\u0627\u0644\u064A",
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
+    favoriteDeviceNames: "\u0625\u0638\u0647\u0627\u0631 \u0623\u0633\u0645\u0627\u0621 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    rowOptions: (groupLabel) => `\u062E\u064A\u0627\u0631\u0627\u062A ${groupLabel}`,
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
@@ -9405,6 +9720,7 @@ var REMOTE_CARD_STRINGS_AR = {
     channel: "\u0627\u0644\u0642\u0646\u0627\u0629",
     mediaControls: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     dvr: DVR,
+    numpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
     resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     shortcutSlotLeft: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0633\u0631",
     shortcutSlotMiddle: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u0648\u0633\u0637",
@@ -9463,7 +9779,19 @@ var REMOTE_CARD_STRINGS_AR = {
     blue: "\u0623\u0632\u0631\u0642",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "\u0625\u062F\u062E\u0627\u0644"
   }
 };
 registerRemoteCardTranslation("ar", REMOTE_CARD_STRINGS_AR);
@@ -9612,6 +9940,8 @@ var REMOTE_CARD_STRINGS_DE = {
     openOnCurrentActivity: "Aktuelle Aktivit\xE4t",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
+    favoriteDeviceNames: "Ger\xE4tenamen anzeigen",
+    rowOptions: (groupLabel) => `Optionen f\xFCr ${groupLabel}`,
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel) => `${groupLabel} nach unten verschieben`,
@@ -9621,6 +9951,7 @@ var REMOTE_CARD_STRINGS_DE = {
     channel: "Kanal",
     mediaControls: "Wiedergabe",
     dvr: "DVR",
+    numpad: "Ziffernblock",
     resetDefaultLayout: "Layout zur\xFCcksetzen",
     shortcutSlotLeft: "Linke Verkn\xFCpfung",
     shortcutSlotMiddle: "Mittlere Verkn\xFCpfung",
@@ -9679,7 +10010,19 @@ var REMOTE_CARD_STRINGS_DE = {
     blue: "Blau",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 registerRemoteCardTranslation("de", REMOTE_CARD_STRINGS_DE);
@@ -9807,6 +10150,8 @@ var REMOTE_CARD_STRINGS_ES = {
     openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
+    favoriteDeviceNames: "Mostrar nombres de dispositivos",
+    rowOptions: (groupLabel) => `Opciones de ${groupLabel}`,
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel) => `Mover ${groupLabel} hacia arriba`,
     moveGroupDown: (groupLabel) => `Mover ${groupLabel} hacia abajo`,
@@ -9816,6 +10161,7 @@ var REMOTE_CARD_STRINGS_ES = {
     channel: "Canal",
     mediaControls: "Reproducci\xF3n",
     dvr: "DVR",
+    numpad: "Teclado num\xE9rico",
     resetDefaultLayout: "Restablecer dise\xF1o",
     shortcutSlotLeft: "Acceso directo izquierdo",
     shortcutSlotMiddle: "Acceso directo central",
@@ -9874,7 +10220,19 @@ var REMOTE_CARD_STRINGS_ES = {
     blue: "Azul",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Intro"
   }
 };
 registerRemoteCardTranslation("es", REMOTE_CARD_STRINGS_ES);
@@ -10002,6 +10360,8 @@ var REMOTE_CARD_STRINGS_FR = {
     openOnCurrentActivity: "Activit\xE9 en cours",
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
     commandsAsRows: "Commandes sous forme de lignes",
+    favoriteDeviceNames: "Afficher les noms des appareils",
+    rowOptions: (groupLabel) => `Options de ${groupLabel}`,
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel) => `D\xE9placer ${groupLabel} vers le haut`,
     moveGroupDown: (groupLabel) => `D\xE9placer ${groupLabel} vers le bas`,
@@ -10011,6 +10371,7 @@ var REMOTE_CARD_STRINGS_FR = {
     channel: "Cha\xEEne",
     mediaControls: "Lecture",
     dvr: "DVR",
+    numpad: "Pav\xE9 num\xE9rique",
     resetDefaultLayout: "R\xE9initialiser",
     shortcutSlotLeft: "Raccourci gauche",
     shortcutSlotMiddle: "Raccourci central",
@@ -10069,7 +10430,19 @@ var REMOTE_CARD_STRINGS_FR = {
     blue: "Bleu",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Entr\xE9e"
   }
 };
 registerRemoteCardTranslation("fr", REMOTE_CARD_STRINGS_FR);
@@ -10196,6 +10569,8 @@ var REMOTE_CARD_STRINGS_NL = {
     openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
+    favoriteDeviceNames: "Apparaatnamen tonen",
+    rowOptions: (groupLabel) => `Opties voor ${groupLabel}`,
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel) => `Verplaats ${groupLabel} omhoog`,
     moveGroupDown: (groupLabel) => `Verplaats ${groupLabel} omlaag`,
@@ -10205,6 +10580,7 @@ var REMOTE_CARD_STRINGS_NL = {
     channel: "Kanaal",
     mediaControls: "Afspelen",
     dvr: "DVR",
+    numpad: "Cijfertoetsen",
     resetDefaultLayout: "Indeling resetten",
     shortcutSlotLeft: "Linker snelkoppeling",
     shortcutSlotMiddle: "Middelste snelkoppeling",
@@ -10263,7 +10639,19 @@ var REMOTE_CARD_STRINGS_NL = {
     blue: "Blauw",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 registerRemoteCardTranslation("nl", REMOTE_CARD_STRINGS_NL);
@@ -10390,6 +10778,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     openOnCurrentActivity: "\u5F53\u524D\u6D3B\u52A8",
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
     commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
+    favoriteDeviceNames: "\u663E\u793A\u8BBE\u5907\u540D\u79F0",
+    rowOptions: (groupLabel) => `${groupLabel}\u9009\u9879`,
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel) => `\u5C06${groupLabel}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel) => `\u5C06${groupLabel}\u4E0B\u79FB`,
@@ -10399,6 +10789,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     channel: "\u9891\u9053",
     mediaControls: "\u64AD\u653E",
     dvr: "DVR",
+    numpad: "\u6570\u5B57\u952E\u76D8",
     resetDefaultLayout: "\u91CD\u7F6E\u5E03\u5C40",
     shortcutSlotLeft: "\u5DE6\u4FA7\u5FEB\u6377\u6309\u952E",
     shortcutSlotMiddle: "\u4E2D\u95F4\u5FEB\u6377\u6309\u952E",
@@ -10457,7 +10848,19 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     blue: "\u84DD",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "\u786E\u5B9A"
   }
 };
 registerRemoteCardTranslation("zh-hans", REMOTE_CARD_STRINGS_ZH_HANS);

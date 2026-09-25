@@ -24,6 +24,8 @@ type WsJobEvent = components["schemas"]["WsJobEvent"];
 type WsPress = components["schemas"]["WsPress"];
 type WifiDeviceList = components["schemas"]["WifiDeviceList"];
 type PayloadView = components["schemas"]["PayloadView"];
+type AuthStatus = components["schemas"]["AuthStatus"];
+type ServerInfo = components["schemas"]["ServerInfo"];
 
 // Every operation the platform guide relies on must exist under its stable id.
 type _RequiredOperations = [
@@ -52,6 +54,16 @@ type _RequiredOperations = [
   operations["getCommandPayload"],
   operations["downloadBackupBundle"],
   operations["dropBackupBundle"],
+  operations["getAuthStatus"],
+  operations["setupAdmin"],
+  operations["signIn"],
+  operations["createToken"],
+  operations["listSessions"],
+  operations["updateServerSettings"],
+  operations["getMqttConfig"],
+  operations["updateMqttConfig"],
+  operations["removeMqttConfig"],
+  operations["testMqttConfig"],
 ];
 
 // The paths a hand-written client would hit.
@@ -65,6 +77,7 @@ type _RequiredPaths = [
   paths["/api/v1/hubs/{hub_id}/wifi-devices"]["get"],
   paths["/api/v1/hubs/{hub_id}/wifi-devices"]["post"],
   paths["/api/v1/server/mqtt"]["get"],
+  paths["/api/v1/auth"]["get"],
 ];
 
 // A minimal typed client surface, the shape a platform integration wraps.
@@ -127,5 +140,10 @@ function describePayload(payload: PayloadView): string {
   return `${payload.kind}: ${payload.hex} decoded=${JSON.stringify(payload.decoded)}`;
 }
 
-export const _exercised = [describeHub, powerOfDevice, activityLabel, isProblem, onMessage, accepted, seenKey, wifiDestinations, describePayload];
+// Access: a platform asks for a token once the server is claimed (TXT auth=1).
+function needsToken(info: ServerInfo, status: AuthStatus): boolean {
+  return Boolean(info.auth?.claimed) && status.via !== "token";
+}
+
+export const _exercised = [needsToken, describeHub, powerOfDevice, activityLabel, isProblem, onMessage, accepted, seenKey, wifiDestinations, describePayload];
 export type { _RequiredOperations, _RequiredPaths };

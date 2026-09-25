@@ -41,6 +41,29 @@ test("urls are built under the API root, with the query normalised", () => {
   assert.equal(api.remoteUrl(null), "http://host:8480/ui/remote/");
 });
 
+test("the update check: status, one check now, the daily switch", async () => {
+  const status = { installed_version: "0.2.1", status: "not_checked", latest_version: null, checked_at: null, automatic: false };
+  const { calls, fetchImpl } = fakeFetch((url, init) => {
+    if (init?.method === "POST") return { status: 200, body: { ...status, status: "update_available", latest_version: "0.2.2" } };
+    if (init?.method === "PUT") return { status: 200, body: { ...status, automatic: true } };
+    return { status: 200, body: status };
+  });
+  const api = new PanelApi("http://host", fetchImpl);
+  assert.equal((await api.updateStatus()).body?.status, "not_checked");
+  assert.equal(calls[0].url, "http://host/api/v1/server/updates");
+  assert.equal(calls[0].init?.method, "GET");
+  const checked = await api.checkForUpdates();
+  assert.equal(checked.body?.latest_version, "0.2.2");
+  assert.equal(calls[1].url, "http://host/api/v1/server/updates/check");
+  assert.equal(calls[1].init?.method, "POST");
+  assert.equal(calls[1].init?.body, undefined);
+  const daily = await api.configureUpdateCheck(true);
+  assert.equal(daily.body?.automatic, true);
+  assert.equal(calls[2].url, "http://host/api/v1/server/updates");
+  assert.equal(calls[2].init?.method, "PUT");
+  assert.equal(calls[2].init?.body, '{"automatic":true}');
+});
+
 test("a JSON body is serialised with its content type; a raw body is sent as typed", async () => {
   const { calls, fetchImpl } = fakeFetch(() => ({ status: 201, body: { hub_id: "h" } }));
   const api = new PanelApi("http://host", fetchImpl);
@@ -105,10 +128,11 @@ test("the lifecycle and document routes hit the documented paths", async () => {
   assert.equal(calls[6].init?.body, '{"document":{"show_dpad":true}}');
 });
 
-test("problemText reads type and detail, falling back to the status", () => {
+test("problemText reads title and detail, humanizing the type only without a title, falling back to the status", () => {
   const mk = (status: number, body: unknown): ApiResponse => ({ ok: false, status, statusText: "", headers: [], text: "", body });
-  assert.equal(problemText(mk(409, { type: "hub_conflict", title: "Hub already registered", status: 409, detail: "hub already registered as x" })), "hub_conflict: hub already registered as x");
-  assert.equal(problemText(mk(404, { type: "hub_not_found", title: "Unknown hub", status: 404, detail: null })), "hub_not_found");
+  assert.equal(problemText(mk(409, { type: "hub_conflict", title: "Hub already registered", status: 409, detail: "hub already registered as x" })), "Hub already registered: hub already registered as x");
+  assert.equal(problemText(mk(404, { type: "hub_not_found", title: "Unknown hub", status: 404, detail: null })), "Unknown hub");
+  assert.equal(problemText(mk(404, { type: "hub_not_found", status: 404 })), "Hub not found");
   assert.equal(problemText(mk(500, { title: "Boom", status: 500 })), "Boom");
   assert.equal(problemText(mk(502, null)), "HTTP 502");
   assert.equal(problemText(mk(503, "text")), "HTTP 503");
@@ -133,4 +157,59 @@ test("operations come from the OpenAPI document, relative to the API root, sorte
     ops.map((o) => `${o.method} ${o.path} ${o.hasBody ? "body" : "-"} ${o.summary}`),
     ["GET /hubs - List", "POST /hubs body Register", "GET /hubs/{hub_id}/status - Status"],
   );
+});
+
+test("the auth calls hit /auth with their bodies", async () => {
+  const { calls, fetchImpl } = fakeFetch((url) => ({ status: url.endsWith("/auth/tokens") ? 201 : 200, body: { claimed: true, signed_in: true } }));
+  const api = new PanelApi("http://host:8480", fetchImpl);
+  await api.authStatus();
+  await api.setupAdmin("admin", "correct horse", true);
+  await api.signIn("admin", "correct horse", false);
+  await api.createToken("Hubitat");
+  await api.renameToken("tk_1", "Hubitat C-8");
+  await api.revokeToken("tk_1");
+  await api.revokeOtherSessions();
+  await api.updateServerSettings({ allowed_origins: ["http://nas:8123"] });
+  assert.deepEqual(calls.map((c) => `${c.init?.method ?? "GET"} ${c.url.replace("http://host:8480/api/v1/", "")}`), [
+    "GET auth", "POST auth/setup", "POST auth/login", "POST auth/tokens", "PATCH auth/tokens/tk_1",
+    "DELETE auth/tokens/tk_1", "DELETE auth/sessions", "PUT server/settings",
+  ]);
+  assert.deepEqual(JSON.parse(String(calls[1].init?.body)), { username: "admin", password: "correct horse", remember: true });
+  assert.deepEqual(JSON.parse(String(calls[7].init?.body)), { allowed_origins: ["http://nas:8123"] });
+});
+
+test("a 401 for a signed-out browser calls onSignedOut; a failed sign-in and other problems do not", async () => {
+  let answer: { status: number; body: unknown } = { status: 401, body: { type: "invalid_credentials", title: "Signed out", status: 401 } };
+  const { fetchImpl } = fakeFetch(() => answer);
+  const api = new PanelApi("http://host:8480", fetchImpl);
+  const seen: string[] = [];
+  api.onSignedOut = (problem) => seen.push(problem.type);
+  await api.request("PUT", "hubs/x/name", { body: { name: "a" } });
+  await api.signIn("admin", "wrong", false);                      // the form says "wrong password" itself
+  answer = { status: 401, body: { type: "auth_required", title: "Sign in", status: 401 } };
+  await api.request("POST", "hubs/x/erase");
+  answer = { status: 403, body: { type: "admin_required", title: "x", status: 403 } };
+  await api.listTokens();
+  assert.deepEqual(seen, ["invalid_credentials", "auth_required"]);
+});
+
+test("the MQTT broker calls, and the view's body keeps the password out unless typed or cleared", async () => {
+  const { calls, fetchImpl } = fakeFetch(() => ({ status: 200, body: {} }));
+  const api = new PanelApi("http://host:8480", fetchImpl);
+  await api.mqttConfig();
+  await api.updateMqttConfig({ host: "b.lan" });
+  await api.testMqttConfig({ host: "b.lan", password: "x" });
+  await api.removeMqttConfig();
+  assert.deepEqual(calls.map((c) => `${c.init?.method ?? "GET"} ${c.url.replace("http://host:8480/api/v1/", "")}`),
+    ["GET server/mqtt/config", "PUT server/mqtt/config", "POST server/mqtt/test", "DELETE server/mqtt/config"]);
+
+  const { bodyFor } = await import("../../server-panel/src/views/mqtt-view");
+  const draft = { host: " b.lan ", port: "", username: "hub", password: "", clearPassword: false, tls: false, tls_ca: "/ca.pem", tls_insecure: true, client_id: "" };
+  const kept = bodyFor(draft);
+  assert.ok(typeof kept !== "string" && !("password" in kept));
+  assert.deepEqual(kept, { host: "b.lan", port: null, username: "hub", tls: false, tls_ca: null, tls_insecure: false, client_id: null });
+  assert.equal((bodyFor({ ...draft, password: "s3cret" }) as { password?: string }).password, "s3cret");
+  assert.equal((bodyFor({ ...draft, clearPassword: true }) as { password?: string }).password, "");
+  assert.equal(bodyFor({ ...draft, host: "" }), "Enter the broker's address.");
+  assert.equal(bodyFor({ ...draft, port: "70000" }), "The port must be between 1 and 65535.");
 });

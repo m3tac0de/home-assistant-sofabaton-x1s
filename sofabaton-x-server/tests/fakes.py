@@ -43,7 +43,9 @@ class FakeProxy:
     def __init__(self, config: HubConfig) -> None:
         self.config = config
         self.started = False
+        self.proxy_enabled = config.proxy_enabled
         self.stops: list[bool] = []          # release_hub flag per stop()
+        self.advertised = 0                  # wait_until_discoverable calls
         self.mac: Optional[str] = None
         self.model = "X1S"
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -122,6 +124,10 @@ class FakeProxy:
         self.started = False
         self.stops.append(release_hub)
 
+    async def wait_until_discoverable(self, timeout: float = 30.0) -> bool:
+        self.advertised += 1
+        return True
+
     # -- status --------------------------------------------------------------
 
     async def status(self) -> HubStatus:
@@ -131,7 +137,7 @@ class FakeProxy:
             controllable=self.started and not self.refuse,
             mode="observe" if (self.started and self.refuse) else ("control" if self.started else "disconnected"),
             hub_version=self.model,
-            proxy_enabled=True,
+            proxy_enabled=self.proxy_enabled,
             running_activity=self.running,
             activities_cached=len(self.activities_data),
             devices_cached=len(self.devices_data),
@@ -211,6 +217,12 @@ class FakeProxy:
     async def resync_remote(self) -> bool:
         self.sent.append(("resync", ()))
         return not self.refuse
+
+    async def enable_proxy(self) -> None:
+        self.proxy_enabled = True
+
+    async def disable_proxy(self) -> None:
+        self.proxy_enabled = False
 
     # -- snapshot / state document (phase 3) -----------------------------------
 
@@ -657,13 +669,13 @@ class FakeAdvertiser:
         self.updates: list[dict] = []
         self.stopped = False
 
-    def start(self, zc, settings, hub_count) -> None:
+    def start(self, zc, settings, hub_count, *, auth_claimed=False) -> None:
         from sofabaton_server.discovery import advertisement_txt
-        self.started.append((settings.port, advertisement_txt(settings, hub_count)))
+        self.started.append((settings.port, advertisement_txt(settings, hub_count, auth_claimed=auth_claimed)))
 
-    def update(self, settings, hub_count) -> None:
+    def update(self, settings, hub_count, *, auth_claimed=False) -> None:
         from sofabaton_server.discovery import advertisement_txt
-        self.updates.append(advertisement_txt(settings, hub_count))
+        self.updates.append(advertisement_txt(settings, hub_count, auth_claimed=auth_claimed))
 
     def stop(self) -> None:
         self.stopped = True

@@ -27,10 +27,11 @@ UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU,
 VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN,
 REW, PLAY, PAUSE, FWD, GUIDE, DVR, EXIT,
 RED, GREEN, YELLOW, BLUE, A, B, C,
+NUM_0 .. NUM_9, NUM_DASH, NUM_ENTER,
 POWER_ON, POWER_OFF
 ```
 
-The extended buttons `A`, `B`, `C`, `EXIT`, `DVR`, `PLAY`, and `GUIDE` are intended for X2 hubs. Button names are case-insensitive, but using the uppercase names above makes automations easier to read.
+The extended buttons `A`, `B`, `C`, `EXIT`, `DVR`, `PLAY`, and `GUIDE` are intended for X2 hubs, as are the `NUM_*` names for the X2 remote's on-screen numeric keypad. The Virtual Remote card reaches the same keypad by flipping the Direction Pad over (tap its frame), and its Key capture emits these names. Button names are case-insensitive, but using the uppercase names above makes automations easier to read.
 
 ## ◇ Send several buttons
 

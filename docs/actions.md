@@ -728,6 +728,18 @@ Buttons marked **X2 only** are not present on X1 or X1S remotes.
 | DVR | 155 | Yes |
 | PLAY | 156 | Yes |
 | GUIDE | 157 | Yes |
+| NUM_ENTER | 158 | Yes |
+| NUM_0 | 159 | Yes |
+| NUM_DASH | 160 | Yes |
+| NUM_9 | 161 | Yes |
+| NUM_8 | 162 | Yes |
+| NUM_7 | 163 | Yes |
+| NUM_6 | 164 | Yes |
+| NUM_5 | 165 | Yes |
+| NUM_4 | 166 | Yes |
+| NUM_3 | 167 | Yes |
+| NUM_2 | 168 | Yes |
+| NUM_1 | 169 | Yes |
 | UP | 174 | |
 | LEFT | 175 | |
 | OK | 176 | |

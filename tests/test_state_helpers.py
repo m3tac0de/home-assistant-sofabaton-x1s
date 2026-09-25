@@ -446,3 +446,62 @@ def test_replace_keymap_rows_no_long_press_omits_long_press_details() -> None:
     assert details["command_id"] == 0x01
     assert "long_press_device_id" not in details
     assert "long_press_command_id" not in details
+
+
+# (button code, command id) pairs of a real X2 device keymap with the
+# on-screen numeric keypad fully bound (Denon AVC, 33 rows, captured
+# 2026-09-23). 0xAB / 0xC2 / 0xC3 are the device power rows the X2 also
+# returns; they are not modelled.
+_X2_DENON_KEYMAP = [
+    (0x9A, 0x26), (0x9C, 0x58), (0x9D, 0x27),
+    (0x9E, 0x76), (0x9F, 0x04), (0xA0, 0x77),
+    (0xA1, 0x0D), (0xA2, 0x0C), (0xA3, 0x0B), (0xA4, 0x0A), (0xA5, 0x09),
+    (0xA6, 0x08), (0xA7, 0x07), (0xA8, 0x06), (0xA9, 0x05),
+    (0xAB, 0x01),
+    (0xAE, 0x75), (0xAF, 0x73), (0xB0, 0x76), (0xB1, 0x74), (0xB2, 0x72),
+    (0xB3, 0x6C), (0xB4, 0x6F), (0xB5, 0x70), (0xB6, 0x7A), (0xB7, 0x6E),
+    (0xB8, 0x71), (0xB9, 0x79), (0xBA, 0x6D), (0xBB, 0x78), (0xBC, 0x77),
+    (0xC2, 0x03), (0xC3, 0x02),
+]
+
+
+def _x2_device_rows(dev: int, pairs: list[tuple[int, int]]) -> bytes:
+    return b"".join(
+        bytes([dev, code, dev, 0, 0, 0, 0, 0, 0, cmd]) + bytes(8)
+        for code, cmd in pairs
+    )
+
+
+def test_replace_keymap_rows_keeps_x2_numpad_rows_and_reports_dropped() -> None:
+    cache = ActivityCache()
+    dev = 0x09
+
+    dropped = cache.replace_keymap_rows(dev, _x2_device_rows(dev, _X2_DENON_KEYMAP))
+
+    numpad = {
+        ButtonName.NUM_1: 0x05, ButtonName.NUM_2: 0x06, ButtonName.NUM_3: 0x07,
+        ButtonName.NUM_4: 0x08, ButtonName.NUM_5: 0x09, ButtonName.NUM_6: 0x0A,
+        ButtonName.NUM_7: 0x0B, ButtonName.NUM_8: 0x0C, ButtonName.NUM_9: 0x0D,
+        ButtonName.NUM_0: 0x04, ButtonName.NUM_DASH: 0x77, ButtonName.NUM_ENTER: 0x76,
+    }
+    for code, cmd in numpad.items():
+        assert code in cache.buttons[dev]
+        assert cache.button_details[dev][code] == {"device_id": dev, "command_id": cmd}
+    assert len(cache.buttons[dev]) == 30
+    # Device keymaps never carry favorites, and the unmodelled rows must not
+    # be mistaken for them.
+    assert cache.get_activity_favorite_slots(dev) == []
+    assert dropped == [0xAB, 0xC2, 0xC3]
+
+
+def test_replace_keymap_rows_reports_nothing_dropped_for_favorites() -> None:
+    cache = ActivityCache()
+    act = 0x66
+    payload = bytes.fromhex(
+        "66 01 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00"
+        " 66 ae 01 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00"
+    )
+
+    assert cache.replace_keymap_rows(act, payload) == []
+    assert ButtonName.UP in cache.buttons[act]
+    assert [slot["button_id"] for slot in cache.get_activity_favorite_slots(act)] == [0x01]

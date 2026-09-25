@@ -116,6 +116,7 @@ test("summarizeMessage gives one line per frame type", () => {
 
 test("only lifecycle-shaped frames ask for a hub reload", () => {
   assert.equal(isHubRefreshTrigger({ type: "server_event", kind: "hub_added" }), true);
+  assert.equal(isHubRefreshTrigger({ type: "server_event", hub_id: "", kind: "update_check" }), false);
   assert.equal(isHubRefreshTrigger({ type: "hub_event", event: { kind: "catalog_ready" } }), true);
   assert.equal(isHubRefreshTrigger({ type: "hub_event", event: { kind: "status_changed" } }), true);
   assert.equal(isHubRefreshTrigger({ type: "hub_event", event: { kind: "activity_changed" } }), false);

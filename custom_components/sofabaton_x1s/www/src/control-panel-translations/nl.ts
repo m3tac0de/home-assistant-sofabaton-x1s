@@ -74,7 +74,7 @@ export const TOOLS_CARD_STRINGS_NL = {
       `Op deze hub is firmwareversie ${installed} geïnstalleerd. Voor functies van het bedieningspaneel die de hubconfiguratie wijzigen, is minimaal versie ${required} vereist. Werk de hub bij met de Sofabaton-app. Deze functie wordt automatisch weer beschikbaar zodra de hub de bijgewerkte firmwareversie doorgeeft.`,
   },
   buttonNames: {
-    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Afsluiten", 0x9b: "DVR", 0x9c: "Afspelen", 0x9d: "Gids",
+    0x97: "C", 0x98: "B", 0x99: "A", 0x9a: "Afsluiten", 0x9b: "DVR", 0x9c: "Afspelen", 0x9d: "Gids", 0x9e: "Enter (E)", 0x9f: "0", 0xa0: "Streepje (-)", 0xa1: "9", 0xa2: "8", 0xa3: "7", 0xa4: "6", 0xa5: "5", 0xa6: "4", 0xa7: "3", 0xa8: "2", 0xa9: "1",
     0xae: "Omhoog", 0xaf: "Links", 0xb0: "OK", 0xb1: "Rechts", 0xb2: "Omlaag", 0xb3: "Terug", 0xb4: "Home", 0xb5: "Menu",
     0xb6: "Vol +", 0xb7: "CH +", 0xb8: "Dempen", 0xb9: "Vol -", 0xba: "CH -", 0xbb: "Terugspoelen", 0xbc: "Pauze", 0xbd: "Vooruitspoelen",
     0xbe: "Rood", 0xbf: "Groen", 0xc0: "Geel", 0xc1: "Blauw", 0xc6: "Inschakelen", 0xc7: "Uitschakelen",
@@ -220,7 +220,7 @@ export const TOOLS_CARD_STRINGS_NL = {
       shortcutRenamed: (oldName: string, newName: string) => `"${oldName}" hernoemd naar "${newName}".`, shortcutsReordered: "Snelkoppelingen opnieuw geordend.",
       idleChanged: (device: string, label: string) => `Inactief gedrag van "${device}" → ${label}.`,
       commandRenamed: (oldName: string, newName: string, device: string) => `Commando "${oldName}" op "${device}" hernoemd naar "${newName}".`,
-      roleGroups: { volume: "Volumeknoppen", navigation: "Navigatieknoppen", playback: "Afspeelknoppen", channels: "Kanaalknoppen" },
+      roleGroups: { volume: "Volumeknoppen", navigation: "Navigatieknoppen", playback: "Afspeelknoppen", channels: "Kanaalknoppen", numpad: "Cijfertoetsen" },
       idleShort: { 0: "niet ingesteld", 1: "schakelt uit bij inactiviteit", 2: "schakelt nooit uit", 3: "blijft aan", 4: "niet beheerd door de hub" },
     },
     deviceReview: {
@@ -307,7 +307,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     activityShortcutsSubSortable: "Commando's en macro's op het scherm van de afstandsbediening. Sleep de greep om ze opnieuw te ordenen.",
     activityShortcutsSubStatic: "Commando's en macro's op het scherm van de afstandsbediening. Gebruik de verplaatsknoppen om ze opnieuw te ordenen.",
     activityShortcutsEmpty: "Nog geen snelkoppelingen. Voeg een commando of macro toe.", roleVolume: "Volumeknoppen bedienen", roleNavigation: "Navigatie- en OK-knoppen bedienen",
-    rolePlayback: "Afspeelknoppen bedienen", roleChannels: "Kanaalknoppen bedienen", roleNotUsed: "Niet gebruikt", roleCustom: "Aangepast", roleCustomized: (name: string) => `${name} (aangepast)`,
+    rolePlayback: "Afspeelknoppen bedienen", roleChannels: "Kanaalknoppen bedienen", roleNumpad: "Cijfertoetsen bedienen", roleNotUsed: "Niet gebruikt", roleCustom: "Aangepast", roleCustomized: (name: string) => `${name} (aangepast)`,
     roleMappedNote: (bound: number, total: number) => `${bound} van ${total} ${total === 1 ? "knop" : "knoppen"} gekoppeld`, roleOptionNoMapping: (name: string) => `${name} — geen knoptoewijzing`, roleMenuAria: (roleLabel: string) => `Kies een apparaat voor: ${roleLabel}`,
     roleConfirmTitle: "Aangepaste knopinstelling vervangen?", roleConfirmBody: "Deze groep bevat knoptoewijzingen die niet uit de standaardtoewijzing van één apparaat komen. Als je hier een apparaat toewijst, worden ze vervangen.",
     roleConfirmReplace: "Vervangen", roleConfirmCancel: "Annuleren", customizeButtonsToggle: "Afzonderlijke knoppen aanpassen", bindingsViewTitle: "Afzonderlijke knoppen",
@@ -410,7 +410,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     buttonCatalog: {
       up: "Omhoog", down: "Omlaag", left: "Links", right: "Rechts", ok: "OK", home: "Home", back: "Terug", menu: "Menu", volumeUp: "Volume omhoog", volumeDown: "Volume omlaag",
       mute: "Dempen", channelUp: "Kanaal omhoog", channelDown: "Kanaal omlaag", rewind: "Terugspoelen", pause: "Pauze", forward: "Vooruitspoelen", red: "Rood", green: "Groen", yellow: "Geel", blue: "Blauw",
-      exit: "Afsluiten", dvr: "DVR", play: "Afspelen", guide: "Gids", navigation: "Navigatie", volumeChannel: "Volume en kanaal", transport: "Afspelen", colour: "Kleur", extra: "Extra",
+      exit: "Afsluiten", dvr: "DVR", play: "Afspelen", guide: "Gids", navigation: "Navigatie", volumeChannel: "Volume en kanaal", transport: "Afspelen", colour: "Kleur", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Streepje (-)", numEnter: "Enter (E)", numpad: "Cijfertoetsen",
       unknown: (code: string) => `Knop 0x${code}`,
     },
     powerOn: "Inschakelen", powerOff: "Uitschakelen", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`,

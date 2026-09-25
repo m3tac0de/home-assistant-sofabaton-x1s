@@ -9,6 +9,67 @@ and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
+## Unreleased
+
+No changes yet.
+
+## 0.2.2 (2026-09-25)
+
+Changes since `sofabaton-x-v0.2.1`.
+
+### Upgrade notes
+
+- Update dependency pins to `sofabaton-x>=0.2.2,<0.3` after reviewing
+  the changes below. This patch release adds optional fields and button
+  constants without removing or renaming public methods or changing
+  required arguments. Catalog ordering is corrected as described below.
+- `activities()` and `devices()` now return display order. If your
+  application needs ID order, sort explicitly by `activity_id` or
+  `device_id`. Their `to_dict()` results gain `sort`; status and identity
+  dictionaries gain the firmware fields below.
+- The firmware verdicts are advisory in the library. Applications should
+  block configuration editing when `firmware_unsupported` is true and
+  suggest an update when only `firmware_outdated` is true. Neither the
+  library nor the server API automatically enforces these verdicts.
+- Consumers upgrading from 0.2.0 must also apply the
+  [0.2.1 payload migration](#021-2026-09-22); consumers on 0.1.x also need
+  the [0.2.0 migration](#020-2026-09-16).
+
+### Added
+
+- **X2 on-screen number keys.** `ButtonName.NUM_0` through `NUM_9`,
+  `NUM_DASH` and `NUM_ENTER` identify the X2 keypad. Keymap reads now
+  retain these bindings, and bundle validation accepts them for X2
+  device/activity edits and restores while rejecting them for X1/X1S.
+  `X2_NUMPAD_BUTTON_CODES` lives in `sofabaton.protocol_const`; it is
+  not a package-root export.
+- **Firmware floor verdicts on `HubStatus` and `HubInfo`.** Both expose
+  `firmware_version`, `firmware_min_supported`, `firmware_unsupported`
+  (the hub's firmware is below the supported floor: older firmware can ACK
+  writes and silently drop them, so a client should block its write
+  surfaces) and `firmware_outdated` (below the recommended floor: ask for
+  an update, block nothing); `HubInfo` also carries
+  `firmware_min_recommended`. They apply the existing
+  `MIN_SUPPORTED_FIRMWARE` / `MIN_RECOMMENDED_FIRMWARE` tables to the
+  banner, classified the way the engine classified the hub. The verdict
+  flags stay `False` without a known version and hub line; unavailable
+  version/floor values are `None`. Existing fields retain their meanings;
+  `to_dict()` includes the new fields.
+- Debug logs identify unrecognized keymap button codes that are omitted
+  from the modeled button list, including currently unmodeled X2 power keys.
+
+### Fixed
+
+- **`activities()` and `devices()` now list in the hub's display order**
+  (the stored sort byte that `reorder_activities` / `reorder_devices`
+  write, rows without one after them by id), the order the physical
+  remote, the app and the Home Assistant integration's remote entity
+  show. Both were sorted by id, so a hub whose activities or devices had
+  been reordered came out in the wrong sequence. `Activity` and `Device`
+  gain a `sort` field (`0` when the record carries none); `to_dict()`
+  includes it. Callers that relied on id order should sort by
+  `activity_id` / `device_id` themselves.
+
 ## 0.2.1 (2026-09-22)
 
 Changes since `sofabaton-x-v0.2.0`. This patch release includes a public

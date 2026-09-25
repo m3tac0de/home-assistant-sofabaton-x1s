@@ -68,6 +68,7 @@ def test_ready_event_rekeys_record_to_mac_and_relays_events(tmp_path: Path) -> N
         assert rec.config.mac == "E2:6A:44:86:1B:45" and rec.config.hub_version == "X1S"
         assert rec.last_seen is not None
         assert m.proxy("e26a44861b45") is proxy
+        assert proxy.advertised == 1          # the app can find the proxy
         with pytest.raises(HubNotFound):
             m.record("192.168.1.50")
         await m.stop()
@@ -107,6 +108,40 @@ def test_disable_stops_with_release_and_enable_restarts(tmp_path: Path) -> None:
     _run(main())
     kinds = [k for _, k in server_events]
     assert kinds == ["hub_added", "hub_disabled", "hub_enabled"]
+
+
+def test_proxy_toggle_switches_in_place_and_survives_restart(tmp_path: Path) -> None:
+    factory = Factory()
+    server_events: list[tuple[str, str]] = []
+
+    async def first_run():
+        m = _manager(tmp_path, factory)
+        m.on_server_event(lambda hub_id, kind: server_events.append((hub_id, kind)))
+        await m.start()
+        await m.add(HubConfig(host="192.168.1.50"))
+        proxy = factory.latest("192.168.1.50")
+        await m.set_proxy_enabled("192.168.1.50", False)
+        assert proxy.proxy_enabled is False and proxy.stops == []    # same proxy, no restart
+        assert m.record("192.168.1.50").config.proxy_enabled is False
+        await m.set_proxy_enabled("192.168.1.50", False)              # no-op: no second event
+        await m.stop()
+
+    async def second_run():
+        m = _manager(tmp_path, factory)
+        await m.start()
+        proxy = factory.latest("192.168.1.50")
+        assert proxy.config.proxy_enabled is False and proxy.proxy_enabled is False
+        await m.disable("192.168.1.50")
+        await m.set_proxy_enabled("192.168.1.50", True)               # stored while disabled
+        await m.enable("192.168.1.50")
+        assert factory.latest("192.168.1.50").proxy_enabled is True
+        with pytest.raises(HubNotFound):
+            await m.set_proxy_enabled("nope", True)
+        await m.stop()
+
+    _run(first_run())
+    _run(second_run())
+    assert [k for _, k in server_events] == ["hub_added", "hub_proxy_disabled"]
 
 
 def test_records_and_enabled_state_survive_restart(tmp_path: Path) -> None:

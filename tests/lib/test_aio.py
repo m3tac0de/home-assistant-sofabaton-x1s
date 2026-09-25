@@ -104,6 +104,7 @@ class FakeProxy:
         self.advertised: list[tuple[dict, str]] = []
         self.mdns_txt: dict[str, str] = {}
         self.hub_version = "X1"
+        self.banner_firmware = None
         self.real_hub_ip = "1.2.3.4"
         # Structural detail per entity (what a backup-grade fetch leaves
         # behind): kind -> id -> list of binding rows. ``pending_detail`` is
@@ -385,7 +386,12 @@ class FakeProxy:
         return ({}, self.banner_known)
 
     def get_banner_info(self) -> dict:
-        return {"model": "X1S", "name": "Living Room"} if self.banner_known else {}
+        if not self.banner_known:
+            return {}
+        banner = {"model": "X1S", "name": "Living Room"}
+        if self.banner_firmware is not None:
+            banner["firmware_version"] = self.banner_firmware
+        return banner
 
     def update_discovery_identity(self, *, mdns_txt, hub_version):
         # Publishing the advertisement; record what identity we advertised.
@@ -1181,6 +1187,42 @@ def test_hub_info_cached_then_refresh_then_busy() -> None:
     asyncio.run(main())
 
 
+def test_firmware_floor_verdicts_on_status_and_info() -> None:
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+
+        # No banner yet: nothing is known, so nothing blocks.
+        st = await proxy.status()
+        assert st.firmware_version is None and not st.firmware_unsupported and not st.firmware_outdated
+        assert st.firmware_min_supported == 17     # the engine classified the hub as an X1
+
+        # Below the X1 floor (17): the hub ACKs writes and drops them.
+        fake.banner_known = True
+        fake.banner_firmware = 16
+        st = await proxy.status()
+        assert st.firmware_version == 16 and st.firmware_unsupported and st.firmware_outdated
+        info = await proxy.hub_info()
+        assert info.firmware_version == 16 and info.firmware_unsupported and info.firmware_outdated
+        assert info.firmware_min_supported == 17 and info.firmware_min_recommended == 17
+        assert info.to_dict()["firmware_unsupported"] is True
+
+        # At the floor: clean.
+        fake.banner_firmware = 17
+        st = await proxy.status()
+        assert not st.firmware_unsupported and not st.firmware_outdated
+        assert not (await proxy.hub_info()).firmware_unsupported
+
+        # An unclassified hub line never blocks, whatever the banner says.
+        fake.hub_version = None
+        fake.banner_firmware = 1
+        fake.get_banner_info = lambda: {"model": "Y9", "firmware_version": 1}
+        st = await proxy.status()
+        assert st.firmware_version == 1 and st.firmware_min_supported is None and not st.firmware_unsupported
+
+    asyncio.run(main())
+
+
 def test_hub_info_unknown_without_fetch_is_not_an_error() -> None:
     async def main():
         fake = FakeProxy()
@@ -1228,7 +1270,7 @@ def test_devices_project_power_state_from_stored_record() -> None:
     asyncio.run(main())
 
 
-def test_activities_carry_flags_and_sort_by_id() -> None:
+def test_activities_carry_flags_and_fall_back_to_id_order() -> None:
     async def main():
         fake = FakeProxy()
         fake.make_activities_ready({
@@ -1237,9 +1279,42 @@ def test_activities_carry_flags_and_sort_by_id() -> None:
         })
         proxy = _wrap(fake)
         acts = await proxy.activities()
+        # No stored sort byte anywhere: id order, as before.
         assert [a.activity_id for a in acts] == [101, 102]
         assert acts[1] == models.Activity(activity_id=102, name="Music", active=True, needs_confirm=True)
-        assert acts[0].to_dict() == {"activity_id": 101, "name": "TV", "active": False, "needs_confirm": False}
+        assert acts[0].to_dict() == {
+            "activity_id": 101, "name": "TV", "active": False, "needs_confirm": False, "sort": 0,
+        }
+
+    asyncio.run(main())
+
+
+def test_catalog_lists_follow_the_hub_display_order() -> None:
+    # The lists come out as the physical remote and the app show them:
+    # the record's sort byte (body[6]) first, rows without a stored order
+    # after them by id. The HA card's lists use the same rule; the REST
+    # lists and the web remote read these, so they now match it.
+    async def main():
+        fake = FakeProxy()
+        fake.hub_version = None  # no power projection in this test
+        body = lambda sort: bytes([0, 0, 0, 0, 0, 0, sort, 0])
+        fake.make_activities_ready({
+            101: {"name": "TV", "raw_body": body(2)},
+            102: {"name": "Music", "raw_body": body(1)},
+            103: {"name": "New"},
+        })
+        fake._ready["devices"] = {
+            5: {"name": "TV", "raw_body": body(3)},
+            6: {"name": "Amp", "raw_body": body(1)},
+            7: {"name": "Lamp", "raw_body": b"\x00"},  # too short for a sort byte
+            8: {"name": "Fan", "raw_body": body(2)},
+        }
+        proxy = _wrap(fake)
+        acts = await proxy.activities()
+        assert [(a.activity_id, a.sort) for a in acts] == [(102, 1), (101, 2), (103, 0)]
+        devs = await proxy.devices()
+        assert [(d.device_id, d.sort) for d in devs] == [(6, 1), (8, 2), (5, 3), (7, 0)]
+        assert devs[0].to_dict()["sort"] == 1
 
     asyncio.run(main())
 

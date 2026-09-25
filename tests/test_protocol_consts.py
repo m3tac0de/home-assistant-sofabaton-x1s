@@ -72,3 +72,14 @@ def test_req_buttons_opnames_use_role_oriented_labels() -> None:
     assert const.OPNAMES[const.OP_KEYMAP_FINAL_X1S] == "REQ_BUTTONS_FINAL_X1S_X2_233D"
     assert const.OPNAMES[const.OP_KEYMAP_PAGE_X2_C03D] == "REQ_BUTTONS_PAGE_X1S_X2_C03D"
     assert const.OPNAMES[const.OP_KEYMAP_OVERLAY_X1] == "REQ_BUTTONS_OVERLAY_X1"
+
+
+def test_x2_numpad_codes_are_contiguous_named_buttons() -> None:
+    """The keypad is twelve distinct codes in one block, each a NUM_* name."""
+
+    codes = const.X2_NUMPAD_BUTTON_CODES
+    assert len(codes) == 12 == len(set(codes))
+    assert sorted(codes) == list(range(0x9E, 0xAA))
+    assert all(const.BUTTONNAME_BY_CODE[code].startswith("NUM_") for code in codes)
+    assert codes[0] == const.ButtonName.NUM_1
+    assert codes[-1] == const.ButtonName.NUM_ENTER

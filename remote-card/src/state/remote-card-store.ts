@@ -875,6 +875,22 @@ export class RemoteCardStore {
     return enabled.some((entry) => entry.command === Number(id));
   }
 
+  /**
+   * True when any of `ids` is bound on the current page. Unlike isEnabled
+   * this fails CLOSED without data: it gates an affordance (the number pad
+   * hint), not a key, so "unknown" must not render it.
+   */
+  anyKeyBound(ids: readonly number[]): boolean {
+    if (this._mode === "device") {
+      const entry = this.deviceKeymapState();
+      if (!entry || entry.status !== "ready") return false;
+      return ids.some((id) => entry.buttons.includes(id));
+    }
+    if (this.enabledButtonsInvalid) return false;
+    const enabled = this.enabledButtons();
+    return ids.some((id) => enabled.some((entry) => entry.command === id));
+  }
+
   commandTarget(id: unknown): EnabledButtonEntry | null {
     const enabled = this.enabledButtons();
     const match = enabled.find((entry) => entry.command === Number(id));

@@ -31,7 +31,7 @@ export const TOOL_LABELS: Record<ToolPage, string> = { setup: "Hub settings", se
 
 export const TOOL_SUBTABS: Record<ToolPage, readonly string[]> = {
   setup: ["hubs"],
-  server: ["status"],
+  server: ["status", "mqtt", "access"],
   debug: ["api", "events"],
 };
 
@@ -45,6 +45,8 @@ export const SUBTAB_LABELS: Record<string, string> = {
   layout: "Layout",
   hubs: "Hubs",
   status: "Status",
+  access: "Access",
+  mqtt: "MQTT broker",
   api: "API console",
   events: "Event stream",
   // A subtab id can repeat across tabs; `<tab>/<sub>` wins over the bare id.

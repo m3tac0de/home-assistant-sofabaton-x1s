@@ -33,11 +33,13 @@ export const LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_macros_button",
   "show_favorites_button",
   "show_device_toggle",
   "mf_as_rows",
   "mf_row_visible_rows",
+  "show_favorite_device_names",
 ] as const;
 
 // ---------- device-mode config (docs/internal/device-mode-plan.md §5) ----------
@@ -102,6 +104,7 @@ export const DEVICE_LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_commands_button",
   "show_power_button",
   "show_device_toggle",
@@ -225,6 +228,7 @@ export const DEVICE_LAYOUT_DEFAULTS: Record<string, unknown> = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_commands_button: true,
   show_power_button: true,
   show_device_toggle: true,
@@ -379,6 +383,16 @@ export function favoritesButtonEnabled(layout: Record<string, any> | null | unde
   return true;
 }
 
+/**
+ * Favorites carry the name of the device their command targets in a band
+ * along the button's top edge. Activity side only (device layouts hold one
+ * device's own commands); names resolve from the `devices` attribute, so the
+ * band silently stays off where that attribute is absent.
+ */
+export function favoriteDeviceNamesEnabled(layout: Record<string, any> | null | undefined) {
+  return layout?.show_favorite_device_names === true;
+}
+
 export function mfAsRows(layout: Record<string, any> | null | undefined) {
   return layout?.mf_as_rows === true;
 }
@@ -488,7 +502,50 @@ export const ID = {
   GREEN: 191,
   YELLOW: 192,
   BLUE: 193,
+  // X2-only on-screen numeric keypad (docs/internal/numpad-plan.md). The
+  // hub numbers them E-first (158) down to 1 (169); the card lays them out
+  // in phone order.
+  NUM_ENTER: 158,
+  NUM_0: 159,
+  NUM_DASH: 160,
+  NUM_9: 161,
+  NUM_8: 162,
+  NUM_7: 163,
+  NUM_6: 164,
+  NUM_5: 165,
+  NUM_4: 166,
+  NUM_3: 167,
+  NUM_2: 168,
+  NUM_1: 169,
 } as const;
+
+/** Every keypad button id; the availability gate asks whether any is bound. */
+export const NUMPAD_KEY_IDS: readonly number[] = Object.freeze([
+  ID.NUM_1,
+  ID.NUM_2,
+  ID.NUM_3,
+  ID.NUM_4,
+  ID.NUM_5,
+  ID.NUM_6,
+  ID.NUM_7,
+  ID.NUM_8,
+  ID.NUM_9,
+  ID.NUM_0,
+  ID.NUM_DASH,
+  ID.NUM_ENTER,
+]);
+
+/**
+ * `show_numpad`: the keypad face behind the D-pad (absent = shown). X2 +
+ * sofabaton_x1s only at render time; the key itself is admitted on both
+ * layout chains so activities and devices can each switch it off.
+ */
+export function numpadEnabled(layout: Record<string, any> | null | undefined) {
+  if (typeof layout?.show_numpad === "boolean") {
+    return layout.show_numpad;
+  }
+  return true;
+}
 
 export const HARD_BUTTON_ICONS: Record<string, string> = {
   up: "mdi:arrow-up-bold",

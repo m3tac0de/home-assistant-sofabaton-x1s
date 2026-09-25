@@ -423,6 +423,8 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     channelEnabled: true,
     mediaEnabled: true,
     dvrEnabled: true,
+    showNumpadSwitch: false,
+    numpadEnabled: true,
     isDeviceSelection: false,
     shortcutsStrip: nothing as typeof nothing,
     shortcutsPanel: nothing as typeof nothing,
@@ -443,7 +445,13 @@ function groupOrderParams(overrides: Record<string, unknown> = {}) {
     onSetChannel: () => undefined,
     onSetMedia: () => undefined,
     onSetDvr: () => undefined,
+    onSetNumpad: () => undefined,
     onSetGroupEnabled: () => undefined,
+    rowMenuKey: null,
+    onToggleRowMenu: () => undefined,
+    favoriteDeviceNamesAvailable: true,
+    favoriteDeviceNames: false,
+    onSetFavoriteDeviceNames: () => undefined,
     onSetMfAsRows: () => undefined,
     onSetMfRowVisibleRows: () => undefined,
     onMoveGroupByKey: () => undefined,
@@ -502,6 +510,56 @@ test("group order section renders one order row per visible group", () => {
   const result = renderGroupOrderSection(groupOrderParams());
   const text = templateText(result);
   assert.equal(text.match(/sb-layout-row-order/g)?.length, 3);
+});
+
+test("the as-rows switch and stepper sit under the list, not in the row menu", () => {
+  const result = renderGroupOrderSection(groupOrderParams());
+  const text = templateText(result);
+  assert.equal(text.includes("sb-mf-rows-row"), true);
+  assert.equal(text.includes("Macros/Favorites as rows"), true);
   // The mf rows stepper reflects the disabled state when rows mode is off.
-  assert.equal(templateHasString(result, " is-disabled"), true);
+  assert.equal(text.includes("sb-mf-rows-stepper-item is-disabled"), true);
+  const open = templateText(
+    renderGroupOrderSection(groupOrderParams({ rowMenuKey: "macro_favorites", asRows: false })),
+  );
+  const panel = open.slice(open.indexOf("sb-row-menu-panel"), open.indexOf("sb-mf-rows-row"));
+  assert.equal(panel.includes("Macros/Favorites as rows"), false);
+  assert.equal(panel.includes("Show device names"), true);
+});
+
+test("only the favorites rows carry the row options button, other rows reserve its slot", () => {
+  const result = renderGroupOrderSection(groupOrderParams());
+  const text = templateText(result);
+  assert.equal(text.match(/sb-row-menu-btn/g)?.length, 1);
+  assert.equal(text.match(/sb-row-menu-spacer/g)?.length, 2);
+  assert.equal(templateHasString(result, "sb-row-menu-panel"), false);
+
+  // Split rows: the favorites row has the menu, the macros row does not.
+  const split = templateText(
+    renderGroupOrderSection(
+      groupOrderParams({ asRows: true, visibleOrder: ["macros_row", "favorites_row"], rowMenuKey: "favorites_row" }),
+    ),
+  );
+  assert.equal(split.match(/sb-row-menu-btn/g)?.length, 1);
+  assert.equal(split.includes("Show device names"), true);
+});
+
+test("no row menu where device names cannot apply", () => {
+  // No `devices` attribute (official integration, or cache off).
+  const noDevices = templateText(
+    renderGroupOrderSection(groupOrderParams({ favoriteDeviceNamesAvailable: false, rowMenuKey: "macro_favorites" })),
+  );
+  assert.equal(noDevices.includes("sb-row-menu-btn"), false);
+  assert.equal(noDevices.includes("sb-row-menu-spacer"), false);
+  assert.equal(noDevices.includes("Show device names"), false);
+
+  // Device (Commands) layouts: no menu, the as-rows switch is still there.
+  const commands = templateText(
+    renderGroupOrderSection(
+      groupOrderParams({ isDeviceSelection: true, visibleOrder: ["macro_favorites"], rowMenuKey: "macro_favorites" }),
+    ),
+  );
+  assert.equal(commands.includes("sb-row-menu-btn"), false);
+  assert.equal(commands.includes("Show device names"), false);
+  assert.equal(commands.includes("Commands as rows"), true);
 });

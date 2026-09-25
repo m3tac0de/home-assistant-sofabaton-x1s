@@ -10,10 +10,10 @@ import { PanelApi, type JobView, type SnapshotDocument } from "../../server-pane
 import { boundButtons, buildCatalog, countLine, countsFromSnapshot, entryKey, jobPhrase, movedIds, workingOrder } from "../../server-panel/src/views/catalog-view";
 
 const DEVICES = [
-  { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2 },
-  { device_id: 7, name: "Amp", brand: null, device_class: null, device_class_code: null, power_state: null, idle_behavior: null },
+  { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2, sort: 1 },
+  { device_id: 7, name: "Amp", brand: null, device_class: null, device_class_code: null, power_state: null, idle_behavior: null, sort: 0 },
 ];
-const ACTIVITIES = [{ activity_id: 101, name: "Watch TV", active: true, needs_confirm: false }];
+const ACTIVITIES = [{ activity_id: 101, name: "Watch TV", active: true, needs_confirm: false, sort: 1 }];
 const SNAPSHOT: SnapshotDocument = {
   snapshot_id: "abc",
   captured_at: "2026-09-16T10:00:00Z",
@@ -41,13 +41,12 @@ test("buildCatalog lists devices then activities, with the snapshot's provenance
   assert.ok(buildCatalog(DEVICES, ACTIVITIES, null).every((e) => !e.complete && e.fetched_at === null && e.counts === null));
 });
 
-test("the rows follow the snapshot's display order (what Change order writes), not the typed lists' id order", () => {
-  const activities = [101, 102, 103].map((id) => ({ activity_id: id, name: `A${id}`, active: false, needs_confirm: false }));
+test("the rows keep the typed lists' order (the hub's display order the library lists in), whatever the snapshot's array order", () => {
+  const activities = [102, 101, 103].map((id, i) => ({ activity_id: id, name: `A${id}`, active: false, needs_confirm: false, sort: i + 1 }));
   const row = (id: number) => ({ kind: "activity", device: { device_id: id }, complete: true, editable: true, fetched_at: null });
-  const snapshot = { ...SNAPSHOT, activities: [row(102), row(101)] } as SnapshotDocument;
-  // 103 is not in the snapshot yet (just created): it goes last.
+  const snapshot = { ...SNAPSHOT, activities: [row(101), row(102)] } as SnapshotDocument;
   assert.deepEqual(buildCatalog([], activities, snapshot).map((e) => e.id), [102, 101, 103]);
-  assert.deepEqual(buildCatalog([], activities, null).map((e) => e.id), [101, 102, 103]);
+  assert.deepEqual(buildCatalog([], activities, null).map((e) => e.id), [102, 101, 103]);
   assert.deepEqual(workingOrder([{ id: 1 }, { id: 2 }, { id: 3 }], [3, 9, 1]).map((e) => e.id), [3, 1, 2]);
   assert.deepEqual(movedIds([1, 2, 3], 0, 2), [2, 3, 1]);
   assert.deepEqual(movedIds([1, 2, 3], 0, 5), [1, 2, 3]);
@@ -88,13 +87,14 @@ test("boundButtons keeps the buttons the hub maps to a command", () => {
   assert.deepEqual(boundButtons(rows).map((b) => b.button_code), [151, 153]);
 });
 
-test("jobPhrase carries the status and the step count when there is one", () => {
+test("jobPhrase says what the refresh is doing and its step count, never the raw status", () => {
   const job = (status: string, progress: JobView["progress"]): JobView => ({
     job_id: "j", hub_id: "h", kind: "refresh", status, cancellable: false, created_at: "t", started_at: null, finished_at: null, progress, result: null, error: null,
   });
-  assert.equal(jobPhrase(job("queued", null)), "queued");
-  assert.equal(jobPhrase(job("running", { completed_steps: 2, total_steps: 5 })), "running 2/5");
-  assert.equal(jobPhrase(job("running", { total_steps: 5 })), "running 0/5");
+  assert.equal(jobPhrase(job("queued", null)), "Queued…");
+  assert.equal(jobPhrase(job("running", null)), "Refreshing…");
+  assert.equal(jobPhrase(job("running", { completed_steps: 2, total_steps: 5 })), "Refreshing 2/5");
+  assert.equal(jobPhrase(job("running", { total_steps: 5 })), "Refreshing 0/5");
 });
 
 test("the catalog routes and refresh scopes hit the documented paths; followJob polls to a terminal state", async () => {
@@ -143,7 +143,7 @@ test("the catalog routes and refresh scopes hit the documented paths; followJob 
   const seen: string[] = [];
   const job = await api.followJob("h", "j1", { intervalMs: 1, onUpdate: (j) => seen.push(jobPhrase(j)), sleep: async () => {} });
   assert.equal(job?.status, "done");
-  assert.deepEqual(seen, ["running 1/3", "running 2/3", "done 3/3"]);
+  assert.deepEqual(seen, ["Refreshing 1/3", "Refreshing 2/3", "Refreshing 3/3"]);
 
   // The poll budget bounds a job that never ends.
   polls = -1000;

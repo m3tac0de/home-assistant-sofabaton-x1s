@@ -158,9 +158,10 @@ def test_model_mismatch_is_rejected():
         validate_hub_bundle_for_model(valid_bundle("X2"), hub_version="X1S")
 
 
-def test_x2_only_button_is_model_aware():
+@pytest.mark.parametrize("button_id", [0x99, 0xA5, 0x9E], ids=["A", "NUM_5", "NUM_ENTER"])
+def test_x2_only_button_is_model_aware(button_id):
     bundle = valid_bundle("X1S")
-    bundle["activities"][0]["button_bindings"][0]["button_id"] = 0x99
+    bundle["activities"][0]["button_bindings"][0]["button_id"] = button_id
     with pytest.raises(ValueError, match="unsupported on X1S"):
         validate_hub_bundle_for_model(bundle, hub_version="X1S")
 

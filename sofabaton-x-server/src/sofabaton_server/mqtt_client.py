@@ -138,6 +138,51 @@ class MqttState:
 MessageHandler = Callable[[str, bytes, bool], Any]
 
 
+def ssl_context_for(tls: bool, tls_ca: Optional[str], tls_insecure: bool) -> Optional[ssl.SSLContext]:
+    if not tls:
+        return None
+    context = ssl.create_default_context(cafile=tls_ca)
+    if tls_insecure:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+async def probe(*, host: str, port: int, username: Optional[str], password: Optional[str], tls: bool = False,
+                tls_ca: Optional[str] = None, tls_insecure: bool = False, client_id: Optional[str] = None,
+                timeout: float = CONNECT_TIMEOUT_SECONDS) -> None:
+    """Connect, wait for the CONNACK, disconnect: the control panel's Test.
+
+    Raises ``MqttError`` (or an ``OSError``) with the reason. A client id of
+    its own, so a broker never drops the running subscription for a test.
+    """
+
+    test_id = f"{(client_id or 'sofabaton-x-server')[:40]}-test-{secrets.token_hex(3)}"
+    reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(host, port, ssl=ssl_context_for(tls, tls_ca, tls_insecure)), timeout=timeout)
+    try:
+        writer.write(build_connect(test_id, username, password, KEEPALIVE_SECONDS))
+        await writer.drain()
+        try:
+            first, body = await asyncio.wait_for(read_packet(reader), timeout=timeout)
+        except asyncio.IncompleteReadError as err:
+            raise MqttError("the broker closed the connection") from err
+        except asyncio.TimeoutError as err:
+            raise MqttError("the broker did not answer the connect") from err
+        if first >> 4 != _CONNACK or len(body) < 2:
+            raise MqttError("the broker did not answer the connect")
+        if body[1]:
+            raise MqttError(_CONNACK_REASONS.get(body[1], f"the broker refused the connection (code {body[1]})"))
+        writer.write(packet(_DISCONNECT << 4))
+        await writer.drain()
+    finally:
+        writer.close()
+        try:
+            await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 class MqttSubscriber:
     """Keeps a subscription to a moving set of topics, for as long as there is one."""
 
@@ -240,13 +285,7 @@ class MqttSubscriber:
             delay = min(delay * 2, self._retry_max)
 
     def _ssl_context(self) -> Optional[ssl.SSLContext]:
-        if not self.tls:
-            return None
-        context = ssl.create_default_context(cafile=self._tls_ca)
-        if self._tls_insecure:
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        return context
+        return ssl_context_for(self.tls, self._tls_ca, self._tls_insecure)
 
     async def _session(self) -> None:
         reader, writer = await asyncio.wait_for(

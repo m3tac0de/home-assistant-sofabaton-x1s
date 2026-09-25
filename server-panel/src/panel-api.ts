@@ -19,6 +19,10 @@ export interface HubInfo {
   mac: string | null;
   firmware_version: number | null;
   production_batch: string | null;
+  firmware_min_supported?: number | null;
+  firmware_min_recommended?: number | null;
+  firmware_unsupported?: boolean;
+  firmware_outdated?: boolean;
 }
 
 export interface HubStatus {
@@ -32,6 +36,13 @@ export interface HubStatus {
   activities_cached: number;
   devices_cached: number;
   catalog_ready: boolean;
+  /** The library's firmware floor verdicts from the banner: `firmware_unsupported`
+   *  means the hub ACKs writes and drops them (the write surfaces block on it),
+   *  `firmware_outdated` only asks for an update. Absent on older servers. */
+  firmware_version?: number | null;
+  firmware_min_supported?: number | null;
+  firmware_unsupported?: boolean;
+  firmware_outdated?: boolean;
 }
 
 export interface HubConfig {
@@ -39,6 +50,8 @@ export interface HubConfig {
   name?: string | null;
   hub_version?: string | null;
   mac?: string | null;
+  /** Whether the official app can reach the hub through the server (absent = on). */
+  proxy_enabled?: boolean;
   [key: string]: unknown;
 }
 
@@ -86,6 +99,26 @@ export interface CallbackListener {
   [key: string]: unknown;
 }
 
+/** `GET /server/updates` (openapi `UpdateStatus`), also the `update` block of `ServerInfo`: the last
+ *  PyPI check judged against the running version. `failed` means nothing is known about newer
+ *  releases; it never reads as up to date. */
+export interface UpdateStatus {
+  installed_version: string;
+  status: "not_checked" | "up_to_date" | "update_available" | "failed";
+  latest_version: string | null;
+  checked_at: string | null;
+  checked_by: "manual" | "automatic" | null;
+  error: string | null;
+  /** The daily automatic check (server.json `update_check`); pinned = set by the environment. */
+  automatic: boolean;
+  automatic_pinned: boolean;
+  next_check_at: string | null;
+  checking: boolean;
+  release_notes_url: string;
+  upgrade_url: string;
+  pypi_url: string;
+}
+
 export interface ServerInfo {
   version: string;
   library_version: string;
@@ -93,8 +126,47 @@ export interface ServerInfo {
   instance_id?: string;
   hubs?: number;
   callback_listener?: CallbackListener;
+  update?: UpdateStatus | null;
+  /** Access (auth plan): once claimed, writes need a token or the panel's sign-in. */
+  auth?: { claimed: boolean } | null;
   [key: string]: unknown;
 }
+
+/** `GET /auth` (openapi `AuthStatus`). */
+export interface AuthStatus {
+  claimed: boolean;
+  signed_in: boolean;
+  username?: string | null;
+  via?: "session" | "token" | null;
+}
+
+/** A write token as `GET /auth/tokens` lists it (openapi `TokenInfo`); never the secret. */
+export interface TokenInfo {
+  id: string;
+  name: string;
+  hint: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** `POST /auth/tokens` (openapi `TokenCreated`): the only answer that carries `token`. */
+export interface TokenCreated extends TokenInfo {
+  token: string;
+}
+
+/** A signed-in browser (openapi `SessionView`). */
+export interface SessionView {
+  id: string;
+  remember: boolean;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  user_agent: string;
+  current: boolean;
+}
+
+/** The Problem types that mean "this browser is not (or no longer) signed in". */
+export const SIGNED_OUT_PROBLEMS = new Set(["auth_required", "invalid_credentials"]);
 
 /** One command slot of a Wifi Device's spec (openapi `CallbackSlot`). */
 export interface WifiSlot {
@@ -168,6 +240,44 @@ export interface MqttState {
   next_retry_at: string | null;
 }
 
+/** `GET /server/mqtt/config` (openapi `MqttConfigView`): the broker settings, never the password. */
+export interface MqttConfigView {
+  /** none: no broker; panel: stored by this panel; startup: set by flags or environment, read-only here. */
+  source: "none" | "panel" | "startup";
+  editable: boolean;
+  host: string | null;
+  port: number | null;
+  effective_port: number | null;
+  username: string | null;
+  password_set: boolean;
+  tls: boolean;
+  tls_ca: string | null;
+  tls_insecure: boolean;
+  client_id: string | null;
+  devices_using: number;
+  /** The change moved the destination without a new password, so the stored one was dropped. */
+  password_dropped: boolean;
+}
+
+/** The body of `PUT /server/mqtt/config` and `POST /server/mqtt/test`. Leave `password` out to keep the stored one
+ *  (only while the destination stays the same); send "" to remove it. */
+export interface MqttConfigBody {
+  host: string;
+  port?: number | null;
+  username?: string | null;
+  password?: string | null;
+  tls?: boolean;
+  tls_ca?: string | null;
+  tls_insecure?: boolean;
+  client_id?: string | null;
+}
+
+export interface MqttTestResult {
+  ok: boolean;
+  error: string | null;
+  elapsed_ms: number;
+}
+
 /** One port in `GET /server/settings` (openapi `PortSetting`). */
 export interface PortSetting {
   running: number;
@@ -178,8 +288,17 @@ export interface PortSetting {
 
 export type ServerPortName = "hub_listen_port" | "app_discovery_port" | "callback_port";
 
+/** `allowed_origins` in `GET|PUT /server/settings` (openapi `OriginsSetting`); applied live. */
+export interface OriginsSetting {
+  value: string[];
+  pinned: boolean;
+}
+
 /** `GET|PUT /server/settings` (openapi `ServerSettingsView`). */
-export type ServerSettings = Record<ServerPortName, PortSetting> & { restart_required: boolean };
+export type ServerSettings = Record<ServerPortName, PortSetting> & { allowed_origins?: OriginsSetting; restart_required: boolean };
+
+/** The body of `PUT /server/settings`. */
+export type ServerSettingsUpdate = Partial<Record<ServerPortName, number>> & { allowed_origins?: string[] };
 
 export interface RemoteCardDocument {
   hub_id: string;
@@ -233,6 +352,8 @@ export interface Device {
   device_class_code: number | null;
   power_state: number | null;
   idle_behavior: number | null;
+  /** The hub's stored display position (0 = none); the list already comes in that order. */
+  sort: number;
 }
 
 export interface Command {
@@ -245,6 +366,8 @@ export interface Activity {
   name: string;
   active: boolean;
   needs_confirm: boolean;
+  /** The hub's stored display position (0 = none); the list already comes in that order. */
+  sort: number;
 }
 
 export interface Button {
@@ -348,13 +471,32 @@ export function serverBaseFromPanelUrl(href: string): string {
   return serverBaseFromPageUrl(href, "/ui/");
 }
 
-/** A Problem body as one line (`type: detail`); anything else by status. */
+/** "hub_not_found" as "Hub not found": the last resort when a Problem carries no title. */
+export function humanizeSlug(slug: string): string {
+  const words = slug.replace(/[_-]+/gu, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "";
+}
+
+/** A Problem as one line (`title: detail`); its machine `type` only when it has no title. */
+export function problemSummary(problem: Partial<Problem> | null | undefined): string {
+  if (!problem) return "";
+  const head = problem.title || (problem.type ? humanizeSlug(problem.type) : "");
+  return [head, problem.detail].filter((part): part is string => Boolean(part)).join(": ");
+}
+
+/** A Problem body as one line (`title: detail`); anything else by status. */
 export function problemText(response: ApiResponse): string {
   const body = response.body as Partial<Problem> | null;
   if (!body || typeof body !== "object") return `HTTP ${response.status}`;
-  const head = body.type || body.title;
-  const parts = [head, body.detail].filter((part): part is string => Boolean(part));
-  return parts.join(": ") || `HTTP ${response.status}`;
+  return problemSummary(body) || `HTTP ${response.status}`;
+}
+
+/** Why a followed job did not finish, as one line; null when it did. */
+export function jobOutcomeText(job: JobView | null): string | null {
+  if (!job) return "The job could not be followed";
+  if (job.status === "done") return null;
+  if (job.error) return problemSummary(job.error) || "Failed";
+  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -363,6 +505,8 @@ export class PanelApi {
   readonly baseUrl: string;
   readonly apiRoot: string;
   private readonly _fetch: FetchLike;
+  /** Called when a request answers 401 for a signed-out browser (the shell shows the sign-in). */
+  onSignedOut: ((problem: Problem) => void) | null = null;
 
   constructor(baseUrl: string, fetchImpl?: FetchLike) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
@@ -408,6 +552,10 @@ export class PanelApi {
     }
     const responseHeaders: [string, string][] = [];
     response.headers.forEach((value, key) => responseHeaders.push([key, value]));
+    if (response.status === 401 && this.onSignedOut && !path.replace(/^\/+/, "").startsWith("auth/login")) {
+      const problem = body as unknown as Problem | null;
+      if (problem && typeof problem === "object" && SIGNED_OUT_PROBLEMS.has(String(problem.type))) this.onSignedOut(problem);
+    }
     return { ok: response.ok, status: response.status, statusText: response.statusText, headers: responseHeaders, text, body };
   }
 
@@ -425,8 +573,74 @@ export class PanelApi {
     return this.request<MqttState>("GET", "server/mqtt");
   }
 
+  mqttConfig(): Promise<ApiResponse<MqttConfigView>> {
+    return this.request<MqttConfigView>("GET", "server/mqtt/config");
+  }
+
+  updateMqttConfig(body: MqttConfigBody): Promise<ApiResponse<MqttConfigView>> {
+    return this.request<MqttConfigView>("PUT", "server/mqtt/config", { body });
+  }
+
+  removeMqttConfig(): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", "server/mqtt/config");
+  }
+
+  testMqttConfig(body: MqttConfigBody): Promise<ApiResponse<MqttTestResult>> {
+    return this.request<MqttTestResult>("POST", "server/mqtt/test", { body });
+  }
+
   retryCallbackListener(): Promise<ApiResponse<CallbackListener>> {
     return this.request<CallbackListener>("POST", "server/callback-listener/retry");
+  }
+
+  // -- access (auth plan, section 6) ---------------------------------------------
+
+  authStatus(): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("GET", "auth");
+  }
+
+  setupAdmin(username: string, password: string, remember: boolean): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("POST", "auth/setup", { body: { username, password, remember } });
+  }
+
+  signIn(username: string, password: string, remember: boolean): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("POST", "auth/login", { body: { username, password, remember } });
+  }
+
+  signOut(): Promise<ApiResponse<null>> {
+    return this.request<null>("POST", "auth/logout");
+  }
+
+  updateAdmin(change: { current_password: string; username?: string; new_password?: string }): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("PUT", "auth/admin", { body: change });
+  }
+
+  listTokens(): Promise<ApiResponse<TokenInfo[]>> {
+    return this.request<TokenInfo[]>("GET", "auth/tokens");
+  }
+
+  createToken(name: string): Promise<ApiResponse<TokenCreated>> {
+    return this.request<TokenCreated>("POST", "auth/tokens", { body: { name } });
+  }
+
+  renameToken(id: string, name: string): Promise<ApiResponse<TokenInfo>> {
+    return this.request<TokenInfo>("PATCH", `auth/tokens/${encodeURIComponent(id)}`, { body: { name } });
+  }
+
+  revokeToken(id: string): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", `auth/tokens/${encodeURIComponent(id)}`);
+  }
+
+  listSessions(): Promise<ApiResponse<SessionView[]>> {
+    return this.request<SessionView[]>("GET", "auth/sessions");
+  }
+
+  revokeOtherSessions(): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", "auth/sessions");
+  }
+
+  revokeSession(id: string): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", `auth/sessions/${encodeURIComponent(id)}`);
   }
 
   serverSettings(): Promise<ApiResponse<ServerSettings>> {
@@ -434,8 +648,22 @@ export class PanelApi {
   }
 
   /** Saves to server.json; the ports apply on the next server start. */
-  updateServerSettings(changes: Partial<Record<ServerPortName, number>>): Promise<ApiResponse<ServerSettings>> {
+  updateServerSettings(changes: ServerSettingsUpdate): Promise<ApiResponse<ServerSettings>> {
     return this.request<ServerSettings>("PUT", "server/settings", { body: changes });
+  }
+
+  updateStatus(): Promise<ApiResponse<UpdateStatus>> {
+    return this.request<UpdateStatus>("GET", "server/updates");
+  }
+
+  /** One check against PyPI now; enables nothing, downloads nothing. */
+  checkForUpdates(): Promise<ApiResponse<UpdateStatus>> {
+    return this.request<UpdateStatus>("POST", "server/updates/check");
+  }
+
+  /** The daily automatic check, saved to server.json (409 when the environment pinned it). */
+  configureUpdateCheck(automatic: boolean): Promise<ApiResponse<UpdateStatus>> {
+    return this.request<UpdateStatus>("PUT", "server/updates", { body: { automatic } });
   }
 
   /** The operations from `openapi.json`, sorted by path then method. */
@@ -474,6 +702,10 @@ export class PanelApi {
 
   disableHub(hubId: string): Promise<ApiResponse<HubView>> {
     return this.request<HubView>("POST", `hubs/${encodeURIComponent(hubId)}/disable`);
+  }
+
+  setHubProxy(hubId: string, enabled: boolean): Promise<ApiResponse<HubView>> {
+    return this.request<HubView>("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
   }
 
   removeHub(hubId: string): Promise<ApiResponse<never>> {

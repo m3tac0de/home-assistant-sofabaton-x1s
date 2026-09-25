@@ -778,11 +778,13 @@ var LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_macros_button",
   "show_favorites_button",
   "show_device_toggle",
   "mf_as_rows",
-  "mf_row_visible_rows"
+  "mf_row_visible_rows",
+  "show_favorite_device_names"
 ];
 var DEVICE_LAYOUT_PREFIX = "device:";
 var DEVICE_DEFAULT_LAYOUT_KEY = "device:default";
@@ -809,6 +811,7 @@ var DEVICE_LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
+  "show_numpad",
   "show_commands_button",
   "show_power_button",
   "show_device_toggle",
@@ -876,6 +879,7 @@ var DEVICE_LAYOUT_DEFAULTS = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_commands_button: true,
   show_power_button: true,
   show_device_toggle: true,
@@ -984,6 +988,9 @@ function favoritesButtonEnabled(layout) {
   }
   return true;
 }
+function favoriteDeviceNamesEnabled(layout) {
+  return layout?.show_favorite_device_names === true;
+}
 function mfAsRows(layout) {
   return layout?.mf_as_rows === true;
 }
@@ -1070,8 +1077,43 @@ var ID = {
   RED: 190,
   GREEN: 191,
   YELLOW: 192,
-  BLUE: 193
+  BLUE: 193,
+  // X2-only on-screen numeric keypad (docs/internal/numpad-plan.md). The
+  // hub numbers them E-first (158) down to 1 (169); the card lays them out
+  // in phone order.
+  NUM_ENTER: 158,
+  NUM_0: 159,
+  NUM_DASH: 160,
+  NUM_9: 161,
+  NUM_8: 162,
+  NUM_7: 163,
+  NUM_6: 164,
+  NUM_5: 165,
+  NUM_4: 166,
+  NUM_3: 167,
+  NUM_2: 168,
+  NUM_1: 169
 };
+var NUMPAD_KEY_IDS = Object.freeze([
+  ID.NUM_1,
+  ID.NUM_2,
+  ID.NUM_3,
+  ID.NUM_4,
+  ID.NUM_5,
+  ID.NUM_6,
+  ID.NUM_7,
+  ID.NUM_8,
+  ID.NUM_9,
+  ID.NUM_0,
+  ID.NUM_DASH,
+  ID.NUM_ENTER
+]);
+function numpadEnabled(layout) {
+  if (typeof layout?.show_numpad === "boolean") {
+    return layout.show_numpad;
+  }
+  return true;
+}
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
 var HARD_BUTTON_ID_MAP = {
   up: ID.UP,
@@ -1274,6 +1316,8 @@ var REMOTE_CARD_STRINGS_EN = {
     openOnCurrentActivity: "Current activity",
     macrosFavoritesAsRows: "Macros/Favorites as rows",
     commandsAsRows: "Commands as rows",
+    favoriteDeviceNames: "Show device names",
+    rowOptions: (groupLabel2) => `${groupLabel2} options`,
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
@@ -1283,6 +1327,7 @@ var REMOTE_CARD_STRINGS_EN = {
     channel: "Channel",
     mediaControls: "Playback",
     dvr: "DVR",
+    numpad: "Number pad",
     resetDefaultLayout: "Reset layout",
     shortcutSlotLeft: "Left shortcut",
     shortcutSlotMiddle: "Middle shortcut",
@@ -1341,7 +1386,20 @@ var REMOTE_CARD_STRINGS_EN = {
     blue: "Blue",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    // X2 on-screen keypad; digits and dash stay untranslated like A/B/C.
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 var TRANSLATIONS = {};
@@ -2226,6 +2284,43 @@ var REMOTE_CARD_CSS = `
         text-overflow: ellipsis;
       }
 
+      /* Favorites device name band (show_favorite_device_names): a narrow
+         strip along the top edge, clipped by the card's radius; the content
+         below recentres in the remaining height. */
+      .drawer-btn {
+        --sb-device-band-h: 14px;
+      }
+      .drawer-btn__device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--sb-device-band-h);
+        padding: 0 6px;
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--sb-key-label-color, var(--primary-color)) 16%, transparent);
+        color: color-mix(in srgb, var(--primary-text-color) 80%, transparent);
+        font-size: 9px;
+        font-weight: 500;
+        line-height: var(--sb-device-band-h);
+        letter-spacing: 0.02em;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .drawer-btn--custom .drawer-btn__device {
+        padding: 0 12px;
+        text-align: start;
+      }
+      .drawer-btn--banded .drawer-btn__inner--stack {
+        padding-top: calc(var(--sb-device-band-h) + 2px);
+      }
+      .drawer-btn--banded .drawer-btn__inner--row {
+        padding-top: var(--sb-device-band-h);
+      }
+
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
@@ -2236,6 +2331,10 @@ var REMOTE_CARD_CSS = `
       /* D-pad cluster */
       .dpad {
         padding: 12px;
+        position: relative;
+        perspective: 900px;
+      }
+      .dpad-face--keys {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas:
@@ -2251,6 +2350,113 @@ var REMOTE_CARD_CSS = `
       .dpad .area-ok { grid-area: ok; }
       .dpad .area-right { grid-area: right; }
       .dpad .area-down { grid-area: down; }
+
+      /* Number pad face (docs/internal/numpad-plan.md). The keys face stays
+         in flow and sets the group's height; the keypad face is laid over
+         it inside the same padding, twelve square keys in four rows, so the
+         rows below never move (Q1). The small round toggle in the dead
+         corner flips; a tap anywhere outside the group flips back (the
+         card's outside-close handler). */
+      .dpad-face {
+        backface-visibility: hidden;
+        transition:
+          transform 320ms ease,
+          opacity 200ms ease;
+      }
+      .dpad-face--numpad {
+        position: absolute;
+        inset: 12px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+        gap: 6px 10px;
+        align-items: stretch;
+        justify-items: center;
+        transform: rotateX(-180deg);
+        opacity: 0;
+        --sb-key-font-size: clamp(11px, 5.5cqw, 40px);
+      }
+      .dpad-face--numpad .key {
+        width: auto;
+        height: 100%;
+      }
+      .dpad--numpad-open .dpad-face--keys {
+        transform: rotateX(180deg);
+        opacity: 0;
+      }
+      .dpad--numpad-open .dpad-face--numpad {
+        transform: rotateX(0);
+        opacity: 1;
+      }
+      /* The button is the hit box: the visible ring is drawn 8px inside
+         it, so a finger that lands a little off the circle (the corner is
+         dead space anyway) still opens the pad. The ring sits 10px from
+         the frame, as before. */
+      .dpad-numpad-toggle {
+        position: absolute;
+        right: 2px;
+        bottom: 2px;
+        box-sizing: content-box;
+        width: clamp(26px, 7cqw, 34px);
+        height: clamp(26px, 7cqw, 34px);
+        margin: 0;
+        padding: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: 0;
+        background: transparent;
+        color: var(--sb-key-label-color, var(--primary-color));
+        opacity: 0.45;
+        cursor: pointer;
+        --mdc-icon-size: 16px;
+        font-size: 16px;
+        line-height: 1;
+        -webkit-tap-highlight-color: transparent;
+        transition: opacity 200ms ease;
+      }
+      .dpad-numpad-toggle::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 50%;
+        border: 1px solid currentColor;
+        pointer-events: none;
+      }
+      .dpad-numpad-toggle:hover,
+      .dpad-numpad-toggle:focus-visible {
+        opacity: 0.85;
+        outline: none;
+      }
+      .dpad--numpad-open .dpad-numpad-toggle {
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* D-pad off, number pad on: the keypad is the group. */
+      .dpad--numpad-only {
+        perspective: none;
+      }
+      .dpad--numpad-only .dpad-face--numpad {
+        position: static;
+        inset: auto;
+        transform: none;
+        opacity: 1;
+        gap: 10px;
+        align-items: center;
+        justify-items: stretch;
+        --sb-key-font-size: clamp(11px, 7cqw, 50px);
+      }
+      .dpad--numpad-only .dpad-face--numpad .key {
+        width: 100%;
+        height: auto;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dpad-face,
+        .dpad-numpad-toggle {
+          transition: none;
+        }
+      }
 
       /* The UI follows the locale direction, but these are spatial controls:
          changing language must never swap the physical Left/Right keys or the
@@ -3342,7 +3548,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.3";
+var CARD_VERSION = "0.2.4";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -4098,6 +4304,21 @@ var RemoteCardStore = class {
     if (this.enabledButtonsInvalid) return true;
     if (!enabled.length) return true;
     return enabled.some((entry) => entry.command === Number(id));
+  }
+  /**
+   * True when any of `ids` is bound on the current page. Unlike isEnabled
+   * this fails CLOSED without data: it gates an affordance (the number pad
+   * hint), not a key, so "unknown" must not render it.
+   */
+  anyKeyBound(ids) {
+    if (this._mode === "device") {
+      const entry = this.deviceKeymapState();
+      if (!entry || entry.status !== "ready") return false;
+      return ids.some((id) => entry.buttons.includes(id));
+    }
+    if (this.enabledButtonsInvalid) return false;
+    const enabled = this.enabledButtons();
+    return ids.some((id) => enabled.some((entry) => entry.command === id));
   }
   commandTarget(id) {
     const enabled = this.enabledButtons();
@@ -5908,7 +6129,8 @@ var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.EXIT,
   ID.DVR,
   ID.PLAY,
-  ID.GUIDE
+  ID.GUIDE,
+  ...NUMPAD_KEY_IDS
 ]);
 var DPAD_KEYS = [
   { key: "up", id: ID.UP, cmd: ID.UP, label: "", icon: "mdi:chevron-up", extraClass: "area-up" },
@@ -5918,6 +6140,20 @@ var DPAD_KEYS = [
   { key: "ok", id: ID.OK, cmd: ID.OK, label: "", icon: "mdi:circle", extraClass: "area-ok okKey", size: "big" },
   { key: "right", id: ID.RIGHT, cmd: ID.RIGHT, label: "", icon: "mdi:chevron-right", extraClass: "area-right" },
   { key: "down", id: ID.DOWN, cmd: ID.DOWN, label: "", icon: "mdi:chevron-down", extraClass: "area-down" }
+];
+var NUMPAD_KEYS = [
+  { key: "num1", id: ID.NUM_1, cmd: ID.NUM_1, label: "1", icon: "", size: "small" },
+  { key: "num2", id: ID.NUM_2, cmd: ID.NUM_2, label: "2", icon: "", size: "small" },
+  { key: "num3", id: ID.NUM_3, cmd: ID.NUM_3, label: "3", icon: "", size: "small" },
+  { key: "num4", id: ID.NUM_4, cmd: ID.NUM_4, label: "4", icon: "", size: "small" },
+  { key: "num5", id: ID.NUM_5, cmd: ID.NUM_5, label: "5", icon: "", size: "small" },
+  { key: "num6", id: ID.NUM_6, cmd: ID.NUM_6, label: "6", icon: "", size: "small" },
+  { key: "num7", id: ID.NUM_7, cmd: ID.NUM_7, label: "7", icon: "", size: "small" },
+  { key: "num8", id: ID.NUM_8, cmd: ID.NUM_8, label: "8", icon: "", size: "small" },
+  { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
+  { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
+  { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -5981,9 +6217,45 @@ function renderKey(params, spec) {
     ></sb-key-button>
   `;
 }
-function renderDpad(params, visible) {
-  if (!visible) return A;
-  return b2`<div class="dpad">${DPAD_KEYS.map((k2) => renderKey(params, k2))}</div>`;
+function renderDpad(params, visible, numpad = null) {
+  const ready = Boolean(numpad?.available);
+  if (!visible) {
+    if (!ready) return A;
+    return b2`
+      <div class="dpad dpad--numpad-only" ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+        <div class="dpad-face dpad-face--numpad">
+          ${NUMPAD_KEYS.map((k2) => renderKey(params, k2))}
+        </div>
+      </div>
+    `;
+  }
+  const open = ready && Boolean(numpad?.open);
+  const className = [
+    "dpad",
+    ready ? "dpad--numpad-ready" : "",
+    open ? "dpad--numpad-open" : ""
+  ].filter(Boolean).join(" ");
+  return b2`
+    <div class=${className} ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+      <div class="dpad-face dpad-face--keys" ?inert=${open}>
+        ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
+      </div>
+      ${ready ? b2`
+            <div class="dpad-face dpad-face--numpad" ?inert=${!open}>
+              ${NUMPAD_KEYS.map((k2) => renderKey(params, k2))}
+            </div>
+            <button
+              type="button"
+              class="dpad-numpad-toggle"
+              aria-label=${str().editor.numpad}
+              ?inert=${open}
+              @click=${() => numpad.onOpen()}
+            >
+              <ha-icon icon="mdi:dialpad" aria-hidden="true"></ha-icon>
+            </button>
+          ` : A}
+    </div>
+  `;
 }
 function renderNavRow(params, visible) {
   if (!visible) return A;
@@ -6091,11 +6363,15 @@ function customFavoriteButtonModel(favorite, fallbackDeviceId) {
 }
 
 // remote-card/src/sections/macro-favorites.ts
+function deviceBand(name) {
+  return name ? b2`<div class="drawer-btn__device" title=${name}>${name}</div>` : A;
+}
 function renderDrawerButton(params, item, type) {
   const model = drawerButtonModel(item, type, params.currentActivityId);
+  const deviceName = type === "favorites" && params.favoriteDeviceName && Number.isFinite(model.deviceId) ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn"
+      class="drawer-btn${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       ${primaryActionRef(() => {
@@ -6103,6 +6379,7 @@ function renderDrawerButton(params, item, type) {
     params.onDrawerItem({ model, itemType: type, rawItem: item });
   })}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--stack">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -6112,14 +6389,16 @@ function renderDrawerButton(params, item, type) {
 }
 function renderCustomFavoriteButton(params, favorite) {
   const model = customFavoriteButtonModel(favorite, params.currentActivityId);
+  const deviceName = params.favoriteDeviceName && !model.action && favorite.device_id != null ? params.favoriteDeviceName(model.deviceId) : "";
   return b2`
     <ha-card
-      class="drawer-btn drawer-btn--custom"
+      class="drawer-btn drawer-btn--custom${deviceName ? " drawer-btn--banded" : ""}"
       role="button"
       tabindex="0"
       style="grid-column: 1 / -1;"
       ${primaryActionRef(() => params.onCustomFavorite({ model, rawFavorite: favorite }))}
     >
+      ${deviceBand(deviceName)}
       <div class="drawer-btn__inner drawer-btn__inner--row">
         ${model.icon ? b2`<ha-icon class="drawer-btn__icon" icon=${model.icon}></ha-icon>` : A}
         <div class="name">${model.label}</div>
@@ -6498,6 +6777,11 @@ var SofabatonRemoteCard = class extends i4 {
     this._editMode = false;
     // Imperative-edge state (mirrors the legacy fields)
     this._drawerUp = false;
+    // Number pad face behind the D-pad (docs/internal/numpad-plan.md §2.4):
+    // transient, never saved; reset on any page change or when the gate
+    // stops passing.
+    this._numpadOpen = false;
+    this._numpadPageKey = null;
     this._drawerResetTimer = null;
     this._drawerContentResetTimer = null;
     this._closingDrawer = null;
@@ -6525,6 +6809,7 @@ var SofabatonRemoteCard = class extends i4 {
     this._activityRowRef = e5();
     this._loadIndicatorRef = e5();
     this._mfContainerRef = e5();
+    this._dpadRef = e5();
     this._macrosOverlayRef = e5();
     this._favoritesOverlayRef = e5();
     this._commandsOverlayRef = e5();
@@ -6671,6 +6956,13 @@ var SofabatonRemoteCard = class extends i4 {
         const clickedInToggleRow = this._macroFavoritesRowRef.value && path.includes(this._macroFavoritesRowRef.value);
         if (!(clickedInOverlay || clickedInToggleRow)) {
           this._setActiveDrawer(null);
+        }
+      }
+      if (this._numpadOpen) {
+        const dpad = this._dpadRef.value;
+        if (!(dpad && path.includes(dpad))) {
+          this._numpadOpen = false;
+          this.requestUpdate();
         }
       }
       if (this._store.activityMenuOpen) {
@@ -6828,10 +7120,17 @@ var SofabatonRemoteCard = class extends i4 {
     const deviceId = String(value) === "" ? null : Number(value);
     this._store.setDevice(Number.isFinite(deviceId) ? deviceId : null);
   }
+  _openNumpad() {
+    if (this._numpadOpen) return;
+    this._numpadOpen = true;
+    this._fireEvent("haptic", "light");
+    this.requestUpdate();
+  }
   _handleModeToggle() {
     if (this._editMode) return;
     this._fireEvent("haptic", "light");
     this._setActiveDrawer(null);
+    this._numpadOpen = false;
     this._store.toggleMode();
   }
   _syncLoadIndicator() {
@@ -7082,6 +7381,12 @@ var SofabatonRemoteCard = class extends i4 {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
+    const numpadAvailable = derived.isX2 && !store.isHubIntegration() && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
+    const numpadPageKey = `${derived.mode}:${deviceMode ? derived.deviceId ?? "" : derived.activityId ?? ""}`;
+    if (!numpadAvailable || numpadPageKey !== this._numpadPageKey) {
+      this._numpadOpen = false;
+    }
+    this._numpadPageKey = numpadPageKey;
     const keyParams = {
       isX2: derived.isX2,
       buttonVisibility: runtimeButtonVisibility({
@@ -7120,6 +7425,7 @@ var SofabatonRemoteCard = class extends i4 {
       favorites: derived.favorites,
       customFavorites: derived.customFavorites,
       currentActivityId: store.currentActivityId(),
+      favoriteDeviceName: favoriteDeviceNamesEnabled(layoutConfig) ? (deviceId) => store.deviceNameForId(deviceId) ?? "" : null,
       renderMacrosContent: store.activeDrawer === "macros" || this._closingDrawer === "macros",
       renderFavoritesContent: store.activeDrawer === "favorites" || this._closingDrawer === "favorites",
       containerRef: this._mfContainerRef,
@@ -7276,7 +7582,12 @@ var SofabatonRemoteCard = class extends i4 {
         itemCount: derived.customFavorites.length + derived.favorites.length,
         emptyText: str().card.noFavorites
       }) : A,
-      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad)),
+      dpad: () => renderDpad(keyParams, Boolean(layoutConfig.show_dpad), {
+        available: numpadAvailable,
+        open: this._numpadOpen,
+        hostRef: this._dpadRef,
+        onOpen: () => this._openNumpad()
+      }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
       media: () => renderMedia(keyParams, mediaEnabled),
@@ -7551,6 +7862,7 @@ var mdiCurtainsClosed = "M23 3H1V1H23V3M2 22H11V4H2V22M22 4H13V22H22V4Z";
 var mdiDatabaseImportOutline = "M8.84 12L3.92 16.92L2.5 15.5L5 13H0V11H5L2.5 8.5L3.92 7.08L8.84 12M12 3C8.59 3 5.68 4.07 4.53 5.57L5 6L6.03 7.07C6 7.05 6 7 6 7C6 6.5 8.13 5 12 5S18 6.5 18 7 15.87 9 12 9C9.38 9 7.58 8.31 6.68 7.72L9.8 10.84C10.5 10.94 11.24 11 12 11C14.39 11 16.53 10.47 18 9.64V12.45C16.7 13.4 14.42 14 12 14C11.04 14 10.1 13.9 9.24 13.73L7.59 15.37C8.91 15.77 10.41 16 12 16C14.28 16 16.39 15.55 18 14.77V17C18 17.5 15.87 19 12 19S6 17.5 6 17V16.96L5 18L4.54 18.43C5.69 19.93 8.6 21 12 21C16.41 21 20 19.21 20 17V7C20 4.79 16.42 3 12 3Z";
 var mdiDatabaseRefreshOutline = "M6 12.45V9.64C7.47 10.47 9.61 11 12 11S16.53 10.47 18 9.64V12.03C18.17 12 18.33 12 18.5 12C19 12 19.5 12.07 20 12.18V7C20 4.79 16.42 3 12 3S4 4.79 4 7V17C4 19.21 7.59 21 12 21C12.17 21 12.33 21 12.5 21C12.24 20.37 12.09 19.7 12.03 19L12 19C8.13 19 6 17.5 6 17V14.77C7.61 15.55 9.72 16 12 16C12.17 16 12.34 16 12.5 16C12.85 15.18 13.34 14.46 13.95 13.86C13.32 13.95 12.67 14 12 14C9.58 14 7.3 13.4 6 12.45M12 5C15.87 5 18 6.5 18 7S15.87 9 12 9 6 7.5 6 7 8.13 5 12 5M18 18.5L19.77 16.73C19.32 16.28 18.69 16 18 16C16.62 16 15.5 17.12 15.5 18.5S16.62 21 18 21C18.82 21 19.54 20.61 20 20H21.71C21.12 21.47 19.68 22.5 18 22.5C15.79 22.5 14 20.71 14 18.5S15.79 14.5 18 14.5C19.11 14.5 20.11 14.95 20.83 15.67L22 14.5V18.5H18Z";
 var mdiDesktopTower = "M8,2H16A2,2 0 0,1 18,4V20A2,2 0 0,1 16,22H8A2,2 0 0,1 6,20V4A2,2 0 0,1 8,2M8,4V6H16V4H8M16,8H8V10H16V8M16,18H14V20H16V18Z";
+var mdiDialpad = "M12,19A2,2 0 0,0 10,21A2,2 0 0,0 12,23A2,2 0 0,0 14,21A2,2 0 0,0 12,19M6,1A2,2 0 0,0 4,3A2,2 0 0,0 6,5A2,2 0 0,0 8,3A2,2 0 0,0 6,1M6,7A2,2 0 0,0 4,9A2,2 0 0,0 6,11A2,2 0 0,0 8,9A2,2 0 0,0 6,7M6,13A2,2 0 0,0 4,15A2,2 0 0,0 6,17A2,2 0 0,0 8,15A2,2 0 0,0 6,13M18,5A2,2 0 0,0 20,3A2,2 0 0,0 18,1A2,2 0 0,0 16,3A2,2 0 0,0 18,5M12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17A2,2 0 0,0 14,15A2,2 0 0,0 12,13M18,13A2,2 0 0,0 16,15A2,2 0 0,0 18,17A2,2 0 0,0 20,15A2,2 0 0,0 18,13M18,7A2,2 0 0,0 16,9A2,2 0 0,0 18,11A2,2 0 0,0 20,9A2,2 0 0,0 18,7M12,7A2,2 0 0,0 10,9A2,2 0 0,0 12,11A2,2 0 0,0 14,9A2,2 0 0,0 12,7M12,1A2,2 0 0,0 10,3A2,2 0 0,0 12,5A2,2 0 0,0 14,3A2,2 0 0,0 12,1Z";
 var mdiDisc = "M12,14C10.89,14 10,13.1 10,12C10,10.89 10.89,10 12,10C13.11,10 14,10.89 14,12A2,2 0 0,1 12,14M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiDiscPlayer = "M14.5,10.37C15.54,10.37 16.38,9.53 16.38,8.5C16.38,7.46 15.54,6.63 14.5,6.63C13.46,6.63 12.63,7.46 12.63,8.5A1.87,1.87 0 0,0 14.5,10.37M14.5,1A7.5,7.5 0 0,1 22,8.5C22,10.67 21.08,12.63 19.6,14H9.4C7.93,12.63 7,10.67 7,8.5C7,4.35 10.36,1 14.5,1M6,21V22H4V21H2V15H22V21H20V22H18V21H6M4,18V19H13V18H4M15,17V19H17V17H15M19,17A1,1 0 0,0 18,18A1,1 0 0,0 19,19A1,1 0 0,0 20,18A1,1 0 0,0 19,17Z";
 var mdiDishwasher = "M18,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V4A2,2 0 0,0 18,2M10,4A1,1 0 0,1 11,5A1,1 0 0,1 10,6A1,1 0 0,1 9,5A1,1 0 0,1 10,4M7,4A1,1 0 0,1 8,5A1,1 0 0,1 7,6A1,1 0 0,1 6,5A1,1 0 0,1 7,4M18,20H6V8H18V20M14.67,15.33C14.69,16.03 14.41,16.71 13.91,17.21C12.86,18.26 11.15,18.27 10.09,17.21C9.59,16.71 9.31,16.03 9.33,15.33C9.4,14.62 9.63,13.94 10,13.33C10.37,12.5 10.81,11.73 11.33,11L12,10C13.79,12.59 14.67,14.36 14.67,15.33";
@@ -7901,6 +8213,7 @@ var MDI_ICON_PATHS = {
   "curtains": mdiCurtains,
   "curtains-closed": mdiCurtainsClosed,
   "desktop-tower": mdiDesktopTower,
+  "dialpad": mdiDialpad,
   "disc": mdiDisc,
   "disc-player": mdiDiscPlayer,
   "dishwasher": mdiDishwasher,
@@ -8425,7 +8738,7 @@ var SbHaSelect = class extends HTMLElement {
       label: (item.textContent ?? "").trim(),
       defaultLayout: item.classList.contains("sb-option-default")
     }));
-    if (!this._options.some((option) => option.value === current)) {
+    if (current !== "" && !this._options.some((option) => option.value === current)) {
       this._value = this._options[0]?.value ?? "";
     }
     this._renderValue();
@@ -8784,6 +9097,8 @@ var REMOTE_CARD_STRINGS_AR = {
     openOnCurrentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u062D\u0627\u0644\u064A",
     macrosFavoritesAsRows: "\u0639\u0631\u0636 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648 \u0648\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0641\u064A \u0635\u0641\u0648\u0641",
     commandsAsRows: "\u0639\u0631\u0636 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0641\u064A \u0635\u0641\u0648\u0641",
+    favoriteDeviceNames: "\u0625\u0638\u0647\u0627\u0631 \u0623\u0633\u0645\u0627\u0621 \u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    rowOptions: (groupLabel2) => `\u062E\u064A\u0627\u0631\u0627\u062A ${groupLabel2}`,
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
@@ -8793,6 +9108,7 @@ var REMOTE_CARD_STRINGS_AR = {
     channel: "\u0627\u0644\u0642\u0646\u0627\u0629",
     mediaControls: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     dvr: DVR,
+    numpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
     resetDefaultLayout: "\u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u062A\u062E\u0637\u064A\u0637",
     shortcutSlotLeft: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u064A\u0633\u0631",
     shortcutSlotMiddle: "\u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0623\u0648\u0633\u0637",
@@ -8851,7 +9167,19 @@ var REMOTE_CARD_STRINGS_AR = {
     blue: "\u0623\u0632\u0631\u0642",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "\u0625\u062F\u062E\u0627\u0644"
   }
 };
 registerRemoteCardTranslation("ar", REMOTE_CARD_STRINGS_AR);
@@ -9000,6 +9328,8 @@ var REMOTE_CARD_STRINGS_DE = {
     openOnCurrentActivity: "Aktuelle Aktivit\xE4t",
     macrosFavoritesAsRows: "Makros/Favoriten als Zeilen",
     commandsAsRows: "Befehle als Zeilen",
+    favoriteDeviceNames: "Ger\xE4tenamen anzeigen",
+    rowOptions: (groupLabel2) => `Optionen f\xFCr ${groupLabel2}`,
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
@@ -9009,6 +9339,7 @@ var REMOTE_CARD_STRINGS_DE = {
     channel: "Kanal",
     mediaControls: "Wiedergabe",
     dvr: "DVR",
+    numpad: "Ziffernblock",
     resetDefaultLayout: "Layout zur\xFCcksetzen",
     shortcutSlotLeft: "Linke Verkn\xFCpfung",
     shortcutSlotMiddle: "Mittlere Verkn\xFCpfung",
@@ -9067,7 +9398,19 @@ var REMOTE_CARD_STRINGS_DE = {
     blue: "Blau",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 registerRemoteCardTranslation("de", REMOTE_CARD_STRINGS_DE);
@@ -9195,6 +9538,8 @@ var REMOTE_CARD_STRINGS_ES = {
     openOnCurrentActivity: "Actividad actual",
     macrosFavoritesAsRows: "Macros/favoritos como filas",
     commandsAsRows: "Comandos como filas",
+    favoriteDeviceNames: "Mostrar nombres de dispositivos",
+    rowOptions: (groupLabel2) => `Opciones de ${groupLabel2}`,
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
@@ -9204,6 +9549,7 @@ var REMOTE_CARD_STRINGS_ES = {
     channel: "Canal",
     mediaControls: "Reproducci\xF3n",
     dvr: "DVR",
+    numpad: "Teclado num\xE9rico",
     resetDefaultLayout: "Restablecer dise\xF1o",
     shortcutSlotLeft: "Acceso directo izquierdo",
     shortcutSlotMiddle: "Acceso directo central",
@@ -9262,7 +9608,19 @@ var REMOTE_CARD_STRINGS_ES = {
     blue: "Azul",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Intro"
   }
 };
 registerRemoteCardTranslation("es", REMOTE_CARD_STRINGS_ES);
@@ -9390,6 +9748,8 @@ var REMOTE_CARD_STRINGS_FR = {
     openOnCurrentActivity: "Activit\xE9 en cours",
     macrosFavoritesAsRows: "Macros/favoris sous forme de lignes",
     commandsAsRows: "Commandes sous forme de lignes",
+    favoriteDeviceNames: "Afficher les noms des appareils",
+    rowOptions: (groupLabel2) => `Options de ${groupLabel2}`,
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
@@ -9399,6 +9759,7 @@ var REMOTE_CARD_STRINGS_FR = {
     channel: "Cha\xEEne",
     mediaControls: "Lecture",
     dvr: "DVR",
+    numpad: "Pav\xE9 num\xE9rique",
     resetDefaultLayout: "R\xE9initialiser",
     shortcutSlotLeft: "Raccourci gauche",
     shortcutSlotMiddle: "Raccourci central",
@@ -9457,7 +9818,19 @@ var REMOTE_CARD_STRINGS_FR = {
     blue: "Bleu",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Entr\xE9e"
   }
 };
 registerRemoteCardTranslation("fr", REMOTE_CARD_STRINGS_FR);
@@ -9584,6 +9957,8 @@ var REMOTE_CARD_STRINGS_NL = {
     openOnCurrentActivity: "Huidige activiteit",
     macrosFavoritesAsRows: "Macro's/favorieten als rijen",
     commandsAsRows: "Commando's als rijen",
+    favoriteDeviceNames: "Apparaatnamen tonen",
+    rowOptions: (groupLabel2) => `Opties voor ${groupLabel2}`,
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
@@ -9593,6 +9968,7 @@ var REMOTE_CARD_STRINGS_NL = {
     channel: "Kanaal",
     mediaControls: "Afspelen",
     dvr: "DVR",
+    numpad: "Cijfertoetsen",
     resetDefaultLayout: "Indeling resetten",
     shortcutSlotLeft: "Linker snelkoppeling",
     shortcutSlotMiddle: "Middelste snelkoppeling",
@@ -9651,7 +10027,19 @@ var REMOTE_CARD_STRINGS_NL = {
     blue: "Blauw",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "Enter"
   }
 };
 registerRemoteCardTranslation("nl", REMOTE_CARD_STRINGS_NL);
@@ -9778,6 +10166,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     openOnCurrentActivity: "\u5F53\u524D\u6D3B\u52A8",
     macrosFavoritesAsRows: "\u5C06\u5B8F/\u6536\u85CF\u663E\u793A\u4E3A\u884C",
     commandsAsRows: "\u5C06\u547D\u4EE4\u663E\u793A\u4E3A\u884C",
+    favoriteDeviceNames: "\u663E\u793A\u8BBE\u5907\u540D\u79F0",
+    rowOptions: (groupLabel2) => `${groupLabel2}\u9009\u9879`,
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
@@ -9787,6 +10177,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     channel: "\u9891\u9053",
     mediaControls: "\u64AD\u653E",
     dvr: "DVR",
+    numpad: "\u6570\u5B57\u952E\u76D8",
     resetDefaultLayout: "\u91CD\u7F6E\u5E03\u5C40",
     shortcutSlotLeft: "\u5DE6\u4FA7\u5FEB\u6377\u6309\u952E",
     shortcutSlotMiddle: "\u4E2D\u95F4\u5FEB\u6377\u6309\u952E",
@@ -9845,450 +10236,22 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     blue: "\u84DD",
     a: "A",
     b: "B",
-    c: "C"
+    c: "C",
+    num0: "0",
+    num1: "1",
+    num2: "2",
+    num3: "3",
+    num4: "4",
+    num5: "5",
+    num6: "6",
+    num7: "7",
+    num8: "8",
+    num9: "9",
+    numdash: "-",
+    numenter: "\u786E\u5B9A"
   }
 };
 registerRemoteCardTranslation("zh-hans", REMOTE_CARD_STRINGS_ZH_HANS);
-
-// node_modules/lit-html/directives/keyed.js
-var i7 = e4(class extends i5 {
-  constructor() {
-    super(...arguments), this.key = A;
-  }
-  render(r6, t5) {
-    return this.key = r6, t5;
-  }
-  update(r6, [t5, e6]) {
-    return t5 !== this.key && (p3(r6), this.key = t5), e6;
-  }
-});
-
-// server-panel/src/components/bottom-dock.ts
-function renderBottomDock(params) {
-  const { model, message } = params;
-  let tone = "";
-  let center;
-  let actions = A;
-  if (model.kind === "running") {
-    tone = "dock--running";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-    actions = model.cancellable ? b2`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling\u2026" : "Cancel"}</button>` : A;
-  } else if (message) {
-    tone = message.ok ? "dock--message" : "dock--error";
-    center = b2`<span class="dock-status" id="hubs-msg">${message.text}</span>`;
-  } else if (model.kind === "notice") {
-    tone = `dock--${model.notice.tone}`;
-    center = b2`<span class="dock-status" id="dock-status">${model.notice.label}${model.notice.detail ? b2`<span class="dock-detail"> · ${model.notice.detail}</span>` : A}</span>`;
-    actions = b2`<button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
-  } else if (model.kind === "apply_stopped") {
-    tone = "dock--warn";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-    actions = b2`
-      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
-      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
-  } else if (model.kind === "draft_stale") {
-    tone = "dock--warn";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-    actions = b2`
-      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "dirty") {
-    tone = "dock--dirty";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-    actions = b2`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
-    tone = "dock--dirty";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-  } else if (model.kind === "gate") {
-    tone = "dock--gate";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-  } else if (params.docLink) {
-    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
-  } else {
-    center = b2``;
-  }
-  const progress = model.kind === "running" ? model.progress : null;
-  const press = params.press;
-  return b2`
-    <footer class="dock ${tone}" id="bottom-dock">
-      <div class="dock-inner">
-        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
-        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
-        <div class="dock-center" role="status" aria-live="polite">${center}</div>
-        <div class="dock-right">
-          ${actions !== A ? b2`<div class="dock-actions">${actions}</div>` : A}
-          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
-                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
-                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
-              </div>` : A}
-        </div>
-      </div>
-    </footer>
-  `;
-}
-
-// server-panel/src/panel-route.ts
-var HUB_TABS = ["hub", "wifi", "backup", "remote"];
-var SUBTABS = {
-  hub: ["activities", "devices"],
-  wifi: ["devices"],
-  backup: ["make", "edit", "restore"],
-  remote: ["card", "layout"]
-};
-var TAB_LABELS = { hub: "Hub", wifi: "Wifi Commands", backup: "Backup", remote: "Remote" };
-var TOOL_PAGES = ["setup", "server", "debug"];
-var TOOL_LABELS = { setup: "Hub settings", server: "Server settings", debug: "Debug" };
-var TOOL_SUBTABS = {
-  setup: ["hubs"],
-  server: ["status"],
-  debug: ["api", "events"]
-};
-var SUBTAB_LABELS = {
-  activities: "Activities",
-  devices: "Devices",
-  make: "Make",
-  edit: "Edit",
-  restore: "Restore",
-  card: "Card",
-  layout: "Layout",
-  hubs: "Hubs",
-  status: "Status",
-  api: "API console",
-  events: "Event stream",
-  // A subtab id can repeat across tabs; `<tab>/<sub>` wins over the bare id.
-  "wifi/devices": "Wifi Devices"
-};
-function subtabLabel(scope, sub) {
-  return SUBTAB_LABELS[`${scope}/${sub}`] ?? SUBTAB_LABELS[sub] ?? sub;
-}
-function isHubTab(value) {
-  return typeof value === "string" && HUB_TABS.includes(value);
-}
-function isToolPage(value) {
-  return typeof value === "string" && TOOL_PAGES.includes(value);
-}
-function normalizeSub(tab, sub) {
-  const subs = SUBTABS[tab];
-  return sub && subs.includes(sub) ? sub : subs[0];
-}
-function normalizeEntity(tab, entity) {
-  if (tab !== "hub") return void 0;
-  const id = typeof entity === "number" ? entity : typeof entity === "string" && /^\d+$/.test(entity) ? Number(entity) : NaN;
-  return Number.isInteger(id) && id > 0 ? id : void 0;
-}
-function normalizeItem(tab, item) {
-  if (tab !== "wifi" || typeof item !== "string") return void 0;
-  return /^[A-Za-z0-9_-]{1,32}$/.test(item) ? item : void 0;
-}
-function hubRoute(hubId, tab = "hub", sub, entity, item) {
-  const id = normalizeEntity(tab, entity);
-  const key = normalizeItem(tab, item);
-  const route = { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) };
-  if (id !== void 0) route.entity = id;
-  if (key !== void 0) route.item = key;
-  return route;
-}
-function normalizeToolSub(page, sub) {
-  const subs = TOOL_SUBTABS[page];
-  return sub && subs.includes(sub) ? sub : subs[0];
-}
-function toolRoute(page, sub) {
-  return { kind: "tool", page, sub: normalizeToolSub(page, sub) };
-}
-var LEGACY = {
-  hubs: toolRoute("setup"),
-  catalog: hubRoute(null, "hub"),
-  remote: hubRoute(null, "remote"),
-  api: toolRoute("debug", "api"),
-  events: toolRoute("debug", "events")
-};
-function parseRoute(hash) {
-  const raw = hash.replace(/^#/, "");
-  if (!raw) return null;
-  if (!raw.startsWith("/")) return LEGACY[raw] ?? null;
-  const parts = raw.split("/").filter(Boolean).map((p4) => {
-    try {
-      return decodeURIComponent(p4);
-    } catch {
-      return p4;
-    }
-  });
-  if (!parts.length) return null;
-  if (isToolPage(parts[0])) return toolRoute(parts[0], parts[1]);
-  if (parts.length === 1 && (parts[0] === "api" || parts[0] === "events")) return toolRoute("debug", parts[0]);
-  const [first, tab, sub, entity] = parts;
-  const hubId = first === "-" ? null : first;
-  if (tab !== void 0 && !isHubTab(tab)) return hubRoute(hubId, "hub");
-  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity), normalizeItem(tab ?? "hub", entity));
-}
-function hashFor(route) {
-  if (route.kind === "tool") return `#/${route.page}/${route.sub}`;
-  const hub = route.hubId ? encodeURIComponent(route.hubId) : "-";
-  const tail = route.entity !== void 0 ? `/${route.entity}` : route.item !== void 0 ? `/${encodeURIComponent(route.item)}` : "";
-  return `#/${hub}/${route.tab}/${route.sub}${tail}`;
-}
-function routeScope(route) {
-  if (route.kind === "tool") return `${route.page}/${route.sub}`;
-  return `${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : route.item !== void 0 ? `/${route.item}` : ""}`;
-}
-function sameRoute(a4, b3) {
-  return hashFor(a4) === hashFor(b3);
-}
-function withHub(route, hubId) {
-  return route.kind === "hub" ? { ...route, hubId } : route;
-}
-
-// server-panel/src/panel-state.ts
-function hubState(hub) {
-  if (!hub.enabled) return { text: "disabled", tone: "off" };
-  const s7 = hub.status;
-  if (!s7) return { text: "not running: the proxy did not start", tone: "err" };
-  if (s7.mode === "disconnected" || !s7.hub_connected) return { text: "waiting for the hub to connect", tone: "warn" };
-  if (s7.mode === "observe") return { text: s7.app_connected ? "observing: the app holds the hub" : "observing", tone: "warn" };
-  return { text: s7.catalog_ready ? "connected, in control" : "connected, first sync running", tone: "ok" };
-}
-function hubDisplayName(hub) {
-  return hub.config?.name || hub.hub_name || hub.hub_id;
-}
-function unregisteredHubs(seen, hubs) {
-  const macKey = (value) => String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
-  return seen.filter((s7) => !hubs.some((h6) => {
-    const mac = macKey(s7.config.mac);
-    return h6.hub_id === s7.registered_hub_id || h6.config.host === s7.config.host || Boolean(mac && (mac === macKey(h6.config.mac) || mac === h6.hub_id));
-  }));
-}
-function formatWhen(iso) {
-  if (!iso) return "never";
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? String(iso) : date.toLocaleString();
-}
-function actionOutcome(action, record) {
-  if (action === "enable") return record?.enabled ? "started" : "enabled";
-  return action === "disable" ? "disabled" : "removed";
-}
-var THEMES = ["auto", "light", "dark"];
-function isTheme(value) {
-  return typeof value === "string" && THEMES.includes(value);
-}
-function nextTheme(current) {
-  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
-}
-var PREFS_KEY = "sofabaton-panel";
-function loadPrefs(storage) {
-  const prefs = { hub: null, tab: "hub", sub: SUBTABS.hub[0], theme: "auto" };
-  if (!storage) return prefs;
-  try {
-    const raw = storage.getItem(PREFS_KEY);
-    if (!raw) return prefs;
-    const data = JSON.parse(raw);
-    if (typeof data.hub === "string") prefs.hub = data.hub;
-    if (isHubTab(data.tab)) prefs.tab = data.tab;
-    else if (data.view === "remote") prefs.tab = "remote";
-    prefs.sub = normalizeSub(prefs.tab, typeof data.sub === "string" ? data.sub : null);
-    if (isTheme(data.theme)) prefs.theme = data.theme;
-  } catch {
-  }
-  return prefs;
-}
-function savePrefs(storage, prefs) {
-  if (!storage) return;
-  try {
-    storage.setItem(PREFS_KEY, JSON.stringify(prefs));
-  } catch {
-  }
-}
-var HISTORY_KEY = "sofabaton-panel-history";
-var HISTORY_LIMIT = 30;
-function loadHistory(storage) {
-  if (!storage) return [];
-  try {
-    const data = JSON.parse(storage.getItem(HISTORY_KEY) || "[]");
-    return Array.isArray(data) ? data.slice(0, HISTORY_LIMIT) : [];
-  } catch {
-    return [];
-  }
-}
-function saveHistory(storage, history2) {
-  if (!storage) return;
-  try {
-    storage.setItem(HISTORY_KEY, JSON.stringify(history2.slice(0, HISTORY_LIMIT)));
-  } catch {
-  }
-}
-function prettyJson(text) {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
-  }
-}
-function parseHeaderLines(text) {
-  const out = {};
-  for (const line of text.split("\n")) {
-    const i8 = line.indexOf(":");
-    if (i8 < 0) continue;
-    const name = line.slice(0, i8).trim();
-    if (name) out[name] = line.slice(i8 + 1).trim();
-  }
-  return out;
-}
-
-// server-panel/src/components/hub-picker.ts
-var icon = (path) => b2`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
-var HUB_PICKER_CSS = i`
-  .hub-picker-menu { width: 350px; }
-  .picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 10px 4px 14px; min-height: 38px; color: var(--sbp-muted); font-size: 11px; font-weight: 600; }
-  .picker-heading-label { text-transform: uppercase; letter-spacing: 0.06em; }
-  .picker-row { display: flex; align-items: center; gap: 2px; padding-right: 6px; }
-  .picker-row .hub-option { flex: 1; min-width: 0; }
-  .picker-row.selected { background: rgba(var(--sbp-accent-rgb), 0.12); }
-  .picker-row .menu-item.selected { background: transparent; }
-  .picker-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 36px; min-height: 36px; padding: 8px; border: 0; background: transparent; color: var(--sbp-muted); }
-  .picker-icon:hover, .picker-icon[aria-expanded="true"] { background: var(--sbp-panel-2); color: var(--sbp-text); }
-  .picker-icon svg, .picker-manual-button svg { width: 18px; height: 18px; flex: 0 0 auto; }
-  .picker-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 12px; }
-  .picker-actions button { min-height: 36px; font-size: 12px; }
-  .picker-seen { padding: 7px 10px 7px 14px; gap: 10px; min-height: 54px; }
-  .picker-seen .menu-title { font-weight: 500; }
-  .picker-seen .small { min-height: 36px; flex: 0 0 auto; color: var(--sbp-accent); }
-  .picker-unseen { color: var(--sbp-muted); }
-  .picker-empty, .picker-error { margin: 0; padding: 6px 14px 12px; font-size: 12px; line-height: 1.5; }
-  .picker-empty { color: var(--sbp-muted); }
-  .picker-error { color: var(--sbp-err); overflow-wrap: anywhere; }
-  .picker-form { padding: 0 14px 12px; }
-  .picker-form label { text-transform: none; letter-spacing: 0; font-size: 12px; }
-  .picker-form input:not([type="checkbox"]) { min-height: 40px; }
-  .picker-form .inline { margin: 12px 0; }
-  .picker-form .hint { margin: 0 0 12px; }
-  .picker-form .actions { justify-content: flex-end; }
-  @container (max-width: 600px) {
-    .hub-picker { position: static; }
-    .hub-picker-menu { right: var(--page-gutter); width: min(350px, calc(100cqw - 2 * var(--page-gutter))); max-width: calc(100cqw - 2 * var(--page-gutter)); }
-  }
-`;
-function renderHubPicker(params) {
-  const selected = params.hubs.find((r6) => r6.hub.hub_id === params.selectedHubId) ?? null;
-  const label = selected ? hubDisplayName(selected.hub) : params.hubs.length ? "pick a hub" : "no hub";
-  const tone = selected ? hubState(selected.hub).tone : "off";
-  const discovered = unregisteredHubs(params.seen, params.hubs.map((r6) => r6.hub));
-  return b2`
-    <div class="hub-picker" id="hub-picker" @keydown=${params.onKeyDown}>
-      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" title=${label} aria-haspopup="dialog" aria-controls="hub-picker-menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
-        <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.open ? mdiChevronUp : mdiChevronDown}></path></svg>
-      </button>
-      ${params.open ? b2`
-        <div class="menu hub-picker-menu" id="hub-picker-menu" role="dialog" aria-label=${params.manual ? "Add hub by address" : "Hubs"}>
-          ${params.manual ? b2`
-            <div class="picker-heading"><span>Add hub by address</span></div>
-            <form class="picker-form" id="hub-add" @submit=${params.onSubmit}>
-              <label for="add-host">IP address or hostname</label>
-              <input id="add-host" name="host" placeholder="192.168.1.50" autocomplete="off" required ?disabled=${params.adding}>
-              <label for="add-name">Name (optional)</label>
-              <input id="add-name" name="name" autocomplete="off" ?disabled=${params.adding}>
-              <label class="inline"><input type="checkbox" id="add-disabled" name="disabled" ?disabled=${params.adding}> Start disabled — connect later</label>
-              <p class="hint">If another server or Home Assistant manages this hub, disable it there before connecting here.</p>
-              ${params.error ? b2`<p class="picker-error" role="alert">${params.error}</p>` : A}
-              <div class="actions"><button type="button" ?disabled=${params.adding} @click=${() => params.onManual(false)}>Back</button><button class="primary" id="add-send" type="submit" ?disabled=${params.adding}>${params.adding ? "Adding\u2026" : "Add hub"}</button></div>
-            </form>
-          ` : b2`
-            <div role="group" aria-label="Registered hubs">
-              <div class="picker-heading"><span class="picker-heading-label">Registered hubs</span></div>
-              ${params.hubs.length ? params.hubs.map(({ hub }) => {
-    const { text, tone: t5 } = hubState(hub);
-    const name = hubDisplayName(hub);
-    const active = hub.hub_id === params.selectedHubId;
-    const expanded = params.actionsHubId === hub.hub_id;
-    const busy = params.busy.has(hub.hub_id);
-    return b2`
-                  <div class="picker-row ${active ? "selected" : ""}">
-                    <button class="menu-item hub-option ${active ? "selected" : ""}" type="button" data-hub=${hub.hub_id} aria-pressed=${String(active)} @click=${() => params.onSelect(hub.hub_id)}>
-                      <span class="dot ${t5}"></span><span class="menu-main"><span class="menu-title">${name}</span><span class="menu-sub" title=${`${hub.config.host} \xB7 ${text}`}>${hub.config.host} · ${text}</span></span>
-                    </button>
-                    <button class="picker-icon" type="button" aria-label=${`Manage ${name}`} aria-expanded=${String(expanded)} @click=${() => params.onActions(hub.hub_id)}>${icon(mdiDotsHorizontal)}</button>
-                  </div>
-                  ${expanded ? b2`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
-                    ${!hub.enabled || !hub.status ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : A}
-                    ${hub.enabled ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : A}
-                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Remove…</button>
-                  </div>` : A}
-                `;
-  }) : b2`<p class="picker-empty">No hubs registered yet.</p>`}
-            </div>
-            <div class="menu-sep"></div>
-            <div role="group" aria-label="Discovered hubs">
-              <div class="picker-heading"><span class="picker-heading-label">Discovered hubs</span><span aria-live="polite">${params.scanning ? "Scanning\u2026" : ""}</span><button class="picker-icon" id="seen-scan" type="button" aria-label="Scan for hubs" title="Scan for hubs" ?disabled=${params.scanning} @click=${params.onScan}>${icon(mdiRefresh)}</button></div>
-              ${discovered.length ? discovered.map((s7) => b2`
-                <div class="picker-row picker-seen ${s7.present ? "" : "picker-unseen"}" data-seen=${s7.key}>
-                  <span class="menu-main"><span class="menu-title">${s7.config.name || s7.config.host}</span><span class="menu-sub" title=${`Last seen ${formatWhen(s7.last_seen)} \xB7 ${s7.config.mac || "MAC unknown"}`}>${s7.config.host}${s7.config.hub_version ? ` \xB7 ${s7.config.hub_version}` : ""}${s7.present ? "" : " \xB7 Not currently seen"}</span></span>
-                  <button class="small" type="button" aria-label=${`Add ${s7.config.name || s7.config.host}`} ?disabled=${params.adding} @click=${() => params.onAdd(s7)}>Add</button>
-                </div>
-              `) : b2`<p class="picker-empty" id="seen-empty">${params.scanning ? "Looking for hubs on your network\u2026" : "No unregistered hubs found. Close the Sofabaton app if a hub is missing, then scan again."}</p>`}
-            </div>
-            ${params.error ? b2`<p class="picker-error" role="alert">${params.error}</p>` : A}
-            <div class="menu-sep"></div>
-            <button class="menu-item picker-manual-button" type="button" id="hub-picker-manual" ?disabled=${params.adding} @click=${() => params.onManual(true)}>${icon(mdiPlus)}<span class="menu-title">Add by address…</span></button>
-          `}
-        </div>` : A}
-    </div>
-  `;
-}
-
-// server-panel/src/components/tab-bar.ts
-var SUBTAB_ICONS = {
-  activities: mdiPlayCircleOutline,
-  devices: mdiAudioVideo,
-  make: mdiContentSaveMoveOutline,
-  edit: mdiPencilBoxOutline,
-  restore: mdiDatabaseImportOutline,
-  "wifi/devices": mdiWifi,
-  card: mdiRemote,
-  layout: mdiViewDashboardEditOutline
-};
-function renderTabBar(params) {
-  const route = params.route;
-  const onTool = route.kind === "tool";
-  const pageItem = (page) => b2`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
-    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}</span></span>
-  </button>`;
-  return b2`
-    <div class="tabs" id="tabs">
-      <div class="tabs-scroll" role="tablist" aria-label="Hub sections">
-        ${HUB_TABS.map(
-    (tab) => b2`<button class="tab-btn ${!onTool && route.tab === tab ? "active" : ""}" type="button" role="tab" data-tab=${tab} aria-selected=${String(!onTool && route.tab === tab)} @click=${() => params.onTab(tab)}>
-            <span class="tab-btn-label">${TAB_LABELS[tab]}</span>
-          </button>`
-  )}
-      </div>
-      <div class="tab-menu" id="cog">
-        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-label=${onTool ? `Setup and tools: ${TOOL_LABELS[route.page]}` : "Setup and tools"} aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title="setup and tools" @click=${params.onToggleCog}>
-          <svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
-        </button>
-        ${params.cogOpen ? b2`<div class="menu cog-menu" id="cog-menu" role="menu">
-              ${TOOL_PAGES.filter((page) => page !== "server").map(pageItem)}
-              <div class="menu-sep"></div>
-              ${pageItem("server")}
-              <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
-                <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
-              </button>
-            </div>` : A}
-      </div>
-    </div>
-    <div class="subtabs" id="subtabs" role="tablist" aria-label=${onTool ? TOOL_LABELS[route.page] : TAB_LABELS[route.tab]} data-page=${onTool ? route.page : route.tab}>
-      ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
-    (sub) => {
-      const count = params.subCounts?.[sub];
-      const scope = onTool ? route.page : route.tab;
-      const iconPath = SUBTAB_ICONS[`${scope}/${sub}`] ?? SUBTAB_ICONS[sub];
-      return b2`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>
-            ${iconPath ? b2`<svg class="subtab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${iconPath}></path></svg>` : A}
-            <span class="subtab-label">${subtabLabel(scope, sub)}</span>
-            ${typeof count === "number" ? b2`<span class="subtab-count">${count}</span>` : A}
-          </button>`;
-    }
-  )}
-    </div>
-  `;
-}
 
 // remote-card/src/backend/server-backend.ts
 var SERVER_API_PREFIX = "/api/v1";
@@ -10969,19 +10932,35 @@ function cardConfigForWebRemote(hubId, document2, options = {}) {
 }
 
 // server-panel/src/panel-api.ts
+var SIGNED_OUT_PROBLEMS = /* @__PURE__ */ new Set(["auth_required", "invalid_credentials"]);
 var TERMINAL_JOB_STATES = /* @__PURE__ */ new Set(["done", "failed", "cancelled"]);
 function serverBaseFromPanelUrl(href) {
   return serverBaseFromPageUrl(href, "/ui/");
 }
+function humanizeSlug(slug) {
+  const words = slug.replace(/[_-]+/gu, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "";
+}
+function problemSummary(problem) {
+  if (!problem) return "";
+  const head = problem.title || (problem.type ? humanizeSlug(problem.type) : "");
+  return [head, problem.detail].filter((part) => Boolean(part)).join(": ");
+}
 function problemText(response) {
   const body = response.body;
   if (!body || typeof body !== "object") return `HTTP ${response.status}`;
-  const head = body.type || body.title;
-  const parts = [head, body.detail].filter((part) => Boolean(part));
-  return parts.join(": ") || `HTTP ${response.status}`;
+  return problemSummary(body) || `HTTP ${response.status}`;
+}
+function jobOutcomeText(job) {
+  if (!job) return "The job could not be followed";
+  if (job.status === "done") return null;
+  if (job.error) return problemSummary(job.error) || "Failed";
+  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
 }
 var PanelApi = class {
   constructor(baseUrl, fetchImpl) {
+    /** Called when a request answers 401 for a signed-out browser (the shell shows the sign-in). */
+    this.onSignedOut = null;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiRoot = `${this.baseUrl}${SERVER_API_PREFIX}`;
     this._fetch = fetchImpl ?? ((input, init) => fetch(input, init));
@@ -11022,6 +11001,10 @@ var PanelApi = class {
     }
     const responseHeaders = [];
     response.headers.forEach((value, key) => responseHeaders.push([key, value]));
+    if (response.status === 401 && this.onSignedOut && !path.replace(/^\/+/, "").startsWith("auth/login")) {
+      const problem = body;
+      if (problem && typeof problem === "object" && SIGNED_OUT_PROBLEMS.has(String(problem.type))) this.onSignedOut(problem);
+    }
     return { ok: response.ok, status: response.status, statusText: response.statusText, headers: responseHeaders, text, body };
   }
   // -- server ----------------------------------------------------------------
@@ -11034,8 +11017,57 @@ var PanelApi = class {
   mqttState() {
     return this.request("GET", "server/mqtt");
   }
+  mqttConfig() {
+    return this.request("GET", "server/mqtt/config");
+  }
+  updateMqttConfig(body) {
+    return this.request("PUT", "server/mqtt/config", { body });
+  }
+  removeMqttConfig() {
+    return this.request("DELETE", "server/mqtt/config");
+  }
+  testMqttConfig(body) {
+    return this.request("POST", "server/mqtt/test", { body });
+  }
   retryCallbackListener() {
     return this.request("POST", "server/callback-listener/retry");
+  }
+  // -- access (auth plan, section 6) ---------------------------------------------
+  authStatus() {
+    return this.request("GET", "auth");
+  }
+  setupAdmin(username, password, remember) {
+    return this.request("POST", "auth/setup", { body: { username, password, remember } });
+  }
+  signIn(username, password, remember) {
+    return this.request("POST", "auth/login", { body: { username, password, remember } });
+  }
+  signOut() {
+    return this.request("POST", "auth/logout");
+  }
+  updateAdmin(change) {
+    return this.request("PUT", "auth/admin", { body: change });
+  }
+  listTokens() {
+    return this.request("GET", "auth/tokens");
+  }
+  createToken(name) {
+    return this.request("POST", "auth/tokens", { body: { name } });
+  }
+  renameToken(id, name) {
+    return this.request("PATCH", `auth/tokens/${encodeURIComponent(id)}`, { body: { name } });
+  }
+  revokeToken(id) {
+    return this.request("DELETE", `auth/tokens/${encodeURIComponent(id)}`);
+  }
+  listSessions() {
+    return this.request("GET", "auth/sessions");
+  }
+  revokeOtherSessions() {
+    return this.request("DELETE", "auth/sessions");
+  }
+  revokeSession(id) {
+    return this.request("DELETE", `auth/sessions/${encodeURIComponent(id)}`);
   }
   serverSettings() {
     return this.request("GET", "server/settings");
@@ -11043,6 +11075,17 @@ var PanelApi = class {
   /** Saves to server.json; the ports apply on the next server start. */
   updateServerSettings(changes) {
     return this.request("PUT", "server/settings", { body: changes });
+  }
+  updateStatus() {
+    return this.request("GET", "server/updates");
+  }
+  /** One check against PyPI now; enables nothing, downloads nothing. */
+  checkForUpdates() {
+    return this.request("POST", "server/updates/check");
+  }
+  /** The daily automatic check, saved to server.json (409 when the environment pinned it). */
+  configureUpdateCheck(automatic) {
+    return this.request("PUT", "server/updates", { body: { automatic } });
   }
   /** The operations from `openapi.json`, sorted by path then method. */
   async operations() {
@@ -11073,6 +11116,9 @@ var PanelApi = class {
   }
   disableHub(hubId) {
     return this.request("POST", `hubs/${encodeURIComponent(hubId)}/disable`);
+  }
+  setHubProxy(hubId, enabled) {
+    return this.request("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
   }
   removeHub(hubId) {
     return this.request("DELETE", `hubs/${encodeURIComponent(hubId)}`);
@@ -11247,6 +11293,697 @@ var PanelApi = class {
   }
 };
 
+// server-panel/src/panel-styles.ts
+var PANEL_BASE_CSS = i`
+  :host {
+    --sbp-bg: var(--primary-background-color, #fafafa);
+    --sbp-panel: var(--card-background-color, #ffffff);
+    --sbp-panel-2: var(--secondary-background-color, #e5e5e5);
+    --sbp-line: var(--divider-color, rgba(0, 0, 0, 0.12));
+    --sbp-text: var(--primary-text-color, #141414);
+    --sbp-muted: var(--secondary-text-color, #5e5e5e);
+    --sbp-accent: var(--primary-color, #009ac7);
+    --sbp-accent-rgb: var(--rgb-primary-color, 0, 154, 199);
+    --sbp-ok: var(--success-color, #43a047);
+    --sbp-warn: var(--warning-color, #ffa600);
+    --sbp-err: var(--error-color, #db4437);
+    --sbp-input: var(--input-fill-color, rgb(245, 245, 245));
+    --sbp-press: #9c27b0;
+    --sbp-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sbp-radius: 10px;
+    font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    color: var(--sbp-text);
+    box-sizing: border-box;
+    /* An app, not a page: labels, buttons and rows do not select. Fields and literal payloads (pre, code) do, so they copy. */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input, textarea, pre, code, [contenteditable] { -webkit-user-select: text; user-select: text; }
+  *, *::before, *::after { box-sizing: inherit; }
+  a { color: var(--sbp-accent); }
+  button, input, select, textarea {
+    font: inherit;
+    color: var(--sbp-text);
+    background: var(--sbp-input);
+    border: 1px solid var(--sbp-line);
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+  input, select, textarea { width: 100%; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--sbp-accent); }
+  textarea { font-family: var(--sbp-mono); font-size: 12px; min-height: 64px; resize: vertical; }
+  button { cursor: pointer; white-space: nowrap; background: var(--sbp-panel); }
+  button:hover { border-color: var(--sbp-accent); }
+  button.primary { background: var(--sbp-accent); color: #fff; border-color: var(--sbp-accent); font-weight: 600; }
+  button.danger { color: var(--sbp-err); }
+  button.danger:hover { border-color: var(--sbp-err); }
+  button.small { font-size: 12px; padding: 4px 9px; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  label { display: block; color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 10px 0 4px; }
+  label.inline { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 12px; margin: 0; }
+  label.inline input { width: auto; }
+  pre {
+    margin: 0;
+    font-family: var(--sbp-mono);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--sbp-bg);
+    border: 1px solid var(--sbp-line);
+    border-radius: 6px;
+    padding: 10px;
+  }
+  code { font-family: var(--sbp-mono); font-size: 12px; }
+  .hint { color: var(--sbp-muted); font-size: 12px; line-height: 1.5; }
+  .mono { font-family: var(--sbp-mono); }
+  .row { display: flex; gap: 8px; align-items: end; }
+  .row > * { flex: 1; }
+  .row > .fixed { flex: 0 0 auto; }
+  .spacer { flex: 1; }
+  .tone-ok { color: var(--sbp-ok); }
+  .tone-warn { color: var(--sbp-warn); }
+  .tone-err { color: var(--sbp-err); }
+  .tone-off { color: var(--sbp-muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-muted); flex: 0 0 auto; }
+  .dot.ok { background: var(--sbp-ok); }
+  .dot.warn { background: var(--sbp-warn); }
+  .dot.err { background: var(--sbp-err); }
+  .dot.off { background: var(--sbp-line); }
+  .panel {
+    background: var(--sbp-panel);
+    border: 1px solid var(--sbp-line);
+    border-radius: var(--sbp-radius);
+    padding: 14px 16px;
+    min-width: 0;
+  }
+  .panel + .panel { margin-top: 16px; }
+  .panel h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .panel h2 .hint { font-weight: 400; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .actions .msg { font-size: 12px; margin-left: auto; }
+  .msg-ok { color: var(--sbp-ok); }
+  .msg-err { color: var(--sbp-err); }
+  table.list { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  table.list th, table.list td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sbp-line); vertical-align: middle; white-space: nowrap; }
+  table.list th { color: var(--sbp-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  table.list td.act { text-align: right; }
+  table.list .sub { color: var(--sbp-muted); }
+  .scroll-x { overflow-x: auto; }
+`;
+
+// server-panel/src/components/auth-dialog.ts
+var AUTH_DIALOG_TAG = "sb-panel-auth";
+var PASSWORD_MIN = 8;
+var SbPanelAuth = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.mode = "signin";
+    this.variant = "dialog";
+    this.username = "";
+    this._busy = false;
+    this._error = "";
+  }
+  firstUpdated() {
+    const first = this.renderRoot.querySelector(this.username && this.mode === "signin" ? "#auth-password" : "#auth-username");
+    first?.focus();
+  }
+  _value(id) {
+    return this.renderRoot.querySelector(`#${id}`)?.value ?? "";
+  }
+  _checked(id) {
+    return Boolean(this.renderRoot.querySelector(`#${id}`)?.checked);
+  }
+  async _submit(event) {
+    event.preventDefault();
+    if (this._busy) return;
+    const username = this._value("auth-username").trim();
+    const password = this._value("auth-password");
+    const remember = this._checked("auth-remember");
+    if (!username) {
+      this._error = "Enter a username.";
+      return;
+    }
+    if (this.mode === "setup") {
+      if (password.length < PASSWORD_MIN) {
+        this._error = `The password needs at least ${PASSWORD_MIN} characters.`;
+        return;
+      }
+      if (password !== this._value("auth-password2")) {
+        this._error = "The passwords do not match.";
+        return;
+      }
+    }
+    this._busy = true;
+    this._error = "";
+    try {
+      const response = this.mode === "setup" ? await this.api.setupAdmin(username, password, remember) : await this.api.signIn(username, password, remember);
+      if (response.ok && response.body) {
+        this.dispatchEvent(new CustomEvent("sb-auth-changed", { detail: response.body, bubbles: true, composed: true }));
+      } else if (response.status === 401) {
+        this._error = "Wrong username or password.";
+      } else if (response.status === 409 && this.mode === "setup") {
+        this._error = "Access was already set up (maybe in another tab). Sign in instead.";
+      } else {
+        this._error = problemText(response);
+      }
+    } catch (err) {
+      this._error = `Could not reach the server: ${String(err)}`;
+    } finally {
+      this._busy = false;
+    }
+  }
+  _cancel() {
+    this.dispatchEvent(new CustomEvent("sb-auth-cancel", { bubbles: true, composed: true }));
+  }
+  _form() {
+    const setup = this.mode === "setup";
+    const title = setup ? "Set up access" : this.variant === "dialog" ? "Signed out" : "Sign in";
+    return b2`
+      <form id="auth-form" role="dialog" aria-modal=${this.variant === "dialog" ? "true" : "false"} aria-labelledby="auth-title" @submit=${this._submit} @click=${(event) => event.stopPropagation()} novalidate>
+        <div class="head">
+          <div class="brand">Sofabaton X control panel</div>
+          <div class="title" id="auth-title">${title}</div>
+        </div>
+        <div class="body">
+          ${setup ? b2`<div class="hint">Choose the admin account for this server. After this, changes to hubs and server settings need this sign-in here, or a token for integrations. Reading and controlling (sending commands, starting activities) stay open to the network.</div>` : this.variant === "dialog" ? b2`<div class="hint">Your session ended (it expired, or the password was changed elsewhere). Sign in to continue; nothing you were editing is lost.</div>` : A}
+          <label for="auth-username">Username</label>
+          <input id="auth-username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" .value=${this.username || (setup ? "admin" : "")} ?disabled=${this._busy} />
+          <label for="auth-password">Password</label>
+          <input id="auth-password" type="password" autocomplete=${setup ? "new-password" : "current-password"} ?disabled=${this._busy} />
+          ${setup ? b2`<label for="auth-password2">Password again</label>
+                <input id="auth-password2" type="password" autocomplete="new-password" ?disabled=${this._busy} />
+                <div class="hint">At least ${PASSWORD_MIN} characters. Forgot it later? Run <span class="mono">sofabaton-x-server --reset-password</span> on the server's host.</div>` : A}
+          <label class="inline" for="auth-remember"><input id="auth-remember" type="checkbox" ?disabled=${this._busy} /> Remember me on this browser</label>
+        </div>
+        <div class="foot">
+          <div class="error" id="auth-error" role="alert">${this._error}</div>
+          <div class="buttons">
+            ${setup ? b2`<button type="button" id="auth-cancel" ?disabled=${this._busy} @click=${this._cancel}>Not now</button>` : A}
+            <button type="submit" class="primary" id="auth-submit" ?disabled=${this._busy}>${this._busy ? "\u2026" : setup ? "Set up" : "Sign in"}</button>
+          </div>
+        </div>
+      </form>
+    `;
+  }
+  render() {
+    if (this.variant === "wall") return b2`<div class="wall" id="auth-wall">${this._form()}</div>`;
+    const close = this.mode === "setup" ? () => this._cancel() : () => {
+    };
+    return b2`<div class="backdrop" id="auth-backdrop" @click=${close}>${this._form()}</div>`;
+  }
+};
+SbPanelAuth.properties = {
+  api: { attribute: false },
+  mode: { type: String },
+  variant: { type: String },
+  username: { type: String },
+  _busy: { state: true },
+  _error: { state: true }
+};
+SbPanelAuth.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host { display: contents; }
+      .backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+      .wall { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 18px; background: var(--sbp-bg); }
+      form { width: min(400px, calc(100vw - 36px)); display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); overflow: hidden; margin: 0; }
+      .wall form { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06); }
+      .head { padding: 16px 16px 4px; }
+      .brand { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sbp-muted); }
+      .title { font-size: 17px; font-weight: 600; margin-top: 4px; }
+      .body { padding: 4px 16px 16px; display: flex; flex-direction: column; }
+      .body .hint { margin-top: 6px; }
+      input[type="text"], input[type="password"] { font-size: 14px; padding: 9px 10px; border-radius: 10px; }
+      label.inline { margin-top: 14px; }
+      .foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--sbp-line); flex-wrap: wrap; }
+      .error { flex: 1 1 160px; min-height: 18px; font-size: 13px; color: var(--sbp-err); }
+      .buttons { display: flex; gap: 8px; margin-left: auto; }
+      .buttons button { min-height: 38px; padding: 8px 14px; border-radius: 10px; font-weight: 700; }
+      @media (max-width: 640px) {
+        .backdrop { padding: 0; align-items: flex-end; }
+        .backdrop form { width: 100%; border-radius: 22px 22px 0 0; }
+      }
+    `
+];
+function defineAuthDialog() {
+  if (!customElements.get(AUTH_DIALOG_TAG)) customElements.define(AUTH_DIALOG_TAG, SbPanelAuth);
+}
+
+// node_modules/lit-html/directives/keyed.js
+var i7 = e4(class extends i5 {
+  constructor() {
+    super(...arguments), this.key = A;
+  }
+  render(r6, t5) {
+    return this.key = r6, t5;
+  }
+  update(r6, [t5, e6]) {
+    return t5 !== this.key && (p3(r6), this.key = t5), e6;
+  }
+});
+
+// server-panel/src/components/bottom-dock.ts
+function renderBottomDock(params) {
+  const { model, message } = params;
+  let tone = "";
+  let center;
+  let actions = A;
+  if (model.kind === "running") {
+    tone = "dock--running";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = model.cancellable ? b2`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling\u2026" : "Cancel"}</button>` : A;
+  } else if (message) {
+    tone = message.ok ? "dock--message" : "dock--error";
+    center = b2`<span class="dock-status" id="hubs-msg">${message.text}</span>`;
+  } else if (model.kind === "notice") {
+    tone = `dock--${model.notice.tone}`;
+    center = b2`<span class="dock-status" id="dock-status">${model.notice.label}${model.notice.detail ? b2`<span class="dock-detail"> · ${model.notice.detail}</span>` : A}</span>`;
+    actions = b2`<button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
+  } else if (model.kind === "apply_stopped") {
+    tone = "dock--warn";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = b2`
+      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
+      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
+  } else if (model.kind === "draft_stale") {
+    tone = "dock--warn";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = b2`
+      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
+      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "dirty") {
+    tone = "dock--dirty";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    actions = b2`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
+    tone = "dock--dirty";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+  } else if (model.kind === "gate") {
+    tone = "dock--gate";
+    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+  } else if (params.docLink) {
+    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
+  } else {
+    center = b2``;
+  }
+  const progress = model.kind === "running" ? model.progress : null;
+  const press = params.press;
+  return b2`
+    <footer class="dock ${tone}" id="bottom-dock">
+      <div class="dock-inner">
+        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
+        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
+        <div class="dock-center" role="status" aria-live="polite">${center}</div>
+        <div class="dock-right">
+          ${actions !== A ? b2`<div class="dock-actions">${actions}</div>` : A}
+          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
+                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
+                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
+              </div>` : A}
+        </div>
+      </div>
+    </footer>
+  `;
+}
+
+// server-panel/src/panel-route.ts
+var HUB_TABS = ["hub", "wifi", "backup", "remote"];
+var SUBTABS = {
+  hub: ["activities", "devices"],
+  wifi: ["devices"],
+  backup: ["make", "edit", "restore"],
+  remote: ["card", "layout"]
+};
+var TAB_LABELS = { hub: "Hub", wifi: "Wifi Commands", backup: "Backup", remote: "Remote" };
+var TOOL_PAGES = ["setup", "server", "debug"];
+var TOOL_LABELS = { setup: "Hub settings", server: "Server settings", debug: "Debug" };
+var TOOL_SUBTABS = {
+  setup: ["hubs"],
+  server: ["status", "mqtt", "access"],
+  debug: ["api", "events"]
+};
+var SUBTAB_LABELS = {
+  activities: "Activities",
+  devices: "Devices",
+  make: "Make",
+  edit: "Edit",
+  restore: "Restore",
+  card: "Card",
+  layout: "Layout",
+  hubs: "Hubs",
+  status: "Status",
+  access: "Access",
+  mqtt: "MQTT broker",
+  api: "API console",
+  events: "Event stream",
+  // A subtab id can repeat across tabs; `<tab>/<sub>` wins over the bare id.
+  "wifi/devices": "Wifi Devices"
+};
+function subtabLabel(scope, sub) {
+  return SUBTAB_LABELS[`${scope}/${sub}`] ?? SUBTAB_LABELS[sub] ?? sub;
+}
+function isHubTab(value) {
+  return typeof value === "string" && HUB_TABS.includes(value);
+}
+function isToolPage(value) {
+  return typeof value === "string" && TOOL_PAGES.includes(value);
+}
+function normalizeSub(tab, sub) {
+  const subs = SUBTABS[tab];
+  return sub && subs.includes(sub) ? sub : subs[0];
+}
+function normalizeEntity(tab, entity) {
+  if (tab !== "hub") return void 0;
+  const id = typeof entity === "number" ? entity : typeof entity === "string" && /^\d+$/.test(entity) ? Number(entity) : NaN;
+  return Number.isInteger(id) && id > 0 ? id : void 0;
+}
+function normalizeItem(tab, item) {
+  if (tab !== "wifi" || typeof item !== "string") return void 0;
+  return /^[A-Za-z0-9_-]{1,32}$/.test(item) ? item : void 0;
+}
+function hubRoute(hubId, tab = "hub", sub, entity, item) {
+  const id = normalizeEntity(tab, entity);
+  const key = normalizeItem(tab, item);
+  const route = { kind: "hub", hubId, tab, sub: normalizeSub(tab, sub) };
+  if (id !== void 0) route.entity = id;
+  if (key !== void 0) route.item = key;
+  return route;
+}
+function normalizeToolSub(page, sub) {
+  const subs = TOOL_SUBTABS[page];
+  return sub && subs.includes(sub) ? sub : subs[0];
+}
+function toolRoute(page, sub) {
+  return { kind: "tool", page, sub: normalizeToolSub(page, sub) };
+}
+var LEGACY = {
+  hubs: toolRoute("setup"),
+  catalog: hubRoute(null, "hub"),
+  remote: hubRoute(null, "remote"),
+  api: toolRoute("debug", "api"),
+  events: toolRoute("debug", "events")
+};
+function parseRoute(hash) {
+  const raw = hash.replace(/^#/, "");
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return LEGACY[raw] ?? null;
+  const parts = raw.split("/").filter(Boolean).map((p4) => {
+    try {
+      return decodeURIComponent(p4);
+    } catch {
+      return p4;
+    }
+  });
+  if (!parts.length) return null;
+  if (isToolPage(parts[0])) return toolRoute(parts[0], parts[1]);
+  if (parts.length === 1 && (parts[0] === "api" || parts[0] === "events")) return toolRoute("debug", parts[0]);
+  const [first, tab, sub, entity] = parts;
+  const hubId = first === "-" ? null : first;
+  if (tab !== void 0 && !isHubTab(tab)) return hubRoute(hubId, "hub");
+  return hubRoute(hubId, tab ?? "hub", sub, normalizeEntity(tab ?? "hub", entity), normalizeItem(tab ?? "hub", entity));
+}
+function hashFor(route) {
+  if (route.kind === "tool") return `#/${route.page}/${route.sub}`;
+  const hub = route.hubId ? encodeURIComponent(route.hubId) : "-";
+  const tail = route.entity !== void 0 ? `/${route.entity}` : route.item !== void 0 ? `/${encodeURIComponent(route.item)}` : "";
+  return `#/${hub}/${route.tab}/${route.sub}${tail}`;
+}
+function routeScope(route) {
+  if (route.kind === "tool") return `${route.page}/${route.sub}`;
+  return `${route.tab}/${route.sub}${route.entity !== void 0 ? `/${route.entity}` : route.item !== void 0 ? `/${route.item}` : ""}`;
+}
+function sameRoute(a4, b3) {
+  return hashFor(a4) === hashFor(b3);
+}
+function withHub(route, hubId) {
+  return route.kind === "hub" ? { ...route, hubId } : route;
+}
+
+// server-panel/src/panel-state.ts
+function hubState(hub) {
+  if (!hub.enabled) return { text: "disabled", tone: "off" };
+  const s7 = hub.status;
+  if (!s7) return { text: "not running: the proxy did not start", tone: "err" };
+  if (s7.mode === "disconnected" || !s7.hub_connected) return { text: "waiting for the hub to connect", tone: "warn" };
+  if (s7.mode === "observe") return { text: s7.app_connected ? "observing: the app holds the hub" : "observing", tone: "warn" };
+  return { text: s7.catalog_ready ? "connected, in control" : "connected, first sync running", tone: "ok" };
+}
+function hubDisplayName(hub) {
+  return hub.config?.name || hub.hub_name || hub.hub_id;
+}
+function unregisteredHubs(seen, hubs) {
+  const macKey = (value) => String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  return seen.filter((s7) => !hubs.some((h6) => {
+    const mac = macKey(s7.config.mac);
+    return h6.hub_id === s7.registered_hub_id || h6.config.host === s7.config.host || Boolean(mac && (mac === macKey(h6.config.mac) || mac === h6.hub_id));
+  }));
+}
+function formatWhen(iso) {
+  if (!iso) return "never";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? String(iso) : date.toLocaleString();
+}
+function actionOutcome(action, record) {
+  if (action === "enable") return record?.enabled ? "started" : "enabled";
+  return action === "disable" ? "disabled" : "removed";
+}
+var THEMES = ["auto", "light", "dark"];
+function isTheme(value) {
+  return typeof value === "string" && THEMES.includes(value);
+}
+function nextTheme(current) {
+  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+}
+var PREFS_KEY = "sofabaton-panel";
+function loadPrefs(storage) {
+  const prefs = { hub: null, tab: "hub", sub: SUBTABS.hub[0], theme: "auto" };
+  if (!storage) return prefs;
+  try {
+    const raw = storage.getItem(PREFS_KEY);
+    if (!raw) return prefs;
+    const data = JSON.parse(raw);
+    if (typeof data.hub === "string") prefs.hub = data.hub;
+    if (isHubTab(data.tab)) prefs.tab = data.tab;
+    else if (data.view === "remote") prefs.tab = "remote";
+    prefs.sub = normalizeSub(prefs.tab, typeof data.sub === "string" ? data.sub : null);
+    if (isTheme(data.theme)) prefs.theme = data.theme;
+  } catch {
+  }
+  return prefs;
+}
+function savePrefs(storage, prefs) {
+  if (!storage) return;
+  try {
+    storage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+  }
+}
+var HISTORY_KEY = "sofabaton-panel-history";
+var HISTORY_LIMIT = 30;
+function loadHistory(storage) {
+  if (!storage) return [];
+  try {
+    const data = JSON.parse(storage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(data) ? data.slice(0, HISTORY_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+function saveHistory(storage, history2) {
+  if (!storage) return;
+  try {
+    storage.setItem(HISTORY_KEY, JSON.stringify(history2.slice(0, HISTORY_LIMIT)));
+  } catch {
+  }
+}
+function prettyJson(text) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+function parseHeaderLines(text) {
+  const out = {};
+  for (const line of text.split("\n")) {
+    const i8 = line.indexOf(":");
+    if (i8 < 0) continue;
+    const name = line.slice(0, i8).trim();
+    if (name) out[name] = line.slice(i8 + 1).trim();
+  }
+  return out;
+}
+
+// server-panel/src/components/hub-picker.ts
+var icon = (path) => b2`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+var HUB_PICKER_CSS = i`
+  .hub-picker-menu { width: 350px; }
+  .picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 10px 4px 14px; min-height: 38px; color: var(--sbp-muted); font-size: 11px; font-weight: 600; }
+  .picker-heading-label { text-transform: uppercase; letter-spacing: 0.06em; }
+  .picker-row { display: flex; align-items: center; gap: 2px; padding-right: 6px; }
+  .picker-row .hub-option { flex: 1; min-width: 0; }
+  .picker-row.selected { background: rgba(var(--sbp-accent-rgb), 0.12); }
+  .picker-row .menu-item.selected { background: transparent; }
+  .picker-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 36px; min-height: 36px; padding: 8px; border: 0; background: transparent; color: var(--sbp-muted); }
+  .picker-icon:hover, .picker-icon[aria-expanded="true"] { background: var(--sbp-panel-2); color: var(--sbp-text); }
+  .picker-icon svg, .picker-manual-button svg { width: 18px; height: 18px; flex: 0 0 auto; }
+  .picker-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 12px; }
+  .picker-actions button { min-height: 36px; font-size: 12px; }
+  .picker-confirm { flex: 1 0 100%; margin: 0 0 2px; font-size: 12px; line-height: 1.5; }
+  .picker-seen { padding: 7px 10px 7px 14px; gap: 10px; min-height: 54px; }
+  .picker-seen .menu-title { font-weight: 500; }
+  .picker-seen .small { min-height: 36px; flex: 0 0 auto; color: var(--sbp-accent); }
+  .picker-unseen { color: var(--sbp-muted); }
+  .picker-empty, .picker-error { margin: 0; padding: 6px 14px 12px; font-size: 12px; line-height: 1.5; }
+  .picker-empty { color: var(--sbp-muted); }
+  .picker-error { color: var(--sbp-err); overflow-wrap: anywhere; }
+  .picker-form { padding: 0 14px 12px; }
+  .picker-form label { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  .picker-form input:not([type="checkbox"]) { min-height: 40px; }
+  .picker-form .inline { margin: 12px 0; }
+  .picker-form .hint { margin: 0 0 12px; }
+  .picker-form .actions { justify-content: flex-end; }
+  @container (max-width: 600px) {
+    .hub-picker { position: static; }
+    .hub-picker-menu { right: var(--page-gutter); width: min(350px, calc(100cqw - 2 * var(--page-gutter))); max-width: calc(100cqw - 2 * var(--page-gutter)); }
+  }
+`;
+function renderHubPicker(params) {
+  const selected = params.hubs.find((r6) => r6.hub.hub_id === params.selectedHubId) ?? null;
+  const label = selected ? hubDisplayName(selected.hub) : params.hubs.length ? "pick a hub" : "no hub";
+  const tone = selected ? hubState(selected.hub).tone : "off";
+  const discovered = unregisteredHubs(params.seen, params.hubs.map((r6) => r6.hub));
+  return b2`
+    <div class="hub-picker" id="hub-picker" @keydown=${params.onKeyDown}>
+      <button class="hub-picker-btn ${params.open ? "is-open" : ""}" id="hub-picker-btn" type="button" title=${label} aria-haspopup="dialog" aria-controls="hub-picker-menu" aria-expanded=${String(params.open)} @click=${params.onToggle}>
+        <span class="chip-prefix">Hub</span><span class="dot ${tone}"></span><span class="chip-name">${label}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.open ? mdiChevronUp : mdiChevronDown}></path></svg>
+      </button>
+      ${params.open ? b2`
+        <div class="menu hub-picker-menu" id="hub-picker-menu" role="dialog" aria-label=${params.manual ? "Add hub by address" : "Hubs"}>
+          ${params.manual ? b2`
+            <div class="picker-heading"><span>Add hub by address</span></div>
+            <form class="picker-form" id="hub-add" @submit=${params.onSubmit}>
+              <label for="add-host">IP address or hostname</label>
+              <input id="add-host" name="host" placeholder="192.168.1.50" autocomplete="off" required ?disabled=${params.adding}>
+              <label for="add-name">Name (optional)</label>
+              <input id="add-name" name="name" autocomplete="off" ?disabled=${params.adding}>
+              <label class="inline"><input type="checkbox" id="add-disabled" name="disabled" ?disabled=${params.adding}> Start disabled — connect later</label>
+              <p class="hint">If another server or Home Assistant manages this hub, disable it there before connecting here.</p>
+              ${params.error ? b2`<p class="picker-error" role="alert">${params.error}</p>` : A}
+              <div class="actions"><button type="button" ?disabled=${params.adding} @click=${() => params.onManual(false)}>Back</button><button class="primary" id="add-send" type="submit" ?disabled=${params.adding}>${params.adding ? "Adding\u2026" : "Add hub"}</button></div>
+            </form>
+          ` : b2`
+            <div role="group" aria-label="Registered hubs">
+              <div class="picker-heading"><span class="picker-heading-label">Registered hubs</span></div>
+              ${params.hubs.length ? params.hubs.map(({ hub }) => {
+    const { text, tone: t5 } = hubState(hub);
+    const name = hubDisplayName(hub);
+    const active = hub.hub_id === params.selectedHubId;
+    const expanded = params.actionsHubId === hub.hub_id;
+    const busy = params.busy.has(hub.hub_id);
+    return b2`
+                  <div class="picker-row ${active ? "selected" : ""}">
+                    <button class="menu-item hub-option ${active ? "selected" : ""}" type="button" data-hub=${hub.hub_id} aria-pressed=${String(active)} @click=${() => params.onSelect(hub.hub_id)}>
+                      <span class="dot ${t5}"></span><span class="menu-main"><span class="menu-title">${name}</span><span class="menu-sub" title=${`${hub.config.host} \xB7 ${text}`}>${hub.config.host} · ${text}</span></span>
+                    </button>
+                    <button class="picker-icon" type="button" aria-label=${`Manage ${name}`} aria-expanded=${String(expanded)} @click=${() => params.onActions(hub.hub_id)}>${icon(mdiDotsHorizontal)}</button>
+                  </div>
+                  ${expanded ? b2`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
+                    ${params.confirmRemoveHubId === hub.hub_id ? b2`
+                      <p class="picker-confirm" id="picker-remove-question">Remove <b>${name}</b>? The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.</p>
+                      <button class="danger" id="picker-remove-confirm" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>${busy ? "Removing\u2026" : "Remove"}</button>
+                      <button ?disabled=${busy} @click=${() => params.onConfirmRemove(null)}>Cancel</button>
+                    ` : b2`
+                      ${!hub.enabled || !hub.status ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : A}
+                      ${hub.enabled ? b2`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : A}
+                      <button class="danger" ?disabled=${busy} @click=${() => params.onConfirmRemove(hub.hub_id)}>Remove…</button>
+                    `}
+                  </div>` : A}
+                `;
+  }) : b2`<p class="picker-empty">No hubs registered yet.</p>`}
+            </div>
+            <div class="menu-sep"></div>
+            <div role="group" aria-label="Discovered hubs">
+              <div class="picker-heading"><span class="picker-heading-label">Discovered hubs</span><span aria-live="polite">${params.scanning ? "Scanning\u2026" : ""}</span><button class="picker-icon" id="seen-scan" type="button" aria-label="Scan for hubs" title="Scan for hubs" ?disabled=${params.scanning} @click=${params.onScan}>${icon(mdiRefresh)}</button></div>
+              ${discovered.length ? discovered.map((s7) => b2`
+                <div class="picker-row picker-seen ${s7.present ? "" : "picker-unseen"}" data-seen=${s7.key}>
+                  <span class="menu-main"><span class="menu-title">${s7.config.name || s7.config.host}</span><span class="menu-sub" title=${`Last seen ${formatWhen(s7.last_seen)} \xB7 ${s7.config.mac || "MAC unknown"}`}>${s7.config.host}${s7.config.hub_version ? ` \xB7 ${s7.config.hub_version}` : ""}${s7.present ? "" : " \xB7 Not currently seen"}</span></span>
+                  <button class="small" type="button" aria-label=${`Add ${s7.config.name || s7.config.host}`} ?disabled=${params.adding} @click=${() => params.onAdd(s7)}>Add</button>
+                </div>
+              `) : b2`<p class="picker-empty" id="seen-empty">${params.scanning ? "Looking for hubs on your network\u2026" : "No unregistered hubs found. Close the Sofabaton app if a hub is missing, then scan again."}</p>`}
+            </div>
+            ${params.error ? b2`<p class="picker-error" role="alert">${params.error}</p>` : A}
+            <div class="menu-sep"></div>
+            <button class="menu-item picker-manual-button" type="button" id="hub-picker-manual" ?disabled=${params.adding} @click=${() => params.onManual(true)}>${icon(mdiPlus)}<span class="menu-title">Add by address…</span></button>
+          `}
+        </div>` : A}
+    </div>
+  `;
+}
+
+// server-panel/src/components/tab-bar.ts
+var SUBTAB_ICONS = {
+  activities: mdiPlayCircleOutline,
+  devices: mdiAudioVideo,
+  make: mdiContentSaveMoveOutline,
+  edit: mdiPencilBoxOutline,
+  restore: mdiDatabaseImportOutline,
+  "wifi/devices": mdiWifi,
+  card: mdiRemote,
+  layout: mdiViewDashboardEditOutline
+};
+function renderTabBar(params) {
+  const route = params.route;
+  const onTool = route.kind === "tool";
+  const pageItem = (page) => b2`<button class="menu-item ${onTool && route.page === page ? "selected" : ""}" type="button" role="menuitemradio" data-page=${page} aria-checked=${String(onTool && route.page === page)} @click=${() => params.onPage(page)}>
+    <span class="menu-main"><span class="menu-title">${TOOL_LABELS[page]}${page === "debug" ? b2` <span class="badge" id="ws-badge" title="events received">${params.eventCount}</span>` : A}${page === "server" && params.updateAvailable ? b2` <span class="badge badge-update" id="update-badge">update available</span>` : A}</span></span>
+  </button>`;
+  return b2`
+    <div class="tabs" id="tabs">
+      <div class="tabs-scroll" role="tablist" aria-label="Hub sections">
+        ${HUB_TABS.map(
+    (tab) => b2`<button class="tab-btn ${!onTool && route.tab === tab ? "active" : ""}" type="button" role="tab" data-tab=${tab} aria-selected=${String(!onTool && route.tab === tab)} @click=${() => params.onTab(tab)}>
+            <span class="tab-btn-label">${TAB_LABELS[tab]}</span>
+          </button>`
+  )}
+      </div>
+      <div class="tab-menu" id="cog">
+        <button class="tab-btn tab-btn--menu ${onTool ? "active" : ""} ${params.cogOpen ? "is-open" : ""}" id="cog-btn" type="button" aria-label=${onTool ? `Setup and tools: ${TOOL_LABELS[route.page]}` : "Setup and tools"} aria-haspopup="menu" aria-expanded=${String(params.cogOpen)} title=${params.updateAvailable ? "setup and tools (a server update is available)" : "setup and tools"} @click=${params.onToggleCog}>
+          <span class="cog-wrap"><svg class="cog-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiCogOutline}></path></svg>${params.updateAvailable ? b2`<span class="update-dot" id="update-dot" role="img" aria-label="Server update available"></span>` : A}</span><svg class="chip-arrow" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${params.cogOpen ? mdiChevronUp : mdiChevronDown}></path></svg>
+        </button>
+        ${params.cogOpen ? b2`<div class="menu cog-menu" id="cog-menu" role="menu">
+              ${TOOL_PAGES.filter((page) => page !== "server").map(pageItem)}
+              <div class="menu-sep"></div>
+              ${pageItem("server")}
+              <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
+                <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
+              </button>
+              ${params.account ? b2`<div class="menu-sep"></div>
+                  <button class="menu-item" type="button" role="menuitem" id="sign-out" @click=${() => params.onSignOut?.()}>
+                    <span class="menu-main"><span class="menu-title">Sign out</span><span class="menu-sub">signed in as ${params.account.username}</span></span>
+                  </button>` : A}
+            </div>` : A}
+      </div>
+    </div>
+    <div class="subtabs" id="subtabs" role="tablist" aria-label=${onTool ? TOOL_LABELS[route.page] : TAB_LABELS[route.tab]} data-page=${onTool ? route.page : route.tab}>
+      ${(onTool ? TOOL_SUBTABS[route.page] : SUBTABS[route.tab]).map(
+    (sub) => {
+      const count = params.subCounts?.[sub];
+      const scope = onTool ? route.page : route.tab;
+      const iconPath = SUBTAB_ICONS[`${scope}/${sub}`] ?? SUBTAB_ICONS[sub];
+      return b2`<button class="subtab-btn ${route.sub === sub ? "active" : ""}" type="button" role="tab" data-sub=${sub} aria-selected=${String(route.sub === sub)} @click=${() => params.onSub(sub)}>
+            ${iconPath ? b2`<svg class="subtab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${iconPath}></path></svg>` : A}
+            <span class="subtab-label">${subtabLabel(scope, sub)}</span>
+            ${typeof count === "number" ? b2`<span class="subtab-count">${count}</span>` : A}
+          </button>`;
+    }
+  )}
+    </div>
+  `;
+}
+
 // server-panel/src/panel-selectors.ts
 function runtimeFor(snapshot, hubId) {
   if (!hubId) return null;
@@ -11275,6 +12012,11 @@ var GATE_LABELS = {
   app_holds_hub: "The Sofabaton app holds the hub",
   first_sync: "First sync running"
 };
+function firmwareFloor(hub) {
+  const status = hub?.status;
+  if (!status?.firmware_unsupported) return null;
+  return { installed: status.firmware_version ?? "?", required: status.firmware_min_supported ?? "?" };
+}
 function activeJob(hub) {
   const job = hub?.active_job ?? null;
   return job && !TERMINAL_JOB_STATES.has(job.status) ? job : null;
@@ -11299,6 +12041,13 @@ var JOB_LABELS = {
   refresh_entity: "Refreshing from the hub",
   sync_device: "Syncing the device to the hub",
   sync_activity: "Syncing the activity to the hub",
+  add_device: "Adding the device",
+  remove_device: "Deleting the device",
+  add_activity: "Adding the activity",
+  remove_activity: "Deleting the activity",
+  reorder_devices: "Reordering the devices",
+  reorder_activities: "Reordering the activities",
+  rename_hub: "Renaming the hub",
   sync_hub: "Applying the document",
   resume_apply: "Resuming the apply",
   backup: "Backing up the hub",
@@ -11315,7 +12064,7 @@ var JOB_LABELS = {
   redeploy_wifi_device: "Redeploying the Wifi Device"
 };
 function jobLabel(kind) {
-  return JOB_LABELS[kind] ?? kind;
+  return JOB_LABELS[kind] ?? humanizeSlug(kind);
 }
 function jobProgress(job) {
   const p4 = job?.progress ?? null;
@@ -11374,7 +12123,7 @@ function noticeForJob(job, at) {
   const label = jobHeadline(job);
   if (job.status === "failed") {
     const problem = job.error;
-    const head = problem?.title || problem?.type || "failed";
+    const head = problemSummary(problem ? { ...problem, detail: null } : null) || "failed";
     return { tone: "error", label: `${label}: ${head}`, detail: problem?.detail ?? null, jobId: job.job_id, sticky: true, at };
   }
   if (job.status === "cancelled") return { tone: "neutral", label: `${label}: cancelled`, detail: null, jobId: job.job_id, sticky: false, at };
@@ -11398,7 +12147,7 @@ function dockModel(snapshot, runtime, view = {}) {
   }
   if (runtime?.notice) return { kind: "notice", notice: runtime.notice };
   const stopped = runtime?.stoppedApplies[0];
-  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `An apply stopped (${stopped.status}); ${stopped.resumable ? "resume or discard it" : "discard it"}` };
+  if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `${stopped.status === "cancelled" ? "An apply was cancelled partway" : "An apply stopped partway"}; ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
   if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
@@ -11544,7 +12293,7 @@ function summarizeMessage(data) {
 }
 var HUB_EVENT_KINDS = /* @__PURE__ */ new Set(["catalog_ready", "hub_state", "app_state", "status_changed"]);
 function isHubRefreshTrigger(data) {
-  if (data.type === "server_event") return true;
+  if (data.type === "server_event") return data.kind !== "update_check";
   if (data.type === "hub_event") {
     const event = data.event;
     return Boolean(event?.kind && HUB_EVENT_KINDS.has(event.kind));
@@ -11852,6 +12601,10 @@ var PanelStore = class {
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
         return;
+      case "server_event":
+        if (data.kind === "update_check") void this._loadServer();
+        else if (isHubRefreshTrigger(data)) this.refreshSoon();
+        return;
       default:
         if (isHubRefreshTrigger(data)) this.refreshSoon();
     }
@@ -12053,9 +12806,7 @@ var PanelStore = class {
   }
 };
 function problemLine(response) {
-  const body = response.body;
-  if (body && typeof body === "object" && (body.type || body.detail)) return [body.type, body.detail].filter(Boolean).join(": ");
-  return `HTTP ${response.status}`;
+  return problemText(response);
 }
 function loadAcks(storage) {
   if (!storage) return {};
@@ -12107,102 +12858,6 @@ function saveDraft(storage, hubId, draft) {
   }
 }
 
-// server-panel/src/panel-styles.ts
-var PANEL_BASE_CSS = i`
-  :host {
-    --sbp-bg: var(--primary-background-color, #fafafa);
-    --sbp-panel: var(--card-background-color, #ffffff);
-    --sbp-panel-2: var(--secondary-background-color, #e5e5e5);
-    --sbp-line: var(--divider-color, rgba(0, 0, 0, 0.12));
-    --sbp-text: var(--primary-text-color, #141414);
-    --sbp-muted: var(--secondary-text-color, #5e5e5e);
-    --sbp-accent: var(--primary-color, #009ac7);
-    --sbp-accent-rgb: var(--rgb-primary-color, 0, 154, 199);
-    --sbp-ok: var(--success-color, #43a047);
-    --sbp-warn: var(--warning-color, #ffa600);
-    --sbp-err: var(--error-color, #db4437);
-    --sbp-input: var(--input-fill-color, rgb(245, 245, 245));
-    --sbp-press: #9c27b0;
-    --sbp-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    --sbp-radius: 10px;
-    font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-size: 14px;
-    color: var(--sbp-text);
-    box-sizing: border-box;
-  }
-  *, *::before, *::after { box-sizing: inherit; }
-  a { color: var(--sbp-accent); }
-  button, input, select, textarea {
-    font: inherit;
-    color: var(--sbp-text);
-    background: var(--sbp-input);
-    border: 1px solid var(--sbp-line);
-    border-radius: 6px;
-    padding: 6px 10px;
-  }
-  input, select, textarea { width: 100%; }
-  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--sbp-accent); }
-  textarea { font-family: var(--sbp-mono); font-size: 12px; min-height: 64px; resize: vertical; }
-  button { cursor: pointer; white-space: nowrap; background: var(--sbp-panel); }
-  button:hover { border-color: var(--sbp-accent); }
-  button.primary { background: var(--sbp-accent); color: #fff; border-color: var(--sbp-accent); font-weight: 600; }
-  button.danger { color: var(--sbp-err); }
-  button.danger:hover { border-color: var(--sbp-err); }
-  button.small { font-size: 12px; padding: 4px 9px; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  label { display: block; color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin: 10px 0 4px; }
-  label.inline { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 12px; margin: 0; }
-  label.inline input { width: auto; }
-  pre {
-    margin: 0;
-    font-family: var(--sbp-mono);
-    font-size: 12px;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    word-break: break-word;
-    background: var(--sbp-bg);
-    border: 1px solid var(--sbp-line);
-    border-radius: 6px;
-    padding: 10px;
-  }
-  code { font-family: var(--sbp-mono); font-size: 12px; }
-  .hint { color: var(--sbp-muted); font-size: 12px; line-height: 1.5; }
-  .mono { font-family: var(--sbp-mono); }
-  .row { display: flex; gap: 8px; align-items: end; }
-  .row > * { flex: 1; }
-  .row > .fixed { flex: 0 0 auto; }
-  .spacer { flex: 1; }
-  .tone-ok { color: var(--sbp-ok); }
-  .tone-warn { color: var(--sbp-warn); }
-  .tone-err { color: var(--sbp-err); }
-  .tone-off { color: var(--sbp-muted); }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-muted); flex: 0 0 auto; }
-  .dot.ok { background: var(--sbp-ok); }
-  .dot.warn { background: var(--sbp-warn); }
-  .dot.err { background: var(--sbp-err); }
-  .dot.off { background: var(--sbp-line); }
-  .panel {
-    background: var(--sbp-panel);
-    border: 1px solid var(--sbp-line);
-    border-radius: var(--sbp-radius);
-    padding: 14px 16px;
-    min-width: 0;
-  }
-  .panel + .panel { margin-top: 16px; }
-  .panel h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-  .panel h2 .hint { font-weight: 400; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .actions .msg { font-size: 12px; margin-left: auto; }
-  .msg-ok { color: var(--sbp-ok); }
-  .msg-err { color: var(--sbp-err); }
-  table.list { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
-  table.list th, table.list td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sbp-line); vertical-align: middle; white-space: nowrap; }
-  table.list th { color: var(--sbp-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
-  table.list td.act { text-align: right; }
-  table.list .sub { color: var(--sbp-muted); }
-  .scroll-x { overflow-x: auto; }
-`;
-
 // server-panel/src/panel-element.ts
 var PANEL_TAG = "sofabaton-server-panel";
 var README = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/README.md";
@@ -12212,6 +12867,7 @@ var DOC_LINKS = {
   remote: { href: `${README}#web-remote`, label: "Web remote docs" },
   wifi: { href: `${README}#wifi-commands`, label: "Wifi Commands docs" }
 };
+var BANNER_DISMISSED_KEY = "sbp.accessBannerDismissed";
 function storageOrNull() {
   try {
     return window.localStorage;
@@ -12230,10 +12886,21 @@ var SofabatonServerPanel = class extends i4 {
     this._wifiDirty = false;
     this._pickerManual = false;
     this._pickerActionsHubId = null;
+    this._pickerConfirmRemove = null;
     this._pickerBusy = /* @__PURE__ */ new Set();
     this._pickerAdding = false;
     this._pickerScanning = false;
     this._pickerError = null;
+    /** GET /auth's answer; null while unknown (an older server, or not asked yet). */
+    this._auth = null;
+    /** `checking` until GET /auth answers, `wall` for a signed-out browser of a claimed server, then `ready`. */
+    this._authPhase = "checking";
+    /** The setup dialog (unclaimed) or the sign-in overlay (a session that ended mid-work). */
+    this._authDialog = null;
+    this._bannerDismissed = false;
+    /** The account's name while signed in, to fill the sign-in form once signed out. */
+    this._lastUsername = "";
+    this._offAuthStream = null;
     this._unsubscribe = null;
     this._dockObserver = null;
     this._onHashChange = () => {
@@ -12262,6 +12929,12 @@ var SofabatonServerPanel = class extends i4 {
     this.stream = new PanelStream({ apiRoot: this.api.apiRoot });
     this.store = new PanelStore({ api: this.api, stream: this.stream, storage: storageOrNull(), initialRoute: parseRoute(location.hash) });
     this._snapshot = this.store.snapshot;
+    this.api.onSignedOut = () => void this._refreshAuth();
+    try {
+      this._bannerDismissed = storageOrNull()?.getItem(BANNER_DISMISSED_KEY) === "1";
+    } catch {
+      this._bannerDismissed = false;
+    }
   }
   connectedCallback() {
     super.connectedCallback();
@@ -12275,21 +12948,24 @@ var SofabatonServerPanel = class extends i4 {
     window.addEventListener("hashchange", this._onHashChange);
     document.addEventListener("click", this._onDocumentClick);
     document.addEventListener("keydown", this._onKeyDown);
-    this.store.connect();
-    void this.updateComplete.then(() => {
-      if (!this.isConnected) return;
-      this._dockObserver?.disconnect();
-      this._dockObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
-          this.style.setProperty(entry.target.id === "top-dock" ? "--top-dock-height" : "--bottom-dock-height", `${height}px`);
-        }
-      });
-      for (const id of ["#bottom-dock", "#top-dock"]) {
-        const dock = this.renderRoot.querySelector(id);
-        if (dock) this._dockObserver.observe(dock);
+    this._offAuthStream = this.stream.onMessage((message) => this._onAuthStreamMessage(message));
+    void this._bootAuth();
+    void this.updateComplete.then(() => this._observeDocks());
+  }
+  /** The docks exist only once the panel renders (not under the sign-in wall). */
+  _observeDocks() {
+    if (!this.isConnected) return;
+    this._dockObserver?.disconnect();
+    this._dockObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const height = entry.borderBoxSize[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+        this.style.setProperty(entry.target.id === "top-dock" ? "--top-dock-height" : "--bottom-dock-height", `${height}px`);
       }
     });
+    for (const id of ["#bottom-dock", "#top-dock"]) {
+      const dock = this.renderRoot.querySelector(id);
+      if (dock) this._dockObserver.observe(dock);
+    }
   }
   disconnectedCallback() {
     super.disconnectedCallback();
@@ -12298,9 +12974,94 @@ var SofabatonServerPanel = class extends i4 {
     document.removeEventListener("keydown", this._onKeyDown);
     this._unsubscribe?.();
     this._unsubscribe = null;
+    this._offAuthStream?.();
+    this._offAuthStream = null;
     this._dockObserver?.disconnect();
     this._dockObserver = null;
     this.store.disconnect();
+  }
+  // -- access ---------------------------------------------------------------------
+  async _fetchAuth() {
+    try {
+      const response = await this.api.authStatus();
+      if (response.body?.username) this._lastUsername = response.body.username;
+      return response.ok && response.body ? response.body : null;
+    } catch {
+      return null;
+    }
+  }
+  /** Before anything else: a signed-out browser of a claimed server gets only the sign-in. */
+  async _bootAuth() {
+    const auth = await this._fetchAuth();
+    if (!this.isConnected) return;
+    this._auth = auth;
+    if (auth?.claimed && !auth.signed_in) {
+      this._authPhase = "wall";
+      return;
+    }
+    this._enterPanel();
+  }
+  _enterPanel() {
+    this._authPhase = "ready";
+    this.store.connect();
+    void this.updateComplete.then(() => this._observeDocks());
+  }
+  /** A 401, the stream's `auth` event, or the Access view: ask again, and show the sign-in if this browser lost its session. */
+  async _refreshAuth() {
+    const auth = await this._fetchAuth();
+    if (!auth) return;
+    this._auth = auth;
+    if (auth.claimed && !auth.signed_in) {
+      if (this._authPhase === "ready") this._authDialog = "signin";
+    } else if (this._authDialog === "signin") {
+      this._authDialog = null;
+    }
+  }
+  _onAuthStreamMessage(message) {
+    if (message.data.type === "server_event" && message.data.kind === "auth") void this._refreshAuth();
+  }
+  _onAuthChanged(event) {
+    this._auth = event.detail;
+    if (event.detail.username) this._lastUsername = event.detail.username;
+    this._authDialog = null;
+    if (this._authPhase !== "ready") this._enterPanel();
+    else void this.store.refreshAll();
+  }
+  async _signOut() {
+    this._cogOpen = false;
+    try {
+      await this.api.signOut();
+    } catch {
+    }
+    this.store.disconnect();
+    this._auth = this._auth ? { ...this._auth, signed_in: false, username: null, via: null } : null;
+    this._authDialog = null;
+    this._authPhase = "wall";
+  }
+  _dismissBanner() {
+    this._bannerDismissed = true;
+    try {
+      storageOrNull()?.setItem(BANNER_DISMISSED_KEY, "1");
+    } catch {
+    }
+  }
+  _renderAccessBanner() {
+    const auth = this._auth;
+    if (!auth || auth.claimed || this._bannerDismissed) return A;
+    return b2`<div class="access-banner" id="access-banner" role="note">
+      <span><b>Access is not set up.</b> Anyone on your network can change this server's hubs and settings.</span>
+      <button class="small primary" id="access-banner-setup" type="button" @click=${() => {
+      this._authDialog = "setup";
+    }}>Set up access</button>
+      <button class="small" id="access-banner-dismiss" type="button" @click=${this._dismissBanner}>Not now</button>
+    </div>`;
+  }
+  _renderAuthDialog() {
+    if (!this._authDialog) return A;
+    return b2`<sb-panel-auth .api=${this.api} mode=${this._authDialog} variant="dialog" .username=${this._auth?.username || this._lastUsername}
+      @sb-auth-changed=${this._onAuthChanged} @sb-auth-cancel=${() => {
+      this._authDialog = null;
+    }}></sb-panel-auth>`;
   }
   // -- state --------------------------------------------------------------------
   get selectedHub() {
@@ -12381,6 +13142,7 @@ var SofabatonServerPanel = class extends i4 {
     if (this._pickerOpen) {
       this._pickerManual = false;
       this._pickerActionsHubId = null;
+      this._pickerConfirmRemove = null;
       this._pickerError = null;
       void this.store.refreshSeen();
       void this._scanPicker();
@@ -12407,9 +13169,10 @@ var SofabatonServerPanel = class extends i4 {
   async _pickerAct(hub, action) {
     const id = hub.hub_id;
     if (this._pickerBusy.has(id)) return;
-    if (action === "remove" && !confirm(`Remove ${hubDisplayName(hub)}?
-
-The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.`)) return;
+    if (action === "remove" && this._pickerConfirmRemove !== id) {
+      this._pickerConfirmRemove = id;
+      return;
+    }
     this._pickerBusy = new Set(this._pickerBusy).add(id);
     this._pickerError = null;
     try {
@@ -12428,6 +13191,7 @@ The server stops its proxy and forgets its registration, cached state and web re
       const busy = new Set(this._pickerBusy);
       busy.delete(id);
       this._pickerBusy = busy;
+      if (action === "remove") this._pickerConfirmRemove = null;
     }
   }
   async _pickerAdd(body) {
@@ -12520,6 +13284,18 @@ The server stops its proxy and forgets its registration, cached state and web re
     if (route.kind === "tool") {
       switch (route.page) {
         case "server":
+          if (route.sub === "mqtt") {
+            return b2`<sb-panel-mqtt .api=${this.api} .auth=${this._auth} .stream=${this.stream} .reachable=${s7.server.reachable}
+              @sb-auth-setup=${() => {
+              this._authDialog = "setup";
+            }}></sb-panel-mqtt>`;
+          }
+          if (route.sub === "access") {
+            return b2`<sb-panel-access .api=${this.api} .auth=${this._auth} .reachable=${s7.server.reachable}
+              @sb-auth-setup=${() => {
+              this._authDialog = "setup";
+            }} @sb-auth-changed=${this._onAuthChanged} @sb-auth-refresh=${() => void this._refreshAuth()}></sb-panel-access>`;
+          }
           return b2`<sb-panel-server .api=${this.api} .info=${s7.server.info} .error=${s7.server.error} .reachable=${s7.server.reachable} .streamOn=${s7.stream.connected} .hubCount=${s7.hubs.length}></sb-panel-server>`;
         case "debug":
           return route.sub === "events" ? b2`<sb-panel-events .stream=${this.stream}></sb-panel-events>` : b2`<sb-panel-api .api=${this.api} .ctx=${ctx} .operations=${s7.operations} @sb-request-sent=${() => void this.store.refreshAll()}></sb-panel-api>`;
@@ -12551,6 +13327,10 @@ The server stops its proxy and forgets its registration, cached state and web re
     }
   }
   render() {
+    if (this._authPhase === "checking") return b2`<div class="booting" id="auth-checking">Connecting…</div>`;
+    if (this._authPhase === "wall") {
+      return b2`<sb-panel-auth .api=${this.api} mode="signin" variant="wall" .username=${this._auth?.username || this._lastUsername} @sb-auth-changed=${this._onAuthChanged}></sb-panel-auth>`;
+    }
     const s7 = this._snapshot;
     const ctx = hubContextFor(s7, this.api);
     const runtime = selectedRuntime(s7);
@@ -12573,6 +13353,7 @@ The server stops its proxy and forgets its registration, cached state and web re
       open: this._pickerOpen,
       manual: this._pickerManual,
       actionsHubId: this._pickerActionsHubId,
+      confirmRemoveHubId: this._pickerConfirmRemove,
       busy: this._pickerBusy,
       adding: this._pickerAdding,
       scanning: this._pickerScanning,
@@ -12585,8 +13366,12 @@ The server stops its proxy and forgets its registration, cached state and web re
       },
       onActions: (hubId) => {
         this._pickerActionsHubId = this._pickerActionsHubId === hubId ? null : hubId;
+        this._pickerConfirmRemove = null;
       },
       onAction: (hub, action) => void this._pickerAct(hub, action),
+      onConfirmRemove: (hubId) => {
+        this._pickerConfirmRemove = hubId;
+      },
       onAdd: (seen) => void this._pickerAdd({ ...seen.config, enabled: true }),
       onManual: (show) => void this._showManual(show),
       onSubmit: (event) => this._pickerSubmit(event),
@@ -12600,6 +13385,7 @@ The server stops its proxy and forgets its registration, cached state and web re
       cogOpen: this._cogOpen,
       theme: s7.theme,
       eventCount: s7.stream.messageCount,
+      updateAvailable: s7.server.info?.update?.status === "update_available",
       subCounts: route.kind === "hub" && route.tab === "hub" && ctx.hub?.status ? { activities: ctx.hub.status.activities_cached, devices: ctx.hub.status.devices_cached } : void 0,
       onTab: (tab) => this._goTab(tab),
       onSub: (sub) => this._goSub(sub),
@@ -12608,10 +13394,13 @@ The server stops its proxy and forgets its registration, cached state and web re
         this._pickerOpen = false;
       },
       onPage: (page) => this._goPage(page),
-      onTheme: () => this.store.cycleTheme()
+      onTheme: () => this.store.cycleTheme(),
+      account: this._auth?.claimed && this._auth.signed_in ? { username: this._auth.username ?? "" } : null,
+      onSignOut: () => void this._signOut()
     })}
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
+          ${this._renderAccessBanner()}
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
           ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
@@ -12641,6 +13430,7 @@ The server stops its proxy and forgets its registration, cached state and web re
         if (s7.selectedHubId && confirm("Discard your unsaved changes? The hub is not changed.")) this.store.discardDraft(s7.selectedHubId);
       }
     })}
+        ${this._renderAuthDialog()}
       </div>
     `;
   }
@@ -12653,10 +13443,15 @@ SofabatonServerPanel.properties = {
   _wifiDirty: { state: true },
   _pickerManual: { state: true },
   _pickerActionsHubId: { state: true },
+  _pickerConfirmRemove: { state: true },
   _pickerBusy: { state: true },
   _pickerAdding: { state: true },
   _pickerScanning: { state: true },
-  _pickerError: { state: true }
+  _pickerError: { state: true },
+  _auth: { state: true },
+  _authPhase: { state: true },
+  _authDialog: { state: true },
+  _bannerDismissed: { state: true }
 };
 SofabatonServerPanel.styles = [
   PANEL_BASE_CSS,
@@ -12665,8 +13460,10 @@ SofabatonServerPanel.styles = [
       .page {
         --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
         --page-gutter: 16px;
+        /* The space above the subtab row and under the view: the same on both sides, so the panel sits evenly between the docks. */
+        --view-gap: 10px;
         max-width: 1040px; min-height: 100dvh; margin: 0 auto;
-        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + 16px);
+        padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + var(--view-gap));
       }
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
@@ -12708,8 +13505,15 @@ SofabatonServerPanel.styles = [
       .tab-btn--menu { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px 8px 10px; min-width: 44px; }
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
+      .cog-wrap { position: relative; display: inline-flex; }
+      .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
+      .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
-      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: 10px var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
+      /* The block space the shell adds around a view's content between the docks: the stage's padding, the view's
+         bottom border, and the page's padding over the bottom dock. A view that fits itself between the docks (the
+         Backup tab) subtracts it; keep it in step with those rules. */
+      .page { --view-chrome-block: calc(12px + 16px + 1px + var(--view-gap)); }
+      .subtabs { display: flex; align-items: stretch; min-height: 36px; overflow-x: auto; scrollbar-width: none; margin: var(--view-gap) var(--connected-inline) 0; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-radius: var(--connected-radius) var(--connected-radius) 0 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--sbp-panel) 96%, transparent), color-mix(in srgb, var(--sbp-panel-2) 68%, transparent)); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
       .subtabs::-webkit-scrollbar { display: none; }
       .subtab-btn { flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 16px; border: 0; border-right: 1px solid color-mix(in srgb, var(--sbp-line) 86%, transparent); border-radius: 0; background: transparent; color: color-mix(in srgb, var(--sbp-muted) 88%, var(--sbp-text) 12%); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
       .subtab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -12720,7 +13524,8 @@ SofabatonServerPanel.styles = [
       .subtab-btn.active { color: var(--sbp-text); background: transparent; box-shadow: inset 0 -3px 0 var(--sbp-accent); }
 
       /* -- the view and its scrim ------------------------------------------- */
-      .view { position: relative; margin: 0 var(--connected-inline) 16px; min-height: 40vh; border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
+      /* The view reaches down to the bottom dock's gap even when its content is short, as the card does in HA. */
+      .view { position: relative; margin: 0 var(--connected-inline); min-height: max(40vh, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-gap))); border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
       /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
       .stage[inert] { opacity: 0.5; pointer-events: none; }
@@ -12764,6 +13569,12 @@ SofabatonServerPanel.styles = [
       .dock-flash::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: linear-gradient(90deg, transparent 0%, rgba(var(--sbp-accent-rgb), 0.22) 35%, rgba(var(--sbp-accent-rgb), 0.38) 50%, rgba(var(--sbp-accent-rgb), 0.22) 65%, transparent 100%); transform: translateX(-100%); animation: dockPressWipe 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
       @keyframes dockPressWipe { 0% { transform: translateX(-100%); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(280%); opacity: 0; } }
       .stream.lost { color: var(--sbp-warn); }
+
+      /* -- access ----------------------------------------------------------- */
+      .access-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 16px 0; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--sbp-warn) 50%, var(--sbp-line)); border-radius: 12px; background: color-mix(in srgb, var(--sbp-warn) 9%, var(--sbp-panel)); font-size: 12px; line-height: 1.45; }
+      .access-banner span { flex: 1 1 240px; min-width: 0; }
+      .access-banner button { min-height: 32px; }
+      .booting { min-height: 100dvh; display: flex; align-items: center; justify-content: center; color: var(--sbp-muted); font-size: 13px; }
       @media (prefers-reduced-motion: reduce) {
         .dock-progress, .dock-progress[data-indeterminate="true"] { animation: none; }
         .dock-flash::before { animation: none; opacity: 0; }
@@ -12772,14 +13583,14 @@ SofabatonServerPanel.styles = [
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand-caption { display: none; }
-        .page { --page-gutter: 12px; }
+        .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }
         .brand b { font-size: 10px; letter-spacing: 0.06em; }
         .hub-picker-btn { min-height: 40px; padding-inline: 9px; }
         .tab-btn { padding-inline: 6px; }
         .tabs-scroll { gap: 0; }
         .page { --connected-inline: 12px; }
-        .subtabs { min-height: 34px; margin-top: 7px; }
+        .subtabs { min-height: 34px; }
         /* Narrow: the label gets every pixel, as on the card; the icon is decorative. */
         .subtab-icon { display: none; }
         .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
@@ -12791,12 +13602,710 @@ SofabatonServerPanel.styles = [
         .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
+        .page { --view-chrome-block: calc(12px + 12px + 12px + 1px + var(--view-gap)); }
       }
     `,
   HUB_PICKER_CSS
 ];
 function definePanel() {
   if (!customElements.get(PANEL_TAG)) customElements.define(PANEL_TAG, SofabatonServerPanel);
+}
+
+// server-panel/src/views/access-view.ts
+var ACCESS_VIEW_TAG = "sb-panel-access";
+var PASSWORD_MIN2 = 8;
+function localTime(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+}
+function browserLabel(userAgent) {
+  const ua = userAgent || "";
+  if (!ua) return "unknown browser";
+  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac OS X|Macintosh/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+  if (browser && os) return `${browser} on ${os}`;
+  return browser || os || ua.slice(0, 60);
+}
+async function copyText(text, field) {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+  }
+  if (!field) return false;
+  field.focus();
+  field.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  }
+}
+var SbPanelAccess = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.auth = null;
+    this.reachable = true;
+    this._tokens = null;
+    this._sessions = null;
+    this._origins = null;
+    this._originsDraft = null;
+    this._created = null;
+    this._copied = false;
+    this._renaming = null;
+    this._confirmRevoke = null;
+    this._busy = /* @__PURE__ */ new Set();
+    this._msg = {};
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    void this._load();
+  }
+  willUpdate(changed) {
+    const before = changed.get("auth");
+    if (changed.has("auth") && before !== void 0 && (before?.signed_in !== this.auth?.signed_in || before?.claimed !== this.auth?.claimed)) {
+      if (this.auth?.signed_in) this._msg = {};
+      void this._load();
+    }
+  }
+  get _signedIn() {
+    return Boolean(this.auth?.claimed && this.auth.signed_in);
+  }
+  async _load() {
+    if (!this.api) return;
+    const settings = await this.api.serverSettings().catch(() => null);
+    if (settings?.ok && settings.body) this._origins = settings.body.allowed_origins ?? { value: [], pinned: false };
+    if (!this._signedIn) {
+      this._tokens = null;
+      this._sessions = null;
+      return;
+    }
+    const [tokens, sessions] = await Promise.all([this.api.listTokens().catch(() => null), this.api.listSessions().catch(() => null)]);
+    if (tokens?.ok && tokens.body) this._tokens = tokens.body;
+    else if (tokens) this._say("tokens", problemText(tokens), false);
+    if (sessions?.ok && sessions.body) this._sessions = sessions.body;
+  }
+  _say(key, text, ok) {
+    this._msg = { ...this._msg, [key]: { text, ok } };
+  }
+  async _run(key, work) {
+    if (this._busy.has(key)) return;
+    this._busy = new Set(this._busy).add(key);
+    this._say(key, "", true);
+    try {
+      await work();
+    } catch (err) {
+      this._say(key, String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(key);
+      this._busy = busy;
+    }
+  }
+  _emit(name, detail) {
+    this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
+  }
+  _field(id) {
+    return this.renderRoot.querySelector(`#${id}`);
+  }
+  // -- account ---------------------------------------------------------------------
+  _saveAccount() {
+    return this._run("account", async () => {
+      const username = this._field("account-username")?.value.trim() ?? "";
+      const current = this._field("account-current")?.value ?? "";
+      const next = this._field("account-new")?.value ?? "";
+      const again = this._field("account-again")?.value ?? "";
+      if (!current) return this._say("account", "Enter your current password.", false);
+      if (next && next.length < PASSWORD_MIN2) return this._say("account", `The new password needs at least ${PASSWORD_MIN2} characters.`, false);
+      if (next !== again) return this._say("account", "The new passwords do not match.", false);
+      const change = { current_password: current };
+      if (username && username !== this.auth?.username) change.username = username;
+      if (next) change.new_password = next;
+      if (!change.username && !change.new_password) return this._say("account", "Nothing to change.", false);
+      const response = await this.api.updateAdmin(change);
+      if (!response.ok || !response.body) return this._say("account", response.status === 403 ? "The current password is not right." : problemText(response), false);
+      for (const id of ["account-current", "account-new", "account-again"]) {
+        const field = this._field(id);
+        if (field) field.value = "";
+      }
+      this._say("account", "Saved. Every other browser was signed out.", true);
+      this._emit("sb-auth-changed", response.body);
+      const sessions = await this.api.listSessions();
+      if (sessions.ok && sessions.body) this._sessions = sessions.body;
+    });
+  }
+  _renderAccount() {
+    return b2`
+      <div class="panel" id="access-account">
+        <h2>Admin account</h2>
+        <div class="fields">
+          <div><label for="account-username">Username</label><input id="account-username" type="text" autocomplete="username" .value=${this.auth?.username ?? ""} /></div>
+          <div><label for="account-current">Current password</label><input id="account-current" type="password" autocomplete="current-password" /></div>
+          <div><label for="account-new">New password</label><input id="account-new" type="password" autocomplete="new-password" placeholder="leave empty to keep" /></div>
+          <div><label for="account-again">New password again</label><input id="account-again" type="password" autocomplete="new-password" /></div>
+        </div>
+        <div class="actions">
+          <button class="small primary" id="account-save" ?disabled=${this._busy.has("account") || !this.reachable} @click=${this._saveAccount}>Save</button>
+          ${this._message("account")}
+        </div>
+        <div class="hint" style="margin-top: 8px">Changing the username or password signs out every other browser. Tokens keep working. Forgot the password? Run <span class="mono">sofabaton-x-server --reset-password</span> on the server's host (in Docker: <span class="mono">docker exec &lt;container&gt; sofabaton-x-server --reset-password</span>).</div>
+      </div>
+    `;
+  }
+  // -- tokens ----------------------------------------------------------------------
+  _createToken() {
+    return this._run("tokens", async () => {
+      const field = this._field("token-name");
+      const name = field?.value.trim() ?? "";
+      if (!name) return this._say("tokens", "Give the token a name, e.g. the integration it is for.", false);
+      const response = await this.api.createToken(name);
+      if (!response.ok || !response.body) return this._say("tokens", problemText(response), false);
+      this._created = response.body;
+      this._copied = false;
+      if (field) field.value = "";
+      const list = await this.api.listTokens();
+      if (list.ok && list.body) this._tokens = list.body;
+      await this.updateComplete;
+      this._field("token-secret")?.select();
+    });
+  }
+  async _copyCreated() {
+    if (!this._created) return;
+    this._copied = await copyText(this._created.token, this._field("token-secret"));
+    if (!this._copied) this._say("tokens", "Could not copy; select the token and copy it by hand.", false);
+  }
+  _renameToken(id) {
+    return this._run(`token-${id}`, async () => {
+      const draft = this._renaming?.draft.trim() ?? "";
+      if (!draft) return;
+      const response = await this.api.renameToken(id, draft);
+      if (!response.ok || !response.body) return this._say("tokens", problemText(response), false);
+      this._renaming = null;
+      this._tokens = (this._tokens ?? []).map((t5) => t5.id === id ? response.body : t5);
+    });
+  }
+  _revokeToken(id) {
+    return this._run(`token-${id}`, async () => {
+      const response = await this.api.revokeToken(id);
+      this._confirmRevoke = null;
+      if (!response.ok) return this._say("tokens", problemText(response), false);
+      this._tokens = (this._tokens ?? []).filter((t5) => t5.id !== id);
+      if (this._created?.id === id) this._created = null;
+      this._say("tokens", "Revoked. Anything using that token can no longer make changes.", true);
+    });
+  }
+  _renderCreated() {
+    const created = this._created;
+    if (!created) return A;
+    const base = this.api.baseUrl || location.origin;
+    return b2`
+      <div class="token-new" id="token-created">
+        <b>New token "${created.name}": copy it now, it is not shown again.</b>
+        <div class="row">
+          <input id="token-secret" type="text" readonly .value=${created.token} @focus=${(event) => event.target.select()} />
+          <button class="small fixed" id="token-copy" @click=${this._copyCreated}>${this._copied ? "Copied" : "Copy"}</button>
+          <button class="small fixed" id="token-done" @click=${() => {
+      this._created = null;
+    }}>Done</button>
+        </div>
+        <pre id="token-example">curl -X PUT -H "Authorization: Bearer ${created.token}" -H "Content-Type: application/json" \\
+  -d '{}' ${base}/api/v1/server/settings</pre>
+        <div class="hint" style="margin-top: 6px">Send it as <span class="mono">Authorization: Bearer &lt;token&gt;</span>, or as <span class="mono">X-Sofabaton-Token: &lt;token&gt;</span> when a reverse proxy's own login already uses the Authorization header.</div>
+      </div>
+    `;
+  }
+  _renderTokenRow(token) {
+    const busy = this._busy.has(`token-${token.id}`);
+    const renaming = this._renaming?.id === token.id;
+    return b2`
+      <tr data-token=${token.id}>
+        <td class="name">
+          ${renaming ? b2`<span class="rename"><input id="token-rename" type="text" .value=${this._renaming.draft}
+                @input=${(event) => {
+      this._renaming = { id: token.id, draft: event.target.value };
+    }}
+                @keydown=${(event) => {
+      if (event.key === "Enter") void this._renameToken(token.id);
+      if (event.key === "Escape") this._renaming = null;
+    }} /></span>` : token.name}
+        </td>
+        <td class="mono sub">…${token.hint}</td>
+        <td class="sub">${localTime(token.created_at)}</td>
+        <td class="sub">${token.last_used_at ? localTime(token.last_used_at) : "never"}</td>
+        <td class="act">
+          ${renaming ? b2`<button class="small primary" ?disabled=${busy} @click=${() => this._renameToken(token.id)}>Save</button><button class="small" @click=${() => {
+      this._renaming = null;
+    }}>Cancel</button>` : this._confirmRevoke === token.id ? b2`<button class="small danger" data-action="confirm-revoke" ?disabled=${busy} @click=${() => this._revokeToken(token.id)}>Revoke "${token.name}"</button><button class="small" @click=${() => {
+      this._confirmRevoke = null;
+    }}>Keep</button>` : b2`<button class="small" data-action="rename" @click=${() => {
+      this._renaming = { id: token.id, draft: token.name };
+      this._confirmRevoke = null;
+    }}>Rename</button><button class="small danger" data-action="revoke" @click=${() => {
+      this._confirmRevoke = token.id;
+      this._renaming = null;
+    }}>Revoke</button>`}
+        </td>
+      </tr>
+    `;
+  }
+  _renderTokens() {
+    const tokens = this._tokens;
+    return b2`
+      <div class="panel" id="access-tokens">
+        <h2>Tokens</h2>
+        <div class="hint intro">Integrations (Hubitat, scripts, other home automation) need a token to change hubs and settings. Reading and control calls (send a command, start an activity) work without one. Tokens do not expire; revoke one when it is no longer used. A token cannot manage tokens or this account.</div>
+        ${this._renderCreated()}
+        ${tokens === null ? b2`<div class="empty">loading…</div>` : tokens.length === 0 ? b2`<div class="empty" id="tokens-empty">No tokens yet.</div>` : b2`<div class="scroll-x"><table class="list" id="tokens-table">
+                <thead><tr><th>Name</th><th>Ends in</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+                <tbody>${tokens.map((t5) => this._renderTokenRow(t5))}</tbody>
+              </table></div>`}
+        <div class="add">
+          <input id="token-name" type="text" maxlength="64" placeholder="Name, e.g. Hubitat" @keydown=${(event) => {
+      if (event.key === "Enter") void this._createToken();
+    }} />
+          <button class="small primary" id="token-create" ?disabled=${this._busy.has("tokens") || !this.reachable} @click=${this._createToken}>Create token</button>
+        </div>
+        <div class="msg-line">${this._message("tokens")}</div>
+      </div>
+    `;
+  }
+  // -- sessions --------------------------------------------------------------------
+  _signOutOthers() {
+    return this._run("sessions", async () => {
+      const response = await this.api.revokeOtherSessions();
+      if (!response.ok) return this._say("sessions", problemText(response), false);
+      this._sessions = (this._sessions ?? []).filter((s7) => s7.current);
+      this._say("sessions", "Every other browser was signed out.", true);
+    });
+  }
+  _signOutOne(session) {
+    return this._run(`session-${session.id}`, async () => {
+      const response = await this.api.revokeSession(session.id);
+      if (!response.ok) return this._say("sessions", problemText(response), false);
+      this._sessions = (this._sessions ?? []).filter((s7) => s7.id !== session.id);
+      if (session.current) this._emit("sb-auth-refresh");
+    });
+  }
+  _renderSessions() {
+    const sessions = this._sessions;
+    const others = (sessions ?? []).filter((s7) => !s7.current).length;
+    return b2`
+      <div class="panel" id="access-sessions">
+        <h2>Signed-in browsers</h2>
+        ${sessions === null ? b2`<div class="empty">loading…</div>` : b2`<div class="scroll-x"><table class="list" id="sessions-table">
+              <thead><tr><th>Browser</th><th>Signed in</th><th>Last seen</th><th>Until</th><th></th></tr></thead>
+              <tbody>${sessions.map((s7) => b2`
+                <tr data-session=${s7.id}>
+                  <td>${browserLabel(s7.user_agent)}${s7.current ? b2`<span class="pill">this one</span>` : A}</td>
+                  <td class="sub">${localTime(s7.created_at)}</td>
+                  <td class="sub">${localTime(s7.last_seen_at)}</td>
+                  <td class="sub">${s7.remember ? localTime(s7.expires_at) : "browser closes"}</td>
+                  <td class="act"><button class="small" ?disabled=${this._busy.has(`session-${s7.id}`)} @click=${() => this._signOutOne(s7)}>Sign out</button></td>
+                </tr>`)}
+              </tbody>
+            </table></div>`}
+        <div class="actions" style="margin-top: 10px">
+          <button class="small" id="sessions-others" ?disabled=${!others || this._busy.has("sessions") || !this.reachable} @click=${this._signOutOthers}>Sign out other browsers</button>
+          ${this._message("sessions")}
+        </div>
+      </div>
+    `;
+  }
+  // -- allowed origins -------------------------------------------------------------
+  _originsText() {
+    return this._originsDraft ?? (this._origins?.value ?? []).join("\n");
+  }
+  _saveOrigins() {
+    return this._run("origins", async () => {
+      const list = this._originsText().split(/[\s,]+/).map((v3) => v3.trim()).filter(Boolean);
+      const response = await this.api.updateServerSettings({ allowed_origins: list });
+      if (!response.ok || !response.body) return this._say("origins", problemText(response), false);
+      this._origins = response.body.allowed_origins ?? { value: list, pinned: false };
+      this._originsDraft = null;
+      this._say("origins", "Saved; in effect now.", true);
+    });
+  }
+  _renderOrigins() {
+    const origins = this._origins;
+    const pinned = Boolean(origins?.pinned);
+    const dirty = this._originsDraft !== null && this._originsDraft.trim() !== (origins?.value ?? []).join("\n");
+    return b2`
+      <div class="panel" id="access-origins">
+        <h2>Allowed browser origins</h2>
+        <div class="hint intro">Web pages on another address (a dashboard at <span class="mono">http://nas:8123</span>, say) that may call this server from the browser: read, and send commands. They never get this panel's sign-in; to make changes they need a token. Pages on other addresses are refused. One origin per line: <span class="mono">scheme://host:port</span>, no path.</div>
+        <textarea id="origins" spellcheck="false" placeholder="http://nas:8123" .value=${this._originsText()} ?disabled=${pinned || !origins}
+          @input=${(event) => {
+      this._originsDraft = event.target.value;
+    }}></textarea>
+        <div class="actions" style="margin-top: 8px">
+          <button class="small primary" id="origins-save" ?disabled=${pinned || !dirty || this._busy.has("origins") || !this.reachable} @click=${this._saveOrigins}>Save</button>
+          ${dirty ? b2`<button class="small" id="origins-revert" @click=${() => {
+      this._originsDraft = null;
+    }}>Revert</button>` : A}
+          ${pinned ? b2`<span class="note">set by an environment variable or command-line flag</span>` : A}
+          ${this._message("origins")}
+        </div>
+      </div>
+    `;
+  }
+  _message(key) {
+    const msg = this._msg[key];
+    return msg?.text ? b2`<span class="msg ${msg.ok ? "msg-ok" : "msg-err"}" id="${key}-msg">${msg.text}</span>` : A;
+  }
+  // -- page ------------------------------------------------------------------------
+  render() {
+    const auth = this.auth;
+    if (auth === null) {
+      return b2`<div class="panel" id="access-unknown"><h2>Access</h2><div class="hint">This server did not report its access settings.</div></div>`;
+    }
+    if (!auth.claimed) {
+      return b2`
+        <div class="panel" id="access-unclaimed">
+          <h2>Access is not set up</h2>
+          <div class="hint intro">Anyone who can reach this server can change its hubs and settings, as with earlier versions. Set up an admin account to require this panel's sign-in (or a token, for integrations) for changes. Reading and control (sending commands, starting activities, the web remote) stay open to the network either way.</div>
+          <div class="actions"><button class="small primary" id="access-setup" ?disabled=${!this.reachable} @click=${() => this._emit("sb-auth-setup")}>Set up access</button></div>
+        </div>
+        ${this._renderOrigins()}
+      `;
+    }
+    return b2`${this._renderAccount()}${this._renderTokens()}${this._renderSessions()}${this._renderOrigins()}`;
+  }
+};
+SbPanelAccess.properties = {
+  api: { attribute: false },
+  auth: { attribute: false },
+  reachable: { attribute: false },
+  _tokens: { state: true },
+  _sessions: { state: true },
+  _origins: { state: true },
+  _originsDraft: { state: true },
+  _created: { state: true },
+  _copied: { state: true },
+  _renaming: { state: true },
+  _confirmRevoke: { state: true },
+  _busy: { state: true },
+  _msg: { state: true }
+};
+SbPanelAccess.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host { display: block; }
+      .intro { margin-bottom: 10px; }
+      .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 14px; margin-bottom: 12px; }
+      .token-new { margin: 10px 0 4px; padding: 12px; border: 1px solid color-mix(in srgb, var(--sbp-ok) 45%, var(--sbp-line)); border-radius: var(--sbp-radius); background: color-mix(in srgb, var(--sbp-ok) 7%, var(--sbp-panel)); }
+      .token-new b { display: block; margin-bottom: 6px; font-size: 13px; }
+      .token-new .row { align-items: center; }
+      .token-new input { font-family: var(--sbp-mono); font-size: 12px; }
+      .token-new pre { margin-top: 8px; }
+      .add { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+      .add input { max-width: 280px; }
+      table.list td.name { white-space: normal; overflow-wrap: anywhere; }
+      table.list td.act button + button { margin-left: 6px; }
+      .rename { display: flex; gap: 6px; align-items: center; }
+      .rename input { max-width: 220px; padding: 3px 8px; }
+      .pill { display: inline-block; padding: 0 6px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: rgba(var(--sbp-accent-rgb), 0.14); color: var(--sbp-accent); margin-left: 6px; }
+      .empty { color: var(--sbp-muted); font-size: 12px; padding: 8px 0; }
+      textarea#origins { min-height: 72px; }
+      .note { color: var(--sbp-muted); font-size: 12px; }
+      .msg-line { min-height: 18px; margin-top: 6px; font-size: 12px; }
+    `
+];
+function defineAccessView() {
+  if (!customElements.get(ACCESS_VIEW_TAG)) customElements.define(ACCESS_VIEW_TAG, SbPanelAccess);
+}
+
+// server-panel/src/views/mqtt-view.ts
+var MQTT_VIEW_TAG = "sb-panel-mqtt";
+var DESTINATION = ["host", "port", "username", "tls", "tls_ca", "tls_insecure"];
+function draftFrom(config) {
+  return {
+    host: config?.host ?? "",
+    port: config?.port ? String(config.port) : "",
+    username: config?.username ?? "",
+    password: "",
+    clearPassword: false,
+    tls: Boolean(config?.tls),
+    tls_ca: config?.tls_ca ?? "",
+    tls_insecure: Boolean(config?.tls_insecure),
+    client_id: config?.client_id ?? ""
+  };
+}
+function bodyFor(draft) {
+  const host = draft.host.trim();
+  if (!host) return "Enter the broker's address.";
+  const portText = draft.port.trim();
+  const port = portText ? Number(portText) : null;
+  if (portText && (!/^\d+$/.test(portText) || port < 1 || port > 65535)) return "The port must be between 1 and 65535.";
+  const body = {
+    host,
+    port,
+    username: draft.username.trim() || null,
+    tls: draft.tls,
+    tls_ca: draft.tls ? draft.tls_ca.trim() || null : null,
+    tls_insecure: draft.tls && draft.tls_insecure,
+    client_id: draft.client_id.trim() || null
+  };
+  if (draft.password) body.password = draft.password;
+  else if (draft.clearPassword) body.password = "";
+  return body;
+}
+var SbPanelMqtt = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this.auth = null;
+    this.stream = null;
+    this.reachable = true;
+    this._config = null;
+    this._state = null;
+    this._draft = draftFrom(null);
+    this._busy = "";
+    this._msg = null;
+    this._test = null;
+    this._confirmRemove = false;
+    this._offStream = null;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    void this._load(true);
+    this._offStream = this.stream?.onMessage((message) => {
+      const kind = String(message.data.kind ?? "");
+      if (message.data.type === "server_event" && (kind === "mqtt_config" || kind.startsWith("mqtt_"))) void this._load(kind === "mqtt_config" && !this._dirty());
+    }) ?? null;
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._offStream?.();
+    this._offStream = null;
+  }
+  get _canEdit() {
+    return Boolean(this._config?.editable && this.auth?.claimed && this.auth.signed_in);
+  }
+  _dirty() {
+    const saved = draftFrom(this._config);
+    const d3 = this._draft;
+    return Boolean(d3.password) || d3.clearPassword || Object.keys(saved).some((k2) => k2 !== "password" && k2 !== "clearPassword" && saved[k2] !== d3[k2]);
+  }
+  /** The saved password would be dropped: the destination moved and no new one was typed. */
+  _dropsPassword() {
+    if (!this._config?.password_set || this._draft.password || this._draft.clearPassword) return false;
+    const saved = draftFrom(this._config);
+    return DESTINATION.some((k2) => String(saved[k2]).trim() !== String(this._draft[k2]).trim());
+  }
+  async _load(resetDraft) {
+    if (!this.api) return;
+    const [config, state] = await Promise.all([this.api.mqttConfig().catch(() => null), this.api.mqttState().catch(() => null)]);
+    if (config?.ok && config.body) {
+      this._config = config.body;
+      if (resetDraft) this._draft = draftFrom(config.body);
+    }
+    if (state?.ok && state.body) this._state = state.body;
+  }
+  _set(key, value) {
+    this._draft = { ...this._draft, [key]: value };
+    this._msg = null;
+    this._test = null;
+  }
+  async _save() {
+    const body = bodyFor(this._draft);
+    if (typeof body === "string") {
+      this._msg = { text: body, ok: false };
+      return;
+    }
+    this._busy = "save";
+    this._msg = null;
+    try {
+      const response = await this.api.updateMqttConfig(body);
+      if (response.ok && response.body) {
+        this._config = response.body;
+        this._draft = draftFrom(response.body);
+        this._msg = { text: response.body.password_dropped ? "Saved. The saved password was dropped because the destination changed." : "Saved; the server uses it now.", ok: !response.body.password_dropped };
+        const state = await this.api.mqttState();
+        if (state.ok && state.body) this._state = state.body;
+      } else {
+        this._msg = { text: problemText(response), ok: false };
+      }
+    } catch (err) {
+      this._msg = { text: String(err), ok: false };
+    } finally {
+      this._busy = "";
+    }
+  }
+  async _runTest() {
+    const body = bodyFor(this._draft);
+    if (typeof body === "string") {
+      this._msg = { text: body, ok: false };
+      return;
+    }
+    this._busy = "test";
+    this._test = null;
+    this._msg = null;
+    try {
+      const response = await this.api.testMqttConfig(body);
+      if (response.ok && response.body) this._test = response.body;
+      else this._msg = { text: problemText(response), ok: false };
+    } catch (err) {
+      this._msg = { text: String(err), ok: false };
+    } finally {
+      this._busy = "";
+    }
+  }
+  async _remove() {
+    this._busy = "remove";
+    try {
+      const response = await this.api.removeMqttConfig();
+      this._confirmRemove = false;
+      if (!response.ok) {
+        this._msg = { text: problemText(response), ok: false };
+        return;
+      }
+      this._msg = { text: "Removed. The server has no broker now.", ok: true };
+      await this._load(true);
+    } catch (err) {
+      this._msg = { text: String(err), ok: false };
+    } finally {
+      this._busy = "";
+    }
+  }
+  _renderState() {
+    const s7 = this._state;
+    const at = s7?.host ? `${s7.host}:${s7.port}${s7.tls ? " (TLS)" : ""}` : "";
+    const text = !s7 ? "unknown" : !s7.configured ? "no broker" : s7.connected ? `connected to ${at}` : s7.wanted ? `not connected to ${at}${s7.last_error ? `: ${s7.last_error}` : ""}` : `${at}, idle (no device uses MQTT)`;
+    const tone = !s7?.configured ? "off" : s7.connected ? "ok" : s7.wanted ? "err" : "off";
+    return b2`
+      <div class="panel" id="mqtt-state">
+        <h2>Connection</h2>
+        <dl class="facts">
+          <div><dt>state</dt><dd id="mqtt-state-text"><span class="dot ${tone}"></span> ${text}</dd></div>
+          <div><dt>Wifi Devices on MQTT</dt><dd id="mqtt-devices">${this._config?.devices_using ?? 0}</dd></div>
+          <div><dt>subscribed topics</dt><dd class="mono">${s7?.topics.length ? s7.topics.join(", ") : "none"}</dd></div>
+          <div><dt>set by</dt><dd id="mqtt-source">${this._config?.source === "startup" ? "command line / environment" : this._config?.source === "panel" ? "this panel" : "nobody yet"}</dd></div>
+        </dl>
+        <div class="hint">The server connects only while a Wifi Device uses the mqtt transport. It must be the same broker as the one set for the hub in the Sofabaton app.</div>
+      </div>
+    `;
+  }
+  _renderReadOnly() {
+    const c7 = this._config;
+    return b2`
+      <div class="panel" id="mqtt-startup">
+        <h2>Broker</h2>
+        <div class="hint intro">Set where the server starts (<span class="mono">--mqtt-*</span> flags or <span class="mono">SOFABATON_MQTT_*</span> environment variables), so it is read-only here. Change it there and restart the server.</div>
+        <dl class="facts">
+          <div><dt>host</dt><dd>${c7.host ?? ""}</dd></div>
+          <div><dt>port</dt><dd>${c7.effective_port ?? ""}</dd></div>
+          <div><dt>user name</dt><dd>${c7.username ?? "none"}</dd></div>
+          <div><dt>password</dt><dd>${c7.password_set ? "set" : "none"}</dd></div>
+          <div><dt>TLS</dt><dd>${c7.tls ? c7.tls_insecure ? "on, certificate not checked" : "on" : "off"}</dd></div>
+        </dl>
+      </div>
+    `;
+  }
+  _renderForm() {
+    const d3 = this._draft;
+    const c7 = this._config;
+    const busy = this._busy !== "";
+    const dirty = this._dirty();
+    return b2`
+      <div class="panel" id="mqtt-form">
+        <h2>Broker</h2>
+        <div class="fields">
+          <div><label for="mqtt-host">Host</label><input id="mqtt-host" type="text" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or broker.lan" .value=${d3.host} @input=${(e6) => this._set("host", e6.target.value)} /></div>
+          <div><label for="mqtt-port">Port</label><input id="mqtt-port" type="number" min="1" max="65535" inputmode="numeric" placeholder=${d3.tls ? "8883" : "1883"} .value=${d3.port} @input=${(e6) => this._set("port", e6.target.value)} /></div>
+          <div><label for="mqtt-username">User name</label><input id="mqtt-username" type="text" autocomplete="off" spellcheck="false" .value=${d3.username} @input=${(e6) => this._set("username", e6.target.value)} /></div>
+          <div>
+            <label for="mqtt-password">Password</label>
+            <input id="mqtt-password" type="password" autocomplete="new-password" placeholder=${c7?.password_set && !d3.clearPassword ? "saved; leave empty to keep" : ""} .value=${d3.password} ?disabled=${d3.clearPassword} @input=${(e6) => this._set("password", e6.target.value)} />
+            ${c7?.password_set ? b2`<div class="pw-note">${d3.clearPassword ? b2`<span id="mqtt-password-clearing">The saved password is removed on Save.</span><button class="small" type="button" @click=${() => this._set("clearPassword", false)}>Keep it</button>` : b2`<button class="small" type="button" id="mqtt-password-clear" @click=${() => {
+      this._draft = { ...this._draft, password: "", clearPassword: true };
+    }}>Remove saved password</button>`}</div>` : A}
+          </div>
+        </div>
+        <div class="checks">
+          <label class="inline" for="mqtt-tls"><input id="mqtt-tls" type="checkbox" .checked=${d3.tls} @change=${(e6) => this._set("tls", e6.target.checked)} /> Connect over TLS</label>
+          <label class="inline" for="mqtt-insecure"><input id="mqtt-insecure" type="checkbox" .checked=${d3.tls_insecure} ?disabled=${!d3.tls} @change=${(e6) => this._set("tls_insecure", e6.target.checked)} /> Do not check the broker's certificate</label>
+        </div>
+        ${d3.tls ? b2`<div class="fields"><div><label for="mqtt-ca">CA certificate file on the server (optional)</label><input id="mqtt-ca" type="text" spellcheck="false" placeholder="/data/ca.pem; empty = the system's store" .value=${d3.tls_ca} @input=${(e6) => this._set("tls_ca", e6.target.value)} /></div></div>` : A}
+        <details ?open=${Boolean(d3.client_id)}>
+          <summary>Advanced</summary>
+          <div class="fields"><div><label for="mqtt-client-id">Client id</label><input id="mqtt-client-id" type="text" spellcheck="false" placeholder="automatic" .value=${d3.client_id} @input=${(e6) => this._set("client_id", e6.target.value)} /></div></div>
+        </details>
+        ${this._dropsPassword() ? b2`<div class="warn" id="mqtt-drop-warning">You changed where the password is sent. The saved password is dropped on Save unless you enter it again, so it never goes to a new place by itself.</div>` : A}
+        ${d3.tls && d3.tls_insecure ? b2`<div class="warn">Without a certificate check, anyone in the path can pose as the broker and read the password.</div>` : A}
+        ${this._test ? b2`<div class="result ${this._test.ok ? "msg-ok" : "msg-err"}" id="mqtt-test-result">${this._test.ok ? `Connected (${this._test.elapsed_ms} ms). Nothing was saved.` : `Could not connect: ${this._test.error}`}</div>` : A}
+        <div class="actions">
+          <button class="small" id="mqtt-test" type="button" ?disabled=${busy || !this.reachable} @click=${this._runTest}>${this._busy === "test" ? "testing\u2026" : "Test connection"}</button>
+          <button class="small primary" id="mqtt-save" type="button" ?disabled=${busy || !dirty || !this.reachable} @click=${this._save}>${this._busy === "save" ? "saving\u2026" : "Save"}</button>
+          ${dirty ? b2`<button class="small" id="mqtt-revert" type="button" ?disabled=${busy} @click=${() => {
+      this._draft = draftFrom(this._config);
+      this._msg = null;
+      this._test = null;
+    }}>Revert</button>` : A}
+          ${c7?.source === "panel" ? this._confirmRemove ? b2`<button class="small danger" id="mqtt-remove-confirm" type="button" ?disabled=${busy} @click=${this._remove}>Remove the broker${c7.devices_using ? ` (${c7.devices_using} Wifi Device${c7.devices_using === 1 ? "" : "s"} stop receiving presses)` : ""}</button><button class="small" type="button" @click=${() => {
+      this._confirmRemove = false;
+    }}>Keep</button>` : b2`<button class="small danger" id="mqtt-remove" type="button" ?disabled=${busy} @click=${() => {
+      this._confirmRemove = true;
+    }}>Remove broker</button>` : A}
+          ${this._msg ? b2`<span class="msg ${this._msg.ok ? "msg-ok" : "msg-err"}" id="mqtt-msg">${this._msg.text}</span>` : A}
+        </div>
+        <div class="hint" style="margin-top: 12px">Stored on the server in <span class="mono">mqtt.json</span> in its data directory, readable only by the server's user. The password is kept in plain text there (the server has to send it to the broker), so backups of the data directory contain it. To keep it off the disk, start the server with <span class="mono">--mqtt-password-file</span> or <span class="mono">SOFABATON_MQTT_*</span> instead; this page then shows those settings read-only.</div>
+      </div>
+    `;
+  }
+  render() {
+    const c7 = this._config;
+    if (!c7) return b2`<div class="panel"><div class="hint">loading…</div></div>`;
+    let body;
+    if (c7.source === "startup") body = this._renderReadOnly();
+    else if (this._canEdit) body = this._renderForm();
+    else if (this.auth && !this.auth.claimed) {
+      body = b2`<div class="panel" id="mqtt-needs-access">
+        <h2>Broker</h2>
+        <div class="hint intro">The broker's password is a secret this server stores, so only a signed-in admin can set it. Set up access first.</div>
+        <div class="actions"><button class="small primary" id="mqtt-setup-access" ?disabled=${!this.reachable} @click=${() => this.dispatchEvent(new CustomEvent("sb-auth-setup", { bubbles: true, composed: true }))}>Set up access</button></div>
+      </div>`;
+    } else {
+      body = b2`<div class="panel"><div class="hint">This server did not report its access settings, so the broker cannot be changed here.</div></div>`;
+    }
+    return b2`${this._renderState()}${body}`;
+  }
+};
+SbPanelMqtt.properties = {
+  api: { attribute: false },
+  auth: { attribute: false },
+  stream: { attribute: false },
+  reachable: { attribute: false },
+  _config: { state: true },
+  _state: { state: true },
+  _draft: { state: true },
+  _busy: { state: true },
+  _msg: { state: true },
+  _test: { state: true },
+  _confirmRemove: { state: true }
+};
+SbPanelMqtt.styles = [
+  PANEL_BASE_CSS,
+  i`
+      :host { display: block; }
+      .intro { margin-bottom: 10px; }
+      .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 14px; }
+      .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0 4px; }
+      .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 18px; margin: 6px 0 10px; padding: 0; }
+      .facts div { min-width: 0; }
+      .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+      .facts dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+      .pw-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--sbp-muted); }
+      .warn { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.45; border: 1px solid color-mix(in srgb, var(--sbp-warn) 50%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 9%, var(--sbp-panel)); }
+      .result { margin-top: 10px; font-size: 13px; }
+      .actions { margin-top: 14px; }
+      details { margin-top: 10px; }
+      summary { cursor: pointer; font-size: 12px; color: var(--sbp-muted); }
+    `
+];
+function defineMqttView() {
+  if (!customElements.get(MQTT_VIEW_TAG)) customElements.define(MQTT_VIEW_TAG, SbPanelMqtt);
 }
 
 // server-panel/src/views/api-view.ts
@@ -13091,6 +14600,18 @@ var TOOLS_CARD_STRINGS_EN = {
     155: "DVR",
     156: "Play",
     157: "Guide",
+    158: "Enter (E)",
+    159: "0",
+    160: "Dash (-)",
+    161: "9",
+    162: "8",
+    163: "7",
+    164: "6",
+    165: "5",
+    166: "4",
+    167: "3",
+    168: "2",
+    169: "1",
     174: "Up",
     175: "Left",
     176: "OK",
@@ -13420,7 +14941,8 @@ var TOOLS_CARD_STRINGS_EN = {
         volume: "Volume buttons",
         navigation: "Navigation buttons",
         playback: "Playback buttons",
-        channels: "Channel buttons"
+        channels: "Channel buttons",
+        numpad: "Number pad buttons"
       },
       idleShort: {
         0: "not set",
@@ -13659,6 +15181,7 @@ var TOOLS_CARD_STRINGS_EN = {
     roleNavigation: "Navigation and OK control",
     rolePlayback: "Playback buttons control",
     roleChannels: "Channel buttons control",
+    roleNumpad: "Number pad control",
     roleNotUsed: "Not used",
     roleCustom: "Custom",
     roleCustomized: (name) => `${name} (customized)`,
@@ -13833,11 +15356,24 @@ var TOOLS_CARD_STRINGS_EN = {
       dvr: "DVR",
       play: "Play",
       guide: "Guide",
+      num0: "0",
+      num1: "1",
+      num2: "2",
+      num3: "3",
+      num4: "4",
+      num5: "5",
+      num6: "6",
+      num7: "7",
+      num8: "8",
+      num9: "9",
+      numDash: "Dash (-)",
+      numEnter: "Enter (E)",
       navigation: "Navigation",
       volumeChannel: "Volume & channel",
       transport: "Playback",
       colour: "Color",
       extra: "Extra",
+      numpad: "Number pad",
       unknown: (code) => `Button 0x${code}`
     },
     powerOn: "Power on",
@@ -15955,14 +17491,31 @@ function x2ExtraButtonCatalog() {
     { code: 157, name: S9.guide, group: S9.extra }
   ];
 }
+function x2NumpadButtonCatalog() {
+  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 169, name: S9.num1, group: S9.numpad },
+    { code: 168, name: S9.num2, group: S9.numpad },
+    { code: 167, name: S9.num3, group: S9.numpad },
+    { code: 166, name: S9.num4, group: S9.numpad },
+    { code: 165, name: S9.num5, group: S9.numpad },
+    { code: 164, name: S9.num6, group: S9.numpad },
+    { code: 163, name: S9.num7, group: S9.numpad },
+    { code: 162, name: S9.num8, group: S9.numpad },
+    { code: 161, name: S9.num9, group: S9.numpad },
+    { code: 159, name: S9.num0, group: S9.numpad },
+    { code: 160, name: S9.numDash, group: S9.numpad },
+    { code: 158, name: S9.numEnter, group: S9.numpad }
+  ];
+}
 function bundleButtonCatalog(bundle) {
   if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()];
   }
   return sharedButtonCatalog();
 }
 function buttonName(code) {
-  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()].find((entry) => entry.code === Number(code));
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()].find((entry) => entry.code === Number(code));
   return known?.name ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
 }
 function deviceNameFor(bundle, deviceId) {
@@ -16136,13 +17689,15 @@ var ACTIVITY_ROLE_GROUPS = [
   "volume",
   "navigation",
   "playback",
-  "channels"
+  "channels",
+  "numpad"
 ];
 var ROLE_GROUP_BUTTON_IDS = {
   volume: [182, 185, 184],
   navigation: [174, 178, 175, 177, 176, 179, 180, 181],
   playback: [156, 188, 187, 189],
-  channels: [183, 186]
+  channels: [183, 186],
+  numpad: [169, 168, 167, 166, 165, 164, 163, 162, 161, 159, 160, 158]
 };
 function roleGroupButtons(bundle, group) {
   const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
@@ -16163,7 +17718,7 @@ function roleMappableButtonCount(bundle, deviceId, group) {
 }
 function activityRoleAssignments(bundle, activityId) {
   const activity = findBundleActivity(bundle, activityId);
-  return ACTIVITY_ROLE_GROUPS.map((group) => {
+  return ACTIVITY_ROLE_GROUPS.filter((group) => roleGroupButtons(bundle, group).length > 0).map((group) => {
     const buttons = roleGroupButtons(bundle, group);
     const totalCount = buttons.length;
     const groupSet = new Set(buttons);
@@ -16261,6 +17816,27 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   }
 }
 
+// server-panel/src/components/firmware-block.ts
+var FIRMWARE_BLOCK_STRINGS = {
+  body: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required for features that change the hub configuration, because older firmware accepts the writes and silently discards them. Update the hub using the Sofabaton app. This tab becomes available automatically after the hub reports the updated firmware version.`
+};
+var FIRMWARE_BLOCK_CSS = i`
+  .firmware-block { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.55; }
+  .firmware-block-icon { color: var(--sbp-muted); }
+  .firmware-block-icon .mdi { width: 40px; height: 40px; }
+  .firmware-block-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
+  .firmware-block-body { max-width: 420px; font-size: 13px; }
+`;
+function renderFirmwareBlock(floor, title, id) {
+  return b2`
+    <div class="firmware-block" id=${id} role="status">
+      <div class="firmware-block-icon"><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiChip}></path></svg></div>
+      <div class="firmware-block-title">${title}</div>
+      <div class="firmware-block-body">${FIRMWARE_BLOCK_STRINGS.body(floor.installed, floor.required)}</div>
+    </div>
+  `;
+}
+
 // server-panel/src/components/operation-progress.ts
 var OPERATION_PROGRESS_CSS = i`
   .progress-shell { border: 1px solid var(--sbp-line); border-radius: 16px; padding: 18px; background: transparent; color: var(--sbp-text); }
@@ -16310,14 +17886,24 @@ function jobStepMessage(job) {
 
 // server-panel/src/pointer-reorder.ts
 var PointerReorder = class {
-  constructor(rows, changed, moved, top = () => 0, gap = () => 0) {
+  constructor(rows, changed, moved, top = () => 0, gap = () => 0, scroller = () => null) {
     this.rows = rows;
     this.changed = changed;
     this.moved = moved;
     this.top = top;
     this.gap = gap;
+    this.scroller = scroller;
     this.state = null;
     this.handle = null;
+  }
+  scrollPos() {
+    const box = this.scroller();
+    return box ? box.scrollTop : window.scrollY;
+  }
+  /** The dragged row's offset: the pointer's travel plus what the rows scrolled under it since the start. */
+  dyAt(clientY) {
+    const drag = this.state;
+    return clientY - drag.startY + this.scrollPos() - drag.startScroll;
   }
   start(event, index) {
     if (event.button !== 0 || this.state) return;
@@ -16327,16 +17913,21 @@ var PointerReorder = class {
     this.handle = event.currentTarget;
     this.handle.setPointerCapture(event.pointerId);
     window.getSelection()?.removeAllRanges();
-    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY, startScroll: this.scrollPos() };
     this.changed();
   }
   move(event) {
     const drag = this.state;
     if (!drag || event.pointerId !== drag.pointerId) return;
     event.preventDefault();
-    if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
+    const box = this.scroller();
+    if (box) {
+      const rect = box.getBoundingClientRect();
+      if (event.clientY < rect.top + 32) box.scrollTop -= 10;
+      else if (event.clientY > rect.bottom - 32) box.scrollTop += 10;
+    } else if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
     else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
-    this.state = { ...drag, over: this.slot(event.clientY), dy: event.clientY - drag.startY };
+    this.state = { ...drag, over: this.slot(event.clientY), dy: this.dyAt(event.clientY) };
     this.changed();
   }
   offset(index) {
@@ -16358,7 +17949,7 @@ var PointerReorder = class {
     };
     const own = rects[drag.from];
     if (!own) return drag.from;
-    const centre = own.top - offset(drag.from) + own.height / 2 + clientY - drag.startY;
+    const centre = own.top - offset(drag.from) + own.height / 2 + this.dyAt(clientY);
     let over = drag.from;
     rects.forEach((rect, index) => {
       const mid = rect.top - offset(index) + rect.height / 2;
@@ -16421,7 +18012,7 @@ function jobRunning(job) {
 function jobFailureText(job, fallback) {
   if (!job || job.status !== "failed") return null;
   const problem = job.error;
-  return String(problem?.detail || problem?.title || problem?.type || fallback);
+  return String(problem?.detail || problem?.title || (problem?.type ? humanizeSlug(problem.type) : "") || fallback);
 }
 function jobProgressMessage(job) {
   const message = job?.progress?.message;
@@ -16539,12 +18130,6 @@ function secondsToByte(value) {
 }
 
 // server-panel/src/views/device-editor-state.ts
-var MIN_SUPPORTED_FIRMWARE = { X1: 17, X1S: 5, X2: 5 };
-function firmwareUnsupported(hubVersion, firmware) {
-  const required = MIN_SUPPORTED_FIRMWARE[String(hubVersion ?? "").toUpperCase()];
-  if (required === void 0 || firmware == null) return null;
-  return firmware < required ? { installed: firmware, required } : null;
-}
 function snapshotAsBundle(snapshot) {
   const doc = snapshot;
   return {
@@ -16736,7 +18321,9 @@ var SbPanelBackup = class extends i4 {
       () => Array.from(this.renderRoot.querySelectorAll(`.edit-selection-row[data-kind="${kind}"]`)),
       () => this.requestUpdate(),
       (from, to) => this._moveTopLevel(kind, from, to),
-      () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0
+      () => parseFloat(getComputedStyle(this).getPropertyValue("--top-dock-height")) || 0,
+      () => 0,
+      () => this.renderRoot.querySelector("#edit-list")?.closest(".selection-card") ?? null
     );
   }
   // -- lifecycle ---------------------------------------------------------------------------------------
@@ -17043,6 +18630,8 @@ var SbPanelBackup = class extends i4 {
   // -- render -------------------------------------------------------------------------------------------------------
   render() {
     if (!this._hub) return b2`<div class="panel"><div class="hint">${P2.pickHub}</div></div>`;
+    const floor = firmwareFloor(this._hub);
+    if (floor) return b2`<div class="backup-panel" id="backup-view" data-section=${this.section}>${renderFirmwareBlock(floor, TOOLS_CARD_STRINGS.availability.backupUnavailable, "backup-firmware-block")}</div>`;
     if (this.section === "edit" && this._detail && this._detailExists()) return this._renderDetail(this._detail);
     const body = this.section === "edit" ? this._renderEdit() : this.section === "restore" ? this._renderRestore() : this._renderMake();
     return b2`<div class="backup-panel" id="backup-view" data-section=${this.section}>${body}</div>`;
@@ -17336,12 +18925,19 @@ SbPanelBackup.properties = {
 SbPanelBackup.styles = [
   PANEL_BASE_CSS,
   OPERATION_PROGRESS_CSS,
+  FIRMWARE_BLOCK_CSS,
   i`
       :host { display: block; container-type: inline-size; --bk-radius-sm: 10px; --bk-radius-md: 12px; --bk-radius-xl: 22px; }
       .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
       input[type="file"] { display: none; }
-      .backup-body, .restore-body, .edit-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      /* The view fits between the docks, as the card does in HA: only the list card gives up height (and scrolls), so the
+         action buttons under it stay on screen. Below the floor the page scrolls instead of squeezing the list away. */
+      .backup-panel { display: flex; flex-direction: column; max-height: max(300px, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-chrome-block, 0px))); }
+      .backup-body, .restore-body, .edit-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; flex: 0 1 auto; min-height: 0; }
       .backup-config-view, .restore-config-view, .edit-config-view { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      .backup-body > *, .restore-body > *, .edit-body > *, .backup-config-view > *, .restore-config-view > *, .edit-config-view > * { flex: 0 0 auto; }
+      .backup-body > .backup-config-view, .restore-body > .restore-config-view, .edit-body > .edit-config-view,
+      .backup-config-view > .selection-card, .restore-config-view > .selection-card, .edit-config-view > .selection-card { flex: 0 1 auto; min-height: 0; }
       .backup-drawer-sub { color: var(--sbp-muted); font-size: 13px; line-height: 1.5; }
       .backup-section-title { color: var(--sbp-text); font-size: 13px; font-weight: 700; }
 
@@ -17362,10 +18958,10 @@ SbPanelBackup.styles = [
       .backup-selected-count { color: var(--sbp-accent); font-size: 12px; font-weight: 700; }
       button.backup-link-btn { border: none; background: transparent; color: var(--sbp-accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
       button.backup-link-btn:disabled { opacity: 0.48; cursor: default; }
-      .selection-card { border: 1px solid var(--sbp-line); border-radius: var(--bk-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 72%, transparent); overflow: hidden; min-width: 0; }
+      .selection-card { border: 1px solid var(--sbp-line); border-radius: var(--bk-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 72%, transparent); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; min-width: 0; }
       .selection-list { display: flex; flex-direction: column; }
       .selection-empty { padding: 16px 14px; font-size: 13px; color: var(--sbp-muted); }
-      .selection-group-header { display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 94%, white 6%); border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
+      .selection-group-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 94%, white 6%); border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); }
       .selection-group-header:first-child { border-top: none; }
       .selection-row { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--sbp-line) 72%, transparent); cursor: pointer; min-width: 0; }
       .selection-row:first-child { border-top: none; }
@@ -17491,12 +19087,6 @@ function buildCatalog(devices, activities, snapshot) {
   const provenance = /* @__PURE__ */ new Map();
   for (const e6 of snapshot?.devices ?? []) provenance.set(entryKey("device", e6.device.device_id), e6);
   for (const e6 of snapshot?.activities ?? []) provenance.set(entryKey("activity", e6.device.device_id), e6);
-  const rank = (kind, id) => {
-    const index = ((kind === "device" ? snapshot?.devices : snapshot?.activities) ?? []).findIndex((e6) => e6.device.device_id === id);
-    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
-  };
-  devices = [...devices].sort((x2, y3) => rank("device", x2.device_id) - rank("device", y3.device_id));
-  activities = [...activities].sort((x2, y3) => rank("activity", x2.activity_id) - rank("activity", y3.activity_id));
   const entries = [];
   for (const d3 of devices) {
     const p4 = provenance.get(entryKey("device", d3.device_id));
@@ -17523,9 +19113,9 @@ function boundButtons(buttons) {
   return buttons.filter((b3) => b3.device_id != null || b3.command_id != null);
 }
 function jobPhrase(job) {
+  if (job.status === "queued") return "Queued\u2026";
   const p4 = job.progress;
-  const steps = p4 && p4.total_steps != null ? ` ${p4.completed_steps ?? 0}/${p4.total_steps}` : "";
-  return `${job.status}${steps}`;
+  return p4 && p4.total_steps != null ? `Refreshing ${p4.completed_steps ?? 0}/${p4.total_steps}` : "Refreshing\u2026";
 }
 function deviceClassIconPath(deviceClass) {
   switch (String(deviceClass ?? "").trim().toLowerCase()) {
@@ -17605,8 +19195,7 @@ var SbPanelCatalog = class extends i4 {
         } else {
           const job = await this.api.followJob(hubId, started.body.job_id);
           if (job) this._lastJobId = job.job_id;
-          if (!job) error = "the job could not be followed";
-          else if (job.status !== "done") error = `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+          error = jobOutcomeText(job);
         }
       } catch (err) {
         error = String(err);
@@ -17637,7 +19226,7 @@ var SbPanelCatalog = class extends i4 {
         if (started.status !== 202 || !started.body) return fail(problemText(started));
         const job = await this.api.followJob(hubId, started.body.job_id);
         if (job) this._lastJobId = job.job_id;
-        if (!job || job.status !== "done") return fail(job ? `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}` : "the job could not be followed");
+        if (!job || job.status !== "done") return fail(jobOutcomeText(job) ?? "Did not finish");
         const id = Number(job.result?.[dialog.kind === "device" ? "device_id" : "activity_id"]);
         if (!Number.isInteger(id) || id <= 0) return fail(dialog.kind === "device" ? "The hub did not return the new device id." : "The hub did not return the new activity id.");
         const snapshot = await this.api.snapshot(hubId);
@@ -17819,11 +19408,11 @@ var SbPanelCatalog = class extends i4 {
   async _refreshScope(scope, key, label) {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
-    this._refresh = { key, text: "starting\u2026" };
+    this._refresh = { key, text: "Starting\u2026" };
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `refresh ${label}: ${problemText(started)}`;
+        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
@@ -17831,12 +19420,11 @@ var SbPanelCatalog = class extends i4 {
           this._refresh = { key, text: jobPhrase(j2) };
         }
       });
-      if (!job) this._notice = `refresh ${label}: the job could not be followed`;
-      else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+      if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `refresh ${label}: ${String(err)}`;
+      this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
       this._refresh = null;
     }
@@ -17980,7 +19568,12 @@ var SbPanelCatalog = class extends i4 {
           <span class="entity-name-icon">${icon3(mdiDragVerticalVariant)}</span>
           <span class="entity-name-copy"><span class="entity-name-label">${e6.name}</span><span class="entity-count">${count}</span></span>
         </span>
-        <span class="entity-meta">${badge(DEV_ID_BADGE, e6.id)}</span>
+        <span class="entity-meta">
+          ${badge(DEV_ID_BADGE, e6.id)}
+          <button class="icon-btn entity-edit" type="button" disabled tabindex="-1" aria-hidden="true">${icon3(mdiWrench)}</button>
+          <button class="icon-btn entity-refresh" type="button" disabled tabindex="-1" aria-hidden="true">${icon3(mdiRefresh)}</button>
+          <span class="entity-chevron">▼</span>
+        </span>
       </div>
     </div>`;
   }
@@ -18147,6 +19740,7 @@ SbPanelCatalog.styles = [
       .entity-block--reorder .entity-summary { cursor: inherit; }
       .entity-block--reorder .entity-summary:hover { background: transparent; }
       .entity-block--reorder .entity-name-icon { color: var(--sbp-accent); }
+      .entity-block--reorder .entity-meta .icon-btn, .entity-block--reorder .entity-chevron { pointer-events: none; }
       .entity-block--reorder:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
       .entity-block.is-shifting { transition: transform 150ms ease; }
       .entity-block.is-dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
@@ -18598,7 +20192,6 @@ var SbPanelEntityEditor = class extends i4 {
     this._snapshot = null;
     this._baseline = null;
     this._working = null;
-    this._info = null;
     this._callbackDeviceId = null;
     this._exitConfirm = null;
     this._syncing = false;
@@ -18681,6 +20274,9 @@ var SbPanelEntityEditor = class extends i4 {
       this._stage = "loading";
       this._notice = null;
       void this._load();
+    } else if (changed.has("ctx") && this._stage === "guard_firmware" && !firmwareFloor(this._hub)) {
+      this._stage = "loading";
+      void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
     }
@@ -18708,7 +20304,7 @@ var SbPanelEntityEditor = class extends i4 {
     if (this._offline) return this._working?.hub?.version ?? null;
     return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
   }
-  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------------
+  // -- loading: the snapshot, the callback device; the firmware floor is the server's verdict on the hub ---
   async _load(options = {}) {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
@@ -18716,13 +20312,11 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
-    const [snapshot, info, callback] = await Promise.all([
+    const [snapshot, callback] = await Promise.all([
       this.api.snapshot(hubId),
-      this.api.hubInfo(hubId).catch(() => null),
       this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
     ]);
     if (seq !== this._loadSeq) return;
-    this._info = info?.ok ? info.body : null;
     this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
     if (!snapshot.ok || !snapshot.body) {
       this._notice = problemText(snapshot);
@@ -18730,7 +20324,7 @@ var SbPanelEntityEditor = class extends i4 {
       return;
     }
     this._snapshot = snapshot.body;
-    if (firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version)) {
+    if (firmwareFloor(this._hub)) {
       this._stage = "guard_firmware";
       return;
     }
@@ -18832,7 +20426,7 @@ var SbPanelEntityEditor = class extends i4 {
     }
     const job = await this.api.followJob(hubId, started.body.job_id);
     if (job && job.status === "done") return null;
-    const message = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
+    const message = jobOutcomeText(job) ?? "Did not finish";
     const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
     return { stale, message };
   }
@@ -18902,7 +20496,7 @@ var SbPanelEntityEditor = class extends i4 {
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (!job || job.status !== "done") {
-        this._deleteError = `Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.detail || job.error.type}` : ""}`;
+        this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
       }
       this.store.discardDraft(hubId);
@@ -18924,7 +20518,7 @@ var SbPanelEntityEditor = class extends i4 {
       case "loading":
         return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
       case "guard_firmware": {
-        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
+        const floor = firmwareFloor(this._hub);
         return this._renderGuard(mdiChip, S9.firmwareUnsupportedTitle, S9.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-firmware");
       }
       case "needs_refresh":
@@ -19002,7 +20596,6 @@ SbPanelEntityEditor.properties = {
   _snapshot: { state: true },
   _baseline: { state: true },
   _working: { state: true },
-  _info: { state: true },
   _callbackDeviceId: { state: true },
   _exitConfirm: { state: true },
   _syncing: { state: true },
@@ -19053,7 +20646,8 @@ var ROLE_ICONS = {
   volume: mdiVolumeHigh,
   navigation: mdiGamepadRoundOutline,
   playback: mdiPlayPause,
-  channels: mdiPound
+  channels: mdiPound,
+  numpad: mdiDialpad
 };
 function roleLabel(group) {
   switch (group) {
@@ -19065,6 +20659,8 @@ function roleLabel(group) {
       return B2.rolePlayback;
     case "channels":
       return B2.roleChannels;
+    case "numpad":
+      return B2.roleNumpad;
   }
 }
 function roleTriggerLabel(role) {
@@ -22136,12 +23732,14 @@ var SbPanelHubs = class extends i4 {
     this.hubs = [];
     this.hub = null;
     this._busy = /* @__PURE__ */ new Set();
+    this._confirmRemove = null;
     this._firmware = "Not yet known";
     this._infoKey = "";
     this._infoSeq = 0;
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+    if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
     const h6 = this.hub;
     const key = h6 ? `${h6.hub_id}:${h6.enabled}:${Boolean(h6.status)}:${Boolean(h6.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
@@ -22170,9 +23768,8 @@ var SbPanelHubs = class extends i4 {
   // -- lifecycle actions ------------------------------------------------------
   async _act(hubId, action) {
     if (this._busy.has(hubId)) return;
-    if (action === "remove" && !confirm(`Remove hub ${hubId}?
-
-The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.`)) {
+    if (action === "remove" && this._confirmRemove !== hubId) {
+      this._confirmRemove = hubId;
       return;
     }
     const record = this.hubs.find((h6) => h6.hub_id === hubId) ?? null;
@@ -22180,6 +23777,25 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
     try {
       const response = action === "remove" ? await this.api.removeHub(hubId) : action === "enable" ? await this.api.enableHub(hubId) : await this.api.disableHub(hubId);
       if (response.ok) this._message(`${hubId}: ${actionOutcome(action, record)}`);
+      else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+      if (action === "remove") this._confirmRemove = null;
+    }
+    this._emit("sb-hubs-changed");
+  }
+  // The app proxy: whether the official app can reach this hub through
+  // the server. Stored per hub; the hub itself stays connected either way.
+  async _setProxy(hubId, enabled) {
+    if (this._busy.has(hubId)) return;
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.setHubProxy(hubId, enabled);
+      if (response.ok) this._message(`${hubId}: app proxy ${enabled ? "on" : "off"}`);
       else this._message(`${hubId}: ${problemText(response)}`, false);
     } catch (err) {
       this._message(String(err), false);
@@ -22219,6 +23835,7 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
     const { text, tone } = hubState(h6);
     const s7 = h6.status;
     const busy = this._busy.has(h6.hub_id);
+    const proxyOn = h6.config.proxy_enabled !== false;
     const model = h6.config.hub_version || s7?.hub_version || "unknown";
     const facts = [
       ["state", b2`<span class="tone-${tone}">${text}</span>`],
@@ -22230,21 +23847,33 @@ The server stops its proxy, hands the hub back, and forgets its record, cached s
       ["last seen", formatWhen(h6.last_seen)],
       ["added", formatWhen(h6.added_at)],
       ["cache", s7 ? `${s7.devices_cached} devices \xB7 ${s7.activities_cached} activities` : "no proxy running"],
+      ["app proxy", proxyOn ? s7?.app_connected ? "on, the app is connected" : "on" : s7?.app_connected ? "off, the app stays until it disconnects" : "off"],
       ["running activity", s7?.running_activity ? String(s7.running_activity.name || s7.running_activity.activity_id) : "none"]
     ];
     return b2`
       <div class="headline"><span class="dot ${tone}"></span><span class="title">${hubDisplayName(h6)}</span><span class="id mono">${h6.config.name ? h6.hub_id : ""}</span></div>
       <dl class="facts">${facts.map(([k2, v3]) => b2`<div><dt>${k2}</dt><dd>${v3}</dd></div>`)}</dl>
       <div class="actions" id="hub-actions">
+        ${this._confirmRemove === h6.hub_id ? b2`
+          <p class="confirm" id="remove-question">Remove <b>${hubDisplayName(h6)}</b>? The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.</p>
+          <button class="danger" id="remove-confirm" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>${busy ? "Removing\u2026" : "Remove"}</button>
+          <button ?disabled=${busy} @click=${() => {
+      this._confirmRemove = null;
+    }}>Cancel</button>
+        ` : b2`
         ${!h6.enabled ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Enable</button>` : A}
         ${h6.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Retry start</button>` : A}
         ${h6.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h6.hub_id, "disable")}>Disable</button>` : A}
+        <button id="proxy-toggle" ?disabled=${busy}
+          title=${proxyOn ? "Stop offering this hub to the official Sofabaton app" : "Let the official Sofabaton app reach this hub through the server"}
+          @click=${() => this._setProxy(h6.hub_id, !proxyOn)}>${proxyOn ? "Turn app proxy off" : "Turn app proxy on"}</button>
         ${h6.enabled && s7 ? b2`<button id="resync-remote" ?disabled=${busy || !s7.controllable || this.ctx?.free === false}
           title="Make the physical remotes run a full sync with the hub"
           @click=${() => this._resyncRemote(h6.hub_id)}>Sync remote</button>` : A}
-        <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove</button>
+        <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove…</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
+        `}
       </div>
     `;
   }
@@ -22255,6 +23884,7 @@ SbPanelHubs.properties = {
   hubs: { attribute: false },
   hub: { attribute: false },
   _busy: { state: true },
+  _confirmRemove: { state: true },
   _firmware: { state: true }
 };
 SbPanelHubs.styles = [
@@ -22268,6 +23898,7 @@ SbPanelHubs.styles = [
       .facts div { min-width: 0; }
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .confirm { flex: 1 0 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
     `
 ];
 function defineHubsView() {
@@ -22359,11 +23990,13 @@ var ACTIVITY_LAYOUT_DEFAULTS = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_macros_button: true,
   show_favorites_button: true,
   show_device_toggle: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  show_favorite_device_names: false,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice())
 });
 var sameLayoutValue = (a4, b3) => JSON.stringify(a4) === JSON.stringify(b3);
@@ -22543,6 +24176,16 @@ function mfAsRowsForEditor(config, selection) {
 function mfRowVisibleRowsForEditor(config, selection) {
   return mfRowVisibleRows(layoutConfigForSelection(config, selection));
 }
+var MF_MENU_KEYS = /* @__PURE__ */ new Set([
+  "macro_favorites",
+  "favorites_row"
+]);
+function favoriteDeviceNamesForEditor(config, selection) {
+  return favoriteDeviceNamesEnabled(layoutConfigForSelection(config, selection));
+}
+function favoriteDeviceNamesPatch(enabled) {
+  return { show_favorite_device_names: !!enabled };
+}
 function mfAsRowsPatch(enabled) {
   return { mf_as_rows: !!enabled };
 }
@@ -22554,6 +24197,12 @@ function volumeTogglePatch(enabled) {
 }
 function channelTogglePatch(enabled) {
   return { show_channel: !!enabled };
+}
+function numpadEnabledForEditor(config, selection) {
+  return numpadEnabled(layoutConfigForSelection(config, selection));
+}
+function numpadTogglePatch(enabled) {
+  return { show_numpad: !!enabled };
 }
 function dvrTogglePatch(enabled) {
   return {
@@ -22585,15 +24234,21 @@ function longPressGroupLabel(group) {
 }
 
 // server-panel/src/views/remote-editor.ts
+var ICON_NAMES = Object.keys(MDI_ICON_PATHS).sort();
 var SbPanelRemoteEditor = class extends i4 {
   constructor() {
     super(...arguments);
     this.config = {};
     this.backend = null;
     this.selection = "default";
+    /** Group row whose "..." options panel is folded out, if any. */
+    this._menu = null;
     this._slot = null;
     this._icon = "";
     this._command = "";
+    /** Icon picker list open + keyboard-active row (shortcut panel). */
+    this._iconOpen = false;
+    this._iconActive = -1;
     this._keymaps = /* @__PURE__ */ new Map();
     this._announcement = "";
     this._sorter = new PointerReorder(
@@ -22610,12 +24265,17 @@ var SbPanelRemoteEditor = class extends i4 {
   willUpdate(changed) {
     if (changed.has("selection")) {
       this._sorter.cancel();
-      this._slot = null;
+      this._closeSlot();
+      this._menu = null;
     }
     if (changed.has("backend")) {
       this._keymaps.clear();
-      this._slot = null;
+      this._closeSlot();
       this._sorter.cancel();
+    }
+    if (changed.has("selection") || changed.has("backend")) {
+      const id = parseDeviceLayoutKey(this.selection);
+      if (id != null) void this._loadCommands(id);
     }
   }
   _emit(config) {
@@ -22638,11 +24298,14 @@ var SbPanelRemoteEditor = class extends i4 {
   _select(value) {
     this._sorter.cancel();
     this.selection = value;
-    this._slot = null;
+    this._closeSlot();
     this.dispatchEvent(new CustomEvent("layout-selected", { detail: { selection: value }, bubbles: true, composed: true }));
   }
+  _isX2() {
+    return String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2");
+  }
   _visible(key) {
-    return editorGroupVisible(this.config, this.selection, key, String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2"));
+    return editorGroupVisible(this.config, this.selection, key, this._isX2());
   }
   _move(from, to) {
     const order = groupOrderListForEditor(this.config, this.selection);
@@ -22672,20 +24335,37 @@ var SbPanelRemoteEditor = class extends i4 {
     const rows = mfAsRowsForEditor(c7, s7);
     const order = groupOrderListForEditor(c7, s7).filter((key) => this._visible(key));
     const toggle = (label, value, patch) => this._toggle(label, value, (v3) => this._patch(patch(v3)));
+    const slotDevice = parseDeviceLayoutKey(s7);
+    const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d3) => Number(d3.id) === slotDevice);
     const cells = (key) => {
+      if (key === "shortcuts") return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return b2`${toggle(e6.commands, commandsEnabled(c7, s7), commandsTogglePatch)}${toggle(e6.power, powerEnabled(c7, s7), powerTogglePatch)}`;
       if (key === "macro_favorites") return b2`${toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
       if (key === "macros_row") return toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch);
       if (key === "favorites_row") return toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return b2`${toggle(e6.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e6.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
       if (key === "media") return b2`${toggle(e6.mediaControls, mediaGroupEnabled(layout), (v3) => groupEnabledPatch("media", v3))}${toggle(e6.dvr, dvrGroupEnabled(layout), dvrTogglePatch)}`;
+      if (key === "dpad" && this._isX2()) return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${toggle(e6.numpad, numpadEnabledForEditor(c7, s7), numpadTogglePatch)}`;
       return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
         ${key === "activity" && deviceModeEnabledInConfig(c7) ? this._toggle(e6.modeToggle, isGroupEnabled(c7, s7, key) && deviceToggleEnabledForEditor(c7, s7), (v3) => this._patch(deviceTogglePatch(v3)), "", !isGroupEnabled(c7, s7, key)) : A}`;
+    };
+    const menuAvailable = !device && editorDevicesFromState(this.snapshot).length > 0;
+    const hasMenu = (key) => menuAvailable && MF_MENU_KEYS.has(key);
+    const menu = (key) => b2`<div class="row-menu" id=${`row-menu-${key}`}>
+      ${toggle(e6.favoriteDeviceNames, favoriteDeviceNamesForEditor(c7, s7), favoriteDeviceNamesPatch)}
+    </div>`;
+    const menuButton = (key) => {
+      if (!hasMenu(key)) return menuAvailable ? b2`<span class="menu-spacer" aria-hidden="true"></span>` : A;
+      return b2`<button class="menu-btn" type="button" aria-label=${e6.rowOptions(groupLabel(key))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
+        @click=${() => {
+        this._menu = this._menu === key ? null : key;
+      }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDotsHorizontal}></path></svg></button>`;
     };
     return b2`
       ${c4(order, (key) => key, (key, index) => b2`
         <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
           <div class="group-options">${cells(key)}</div>
+          ${menuButton(key)}
           <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
             @pointerdown=${(ev) => this._sorter.start(ev, index)} @pointermove=${(ev) => this._sorter.move(ev)}
             @pointerup=${(ev) => this._sorter.end(ev)} @pointercancel=${(ev) => this._sorter.cancel(ev)}
@@ -22697,11 +24377,15 @@ var SbPanelRemoteEditor = class extends i4 {
         this._move(index, index + (ev.key === "ArrowUp" ? -1 : 1));
       }
     }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDragVerticalVariant}></path></svg></button>
+          ${this._menu === key && hasMenu(key) ? menu(key) : A}
+          ${key === "shortcuts" && slotsOn && this._slot ? this._slotPanel(slotDevice) : A}
         </div>`)}
       <div class="hint notice" role="status" aria-live="polite">${this._announcement}</div>
-      ${parseDeviceLayoutKey(s7) != null ? this._shortcuts() : A}
       <div class="rows-control">
-        ${this._toggle(device ? e6.commandsAsRows : e6.macrosFavoritesAsRows, rows, (v3) => this._patch(mfAsRowsPatch(v3)))}
+        ${this._toggle(device ? e6.commandsAsRows : e6.macrosFavoritesAsRows, rows, (v3) => {
+      if (this._menu && MF_MENU_KEYS.has(this._menu)) this._menu = v3 ? "favorites_row" : "macro_favorites";
+      this._patch(mfAsRowsPatch(v3));
+    })}
         <div class="stepper" aria-disabled=${!rows}><span>${e6.visibleRows}</span>
           <button type="button" aria-label="Fewer visible rows" ?disabled=${!rows || mfRowVisibleRowsForEditor(c7, s7) <= MIN_ROW_VISIBLE_ROWS} @click=${() => this._patch(mfRowVisibleRowsPatch(mfRowVisibleRowsForEditor(c7, s7) - 1))}>−</button>
           <output aria-label=${e6.visibleRows}>${mfRowVisibleRowsForEditor(c7, s7)}</output>
@@ -22716,63 +24400,164 @@ var SbPanelRemoteEditor = class extends i4 {
   async _loadCommands(id) {
     if (this._keymaps.has(id) || !this.backend) return;
     const backend = this.backend;
-    this._keymaps.set(id, { status: "Loading commands\u2026", commands: [] });
+    this._keymaps.set(id, { status: "loading", commands: [] });
     this.requestUpdate();
     try {
       const response = await backend.deviceKeymap(id);
       if (this.backend !== backend) return;
-      const commands = (response?.keymap?.commands || []).map((c7) => ({ command_id: Number(c7.command_id), name: String(c7.name || c7.command_id) })).filter((c7) => Number.isFinite(c7.command_id));
-      this._keymaps.set(id, { status: commands.length ? "" : "No cached commands available. Sync this hub's catalog and retry.", commands });
+      if (!response?.keymap) {
+        this._keymaps.set(id, { status: "cache_miss", commands: [] });
+      } else {
+        const commands = (response.keymap.commands || []).map((c7) => ({ command_id: Number(c7.command_id), name: String(c7.name || "") })).filter((c7) => Number.isFinite(c7.command_id) && c7.name).sort((a4, b3) => a4.name.localeCompare(b3.name));
+        this._keymaps.set(id, { status: "ready", commands });
+      }
     } catch {
       if (this.backend !== backend) return;
-      this._keymaps.set(id, { status: "Could not load commands. Retry when the hub is available.", commands: [] });
+      this._keymaps.set(id, { status: "error", commands: [] });
     }
     this.requestUpdate();
   }
-  _openSlot(slot) {
+  // ---------- Shortcuts row: slot strip + drop-out panel (HA editor parity) ----------
+  _closeSlot() {
+    this._slot = null;
+    this._icon = "";
+    this._command = "";
+    this._iconOpen = false;
+    this._iconActive = -1;
+  }
+  _toggleSlot(slot) {
+    if (this._slot === slot) {
+      this._closeSlot();
+      return;
+    }
     const id = parseDeviceLayoutKey(this.selection);
-    this._slot = this._slot === slot ? null : slot;
     const stored = deviceShortcutsFromConfig(this.config, id)[slot];
-    this._icon = stored?.icon || "";
+    this._slot = slot;
+    this._icon = stored?.icon ?? "";
     this._command = stored ? String(stored.command_id) : "";
-    if (this._slot) void this._loadCommands(id);
+    this._iconOpen = false;
+    this._iconActive = -1;
+    void this._loadCommands(id);
   }
-  _writeSlot() {
+  /**
+   * Draft edit: the slot is written (and the preview updates) the moment
+   * both fields are valid; an incomplete draft leaves the stored slot alone.
+   */
+  _draft(icon7, command) {
+    this._icon = icon7;
+    this._command = command;
     const id = parseDeviceLayoutKey(this.selection);
-    if (id == null || !this._slot || !this._icon.trim() || !this._command) return;
-    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, { icon: this._icon.trim(), command_id: Number(this._command) }).nextConfig);
+    const commandId = command !== "" && Number.isFinite(Number(command)) ? Number(command) : null;
+    if (id == null || !this._slot || !icon7.trim() || commandId == null) return;
+    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon7.trim(), command_id: commandId }).nextConfig;
+    if (JSON.stringify(next) !== JSON.stringify(this.config)) this._emit(next);
   }
-  _shortcuts() {
+  /** Reset clears the stored slot and the draft; the panel stays open. */
+  _resetSlot() {
     const id = parseDeviceLayoutKey(this.selection);
+    if (id == null || !this._slot) return;
+    this._icon = "";
+    this._command = "";
+    this._iconOpen = false;
+    this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
+  }
+  _slotStrip(id) {
+    const e6 = str().editor;
     const stored = deviceShortcutsFromConfig(this.config, id);
+    const label = (slot) => slot === "left" ? e6.shortcutSlotLeft : slot === "middle" ? e6.shortcutSlotMiddle : e6.shortcutSlotRight;
+    return b2`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
+      const icon7 = stored[slot]?.icon ?? null;
+      const open = this._slot === slot;
+      return b2`<button type="button" class="shortcut-slot ${icon7 ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSlot(slot)}>${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : A}</button>`;
+    })}</div>`;
+  }
+  _slotPanel(id) {
+    const e6 = str().editor;
     const keymap = this._keymaps.get(id);
-    const commands = keymap?.commands || [];
-    return b2`<h3>Device shortcuts</h3><div class="slots">${SHORTCUT_SLOTS.map((slot) => b2`
-      <button type="button" aria-pressed=${this._slot === slot} @click=${() => this._openSlot(slot)}>${stored[slot] ? b2`<ha-icon icon=${stored[slot].icon}></ha-icon>` : "+"} ${slot}</button>`)}</div>
-      ${this._slot ? b2`<div class="slot-editor">
-        <div class="field"><label><span class="field-label">Icon (for example mdi:home)</span><input aria-label="Shortcut icon" placeholder="mdi:home" .value=${l4(this._icon)} @input=${(ev) => {
-      this._icon = ev.target.value;
-      this._writeSlot();
-    }}></label></div>
-        ${this._selectField("Shortcut command", this._command, [
-      { value: "", label: "Choose a command" },
-      ...this._command && !commands.some((c7) => String(c7.command_id) === this._command) ? [{ value: this._command, label: `Command ${this._command} (stored)` }] : [],
-      ...commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }))
-    ], (v3) => {
-      this._command = v3;
-      this._writeSlot();
-    })}
-        ${keymap?.status ? b2`<div class="hint">${keymap.status}</div>${keymap.status.startsWith("Loading") ? A : b2`<button @click=${() => {
-      this._keymaps.delete(id);
-      void this._loadCommands(id);
-    }}>Retry commands</button>`}` : A}
-        <div class="hint">Both an icon and a command are needed to update this slot.</div>
-        <button @click=${() => {
-      this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
-      this._icon = "";
-      this._command = "";
-    }}>Clear shortcut</button>
-      </div>` : A}`;
+    const status = keymap?.status ?? "loading";
+    if (status !== "ready") {
+      const note = status === "loading" ? e6.shortcutsCommandsLoading : status === "cache_miss" ? "This device's commands are not cached yet. Refresh this device in the Hub tab, then retry." : "Could not load this device's commands. Retry when the hub is available.";
+      return b2`<div class="shortcut-panel"><div class="shortcut-note">${note}</div>
+        ${status === "loading" ? A : b2`<div class="shortcut-panel-footer"><button type="button" @click=${() => {
+        this._keymaps.delete(id);
+        void this._loadCommands(id);
+      }}>Retry</button></div>`}</div>`;
+    }
+    const options = keymap.commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }));
+    if (this._command && !options.some((o8) => o8.value === this._command)) options.push({ value: this._command, label: e6.shortcutCommandMissing(this._command) });
+    return b2`<div class="shortcut-panel">
+      ${this._iconPicker()}
+      <ha-select class="shortcut-command" .label=${e6.shortcutCommand} .value=${this._command}
+        @selected=${(ev) => {
+      ev.stopPropagation();
+      this._draft(this._icon, ev.detail.value);
+    }}>
+        ${options.map((o8) => b2`<mwc-list-item .value=${o8.value}>${o8.label}</mwc-list-item>`)}
+      </ha-select>
+      <div class="shortcut-panel-footer"><button type="button" @click=${() => this._resetSlot()}>${e6.shortcutReset}</button></div>
+    </div>`;
+  }
+  /**
+   * The HA icon selector as a combo box: a text field with the icon drawn in
+   * front of it and a filtered list of icons underneath. The list offers
+   * the icons this bundle ships (the web remote renders only those); any
+   * other mdi name can still be typed.
+   */
+  _iconPicker() {
+    const e6 = str().editor;
+    const icon7 = this._icon.trim();
+    const query = icon7.toLowerCase().replace(/^mdi:/, "");
+    const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
+    const pick = (name) => {
+      this._draft(`mdi:${name}`, this._command);
+      this._iconOpen = false;
+      this._iconActive = -1;
+    };
+    const onKey = (ev) => {
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        if (!this._iconOpen) {
+          this._iconOpen = true;
+          this._iconActive = -1;
+          return;
+        }
+        if (!matches.length) return;
+        this._iconActive = ev.key === "ArrowDown" ? Math.min(matches.length - 1, this._iconActive + 1) : Math.max(0, this._iconActive - 1);
+      } else if (ev.key === "Enter" && this._iconOpen && this._iconActive >= 0 && matches[this._iconActive]) {
+        ev.preventDefault();
+        pick(matches[this._iconActive]);
+      } else if (ev.key === "Escape" && this._iconOpen) {
+        ev.preventDefault();
+        this._iconOpen = false;
+        this._iconActive = -1;
+      }
+    };
+    return b2`<div class="icon-picker">
+      <div class="field"><label><span class="field-label">${e6.shortcutIcon}</span>
+        <div class="icon-field">
+          ${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
+          <input role="combobox" aria-label=${e6.shortcutIcon} aria-autocomplete="list" aria-expanded=${this._iconOpen ? "true" : "false"} aria-controls="icon-options"
+            autocomplete="off" spellcheck="false" .value=${l4(this._icon)}
+            @focus=${() => {
+      this._iconOpen = true;
+      this._iconActive = -1;
+    }}
+            @blur=${() => {
+      this._iconOpen = false;
+      this._iconActive = -1;
+    }}
+            @input=${(ev) => {
+      this._iconOpen = true;
+      this._iconActive = -1;
+      this._draft(ev.target.value, this._command);
+    }}
+            @keydown=${onKey}>
+        </div></label></div>
+      ${matches.length ? b2`<div class="icon-options" id="icon-options" role="listbox" aria-label=${e6.shortcutIcon}>${matches.map((name, index) => b2`
+        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon7 === `mdi:${name}` ? "true" : "false"}
+          @pointerdown=${(ev) => ev.preventDefault()} @click=${() => pick(name)}><ha-icon icon=${`mdi:${name}`}></ha-icon><span>mdi:${name}</span></button>`)}</div>` : A}
+    </div>`;
   }
   render() {
     const c7 = this.config, e6 = str().editor;
@@ -22833,9 +24618,12 @@ SbPanelRemoteEditor.properties = {
   backend: { attribute: false },
   snapshot: { attribute: false },
   selection: { state: true },
+  _menu: { state: true },
   _slot: { state: true },
   _icon: { state: true },
-  _command: { state: true }
+  _command: { state: true },
+  _iconOpen: { state: true },
+  _iconActive: { state: true }
 };
 SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
     :host { display: block; min-width: 0; container-type: inline-size; }
@@ -22890,6 +24678,12 @@ SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
     .handle .mdi { width: 20px; height: 20px; }
     .dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px #0003; }
     .shifting { transition: transform 120ms ease; }
+    .group { flex-wrap: wrap; }
+    .menu-btn, .menu-spacer { width: 32px; height: 32px; flex: 0 0 auto; }
+    .menu-btn { display: grid; place-items: center; padding: 0; border-radius: 10px; color: var(--sbp-muted); background: transparent; }
+    .menu-btn .mdi { width: 20px; height: 20px; }
+    .menu-btn[aria-expanded=true] { border-color: var(--sbp-accent); color: var(--sbp-accent); }
+    .row-menu { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; margin: 2px 0 4px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
     .rows-control { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px; margin-top: 10px; border: 1px solid var(--sbp-line); border-radius: 12px; background: color-mix(in srgb, var(--sbp-text) 3%, var(--sbp-panel)); }
     .stepper { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sbp-muted); }
     .stepper[aria-disabled=true] { opacity: .45; }
@@ -22897,11 +24691,30 @@ SbPanelRemoteEditor.styles = [PANEL_BASE_CSS, i`
     .stepper output { min-width: 24px; text-align: center; font-size: 14px; font-weight: 600; }
     .layout-footer { display: flex; justify-content: flex-end; margin-top: 10px; }
     .layout-footer button { border-radius: 12px; }
-    .slots { display: flex; gap: 8px; margin: 12px 0; }
-    .slots button { flex: 1; min-width: 0; text-transform: capitalize; }
-    .slots button[aria-pressed=true] { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .1); }
-    .slot-editor { border: 1px solid var(--sbp-line); padding: 12px; border-radius: 8px; }
-    .slot-editor button { margin-top: 12px; }
+    /* Shortcuts row (device layouts): the HA card's slot strip and drop-out
+       panel. The three mini buttons fill the row's second cell; the open
+       slot's panel wraps below inside the same row, with a caret under the
+       button that opened it. */
+    .shortcut-strip { display: inline-flex; gap: 8px; min-width: 0; align-self: center; }
+    .shortcut-slot { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 1 auto; width: 40px; min-width: 26px; height: 30px; padding: 0; border: 1px dashed var(--sbp-muted); border-radius: 8px; background: color-mix(in srgb, var(--sbp-text) 5%, transparent); color: var(--sbp-accent); }
+    .shortcut-slot.is-configured { border-style: solid; background: var(--sbp-panel); }
+    .shortcut-slot.is-open { border-color: var(--sbp-accent); box-shadow: 0 0 0 1px var(--sbp-accent) inset; }
+    .shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--sbp-accent); pointer-events: none; }
+    .shortcut-slot ha-icon { --mdc-icon-size: 18px; }
+    .shortcut-panel { flex: 1 0 100%; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; padding: 10px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; background: color-mix(in srgb, var(--sbp-text) 4%, var(--sbp-panel)); }
+    .shortcut-panel .field { margin: 0; }
+    .shortcut-panel-footer { display: flex; justify-content: flex-end; }
+    .shortcut-panel-footer button { border-radius: 12px; }
+    .shortcut-note { font-size: 12px; color: var(--sbp-muted); line-height: 1.35; }
+    .icon-picker { position: relative; }
+    .icon-field { display: flex; align-items: center; gap: 8px; padding: 0 16px 0 12px; }
+    .icon-field ha-icon, .icon-field .icon-blank { flex: 0 0 auto; width: 24px; height: 24px; --mdc-icon-size: 24px; color: var(--sbp-text); }
+    .icon-field input { padding-left: 0; padding-right: 0; }
+    .icon-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 60; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; margin-top: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 0 0 6px 6px; background: var(--sbp-panel); box-shadow: 0 8px 24px #0003; }
+    .icon-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 4px; background: transparent; color: var(--sbp-text); font-size: 14px; text-align: start; }
+    .icon-option ha-icon { --mdc-icon-size: 22px; flex: 0 0 auto; }
+    .icon-option:hover, .icon-option.is-active { background: rgba(var(--sbp-accent-rgb), .1); }
+    .icon-option[aria-selected=true] { color: var(--sbp-accent); }
     .notice { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     @container (max-width: 340px) { .group-options { gap: 6px; } .group { gap: 4px; } .group .option { gap: 5px; font-size: 12px; } .group input[type=checkbox] { width: 38px; } .group input[type=checkbox]:checked::before { transform: translateX(14px); } }
   `];
@@ -23187,12 +25000,13 @@ var SbPanelRemote = class extends i4 {
     const scale = this._scale;
     const scaled = scale < 1 && this._natural > 0;
     return b2`
-        <div class="fit" id="remote-frame">
+        ${this._banner || busy ? b2`<div class="notes">
           ${this._banner ? b2`<div class="banner" id="remote-banner">${this._banner}</div>` : ""}
           ${busy ? b2`<div class="busy-note" id="remote-busy">The hub is busy; the remote is back when the job finishes.</div>` : ""}
-          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div>
-            ${hub ? b2`<a class="open-link" id="remote-open" href=${this.api.remoteUrl(hub.hub_id)} target="_blank" rel="noopener" @click=${this._openRemote}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiOpenInNew}></path></svg>Open</a>` : ""}
-          </div>
+        </div>` : ""}
+        <div class="fit well" id="remote-frame">
+          <div id="stage-box" style=${scaled ? `max-width: ${scale * 100}%; height: ${this._natural * scale}px` : ""}><div class="stage ${busy ? "is-busy" : ""} ${scaled ? "is-scaled" : ""}" id="stage" style=${scaled ? `--fit-scale: ${scale}` : ""} ?inert=${busy}>${hub ? "" : b2`<div class="hint">Pick a hub above.</div>`}</div></div>
+          ${hub ? b2`<a class="open-link" id="remote-open" href=${this.api.remoteUrl(hub.hub_id)} target="_blank" rel="noopener" @click=${this._openRemote}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiOpenInNew}></path></svg>Open</a>` : ""}
         </div>
         <div class="dock-probe" aria-hidden="true"></div>
     `;
@@ -23200,7 +25014,7 @@ var SbPanelRemote = class extends i4 {
   _renderLayout(hub) {
     return b2`
       <div class="layout-content">
-        <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save.</div>
+        <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save; its buttons do not control the hub.</div>
         <div class="layout-grid">
           <div class="editor">
             <fieldset ?disabled=${!hub || !this._loaded || this._busy}>
@@ -23235,8 +25049,8 @@ var SbPanelRemote = class extends i4 {
     }}>Update preview</button>`}
             </fieldset>
           </div>
-          <aside class="preview"><p class="hint">Preview only — buttons do not control the hub.</p>
-            <div class="frame"><div class="stage" id="stage" inert></div></div>
+          <aside class="preview">
+            <div class="well"><div class="stage" id="stage" inert></div></div>
           </aside>
         </div>
       </div>`;
@@ -23263,18 +25077,19 @@ SbPanelRemote.styles = [
   PANEL_BASE_CSS,
   i`
       :host { display: block; height: 100%; }
-      .frame { max-width: 420px; margin: 0 auto; }
-      .frame { background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); overflow: hidden; }
-      /* The card subtab: the bare card, centred. The notices keep the full width while the card's box narrows with the scale. */
-      .fit { max-width: 420px; margin: 0 auto; }
+      /* The remote on a tinted well with a lift, in both subtabs: a white card on a white panel otherwise reads as one surface. The shadow sits on the card's host, sized to the card by the card's own --remote-max-width, and grows back against the fit scale. */
+      .well { background: color-mix(in srgb, var(--sbp-text) 4%, transparent); border-radius: 14px; }
+      #stage > sofabaton-virtual-remote { max-width: var(--remote-max-width, 360px); margin: 0 auto; border-radius: var(--ha-card-border-radius, 12px); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 calc(12px / var(--fit-scale, 1)) calc(36px / var(--fit-scale, 1)) rgba(0, 0, 0, 0.16); }
+      /* The card subtab: the bare card, centred on a full-width well; the notices sit above it. */
+      .fit { position: relative; padding: 20px 20px 28px; }
       .fit .stage { padding: 0; }
-      .fit .banner, .fit .busy-note { margin: 0 0 10px; }
-      #stage-box { margin: 0 auto; position: relative; }
-      /* Open the web remote in its own window: beside the card, outside its box so the fit is untouched; above it on a phone. */
-      .open-link { position: absolute; top: 0; left: calc(100% + 12px); display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 6px; background: var(--sbp-panel); color: var(--sbp-text); font-size: 13px; text-decoration: none; white-space: nowrap; }
+      .notes .banner, .notes .busy-note { margin: 0 0 10px; }
+      #stage-box { margin: 0 auto; }
+      /* Open the web remote in its own window: the well's corner, outside the card's box so the fit is untouched; the well makes room for it on a phone. */
+      .open-link { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sbp-line); border-radius: 6px; background: var(--sbp-panel); color: var(--sbp-text); font-size: 13px; text-decoration: none; white-space: nowrap; }
       .open-link:hover { border-color: var(--sbp-accent); }
       .open-link .mdi { width: 18px; height: 18px; flex: 0 0 auto; }
-      @media (max-width: 640px) { .fit { padding-top: 44px; } .open-link { left: auto; right: 0; top: -44px; } }
+      @media (max-width: 640px) { .fit { padding-top: 56px; } }
       /* Laid out at the full width, then scaled into the box. */
       .fit .stage.is-scaled { width: calc(100% / var(--fit-scale)); transform: scale(var(--fit-scale)); transform-origin: 0 0; }
       .stage { padding: 10px; }
@@ -23287,9 +25102,9 @@ SbPanelRemote.styles = [
       textarea { min-height: 380px; margin-top: 10px; }
       .layout-content { min-width: 0; }
       .layout-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 380px); gap: 20px; align-items: start; }
-      .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; }
-      .preview .frame { max-width: none; }
-      .preview .stage { overflow: auto; }
+      /* Level with the editor's button row (.mode-tabs margin). */
+      .preview { position: sticky; top: calc(var(--top-dock-height, 0px) + 12px); min-width: 0; margin-top: 14px; }
+      .preview .stage { padding: 20px 20px 28px; overflow: auto; }
       .editor { min-width: 0; }
       .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
       .mode-tabs .doc-actions { margin-left: auto; display: flex; gap: 8px; }
@@ -23297,7 +25112,7 @@ SbPanelRemote.styles = [
       fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
       /* Always in flow: toggling this line's display left the editor (an inline-size container) at zero height in Chrome until the next relayout. */
       .editor .msg { margin: 8px 0 0; min-height: 17px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
-      @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .frame { max-width: 420px; } }
+      @media (max-width: 900px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .preview .well { max-width: 420px; margin: 0 auto; } }
 
     `
 ];
@@ -23325,6 +25140,11 @@ var PORT_FIELDS = [
   }
 ];
 var PORT_PATTERN = /^\d+$/;
+function localTime2(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+}
 var SbPanelServer = class extends i4 {
   constructor() {
     super(...arguments);
@@ -23341,10 +25161,21 @@ var SbPanelServer = class extends i4 {
     this._portStatus = "";
     this._portError = false;
     this._saving = false;
+    this._update = null;
+    this._checking = false;
+    this._updateSaving = false;
+    this._updateMsg = "";
   }
   connectedCallback() {
     super.connectedCallback();
     void this._loadPorts();
+  }
+  willUpdate(changed) {
+    if (changed.has("info")) {
+      const fromStore = this.info?.update ?? null;
+      const mine = this._update;
+      if (fromStore && (!mine || (fromStore.checked_at ?? "") > (mine.checked_at ?? ""))) this._update = fromStore;
+    }
   }
   async _loadPorts() {
     if (!this.api) return;
@@ -23449,6 +25280,91 @@ var SbPanelServer = class extends i4 {
       </div>
     `;
   }
+  // -- updates -----------------------------------------------------------------------------
+  async _checkForUpdates() {
+    if (this._checking) return;
+    this._checking = true;
+    this._updateMsg = "";
+    try {
+      const response = await this.api.checkForUpdates();
+      if (response.ok && response.body) this._update = response.body;
+      else this._updateMsg = problemText(response);
+    } catch (err) {
+      this._updateMsg = String(err);
+    } finally {
+      this._checking = false;
+    }
+  }
+  async _setAutomatic(event) {
+    const box = event.target;
+    const wanted = box.checked;
+    if (this._updateSaving) return;
+    this._updateSaving = true;
+    this._updateMsg = "";
+    try {
+      const response = await this.api.configureUpdateCheck(wanted);
+      if (response.ok && response.body) this._update = response.body;
+      else {
+        box.checked = !wanted;
+        this._updateMsg = problemText(response);
+      }
+    } catch (err) {
+      box.checked = !wanted;
+      this._updateMsg = String(err);
+    } finally {
+      this._updateSaving = false;
+    }
+  }
+  _renderUpdates() {
+    const u6 = this._update;
+    const installed = u6?.installed_version ?? this.info?.version ?? "?";
+    const checked = u6?.checked_at ? `${localTime2(u6.checked_at)}${u6.checked_by === "automatic" ? " (automatic)" : ""}` : "Never";
+    let line = "";
+    let cls = "";
+    switch (u6?.status) {
+      case "update_available":
+        cls = "available";
+        line = `Update available: ${u6.latest_version}`;
+        break;
+      case "up_to_date":
+        line = `No newer release found as of ${localTime2(u6.checked_at)}.`;
+        break;
+      case "failed":
+        cls = "failed";
+        line = `Couldn't check${u6.error ? `: ${u6.error}` : ""}.`;
+        break;
+      default:
+        line = "Not checked.";
+    }
+    const links = u6?.status === "update_available" ? b2`<div class="update-links" id="update-links">
+          <a href=${u6.release_notes_url} target="_blank" rel="noopener">Release notes</a>
+          <a href=${u6.upgrade_url} target="_blank" rel="noopener">Update instructions</a>
+          <a href=${u6.pypi_url} target="_blank" rel="noopener">PyPI</a>
+        </div>` : "";
+    const busy = this._checking || u6?.checking === true;
+    return b2`
+      <div class="panel updates" id="server-updates">
+        <h2>Updates</h2>
+        <dl class="facts">
+          <div><dt>installed version</dt><dd id="update-installed">${installed}</dd></div>
+          <div><dt>last checked</dt><dd id="update-checked">${checked}</dd></div>
+          ${u6?.next_check_at ? b2`<div><dt>next check</dt><dd id="update-next">${localTime2(u6.next_check_at)}</dd></div>` : ""}
+        </dl>
+        <div class="update-line ${cls}" id="update-status" data-status=${u6?.status ?? "not_checked"}>${line}</div>
+        ${links}
+        <div class="actions">
+          <button class="small" id="update-check" ?disabled=${busy || !this.reachable} @click=${this._checkForUpdates} title="POST /server/updates/check">${busy ? "checking\u2026" : "Check for updates"}</button>
+          <span class="msg msg-err" id="update-msg">${this._updateMsg}</span>
+        </div>
+        <label class="auto" for="update-auto">
+          <input id="update-auto" type="checkbox" .checked=${u6?.automatic === true} ?disabled=${!u6 || u6.automatic_pinned || this._updateSaving || !this.reachable} @change=${this._setAutomatic} />
+          <span>Automatically check once a day</span>
+          ${u6?.automatic_pinned ? b2`<span class="note">set by an environment variable</span>` : ""}
+        </label>
+        <div class="hint">Checks contact PyPI for public release information. No hub information, configuration, installed version or installation identifier is sent. Checking never downloads or installs anything.</div>
+      </div>
+    `;
+  }
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
@@ -23476,7 +25392,7 @@ var SbPanelServer = class extends i4 {
     const listenerText = !listener ? "unknown" : listener.bound ? `bound on :${listener.bound_port}` : listener.wanted ? "wanted, not bound" : "idle (no callback devices)";
     const mqtt = info?.mqtt ?? null;
     const mqttAt = mqtt ? `${mqtt.host}:${mqtt.port}${mqtt.tls ? " (TLS)" : ""}` : "";
-    const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (--mqtt-host)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;
+    const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (see MQTT broker)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;
     const facts = [
       ["server", this.error ?? (info ? info.version : "connecting\u2026")],
       ["library", info?.library_version ?? "?"],
@@ -23495,8 +25411,9 @@ var SbPanelServer = class extends i4 {
           <button class="small" id="listener-retry" ?disabled=${this._retrying || !this.reachable} @click=${this._retry} title="POST /server/callback-listener/retry">${this._retrying ? "retrying\u2026" : "Retry callback listener"}</button>
           <span class="msg" id="server-status">${this._status}</span>
         </div>
-        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set with <span class="mono">--mqtt-host</span> or <span class="mono">SOFABATON_MQTT_*</span> when the server starts, never stored, and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
+        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set on the MQTT broker page (or with <span class="mono">--mqtt-*</span> / <span class="mono">SOFABATON_MQTT_*</span> when the server starts) and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
       </div>
+      ${this._renderUpdates()}
       ${this._renderPorts()}
     `;
   }
@@ -23515,7 +25432,11 @@ SbPanelServer.properties = {
   _portDraft: { state: true },
   _portStatus: { state: true },
   _portError: { state: true },
-  _saving: { state: true }
+  _saving: { state: true },
+  _update: { state: true },
+  _checking: { state: true },
+  _updateSaving: { state: true },
+  _updateMsg: { state: true }
 };
 SbPanelServer.styles = [
   PANEL_BASE_CSS,
@@ -23529,6 +25450,14 @@ SbPanelServer.styles = [
       .port input { max-width: 160px; }
       .port .hint { margin-top: 4px; }
       .port .note { color: var(--sbp-muted); font-size: 12px; margin-left: 8px; }
+      .updates dl { margin: 0 0 10px; }
+      .update-line { margin: 8px 0; font-size: 13px; }
+      .update-line.available { color: var(--sbp-accent); font-weight: 600; }
+      .update-line.failed { color: var(--sbp-err); }
+      .update-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; margin: 4px 0 8px; }
+      .update-links a { color: var(--sbp-accent); }
+      .auto { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; font-size: 13px; }
+      .auto input { width: auto; margin: 0; }
     `
 ];
 function defineServerView() {
@@ -23785,7 +25714,7 @@ function targetMoved(device) {
 }
 function mqttProblem(device, mqtt) {
   if (device.transport !== "mqtt" || !mqtt) return null;
-  if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server was started without a broker (--mqtt-host or SOFABATON_MQTT_HOST), so they cannot arrive.";
+  if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server has no broker (set one under Server settings > MQTT broker, or start it with --mqtt-host), so they cannot arrive.";
   if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
   return null;
 }
@@ -23862,10 +25791,7 @@ function icon6(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 function jobFailure(job) {
-  if (!job) return "the job could not be followed";
-  if (job.status === "done") return null;
-  const problem = job.error;
-  return problem ? [problem.title || problem.type, problem.detail].filter(Boolean).join(": ") : job.status;
+  return jobOutcomeText(job);
 }
 var SbPanelWifiDevices = class extends i4 {
   constructor() {
@@ -24689,6 +26615,8 @@ var SbPanelWifiDevices = class extends i4 {
   }
   render() {
     if (!this.ctx?.hub) return b2`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.noHubsFound}</div>`;
+    const floor = firmwareFloor(this.ctx.hub);
+    if (floor) return renderFirmwareBlock(floor, TOOLS_CARD_STRINGS.availability.automationUnavailable, "wifi-firmware-block");
     const device = this._device;
     let body;
     if (this.deviceKey && device && this._draft) body = this._renderDetail(device, this._draft);
@@ -24722,6 +26650,7 @@ SbPanelWifiDevices.properties = {
 SbPanelWifiDevices.styles = [
   PANEL_BASE_CSS,
   EDITOR_CSS,
+  FIRMWARE_BLOCK_CSS,
   i`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
@@ -24898,6 +26827,9 @@ function bootstrapServerPanel() {
   defineServerView();
   defineBackupView();
   defineWifiDevicesView();
+  defineAccessView();
+  defineMqttView();
+  defineAuthDialog();
   definePanel();
 }
 if (typeof window !== "undefined" && typeof customElements !== "undefined") {

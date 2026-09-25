@@ -19,6 +19,7 @@ import { creatableDeviceClasses } from "../../../custom_components/sofabaton_x1s
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
 import {
+  jobOutcomeText,
   problemText,
   type Activity,
   type Button,
@@ -156,15 +157,9 @@ export function buildCatalog(devices: Device[], activities: Activity[], snapshot
   const provenance = new Map<string, SnapshotEntity>();
   for (const e of snapshot?.devices ?? []) provenance.set(entryKey("device", e.device.device_id), e);
   for (const e of snapshot?.activities ?? []) provenance.set(entryKey("activity", e.device.device_id), e);
-  // The typed lists come in id order; the snapshot's arrays are in the hub's
-  // display order (the sort byte "Change order" writes), so the rows follow it.
-  // An entity the snapshot does not know yet goes last, in list order.
-  const rank = (kind: CatalogKind, id: number): number => {
-    const index = ((kind === "device" ? snapshot?.devices : snapshot?.activities) ?? []).findIndex((e) => e.device.device_id === id);
-    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
-  };
-  devices = [...devices].sort((x, y) => rank("device", x.device_id) - rank("device", y.device_id));
-  activities = [...activities].sort((x, y) => rank("activity", x.activity_id) - rank("activity", y.activity_id));
+  // Both typed lists arrive in the hub's display order (the sort byte
+  // "Change order" writes; the library lists like the physical remote),
+  // so the rows keep the lists' order as-is.
   const entries: CatalogEntry[] = [];
   for (const d of devices) {
     const p = provenance.get(entryKey("device", d.device_id));
@@ -195,11 +190,11 @@ export function boundButtons(buttons: Button[]): Button[] {
   return buttons.filter((b) => b.device_id != null || b.command_id != null);
 }
 
-/** The progress phrase for a running refresh job. */
+/** The progress phrase for a running refresh job: "Queued", "Refreshing 2/5". */
 export function jobPhrase(job: JobView): string {
+  if (job.status === "queued") return "Queued…";
   const p = job.progress;
-  const steps = p && p.total_steps != null ? ` ${p.completed_steps ?? 0}/${p.total_steps}` : "";
-  return `${job.status}${steps}`;
+  return p && p.total_steps != null ? `Refreshing ${p.completed_steps ?? 0}/${p.total_steps}` : "Refreshing…";
 }
 
 /** The card's icon per device class. */
@@ -314,6 +309,7 @@ export class SbPanelCatalog extends LitElement {
       .entity-block--reorder .entity-summary { cursor: inherit; }
       .entity-block--reorder .entity-summary:hover { background: transparent; }
       .entity-block--reorder .entity-name-icon { color: var(--sbp-accent); }
+      .entity-block--reorder .entity-meta .icon-btn, .entity-block--reorder .entity-chevron { pointer-events: none; }
       .entity-block--reorder:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
       .entity-block.is-shifting { transition: transform 150ms ease; }
       .entity-block.is-dragging { position: relative; z-index: 2; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
@@ -569,11 +565,11 @@ export class SbPanelCatalog extends LitElement {
   private async _refreshScope(scope: RefreshScope, key: string, label: string): Promise<void> {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
-    this._refresh = { key, text: "starting…" };
+    this._refresh = { key, text: "Starting…" };
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `refresh ${label}: ${problemText(started)}`;
+        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
@@ -581,12 +577,11 @@ export class SbPanelCatalog extends LitElement {
           this._refresh = { key, text: jobPhrase(j) };
         },
       });
-      if (!job) this._notice = `refresh ${label}: the job could not be followed`;
-      else if (job.status !== "done") this._notice = `refresh ${label}: ${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+      if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `refresh ${label}: ${String(err)}`;
+      this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
       this._refresh = null;
     }
@@ -643,8 +638,7 @@ export class SbPanelCatalog extends LitElement {
       } else {
         const job = await this.api.followJob(hubId, started.body.job_id);
         if (job) this._lastJobId = job.job_id;
-        if (!job) error = "the job could not be followed";
-        else if (job.status !== "done") error = `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}`;
+        error = jobOutcomeText(job);
       }
     } catch (err) {
       error = String(err);
@@ -682,7 +676,7 @@ export class SbPanelCatalog extends LitElement {
       if (started.status !== 202 || !started.body) return fail(problemText(started));
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (job) this._lastJobId = job.job_id;
-      if (!job || job.status !== "done") return fail(job ? `${job.status}${job.error ? ` (${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""})` : ""}` : "the job could not be followed");
+      if (!job || job.status !== "done") return fail(jobOutcomeText(job) ?? "Did not finish");
       const id = Number(job.result?.[dialog.kind === "device" ? "device_id" : "activity_id"]);
       if (!Number.isInteger(id) || id <= 0) return fail(dialog.kind === "device" ? "The hub did not return the new device id." : "The hub did not return the new activity id.");
       // The editor needs the entity read in full; a failed read is covered by its own needs-refresh guard.
@@ -798,7 +792,12 @@ export class SbPanelCatalog extends LitElement {
           <span class="entity-name-icon">${icon(mdiDragVerticalVariant)}</span>
           <span class="entity-name-copy"><span class="entity-name-label">${e.name}</span><span class="entity-count">${count}</span></span>
         </span>
-        <span class="entity-meta">${badge(DEV_ID_BADGE, e.id)}</span>
+        <span class="entity-meta">
+          ${badge(DEV_ID_BADGE, e.id)}
+          <button class="icon-btn entity-edit" type="button" disabled tabindex="-1" aria-hidden="true">${icon(mdiWrench)}</button>
+          <button class="icon-btn entity-refresh" type="button" disabled tabindex="-1" aria-hidden="true">${icon(mdiRefresh)}</button>
+          <span class="entity-chevron">▼</span>
+        </span>
       </div>
     </div>`;
   }

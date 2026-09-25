@@ -381,6 +381,47 @@ test.describe("remote card playwright harness", () => {
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-favorites-open.png");
   });
 
+  test("favorites carry their device name in a top band, in the drawer and as rows", async ({ page }) => {
+    await mountCard(page, "favorite_device_names");
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(page.locator(".mf-overlay--favorites")).toHaveClass(/open/);
+    const bands = page.locator(".mf-overlay--favorites .drawer-btn__device");
+    await expect(bands).toHaveText([
+      "Living Room Home Theater Receiver Zone 2 (Denon AVR-X3800H)",
+      "Living Room Home Theater Receiver Zone 2 (Denon AVR-X3800H)",
+      "Television",
+      "Soundbar",
+    ]);
+    // Device 9 is not in the devices attribute: that favorite has no band.
+    await expect(page.locator(".mf-overlay--favorites .drawer-btn:not(.drawer-btn--banded) .name")).toHaveText(["Disney+"]);
+    const geometry = await bands.first().evaluate((band) => {
+      const button = band.closest(".drawer-btn").getBoundingClientRect();
+      const box = band.getBoundingClientRect();
+      const name = band.parentElement.querySelector(".name").getBoundingClientRect();
+      return {
+        ellipsed: band.scrollWidth > band.clientWidth,
+        atTop: Math.abs(box.top - button.top) < 1.5,
+        fullWidth: Math.abs(box.width - button.width) < 3,
+        nameBelow: name.top >= box.bottom,
+        nameInside: name.bottom <= button.bottom,
+      };
+    });
+    expect(geometry).toEqual({ ellipsed: true, atTop: true, fullWidth: true, nameBelow: true, nameInside: true });
+    await expect(cardLocator(page)).toHaveScreenshot("remote-card-favorites-device-names.png");
+
+    await mountCard(page, "favorite_device_names", {
+      layouts: { default: { show_favorite_device_names: true, mf_as_rows: true } },
+    });
+    await expect(page.locator(".inline-drawer-row--favorites .drawer-btn__device")).toHaveCount(4);
+    await expect(page.locator(".inline-drawer-row--macros .drawer-btn__device")).toHaveCount(0);
+
+    // Off by default: the same data renders no band.
+    await mountCard(page, "favorite_device_names", { layouts: { default: {} } });
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    await expect(page.locator(".mf-overlay--favorites .drawer-btn")).toHaveCount(5);
+    await expect(page.locator(".drawer-btn__device")).toHaveCount(0);
+  });
+
   test("captures loading visual baseline", async ({ page }) => {
     await mountCard(page, "loading");
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-loading.png");
@@ -567,6 +608,93 @@ test.describe("remote card playwright harness", () => {
     await page.locator("body").click({ position: { x: 10, y: 10 } });
     await expect(macrosOverlay).not.toHaveClass(/open/);
     await expect(favoritesOverlay).not.toHaveClass(/open/);
+  });
+
+  test("number pad: the corner toggle flips to the keypad, a digit sends, outside taps flip back", async ({ page }) => {
+    await mountCard(page, "numpad");
+    const dpad = page.locator(".dpad");
+    await expect(dpad).toHaveClass(/dpad--numpad-ready/);
+    const toggle = page.locator(".dpad-numpad-toggle");
+    await expect(toggle).toHaveCount(1);
+
+    // Neither a key nor the bare frame flips the face: only the toggle.
+    await page.locator(".dpad .area-ok").click();
+    await expect(dpad).not.toHaveClass(/dpad--numpad-open/);
+    await dpad.click({ position: { x: 6, y: 6 } });
+    await expect(dpad).not.toHaveClass(/dpad--numpad-open/);
+    await toggle.click();
+    await expect(dpad).toHaveClass(/dpad--numpad-open/);
+
+    // Digits render through the ordinary key path: 7 is code 163.
+    await page.locator(".dpad-face--numpad sb-key-button", { hasText: "7" }).click();
+    await expect
+      .poll(async () => page.evaluate(() => window.__remoteCardHarness.getServiceCalls()))
+      .toContainEqual(
+        expect.objectContaining({
+          domain: "remote",
+          service: "send_command",
+          data: expect.objectContaining({ command: 163 }),
+        }),
+      );
+    await expect(dpad).toHaveClass(/dpad--numpad-open/);
+
+    // Inside the group nothing closes it, not even the frame that opened it.
+    await dpad.click({ position: { x: 6, y: 6 } });
+    await expect(dpad).toHaveClass(/dpad--numpad-open/);
+
+    // A pointerdown anywhere outside the group flips back.
+    await page.locator(".row3").first().click({ position: { x: 2, y: 2 } });
+    await expect(dpad).not.toHaveClass(/dpad--numpad-open/);
+  });
+
+  test("number pad: the second activity has no keypad bound, so no hint and no flip", async ({ page }) => {
+    await mountCard(page, "numpad");
+    await page.locator("ha-select").click();
+    await page.locator("ha-select").evaluate((node) => {
+      const option = Array.from(node.shadowRoot.querySelectorAll(".option"))
+        .find((entry) => entry.textContent.trim() === "Play Xbox");
+      option.click();
+    });
+    await expect
+      .poll(async () =>
+        page.evaluate(() => window.__remoteCardHarness.getRemoteState()?.attributes?.current_activity),
+      )
+      .toBe("Play Xbox");
+    // The activity switch briefly keeps a layout overlay clone; the live
+    // group is the first match.
+    const dpad = page.locator(".dpad").first();
+    await expect(dpad).not.toHaveClass(/dpad--numpad-ready/);
+    await expect(page.locator(".dpad-numpad-toggle")).toHaveCount(0);
+  });
+
+  test("number pad: with the D-pad off the keypad stands on its own and never flips back", async ({ page }) => {
+    await mountCard(page, "numpad", { show_dpad: false });
+    const group = page.locator(".dpad");
+    await expect(group).toHaveClass(/dpad--numpad-only/);
+    await expect(page.locator(".dpad .area-ok")).toHaveCount(0);
+    await expect(page.locator(".dpad-numpad-toggle")).toHaveCount(0);
+    await expect(page.locator(".dpad-face--numpad sb-key-button")).toHaveCount(12);
+    await page.locator(".row3").first().click({ position: { x: 2, y: 2 } });
+    await expect(group).toHaveClass(/dpad--numpad-only/);
+    await page.locator(".dpad-face--numpad sb-key-button", { hasText: "E" }).click();
+    await expect
+      .poll(async () => page.evaluate(() => window.__remoteCardHarness.getServiceCalls()))
+      .toContainEqual(
+        expect.objectContaining({
+          service: "send_command",
+          data: expect.objectContaining({ command: 158 }),
+        }),
+      );
+
+    // Neither switch on: the slot is empty.
+    await mountCard(page, "numpad", { show_dpad: false, show_numpad: false });
+    await expect(page.locator(".dpad")).toHaveCount(0);
+  });
+
+  test("number pad: an X1S never carries the keypad", async ({ page }) => {
+    await mountCard(page, "active");
+    await expect(page.locator(".dpad")).not.toHaveClass(/dpad--numpad-ready/);
+    await expect(page.locator(".dpad-numpad-toggle")).toHaveCount(0);
   });
 
   test("updates activity switching behavior", async ({ page }) => {

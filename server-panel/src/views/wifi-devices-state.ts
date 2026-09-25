@@ -368,7 +368,7 @@ export function targetMoved(device: WifiDeviceView): boolean {
  *  set up (the server's command line, the Sofabaton app); the panel only says what it sees. */
 export function mqttProblem(device: Pick<WifiDeviceView, "transport">, mqtt: { configured: boolean; connected: boolean; host: string | null; port: number | null; last_error: string | null } | null): string | null {
   if (device.transport !== "mqtt" || !mqtt) return null;
-  if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server was started without a broker (--mqtt-host or SOFABATON_MQTT_HOST), so they cannot arrive.";
+  if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server has no broker (set one under Server settings > MQTT broker, or start it with --mqtt-host), so they cannot arrive.";
   if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
   return null;
 }

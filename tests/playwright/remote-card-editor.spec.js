@@ -151,6 +151,58 @@ test.describe("remote card editor harness", () => {
     );
   });
 
+  test("the favorites row menu holds device names; as rows stays under the list", async ({ page }) => {
+    await mountEditor(page, "device_mode");
+    await page.locator(".sb-layout-wrap .sb-exp-hdr").click();
+    // Device names need the x1s integration (async detection, kicked off by a
+    // hass re-assignment as in HA) plus the devices attribute.
+    await page.evaluate(() => {
+      const editor = document.querySelector("sofabaton-virtual-remote-editor");
+      editor.hass = editor.hass;
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector("sofabaton-virtual-remote-editor")._editorIntegrationDomain,
+        ),
+      )
+      .toBe("sofabaton_x1s");
+
+    const changes = [];
+    await page.exposeFunction("__pushMenuChange", (detail) => changes.push(detail));
+    await page.evaluate(() => {
+      document.querySelector("sofabaton-virtual-remote-editor").addEventListener(
+        "config-changed",
+        (event) => window.__pushMenuChange(event.detail?.config ?? null),
+      );
+    });
+
+    await expect(page.locator(".sb-row-menu-btn")).toHaveCount(1);
+    await expect(page.locator(".sb-row-menu-panel")).toHaveCount(0);
+    await page.locator(".sb-row-menu-btn").click();
+    const panel = page.locator(".sb-row-menu-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".sb-layout-switch-label")).toHaveText(["Show device names"]);
+    const rowsRow = page.locator(".sb-mf-rows-row");
+    await expect(rowsRow.locator(".sb-layout-switch-label")).toHaveText([
+      "Macros/Favorites as rows",
+      "Visible rows",
+    ]);
+    await expect(page.locator(".sb-layout-wrap")).toHaveScreenshot("remote-card-editor-row-menu.png");
+
+    await panel.locator("ha-switch").first().click();
+    await expect.poll(() => changes.length).toBeGreaterThan(0);
+    expect(changes[changes.length - 1]?.layouts?.default?.show_favorite_device_names).toBe(true);
+
+    // As rows splits the row; the panel follows onto the Favorites row
+    // (the Macros row has no menu: macros carry no device).
+    await rowsRow.locator("ha-switch").click();
+    await expect.poll(() => changes[changes.length - 1]?.layouts?.default?.mf_as_rows).toBe(true);
+    await expect(page.locator(".sb-row-menu-btn")).toHaveCount(1);
+    await expect(page.locator(".sb-row-menu-btn.is-open")).toHaveCount(1);
+    await expect(page.locator(".sb-row-menu-panel .sb-layout-switch-label")).toHaveText(["Show device names"]);
+  });
+
   test("moving a group down through the arrow controls fires config-changed", async ({ page }) => {
     await mountEditor(page, "active");
     await page.locator(".sb-layout-wrap .sb-exp-hdr").click();

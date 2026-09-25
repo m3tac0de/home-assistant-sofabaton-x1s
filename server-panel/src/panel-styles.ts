@@ -26,7 +26,11 @@ export const PANEL_BASE_CSS = css`
     font-size: 14px;
     color: var(--sbp-text);
     box-sizing: border-box;
+    /* An app, not a page: labels, buttons and rows do not select. Fields and literal payloads (pre, code) do, so they copy. */
+    -webkit-user-select: none;
+    user-select: none;
   }
+  input, textarea, pre, code, [contenteditable] { -webkit-user-select: text; user-select: text; }
   *, *::before, *::after { box-sizing: inherit; }
   a { color: var(--sbp-accent); }
   button, input, select, textarea {

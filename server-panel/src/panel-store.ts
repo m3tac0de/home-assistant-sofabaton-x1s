@@ -7,7 +7,7 @@
 // so the node tests drive it deterministically.
 
 import type { ApiResponse, ApplySummary, HubView, JobView, Operation, PanelApi, SeenHub, ServerInfo } from "./panel-api";
-import { TERMINAL_JOB_STATES } from "./panel-api";
+import { TERMINAL_JOB_STATES, problemText } from "./panel-api";
 import { hashFor, hubRoute, normalizeSub, normalizeToolSub, sameRoute, toolRoute, withHub, type HubTab, type Route } from "./panel-route";
 import { loadPrefs, nextTheme, savePrefs, type ThemeChoice } from "./panel-state";
 import type { PanelStream, StreamMessage } from "./panel-stream";
@@ -495,6 +495,11 @@ export class PanelStore {
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
         return;
+      case "server_event":
+        // An update check finished (either source): the indicator reads GET /server.
+        if (data.kind === "update_check") void this._loadServer();
+        else if (isHubRefreshTrigger(data)) this.refreshSoon();
+        return;
       default:
         if (isHubRefreshTrigger(data)) this.refreshSoon();
     }
@@ -725,9 +730,7 @@ export function hashForSnapshot(snapshot: PanelSnapshot): string {
 }
 
 function problemLine(response: ApiResponse): string {
-  const body = response.body as { type?: string; detail?: string } | null;
-  if (body && typeof body === "object" && (body.type || body.detail)) return [body.type, body.detail].filter(Boolean).join(": ");
-  return `HTTP ${response.status}`;
+  return problemText(response);
 }
 
 // -- persisted acknowledgements ----------------------------------------------------------------------

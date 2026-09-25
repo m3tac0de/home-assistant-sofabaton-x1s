@@ -3097,21 +3097,42 @@ function x2ExtraButtonCatalog(): ButtonCatalogEntry[] {
   ];
 }
 
+// X2-only on-screen number pad, in keypad order. The remote shows it
+// behind a soft button; the hub binds and stores the keys like hard ones.
+function x2NumpadButtonCatalog(): ButtonCatalogEntry[] {
+  const S = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  return [
+    { code: 0xA9, name: S.num1, group: S.numpad },
+    { code: 0xA8, name: S.num2, group: S.numpad },
+    { code: 0xA7, name: S.num3, group: S.numpad },
+    { code: 0xA6, name: S.num4, group: S.numpad },
+    { code: 0xA5, name: S.num5, group: S.numpad },
+    { code: 0xA4, name: S.num6, group: S.numpad },
+    { code: 0xA3, name: S.num7, group: S.numpad },
+    { code: 0xA2, name: S.num8, group: S.numpad },
+    { code: 0xA1, name: S.num9, group: S.numpad },
+    { code: 0x9F, name: S.num0, group: S.numpad },
+    { code: 0xA0, name: S.numDash, group: S.numpad },
+    { code: 0x9E, name: S.numEnter, group: S.numpad },
+  ];
+}
+
 /**
  * Bindable physical buttons for the bundle's hub model. X2 adds seven
- * extended keys (A / B / C / Exit / DVR / Play / Guide) on top of the
- * shared set; X1 / X1S expose the shared set only. Catalog order.
+ * extended keys (A / B / C / Exit / DVR / Play / Guide) and the twelve
+ * number-pad keys on top of the shared set; X1 / X1S expose the shared
+ * set only. Catalog order.
  */
 export function bundleButtonCatalog(bundle: BackupBundlePayload | null): ButtonCatalogEntry[] {
   if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()];
+    return [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()];
   }
   return sharedButtonCatalog();
 }
 
 /** Resolve a button code to its display name, falling back to a hex label. */
 export function buttonName(code: number): string {
-  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog()]
+  const known = [...sharedButtonCatalog(), ...x2ExtraButtonCatalog(), ...x2NumpadButtonCatalog()]
     .find((entry) => entry.code === Number(code));
   return known?.name
     ?? TOOLS_CARD_STRINGS.backup.buttonCatalog.unknown(Number(code).toString(16).toUpperCase());
@@ -3399,23 +3420,27 @@ export function deleteDeviceButtonBinding(
 // match any clean assignment reports "customized" / "custom" rather
 // than pretending.
 
-export type ActivityRoleGroupId = "volume" | "navigation" | "playback" | "channels";
+export type ActivityRoleGroupId = "volume" | "navigation" | "playback" | "channels" | "numpad";
 
 export const ACTIVITY_ROLE_GROUPS: ActivityRoleGroupId[] = [
   "volume",
   "navigation",
   "playback",
   "channels",
+  "numpad",
 ];
 
 // Role groups cover the shared X1/X1S/X2 buttons plus the X2-only Play
-// key; colour buttons and the remaining X2 extras (A/B/C/Exit/DVR/Guide)
-// are one-off assignments and live only in the per-button view.
+// key and number pad; colour buttons and the remaining X2 extras
+// (A/B/C/Exit/DVR/Guide) are one-off assignments and live only in the
+// per-button view. A group with no buttons on the bundle's hub model (the
+// number pad on X1/X1S) is left out of the assignment list altogether.
 const ROLE_GROUP_BUTTON_IDS: Record<ActivityRoleGroupId, number[]> = {
   volume: [0xB6, 0xB9, 0xB8],
   navigation: [0xAE, 0xB2, 0xAF, 0xB1, 0xB0, 0xB3, 0xB4, 0xB5],
   playback: [0x9C, 0xBC, 0xBB, 0xBD],
   channels: [0xB7, 0xBA],
+  numpad: [0xA9, 0xA8, 0xA7, 0xA6, 0xA5, 0xA4, 0xA3, 0xA2, 0xA1, 0x9F, 0xA0, 0x9E],
 };
 
 /** A role group's buttons on the bundle's hub model, catalog-filtered. */
@@ -3476,7 +3501,7 @@ export function activityRoleAssignments(
   activityId: number,
 ): ActivityRoleAssignment[] {
   const activity = findBundleActivity(bundle, activityId);
-  return ACTIVITY_ROLE_GROUPS.map((group) => {
+  return ACTIVITY_ROLE_GROUPS.filter((group) => roleGroupButtons(bundle, group).length > 0).map((group) => {
     const buttons = roleGroupButtons(bundle, group);
     const totalCount = buttons.length;
     const groupSet = new Set(buttons);

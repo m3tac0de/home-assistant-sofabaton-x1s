@@ -2,8 +2,9 @@
 // 10): what the first panel's header said (versions, instance, the
 // callback listener) with the listener's retry, the stream state and
 // the hub count, plus the three host-side ports (the Home Assistant
-// integration's port step, same wording). Under the cog menu; no hub
-// is needed.
+// integration's port step, same wording), and the PyPI update check
+// (manual by default, a daily automatic check on request; notification
+// only). Under the cog menu; no hub is needed.
 
 import { LitElement, html, css, type TemplateResult } from "lit";
 
@@ -14,6 +15,7 @@ import {
   type ServerInfo,
   type ServerPortName,
   type ServerSettings,
+  type UpdateStatus,
 } from "../panel-api";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
@@ -42,6 +44,13 @@ const PORT_FIELDS: { name: ServerPortName; label: string; description: string }[
 
 const PORT_PATTERN = /^\d+$/;
 
+/** A server timestamp as the browser shows it; the raw text when it does not parse. */
+function localTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+}
+
 export class SbPanelServer extends LitElement {
   static properties = {
     api: { attribute: false },
@@ -58,6 +67,10 @@ export class SbPanelServer extends LitElement {
     _portStatus: { state: true },
     _portError: { state: true },
     _saving: { state: true },
+    _update: { state: true },
+    _checking: { state: true },
+    _updateSaving: { state: true },
+    _updateMsg: { state: true },
   };
 
   static styles = [
@@ -72,6 +85,14 @@ export class SbPanelServer extends LitElement {
       .port input { max-width: 160px; }
       .port .hint { margin-top: 4px; }
       .port .note { color: var(--sbp-muted); font-size: 12px; margin-left: 8px; }
+      .updates dl { margin: 0 0 10px; }
+      .update-line { margin: 8px 0; font-size: 13px; }
+      .update-line.available { color: var(--sbp-accent); font-weight: 600; }
+      .update-line.failed { color: var(--sbp-err); }
+      .update-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; margin: 4px 0 8px; }
+      .update-links a { color: var(--sbp-accent); }
+      .auto { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; font-size: 13px; }
+      .auto input { width: auto; margin: 0; }
     `,
   ];
 
@@ -89,10 +110,24 @@ export class SbPanelServer extends LitElement {
   private _portStatus = "";
   private _portError = false;
   private _saving = false;
+  private _update: UpdateStatus | null = null;
+  private _checking = false;
+  private _updateSaving = false;
+  private _updateMsg = "";
 
   connectedCallback(): void {
     super.connectedCallback();
     void this._loadPorts();
+  }
+
+  willUpdate(changed: Map<PropertyKey, unknown>): void {
+    // The store's copy (GET /server, re-read when a check finishes) wins
+    // when it is newer than what this page's own calls answered.
+    if (changed.has("info")) {
+      const fromStore = this.info?.update ?? null;
+      const mine = this._update;
+      if (fromStore && (!mine || (fromStore.checked_at ?? "") > (mine.checked_at ?? ""))) this._update = fromStore;
+    }
   }
 
   private async _loadPorts(): Promise<void> {
@@ -206,6 +241,97 @@ export class SbPanelServer extends LitElement {
     `;
   }
 
+  // -- updates -----------------------------------------------------------------------------
+
+  private async _checkForUpdates(): Promise<void> {
+    if (this._checking) return;
+    this._checking = true;
+    this._updateMsg = "";
+    try {
+      const response = await this.api.checkForUpdates();
+      if (response.ok && response.body) this._update = response.body;
+      else this._updateMsg = problemText(response);
+    } catch (err) {
+      this._updateMsg = String(err);
+    } finally {
+      this._checking = false;
+    }
+  }
+
+  private async _setAutomatic(event: Event): Promise<void> {
+    const box = event.target as HTMLInputElement;
+    const wanted = box.checked;
+    if (this._updateSaving) return;
+    this._updateSaving = true;
+    this._updateMsg = "";
+    try {
+      const response = await this.api.configureUpdateCheck(wanted);
+      if (response.ok && response.body) this._update = response.body;
+      else {
+        box.checked = !wanted;
+        this._updateMsg = problemText(response);
+      }
+    } catch (err) {
+      box.checked = !wanted;
+      this._updateMsg = String(err);
+    } finally {
+      this._updateSaving = false;
+    }
+  }
+
+  private _renderUpdates(): TemplateResult {
+    const u = this._update;
+    const installed = u?.installed_version ?? this.info?.version ?? "?";
+    const checked = u?.checked_at ? `${localTime(u.checked_at)}${u.checked_by === "automatic" ? " (automatic)" : ""}` : "Never";
+    let line: TemplateResult | string = "";
+    let cls = "";
+    switch (u?.status) {
+      case "update_available":
+        cls = "available";
+        line = `Update available: ${u.latest_version}`;
+        break;
+      case "up_to_date":
+        line = `No newer release found as of ${localTime(u.checked_at)}.`;
+        break;
+      case "failed":
+        cls = "failed";
+        line = `Couldn't check${u.error ? `: ${u.error}` : ""}.`;
+        break;
+      default:
+        line = "Not checked.";
+    }
+    const links = u?.status === "update_available"
+      ? html`<div class="update-links" id="update-links">
+          <a href=${u.release_notes_url} target="_blank" rel="noopener">Release notes</a>
+          <a href=${u.upgrade_url} target="_blank" rel="noopener">Update instructions</a>
+          <a href=${u.pypi_url} target="_blank" rel="noopener">PyPI</a>
+        </div>`
+      : "";
+    const busy = this._checking || u?.checking === true;
+    return html`
+      <div class="panel updates" id="server-updates">
+        <h2>Updates</h2>
+        <dl class="facts">
+          <div><dt>installed version</dt><dd id="update-installed">${installed}</dd></div>
+          <div><dt>last checked</dt><dd id="update-checked">${checked}</dd></div>
+          ${u?.next_check_at ? html`<div><dt>next check</dt><dd id="update-next">${localTime(u.next_check_at)}</dd></div>` : ""}
+        </dl>
+        <div class="update-line ${cls}" id="update-status" data-status=${u?.status ?? "not_checked"}>${line}</div>
+        ${links}
+        <div class="actions">
+          <button class="small" id="update-check" ?disabled=${busy || !this.reachable} @click=${this._checkForUpdates} title="POST /server/updates/check">${busy ? "checking…" : "Check for updates"}</button>
+          <span class="msg msg-err" id="update-msg">${this._updateMsg}</span>
+        </div>
+        <label class="auto" for="update-auto">
+          <input id="update-auto" type="checkbox" .checked=${u?.automatic === true} ?disabled=${!u || u.automatic_pinned || this._updateSaving || !this.reachable} @change=${this._setAutomatic} />
+          <span>Automatically check once a day</span>
+          ${u?.automatic_pinned ? html`<span class="note">set by an environment variable</span>` : ""}
+        </label>
+        <div class="hint">Checks contact PyPI for public release information. No hub information, configuration, installed version or installation identifier is sent. Checking never downloads or installs anything.</div>
+      </div>
+    `;
+  }
+
   private _emit(name: string, detail?: unknown): void {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
@@ -236,7 +362,7 @@ export class SbPanelServer extends LitElement {
     // Set on the server's command line or in its environment only; the panel shows it, never edits it.
     const mqtt = (info?.mqtt ?? null) as { configured?: boolean; connected?: boolean; wanted?: boolean; host?: string | null; port?: number | null; tls?: boolean; last_error?: string | null } | null;
     const mqttAt = mqtt ? `${mqtt.host}:${mqtt.port}${mqtt.tls ? " (TLS)" : ""}` : "";
-    const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (--mqtt-host)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;
+    const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (see MQTT broker)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;
     const facts: [string, string][] = [
       ["server", this.error ?? (info ? info.version : "connecting…")],
       ["library", info?.library_version ?? "?"],
@@ -255,8 +381,9 @@ export class SbPanelServer extends LitElement {
           <button class="small" id="listener-retry" ?disabled=${this._retrying || !this.reachable} @click=${this._retry} title="POST /server/callback-listener/retry">${this._retrying ? "retrying…" : "Retry callback listener"}</button>
           <span class="msg" id="server-status">${this._status}</span>
         </div>
-        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set with <span class="mono">--mqtt-host</span> or <span class="mono">SOFABATON_MQTT_*</span> when the server starts, never stored, and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
+        <div class="hint" style="margin-top: 10px">The callback listener is the port the hubs deliver button presses to (the Wifi Events device); it comes up when a hub has a callback device deployed. The MQTT broker is where an X2's Wifi Devices on the mqtt transport publish their presses; it is set on the MQTT broker page (or with <span class="mono">--mqtt-*</span> / <span class="mono">SOFABATON_MQTT_*</span> when the server starts) and connected only while a device uses it. The event stream is this page's live feed from the server.</div>
       </div>
+      ${this._renderUpdates()}
       ${this._renderPorts()}
     `;
   }

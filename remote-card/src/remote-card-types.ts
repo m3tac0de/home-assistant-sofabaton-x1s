@@ -24,6 +24,7 @@ export interface RemoteCardLayoutConfig {
   show_dvr?: boolean;
   show_colors?: boolean;
   show_abc?: boolean;
+  show_numpad?: boolean;
   /** null = default (shown); explicit boolean toggles the macros drawer tab. */
   show_macros_button?: boolean | null;
   /** null = default (shown); explicit boolean toggles the favorites drawer tab. */
@@ -33,6 +34,8 @@ export interface RemoteCardLayoutConfig {
   /** Render macros/favorites as inline rows instead of drawer tabs. */
   mf_as_rows?: boolean;
   mf_row_visible_rows?: number;
+  /** Device name band on favorites buttons (x1s integration, default off). */
+  show_favorite_device_names?: boolean;
 }
 
 /**
@@ -54,6 +57,7 @@ export interface DeviceLayoutConfig {
   show_dvr?: boolean;
   show_colors?: boolean;
   show_abc?: boolean;
+  show_numpad?: boolean;
   /** Toggles the Commands drawer (default shown). */
   show_commands_button?: boolean;
   /** Toggles the device Power button when power control is configured (default shown). */

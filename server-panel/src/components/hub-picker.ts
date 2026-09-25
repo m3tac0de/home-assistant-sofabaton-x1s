@@ -1,5 +1,7 @@
 // Hub selection and registration share one popover. The shell owns API calls
 // and guarded selection; this renderer keeps controls out of selectable rows.
+// Removal confirms inline: a native confirm() is answered "cancel" without a
+// word wherever dialogs are suppressed (embedded panes, kiosk browsers).
 import { css, html, nothing, type TemplateResult } from "lit";
 import { mdiChevronDown, mdiChevronUp, mdiDotsHorizontal, mdiPlus, mdiRefresh } from "@mdi/js";
 import type { HubView, SeenHub } from "../panel-api";
@@ -22,6 +24,7 @@ export const HUB_PICKER_CSS = css`
   .picker-icon svg, .picker-manual-button svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .picker-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 12px; }
   .picker-actions button { min-height: 36px; font-size: 12px; }
+  .picker-confirm { flex: 1 0 100%; margin: 0 0 2px; font-size: 12px; line-height: 1.5; }
   .picker-seen { padding: 7px 10px 7px 14px; gap: 10px; min-height: 54px; }
   .picker-seen .menu-title { font-weight: 500; }
   .picker-seen .small { min-height: 36px; flex: 0 0 auto; color: var(--sbp-accent); }
@@ -48,6 +51,7 @@ export function renderHubPicker(params: {
   open: boolean;
   manual: boolean;
   actionsHubId: string | null;
+  confirmRemoveHubId: string | null;
   busy: Set<string>;
   adding: boolean;
   scanning: boolean;
@@ -56,6 +60,7 @@ export function renderHubPicker(params: {
   onSelect: (hubId: string) => void;
   onActions: (hubId: string) => void;
   onAction: (hub: HubView, action: HubAction) => void;
+  onConfirmRemove: (hubId: string | null) => void;
   onAdd: (seen: SeenHub) => void;
   onManual: (show: boolean) => void;
   onSubmit: (event: Event) => void;
@@ -102,9 +107,15 @@ export function renderHubPicker(params: {
                     <button class="picker-icon" type="button" aria-label=${`Manage ${name}`} aria-expanded=${String(expanded)} @click=${() => params.onActions(hub.hub_id)}>${icon(mdiDotsHorizontal)}</button>
                   </div>
                   ${expanded ? html`<div class="picker-actions" role="group" aria-label=${`Actions for ${name}`}>
-                    ${!hub.enabled || !hub.status ? html`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : nothing}
-                    ${hub.enabled ? html`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : nothing}
-                    <button class="danger" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>Remove…</button>
+                    ${params.confirmRemoveHubId === hub.hub_id ? html`
+                      <p class="picker-confirm" id="picker-remove-question">Remove <b>${name}</b>? The server stops its proxy and forgets its registration, cached state and web remote layout. The hub itself is not changed.</p>
+                      <button class="danger" id="picker-remove-confirm" ?disabled=${busy} @click=${() => params.onAction(hub, "remove")}>${busy ? "Removing…" : "Remove"}</button>
+                      <button ?disabled=${busy} @click=${() => params.onConfirmRemove(null)}>Cancel</button>
+                    ` : html`
+                      ${!hub.enabled || !hub.status ? html`<button ?disabled=${busy} @click=${() => params.onAction(hub, "enable")}>${hub.enabled ? "Retry start" : "Enable"}</button>` : nothing}
+                      ${hub.enabled ? html`<button ?disabled=${busy} @click=${() => params.onAction(hub, "disable")}>Disable</button>` : nothing}
+                      <button class="danger" ?disabled=${busy} @click=${() => params.onConfirmRemove(hub.hub_id)}>Remove…</button>
+                    `}
                   </div>` : nothing}
                 `;
               }) : html`<p class="picker-empty">No hubs registered yet.</p>`}

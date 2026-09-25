@@ -268,6 +268,33 @@ class HubManager:
         self._emit_server("hub_disabled", hub_id)
         return record
 
+    async def set_proxy_enabled(self, hub_id: str, enabled: bool) -> HubRecord:
+        """Let the official app reach this hub through the server, or not.
+
+        Stored in the record's config (``proxy_enabled``), so it survives a
+        restart and a disable/enable. A running proxy switches in place:
+        off unregisters its app discovery (mDNS and the shared UDP demuxer,
+        which closes its socket once no proxy is registered); an app
+        session already attached stays until the app disconnects.
+        """
+
+        async with self._transition:
+            record = self.record(hub_id)
+            changed = record.config.proxy_enabled != enabled
+            if changed:
+                record.config = dataclasses.replace(record.config, proxy_enabled=enabled)
+                self._persist()
+            proxy = self._proxies.get(hub_id)
+            if proxy is not None:
+                # The engine keeps the banner identity while off, so enable
+                # re-advertises at once on a connected hub (or at its next
+                # ready sync); no wait here, under the transition lock.
+                await (proxy.enable_proxy() if enabled else proxy.disable_proxy())
+        if changed:
+            self._emit_server("hub_proxy_enabled" if enabled else "hub_proxy_disabled", hub_id)
+        log.info("hub %s: app proxy %s", hub_id, "enabled" if enabled else "disabled")
+        return record
+
     # -- internals -----------------------------------------------------------
 
     def _find_by_identity(self, config: HubConfig) -> Optional[HubRecord]:
@@ -372,11 +399,27 @@ class HubManager:
             if event.kind == "catalog_ready" and getattr(event.payload, "ready", False):
                 async with self._transition:
                     current_id = await self._note_ready(current_id, proxy)
+                await self._advertise(current_id, proxy)
             self._emit_hub(current_id, event)
             if event.kind == "snapshot_changed":
                 # Every refresh, write rebase, import and app-session flag
                 # lands here; the file is always the latest cache.
                 await self._export_state(current_id, proxy)
+
+    @staticmethod
+    async def _advertise(hub_id: str, proxy: AsyncXProxy) -> None:
+        """Let the official app find the proxy (a no-op when it is disabled).
+
+        The engine only advertises once it is told which hub it fronts;
+        the initial sync has just read the banner, so this publishes (or
+        realigns) the mDNS record straight away.
+        """
+
+        try:
+            if not await proxy.wait_until_discoverable(timeout=5.0):
+                log.warning("hub %s: proxy advertisement not started", hub_id)
+        except Exception:  # noqa: BLE001
+            log.warning("hub %s: proxy advertisement failed", hub_id, exc_info=True)
 
     async def _note_ready(self, hub_id: str, proxy: AsyncXProxy) -> str:
         record = self._records.get(hub_id)

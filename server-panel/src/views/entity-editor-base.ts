@@ -26,11 +26,11 @@ import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../cu
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { jobStepMessage, renderOperationProgress } from "../components/operation-progress";
-import { problemText, type ApiResponse, type HubInfo, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
+import { jobOutcomeText, problemText, type ApiResponse, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
-import { activeJob, type Gate } from "../panel-selectors";
+import { activeJob, firmwareFloor, type Gate } from "../panel-selectors";
 import type { PanelStore } from "../panel-store";
-import { firmwareUnsupported, elementsEqual, snapshotAsBundle } from "./device-editor-state";
+import { elementsEqual, snapshotAsBundle } from "./device-editor-state";
 import {
   entityDraftData,
   entityDraftScope,
@@ -82,7 +82,6 @@ export abstract class SbPanelEntityEditor extends LitElement {
     _snapshot: { state: true },
     _baseline: { state: true },
     _working: { state: true },
-    _info: { state: true },
     _callbackDeviceId: { state: true },
     _exitConfirm: { state: true },
     _syncing: { state: true },
@@ -105,7 +104,6 @@ export abstract class SbPanelEntityEditor extends LitElement {
   protected _snapshot: SnapshotDocument | null = null;
   protected _baseline: BackupBundlePayload | null = null;
   protected _working: BackupBundlePayload | null = null;
-  protected _info: HubInfo | null = null;
   protected _callbackDeviceId: number | null = null;
   protected _exitConfirm: { then: () => void } | null = null;
   protected _syncing = false;
@@ -172,6 +170,10 @@ export abstract class SbPanelEntityEditor extends LitElement {
       this._stage = "loading";
       this._notice = null;
       void this._load();
+    } else if (changed.has("ctx") && this._stage === "guard_firmware" && !firmwareFloor(this._hub)) {
+      // The hub reported updated firmware: the guard lifts by itself, as the card's does.
+      this._stage = "loading";
+      void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       // The dock's Discard dropped the draft: the working copy follows.
       this._working = this._baseline ? structuredClone(this._baseline) : null;
@@ -206,7 +208,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     return this._hub?.status?.hub_version ?? this._hub?.config?.hub_version ?? this._working?.hub?.version ?? null;
   }
 
-  // -- loading: the snapshot, the banner (firmware floor), the callback device -------------------------
+  // -- loading: the snapshot, the callback device; the firmware floor is the server's verdict on the hub ---
 
   protected async _load(options: { keepDraft?: boolean } = {}): Promise<void> {
     const hubId = this._hub?.hub_id;
@@ -215,13 +217,11 @@ export abstract class SbPanelEntityEditor extends LitElement {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
-    const [snapshot, info, callback] = await Promise.all([
+    const [snapshot, callback] = await Promise.all([
       this.api.snapshot(hubId),
-      this.api.hubInfo(hubId).catch(() => null),
       this.api.request<{ device_id: number | null }>("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null),
     ]);
     if (seq !== this._loadSeq) return;
-    this._info = info?.ok ? info.body : null;
     this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
     if (!snapshot.ok || !snapshot.body) {
       this._notice = problemText(snapshot);
@@ -229,7 +229,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
       return;
     }
     this._snapshot = snapshot.body;
-    if (firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version)) {
+    if (firmwareFloor(this._hub)) {
       this._stage = "guard_firmware";
       return;
     }
@@ -376,7 +376,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     }
     const job = await this.api.followJob(hubId, started.body.job_id);
     if (job && job.status === "done") return null;
-    const message = job?.error ? `${job.error.type}${job.error.detail ? `: ${job.error.detail}` : ""}` : job ? job.status : "the job could not be followed";
+    const message = jobOutcomeText(job) ?? "Did not finish";
     const stale = Boolean(job?.error && /stale|outdated/i.test(`${job.error.type} ${job.error.detail ?? ""}`));
     return { stale, message };
   }
@@ -465,7 +465,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (!job || job.status !== "done") {
-        this._deleteError = `Delete ${job ? job.status : "could not be followed"}${job?.error ? `: ${job.error.detail || job.error.type}` : ""}`;
+        this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
       }
       this.store.discardDraft(hubId);
@@ -490,7 +490,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
       case "loading":
         return html`<div class="panel"><div class="capture-error"><div class="guard-sub">${S.loading}</div></div></div>`;
       case "guard_firmware": {
-        const floor = firmwareUnsupported(this._hubVersion ?? this._info?.model, this._info?.firmware_version);
+        const floor = firmwareFloor(this._hub);
         return this._renderGuard(mdiChip, S.firmwareUnsupportedTitle, S.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), html`<button class="btn" @click=${this._goToList}>${S.back}</button>`, "guard-firmware");
       }
       case "needs_refresh":

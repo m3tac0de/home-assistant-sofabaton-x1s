@@ -833,6 +833,9 @@ export class ServerRemoteBackend implements RemoteBackend {
     const pending = this.firstAnswerPending && !this.hubStatus;
     const runningId = this.running?.activity_id ?? null;
 
+    // The server lists both catalogs in the hub's display order (the
+    // library sorts like the physical remote, as the HA integration's
+    // remote entity does); the card renders the lists as-is.
     const activities = this.activities.map((activity) => ({
       id: activity.activity_id,
       name: activity.name,

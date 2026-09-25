@@ -70,6 +70,14 @@ class HubStatus:
     # True once the connect-time initial sync (banner, devices,
     # activities) has completed for the current hub session.
     catalog_ready: bool = False
+    # The firmware floor verdicts, from the banner (hub_versions): "outdated"
+    # only asks for an update, "unsupported" means the hub ACKs writes and
+    # silently drops them, so a client blocks its write surfaces on it.
+    # False until the banner is known; an unknown hub line never blocks.
+    firmware_version: Optional[int] = None
+    firmware_min_supported: Optional[int] = None
+    firmware_unsupported: bool = False
+    firmware_outdated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -80,7 +88,9 @@ class HubInfo:
     """Identity of the physical hub, as read from its connect banner.
 
     ``known`` is False until the banner has been read at least once; the
-    other fields are then None.
+    other fields are then None. The ``firmware_*`` verdicts are the
+    library's floors (:mod:`hub_versions`) applied to the reported
+    version, the same ones :class:`HubStatus` carries.
     """
 
     known: bool
@@ -89,6 +99,10 @@ class HubInfo:
     mac: Optional[str]
     firmware_version: Optional[int]
     production_batch: Optional[str]
+    firmware_min_supported: Optional[int] = None
+    firmware_min_recommended: Optional[int] = None
+    firmware_unsupported: bool = False
+    firmware_outdated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -105,12 +119,18 @@ class HubInfo:
 
 @dataclass(frozen=True)
 class Activity:
-    """One activity from the hub's catalog."""
+    """One activity from the hub's catalog.
+
+    ``sort`` is the hub's stored display position (the byte the app's and
+    :meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the
+    record carries none. ``activities()`` already lists in that order.
+    """
 
     activity_id: int
     name: str
     active: bool
     needs_confirm: bool
+    sort: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -124,7 +144,10 @@ class Device:
     1 on) as of the last devices fetch; None when the row carried no
     parseable record. The hub commits it with a macro-runtime lag after a
     power fire, so it is not an instantaneous read. ``idle_behavior`` is
-    the device's power-behaviour mode when known.
+    the device's power-behaviour mode when known. ``sort`` is the hub's
+    stored display position (what :meth:`AsyncXProxy.reorder_devices`
+    writes), ``0`` when the record carries none; ``devices()`` already
+    lists in that order.
     """
 
     device_id: int
@@ -134,6 +157,7 @@ class Device:
     device_class_code: Optional[int]
     power_state: Optional[int]
     idle_behavior: Optional[int]
+    sort: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

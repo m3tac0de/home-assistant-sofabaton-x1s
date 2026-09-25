@@ -16,9 +16,11 @@ import {
   layoutConfigForDevice,
   layoutDefaultConfig,
   macrosButtonEnabled,
+  favoriteDeviceNamesEnabled,
   mfAsRows,
   mfRowVisibleRows,
   normalizedGroupOrder,
+  numpadEnabled,
   normalizedShortcutSlot,
   parseDeviceLayoutKey,
   type ShortcutSlot,
@@ -132,11 +134,13 @@ const ACTIVITY_LAYOUT_DEFAULTS: Record<string, unknown> = Object.freeze({
   show_dvr: true,
   show_colors: true,
   show_abc: true,
+  show_numpad: true,
   show_macros_button: true,
   show_favorites_button: true,
   show_device_toggle: true,
   mf_as_rows: false,
   mf_row_visible_rows: DEFAULT_ROW_VISIBLE_ROWS,
+  show_favorite_device_names: false,
   group_order: Object.freeze(DEFAULT_GROUP_ORDER.slice()),
 });
 
@@ -425,6 +429,23 @@ export function mfRowVisibleRowsForEditor(
   return mfRowVisibleRows(layoutConfigForSelection(config, selection));
 }
 
+/** Group-order rows carrying the "..." options panel (favorites device names). */
+export const MF_MENU_KEYS: ReadonlySet<string> = new Set([
+  "macro_favorites",
+  "favorites_row",
+]);
+
+export function favoriteDeviceNamesForEditor(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+): boolean {
+  return favoriteDeviceNamesEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function favoriteDeviceNamesPatch(enabled: boolean) {
+  return { show_favorite_device_names: !!enabled };
+}
+
 export function mfAsRowsPatch(enabled: boolean) {
   return { mf_as_rows: !!enabled };
 }
@@ -442,6 +463,18 @@ export function volumeTogglePatch(enabled: boolean) {
 
 export function channelTogglePatch(enabled: boolean) {
   return { show_channel: !!enabled };
+}
+
+/** The Number pad switch on the D-pad row (docs/internal/numpad-plan.md). */
+export function numpadEnabledForEditor(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+): boolean {
+  return numpadEnabled(layoutConfigForSelection(config, selection));
+}
+
+export function numpadTogglePatch(enabled: boolean) {
+  return { show_numpad: !!enabled };
 }
 
 export function dvrTogglePatch(enabled: boolean) {

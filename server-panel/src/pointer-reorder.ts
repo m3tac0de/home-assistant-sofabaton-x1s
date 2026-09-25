@@ -1,6 +1,6 @@
 /** Shared pointer sorter, extracted from the device power-sequence editor. */
 export class PointerReorder {
-  state: { from: number; over: number; dy: number; height: number; pointerId: number; startY: number } | null = null;
+  state: { from: number; over: number; dy: number; height: number; pointerId: number; startY: number; startScroll: number } | null = null;
   private handle: HTMLElement | null = null;
 
   constructor(
@@ -10,7 +10,20 @@ export class PointerReorder {
     private readonly top: () => number = () => 0,
     /** The space between rows (a grid gap): a shifting row travels the dragged row's height plus it. */
     private readonly gap: () => number = () => 0,
+    /** The element the rows scroll in, when it is not the page: a drag near its edges scrolls it. */
+    private readonly scroller: () => HTMLElement | null = () => null,
   ) {}
+
+  private scrollPos(): number {
+    const box = this.scroller();
+    return box ? box.scrollTop : window.scrollY;
+  }
+
+  /** The dragged row's offset: the pointer's travel plus what the rows scrolled under it since the start. */
+  private dyAt(clientY: number): number {
+    const drag = this.state!;
+    return clientY - drag.startY + this.scrollPos() - drag.startScroll;
+  }
 
   start(event: PointerEvent, index: number): void {
     if (event.button !== 0 || this.state) return;
@@ -20,7 +33,7 @@ export class PointerReorder {
     this.handle = event.currentTarget as HTMLElement;
     this.handle.setPointerCapture(event.pointerId);
     window.getSelection()?.removeAllRanges();
-    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY };
+    this.state = { from: index, over: index, dy: 0, height: rect.height, pointerId: event.pointerId, startY: event.clientY, startScroll: this.scrollPos() };
     this.changed();
   }
 
@@ -28,9 +41,14 @@ export class PointerReorder {
     const drag = this.state;
     if (!drag || event.pointerId !== drag.pointerId) return;
     event.preventDefault();
-    if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
+    const box = this.scroller();
+    if (box) {
+      const rect = box.getBoundingClientRect();
+      if (event.clientY < rect.top + 32) box.scrollTop -= 10;
+      else if (event.clientY > rect.bottom - 32) box.scrollTop += 10;
+    } else if (event.clientY < this.top() + 32) window.scrollBy(0, -10);
     else if (event.clientY > window.innerHeight - 48) window.scrollBy(0, 10);
-    this.state = { ...drag, over: this.slot(event.clientY), dy: event.clientY - drag.startY };
+    this.state = { ...drag, over: this.slot(event.clientY), dy: this.dyAt(event.clientY) };
     this.changed();
   }
 
@@ -54,7 +72,7 @@ export class PointerReorder {
     };
     const own = rects[drag.from];
     if (!own) return drag.from;
-    const centre = own.top - offset(drag.from) + own.height / 2 + clientY - drag.startY;
+    const centre = own.top - offset(drag.from) + own.height / 2 + this.dyAt(clientY);
     let over = drag.from;
     rects.forEach((rect, index) => {
       // Read the actual rendered transform: Lit may not yet have painted
