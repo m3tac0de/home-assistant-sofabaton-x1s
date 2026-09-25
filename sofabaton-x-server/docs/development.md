@@ -61,10 +61,15 @@ firmware status and X2 number keys. Prepare both packages together:
 2. Finalize the dated entries in both changelogs, leaving a fresh
    **Unreleased** section. Update README notices, installation pins and
    guides. Keep the API generation at `1` for this release.
+   Include the 0.2.2 access-control and panel-managed MQTT additions:
+   document origin checks before access setup, token versus admin-only
+   operations, broker credentials/storage, and the examples' token setup.
 3. Regenerate `openapi.json` with the pinned toolchain even when only the
    package version changed. Rebuild the frontend bundles, run the library,
    server and frontend checks in [CONTRIBUTING](../../CONTRIBUTING.md#-versioning-and-releases),
    and build/install both wheels together for a local smoke test.
+   Review `git status` before committing so new modules and tests are
+   included; `git commit -a` does not include untracked files.
 4. Commit the release preparation, then tag and push
    `sofabaton-x-v0.2.2`. Wait for the library's publishing workflow to
    succeed and confirm that 0.2.2 is available on PyPI.

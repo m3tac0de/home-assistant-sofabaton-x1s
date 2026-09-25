@@ -37,6 +37,7 @@ mDNS. TXT fields:
 | `path` | API prefix (`/api/v1`) |
 | `hubs` | number of configured hubs |
 | `base_url` | present when `--advertise-url` is set; the server base URL clients should use |
+| `auth` | `1` once the operator has set up access: writes then need a token ([Access and tokens](#access-and-tokens)) |
 
 Use `base_url` when present, otherwise `http://<SRV host>:<SRV port>`,
 as the **server base URL**. Append TXT `path` (currently `/api/v1`) for
@@ -58,9 +59,55 @@ manual server URL as well; some networks block multicast.
 
 `GET /api/v1/server` returns server/API versions, `instance_id`, features
 and runtime settings. Check `api_version` before using the contract.
+`auth.claimed` in the same answer says whether writes need a token.
 
-There is **no authentication** in v1. The server is a LAN service; the
-operator is told not to expose it beyond the LAN.
+### Access and tokens
+
+Hub/server reads, the event stream and control calls need no credential:
+activity start and stop, `send`, `find-remote`, `resync-remote`, `play`
+and the discovery scan. An integration that only does those works on
+every server with nothing to configure.
+
+Configuration writes (registration, enable/disable, snapshot refresh, edits
+and their plan previews, Wifi Device and callback provisioning, learn,
+backup, restore) needs a token **once the operator has set up access**.
+Until then the server is unclaimed and configuration writes need no
+credential. Account, token and session management (including their lists),
+and MQTT broker changes/tests, always require the panel's admin session
+and are unavailable before setup. Browser-origin checks apply immediately,
+whether or not access is set up.
+`GET /api/v1/server` reports `auth: {"claimed": true}` and the mDNS TXT
+carries `auth=1` when tokens are required. If your integration writes:
+
+1. Offer a token field in its setup, and ask for it when `auth.claimed`
+   is true. Tell the user where to get one: the control panel's
+   **Server settings → Access**, **Create token**. The token (`sbx_...`)
+   is shown only once and never expires; the user revokes it there.
+2. Send it on every write as `Authorization: Bearer sbx_...`. When the
+   user's reverse proxy uses basic auth, the `Authorization` header
+   belongs to the proxy: send the token as `X-Sofabaton-Token: sbx_...`
+   instead. Sending it on reads and control calls too is harmless.
+3. To check a token, call `GET /api/v1/auth` with it and no session cookie:
+   on a claimed server, `via: "token"`
+   means it is valid, `via: null` means it is unknown or revoked.
+4. Store it as a secret and keep it out of logs.
+
+| status | type | what to do |
+| --- | --- | --- |
+| 401 | `auth_required` | the server now requires a token and none was sent: ask the user for one |
+| 401 | `invalid_credentials` | the token was revoked or mistyped: ask for a new one; do not retry |
+| 403 | `admin_required` | tokens cannot manage the account, tokens, sessions or MQTT broker; leave these admin operations to the panel |
+| 403 | `cross_origin_refused` | a browser page on another origin sent the request: the operator must add that origin to `allowed_origins` |
+
+A write refused with 401 or 403 never reached the hub, so it is safe to
+repeat once the token is fixed. A server can become claimed while your
+integration runs; treat a first 401 as "a token is now needed", not as
+an outage. The operator's side is in [Security](running-server.md#security);
+the full rules are in the [API reference](api-reference.md#access).
+
+The server is still a LAN service: reads and control stay free, and the
+operator is told not to expose it beyond the LAN without a reverse proxy
+that adds its own authentication.
 
 ## 2. Find hubs
 
@@ -170,6 +217,8 @@ Errors are `Problem` bodies (`type`, `title`, `status`, `detail`,
 | 409 / 502 | `sync_failed`, `restore_failed` | inspect the failed job's `error` and partial `result`; reconcile before another write |
 | 404 | `job_not_found` | the job is unknown, expired, or lost across restart; inspect the snapshot |
 | 404 / 410 | `bundle_not_found`, `bundle_expired` | the job is not a finished backup, or its bundle is no longer held (five minutes, a newer backup, or dropped); make a new backup |
+| 401 | `auth_required`, `invalid_credentials` | a write without a valid token on a server with access set up; see [Access and tokens](#access-and-tokens) |
+| 403 | `admin_required`, `cross_origin_refused` | a token on an admin-only route, or a browser request from an unlisted origin; see [Access and tokens](#access-and-tokens) |
 
 Once a request returns `202`, operation failures are reported in the job,
 not as a later HTTP error from the original request. Polling a failed job
@@ -233,7 +282,9 @@ in section 10. Message schemas are OpenAPI components
 
 1. Ask for the server base URL; optionally discover it over mDNS.
 2. Check `GET /api/v1/server`, then offer registered hubs from
-   `GET /api/v1/hubs`. Link to `/ui/` for adding or managing them.
+   `GET /api/v1/hubs`. Link to `/ui/` for adding or managing them. If
+   your integration writes and `auth.claimed` is true, ask for a token
+   ([Access and tokens](#access-and-tokens)).
 3. Save the selected MAC hub IDs. Subscribe to `/events`, then read status
    and the catalogs you expose. Reconcile events that arrive during those
    reads so an older response does not overwrite newer state.
@@ -247,6 +298,10 @@ or callback editor can be added later if your platform benefits from them.
 
 
 ## 7. Snapshots and jobs
+
+Every non-`GET` route in sections 7 to 10 is a write, except `POST
+/hubs/{id}/play`: once the operator has set up access, send the token
+([Access and tokens](#access-and-tokens)).
 
 `GET /hubs/{id}/snapshot` is the hub's configuration as one document,
 projected from the library's cache with no hub traffic. Keep two values:
@@ -365,12 +420,21 @@ may retain partial completion information. A cancelled job has
 
 The runnable [REST example](../examples/edit_activity.py) performs this
 workflow using only Python's standard library, including readiness and job
-polling. It previews by default; `--apply` submits the change:
+polling. It previews by default; `--apply` submits the change. The
+preview's snapshot refresh and plan are writes too, so once access is set
+up, set `SOFABATON_TOKEN` to a token from the panel first (the script
+sends it as `Authorization: Bearer`):
 
 ```sh
+export SOFABATON_TOKEN=sbx_...   # only once access is set up
 python sofabaton-x-server/examples/edit_activity.py --server http://localhost:8480 --hub-id e26a44861b45 --activity 101 --name "Movie night"
 python sofabaton-x-server/examples/edit_activity.py --server http://localhost:8480 --hub-id e26a44861b45 --activity 101 --name "Movie night" --apply
 ```
+
+In PowerShell, use `$env:SOFABATON_TOKEN = "sbx_..."` instead of `export`.
+This example does not implement separate reverse-proxy authentication.
+It checks `firmware_unsupported` before refreshing or submitting an edit;
+update unsupported hub firmware in the official app before retrying.
 
 On `snapshot_outdated` or a sync's `stale_check` failure, refresh the target,
 obtain a new snapshot and reapply the intended change. Do not resend the old
@@ -527,7 +591,8 @@ creates or reuses the HTTP callback device under the reserved `default` key.
 Deployed commands can also be assigned in the official app. If you choose to manage callbacks in your client:
 
 1. `POST /api/v1/hubs/{id}/callback-device` with the slot labels your
-   users will see (up to ten; every slot is written, unnamed ones as
+   users will see (a write: send the token once access is set up; up to
+   ten; every slot is written, unnamed ones as
    `Button n`). The job result is the record: `device_id` and `labels`
    (command ids `1..10` short, `11..20` long).
 2. Let the user bind those commands with the generic edit routes, or do
@@ -640,9 +705,14 @@ How to hand it to your users depends on what your platform can show:
 
 Two things to know before you link it:
 
-- **No authentication.** The page has the same reach as the API. Tell
-  users to keep the server on the LAN or behind an authenticating
-  reverse proxy, never port-forwarded.
+- **No token needed.** The page only reads and uses control calls,
+  which stay free after the operator sets up access, so framing or
+  linking it needs no credential. Anyone who can open it can use the
+  remote: tell users to keep the server on the LAN or behind an
+  authenticating reverse proxy, never port-forwarded. If your platform's
+  own browser UI calls the API from another origin (rather than framing
+  the page), the operator must add that origin to `allowed_origins`
+  ([Security](running-server.md#browser-origins)).
 - **Layout is per hub, stored on the server.** `GET/PUT/DELETE
   /hubs/{id}/ui/remote-card` holds the card's configuration document
   (which key groups show, their order, device mode, shortcuts, custom

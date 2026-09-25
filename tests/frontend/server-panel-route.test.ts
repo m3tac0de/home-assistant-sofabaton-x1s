@@ -50,3 +50,12 @@ test("hashes round-trip, encode the hub id, and compare by value", () => {
   assert.deepEqual(withHub(hubRoute(null, "backup", "edit"), "z"), hubRoute("z", "backup", "edit"));
   assert.deepEqual(withHub(toolRoute("debug"), "z"), toolRoute("debug"));
 });
+
+test("the Server settings page has MQTT broker and Access subtabs", async () => {
+  const { parseRoute, TOOL_SUBTABS, subtabLabel } = await import("../../server-panel/src/panel-route");
+  assert.deepEqual([...TOOL_SUBTABS.server], ["status", "mqtt", "access"]);
+  assert.equal(subtabLabel("server", "access"), "Access");
+  assert.equal(subtabLabel("server", "mqtt"), "MQTT broker");
+  assert.deepEqual(parseRoute("#/server/mqtt"), { kind: "tool", page: "server", sub: "mqtt" });
+  assert.deepEqual(parseRoute("#/server/access"), { kind: "tool", page: "server", sub: "access" });
+});

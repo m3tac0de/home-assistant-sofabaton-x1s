@@ -79,7 +79,7 @@ def local_addresses() -> list[bytes]:
     return seen or [socket.inet_aton("127.0.0.1")]
 
 
-def advertisement_txt(settings: Settings, hub_count: int) -> dict[str, str]:
+def advertisement_txt(settings: Settings, hub_count: int, *, auth_claimed: bool = False) -> dict[str, str]:
     txt = {
         "version": __version__,
         "api": API_VERSION,
@@ -88,6 +88,9 @@ def advertisement_txt(settings: Settings, hub_count: int) -> dict[str, str]:
     }
     if settings.advertise_url:
         txt["base_url"] = settings.advertise_url
+    if auth_claimed:
+        # Writes need a token: a platform's setup UI knows to ask for one.
+        txt["auth"] = "1"
     return txt
 
 
@@ -99,7 +102,7 @@ class Advertiser:
         self._info: Any = None
 
     @staticmethod
-    def _service_info(settings: Settings, hub_count: int) -> Any:
+    def _service_info(settings: Settings, hub_count: int, auth_claimed: bool = False) -> Any:
         from zeroconf import ServiceInfo
 
         host = socket.gethostname().split(".")[0] or "server"
@@ -108,23 +111,23 @@ class Advertiser:
             f"sofabaton-x-server on {host}.{SERVICE_TYPE}",
             addresses=local_addresses(),
             port=settings.port,
-            properties=advertisement_txt(settings, hub_count),
+            properties=advertisement_txt(settings, hub_count, auth_claimed=auth_claimed),
             server=f"{host}.local.",
         )
 
-    def start(self, zc: Any, settings: Settings, hub_count: int) -> None:
+    def start(self, zc: Any, settings: Settings, hub_count: int, *, auth_claimed: bool = False) -> None:
         self._zc = zc
-        self._info = self._service_info(settings, hub_count)
+        self._info = self._service_info(settings, hub_count, auth_claimed)
         zc.register_service(self._info)
         log.info("advertising %s on port %d", SERVICE_TYPE, settings.port)
 
-    def update(self, settings: Settings, hub_count: int) -> None:
+    def update(self, settings: Settings, hub_count: int, *, auth_claimed: bool = False) -> None:
         """Re-publish the record with a new TXT (``ServiceInfo`` is immutable)."""
 
         if self._zc is None or self._info is None:
             return
         try:
-            info = self._service_info(settings, hub_count)
+            info = self._service_info(settings, hub_count, auth_claimed)
             self._zc.update_service(info)
             self._info = info
         except Exception:  # noqa: BLE001
@@ -165,6 +168,8 @@ class DiscoveryService:
         self._table: dict[str, SeenHub] = {}
         self.proxy_advertisements = 0
         self.enabled = False
+        # Set by the app: whether the admin account exists (TXT auth=1).
+        self.auth_claimed: Callable[[], bool] = lambda: False
         manager.on_server_event(self._on_manager_event)
 
     # -- lifecycle -----------------------------------------------------------
@@ -191,7 +196,8 @@ class DiscoveryService:
         await self._browser.start()
         try:
             await asyncio.get_running_loop().run_in_executor(
-                None, lambda: self._advertiser.start(self._zc, self._settings, self._manager.count())
+                None, lambda: self._advertiser.start(self._zc, self._settings, self._manager.count(),
+                                                     auth_claimed=self.auth_claimed())
             )
         except Exception:  # noqa: BLE001
             log.exception("could not advertise %s", SERVICE_TYPE)
@@ -281,4 +287,9 @@ class DiscoveryService:
         if kind in ("hub_added", "hub_removed", "hub_rekeyed"):
             for entry in self._table.values():
                 entry.registered_hub_id = self._registered_id(entry.config)
-            self._advertiser.update(self._settings, self._manager.count())
+            self.refresh_advertisement()
+
+    def refresh_advertisement(self) -> None:
+        """Re-publish the TXT (hub count, auth) with the current values."""
+
+        self._advertiser.update(self._settings, self._manager.count(), auth_claimed=self.auth_claimed())

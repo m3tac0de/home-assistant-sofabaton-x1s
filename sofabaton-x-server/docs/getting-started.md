@@ -1,7 +1,7 @@
 # Getting started with Sofabaton X Server
 
-Set up the server, add your hub, try the web remote and save your first
-backup. You can do all of this in the browser after installation; no
+Set up the server, add your hub, try the web remote, save your first
+backup and decide who may change the setup. You can do all of this in the browser after installation; no
 Home Assistant installation or integration code is needed.
 
 If you are building a client, continue with
@@ -23,8 +23,10 @@ If Home Assistant or another proxy already manages the hub, disable that
 hub there before adding it to this server. The hub has one client
 connection for these tools to share.
 
-The server has no built-in authentication. Keep it on a trusted LAN, or
-use an [authenticating reverse proxy](running-server.md#behind-a-reverse-proxy-tls).
+Until you set up access, anyone on your network can change the server's
+hubs and settings; see [step 5](#5-set-up-access). Reads and the remote
+stay open either way, so keep the server on a trusted LAN, or use an
+[authenticating reverse proxy](running-server.md#behind-a-reverse-proxy-tls).
 
 ## 1. Install and start the server
 
@@ -89,7 +91,28 @@ that hub, it is discarded, or the server restarts. It does not keep a
 backup archive. Saving the server's data directory does not replace this
 hub backup.
 
-## 5. Make yourself at home
+## 5. Set up access
+
+Until you do this, anyone on your network can change your hubs and the
+server's settings, and the panel shows a banner saying so.
+
+1. Choose **Set up access** in the banner, or open **Server settings →
+   Access** from the cog menu.
+2. Pick a username and a password of at least 8 characters. Tick
+   **Remember me** to stay signed in on this browser for 90 days.
+3. From now on the panel asks you to sign in. The web remote keeps
+   working without one.
+
+Integrations and scripts that change configuration then need a token:
+choose **Create token** in the same place and copy it right away; it is
+shown only once. Integrations that only
+start activities and send commands need nothing. Forgot the password?
+See [Recovery](running-server.md#recovery). More in
+[Security](running-server.md#security).
+
+<a id="5-make-yourself-at-home"></a>
+
+## 6. Make yourself at home
 
 - **Hub → Devices**: browse and edit commands, button assignments and
   device configuration.
@@ -131,6 +154,8 @@ activities in **Hub** before editing them in the panel.
 | The panel shows old configuration | Close the official app, then refresh the affected row or use **Refresh all** in Hub. |
 | Equipment does not respond | Confirm the selected activity or device and command, and check that the equipment can receive the hub's signal. |
 | The backup download expired | Create a new backup and download it as soon as it completes. |
+| Locked out of the panel | Reset the password on the server's computer with `sofabaton-x-server --reset-password`; see [Recovery](running-server.md#recovery). |
+| An integration's changes are refused (401) | Access is set up: give the integration a token from **Server settings → Access**. |
 | A write failed or was interrupted | Read the reported outcome and refresh the hub before deciding what to do next. Some changes may already have reached the hub; see [interrupted changes](managing-hubs.md#if-a-change-is-interrupted). |
 
 For ports, containers and proxy configuration, see

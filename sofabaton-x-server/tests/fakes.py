@@ -669,13 +669,13 @@ class FakeAdvertiser:
         self.updates: list[dict] = []
         self.stopped = False
 
-    def start(self, zc, settings, hub_count) -> None:
+    def start(self, zc, settings, hub_count, *, auth_claimed=False) -> None:
         from sofabaton_server.discovery import advertisement_txt
-        self.started.append((settings.port, advertisement_txt(settings, hub_count)))
+        self.started.append((settings.port, advertisement_txt(settings, hub_count, auth_claimed=auth_claimed)))
 
-    def update(self, settings, hub_count) -> None:
+    def update(self, settings, hub_count, *, auth_claimed=False) -> None:
         from sofabaton_server.discovery import advertisement_txt
-        self.updates.append(advertisement_txt(settings, hub_count))
+        self.updates.append(advertisement_txt(settings, hub_count, auth_claimed=auth_claimed))
 
     def stop(self) -> None:
         self.stopped = True

@@ -5,11 +5,16 @@ Uses Python's standard library. Register the hub first and pass its current
 hub_id (prefer the MAC form). --server is the server base URL, including any
 reverse-proxy prefix but excluding /api/v1. Preview reads the hub; --apply
 also writes. A request or job failure stops the example without retrying.
+Once access is set up on the server, this example needs a write token even
+without --apply (the preview's refresh and plan are POSTs, which count as
+writes): set SOFABATON_TOKEN to one made in the control panel (Server
+settings > Access).
 """
 
 import argparse
 import copy
 import json
+import os
 import time
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -17,15 +22,17 @@ from urllib.request import Request, urlopen
 
 
 class Client:
-    def __init__(self, server: str) -> None:
+    def __init__(self, server: str, token: str | None = None) -> None:
         self.api = server.rstrip("/") + "/api/v1"
+        self.token = token if token is not None else os.environ.get("SOFABATON_TOKEN") or None
 
     def request(self, method: str, path: str, body=None, *, headers=None):
         data = None if body is None else json.dumps(body).encode("utf-8")
+        auth = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         request = Request(
             self.api + path,
             data=data,
-            headers={"Accept": "application/json", "Content-Type": "application/json", **(headers or {})},
+            headers={"Accept": "application/json", "Content-Type": "application/json", **auth, **(headers or {})},
             method=method,
         )
         try:
@@ -62,6 +69,8 @@ def edit(client: Client, args: argparse.Namespace) -> None:
         if not view["enabled"]:
             raise RuntimeError("Hub is disabled; enable it before editing")
         status = view.get("status")
+        if status and status.get("firmware_unsupported"):
+            raise RuntimeError("Update the hub firmware in the official app before editing")
         if status and status["controllable"] and status["catalog_ready"]:
             break
         if time.monotonic() >= deadline:

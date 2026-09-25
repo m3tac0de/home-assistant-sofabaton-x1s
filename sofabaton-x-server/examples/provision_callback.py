@@ -4,6 +4,8 @@
 This writes hub configuration and replaces the selected activity button's
 short and long assignments. Normal integrations consume Wifi Devices already
 configured in the panel. See docs/callback-provisioning.md.
+Once access is set up on the server, these writes need a token: set
+SOFABATON_TOKEN to one made in the control panel (Server settings > Access).
 """
 
 import argparse
@@ -35,6 +37,9 @@ def setup_presses(client, hub, activity_id, button):
     Keyed devices created through the Wifi Commands panel are separate.
     This example intentionally uses /callback-device (key "default").
     """
+    status = client.request("GET", hub + "/status").get("status") or {}
+    if status.get("firmware_unsupported"):
+        raise RuntimeError("Update the hub firmware in the official app before provisioning")
     # Read the activity before creating anything, so a wrong activity ID stops early.
     activities = client.request("GET", hub + "/activities")
     if not any(a["activity_id"] == activity_id for a in activities):

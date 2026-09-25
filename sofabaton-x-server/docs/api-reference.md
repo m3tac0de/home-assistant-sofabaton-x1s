@@ -5,7 +5,7 @@ Reference for HTTP/WebSocket clients. Start with
 [Getting started](getting-started.md) to use the management application.
 The API generation is **1**; see the [changelog](../CHANGELOG.md) for release changes.
 
-[API](#api) · [Snapshot](#snapshot) · [Jobs](#jobs) · [Writes](#writes) ·
+[API](#api) · [Access](#access) · [Snapshot](#snapshot) · [Jobs](#jobs) · [Writes](#writes) ·
 [Whole-document writes](#whole-document-writes) · [Recovery](#recovery-and-retention) ·
 [IR and backups](#ir-payloads-backup-restore) · [Button events](#button-events) ·
 [Wifi Commands](#wifi-commands) · [Discovery](#discovery) · [Events](#events-websocket)
@@ -17,7 +17,8 @@ described in the [integration guide](https://github.com/m3tac0de/home-assistant-
 The sections below are a reference for optional features as well as the
 core API; implementing the full surface is not required.
 
-`GET /api/v1/server` identifies the server. The OpenAPI document is at
+`GET /api/v1/server` identifies the server; its `auth.claimed` says
+whether writes need a credential (see [Access](#access)). The OpenAPI document is at
 `/api/v1/openapi.json` (interactive docs at `/api/v1/docs`). Every
 operation has a stable `operationId`, and public models are named
 components. Job results and editable entity tables contain open objects;
@@ -81,6 +82,114 @@ Use the returned code for button control, or the bound device/command
 pair for direct command control. Device/activity documents and backups
 accept these keys for X2; validation rejects them for X1/X1S.
 
+## Access
+
+Every route has exactly one access class. The operator's side (setting
+up access, making tokens, recovery) is in
+[Security](running-server.md#security).
+
+| class | routes | credential |
+| --- | --- | --- |
+| read | `GET`/`HEAD` except the admin routes below, including `GET /auth`, and the `/events` WebSocket | none |
+| control | operation ids `startActivity`, `stopActivity`, `sendCommand`, `findRemote`, `resyncRemote`, `playPayload`, `scanForHubs` | none |
+| public | `POST /auth/setup`, `POST /auth/login`, `POST /auth/logout` | none |
+| write | routes outside the other classes, including the `.../plan` previews, `POST .../snapshot/refresh`, `POST .../learn` and job cancel | a token or the panel's session, once claimed |
+| admin | `PUT /auth/admin`, `/auth/tokens...`, `/auth/sessions...` (**their `GET`s included**), `PUT`/`DELETE /server/mqtt/config` and `POST /server/mqtt/test` | the panel's session only |
+
+The server is **unclaimed** until someone creates the admin account
+(a new installation, or one upgraded from 0.2.1 or earlier). While unclaimed, writes
+need no credential, exactly as before, and admin routes answer `409
+not_claimed`. `GET /server` reports `auth: {"claimed": true|false}` and
+the mDNS TXT carries `auth=1` once claimed. The OpenAPI document
+declares the security schemes `bearerAuth`, `tokenHeader` and
+`sessionCookie` and sets `security` per operation (an empty list on free
+operations); since it cannot know whether a server is claimed, a write
+operation's security only applies once it is.
+
+**Credentials.** A token (`sbx_...`) goes in
+`Authorization: Bearer <token>`, or in `X-Sofabaton-Token: <token>` when
+a reverse proxy's basic auth already uses `Authorization`. Any other
+`Authorization` scheme is ignored and counts as no credential. A request
+on a write-class route that carries a token is judged by the token alone.
+Admin routes require a valid session. The control panel
+uses its session cookie `sbx_session_<install id>` (`HttpOnly`,
+`SameSite=Strict`, path `<root path>/api/`, `Secure` when the request
+reached the server over https). Tokens are made in the panel; they never
+expire and a token cannot call admin routes (`403 admin_required`).
+
+**Origin guard.** Every request other than `GET`, `HEAD` or `OPTIONS`,
+control and public routes included, that carries an `Origin` header must
+come from the server's
+own host and port (the `Host` header, or `X-Forwarded-Host` when
+`--trusted-proxy` is set; the scheme is not compared), from
+`--advertise-url`'s origin, or from an origin listed in
+`allowed_origins`; anything else is `403 cross_origin_refused`, whose
+detail names the Origin and Host it saw. Requests without `Origin`
+(non-browser clients) skip this check. It applies before and after access
+setup; upgrading can therefore affect cross-origin browser clients immediately.
+
+**CORS.** Only origins in `allowed_origins` get CORS headers: preflights
+are answered, responses carry `Access-Control-Allow-Origin` and expose
+`ETag`, `Location`, `Retry-After` and `WWW-Authenticate`, and
+`Authorization` and `X-Sofabaton-Token` are allowed request headers.
+`Access-Control-Allow-Credentials` is never sent, and the server ignores
+the session cookie on guarded writes from a listed origin, so such a page can
+read, call control routes and, once claimed, write only with a token. Unlisted origins
+get no CORS headers. The `/events` WebSocket is not subject to CORS.
+`GET /server/settings` returns `{"allowed_origins": {"value": [...],
+"pinned": false}}` alongside the port settings. To change the list, send
+`PUT /server/settings` with `{"allowed_origins": ["http://nas:8123"]}`
+(or an empty list to remove all entries). A change applies at once;
+the API returns `422 invalid_origin` for a value that
+is not a bare `scheme://host[:port]`, `409 setting_pinned` when set by
+the environment or a flag.
+
+### Auth routes
+
+Under `/api/v1/auth`, tag `auth`:
+
+| method and path | class | body and answer |
+| --- | --- | --- |
+| `GET /auth` | read | `{claimed, signed_in, username, via}`: `via` is `"session"` for the panel's sign-in, `"token"` for a valid token, else `null` |
+| `POST /auth/setup` | public, only while unclaimed | `{username, password, remember}`; creates the admin account, sets the cookie, answers the status |
+| `POST /auth/login` | public | `{username, password, remember}`; sets the cookie, answers the status |
+| `POST /auth/logout` | public | `204`; ends this browser's session and clears the cookie |
+| `PUT /auth/admin` | admin | `{current_password, username?, new_password?}`; signs out every other session |
+| `GET /auth/tokens` | admin | `[{id, name, hint, created_at, last_used_at}]`; `hint` is the token's last four characters |
+| `POST /auth/tokens` | admin | `{name}` → `201` with the same fields plus `token`, the secret, returned only here |
+| `PATCH /auth/tokens/{id}` | admin | `{name}`: rename |
+| `DELETE /auth/tokens/{id}` | admin | `204`; revoke |
+| `GET /auth/sessions` | admin | `[{id, remember, created_at, last_seen_at, expires_at, user_agent, current}]` |
+| `DELETE /auth/sessions` | admin | `204`; sign out every session except the caller's |
+| `DELETE /auth/sessions/{id}` | admin | `204`; sign out one session |
+
+`remember: true` makes a session last 90 days, renewed with use;
+otherwise the cookie ends with the browser and the server drops the
+session after 12 hours without a request. Setup is accepted only from a
+loopback, private or link-local client address, after trusted-proxy
+resolution. Passwords need at least 8 characters. Token names are
+unique (ignoring case) and at most 64 characters. Open panels learn of
+a claim, an account change or a remote sign-out from a `server_event`
+of kind `auth`.
+
+### Access problems
+
+| status | type | meaning |
+| --- | --- | --- |
+| 401 | `auth_required` | a write (or admin route) without a credential on a claimed server; carries `WWW-Authenticate: Bearer realm="sofabaton-x-server"` |
+| 401 | `invalid_credentials` | an unknown or revoked token, an ended session, or a wrong username or password at sign-in |
+| 403 | `admin_required` | a token on an admin route |
+| 403 | `cross_origin_refused` | a browser request from an origin that is neither the server nor listed in `allowed_origins` |
+| 403 | `setup_local_only` | `POST /auth/setup` from an address that is not loopback, private or link-local |
+| 403 | `wrong_password` | `PUT /auth/admin` with the wrong current password |
+| 404 | `token_not_found`, `session_not_found` | the id is unknown |
+| 409 | `already_claimed` | `POST /auth/setup` when the admin account exists |
+| 409 | `not_claimed` | an admin route or sign-in before the admin account exists |
+| 409 | `token_name_taken` | another token has that name |
+| 422 | `weak_password` | a password shorter than 8 characters |
+| 422 | `invalid_origin` | an `allowed_origins` entry that is not a bare origin |
+| 429 | `login_throttled` | too many failed sign-ins from this address; wait `Retry-After` seconds (five free failures, then a doubling wait capped at 60 s; never a lockout) |
+
 ## Web remote configuration
 
 The server stores a per-hub JSON document for the web remote's layout:
@@ -95,7 +204,9 @@ The document holds the same keys as the Home Assistant card's YAML,
 minus `entity`, `theme` and Home Assistant actions (custom favourites
 that call a Home Assistant action are dropped; those that name a hub
 command stay). See the [web remote guide](web-remote.md) for the visual
-editor and URL parameters. The UI pages and their assets are outside the
+editor and URL parameters. `PUT` and `DELETE` are writes (a token or the
+panel's session once access is set up); the remote page itself only
+reads and uses control routes. The UI pages and their assets are outside the
 API contract; the configuration document routes are in OpenAPI.
 The control panel lives at `/ui/`; `/` and legacy `/harness` redirect there.
 
@@ -507,8 +618,9 @@ no callback listener, no callback address and no port 8060 involved. The
 device's command records are inert; at press time the hub publishes
 `{"device_id": <hub device id>, "key_id": <command id>}` to `<MAC>/up`
 (the MAC in upper-case hex, QoS 0, not retained) on **the broker set in
-the Sofabaton app**. Start the server with the same broker
-(`--mqtt-host`, see [Settings](running-server.md#settings)) and:
+the Sofabaton app**. Give the server the same broker (in the control
+panel under **Server settings → MQTT broker**, or with `--mqtt-host`, see
+[Settings](running-server.md#settings)) and:
 
 - `GET /hubs/{id}/wifi-devices` answers `transports: ["mqtt", "http"]`
   for an X2 whose MAC is known, `["http"]` for every other hub and for a
@@ -525,9 +637,30 @@ the Sofabaton app**. Start the server with the same broker
   slot, 11..20 the long press. A retained message is never a press and is
   dropped; so is a publish from a device the server does not manage (your
   own MQTT devices made in the Sofabaton app share the topic).
+- The broker settings: `GET /server/mqtt/config` (free; `source` is
+  `none`, `panel` or `startup`, `editable`, the fields, `password_set`,
+  `devices_using`, never the password). `PUT /server/mqtt/config` stores
+  them in `mqtt.json` and reconnects at once; leave `password` out to keep
+  the stored one (only while host, port, user name and TLS settings stay
+  the same: otherwise it is dropped and the answer says
+  `password_dropped: true`), send it empty or null to remove it. The body
+  is the complete desired broker configuration: omitted non-password
+  fields take their schema defaults. `DELETE
+  /server/mqtt/config` forgets it. `POST /server/mqtt/test` takes the same
+  body, connects once and answers `{ok, error, elapsed_ms}` without
+  saving. These three are admin routes (the panel's sign-in; a token gets
+  `403 admin_required`, an unclaimed server `409 not_claimed`). PUT and
+  DELETE return `409 setting_pinned` while flags or the environment set
+  the broker. An admin may still call the test API with supplied settings;
+  the panel displays startup settings read-only.
+  Invalid settings are `422 invalid_mqtt_config`.
+- Saving or removing the broker emits `server_event` kind `mqtt_config`
+  with an empty `hub_id`. Removing it stops MQTT press reception for
+  existing MQTT Wifi Devices; it does not delete or convert those devices.
 - Everything else is the same: in-place updates, slot bindings, stale and
-  redeploy, delete. There is no link test: whether the hub reaches the
-  broker is between the hub, the app and the broker. If presses do not
+  redeploy, delete. The broker test checks the server's connection only;
+  whether the hub reaches the broker is between the hub, the app and
+  the broker. If presses do not
   arrive, check the broker settings in the app first.
 
 In the panel, **Add** deploys an empty device at once and opens it. The
@@ -570,8 +703,9 @@ are proxies, and the server refuses them with a pointer to the hub they
 front).
 
 The server advertises itself as `_sofabaton-x._tcp.local.` with TXT
-`version`, `api`, `path`, `hubs` (count) and, when `--advertise-url` is
-set, `base_url`. Use `base_url` when present, otherwise
+`version`, `api`, `path`, `hubs` (count), `base_url` when `--advertise-url`
+is set, and `auth=1` once access is set up (writes then need a token;
+see [Access](#access)). Use `base_url` when present, otherwise
 `http://<SRV host>:<SRV port>`, as the **server base URL**. Append `path` to
 obtain the **API root** for hand-written calls. Generated clients use the
 server base URL because OpenAPI operation paths already include `/api/v1`.
@@ -587,7 +721,7 @@ JSON objects discriminated by `type`:
 | --- | --- |
 | `hello` | once on connect: `server_version`, `api_version`, `instance_id`, `hubs` (`hub_id`, `enabled`) |
 | `hub_event` | `hub_id` and the library `event` (`seq`, `kind`, `payload`): `activity_changed`, `activity_list_updated`, `hub_state`, `app_state`, `status_changed`, `catalog_ready`, `snapshot_changed`, `ota` |
-| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`) |
+| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`); `auth` with an empty `hub_id` says access was set up, the admin account changed or sessions were signed out (re-read `GET /auth`); `mqtt_config` with an empty `hub_id` says the broker was saved or removed (re-read `GET /server/mqtt/config` and `GET /server/mqtt`) |
 | `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
 | `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |

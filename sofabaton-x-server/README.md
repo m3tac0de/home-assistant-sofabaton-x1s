@@ -29,6 +29,8 @@ platforms and build your own integrations.
 | Create, edit or restore a backup | **Backup → Make / Edit / Restore** |
 | Control equipment and customize your web remote | **Remote → Card / Layout** |
 | Set up remote buttons for an integration to use | **Wifi Commands** |
+| Require a sign-in for changes, and make tokens for integrations | **Server settings → Access** in the cog menu |
+| Configure and test the X2 MQTT broker | **Server settings → MQTT broker** (admin sign-in required) |
 
 Review configuration changes before **Sync to Hub** writes them. The panel
 shows progress and prevents competing writes while another hub operation
@@ -59,8 +61,11 @@ and download your first backup.
 
 The [getting-started guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/getting-started.md)
 walks through each step. Keep the server's data directory across restarts.
-The server has no built-in authentication; use it on a trusted LAN or
-behind an authenticating reverse proxy.
+Until you set up access (**Server settings → Access** in the panel), anyone
+on your network can change your hubs; after that, changes need the
+panel's sign-in or a token, while reading and the remote stay open. Use
+the server on a trusted LAN or behind an authenticating reverse proxy.
+See [security](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#security).
 
 <!-- Keep earlier deployment links and bookmarks useful. -->
 <a id="docker"></a>
@@ -159,8 +164,10 @@ relevant logs and steps to reproduce the problem.
 This README describes **0.2.2**, using **API 1** and
 **sofabaton-x >=0.2.2,<0.3**. Read the
 [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md)
-when updating. This release adds an X2 number pad, optional update checks,
-per-hub app-proxy controls and firmware guidance, and fixes hub display
+when updating. This release adds optional access control and integration
+tokens, browser-origin checks, MQTT broker setup in the panel, an X2
+number pad, optional update checks, per-hub app-proxy controls and firmware
+guidance, and fixes hub display
 order and discovery by the official app.
 
 ## Development

@@ -49,12 +49,17 @@ GET /api/v1/server
 {
   "version": "0.2.2",
   "api_version": "1",
-  "instance_id": "example-server-instance"
+  "instance_id": "example-server-instance",
+  "auth": {"claimed": true}
 }
 ```
 
 Check the API generation before using its contract. Keep `instance_id`
-for event tracking: it changes when the server restarts. Then list
+for event tracking: it changes when the server restarts. `auth.claimed`
+says whether the operator has set up access; everything in this guide
+works either way, because reads, the event stream and control calls never
+need a token (see [Prepare for real use](#6-prepare-for-real-use) for
+writes). Then list
 **registered** hubs:
 
 ```http
@@ -121,7 +126,7 @@ must not generate additional commands.
 
 **Acceptance is not the final activity state or proof that the equipment
 responded.** Confirm state through status and events. These control calls
-do not require snapshots, configuration writes or jobs.
+do not require snapshots, configuration writes, jobs or a token.
 
 ## 3. Keep platform state synchronized
 
@@ -321,9 +326,27 @@ observing the platform trigger. Activity changes remain separate
   `<server base URL>/ui/remote/?hub=<URL-encoded hub ID>`. Keep shared hub
   configuration in the server unless your integration explicitly offers
   configuration editing.
-- **Support the deployment.** The server has no built-in authentication.
-  If the operator uses an authenticating reverse proxy, your client must
-  support its authentication for both HTTP and WebSocket connections.
+- **Support the deployment.** If your integration also writes
+  (registration, provisioning, edits, backups), accept a token in its
+  setup. Once the operator sets up access (`auth.claimed` in `GET
+  /api/v1/server`), those configuration writes need one, made in the control panel
+  under **Server settings → Access**:
+
+  ```http
+  POST /api/v1/hubs/e26a44861b45/snapshot/refresh
+  Authorization: Bearer sbx_...
+  Content-Type: application/json
+
+  {"activity_id": 101}
+  ```
+
+  Account/token/session management and MQTT broker changes/tests are
+  admin-only; link to the panel for those. Without a token, a configuration
+  write answers `401 auth_required`; see
+  [Access and tokens](platform-integration.md#access-and-tokens). If the
+  operator uses an authenticating reverse proxy, your client must also
+  support its authentication for both HTTP and WebSocket connections;
+  with proxy basic auth, send the token as `X-Sofabaton-Token` instead.
 
 See the [platform integration guide](platform-integration.md) for precise
 [error handling](platform-integration.md#4-read-and-control),
@@ -367,9 +390,13 @@ Devices on the selected hub. Try the physical remote too. Use
 `wifi-devices` to inspect the optional capabilities.
 
 The script sends real control commands, but does not provision devices or
-edit button assignments. It prints events rather than maintaining a
+edit button assignments. Its actions are reads and control calls, so it
+needs no token; when `SOFABATON_TOKEN` is set in the environment it sends
+it as `Authorization: Bearer` anyway. It prints events rather than maintaining a
 complete platform state model, does not automatically retry requests, and
-stops on disconnect. Implement the lifecycle behavior above in your client.
+stops on disconnect. The example does not implement a reverse proxy's
+separate authentication; its token is for the server API only. Implement
+the lifecycle behavior above in your client.
 
 The [Hubitat example](../examples/hubitat/README.md) illustrates platform
 entities and reconnection handling, but currently consumes only the legacy

@@ -56,6 +56,8 @@ must handle the firmware verdict themselves; see
 | Web remote layout | **Save** in **Remote → Layout** | The server's data directory, per hub; reload other open web remotes to pick it up |
 | An edited backup | Download the edited file; use **Restore** to apply it | Your downloaded file; editing it does not change the live hub |
 | Server listener ports | Restart the server after saving | Server settings; command-line and environment overrides take priority |
+| Access (account, tokens, allowed origins) | At once | `auth.json` and `server.json` in the server's data directory |
+| Panel-managed MQTT broker | **Save** reconnects with the new settings; **Test connection** saves nothing | `mqtt.json` in the data directory, including the password in plain text |
 
 The hub pushes configuration changes to its physical remotes. If a remote
 missed an update, open **Hub settings** from the cog menu and use
@@ -134,8 +136,8 @@ automation. See the [Hubitat example](../examples/hubitat/README.md) or
 HTTP delivery works on all supported hub models and needs the hub to
 reach the server's callback listener, normally TCP **8060**. X1 always
 uses 8060. X2 can use MQTT when the server is configured with the same
-broker as the hub in the official app. MQTT configuration belongs to
-[server startup settings](running-server.md#settings).
+broker as the hub in the official app. Set it in **Server settings →
+MQTT broker**, or use [startup settings](running-server.md#settings).
 
 You can manage up to five Wifi Devices per hub, including the legacy
 callback device used by the Hubitat example. A device missing from the
@@ -169,7 +171,21 @@ settings. Port changes apply after restarting the server. Values supplied
 through environment variables or command-line flags are pinned and must
 be changed there. See [Running the server](running-server.md).
 
-The same page holds the update check. **Check for updates** asks PyPI
+**Server settings → Access** sets up the admin account, so only people
+who sign in, and integrations with a token, can change your hubs and
+settings. It also changes the password, creates and revokes tokens,
+signs out other browsers and lists the browser origins allowed to call
+the server from another page. See [Security](running-server.md#security).
+
+**Server settings → MQTT broker** lets the signed-in admin enter the
+broker address, credentials and optional TLS settings. Use **Test connection**,
+then **Save** to apply them immediately. The test checks the server's
+connection; the hub must also be configured for that broker in the
+official app. Startup flags or environment variables make this page
+read-only. Removing the broker stops presses from existing MQTT Wifi
+Devices without deleting them. See [broker settings and password storage](running-server.md#settings).
+
+The **Server** tab holds the update check. **Check for updates** asks PyPI
 once whether a newer server release exists; **Automatically check once a
 day** keeps doing so. A found update shows as a dot on the cog menu with
 links to the release notes and upgrade steps. Nothing is installed for

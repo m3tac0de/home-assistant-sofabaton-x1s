@@ -8,14 +8,17 @@ generated clients.
 
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from . import API_PREFIX, API_VERSION, __version__
+from .access import ADMIN, WRITE, CorsMiddleware, OriginPolicy, enforce_access, operation_classes
+from .auth import AuthStore, LoginThrottle
 from .callbacks import CallbackService, ListenerState
 from .mqtt_client import MqttState
 from .backup_stage import BackupStage
@@ -26,6 +29,8 @@ from .manager import HubManager
 from .problems import install as install_problem_handler, problem_body
 from .routes_callbacks import router as callbacks_router, server_router as callback_listener_router
 from .routes_apply import router as apply_router
+from .routes_auth import router as auth_router
+from .routes_mqtt import router as mqtt_router
 from .routes_discovery import router as discovery_router
 from .routes_edit import router as edit_router
 from .routes_hub_data import router as hub_data_router
@@ -44,6 +49,15 @@ from .ws import WS_MESSAGE_TYPES, EventRelay, WsPress, WsServerEvent, router as 
 # where AsyncXProxy comes in.
 from sofabaton import __version__ as library_version
 
+log = logging.getLogger(__name__)
+
+
+
+@dataclass(frozen=True)
+class AuthInfo:
+    """Whether writes need a credential: false until the admin account exists."""
+
+    claimed: bool
 
 
 @dataclass(frozen=True)
@@ -66,6 +80,8 @@ class ServerInfo:
     mqtt: MqttState | None = None
     # The last PyPI update check (GET /server/updates says the same); answering this fetches nothing.
     update: UpdateStatus | None = None
+    # Access (auth plan): once claimed, writes need a token (mDNS TXT says auth=1).
+    auth: AuthInfo | None = None
 
 
 def create_app(settings: Settings | None = None, *, manager: Optional[HubManager] = None,
@@ -87,6 +103,9 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     backup_stage = BackupStage(job_runner, **({"keep_seconds": backup_keep_seconds} if backup_keep_seconds is not None else {}))
     callback_service = callbacks or CallbackService(hub_manager, settings)
     checker = update_checker or UpdateChecker(settings)
+    auth_store = AuthStore(settings.data_dir)
+    origin_policy = OriginPolicy(settings)
+    discovery_service.auth_claimed = lambda: auth_store.claimed
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -98,6 +117,10 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         await callback_service.start()
         # Last, and a schedule only: no request leaves unless update_check is on.
         await checker.start()
+        if not auth_store.claimed:
+            # Decision 2: as open as 0.2.1 until someone sets up access; say so once per start.
+            log.warning("access is not set up: anyone who can reach this server can change hubs and settings; "
+                        "set up an admin account in the control panel (Server settings > Access)")
         try:
             yield
         finally:
@@ -107,6 +130,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             await callback_service.stop()
             await hub_manager.stop()
             await discovery_service.stop()
+            auth_store.flush()
 
     app = FastAPI(
         lifespan=lifespan,
@@ -114,7 +138,9 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         version=__version__,
         description=(
             "REST + WebSocket over the sofabaton-x library for Sofabaton "
-            "X1 / X1S / X2 hubs. LAN service; no authentication in v1."
+            "X1 / X1S / X2 hubs. LAN service. Reads and control calls are free; "
+            "once the admin account exists, every other write needs a token "
+            "(Authorization: Bearer, or X-Sofabaton-Token) made in the control panel."
         ),
         root_path=settings.root_path,
         # An advertised URL already carries any public prefix, so it must
@@ -125,7 +151,10 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         openapi_url=f"{API_PREFIX}/openapi.json",
         docs_url=f"{API_PREFIX}/docs",
         redoc_url=None,
+        # The Origin guard and the access classes (access.py) for every route.
+        dependencies=[Depends(enforce_access)],
     )
+    app.add_middleware(CorsMiddleware, policy=origin_policy)
     app.state.settings = settings
     app.state.hub_manager = hub_manager
     app.state.discovery = discovery_service
@@ -138,13 +167,18 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.state.event_relay = relay
     app.state.callbacks = callback_service
     app.state.update_checker = checker
+    app.state.auth = auth_store
+    app.state.origin_policy = origin_policy
+    app.state.login_throttle = LoginThrottle()
     # A finished check (either source) tells open panels to re-read GET /server.
     checker.on_result(lambda _result: relay.publish("", WsServerEvent(hub_id="", kind="update_check")))
     install_problem_handler(app)
+    app.include_router(auth_router)
     app.include_router(hubs_router)
     app.include_router(callbacks_router)
     app.include_router(callback_listener_router)
     app.include_router(settings_router)
+    app.include_router(mqtt_router)
     app.include_router(updates_router)
     app.include_router(hub_data_router)
     app.include_router(snapshot_router)
@@ -181,6 +215,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
             callback_listener=callback_service.listener_state(),
             mqtt=callback_service.mqtt_state(),
             update=checker.status(),
+            auth=AuthInfo(claimed=auth_store.claimed),
         )
 
     return app
@@ -189,6 +224,53 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
 def _hub_count(app: FastAPI) -> int:
     manager: Any = getattr(app.state, "hub_manager", None)
     return int(manager.count()) if manager is not None else 0
+
+
+_SECURITY_SCHEMES = {
+    "bearerAuth": {
+        "type": "http", "scheme": "bearer",
+        "description": "A write token (sbx_...) made in the control panel under Server settings > Access.",
+    },
+    "tokenHeader": {
+        "type": "apiKey", "in": "header", "name": "X-Sofabaton-Token",
+        "description": "The same token, for clients whose Authorization header belongs to a reverse proxy's own auth.",
+    },
+    "sessionCookie": {
+        "type": "apiKey", "in": "cookie", "name": "sbx_session_<install id>",
+        "description": "The control panel's sign-in (POST /auth/login); the name carries the server's install id.",
+    },
+}
+
+
+def _apply_security(spec: dict, classes: dict[str, str], problem_ref: dict) -> None:
+    """``security`` per operation from the access classes (access.py).
+
+    Free operations say so with an empty list; the enforcement only
+    applies once the admin account exists, which the document cannot
+    know, so the descriptions of the schemes say it.
+    """
+
+    spec.setdefault("components", {})["securitySchemes"] = _SECURITY_SCHEMES
+    unauthorized = {"description": "No valid credential (once access is set up)",
+                    "content": {"application/json": {"schema": problem_ref}}}
+    forbidden = {"description": "Refused: another website's request, or a token on an admin route",
+                 "content": {"application/json": {"schema": problem_ref}}}
+    for operations in spec.get("paths", {}).values():
+        for operation in operations.values():
+            if not isinstance(operation, dict) or "operationId" not in operation:
+                continue
+            kind = classes.get(operation["operationId"])
+            responses = operation.setdefault("responses", {})
+            if kind == WRITE:
+                operation["security"] = [{"bearerAuth": []}, {"tokenHeader": []}, {"sessionCookie": []}]
+                responses.setdefault("401", unauthorized)
+                responses.setdefault("403", forbidden)
+            elif kind == ADMIN:
+                operation["security"] = [{"sessionCookie": []}]
+                responses.setdefault("401", unauthorized)
+                responses.setdefault("403", forbidden)
+            else:
+                operation["security"] = []
 
 
 def _publish_ws_components(app: FastAPI) -> None:
@@ -234,6 +316,7 @@ def _publish_ws_components(app: FastAPI) -> None:
                     }
         for orphan in ("HTTPValidationError", "ValidationError"):
             components.pop(orphan, None)
+        _apply_security(spec, operation_classes(app.routes), problem_ref)
         blank = chr(10) + chr(10)
         spec["info"]["description"] = (
             spec["info"].get("description", "")

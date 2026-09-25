@@ -79,7 +79,20 @@ set renders as a neutral dot.
 
 ## Network access
 
-The server has no built-in authentication. Keep it on your trusted
-LAN, or put it behind a reverse proxy that authenticates (see
+**The remote needs no token or sign-in**, also after you
+[set up access](running-server.md#set-up-access). It only reads the hub's
+state and uses control calls (start and stop an activity, send a
+command), which stay free so a phone, wall panel or dashboard keeps
+working with nothing to configure. Its layout is saved from the control
+panel, which has your sign-in.
+
+That also means anyone who can open the page can use the remote. Keep
+the server on your trusted LAN, or put it behind a reverse proxy that
+authenticates (see
 [Behind a reverse proxy](running-server.md#behind-a-reverse-proxy-tls)); do not
 port-forward it.
+
+Framing the page in a dashboard needs no server setting. Only a page on
+another origin that calls the server's API itself (a dashboard with its
+own buttons, for example at `http://nas:8123`) needs that origin listed
+in `allowed_origins`; see [Browser origins](running-server.md#browser-origins).

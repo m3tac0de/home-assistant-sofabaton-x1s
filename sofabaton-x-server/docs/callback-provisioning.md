@@ -16,11 +16,24 @@ existing activity and physical button. The command below **replaces both
 the short and long assignments of PLAY in activity 101**. Choose a button
 you intend to reassign and substitute your own server and hub IDs.
 
+The script writes hub configuration. If access is set up on the server
+(`auth.claimed` in `GET /api/v1/server`), make a token in the control
+panel under **Server settings → Access** and put it in `SOFABATON_TOKEN`;
+the script sends it on every request as `Authorization: Bearer sbx_...`.
+Without it, the first write fails with `401 auth_required`. Before
+access is set up, no token is needed.
+
 From the repository root, with Python 3.11+:
 
 ```sh
+export SOFABATON_TOKEN=sbx_...   # only once access is set up
 python sofabaton-x-server/examples/provision_callback.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 --activity 101 --button PLAY
 ```
+
+In PowerShell, set `$env:SOFABATON_TOKEN = "sbx_..."` instead of `export`.
+The example handles the server's token; it does not implement separate
+reverse-proxy authentication. It refuses configuration changes when the
+hub reports unsupported firmware; update the hub before running it again.
 
 The script uses the adjacent `starter.py` for HTTP requests. It reads the
 activity list before writing, creates `default` if missing or reuses its

@@ -48,6 +48,12 @@ class Settings:
     root_path: str = ""
     # Addresses / CIDRs whose X-Forwarded-* headers are trusted.
     trusted_proxies: tuple[str, ...] = ()
+    # Browser origins on another host or port that may read the API and
+    # call its free routes (auth plan, section 5): they get CORS headers
+    # (never credentials) and pass the Origin guard. Exact origins only
+    # (`http://nas:8123`), no wildcard. server.json, environment, flags;
+    # the control panel writes it to server.json and it applies live.
+    allowed_origins: tuple[str, ...] = ()
     # Escape hatch for operators who bring their own certificate.
     tls_cert: Optional[Path] = None
     tls_key: Optional[Path] = None
@@ -156,6 +162,7 @@ class Settings:
         object.__setattr__(self, "root_path", root.rstrip("/"))
         object.__setattr__(self, "data_dir", Path(self.data_dir))
         object.__setattr__(self, "trusted_proxies", tuple(str(p).strip() for p in self.trusted_proxies if str(p).strip()))
+        object.__setattr__(self, "allowed_origins", normalize_origins(self.allowed_origins))
         object.__setattr__(self, "initial_hubs", tuple(str(h).strip() for h in self.initial_hubs if str(h).strip()))
         if self.tls_cert is not None:
             object.__setattr__(self, "tls_cert", Path(self.tls_cert))
@@ -176,6 +183,7 @@ class Settings:
             if data[key] is not None:
                 data[key] = str(data[key])
         data["trusted_proxies"] = list(self.trusted_proxies)
+        data["allowed_origins"] = list(self.allowed_origins)
         data["initial_hubs"] = list(self.initial_hubs)
         data.pop("pinned")
         return data
@@ -185,7 +193,49 @@ class Settings:
 
 
 _FIELD_NAMES = {f.name for f in fields(Settings)} - {"pinned"}
-_LIST_FIELDS = {"trusted_proxies", "initial_hubs"}
+
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def normalize_origin(value: Any) -> str:
+    """``scheme://host[:port]`` in lower case, the default port dropped.
+
+    Raises ``ValueError`` for anything that is not a bare http(s) origin
+    (a path, a query, credentials, ``*`` or ``null``).
+    """
+
+    from urllib.parse import urlsplit
+
+    text = str(value or "").strip().rstrip("/")
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError as err:
+        raise ValueError(f"{value!r} is not an origin: {err}") from None
+    scheme = parts.scheme.lower()
+    if scheme not in _DEFAULT_PORTS or not parts.hostname or parts.path or parts.query or parts.fragment             or parts.username is not None or parts.password is not None:
+        raise ValueError(f"{value!r} is not an origin; use scheme://host[:port], e.g. http://nas:8123")
+    host = parts.hostname.lower()
+    if ":" in host:
+        host = f"[{host}]"
+    if port is None or port == _DEFAULT_PORTS[scheme]:
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{port}"
+
+
+def normalize_origins(values: Any) -> tuple[str, ...]:
+    if isinstance(values, str):
+        values = values.split(",")
+    out: list[str] = []
+    for value in values or ():
+        if not str(value).strip():
+            continue
+        origin = normalize_origin(value)
+        if origin not in out:
+            out.append(origin)
+    return tuple(out)
+_LIST_FIELDS = {"trusted_proxies", "initial_hubs", "allowed_origins"}
 
 
 def _coerce(name: str, value: Any) -> Any:
@@ -235,7 +285,8 @@ def _refuse_mqtt_in_file(data: Mapping[str, Any], path: Path) -> None:
     if found:
         raise ValueError(
             f"{path}: {found} do not belong in a file; give the MQTT broker settings as command line flags "
-            "(--mqtt-host ...) or SOFABATON_MQTT_* environment variables, so no secret is kept on disk"
+            "(--mqtt-host ...) or SOFABATON_MQTT_* environment variables, or set the broker in the control panel "
+            "(Server settings > MQTT broker), which keeps it in mqtt.json"
         )
 
 

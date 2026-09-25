@@ -21,6 +21,7 @@ section 7) lives here so every route uses the same table:
 | ``DocumentError`` (a whole-document edit)  | 422 (``dangling_reference``, ``out_of_scope``, ``invalid_request``) or 409 (``entity_not_editable``, ``snapshot_incomplete``) |
 | an apply that stopped (``ApplyStopped``)   | 409 before the first write, 502 after |
 | a backup bundle no longer held             | 410 (``bundle_expired``); 404 ``bundle_not_found`` when the job never had one |
+| a write without a credential (auth.py)     | 401 (``auth_required``, ``invalid_credentials``); 403 ``admin_required`` / ``cross_origin_refused`` / ``setup_local_only`` / ``wrong_password``; 429 ``login_throttled`` |
 """
 
 from __future__ import annotations
@@ -126,15 +127,18 @@ class ApiProblem(Exception):
         detail: Optional[str] = None,
         hub_id: Optional[str] = None,
         mode: Optional[str] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> None:
         super().__init__(f"{status} {type_}: {detail or title}")
         self.problem = Problem(type=type_, title=title, status=status, detail=detail, hub_id=hub_id, mode=mode)
+        # WWW-Authenticate on a 401, Retry-After on a 429.
+        self.headers = dict(headers or {})
 
 
 def install(app: FastAPI) -> None:
     @app.exception_handler(ApiProblem)
     async def _handle(_request: Request, err: ApiProblem) -> JSONResponse:
-        return JSONResponse(status_code=err.problem.status, content=asdict(err.problem))
+        return JSONResponse(status_code=err.problem.status, content=asdict(err.problem), headers=err.headers or None)
 
     @app.exception_handler(RequestValidationError)
     async def _handle_validation(_request: Request, err: RequestValidationError) -> JSONResponse:

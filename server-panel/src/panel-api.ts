@@ -127,8 +127,46 @@ export interface ServerInfo {
   hubs?: number;
   callback_listener?: CallbackListener;
   update?: UpdateStatus | null;
+  /** Access (auth plan): once claimed, writes need a token or the panel's sign-in. */
+  auth?: { claimed: boolean } | null;
   [key: string]: unknown;
 }
+
+/** `GET /auth` (openapi `AuthStatus`). */
+export interface AuthStatus {
+  claimed: boolean;
+  signed_in: boolean;
+  username?: string | null;
+  via?: "session" | "token" | null;
+}
+
+/** A write token as `GET /auth/tokens` lists it (openapi `TokenInfo`); never the secret. */
+export interface TokenInfo {
+  id: string;
+  name: string;
+  hint: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** `POST /auth/tokens` (openapi `TokenCreated`): the only answer that carries `token`. */
+export interface TokenCreated extends TokenInfo {
+  token: string;
+}
+
+/** A signed-in browser (openapi `SessionView`). */
+export interface SessionView {
+  id: string;
+  remember: boolean;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  user_agent: string;
+  current: boolean;
+}
+
+/** The Problem types that mean "this browser is not (or no longer) signed in". */
+export const SIGNED_OUT_PROBLEMS = new Set(["auth_required", "invalid_credentials"]);
 
 /** One command slot of a Wifi Device's spec (openapi `CallbackSlot`). */
 export interface WifiSlot {
@@ -202,6 +240,44 @@ export interface MqttState {
   next_retry_at: string | null;
 }
 
+/** `GET /server/mqtt/config` (openapi `MqttConfigView`): the broker settings, never the password. */
+export interface MqttConfigView {
+  /** none: no broker; panel: stored by this panel; startup: set by flags or environment, read-only here. */
+  source: "none" | "panel" | "startup";
+  editable: boolean;
+  host: string | null;
+  port: number | null;
+  effective_port: number | null;
+  username: string | null;
+  password_set: boolean;
+  tls: boolean;
+  tls_ca: string | null;
+  tls_insecure: boolean;
+  client_id: string | null;
+  devices_using: number;
+  /** The change moved the destination without a new password, so the stored one was dropped. */
+  password_dropped: boolean;
+}
+
+/** The body of `PUT /server/mqtt/config` and `POST /server/mqtt/test`. Leave `password` out to keep the stored one
+ *  (only while the destination stays the same); send "" to remove it. */
+export interface MqttConfigBody {
+  host: string;
+  port?: number | null;
+  username?: string | null;
+  password?: string | null;
+  tls?: boolean;
+  tls_ca?: string | null;
+  tls_insecure?: boolean;
+  client_id?: string | null;
+}
+
+export interface MqttTestResult {
+  ok: boolean;
+  error: string | null;
+  elapsed_ms: number;
+}
+
 /** One port in `GET /server/settings` (openapi `PortSetting`). */
 export interface PortSetting {
   running: number;
@@ -212,8 +288,17 @@ export interface PortSetting {
 
 export type ServerPortName = "hub_listen_port" | "app_discovery_port" | "callback_port";
 
+/** `allowed_origins` in `GET|PUT /server/settings` (openapi `OriginsSetting`); applied live. */
+export interface OriginsSetting {
+  value: string[];
+  pinned: boolean;
+}
+
 /** `GET|PUT /server/settings` (openapi `ServerSettingsView`). */
-export type ServerSettings = Record<ServerPortName, PortSetting> & { restart_required: boolean };
+export type ServerSettings = Record<ServerPortName, PortSetting> & { allowed_origins?: OriginsSetting; restart_required: boolean };
+
+/** The body of `PUT /server/settings`. */
+export type ServerSettingsUpdate = Partial<Record<ServerPortName, number>> & { allowed_origins?: string[] };
 
 export interface RemoteCardDocument {
   hub_id: string;
@@ -420,6 +505,8 @@ export class PanelApi {
   readonly baseUrl: string;
   readonly apiRoot: string;
   private readonly _fetch: FetchLike;
+  /** Called when a request answers 401 for a signed-out browser (the shell shows the sign-in). */
+  onSignedOut: ((problem: Problem) => void) | null = null;
 
   constructor(baseUrl: string, fetchImpl?: FetchLike) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
@@ -465,6 +552,10 @@ export class PanelApi {
     }
     const responseHeaders: [string, string][] = [];
     response.headers.forEach((value, key) => responseHeaders.push([key, value]));
+    if (response.status === 401 && this.onSignedOut && !path.replace(/^\/+/, "").startsWith("auth/login")) {
+      const problem = body as unknown as Problem | null;
+      if (problem && typeof problem === "object" && SIGNED_OUT_PROBLEMS.has(String(problem.type))) this.onSignedOut(problem);
+    }
     return { ok: response.ok, status: response.status, statusText: response.statusText, headers: responseHeaders, text, body };
   }
 
@@ -482,8 +573,74 @@ export class PanelApi {
     return this.request<MqttState>("GET", "server/mqtt");
   }
 
+  mqttConfig(): Promise<ApiResponse<MqttConfigView>> {
+    return this.request<MqttConfigView>("GET", "server/mqtt/config");
+  }
+
+  updateMqttConfig(body: MqttConfigBody): Promise<ApiResponse<MqttConfigView>> {
+    return this.request<MqttConfigView>("PUT", "server/mqtt/config", { body });
+  }
+
+  removeMqttConfig(): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", "server/mqtt/config");
+  }
+
+  testMqttConfig(body: MqttConfigBody): Promise<ApiResponse<MqttTestResult>> {
+    return this.request<MqttTestResult>("POST", "server/mqtt/test", { body });
+  }
+
   retryCallbackListener(): Promise<ApiResponse<CallbackListener>> {
     return this.request<CallbackListener>("POST", "server/callback-listener/retry");
+  }
+
+  // -- access (auth plan, section 6) ---------------------------------------------
+
+  authStatus(): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("GET", "auth");
+  }
+
+  setupAdmin(username: string, password: string, remember: boolean): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("POST", "auth/setup", { body: { username, password, remember } });
+  }
+
+  signIn(username: string, password: string, remember: boolean): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("POST", "auth/login", { body: { username, password, remember } });
+  }
+
+  signOut(): Promise<ApiResponse<null>> {
+    return this.request<null>("POST", "auth/logout");
+  }
+
+  updateAdmin(change: { current_password: string; username?: string; new_password?: string }): Promise<ApiResponse<AuthStatus>> {
+    return this.request<AuthStatus>("PUT", "auth/admin", { body: change });
+  }
+
+  listTokens(): Promise<ApiResponse<TokenInfo[]>> {
+    return this.request<TokenInfo[]>("GET", "auth/tokens");
+  }
+
+  createToken(name: string): Promise<ApiResponse<TokenCreated>> {
+    return this.request<TokenCreated>("POST", "auth/tokens", { body: { name } });
+  }
+
+  renameToken(id: string, name: string): Promise<ApiResponse<TokenInfo>> {
+    return this.request<TokenInfo>("PATCH", `auth/tokens/${encodeURIComponent(id)}`, { body: { name } });
+  }
+
+  revokeToken(id: string): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", `auth/tokens/${encodeURIComponent(id)}`);
+  }
+
+  listSessions(): Promise<ApiResponse<SessionView[]>> {
+    return this.request<SessionView[]>("GET", "auth/sessions");
+  }
+
+  revokeOtherSessions(): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", "auth/sessions");
+  }
+
+  revokeSession(id: string): Promise<ApiResponse<null>> {
+    return this.request<null>("DELETE", `auth/sessions/${encodeURIComponent(id)}`);
   }
 
   serverSettings(): Promise<ApiResponse<ServerSettings>> {
@@ -491,7 +648,7 @@ export class PanelApi {
   }
 
   /** Saves to server.json; the ports apply on the next server start. */
-  updateServerSettings(changes: Partial<Record<ServerPortName, number>>): Promise<ApiResponse<ServerSettings>> {
+  updateServerSettings(changes: ServerSettingsUpdate): Promise<ApiResponse<ServerSettings>> {
     return this.request<ServerSettings>("PUT", "server/settings", { body: changes });
   }
 

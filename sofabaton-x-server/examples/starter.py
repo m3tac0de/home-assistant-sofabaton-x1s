@@ -8,10 +8,14 @@ uvicorn[standard] dependency). Configure Wifi Devices in the panel; this
 example never provisions devices or changes button assignments.
 Requests are never automatically retried. Listen ends on disconnection;
 production reconnect/catch-up guidance is in docs/platform-integration.md.
+Everything here is a read or a control call, which needs no token. Once
+access is set up on the server, writes need one: this client sends
+SOFABATON_TOKEN from the environment when it is set.
 """
 
 import argparse
 import json
+import os
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
@@ -26,14 +30,17 @@ class ApiError(RuntimeError):
 
 
 class Client:
-    def __init__(self, server):
+    def __init__(self, server, token=None):
         self.api = server.rstrip("/") + "/api/v1"
+        # A write token from the panel (Server settings > Access); reads and control calls need none.
+        self.token = token if token is not None else os.environ.get("SOFABATON_TOKEN") or None
 
     def request(self, method, path, body=None, *, headers=None):
         data = None if body is None else json.dumps(body).encode("utf-8")
+        auth = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         request = Request(
             self.api + path, data=data, method=method,
-            headers={"Accept": "application/json", "Content-Type": "application/json", **(headers or {})},
+            headers={"Accept": "application/json", "Content-Type": "application/json", **auth, **(headers or {})},
         )
         try:
             with urlopen(request, timeout=30) as response:

@@ -146,6 +146,44 @@
         "title": "ActivityPayload",
         "type": "object"
       },
+      "AdminUpdate": {
+        "properties": {
+          "current_password": {
+            "maxLength": 4096,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Password"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "current_password"
+        ],
+        "title": "AdminUpdate",
+        "type": "object"
+      },
       "ApplyItemView": {
         "properties": {
           "completed_steps": {
@@ -557,6 +595,61 @@
           "updated_at"
         ],
         "title": "ApplyView",
+        "type": "object"
+      },
+      "AuthInfo": {
+        "description": "Whether writes need a credential: false until the admin account exists.",
+        "properties": {
+          "claimed": {
+            "title": "Claimed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "claimed"
+        ],
+        "title": "AuthInfo",
+        "type": "object"
+      },
+      "AuthStatus": {
+        "description": "``GET /auth``: whether access is set up and who this request is.",
+        "properties": {
+          "claimed": {
+            "title": "Claimed",
+            "type": "boolean"
+          },
+          "signed_in": {
+            "title": "Signed In",
+            "type": "boolean"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "claimed",
+          "signed_in"
+        ],
+        "title": "AuthStatus",
         "type": "object"
       },
       "BackupRequest": {
@@ -1150,6 +1243,32 @@
           "connected"
         ],
         "title": "ConnectionState",
+        "type": "object"
+      },
+      "Credentials": {
+        "properties": {
+          "password": {
+            "maxLength": 4096,
+            "title": "Password",
+            "type": "string"
+          },
+          "remember": {
+            "default": false,
+            "description": "keep the session across browser restarts (90 days, renewed with use)",
+            "title": "Remember",
+            "type": "boolean"
+          },
+          "username": {
+            "maxLength": 256,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Credentials",
         "type": "object"
       },
       "Device": {
@@ -2387,6 +2506,213 @@
         "title": "Macro",
         "type": "object"
       },
+      "MqttConfigBody": {
+        "description": "The broker. Leave ``password`` out to keep the stored one (only while the\ndestination stays the same); send it empty or null to remove it.",
+        "properties": {
+          "client_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "host": {
+            "maxLength": 253,
+            "title": "Host",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "tls": {
+            "default": false,
+            "title": "Tls",
+            "type": "boolean"
+          },
+          "tls_ca": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tls Ca"
+          },
+          "tls_insecure": {
+            "default": false,
+            "title": "Tls Insecure",
+            "type": "boolean"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "title": "MqttConfigBody",
+        "type": "object"
+      },
+      "MqttConfigView": {
+        "description": "The broker settings, never the password.",
+        "properties": {
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "devices_using": {
+            "default": 0,
+            "description": "Wifi Devices on the mqtt transport, across hubs",
+            "title": "Devices Using",
+            "type": "integer"
+          },
+          "editable": {
+            "description": "false when the command line or the environment set the broker",
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "effective_port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Port"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "password_dropped": {
+            "default": false,
+            "description": "this change moved the destination without a new password, so the stored password was dropped",
+            "title": "Password Dropped",
+            "type": "boolean"
+          },
+          "password_set": {
+            "default": false,
+            "title": "Password Set",
+            "type": "boolean"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "as configured; null = the default for the TLS choice",
+            "title": "Port"
+          },
+          "source": {
+            "description": "none: no broker; panel: stored by the control panel (mqtt.json); startup: set by command-line flags or environment variables, read-only here",
+            "enum": [
+              "none",
+              "panel",
+              "startup"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tls": {
+            "default": false,
+            "title": "Tls",
+            "type": "boolean"
+          },
+          "tls_ca": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a CA certificate file on the server's host",
+            "title": "Tls Ca"
+          },
+          "tls_insecure": {
+            "default": false,
+            "title": "Tls Insecure",
+            "type": "boolean"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "source",
+          "editable"
+        ],
+        "title": "MqttConfigView",
+        "type": "object"
+      },
       "MqttState": {
         "properties": {
           "configured": {
@@ -2493,6 +2819,35 @@
           "next_retry_at"
         ],
         "title": "MqttState",
+        "type": "object"
+      },
+      "MqttTestResult": {
+        "properties": {
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "elapsed_ms"
+        ],
+        "title": "MqttTestResult",
         "type": "object"
       },
       "MqttView": {
@@ -2653,6 +3008,30 @@
           "order"
         ],
         "title": "OrderRequest",
+        "type": "object"
+      },
+      "OriginsSetting": {
+        "description": "The browser origins on another host or port that get CORS and pass the Origin guard.",
+        "properties": {
+          "pinned": {
+            "description": "set by an environment variable or CLI flag; server.json cannot change it",
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "value": {
+            "description": "in effect now (a change applies at once, no restart)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Value",
+            "type": "array"
+          }
+        },
+        "required": [
+          "value",
+          "pinned"
+        ],
+        "title": "OriginsSetting",
         "type": "object"
       },
       "PayloadSpec": {
@@ -3232,6 +3611,16 @@
             "title": "Api Version",
             "type": "string"
           },
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "base_url": {
             "anyOf": [
               {
@@ -3321,6 +3710,22 @@
       "ServerSettingsUpdate": {
         "description": "Body of ``PUT /server/settings``; omitted ports are left as they are.",
         "properties": {
+          "allowed_origins": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "exact origins such as http://nas:8123 (no path, no wildcard); an empty list removes them all",
+            "title": "Allowed Origins"
+          },
           "app_discovery_port": {
             "anyOf": [
               {
@@ -3366,6 +3771,9 @@
       },
       "ServerSettingsView": {
         "properties": {
+          "allowed_origins": {
+            "$ref": "#/components/schemas/OriginsSetting"
+          },
           "app_discovery_port": {
             "$ref": "#/components/schemas/PortSetting"
           },
@@ -3384,9 +3792,53 @@
           "hub_listen_port",
           "app_discovery_port",
           "callback_port",
+          "allowed_origins",
           "restart_required"
         ],
         "title": "ServerSettingsView",
+        "type": "object"
+      },
+      "SessionView": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "remember": {
+            "title": "Remember",
+            "type": "boolean"
+          },
+          "user_agent": {
+            "title": "User Agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "remember",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "user_agent",
+          "current"
+        ],
+        "title": "SessionView",
         "type": "object"
       },
       "SnapshotChanged": {
@@ -3666,6 +4118,121 @@
         "title": "SyncPlanStepView",
         "type": "object"
       },
+      "TokenCreate": {
+        "properties": {
+          "name": {
+            "description": "what the token is for, e.g. the integration's name",
+            "maxLength": 256,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TokenCreate",
+        "type": "object"
+      },
+      "TokenCreated": {
+        "description": "The new token; ``token`` is the secret and is never shown again.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hint",
+          "created_at",
+          "token"
+        ],
+        "title": "TokenCreated",
+        "type": "object"
+      },
+      "TokenInfo": {
+        "description": "A write token as the panel lists it; the secret is never kept.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hint",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "TokenInfo",
+        "type": "object"
+      },
+      "TokenRename": {
+        "properties": {
+          "name": {
+            "maxLength": 256,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TokenRename",
+        "type": "object"
+      },
       "UpdateCheckSettings": {
         "description": "Body of ``PUT /server/updates``.",
         "properties": {
@@ -3840,7 +4407,7 @@
         "type": "object"
       },
       "WifiDeviceRequest": {
-        "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there. ``mqtt``\nneeds an X2 and a server started with a broker (``--mqtt-host``): the\nhub then publishes the presses to the broker set in the Sofabaton\napp, no listener and no callback address involved.",
+        "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there. ``mqtt``\nneeds an X2 and a server with a broker (set in the control panel, or ``--mqtt-host``): the\nhub then publishes the presses to the broker set in the Sofabaton\napp, no listener and no callback address involved.",
         "properties": {
           "input_slots": {
             "description": "slots offered as activity-start inputs (X1S/X2)",
@@ -4238,15 +4805,717 @@
         "title": "WsServerEvent",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "description": "A write token (sbx_...) made in the control panel under Server settings > Access.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "sessionCookie": {
+        "description": "The control panel's sign-in (POST /auth/login); the name carries the server's install id.",
+        "in": "cookie",
+        "name": "sbx_session_<install id>",
+        "type": "apiKey"
+      },
+      "tokenHeader": {
+        "description": "The same token, for clients whose Authorization header belongs to a reverse proxy's own auth.",
+        "in": "header",
+        "name": "X-Sofabaton-Token",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
-    "description": "REST + WebSocket over the sofabaton-x library for Sofabaton X1 / X1S / X2 hubs. LAN service; no authentication in v1.\n\nWebSocket: `/api/v1/events` (optional `?hub_id=` filter, repeatable) streams WsHello once, then WsHubEvent / WsServerEvent / WsJobEvent / WsPress / WsDropped messages (see components).",
+    "description": "REST + WebSocket over the sofabaton-x library for Sofabaton X1 / X1S / X2 hubs. LAN service. Reads and control calls are free; once the admin account exists, every other write needs a token (Authorization: Bearer, or X-Sofabaton-Token) made in the control panel.\n\nWebSocket: `/api/v1/events` (optional `?hub_id=` filter, repeatable) streams WsHello once, then WsHubEvent / WsServerEvent / WsJobEvent / WsPress / WsDropped messages (see components).",
     "title": "sofabaton-x-server",
     "version": "0.2.2"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth": {
+      "get": {
+        "operationId": "getAuthStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [],
+        "summary": "Whether access is set up, and whether this request is signed in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/admin": {
+      "put": {
+        "operationId": "updateAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change the admin username and/or password (signs out every other session)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "signIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [],
+        "summary": "Sign in to the control panel (sets the session cookie)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "signOut",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [],
+        "summary": "Sign out this browser",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "delete": {
+        "operationId": "revokeOtherSessions",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Sign out every other browser",
+        "tags": [
+          "auth"
+        ]
+      },
+      "get": {
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionView"
+                  },
+                  "title": "Response Listsessions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "The signed-in browsers",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{session_id}": {
+      "delete": {
+        "operationId": "revokeSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Sign out one browser",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/setup": {
+      "post": {
+        "operationId": "setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [],
+        "summary": "Create the admin account (only while none exists) and sign in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tokens": {
+      "get": {
+        "operationId": "listTokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TokenInfo"
+                  },
+                  "title": "Response Listtokens",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "The write tokens (never their secrets)",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "operationId": "createToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a write token; the secret is in this answer only",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tokens/{token_id}": {
+      "delete": {
+        "operationId": "revokeToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "title": "Token Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Revoke a write token",
+        "tags": [
+          "auth"
+        ]
+      },
+      "patch": {
+        "operationId": "renameToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "title": "Token Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Rename a write token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/discovery/hubs": {
       "get": {
         "operationId": "listDiscoveredHubs",
@@ -4266,6 +5535,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Hubs advertised on the LAN (live table; our own proxies excluded)",
         "tags": [
           "discovery"
@@ -4318,6 +5588,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "Listen for hub advertisements for a while, then return the table",
         "tags": [
           "discovery"
@@ -4343,6 +5614,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "List configured hubs",
         "tags": [
           "hubs"
@@ -4370,6 +5642,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "409": {
             "content": {
@@ -4402,6 +5694,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Register a hub",
         "tags": [
           "hubs"
@@ -4425,6 +5728,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -4457,6 +5780,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Forget a hub (stops and releases it first)",
         "tags": [
           "hubs"
@@ -4507,6 +5841,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "One configured hub",
         "tags": [
           "hubs"
@@ -4593,6 +5928,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Activities",
         "tags": [
           "hub"
@@ -4649,6 +5985,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -4711,6 +6067,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Create an empty activity; the job result carries the hub-assigned activity_id",
         "tags": [
           "edit"
@@ -4770,6 +6137,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -4831,6 +6218,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Store the activity display order (every activity, once)",
         "tags": [
           "edit"
@@ -4889,6 +6287,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -4950,6 +6368,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Delete an activity",
         "tags": [
           "edit"
@@ -5016,6 +6445,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5077,6 +6526,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Write an edited activity (the snapshot element) as a job; If-Match required",
         "tags": [
           "edit"
@@ -5144,6 +6604,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5205,6 +6685,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Clear a remote button on an activity",
         "tags": [
           "edit"
@@ -5280,6 +6771,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5341,6 +6852,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Bind a remote button (code or ButtonName alias) on an activity",
         "tags": [
           "edit"
@@ -5436,6 +6958,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "An activity's favorites",
         "tags": [
           "hub"
@@ -5502,6 +7025,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5563,6 +7106,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Add a device command to an activity's favorites",
         "tags": [
           "edit"
@@ -5631,6 +7185,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5692,6 +7266,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Put an activity's favorites in this order (every favorite, once)",
         "tags": [
           "edit"
@@ -5768,6 +7353,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5829,6 +7434,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Remove a favorite",
         "tags": [
           "edit"
@@ -5924,6 +7540,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "An activity's macros",
         "tags": [
           "hub"
@@ -5974,6 +7591,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -6005,6 +7642,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Preview what writing this activity edit would do (nothing is written)",
         "tags": [
           "edit"
@@ -6073,6 +7721,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -6134,6 +7802,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Rename an activity",
         "tags": [
           "edit"
@@ -6225,6 +7904,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Switch to an activity",
         "tags": [
           "hub"
@@ -6316,6 +7996,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Power off an activity",
         "tags": [
           "hub"
@@ -6386,6 +8067,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "The running activity, or null when the hub is idle",
         "tags": [
           "hub"
@@ -6442,6 +8124,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "The hub's apply records, newest first (documents omitted)",
         "tags": [
           "apply"
@@ -6475,6 +8158,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -6506,6 +8209,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Forget an apply record (not while its job runs)",
         "tags": [
           "apply"
@@ -6565,6 +8279,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "One apply record in full: items, outcomes, both documents, the id map",
         "tags": [
           "apply"
@@ -6605,6 +8320,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -6647,6 +8382,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Continue a stopped or cancelled apply from the hub's actual state",
         "tags": [
           "apply"
@@ -6694,6 +8440,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -6746,6 +8512,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Read a hub_bundle from the hub as a job (full and restorable by default; minutes)",
         "tags": [
           "payload"
@@ -6789,6 +8566,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -6830,6 +8627,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Remove the callback device from the hub and forget it (a job)",
         "tags": [
           "callbacks"
@@ -6880,6 +8688,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "The hub's callback device record",
         "tags": [
           "callbacks"
@@ -6919,6 +8728,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -6960,6 +8789,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Deploy the callback device (a job); the result is the record",
         "tags": [
           "callbacks"
@@ -6999,6 +8839,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -7040,6 +8900,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Edit the callback device in place (a job); declined drift fails the job",
         "tags": [
           "callbacks"
@@ -7071,6 +8942,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -7112,6 +9003,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Deploy a stale callback device again from its stored spec (a job)",
         "tags": [
           "callbacks"
@@ -7210,6 +9112,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Devices (with power state as of the last fetch)",
         "tags": [
           "hub"
@@ -7266,6 +9169,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -7328,6 +9251,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Create an empty device; the job result carries the hub-assigned device_id",
         "tags": [
           "edit"
@@ -7387,6 +9321,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -7448,6 +9402,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Store the device display order (every device, once)",
         "tags": [
           "edit"
@@ -7506,6 +9471,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -7567,6 +9552,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Delete a device; the hub cascades the removal into its activities",
         "tags": [
           "edit"
@@ -7633,6 +9629,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -7694,6 +9710,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Write an edited device (the snapshot element) as a job; If-Match required",
         "tags": [
           "edit"
@@ -7789,6 +9816,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "A device's commands",
         "tags": [
           "hub"
@@ -7854,6 +9882,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -7926,6 +9974,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Save a payload as a new command on a device (a sync job)",
         "tags": [
           "payload"
@@ -8026,6 +10085,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Read a command's stored payload from the hub (any device class)",
         "tags": [
           "payload"
@@ -8101,6 +10161,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -8172,6 +10252,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Overwrite a command's stored payload in place (a sync job)",
         "tags": [
           "payload"
@@ -8249,6 +10340,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -8310,6 +10421,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Rename one of a device's commands",
         "tags": [
           "edit"
@@ -8378,6 +10500,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -8439,6 +10581,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Set a device's automatic-power (idle) behaviour",
         "tags": [
           "edit"
@@ -8489,6 +10642,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -8520,6 +10693,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Preview what writing this device edit would do (nothing is written)",
         "tags": [
           "edit"
@@ -8612,6 +10796,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Fresh read of one device's power state",
         "tags": [
           "hub"
@@ -8680,6 +10865,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -8741,6 +10946,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Rename a device (and optionally its brand)",
         "tags": [
           "edit"
@@ -8771,6 +10987,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -8803,6 +11039,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Disconnect a hub but keep its configuration",
         "tags": [
           "hubs"
@@ -8833,6 +11080,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -8865,6 +11132,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Reconnect a disabled hub",
         "tags": [
           "hubs"
@@ -8960,6 +11238,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Buttons bound on an activity or device",
         "tags": [
           "hub"
@@ -9008,6 +11287,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -9080,6 +11379,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Wipe every device and activity on the hub (destructive, final)",
         "tags": [
           "payload"
@@ -9162,6 +11472,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Make the remote beep",
         "tags": [
           "hub"
@@ -9256,6 +11567,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Hub identity from the connect banner",
         "tags": [
           "hub"
@@ -9312,6 +11624,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "Recent jobs on this hub, newest first",
         "tags": [
           "snapshot"
@@ -9352,6 +11665,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -9383,6 +11716,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Cancel a running job (where the operation allows it)",
         "tags": [
           "snapshot"
@@ -9442,6 +11786,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "One job: status, progress, result or error",
         "tags": [
           "snapshot"
@@ -9475,6 +11820,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -9496,6 +11861,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Drop a finished backup's bundle now (the client is done with it)",
         "tags": [
           "payload"
@@ -9561,6 +11937,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "Download a finished backup's bundle as a file (while the server still holds it)",
         "tags": [
           "payload"
@@ -9608,6 +11985,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -9660,6 +12057,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Capture an IR code from the original remote as a job (cancellable)",
         "tags": [
           "payload"
@@ -9718,6 +12126,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -9780,6 +12208,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Rename the hub",
         "tags": [
           "edit"
@@ -9872,6 +12311,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Fire an IR payload from the hub's blaster once (nothing is saved)",
         "tags": [
           "payload"
@@ -9955,6 +12395,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "Recent button presses (the catch-up view of the press stream)",
         "tags": [
           "callbacks"
@@ -9986,6 +12427,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -10007,6 +12468,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Stop offering the hub to the official app",
         "tags": [
           "hubs"
@@ -10038,6 +12510,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -10059,6 +12551,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Let the official app reach the hub through the server",
         "tags": [
           "hubs"
@@ -10117,6 +12620,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -10189,6 +12712,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Write a hub_bundle onto the hub as a job (destructive with replace; not cancellable)",
         "tags": [
           "payload"
@@ -10272,6 +12806,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Make the physical remotes run a full sync with the hub",
         "tags": [
           "hub"
@@ -10364,6 +12899,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "Send a command or button to an activity or device",
         "tags": [
           "hub"
@@ -10467,6 +13003,7 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [],
         "summary": "The hub's structural configuration from the cache (no hub traffic)",
         "tags": [
           "snapshot"
@@ -10543,6 +13080,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -10604,6 +13161,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Write an edited snapshot document to the hub as one cancellable job; If-Match required",
         "tags": [
           "apply"
@@ -10646,6 +13214,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -10687,6 +13275,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Preview what writing an edited snapshot document would do (nothing is written)",
         "tags": [
           "apply"
@@ -10734,6 +13333,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -10786,6 +13405,17 @@
             "description": "Gateway Timeout"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Read structural detail from the hub as a job (one entity, or the whole hub)",
         "tags": [
           "snapshot"
@@ -10838,6 +13468,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "Live connection state (pure state read)",
         "tags": [
           "hub"
@@ -10862,6 +13493,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -10883,6 +13534,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Forget the stored configuration (the web remote falls back to the card's defaults)",
         "tags": [
           "ui"
@@ -10933,6 +13595,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "The web remote's card configuration for this hub (document is null until one is stored)",
         "tags": [
           "ui"
@@ -10972,6 +13635,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -11003,6 +13686,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Store the web remote's card configuration for this hub (replaces the whole document)",
         "tags": [
           "ui"
@@ -11055,6 +13749,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "The hub's managed Wifi Devices",
         "tags": [
           "callbacks"
@@ -11093,6 +13788,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "404": {
             "content": {
@@ -11135,6 +13850,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Deploy a new Wifi Device (a job); the result is its record, with the key",
         "tags": [
           "callbacks"
@@ -11187,6 +13913,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -11228,6 +13974,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Remove a Wifi Device from the hub and forget it (a job)",
         "tags": [
           "callbacks"
@@ -11287,6 +14044,7 @@
             "description": "Validation error"
           }
         },
+        "security": [],
         "summary": "One Wifi Device record",
         "tags": [
           "callbacks"
@@ -11335,6 +14093,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -11376,6 +14154,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Edit a Wifi Device in place (a job); declined drift fails the job",
         "tags": [
           "callbacks"
@@ -11416,6 +14205,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -11457,6 +14266,17 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Deploy a stale Wifi Device again from its stored spec (a job)",
         "tags": [
           "callbacks"
@@ -11478,6 +14298,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Identify the server",
         "tags": [
           "server"
@@ -11499,6 +14320,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "State of the callback listener",
         "tags": [
           "server"
@@ -11518,8 +14340,39 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Try to bind the callback listener now",
         "tags": [
           "server"
@@ -11541,7 +14394,217 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "State of the MQTT broker connection (never the password)",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/mqtt/config": {
+      "delete": {
+        "operationId": "removeMqttConfig",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Forget the panel's MQTT broker (control panel sign-in only)",
+        "tags": [
+          "server"
+        ]
+      },
+      "get": {
+        "operationId": "getMqttConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [],
+        "summary": "The MQTT broker settings (never the password)",
+        "tags": [
+          "server"
+        ]
+      },
+      "put": {
+        "operationId": "updateMqttConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MqttConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Store the MQTT broker settings and reconnect (control panel sign-in only)",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/mqtt/test": {
+      "post": {
+        "operationId": "testMqttConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MqttConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Try to connect with these settings, without saving them (control panel sign-in only)",
         "tags": [
           "server"
         ]
@@ -11562,6 +14625,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "The hub listener, app discovery and callback ports",
         "tags": [
           "server"
@@ -11590,6 +14654,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
           "409": {
             "content": {
               "application/json": {
@@ -11611,6 +14695,17 @@
             "description": "Validation error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Save port changes to server.json (applied on the next start)",
         "tags": [
           "server"
@@ -11632,6 +14727,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "The last update check against PyPI and the automatic schedule",
         "tags": [
           "server"
@@ -11659,6 +14755,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           },
           "409": {
             "content": {
@@ -11691,6 +14807,17 @@
             "description": "Internal Server Error"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Turn the daily automatic update check on or off (saved to server.json)",
         "tags": [
           "server"
@@ -11710,8 +14837,39 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Check PyPI for a newer release now (one check; nothing is downloaded or installed)",
         "tags": [
           "server"

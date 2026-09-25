@@ -8,7 +8,10 @@ import { SofabatonRemoteCard } from "../../remote-card/src/remote-card-element";
 import { TYPE, logPillsOnce } from "../../remote-card/src/remote-card-shared";
 import { installRemoteWebShims } from "../../remote-card/src/shims/index";
 import "../../remote-card/src/remote-card-translations";
+import { defineAuthDialog } from "./components/auth-dialog";
 import { definePanel } from "./panel-element";
+import { defineAccessView } from "./views/access-view";
+import { defineMqttView } from "./views/mqtt-view";
 import { defineApiView } from "./views/api-view";
 import { defineBackupView } from "./views/backup-view";
 import { defineCatalogView } from "./views/catalog-view";
@@ -38,6 +41,9 @@ export function bootstrapServerPanel(): void {
   defineServerView();
   defineBackupView();
   defineWifiDevicesView();
+  defineAccessView();
+  defineMqttView();
+  defineAuthDialog();
   definePanel();
 }
 

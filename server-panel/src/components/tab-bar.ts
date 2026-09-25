@@ -38,6 +38,9 @@ export function renderTabBar(params: {
   onToggleCog: () => void;
   onPage: (page: ToolPage) => void;
   onTheme: () => void;
+  /** Signed in to a claimed server: the cog menu names the account and offers Sign out. */
+  account?: { username: string } | null;
+  onSignOut?: () => void;
 }): TemplateResult {
   const route = params.route;
   const onTool = route.kind === "tool";
@@ -65,6 +68,12 @@ export function renderTabBar(params: {
               <button class="menu-item" type="button" role="menuitem" id="theme-toggle" title="theme: ${params.theme}" @click=${params.onTheme}>
                 <span class="menu-main"><span class="menu-title">Theme: ${params.theme}</span><span class="menu-sub">tap to cycle auto, light, dark</span></span>
               </button>
+              ${params.account
+                ? html`<div class="menu-sep"></div>
+                  <button class="menu-item" type="button" role="menuitem" id="sign-out" @click=${() => params.onSignOut?.()}>
+                    <span class="menu-main"><span class="menu-title">Sign out</span><span class="menu-sub">signed in as ${params.account.username}</span></span>
+                  </button>`
+                : nothing}
             </div>`
           : nothing}
       </div>

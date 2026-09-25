@@ -174,6 +174,69 @@ function makeRoutes(state) {
     "GET /hubs/{id}/applies": () => ({ status: 200, body: state.applies || [] }),
     "GET /hubs/{id}/jobs": () => ({ status: 200, body: [] }),
     ...cardRoutes(LIVING.hub_id),
+    ...(state.auth ? authRoutes(state) : {}),
+  };
+}
+
+function mqttView(a) {
+  const m = a.mqtt;
+  if (a.mqttStartup) return { source: "startup", editable: false, host: "startup.lan", port: null, effective_port: 1883, username: "hub", password_set: true, tls: false, tls_ca: null, tls_insecure: false, client_id: null, devices_using: 0, password_dropped: false };
+  return { source: m?.host ? "panel" : "none", editable: true, host: m?.host ?? null, port: m?.port ?? null, effective_port: m?.host ? (m.port ?? (m.tls ? 8883 : 1883)) : null,
+    username: m?.username ?? null, password_set: Boolean(m?.password), tls: Boolean(m?.tls), tls_ca: m?.tls_ca ?? null, tls_insecure: Boolean(m?.tls_insecure), client_id: m?.client_id ?? null, devices_using: m?.host ? 2 : 0, password_dropped: false };
+}
+
+// Access (auth plan, section 6): present only when a test sets `state.auth`,
+// so every other test sees an older server's 404 and the panel as before.
+const PASSWORD = "correct horse";
+function authRoutes(state) {
+  const a = state.auth;
+  a.tokens ??= [];
+  a.origins ??= [];
+  const status = () => ({ claimed: a.claimed, signed_in: a.claimed && a.signedIn, username: a.claimed && a.signedIn ? a.username : null, via: a.claimed && a.signedIn ? "session" : null });
+  const needSession = () => (a.claimed && !a.signedIn ? problem(401, "invalid_credentials", "the session expired or was signed out") : null);
+  const port = (running) => ({ running, configured: running, default: running, pinned: false });
+  const settings = () => ({ hub_listen_port: port(8200), app_discovery_port: port(8102), callback_port: port(8060), allowed_origins: { value: a.origins, pinned: false }, restart_required: false });
+  return {
+    "GET /auth": () => ({ status: 200, body: status() }),
+    "POST /auth/setup": (body) => {
+      if (a.claimed) return problem(409, "already_claimed", "sign in instead");
+      Object.assign(a, { claimed: true, signedIn: true, username: body.username, password: body.password, remember: body.remember });
+      return { status: 200, body: status() };
+    },
+    "POST /auth/login": (body) => {
+      if (body.username !== a.username || body.password !== (a.password ?? PASSWORD)) return problem(401, "invalid_credentials", null);
+      Object.assign(a, { signedIn: true, remember: body.remember });
+      return { status: 200, body: status() };
+    },
+    "POST /auth/logout": () => { a.signedIn = false; return { status: 204, body: null }; },
+    "GET /auth/tokens": () => needSession() ?? { status: 200, body: a.tokens },
+    "POST /auth/tokens": (body) => {
+      const token = { id: `tk_${a.tokens.length + 1}`, name: body.name, hint: "q7Zx", created_at: "2026-09-25T10:00:00+00:00", last_used_at: null };
+      a.tokens.push(token);
+      return { status: 201, body: { ...token, token: "sbx_example-secret-q7Zx" } };
+    },
+    "DELETE /auth/tokens/{id}": (_body, id) => { a.tokens = a.tokens.filter((t) => t.id !== id); return { status: 204, body: null }; },
+    "GET /auth/sessions": () => needSession() ?? { status: 200, body: [
+      { id: "ss_1", remember: Boolean(a.remember), created_at: "2026-09-25T09:00:00+00:00", last_seen_at: "2026-09-25T10:00:00+00:00", expires_at: "2026-12-24T10:00:00+00:00", user_agent: "Mozilla/5.0 (Windows NT 10.0) Firefox/130.0", current: true },
+    ] },
+    "DELETE /auth/sessions": () => ({ status: 204, body: null }),
+    "GET /server/settings": () => ({ status: 200, body: settings() }),
+    "GET /server/mqtt": () => ({ status: 200, body: { configured: Boolean(a.mqtt?.host), wanted: false, connected: false, host: a.mqtt?.host ?? null, port: a.mqtt?.host ? (a.mqtt.port ?? 1883) : null, tls: false, username: a.mqtt?.username ?? null, topics: [], last_error: null, connected_at: null, next_retry_at: null } }),
+    "GET /server/mqtt/config": () => ({ status: 200, body: mqttView(a) }),
+    "PUT /server/mqtt/config": (body) => {
+      const before = a.mqtt ?? {};
+      const moved = ["host", "port", "username"].some((k) => (before[k] ?? null) !== (body[k] ?? null));
+      const password = "password" in body ? body.password || null : moved ? null : before.password ?? null;
+      a.mqttBodies = [...(a.mqttBodies ?? []), body];
+      a.mqtt = { ...body, password };
+      return { status: 200, body: { ...mqttView(a), password_dropped: !("password" in body) && moved && Boolean(before.password) } };
+    },
+    "DELETE /server/mqtt/config": () => { a.mqtt = null; return { status: 204, body: null }; },
+    "POST /server/mqtt/test": (body) => ({ status: 200, body: body.password === "wrong" ? { ok: false, error: "bad user name or password", elapsed_ms: 12 } : { ok: true, error: null, elapsed_ms: 9 } }),
+    "PUT /server/settings": (body) => {
+      if (body.allowed_origins) a.origins = body.allowed_origins.map((o) => o.toLowerCase().replace(/\/+$/, ""));
+      return { status: 200, body: settings() };
+    },
   };
 }
 
@@ -191,6 +254,10 @@ async function mockServer(page, state) {
     const body = request.postData() ? JSON.parse(request.postData()) : null;
     let handler = routes[`${method} ${rel}`];
     let id = null;
+    if (!handler) {
+      const t = rel.match(/^\/auth\/(tokens|sessions)\/([^/]+)$/);
+      if (t) { id = t[2]; handler = routes[`${method} /auth/${t[1]}/{id}`]; }
+    }
     if (!handler) {
       const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/proxy\/enable|\/proxy\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
       if (m) { id = m[1]; handler = routes[`${method} /hubs/{id}${m[2] || ""}`]; }
@@ -3166,5 +3233,166 @@ test.describe("control panel, wifi commands", () => {
     // An unknown key (deleted elsewhere, an old bookmark) lands on the roster.
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/ffffffff`);
     await expect(page).toHaveURL(/wifi\/devices$/);
+  });
+});
+
+test.describe("control panel, access", () => {
+  test("an unclaimed server: the banner sets up access, the Access page then manages a token shown once", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: false, signedIn: false } };
+    await mockServer(page, state);
+    await page.goto(PAGE);
+    await expect(page.locator("#access-banner")).toContainText("Access is not set up");
+    await page.click("#access-banner-setup");
+    await expect(page.locator("#auth-form")).toBeVisible();
+    await page.fill("#auth-username", "marcel");
+    await page.fill("#auth-password", "short");
+    await page.fill("#auth-password2", "short");
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-error")).toContainText("at least 8");
+    await page.fill("#auth-password", PASSWORD);
+    await page.fill("#auth-password2", PASSWORD);
+    await page.check("#auth-remember");
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-form")).toHaveCount(0);
+    await expect(page.locator("#access-banner")).toHaveCount(0);
+    expect(state.auth).toMatchObject({ claimed: true, username: "marcel", remember: true });
+
+    await page.click("#cog-btn");
+    await expect(page.locator("#sign-out")).toContainText("signed in as marcel");
+    await page.keyboard.press("Escape");
+    await page.goto(`${PAGE}#/server/access`);
+    await expect(page.locator("#tokens-empty")).toBeVisible();
+    await page.fill("#token-name", "Hubitat");
+    await page.click("#token-create");
+    await expect(page.locator("#token-created")).toContainText("not shown again");
+    await expect(page.locator("#token-secret")).toHaveValue("sbx_example-secret-q7Zx");
+    await expect(page.locator("#token-example")).toContainText("Authorization: Bearer sbx_example-secret-q7Zx");
+    await expect(page.locator("#tokens-table tr[data-token=tk_1]")).toContainText("Hubitat");
+    await page.screenshot({ path: shot(testInfo, "access-token-created"), fullPage: true });
+    await page.click("#token-done");
+    await expect(page.locator("#token-created")).toHaveCount(0);
+    await page.click("#tokens-table [data-action=revoke]");
+    await page.click("#tokens-table [data-action=confirm-revoke]");
+    await expect(page.locator("#tokens-empty")).toBeVisible();
+    await expect(page.locator("#sessions-table")).toContainText("Firefox on Windows");
+
+    await page.fill("#origins", "HTTP://nas:8123/");
+    await page.click("#origins-save");
+    await expect(page.locator("#origins-msg")).toContainText("in effect now");
+    expect(state.auth.origins).toEqual(["http://nas:8123"]);
+  });
+
+  test("a claimed server shows only the sign-in until this browser signs in; Sign out returns to it", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: false, username: "admin" } };
+    const { calls } = await mockServer(page, state);
+    await page.goto(PAGE);
+    await expect(page.locator("#auth-wall")).toBeVisible();
+    await expect(page.locator("#top-dock")).toHaveCount(0);
+    expect(calls.some((c) => c.key === "GET /hubs")).toBe(false);          // nothing loads behind the wall
+    await page.screenshot({ path: shot(testInfo, "access-wall") });
+    await page.fill("#auth-username", "admin");
+    await page.fill("#auth-password", "wrong password");
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-error")).toContainText("Wrong username or password");
+    await page.fill("#auth-password", PASSWORD);
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-wall")).toHaveCount(0);
+    await expect(chip(page)).toContainText("Living room");
+    await expect(page.locator("#access-banner")).toHaveCount(0);
+
+    await page.click("#cog-btn");
+    await page.click("#sign-out");
+    await expect(page.locator("#auth-wall")).toBeVisible();
+    expect(state.auth.signedIn).toBe(false);
+  });
+
+  test("a session that ends mid-work brings the sign-in over the view, and the view stays", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: true, username: "admin" } };
+    const { sockets } = await mockServer(page, state);
+    await page.goto(`${PAGE}#/server/access`);
+    await expect(page.locator("#access-tokens")).toBeVisible();
+    await page.fill("#token-name", "draft that must survive");
+    // The password changed in another browser: the server says so on the stream.
+    state.auth.signedIn = false;
+    for (const ws of sockets) ws.send(JSON.stringify({ type: "server_event", hub_id: "", kind: "auth" }));
+    await expect(page.locator("#auth-backdrop #auth-form")).toBeVisible();
+    await expect(page.locator("#auth-title")).toHaveText("Signed out");
+    await expect(page.locator("#auth-username")).toHaveValue("admin");
+    await page.fill("#auth-password", PASSWORD);
+    await page.click("#auth-submit");
+    await expect(page.locator("#auth-backdrop")).toHaveCount(0);
+    await expect(page.locator("#token-name")).toHaveValue("draft that must survive");
+  });
+
+  test("an older server without /auth: no banner, no wall, the Access page says so", async ({ page }) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/server/access`);
+    await expect(page.locator("#access-unknown")).toBeVisible();
+    await expect(page.locator("#access-banner")).toHaveCount(0);
+  });
+});
+
+test.describe("control panel, MQTT broker", () => {
+  test("a signed-in admin tests, saves and removes the broker; the password is write-only and a moved destination warns", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: true, username: "admin" } };
+    await mockServer(page, state);
+    await page.goto(`${PAGE}#/server/mqtt`);
+    await expect(page.locator("#subtabs [data-sub=mqtt]")).toHaveText(/MQTT broker/);
+    await expect(page.locator("#mqtt-state-text")).toContainText("no broker");
+    await page.fill("#mqtt-host", "192.168.1.20");
+    await page.fill("#mqtt-username", "hub");
+    await page.fill("#mqtt-password", "wrong");
+    await page.click("#mqtt-test");
+    await expect(page.locator("#mqtt-test-result")).toContainText("bad user name or password");
+    await page.fill("#mqtt-password", "s3cret");
+    await page.click("#mqtt-test");
+    await expect(page.locator("#mqtt-test-result")).toContainText("Connected");
+    expect(state.auth.mqtt).toBeUndefined();                                   // a test saves nothing
+    await page.click("#mqtt-save");
+    await expect(page.locator("#mqtt-msg")).toContainText("uses it now");
+    expect(state.auth.mqtt).toMatchObject({ host: "192.168.1.20", username: "hub", password: "s3cret" });
+    await expect(page.locator("#mqtt-password")).toHaveValue("");
+    await expect(page.locator("#mqtt-password")).toHaveAttribute("placeholder", /saved/);
+
+    // Same destination, password left empty: the body carries no password.
+    await page.click("summary");
+    await page.fill("#mqtt-client-id", "sofa-1");
+    await page.click("#mqtt-save");
+    await expect(page.locator("#mqtt-msg")).toContainText("uses it now");
+    expect("password" in state.auth.mqttBodies.at(-1)).toBe(false);
+    expect(state.auth.mqtt.password).toBe("s3cret");
+
+    // Moving the destination without a password warns first, then says it was dropped.
+    await page.fill("#mqtt-host", "broker.lan");
+    await expect(page.locator("#mqtt-drop-warning")).toBeVisible();
+    await page.screenshot({ path: shot(testInfo, "mqtt-drop-warning"), fullPage: true });
+    await page.click("#mqtt-save");
+    await expect(page.locator("#mqtt-msg")).toContainText("password was dropped");
+    expect(state.auth.mqtt.password).toBe(null);
+
+    await page.click("#mqtt-remove");
+    await expect(page.locator("#mqtt-remove-confirm")).toContainText("2 Wifi Devices stop receiving presses");
+    await page.click("#mqtt-remove-confirm");
+    await expect(page.locator("#mqtt-msg")).toContainText("no broker now");
+    expect(state.auth.mqtt).toBe(null);
+  });
+
+  test("before access is set up the page asks for it; flags or environment make it read-only", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [], auth: { claimed: false, signedIn: false } };
+    await mockServer(page, state);
+    await page.goto(`${PAGE}#/server/mqtt`);
+    await expect(page.locator("#mqtt-needs-access")).toContainText("Set up access first");
+    await expect(page.locator("#mqtt-form")).toHaveCount(0);
+    await page.click("#mqtt-setup-access");
+    await expect(page.locator("#auth-form")).toBeVisible();
+
+    const pinned = { hubs: [LIVING], seen: [], auth: { claimed: true, signedIn: true, username: "admin", mqttStartup: true } };
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await mockServer(page, pinned);
+    await page.goto(`${PAGE}#/server/mqtt`);
+    await page.reload();
+    await expect(page.locator("#mqtt-startup")).toContainText("read-only");
+    await expect(page.locator("#mqtt-startup")).toContainText("startup.lan");
+    await expect(page.locator("#mqtt-form")).toHaveCount(0);
   });
 });

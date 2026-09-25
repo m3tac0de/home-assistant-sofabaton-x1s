@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError
@@ -29,12 +30,17 @@ provision = importlib.util.module_from_spec(spec)
 with patch.dict(sys.modules, {"starter": starter}):
     spec.loader.exec_module(provision)
 
+spec = importlib.util.spec_from_file_location(
+    "edit_example", Path(__file__).parents[1] / "examples/edit_activity.py")
+edit_example = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(edit_example)
+
 HUB_ID = "e26a44861b45"
 HUB = "/hubs/" + HUB_ID
 
 
-@pytest.fixture
-def rig(tmp_path, monkeypatch):
+@pytest.fixture(params=[False, True], ids=["open", "token"])
+def rig(tmp_path, monkeypatch, request):
     settings = Settings(data_dir=tmp_path, callback_port=0)
     factory = Factory()
     manager = HubManager(settings, proxy_factory=factory)
@@ -43,6 +49,11 @@ def rig(tmp_path, monkeypatch):
         assert api.post("/api/v1/hubs", json={"host": "127.0.0.1"}).status_code == 201
         proxy = factory.latest("127.0.0.1")
         api.portal.call(proxy.ready, "E2:6A:44:86:1B:45")
+        monkeypatch.delenv("SOFABATON_TOKEN", raising=False)
+        if request.param:
+            app.state.auth.setup("admin", "example test password")
+            _info, token = app.state.auth.create_token("Examples")
+            monkeypatch.setenv("SOFABATON_TOKEN", token)
         requests = []
 
         def urlopen(request, timeout):
@@ -55,7 +66,50 @@ def rig(tmp_path, monkeypatch):
             return io.BytesIO(response.content)
 
         monkeypatch.setattr(starter, "urlopen", urlopen)
+        monkeypatch.setattr(edit_example, "urlopen", urlopen)
         yield starter.Client("http://testserver"), proxy, requests
+
+
+def test_activity_edit_example_applies_with_environment_token(rig):
+    _client, proxy, requests = rig
+    edit_example.edit(edit_example.Client("http://testserver"),
+                      SimpleNamespace(hub_id=HUB_ID, activity=101, name="Example movie", apply=True))
+    assert len(proxy.syncs) == 1
+    assert proxy.syncs[0]["entity_id"] == 101
+    assert any(r.method == "PUT" for r in requests)
+
+
+@pytest.mark.parametrize("rig", [True], indirect=True)
+def test_claimed_server_control_needs_no_token_but_provisioning_does(rig):
+    client, proxy, requests = rig
+    assert client.token
+    client.token = None
+    starter.run(client, SimpleNamespace(action="start", hub_id=HUB_ID, activity=101))
+    assert proxy.sent == [("start", (101,))]
+    with pytest.raises(starter.ApiError) as error:
+        provision.setup_presses(client, HUB, 101, "PLAY")
+    assert error.value.status == 401
+    assert error.value.problem["type"] == "auth_required"
+    assert not proxy.wifi_deploys
+
+
+@pytest.mark.parametrize("example", ["edit", "provision"])
+def test_write_examples_refuse_unsupported_firmware_before_writes(rig, monkeypatch, example):
+    client, proxy, requests = rig
+    original_status = proxy.status
+
+    async def unsupported_status():
+        return replace(await original_status(), firmware_unsupported=True)
+
+    monkeypatch.setattr(proxy, "status", unsupported_status)
+    with pytest.raises(RuntimeError, match="Update the hub firmware"):
+        if example == "edit":
+            edit_example.edit(edit_example.Client("http://testserver"),
+                              SimpleNamespace(hub_id=HUB_ID, activity=101, name="Movie", apply=True))
+        else:
+            provision.setup_presses(client, HUB, 101, "PLAY")
+    assert all(r.method == "GET" for r in requests)
+    assert not proxy.syncs and not proxy.wifi_deploys
 
 
 def test_catalog_selection_and_send_use_the_selected_pair(rig, capsys):

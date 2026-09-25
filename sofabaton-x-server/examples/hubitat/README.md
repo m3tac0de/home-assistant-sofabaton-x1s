@@ -67,8 +67,11 @@ addresses in DHCP. A reverse-proxy prefix is supported, such as
 `https://home.example/sofabaton`; do not append `/api/v1`. This example does
 not supply authentication headers or bypass TLS certificate validation.
 
-The server currently has no built-in authentication. Keep it on a trusted
-LAN. Hubitat connects to TCP 8480 by default. Callback presses also require
+This example needs no token, even once access is set up on the server
+(control panel, Server settings > Access): it only reads and uses control
+calls (start and stop activities, send commands), which stay open to the
+network. Tokens are for writes, such as the provisioning script below. Keep
+the server on a trusted LAN. Hubitat connects to TCP 8480 by default. Callback presses also require
 the physical SofaBaton hub to reach TCP 8060 **on the server**, while the
 server's normal discovery and hub-connection ports must remain reachable.
 For containers, use the documented [Linux host-network recipe](../../docs/running-server.md#docker).
@@ -129,7 +132,9 @@ provides a runnable setup command. For example, from the repository root:
 python sofabaton-x-server/examples/provision_callback.py --server http://192.168.1.10:8480 --hub-id e26a44861b45 --activity 101 --button PLAY
 ```
 
-Replace the example addresses/IDs with values from your server. **This
+Once access is set up on the server, this script writes and needs a token:
+make one in the control panel (Server settings > Access) and run it with
+`SOFABATON_TOKEN=<token>` in the environment. Replace the example addresses/IDs with values from your server. **This
 replaces PLAY's existing short and long assignments in activity 101.**
 Choose an activity/button whose assignments you intend to replace. It
 creates a callback device if missing or reuses the existing first slot.

@@ -158,3 +158,58 @@ test("operations come from the OpenAPI document, relative to the API root, sorte
     ["GET /hubs - List", "POST /hubs body Register", "GET /hubs/{hub_id}/status - Status"],
   );
 });
+
+test("the auth calls hit /auth with their bodies", async () => {
+  const { calls, fetchImpl } = fakeFetch((url) => ({ status: url.endsWith("/auth/tokens") ? 201 : 200, body: { claimed: true, signed_in: true } }));
+  const api = new PanelApi("http://host:8480", fetchImpl);
+  await api.authStatus();
+  await api.setupAdmin("admin", "correct horse", true);
+  await api.signIn("admin", "correct horse", false);
+  await api.createToken("Hubitat");
+  await api.renameToken("tk_1", "Hubitat C-8");
+  await api.revokeToken("tk_1");
+  await api.revokeOtherSessions();
+  await api.updateServerSettings({ allowed_origins: ["http://nas:8123"] });
+  assert.deepEqual(calls.map((c) => `${c.init?.method ?? "GET"} ${c.url.replace("http://host:8480/api/v1/", "")}`), [
+    "GET auth", "POST auth/setup", "POST auth/login", "POST auth/tokens", "PATCH auth/tokens/tk_1",
+    "DELETE auth/tokens/tk_1", "DELETE auth/sessions", "PUT server/settings",
+  ]);
+  assert.deepEqual(JSON.parse(String(calls[1].init?.body)), { username: "admin", password: "correct horse", remember: true });
+  assert.deepEqual(JSON.parse(String(calls[7].init?.body)), { allowed_origins: ["http://nas:8123"] });
+});
+
+test("a 401 for a signed-out browser calls onSignedOut; a failed sign-in and other problems do not", async () => {
+  let answer: { status: number; body: unknown } = { status: 401, body: { type: "invalid_credentials", title: "Signed out", status: 401 } };
+  const { fetchImpl } = fakeFetch(() => answer);
+  const api = new PanelApi("http://host:8480", fetchImpl);
+  const seen: string[] = [];
+  api.onSignedOut = (problem) => seen.push(problem.type);
+  await api.request("PUT", "hubs/x/name", { body: { name: "a" } });
+  await api.signIn("admin", "wrong", false);                      // the form says "wrong password" itself
+  answer = { status: 401, body: { type: "auth_required", title: "Sign in", status: 401 } };
+  await api.request("POST", "hubs/x/erase");
+  answer = { status: 403, body: { type: "admin_required", title: "x", status: 403 } };
+  await api.listTokens();
+  assert.deepEqual(seen, ["invalid_credentials", "auth_required"]);
+});
+
+test("the MQTT broker calls, and the view's body keeps the password out unless typed or cleared", async () => {
+  const { calls, fetchImpl } = fakeFetch(() => ({ status: 200, body: {} }));
+  const api = new PanelApi("http://host:8480", fetchImpl);
+  await api.mqttConfig();
+  await api.updateMqttConfig({ host: "b.lan" });
+  await api.testMqttConfig({ host: "b.lan", password: "x" });
+  await api.removeMqttConfig();
+  assert.deepEqual(calls.map((c) => `${c.init?.method ?? "GET"} ${c.url.replace("http://host:8480/api/v1/", "")}`),
+    ["GET server/mqtt/config", "PUT server/mqtt/config", "POST server/mqtt/test", "DELETE server/mqtt/config"]);
+
+  const { bodyFor } = await import("../../server-panel/src/views/mqtt-view");
+  const draft = { host: " b.lan ", port: "", username: "hub", password: "", clearPassword: false, tls: false, tls_ca: "/ca.pem", tls_insecure: true, client_id: "" };
+  const kept = bodyFor(draft);
+  assert.ok(typeof kept !== "string" && !("password" in kept));
+  assert.deepEqual(kept, { host: "b.lan", port: null, username: "hub", tls: false, tls_ca: null, tls_insecure: false, client_id: null });
+  assert.equal((bodyFor({ ...draft, password: "s3cret" }) as { password?: string }).password, "s3cret");
+  assert.equal((bodyFor({ ...draft, clearPassword: true }) as { password?: string }).password, "");
+  assert.equal(bodyFor({ ...draft, host: "" }), "Enter the broker's address.");
+  assert.equal(bodyFor({ ...draft, port: "70000" }), "The port must be between 1 and 65535.");
+});
