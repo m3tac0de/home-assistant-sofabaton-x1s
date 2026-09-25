@@ -19,7 +19,7 @@ and you have tested control. Disable any existing proxy for that hub first.
 Install from PyPI (Python 3.11+; the library comes with it):
 
 ```
-python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
 sofabaton-x-server
 ```
 
@@ -228,6 +228,17 @@ save a hub backup, and retain a copy of the server's data directory. Stop
 the server, install the selected release in the same Python environment
 (or rebuild the Docker image), then restart with the same data directory
 and settings. Confirm your hubs reconnect and test the web remote.
+
+For the 0.2.2 release, after stopping the server:
+
+```sh
+python -m pip install --upgrade "sofabaton-x-server>=0.2.2,<0.3"
+```
+
+This also installs `sofabaton-x>=0.2.2,<0.3`. Existing registrations,
+callback devices and saved layouts require no manual conversion. Reload
+open browser pages after restarting. Integrations should regenerate
+clients from the new OpenAPI document; the API prefix remains `/api/v1`.
 
 ### Update check
 

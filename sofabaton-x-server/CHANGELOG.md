@@ -6,15 +6,47 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
-Changes since `sofabaton-x-server-v0.2.1`. Requires the library change
-below (unreleased `sofabaton-x`).
+No changes yet.
 
+## 0.2.2 (2026-09-25)
+
+Changes since `sofabaton-x-server-v0.2.1`. Requires
+**sofabaton-x >=0.2.2,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+### Upgrade notes
+
+- Update installation pins to `sofabaton-x-server>=0.2.2,<0.3` and restart
+  with the same data directory. Pip installs the required library version.
+  Reload open panel and remote pages to load the new frontend.
+- Regenerate clients from this release's `openapi.json` for firmware
+  status, catalog `sort` fields, update checks and app-proxy controls.
+  Activities and devices now arrive in display order; sort explicitly
+  by ID if your client requires the previous order.
+- The panel blocks device/activity editors, Wifi Commands and Backup on
+  firmware below the supported floor. Update the hub through the official
+  app. API clients must enforce the firmware verdict themselves; the
+  server API does not reject requests based on it.
+- Update checks are optional and off by default. Existing hub registrations,
+  saved layouts and callback devices need no manual conversion.
+- When upgrading from 0.2.0, also follow the
+  [0.2.1 upgrade notes](#021-2026-09-22), especially payload response types,
+  backup expiry and complete-device PUT behavior.
+
+### Added
+
+- **X2 number pad in the web remote and editors.** Number keys 0–9,
+  dash and Enter are available for X2 button assignments. The remote
+  shows a dialpad toggle on the Direction Pad when number keys are bound;
+  tap it to open the keypad and tap outside to return. The keypad can be
+  disabled per layout and appears on its own when the Direction Pad is
+  hidden. See the [web remote guide](docs/web-remote.md#x2-number-pad).
 - **Firmware floor on the hub row.** `HubStatus` (in `GET /hubs`,
   `GET /hubs/{id}/status` and the stream's hub rows) carries the
   library's `firmware_version`, `firmware_min_supported`,
   `firmware_unsupported` and `firmware_outdated`; `GET /hubs/{id}/info`
   adds `firmware_min_recommended`. The server refuses nothing on them:
-  a hub below the supported floor ACKs writes and drops them, so a
+  older firmware can ACK writes and drop them, so a
   client should block its own write surfaces. The panel now does, like
   the Home Assistant card: the device and activity editors, the Wifi
   Commands tab and the Backup tab show "update the hub" in their place
@@ -38,6 +70,13 @@ below (unreleased `sofabaton-x`).
   `config.proxy_enabled`, announced as `hub_proxy_disabled` /
   `hub_proxy_enabled`. With the proxy off for every hub, the app
   discovery listener (UDP 8102) closes.
+
+### Changed
+
+- Favorites in the web remote can show their device names to distinguish
+  commands with the same label. The panel's remote layout editor has
+  clearer grouping and drag handles, and hub removal uses an inline
+  confirmation.
 - **Documentation:** lead with browser-based hub management, add a user
   getting-started guide and management guide, and separate the integration
   starter, deployment and API references. The integration guide now follows
@@ -45,6 +84,9 @@ below (unreleased `sofabaton-x`).
   triggers. Its Python client adds activity start/stop and status inspection;
   legacy callback setup moves to `examples/provision_callback.py` for the
   Hubitat example (replacing the starter's `setup-presses` action).
+
+### Fixed
+
 - **`GET .../activities` and `GET .../devices` list in the hub's display
   order** (what `PUT .../order` writes, as the remote and the app show
   it) instead of id order, and each row carries that position as `sort`
@@ -58,6 +100,8 @@ below (unreleased `sofabaton-x`).
   the server disappeared from the Sofabaton app. Each proxy now publishes
   its advertisement once the hub's connect-time sync has read the banner,
   the same way the Home Assistant integration does.
+- Panel layout and editor behavior, including remote preview sizing,
+  selection styling and touch reordering.
 
 ## 0.2.1 (2026-09-22)
 

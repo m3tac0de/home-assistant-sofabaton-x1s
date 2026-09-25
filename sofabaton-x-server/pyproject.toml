@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 dependencies = [
-    "sofabaton-x>=0.2.1,<0.3",
+    "sofabaton-x>=0.2.2,<0.3",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
 ]

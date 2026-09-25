@@ -31,6 +31,23 @@ The official app and the server take turns controlling the hub. Close
 the app before synchronizing; the panel prevents competing writes while
 the app or another hub operation owns control.
 
+### Hub firmware
+
+The panel checks the hub's reported firmware before opening device and
+activity editors, Wifi Commands or Backup. Below the supported floor,
+these views show an update notice. Older firmware can acknowledge a
+configuration write without saving it; update through the official
+Sofabaton app before editing.
+
+For this release, the supported floors are X1 **17**, X1S **5** and X2
+**5**; the recommended versions are X1 **17**, X1S **5** and X2 **8**.
+Being below the recommended version alone does not block the views.
+These are the integer firmware versions reported by the hub.
+
+An unknown model or firmware does not trigger the block. API integrations
+must handle the firmware verdict themselves; see
+[firmware status](api-reference.md#firmware-status).
+
 ### Where changes are saved
 
 | Change | When it takes effect | Where it is kept |

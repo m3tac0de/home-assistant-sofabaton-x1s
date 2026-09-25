@@ -31,7 +31,7 @@ use an [authenticating reverse proxy](running-server.md#behind-a-reverse-proxy-t
 With Python 3.11+ installed, run:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
 sofabaton-x-server
 ```
 

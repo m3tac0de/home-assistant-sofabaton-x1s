@@ -56,6 +56,31 @@ before it fires a power toggle. `Button` rows carry the hub's long-press
 pair (`long_press_device_id` / `long_press_command_id`, both `null` when
 the button has none); send the pair like any other command.
 
+### Firmware status
+
+`GET /hubs/{id}/status` and the `status` in hub views and stream hub rows
+include `firmware_version`, `firmware_min_supported`,
+`firmware_unsupported` and `firmware_outdated`. `GET /hubs/{id}/info`
+also includes `firmware_min_recommended`. Versions and floors are nullable
+integers; verdict flags default to false when the hub line or version is
+unknown. They describe hub firmware, independently of server update checks.
+
+Use `firmware_unsupported` to block configuration editing in your client:
+older firmware can acknowledge writes without retaining them. The bundled
+panel blocks its device/activity editors, Wifi Commands and Backup views.
+The REST API does not enforce a firmware block. `firmware_outdated` alone
+is an update recommendation, not a reason to block writes. See the
+[firmware guide](managing-hubs.md#hub-firmware) for this release's floors.
+
+### X2 number keys
+
+X2 button reads and edits include `NUM_0`–`NUM_9`, `NUM_DASH` and
+`NUM_ENTER`, with numeric codes in `button_code`. These are ordinary
+button bindings and can include long-press device/command pairs.
+Use the returned code for button control, or the bound device/command
+pair for direct command control. Device/activity documents and backups
+accept these keys for X2; validation rejects them for X1/X1S.
+
 ## Web remote configuration
 
 The server stores a per-hub JSON document for the web remote's layout:

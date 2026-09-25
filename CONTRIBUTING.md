@@ -10,8 +10,8 @@ and include diagnostics as described in [docs/logging.md](docs/logging.md).
 
 ## ◇ Repository layout
 
-One repository ships three things: a Home Assistant custom integration, a
-standalone PyPI library, and two Lovelace cards.
+One repository ships a Home Assistant custom integration, a standalone
+PyPI library, a hub management server, and two Lovelace cards.
 
 | Path                                   | What it is                                                                                                                                                                                                                                                                                               |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -19,6 +19,8 @@ standalone PyPI library, and two Lovelace cards.
 | `custom_components/sofabaton_x1s/lib/` | The hub protocol engine. This directory is also the **source of truth for the `sofabaton-x` PyPI package**: the root `pyproject.toml` remaps it into the wheel as the top-level `sofabaton` package. It must stay importable without Home Assistant — no HA imports allowed, enforced by boundary tests. |
 | `custom_components/sofabaton_x1s/www/` | Frontend cards. `src/**/*.ts` is the tools-card TypeScript source (the remote card's source lives in `remote-card/src/`); `tools-card.js` and `remote-card.js` are **generated esbuild bundles — never edit them by hand**.                                                                                                                                                |
 | `sofabaton-x/`                         | PyPI-facing README and runnable examples for the library.                                                                                                                                                                                                                                                |
+| `sofabaton-x-server/` | Standalone hub management server: Python package, bundled web UI, API schema, guides, examples and server tests. |
+| `server-panel/` | TypeScript source for the server control panel; build with `npm run build:server-panel`. |
 | `docs/`                                | User-facing documentation. `docs/protocol/` is the reverse-engineered wire protocol reference.                                                                                                                                                                                                           |
 | `IrScrutinizer/`                       | IrScrutinizer export formats for producing hub-compatible IR command payloads.                                                                                                                                                                                                                                      |
 | `tests/`                               | All test suites (see below).                                                                                                                                                                                                                                                                             |
@@ -172,13 +174,13 @@ default scenario list and the harness in sync.
 
 ## ◇ Versioning and releases
 
-The integration and the library are **versioned independently**:
+The integration, library and server are **versioned independently**:
 
 | Component             | Version lives in                                                                | Released by                                                                                                                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HA integration        | `custom_components/sofabaton_x1s/manifest.json` (plus the badge in `README.md`) | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
-| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.1,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.2,<0.3` in its `pyproject.toml`) must be on PyPI first. |
 
 Library stability contract: names exported from the package root
 (`sofabaton.__all__`) follow semver; everything else is internal. Changes to
@@ -190,9 +192,10 @@ delegated, listener, or engine-only with a reason) or
 Library release checklist (run it with every integration release that
 touches `lib/`, so the PyPI package never falls behind the engine):
 
-1. Bump `custom_components/sofabaton_x1s/lib/version.py` (minor for any
-   surface change before 1.0; patch for engine-only fixes). The planned
-   0.2.1 release is an explicit exception: its corrected non-IR payload
+1. Bump `custom_components/sofabaton_x1s/lib/version.py` (minor for
+   incompatible public API changes before 1.0; patch for fixes and
+   backward-compatible additions). The historical
+   0.2.1 release was an explicit exception: its corrected non-IR payload
    return types require the migration in the library changelog. Do not
    treat this exception as a patch-compatibility guarantee.
 2. Update `sofabaton-x/README.md` for anything the surface gained or lost,

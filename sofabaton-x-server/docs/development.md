@@ -49,9 +49,29 @@ operations; its equivalent X2 run remains pending. Separate server checks
 cover the X1S web remote and activity input editing, and X2 MQTT deployment,
 presses, rename, restart and deletion. They do not cover every route or firmware.
 
-To release: set `__version__` in `src/sofabaton_server/__init__.py`, update
-the documentation and changelog (replace the pending release heading with
-the release date), regenerate `openapi.json` with the pinned toolchain, and push the tag `sofabaton-x-server-vX.Y.Z`.
-The release workflow re-runs the tests, checks the tag against the
-version and publishes to PyPI; a compatible `sofabaton-x` version must be
-on PyPI first (see the repository's CONTRIBUTING).
+## Release order
+
+The 0.2.2 server requires `sofabaton-x>=0.2.2,<0.3` for display ordering,
+firmware status and X2 number keys. Prepare both packages together:
+
+1. Set the library version in
+   `custom_components/sofabaton_x1s/lib/version.py`, the server version in
+   `src/sofabaton_server/__init__.py`, and the server's library dependency
+   in `pyproject.toml`. These are independent of the Home Assistant version.
+2. Finalize the dated entries in both changelogs, leaving a fresh
+   **Unreleased** section. Update README notices, installation pins and
+   guides. Keep the API generation at `1` for this release.
+3. Regenerate `openapi.json` with the pinned toolchain even when only the
+   package version changed. Rebuild the frontend bundles, run the library,
+   server and frontend checks in [CONTRIBUTING](../../CONTRIBUTING.md#-versioning-and-releases),
+   and build/install both wheels together for a local smoke test.
+4. Commit the release preparation, then tag and push
+   `sofabaton-x-v0.2.2`. Wait for the library's publishing workflow to
+   succeed and confirm that 0.2.2 is available on PyPI.
+5. Only then tag and push `sofabaton-x-server-v0.2.2`. Its workflow installs
+   the library from PyPI, so pushing both tags together can fail. Confirm
+   the server publishing workflow succeeds and 0.2.2 is available on PyPI.
+
+The workflows verify tags against package versions, run tests and publish
+to PyPI. These tags do not create GitHub Releases. For subsequent releases,
+substitute the selected versions and dependency range in this sequence.

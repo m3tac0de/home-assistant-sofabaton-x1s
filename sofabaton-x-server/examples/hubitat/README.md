@@ -5,7 +5,7 @@ The Python server runs on a separate computer; Hubitat connects to its REST
 API and WebSocket. No Home Assistant, MQTT broker, Maker API token or inbound
 Hubitat HTTP endpoint is needed.
 
-**Example for server 0.2.1 / API 1.**
+**Example for server 0.2.2 / API 1.**
 The sources are compiled and behavior-tested with
 Groovy 2.4.21 and a simulated Hubitat environment. Installation, Hubitat's
 sandbox, actual asynchronous HTTP/WebSocket behavior, and physical devices
@@ -49,7 +49,7 @@ Home Assistant or another proxy, disable it there before registering it here.
 On the server host:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
 sofabaton-x-server
 ```
 

@@ -3,7 +3,7 @@
 # Trigger: push a tag named sofabaton-x-server-vX.Y.Z (after setting
 # __version__ in sofabaton-x-server/src/sofabaton_server/__init__.py to
 # X.Y.Z; the verify-version step refuses mismatched tags). The server
-# depends on sofabaton-x from PyPI (>=0.2,<0.3), so the library must be
+# depends on sofabaton-x from PyPI (see pyproject.toml), so the library must be
 # published first.
 #
 # PyPI trusted publishing (OIDC), no tokens. One-time setup on pypi.org

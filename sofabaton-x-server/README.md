@@ -49,7 +49,7 @@ already manages the hub, disable that hub there first.
 Install the server and start it (the protocol library is included):
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.1,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
 sofabaton-x-server
 ```
 
@@ -156,10 +156,12 @@ For a bug report, [open an issue](https://github.com/m3tac0de/home-assistant-sof
 with your server version, hub model and firmware, installation method,
 relevant logs and steps to reproduce the problem.
 
-The current released baseline is **0.2.1**, using **API 1** and
-**sofabaton-x >=0.2.1,<0.3**. Read the
+This README describes **0.2.2**, using **API 1** and
+**sofabaton-x >=0.2.2,<0.3**. Read the
 [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md)
-when updating; its **Unreleased** section describes changes in this checkout.
+when updating. This release adds an X2 number pad, optional update checks,
+per-hub app-proxy controls and firmware guidance, and fixes hub display
+order and discovery by the official app.
 
 ## Development
 

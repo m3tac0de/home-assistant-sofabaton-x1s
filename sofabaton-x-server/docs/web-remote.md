@@ -32,6 +32,24 @@ the physical remote's button assignments.
 local to the current view and are not retained after switching hubs or
 reloading the page.
 
+Enable **Show device names** in the favorites layout options to label
+favorites with their device, useful when several devices have a command
+with the same name. This is off by default (`show_favorite_device_names`
+in the layout document).
+
+## X2 number pad
+
+On X2, a small dialpad button in the Direction Pad opens the number pad
+when the selected activity or device has number keys bound. It includes
+0–9, dash and Enter. Tap outside the pad to return to the direction keys.
+Bound keys support their configured long-press assignments.
+
+**Number pad** in the layout options controls its visibility per layout
+(`show_numpad`, enabled by default). If the Direction Pad is hidden, the
+number pad appears on its own. X1/X1S and selections without number-key
+bindings do not show it. Assign keys through **Hub → Devices** or
+**Hub → Activities**, synchronize, then return to the remote to use them.
+
 ## Dashboard links and display options
 
 The page needs the hub in the URL: `/ui/remote/?hub=<hub id>`, the id
