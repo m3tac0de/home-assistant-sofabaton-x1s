@@ -1098,6 +1098,31 @@ test.describe("control panel, views", () => {
     await page.screenshot({ path: shot(testInfo, "remote-device-layout"), fullPage: true });
   });
 
+  test("remote editor carries the Number pad switch on the D-pad row for an X2 only", async ({ page }) => {
+    const x2 = { ...LIVING, config: { ...LIVING.config, hub_version: "X2" }, status: { ...CONTROL, hub_version: "X2" } };
+    const state = { hubs: [x2], seen: [], document: {} };
+    await mockServer(page, state);
+    // The card's status read is what carries the model to the editor.
+    await page.route(`**${API}/hubs/${x2.hub_id}/status`, (route) => route.fulfill({ json: { ...x2, hub_id: x2.hub_id } }));
+    await page.goto(`${PAGE}#/${x2.hub_id}/remote/layout`);
+    const editor = page.locator("sb-panel-remote-editor");
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    const dpadRow = editor.locator('[data-group="dpad"]');
+    const numpad = dpadRow.getByRole("switch", { name: "Number pad", exact: true });
+    await expect(numpad).toBeChecked();
+    await numpad.uncheck();
+    await expect(dpadRow.getByRole("switch", { name: "Direction pad", exact: true })).toBeChecked();
+    await page.click("#remote-save");
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    expect(state.document.layouts.default.show_numpad).toBe(false);
+
+    await page.unroute(`**${API}/hubs/${x2.hub_id}/status`);
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    await page.goto(`${PAGE}#/${LIVING.hub_id}/remote/layout`);
+    await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    await expect(editor.locator('[data-group="dpad"]').getByRole("switch", { name: "Number pad", exact: true })).toHaveCount(0);
+  });
+
   test("remote editor groups layout choices and keeps field focus clear of labels", async ({ page }, testInfo) => {
     await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);

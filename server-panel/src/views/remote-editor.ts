@@ -17,7 +17,7 @@ import {
   deviceToggleEnabledForEditor, deviceTogglePatch, dvrTogglePatch, editorActivitiesFromState,
   editorDevicesFromState, editorGroupVisible, favoriteDeviceNamesForEditor, favoriteDeviceNamesPatch, favoritesTogglePatch, MF_MENU_KEYS, groupEnabledPatch, groupLabel,
   groupOrderListForEditor, isGroupEnabled, layoutConfigForSelection, layoutSelectionNote, macroTogglePatch,
-  mfAsRowsForEditor, mfAsRowsPatch, mfRowVisibleRowsForEditor, mfRowVisibleRowsPatch, moveVisibleGroup,
+  mfAsRowsForEditor, mfAsRowsPatch, mfRowVisibleRowsForEditor, mfRowVisibleRowsPatch, moveVisibleGroup, numpadEnabledForEditor, numpadTogglePatch,
   powerEnabled, powerTogglePatch, resetEditorLayout, volumeTogglePatch,
 } from "../../../remote-card/src/remote-card-editor-layout";
 import {
@@ -197,8 +197,11 @@ export class SbPanelRemoteEditor extends LitElement {
     this._closeSlot();
     this.dispatchEvent(new CustomEvent("layout-selected", { detail: { selection: value }, bubbles: true, composed: true }));
   }
+  private _isX2(): boolean {
+    return String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2");
+  }
   private _visible(key: string): boolean {
-    return editorGroupVisible(this.config, this.selection, key, String(this.snapshot?.attributes?.hub_version || "").toUpperCase().includes("X2"));
+    return editorGroupVisible(this.config, this.selection, key, this._isX2());
   }
   private _move(from: number, to: number): void {
     const order = groupOrderListForEditor(this.config, this.selection);
@@ -244,6 +247,10 @@ export class SbPanelRemoteEditor extends LitElement {
       if (key === "favorites_row") return toggle(e.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return html`${toggle(e.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
       if (key === "media") return html`${toggle(e.mediaControls, mediaGroupEnabled(layout), (v) => groupEnabledPatch("media", v))}${toggle(e.dvr, dvrGroupEnabled(layout), dvrTogglePatch)}`;
+      // X2 only: the number pad behind the D-pad (numpad-plan.md), the same
+      // second switch the HA editor carries; the server is never the
+      // official integration, so the model is the whole gate.
+      if (key === "dpad" && this._isX2()) return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${toggle(e.numpad, numpadEnabledForEditor(c, s), numpadTogglePatch)}`;
       return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}
         ${key === "activity" && deviceModeEnabledInConfig(c) ? this._toggle(e.modeToggle, isGroupEnabled(c, s, key) && deviceToggleEnabledForEditor(c, s), (v) => this._patch(deviceTogglePatch(v)), "", !isGroupEnabled(c, s, key)) : nothing}`;
     };
