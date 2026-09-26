@@ -24,13 +24,21 @@ and key style. Drag the handles to reorder groups, or focus a handle and
 use the arrow keys.
 
 The preview updates as you edit and does not send commands to the hub.
-**Save** stores the layout on the server for that hub; reload other open
-web remotes to pick it up. It changes the browser remote's layout, not
-the physical remote's button assignments.
+**Save** stores the layout on the server for that hub; it is enabled
+only while something differs from what the server holds. Reload other
+open web remotes to pick a saved layout up. It changes the browser
+remote's layout, not the physical remote's button assignments.
 
-**Reset to defaults** deletes the hub's stored layout. Unsaved edits are
-local to the current view and are not retained after switching hubs or
-reloading the page.
+The arrow next to Save holds the other ways out of a layout:
+
+- **Copy embed HTML** copies the markup for
+  [your own dashboard](#embed-the-remote-in-your-own-dashboard) with this
+  layout inlined, saved or not. That dashboard then owns the layout:
+  later edits here do not reach it until you paste again.
+- **Reset to defaults** deletes the hub's stored layout.
+
+Unsaved edits are local to the current view and are not retained after
+switching hubs or reloading the page.
 
 Enable **Show device names** in the favorites layout options to label
 favorites with their device, useful when several devices have a command
@@ -117,7 +125,10 @@ colours and talks to the server directly.
 
    The hub id is `hub_id` from `GET /api/v1/hubs` (the MAC, any
    spelling); the element finds the server from the script's own URL.
-   The layout is the one saved for the hub under **Remote → Layout**.
+   Without a `config` attribute the layout is the one saved for the hub
+   under **Remote → Layout**. **Copy embed HTML** on that screen gives
+   you this markup with the layout you made inlined as `config` instead,
+   so the dashboard owns it.
 
 Attributes: `hub` (required), `theme` (`inherit`, the default, or
 `light` / `dark` for the Home Assistant palette), `lang`, `device` (open

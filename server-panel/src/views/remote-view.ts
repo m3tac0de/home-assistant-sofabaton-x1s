@@ -5,7 +5,7 @@
 // the standalone web remote picks it up on its next load.
 
 import { LitElement, html, css, type PropertyValues, type TemplateResult } from "lit";
-import { mdiOpenInNew } from "@mdi/js";
+import { mdiChevronDown, mdiOpenInNew } from "@mdi/js";
 
 import { ServerRemoteBackend } from "../../../remote-card/src/backend/server-backend";
 import type { SofabatonRemoteCard } from "../../../remote-card/src/remote-card-element";
@@ -13,7 +13,9 @@ import { TYPE } from "../../../remote-card/src/remote-card-shared";
 import type { RemoteSnapshot } from "../../../remote-card/src/backend/remote-backend";
 import { deviceModeEnabledInConfig, isDeviceLayoutKey } from "../../../remote-card/src/remote-card-layout";
 import { cardConfigForWebRemote } from "../../../remote-card/src/remote-web-config";
+import { embedHtmlSnippet } from "../../../remote-card/src/remote-host";
 import { problemText, type HubView, type PanelApi } from "../panel-api";
+import { copyText } from "./access-view";
 import type { HubContext } from "../panel-context";
 import { formatWhen, hubDisplayName } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
@@ -24,6 +26,20 @@ export const REMOTE_VIEW_TAG = "sb-panel-remote";
 const MIN_FIT_SCALE = 0.25;
 
 /** What the ancestors put under an element: their bottom padding, border and margin (the page's padding reserves the bottom dock). */
+/** JSON with object keys sorted at every level, so two documents compare by content. */
+function canonicalJson(value: unknown): string {
+  const sort = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(sort);
+    if (input && typeof input === "object") {
+      return Object.fromEntries(
+        Object.keys(input as Record<string, unknown>).sort().map((key) => [key, sort((input as Record<string, unknown>)[key])]),
+      );
+    }
+    return input;
+  };
+  return JSON.stringify(sort(value));
+}
+
 function spaceBelow(element: Element): number {
   let total = 0;
   let node: Element | null = element;
@@ -45,6 +61,7 @@ export class SbPanelRemote extends LitElement {
     _banner: { state: true },
     _documentText: { state: true },
     _mode: { state: true }, _busy: { state: true }, _loaded: { state: true }, _draft: { state: true }, _snapshot: { state: true },
+    _menuOpen: { state: true },
     _scale: { state: true }, _natural: { state: true },
   };
 
@@ -84,6 +101,19 @@ export class SbPanelRemote extends LitElement {
       .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
       .mode-tabs .doc-actions { margin-left: auto; display: flex; gap: 8px; }
       .mode-tabs button[aria-pressed=true] { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .08); }
+      /* The clipboard fallback on plain HTTP selects a field; this one is off screen, never display:none. */
+      .embed-field { position: absolute; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
+      /* One control for the draft's ways out: Save, and a caret that opens the rest (Marcel, 2026-09-26).
+         Save is only enabled while there is something to save; the caret stays available. */
+      .split { position: relative; display: inline-flex; }
+      .split > .primary { border-radius: 6px 0 0 6px; }
+      .split > .caret { border-radius: 0 6px 6px 0; padding: 0 6px; margin-left: -1px; border-left-color: rgba(255, 255, 255, 0.4); }
+      .split > .caret .mdi { width: 18px; height: 18px; display: block; }
+      .split .menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-panel); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16); z-index: 30; }
+      .split .menu[hidden] { display: none; }
+      .split .menu button { text-align: left; border-color: transparent; background: none; font-weight: 500; }
+      .split .menu button:hover { background: rgba(var(--sbp-accent-rgb), 0.08); border-color: transparent; }
+      .split .menu button.danger:hover { background: rgba(219, 68, 55, 0.08); }
       fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
       /* Always in flow: toggling this line's display left the editor (an inline-size container) at zero height in Chrome until the next relayout. */
       .editor .msg { margin: 8px 0 0; min-height: 17px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
@@ -129,6 +159,7 @@ export class SbPanelRemote extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._closeMenu();
     window.removeEventListener("resize", this._onWindowResize);
     this._fitObserver?.disconnect();
     this._fitObserver = null;
@@ -324,6 +355,83 @@ export class SbPanelRemote extends LitElement {
     this._mode = mode;
   }
 
+  // ---------- the Save control ----------
+
+  private _menuOpen = false;
+  private readonly _onOutsidePointer = (ev: Event): void => {
+    const split = this.renderRoot.querySelector("#remote-actions");
+    if (split && ev.composedPath().includes(split)) return;
+    this._closeMenu();
+  };
+
+  /** Save has something to do: the draft (or the JSON text) differs from what the server holds. */
+  private _isDirty(): boolean {
+    if (!this._loaded) return false;
+    const saved = canonicalJson(this._document ?? {});
+    if (this._mode === "json") {
+      const text = this._documentText.trim();
+      if (!text) return saved !== "{}";
+      try {
+        return canonicalJson(JSON.parse(text)) !== saved;
+      } catch {
+        return true; // invalid JSON: Save stays available and names the problem
+      }
+    }
+    return canonicalJson(this._draft) !== saved;
+  }
+
+  private _toggleMenu = (): void => {
+    if (this._menuOpen) this._closeMenu();
+    else this._openMenu();
+  };
+
+  private _openMenu(): void {
+    this._menuOpen = true;
+    document.addEventListener("pointerdown", this._onOutsidePointer, true);
+  }
+
+  private _closeMenu(): void {
+    if (!this._menuOpen) return;
+    this._menuOpen = false;
+    document.removeEventListener("pointerdown", this._onOutsidePointer, true);
+  }
+
+  private _menuKeydown = (ev: KeyboardEvent): void => {
+    if (ev.key !== "Escape" || !this._menuOpen) return;
+    ev.stopPropagation();
+    this._closeMenu();
+    this.renderRoot.querySelector<HTMLElement>("#remote-save-menu")?.focus();
+  };
+
+  /** A menu item: close the menu, then do the thing. */
+  private _menuAction(action: () => void | Promise<void>): void {
+    this._closeMenu();
+    void action();
+  }
+
+  /**
+   * The draft as markup for another dashboard (docs/internal/remote-embed-plan.md):
+   * the server's embed script and the element with this layout inlined
+   * as `config`, so the dashboard owns it. Save is the other way out of
+   * the draft; neither needs the other.
+   */
+  private _copyEmbed = async (): Promise<void> => {
+    const hubId = this._mountedFor;
+    if (!hubId || this._busy || !this._loaded) return;
+    const document = this._mode === "json" ? this._readDocument() : this._draft;
+    if (!document) return;
+    const text = embedHtmlSnippet({ serverBase: this.api.baseUrl, hubId, document });
+    const field = this.renderRoot.querySelector<HTMLTextAreaElement>("#remote-embed-field");
+    if (field) field.value = text;
+    const ok = await copyText(text, field);
+    this._setStatus(
+      ok
+        ? "Copied the embed HTML with this layout. The dashboard's origin must be listed under Server → Access → Browser origins."
+        : "Copy failed: the browser blocked clipboard access.",
+      ok,
+    );
+  };
+
   private async _save(): Promise<void> {
     const hubId = this._mountedFor;
     if (!hubId || this._busy || !this._loaded) return;
@@ -345,9 +453,9 @@ export class SbPanelRemote extends LitElement {
     } finally {
       if (generation === this._generation) this._busy = false;
     }
-  }
+  };
 
-  private async _reset(): Promise<void> {
+  private _reset = async (): Promise<void> => {
     const hubId = this._mountedFor;
     if (!hubId || this._busy) return;
     const generation = this._generation;
@@ -402,8 +510,15 @@ export class SbPanelRemote extends LitElement {
                 <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
                 <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
                 <span class="doc-actions">
-                  <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working…" : "Save"}</button>
-                  <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
+                  <span class="split" id="remote-actions" @keydown=${this._menuKeydown}>
+                    <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy || !this._isDirty()} @click=${this._save}>${this._busy ? "Working…" : "Save"}</button>
+                    <button class="primary caret" id="remote-save-menu" aria-haspopup="menu" aria-expanded=${this._menuOpen ? "true" : "false"} aria-label="More actions" title="More actions"
+                      ?disabled=${!hub || !this._loaded || this._busy} @click=${this._toggleMenu}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></button>
+                    <div class="menu" role="menu" id="remote-actions-menu" ?hidden=${!this._menuOpen}>
+                      <button role="menuitem" id="remote-copy-embed" @click=${() => this._menuAction(this._copyEmbed)}>Copy embed HTML</button>
+                      <button role="menuitem" class="danger" id="remote-delete" @click=${() => this._menuAction(this._reset)}>Reset to defaults</button>
+                    </div>
+                  </span>
                 </span>
               </div>
               <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
@@ -415,6 +530,7 @@ export class SbPanelRemote extends LitElement {
                 <textarea id="remote-doc" aria-label="Remote configuration JSON" .value=${this._documentText} @input=${(ev: Event) => { this._documentText = (ev.target as HTMLTextAreaElement).value; this._setStatus("Unsaved JSON changes"); }} placeholder='{ "show_dpad": true }'></textarea>
                 <button @click=${() => { const parsed = this._readDocument(); if (parsed) this._edit(parsed); }}>Update preview</button>`}
             </fieldset>
+            <textarea id="remote-embed-field" class="embed-field" aria-hidden="true" tabindex="-1" readonly></textarea>
           </div>
           <aside class="preview">
             <div class="well"><div class="stage" id="stage" inert></div></div>

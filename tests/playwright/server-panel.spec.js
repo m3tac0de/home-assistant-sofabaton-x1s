@@ -989,7 +989,10 @@ test.describe("control panel, views", () => {
     ]);
 
     await page.click('#subtabs button[data-sub="layout"]');
+    // Reset lives behind the Save control's caret.
+    await page.click("#remote-save-menu");
     await page.click("#remote-delete");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
     await expect.poll(() => calls.some((c) => c.key === "DELETE /hubs/e26a44861b45/ui/remote-card")).toBe(true);
     await expect(page.locator("#remote-status")).toContainText("reset");
     await expect(page.locator("#remote-doc")).toHaveValue("");
@@ -1267,23 +1270,65 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-load")).toHaveCount(0);
     await expect(page.locator("footer.layout-actions")).toHaveCount(0);
     await expect(page.locator(".preview h3")).toHaveCount(0);
+    // One control at the right: Save, with a caret that holds the other ways out of the draft.
     const json = await page.locator("#remote-json").boundingBox();
     const save = await page.locator("#remote-save").boundingBox();
-    const reset = await page.locator("#remote-delete").boundingBox();
+    const caret = await page.locator("#remote-save-menu").boundingBox();
     const editorBox = await page.locator(".editor").boundingBox();
     if (page.viewportSize().width >= 700) {
-      // One row on a desktop; the phone wraps the actions under the mode buttons.
+      // One row on a desktop; the phone wraps the control under the mode buttons.
       expect(Math.abs(save.y - json.y)).toBeLessThan(2);
-      expect(Math.abs(reset.y - json.y)).toBeLessThan(2);
       expect(save.x).toBeGreaterThan(json.x + json.width);
     }
-    expect(reset.x).toBeGreaterThan(save.x + save.width);
-    expect(reset.x + reset.width).toBeGreaterThan(editorBox.x + editorBox.width - 4);
+    expect(Math.abs(caret.x - (save.x + save.width))).toBeLessThan(2);
+    expect(caret.x + caret.width).toBeGreaterThan(editorBox.x + editorBox.width - 4);
+    await expect(page.locator("#remote-copy-embed")).toBeHidden();
+    await expect(page.locator("#remote-delete")).toBeHidden();
+    // Nothing to save yet: Save is disabled, the caret is not.
+    await expect(page.locator("#remote-save")).toBeDisabled();
+    await expect(page.locator("#remote-save-menu")).toBeEnabled();
+    await page.click("#remote-save-menu");
+    await expect(page.locator("#remote-actions-menu")).toBeVisible();
+    await expect(page.locator("#remote-copy-embed")).toBeVisible();
+    await expect(page.locator("#remote-delete")).toBeVisible();
     await page.screenshot({ path: shot(testInfo, "remote-mode-row-actions") });
+    // Escape and a click elsewhere close it without acting.
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    await page.click("#remote-save-menu");
+    await page.locator(".layout-content > .hint").click();
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    // A change enables Save; a change back to what the server holds disables it again.
     await page.click("#remote-json");
+    await page.fill("#remote-doc", '{"show_dpad": false}');
+    await expect(page.locator("#remote-save")).toBeEnabled();
+    await page.fill("#remote-doc", "{}");
+    await expect(page.locator("#remote-save")).toBeDisabled();
     await page.fill("#remote-doc", "{invalid");
+    await expect(page.locator("#remote-save")).toBeEnabled();
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("not valid JSON");
+    // Copy embed HTML takes the draft as it is, unsaved, with the layout inlined as config; the menu closes on the pick.
+    await page.click("#remote-save-menu");
+    await page.click("#remote-copy-embed");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    await expect(page.locator("#remote-status")).toContainText("not valid JSON");
+    await page.fill("#remote-doc", '{"show_dpad": false, "key_style": "flat"}');
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.click("#remote-save-menu");
+    await page.click("#remote-copy-embed");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    await expect(page.locator("#remote-status")).toContainText("Copied the embed HTML");
+    await expect(page.locator("#remote-status")).toContainText("Browser origins");
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    // The panel derives the server base from its own URL: everything before /ui/.
+    const base = page.url().replace(/\/ui\/.*$/, "");
+    // The OS clipboard hands newlines back as CRLF on Windows.
+    expect(copied.split(/\r?\n/)).toEqual([
+      `<script type="module" src="${base}/ui/embed/sofabaton-remote.js"></script>`,
+      `<sofabaton-remote hub="e26a44861b45" config='{"show_dpad":false,"key_style":"flat"}'></sofabaton-remote>`,
+    ]);
+    // Nothing was written to the server by the copy.
     await page.fill("#remote-doc", "{}");
     await page.click("#remote-visual");
     await expect(editor.locator("details[open]")).toHaveCount(0);

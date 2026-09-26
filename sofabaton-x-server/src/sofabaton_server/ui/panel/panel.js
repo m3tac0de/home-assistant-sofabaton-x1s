@@ -24722,9 +24722,35 @@ function defineRemoteEditor() {
   if (!customElements.get("sb-panel-remote-editor")) customElements.define("sb-panel-remote-editor", SbPanelRemoteEditor);
 }
 
+// remote-card/src/remote-host.ts
+function escapeSingleQuotedAttribute(value) {
+  return value.replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/</g, "&lt;");
+}
+function embedHtmlSnippet(options) {
+  const base = options.serverBase.replace(/\/+$/, "");
+  const attributes = [`hub="${escapeSingleQuotedAttribute(options.hubId).replace(/"/g, "&quot;")}"`];
+  if (options.document) {
+    attributes.push(`config='${escapeSingleQuotedAttribute(JSON.stringify(options.document))}'`);
+  }
+  return `<script type="module" src="${base}/ui/embed/sofabaton-remote.js"><\/script>
+<sofabaton-remote ${attributes.join(" ")}></sofabaton-remote>`;
+}
+
 // server-panel/src/views/remote-view.ts
 var REMOTE_VIEW_TAG = "sb-panel-remote";
 var MIN_FIT_SCALE = 0.25;
+function canonicalJson(value) {
+  const sort = (input) => {
+    if (Array.isArray(input)) return input.map(sort);
+    if (input && typeof input === "object") {
+      return Object.fromEntries(
+        Object.keys(input).sort().map((key) => [key, sort(input[key])])
+      );
+    }
+    return input;
+  };
+  return JSON.stringify(sort(value));
+}
 function spaceBelow(element) {
   let total = 0;
   let node = element;
@@ -24771,6 +24797,63 @@ var SbPanelRemote = class extends i4 {
       const popup = window.open(this.api.remoteUrl(hubId), `sofabaton-remote-${hubId}`, `popup=yes,width=440,height=${height}`);
       if (popup) ev.preventDefault();
     };
+    // ---------- the Save control ----------
+    this._menuOpen = false;
+    this._onOutsidePointer = (ev) => {
+      const split = this.renderRoot.querySelector("#remote-actions");
+      if (split && ev.composedPath().includes(split)) return;
+      this._closeMenu();
+    };
+    this._toggleMenu = () => {
+      if (this._menuOpen) this._closeMenu();
+      else this._openMenu();
+    };
+    this._menuKeydown = (ev) => {
+      if (ev.key !== "Escape" || !this._menuOpen) return;
+      ev.stopPropagation();
+      this._closeMenu();
+      this.renderRoot.querySelector("#remote-save-menu")?.focus();
+    };
+    /**
+     * The draft as markup for another dashboard (docs/internal/remote-embed-plan.md):
+     * the server's embed script and the element with this layout inlined
+     * as `config`, so the dashboard owns it. Save is the other way out of
+     * the draft; neither needs the other.
+     */
+    this._copyEmbed = async () => {
+      const hubId = this._mountedFor;
+      if (!hubId || this._busy || !this._loaded) return;
+      const document2 = this._mode === "json" ? this._readDocument() : this._draft;
+      if (!document2) return;
+      const text = embedHtmlSnippet({ serverBase: this.api.baseUrl, hubId, document: document2 });
+      const field = this.renderRoot.querySelector("#remote-embed-field");
+      if (field) field.value = text;
+      const ok = await copyText(text, field);
+      this._setStatus(
+        ok ? "Copied the embed HTML with this layout. The dashboard's origin must be listed under Server \u2192 Access \u2192 Browser origins." : "Copy failed: the browser blocked clipboard access.",
+        ok
+      );
+    };
+    this._reset = async () => {
+      const hubId = this._mountedFor;
+      if (!hubId || this._busy) return;
+      const generation = this._generation;
+      this._busy = true;
+      try {
+        const response = await this.api.deleteRemoteCardDocument(hubId);
+        if (generation !== this._generation) return;
+        if (response.status !== 204) {
+          this._setStatus(problemText(response), false);
+          return;
+        }
+        this._apply(null);
+        this._setStatus("reset: the card uses its defaults");
+      } catch (err) {
+        if (generation === this._generation) this._setStatus(String(err), false);
+      } finally {
+        if (generation === this._generation) this._busy = false;
+      }
+    };
   }
   connectedCallback() {
     super.connectedCallback();
@@ -24779,6 +24862,7 @@ var SbPanelRemote = class extends i4 {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._closeMenu();
     window.removeEventListener("resize", this._onWindowResize);
     this._fitObserver?.disconnect();
     this._fitObserver = null;
@@ -24948,6 +25032,35 @@ var SbPanelRemote = class extends i4 {
     }
     this._mode = mode;
   }
+  /** Save has something to do: the draft (or the JSON text) differs from what the server holds. */
+  _isDirty() {
+    if (!this._loaded) return false;
+    const saved = canonicalJson(this._document ?? {});
+    if (this._mode === "json") {
+      const text = this._documentText.trim();
+      if (!text) return saved !== "{}";
+      try {
+        return canonicalJson(JSON.parse(text)) !== saved;
+      } catch {
+        return true;
+      }
+    }
+    return canonicalJson(this._draft) !== saved;
+  }
+  _openMenu() {
+    this._menuOpen = true;
+    document.addEventListener("pointerdown", this._onOutsidePointer, true);
+  }
+  _closeMenu() {
+    if (!this._menuOpen) return;
+    this._menuOpen = false;
+    document.removeEventListener("pointerdown", this._onOutsidePointer, true);
+  }
+  /** A menu item: close the menu, then do the thing. */
+  _menuAction(action) {
+    this._closeMenu();
+    void action();
+  }
   async _save() {
     const hubId = this._mountedFor;
     if (!hubId || this._busy || !this._loaded) return;
@@ -24964,26 +25077,6 @@ var SbPanelRemote = class extends i4 {
       }
       this._apply(response.body.document);
       this._setStatus(`saved (updated ${formatWhen(response.body.updated_at)}); applied to the remote`);
-    } catch (err) {
-      if (generation === this._generation) this._setStatus(String(err), false);
-    } finally {
-      if (generation === this._generation) this._busy = false;
-    }
-  }
-  async _reset() {
-    const hubId = this._mountedFor;
-    if (!hubId || this._busy) return;
-    const generation = this._generation;
-    this._busy = true;
-    try {
-      const response = await this.api.deleteRemoteCardDocument(hubId);
-      if (generation !== this._generation) return;
-      if (response.status !== 204) {
-        this._setStatus(problemText(response), false);
-        return;
-      }
-      this._apply(null);
-      this._setStatus("reset: the card uses its defaults");
     } catch (err) {
       if (generation === this._generation) this._setStatus(String(err), false);
     } finally {
@@ -25022,8 +25115,15 @@ var SbPanelRemote = class extends i4 {
                 <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
                 <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
                 <span class="doc-actions">
-                  <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._save}>${this._busy ? "Working\u2026" : "Save"}</button>
-                  <button class="danger" id="remote-delete" ?disabled=${!hub || !this._loaded || this._busy} @click=${this._reset}>Reset to defaults</button>
+                  <span class="split" id="remote-actions" @keydown=${this._menuKeydown}>
+                    <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy || !this._isDirty()} @click=${this._save}>${this._busy ? "Working\u2026" : "Save"}</button>
+                    <button class="primary caret" id="remote-save-menu" aria-haspopup="menu" aria-expanded=${this._menuOpen ? "true" : "false"} aria-label="More actions" title="More actions"
+                      ?disabled=${!hub || !this._loaded || this._busy} @click=${this._toggleMenu}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></button>
+                    <div class="menu" role="menu" id="remote-actions-menu" ?hidden=${!this._menuOpen}>
+                      <button role="menuitem" id="remote-copy-embed" @click=${() => this._menuAction(this._copyEmbed)}>Copy embed HTML</button>
+                      <button role="menuitem" class="danger" id="remote-delete" @click=${() => this._menuAction(this._reset)}>Reset to defaults</button>
+                    </div>
+                  </span>
                 </span>
               </div>
               <p class="msg ${this._statusOk ? "msg-ok" : "msg-err"}" id="remote-status" role="status">${this._status}</p>
@@ -25048,6 +25148,7 @@ var SbPanelRemote = class extends i4 {
       if (parsed) this._edit(parsed);
     }}>Update preview</button>`}
             </fieldset>
+            <textarea id="remote-embed-field" class="embed-field" aria-hidden="true" tabindex="-1" readonly></textarea>
           </div>
           <aside class="preview">
             <div class="well"><div class="stage" id="stage" inert></div></div>
@@ -25070,6 +25171,7 @@ SbPanelRemote.properties = {
   _loaded: { state: true },
   _draft: { state: true },
   _snapshot: { state: true },
+  _menuOpen: { state: true },
   _scale: { state: true },
   _natural: { state: true }
 };
@@ -25109,6 +25211,19 @@ SbPanelRemote.styles = [
       .mode-tabs { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
       .mode-tabs .doc-actions { margin-left: auto; display: flex; gap: 8px; }
       .mode-tabs button[aria-pressed=true] { color: var(--sbp-accent); border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), .08); }
+      /* The clipboard fallback on plain HTTP selects a field; this one is off screen, never display:none. */
+      .embed-field { position: absolute; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
+      /* One control for the draft's ways out: Save, and a caret that opens the rest (Marcel, 2026-09-26).
+         Save is only enabled while there is something to save; the caret stays available. */
+      .split { position: relative; display: inline-flex; }
+      .split > .primary { border-radius: 6px 0 0 6px; }
+      .split > .caret { border-radius: 0 6px 6px 0; padding: 0 6px; margin-left: -1px; border-left-color: rgba(255, 255, 255, 0.4); }
+      .split > .caret .mdi { width: 18px; height: 18px; display: block; }
+      .split .menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-panel); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16); z-index: 30; }
+      .split .menu[hidden] { display: none; }
+      .split .menu button { text-align: left; border-color: transparent; background: none; font-weight: 500; }
+      .split .menu button:hover { background: rgba(var(--sbp-accent-rgb), 0.08); border-color: transparent; }
+      .split .menu button.danger:hover { background: rgba(219, 68, 55, 0.08); }
       fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
       /* Always in flow: toggling this line's display left the editor (an inline-size container) at zero height in Chrome until the next relayout. */
       .editor .msg { margin: 8px 0 0; min-height: 17px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
