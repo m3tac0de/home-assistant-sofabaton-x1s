@@ -293,7 +293,7 @@ async function selectRemoteLayout(select, value) {
 }
 
 test.describe("control panel, responsive docks", () => {
-  for (const width of [320, 390, 600, 768, 844, 1040, 1440]) {
+  for (const width of [320, 390, 600, 768, 844, 1040, 1440, 1920]) {
     test(`docks and menus fit at ${width}px with long names and two actions`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: width === 844 ? 390 : 844 });
       const longName = "Living room and home cinema upstairs — family hub";
@@ -330,8 +330,20 @@ test.describe("control panel, responsive docks", () => {
       }
       const status = page.locator("#dock-status");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect(await status.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-      expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).not.toBe("nowrap");
+      // One row, always: the text is cut with an ellipsis rather than wrapped, and the actions and the pill share its line.
+      expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("nowrap");
+      expect(await status.evaluate((el) => getComputedStyle(el).textOverflow)).toBe("ellipsis");
+      await expect(status).toHaveAttribute("title", "An apply stopped partway; resume or discard it");
+      const statusBox = await status.boundingBox();
+      const resumeBox = await page.locator("#dock-resume").boundingBox();
+      const pillBox = await page.locator("#dock-pill").boundingBox();
+      expect(statusBox.height).toBeLessThan(24);
+      expect(Math.abs(statusBox.y + statusBox.height / 2 - (resumeBox.y + resumeBox.height / 2))).toBeLessThan(2);
+      expect(Math.abs(statusBox.y + statusBox.height / 2 - (pillBox.y + pillBox.height / 2))).toBeLessThan(2);
+      expect(statusBox.x + statusBox.width).toBeLessThanOrEqual(resumeBox.x);
+      expect((await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(60);
+      await expect(page.locator("#dock-cancel")).toHaveCount(0);
+      await expect(page.locator("#dock-dismiss")).toHaveCount(0);
       await expect.poll(() => page.locator(".page").evaluate((el) => {
         // The dock's height is reserved, plus the same gap the subtab row keeps under the top dock.
         const dock = el.querySelector("#bottom-dock");
@@ -346,7 +358,7 @@ test.describe("control panel, responsive docks", () => {
     });
   }
 
-  test("scrolling keeps both docks visible and the last content clear of a wrapped notice", async ({ page }, testInfo) => {
+  test("scrolling keeps both docks visible and the last content clear of a long notice, which stays on one line", async ({ page }, testInfo) => {
     const error = "The hub disconnected while restoring the living room devices. Reconnect the hub, then check its configuration before continuing. ".repeat(4).trim();
     await mockServer(page, {
       hubs: [{ ...LIVING, last_job: job({ status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: error } }) }],
@@ -354,6 +366,12 @@ test.describe("control panel, responsive docks", () => {
     });
     await page.goto(`${PAGE}#/setup/hubs`);
     await expect(page.locator("#dock-status")).toContainText(error);
+    // Cut with an ellipsis, the whole text in the title, the dock at its one-row height.
+    const status = page.locator("#dock-status");
+    expect(await status.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expect(status).toHaveAttribute("title", `Restoring the backup: Hub disconnected · ${error} (click to dismiss)`);
+    await expect(status).toHaveAttribute("role", "button");
+    expect((await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(60);
     // A long view exercises sticky positioning even on a tall desktop.
     await page.locator("#stage-wrap").evaluate((el) => el.style.minHeight = "1600px");
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -363,8 +381,11 @@ test.describe("control panel, responsive docks", () => {
     expect(content.y + content.height).toBeLessThan(dock.y);
     expect(Math.round(dock.y + dock.height)).toBe(page.viewportSize().height);
     await page.screenshot({ path: shot(testInfo, "docks-scrolled-notice") });
-    await page.click("#dock-dismiss");
-    await expect.poll(async () => (await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(dock.height);
+    await expect(page.locator("#dock-dismiss")).toHaveCount(0);
+    await page.click("#dock-status");
+    // A tool page has no doc link: the dock is empty, and no shorter than it was with the notice.
+    await expect(page.locator("#dock-status")).toHaveCount(0);
+    expect((await page.locator("#bottom-dock").boundingBox()).height).toBe(dock.height);
   });
 });
 
@@ -750,8 +771,9 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#add-entity")).toBeEnabled();
     await expect(page.locator("#dock-status")).toHaveText("Restoring the backup: done");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
-    await page.click("#dock-dismiss");
-    await expect(page.locator("#dock-link")).toBeVisible();
+    // No Dismiss: a done notice expires on its own (the store's 6 s), as on the HA card.
+    await expect(page.locator("#dock-dismiss")).toHaveCount(0);
+    await expect(page.locator("#dock-link")).toBeVisible({ timeout: 10_000 });
 
     // A failure stays until dismissed, and survives a reload until then.
     const failed = job({ job_id: "j2", status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
@@ -761,13 +783,15 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
     await page.reload();
     await expect(page.locator("#dock-status")).toContainText("Restoring the backup: Hub disconnected");
-    await page.click("#dock-dismiss");
+    // A sticky notice has no button either: it goes on a click on its text (also Enter and Space).
+    await expect(page.locator("#dock-status")).toHaveAttribute("role", "button");
+    await page.click("#dock-status");
     await expect(page.locator("#dock-link")).toBeVisible();
     await page.reload();
     await expect(page.locator("#dock-link")).toBeVisible();
   });
 
-  test("a cancellable job offers Cancel; the ask is shown until the server drains the job", async ({ page }) => {
+  test("a cancellable job shows no Cancel in the dock; a cancel through the store is narrated until the server drains the job", async ({ page }) => {
     const running = { ...LIVING, active_job: job({ kind: "refresh", cancellable: true, progress: { completed_steps: 3, total_steps: 12 } }) };
     const state = { hubs: [running], seen: [] };
     const { calls, sockets } = await mockServer(page, state);
@@ -779,10 +803,9 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12");
     await expect(page.locator("#dock-progress")).toHaveAttribute("data-indeterminate", "false");
     await expect(page.locator("#dock-progress")).toHaveAttribute("style", /width: 25%/);
-    await page.click("#dock-cancel");
+    await expect(page.locator("#dock-cancel")).toHaveCount(0);
+    await page.evaluate((hubId) => document.querySelector("sofabaton-server-panel").store.cancelActiveJob(hubId), LIVING.hub_id);
     await expect.poll(() => calls.some((c) => c.key === `DELETE /hubs/${LIVING.hub_id}/jobs/j1`)).toBe(true);
-    await expect(page.locator("#dock-cancel")).toHaveText("Cancelling…");
-    await expect(page.locator("#dock-cancel")).toBeDisabled();
     await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12 · cancelling");
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
@@ -2198,7 +2221,7 @@ test.describe("control panel, views", () => {
     end("del1", { status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     await expect(editor.locator("#editor-delete-error")).toContainText("Delete failed: the hub went away");
     await expect(editor.locator("#editor-title")).toHaveText("Gaming");
-    await page.click("#dock-dismiss");
+    await page.click("#dock-status");
 
     // Sync: the same swap, titled as on the card, with the running step and its counter.
     await editor.locator("#editor-rename").click();

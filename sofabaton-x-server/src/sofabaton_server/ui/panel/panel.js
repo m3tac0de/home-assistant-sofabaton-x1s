@@ -11550,39 +11550,48 @@ function renderBottomDock(params) {
   let tone = "";
   let center;
   let actions = A;
+  const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
   if (model.kind === "running") {
     tone = "dock--running";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
-    actions = model.cancellable ? b2`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling\u2026" : "Cancel"}</button>` : A;
+    center = status(model.text);
   } else if (message) {
     tone = message.ok ? "dock--message" : "dock--error";
-    center = b2`<span class="dock-status" id="hubs-msg">${message.text}</span>`;
+    center = status(message.text, "hubs-msg");
   } else if (model.kind === "notice") {
-    tone = `dock--${model.notice.tone}`;
-    center = b2`<span class="dock-status" id="dock-status">${model.notice.label}${model.notice.detail ? b2`<span class="dock-detail"> · ${model.notice.detail}</span>` : A}</span>`;
-    actions = b2`<button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
+    const notice = model.notice;
+    tone = `dock--${notice.tone}`;
+    const full = notice.detail ? `${notice.label} \xB7 ${notice.detail}` : notice.label;
+    const body = b2`${notice.label}${notice.detail ? b2`<span class="dock-detail"> · ${notice.detail}</span>` : A}`;
+    center = notice.sticky ? b2`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
+          @click=${params.onDismiss}
+          @keydown=${(event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        params.onDismiss();
+      }
+    }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
     actions = b2`
       ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
       <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
   } else if (model.kind === "draft_stale") {
     tone = "dock--warn";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
     actions = b2`
       <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
       <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
     actions = b2`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
     tone = "dock--dirty";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
   } else if (model.kind === "gate") {
     tone = "dock--gate";
-    center = b2`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
   } else if (params.docLink) {
     center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
   } else {
@@ -13341,7 +13350,7 @@ var SofabatonServerPanel = class extends i4 {
     const streamOn = s7.stream.connected;
     const streamLost = !streamOn && s7.server.reachable && s7.listLoaded;
     return b2`
-      <div class="page">
+      <div class="well"><div class="page">
         <header class="top-dock" id="top-dock">
           <div class="top-row">
             <div class="brand"><span class="stream ${streamLost ? "lost" : ""}" id="stream-state" role="img" aria-label=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"} title=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span></span><b>Sofabaton X</b><span class="brand-caption">control panel</span></div>
@@ -13414,9 +13423,6 @@ var SofabatonServerPanel = class extends i4 {
       onDismiss: () => {
         if (s7.selectedHubId) this.store.dismissNotice(s7.selectedHubId);
       },
-      onCancel: () => {
-        if (s7.selectedHubId) void this.store.cancelActiveJob(s7.selectedHubId);
-      },
       onResume: (applyId) => {
         if (s7.selectedHubId) void this.store.resumeApply(s7.selectedHubId, applyId);
       },
@@ -13431,7 +13437,7 @@ var SofabatonServerPanel = class extends i4 {
       }
     })}
         ${this._renderAuthDialog()}
-      </div>
+      </div></div>
     `;
   }
 };
@@ -13457,6 +13463,10 @@ SofabatonServerPanel.styles = [
   PANEL_BASE_CSS,
   i`
       :host { display: block; min-height: 100%; background: var(--sbp-bg); container-type: inline-size; }
+      /* The column sits on a tinted well, as the remote card does in the Remote view: the well is the page's height (the
+         host's is the viewport's), so it stays under the column however far the page scrolls; a soft accent glow at the top.
+         The frame ring and lift come on wide viewports, where the well shows (below). */
+      .well { --well-ring: color-mix(in srgb, var(--sbp-line) 80%, transparent); min-height: 100dvh; background: radial-gradient(1100px 480px at 50% 0, rgba(var(--sbp-accent-rgb), 0.09), transparent 70%), color-mix(in srgb, var(--sbp-text) 5%, var(--sbp-bg)); }
       .page {
         --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
         --page-gutter: 16px;
@@ -13464,6 +13474,7 @@ SofabatonServerPanel.styles = [
         --view-gap: 10px;
         max-width: 1040px; min-height: 100dvh; margin: 0 auto;
         padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + var(--view-gap));
+        background: var(--sbp-bg);
       }
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
@@ -13537,9 +13548,14 @@ SofabatonServerPanel.styles = [
       /* -- bottom dock -------------------------------------------------------- */
       /* The dock is the column's width, centred like it, not the viewport's. */
       .dock { position: fixed; left: 0; right: 0; bottom: 0; margin-inline: auto; max-width: 1040px; z-index: 30; background: var(--dock-surface); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 -3px 8px rgba(0, 0, 0, 0.03); overflow: hidden; }
-      .dock-inner { min-height: 48px; padding: 6px var(--page-gutter); display: flex; align-items: center; gap: 16px; }
+      /* One row, always: the text takes what the actions and the pill leave and is cut with an ellipsis (its title
+         carries the whole of it); nothing wraps and the dock keeps its height whatever it says. */
+      .dock-inner { min-height: 48px; padding: 6px var(--page-gutter); display: flex; flex-wrap: nowrap; align-items: center; gap: 16px; }
       .dock-center { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; align-items: center; font-size: 12px; line-height: 1.5; }
-      .dock-status { min-width: 0; overflow-wrap: anywhere; max-height: 30dvh; overflow-y: auto; }
+      .dock-status, .dock-link { display: block; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .dock-status.is-dismissable { cursor: pointer; border-radius: 4px; }
+      .dock-status.is-dismissable:hover { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 50%, transparent); text-underline-offset: 2px; }
+      .dock-status.is-dismissable:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
       .dock-detail { color: var(--sbp-muted); }
       .dock-link { font-size: 12px; color: var(--sbp-muted); text-decoration: none; }
       .dock-link:hover { color: var(--sbp-accent); }
@@ -13580,6 +13596,15 @@ SofabatonServerPanel.styles = [
         .dock-flash::before { animation: none; opacity: 0; }
       }
 
+      /* -- wide ---------------------------------------------------------------- */
+      /* Past the column's width the well shows on both sides: the column and the fixed dock get the same 1px ring, so the
+         docks read as the ends of one framed surface, and the column a lift off the well. The ring sits outside the
+         1040px box on both, so they stay flush. */
+      @container (min-width: 1041px) {
+        .page { box-shadow: 0 0 0 1px var(--well-ring), 0 24px 80px -24px rgba(0, 0, 0, 0.28), 0 0 48px rgba(0, 0, 0, 0.05); }
+        .dock { box-shadow: 0 0 0 1px var(--well-ring), 0 -3px 8px rgba(0, 0, 0, 0.03); }
+      }
+
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand-caption { display: none; }
@@ -13597,9 +13622,7 @@ SofabatonServerPanel.styles = [
         .subtab-count { padding: 1px 5px; }
         .stage { padding: 12px 12px 12px; }
         .dock-inner { gap: 8px; }
-        .dock:has(.dock-actions) .dock-inner { flex-direction: column; align-items: stretch; padding-block: 8px; }
-        .dock:has(.dock-actions) .dock-center { justify-content: flex-start; }
-        .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
+        .dock-right { gap: 8px; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
         .page { --view-chrome-block: calc(12px + 12px + 12px + 1px + var(--view-gap)); }
