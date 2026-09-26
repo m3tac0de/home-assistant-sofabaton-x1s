@@ -41,7 +41,7 @@ export function browserLabel(userAgent: string): string {
 }
 
 /** Copy text; `navigator.clipboard` only exists in a secure context, so plain HTTP selects the field and uses execCommand. */
-export async function copyText(text: string, field: HTMLInputElement | null): Promise<boolean> {
+export async function copyText(text: string, field: HTMLInputElement | HTMLTextAreaElement | null): Promise<boolean> {
   try {
     if (window.isSecureContext && navigator.clipboard) {
       await navigator.clipboard.writeText(text);

@@ -263,6 +263,35 @@ export async function loadStoredDocument(
   }
 }
 
+/** A value for a single-quoted HTML attribute: `&`, `'` and `<` escaped. */
+export function escapeSingleQuotedAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/</g, "&lt;");
+}
+
+/**
+ * The markup a dashboard pastes to embed the remote (control panel,
+ * Remote > Layout > "Copy embed HTML"): the server's script and the
+ * element. With a `document`, the layout rides along as the `config`
+ * attribute and the dashboard owns it (the element then never reads the
+ * server's saved layout); without one, the element follows the layout
+ * saved on the server.
+ */
+export function embedHtmlSnippet(options: {
+  serverBase: string;
+  hubId: string;
+  document?: Record<string, unknown> | null;
+}): string {
+  const base = options.serverBase.replace(/\/+$/, "");
+  const attributes = [`hub="${escapeSingleQuotedAttribute(options.hubId).replace(/"/g, "&quot;")}"`];
+  if (options.document) {
+    attributes.push(`config='${escapeSingleQuotedAttribute(JSON.stringify(options.document))}'`);
+  }
+  return (
+    `<script type="module" src="${base}/ui/embed/sofabaton-remote.js"></script>\n` +
+    `<sofabaton-remote ${attributes.join(" ")}></sofabaton-remote>`
+  );
+}
+
 /** The banner text for a hub the server cannot control right now, or null. */
 export function unavailableBannerText(
   snapshot: { state?: string } | undefined,

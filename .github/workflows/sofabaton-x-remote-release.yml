@@ -74,5 +74,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm run build:remote-embed
+      # Trusted publishing needs npm 11.5.1 or newer; Node 20 bundles 10.x.
+      - run: npm install -g npm@latest && npm --version
       - name: Publish
         run: cd packages/sofabaton-x-remote && npm publish --provenance --access public

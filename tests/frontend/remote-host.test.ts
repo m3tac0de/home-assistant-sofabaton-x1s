@@ -11,6 +11,7 @@ import {
   checkServerVersion,
   classifyFetchFailure,
   compareVersions,
+  embedHtmlSnippet,
   loadStoredDocument,
   mixedContentError,
   normalizeServerBase,
@@ -156,6 +157,33 @@ test("checkServerVersion accepts the floor and newer, refuses older and another 
   assert.equal(await checkServerVersion("http://nas:8480", fakeFetch(() => ({ body: "garbage" }))), null);
   const custom = await checkServerVersion("http://nas:8480", server("0.5.0"), "0.6.0");
   assert.equal(custom?.code, "server_too_old");
+});
+
+test("embedHtmlSnippet is the script and the element, with the layout inlined and attribute-safe", () => {
+  const withLayout = embedHtmlSnippet({
+    serverBase: "http://nas:8480/",
+    hubId: "e26a44861b45",
+    document: { show_dpad: false, custom_favorites: [{ name: "Marcel's <TV> & amp", command_id: 1, device_id: 2 }] },
+  });
+  assert.equal(
+    withLayout,
+    '<script type="module" src="http://nas:8480/ui/embed/sofabaton-remote.js"></script>\n' +
+      "<sofabaton-remote hub=\"e26a44861b45\" config='" +
+      '{"show_dpad":false,"custom_favorites":[{"name":"Marcel&#39;s &lt;TV> &amp; amp","command_id":1,"device_id":2}]}' +
+      "'></sofabaton-remote>",
+  );
+  // What the browser reads back from that attribute is the document again.
+  const attribute = withLayout.match(/config='([^']*)'/)?.[1] ?? "";
+  const decoded = attribute.replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+  assert.deepEqual(JSON.parse(decoded), {
+    show_dpad: false,
+    custom_favorites: [{ name: "Marcel's <TV> & amp", command_id: 1, device_id: 2 }],
+  });
+  const empty = embedHtmlSnippet({ serverBase: "http://nas:8480", hubId: "e26a44861b45", document: {} });
+  assert.match(empty, /config='\{\}'/);
+  const serverLayout = embedHtmlSnippet({ serverBase: "http://nas:8480", hubId: "e26a44861b45" });
+  assert.equal(serverLayout.includes("config="), false);
+  assert.match(serverLayout, /<sofabaton-remote hub="e26a44861b45"><\/sofabaton-remote>$/);
 });
 
 test("unavailableBannerText names the server's error, a generic reason, or nothing", () => {

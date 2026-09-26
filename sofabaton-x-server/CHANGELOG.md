@@ -20,6 +20,9 @@ follows the event stream. The same element is published to npm as
   listed-origin rule.
 - A listed origin's CORS preflight that asks for Chrome's Private
   Network Access is granted.
+- **Copy embed HTML** in the control panel's Remote → Layout: the
+  markup for another dashboard with the layout you made inlined, next to
+  Save.
 
 ## 0.2.2 (2026-09-25)
 
