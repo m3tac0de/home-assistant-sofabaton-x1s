@@ -1182,6 +1182,8 @@ test.describe("control panel, views", () => {
     await expect(numpad).toBeChecked();
     await numpad.uncheck();
     await expect(dpadRow.getByRole("switch", { name: "Direction pad", exact: true })).toBeChecked();
+    // The DVR keys are an X2 feature too: their switch sits on the Playback row for an X2 only.
+    await expect(editor.locator('[data-group="media"]').getByRole("switch", { name: "DVR", exact: true })).toHaveCount(1);
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("saved");
     expect(state.document.layouts.default.show_numpad).toBe(false);
@@ -1189,8 +1191,13 @@ test.describe("control panel, views", () => {
     await page.unroute(`**${API}/hubs/${x2.hub_id}/status`);
     await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(`${PAGE}#/${LIVING.hub_id}/remote/layout`);
+    // The X2 stand-in shares this hub id: a hash-only goto keeps the page, so reload for the X1S mock to apply.
+    await page.reload();
     await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    await expect(editor.locator('[data-group="dpad"]').getByRole("switch", { name: "Direction pad", exact: true })).toHaveCount(1);
     await expect(editor.locator('[data-group="dpad"]').getByRole("switch", { name: "Number pad", exact: true })).toHaveCount(0);
+    await expect(editor.locator('[data-group="media"]').getByRole("switch", { name: "Playback", exact: true })).toHaveCount(1);
+    await expect(editor.locator('[data-group="media"]').getByRole("switch", { name: "DVR", exact: true })).toHaveCount(0);
   });
 
   test("remote editor groups layout choices and keeps field focus clear of labels", async ({ page }, testInfo) => {

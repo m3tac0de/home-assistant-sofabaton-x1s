@@ -246,7 +246,8 @@ export class SbPanelRemoteEditor extends LitElement {
       if (key === "macros_row") return toggle(e.macros, macrosButtonEnabled(layout), macroTogglePatch);
       if (key === "favorites_row") return toggle(e.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return html`${toggle(e.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
-      if (key === "media") return html`${toggle(e.mediaControls, mediaGroupEnabled(layout), (v) => groupEnabledPatch("media", v))}${toggle(e.dvr, dvrGroupEnabled(layout), dvrTogglePatch)}`;
+      // The DVR keys exist on the X2 only: the switch follows the HA editor's gate.
+      if (key === "media") return html`${toggle(e.mediaControls, mediaGroupEnabled(layout), (v) => groupEnabledPatch("media", v))}${this._isX2() ? toggle(e.dvr, dvrGroupEnabled(layout), dvrTogglePatch) : nothing}`;
       // X2 only: the number pad behind the D-pad (numpad-plan.md), the same
       // second switch the HA editor carries; the server is never the
       // official integration, so the model is the whole gate.

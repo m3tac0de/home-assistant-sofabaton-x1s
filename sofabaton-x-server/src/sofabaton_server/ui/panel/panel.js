@@ -24344,7 +24344,7 @@ var SbPanelRemoteEditor = class extends i4 {
       if (key === "macros_row") return toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch);
       if (key === "favorites_row") return toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return b2`${toggle(e6.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e6.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
-      if (key === "media") return b2`${toggle(e6.mediaControls, mediaGroupEnabled(layout), (v3) => groupEnabledPatch("media", v3))}${toggle(e6.dvr, dvrGroupEnabled(layout), dvrTogglePatch)}`;
+      if (key === "media") return b2`${toggle(e6.mediaControls, mediaGroupEnabled(layout), (v3) => groupEnabledPatch("media", v3))}${this._isX2() ? toggle(e6.dvr, dvrGroupEnabled(layout), dvrTogglePatch) : A}`;
       if (key === "dpad" && this._isX2()) return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${toggle(e6.numpad, numpadEnabledForEditor(c7, s7), numpadTogglePatch)}`;
       return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
         ${key === "activity" && deviceModeEnabledInConfig(c7) ? this._toggle(e6.modeToggle, isGroupEnabled(c7, s7, key) && deviceToggleEnabledForEditor(c7, s7), (v3) => this._patch(deviceTogglePatch(v3)), "", !isGroupEnabled(c7, s7, key)) : A}`;
