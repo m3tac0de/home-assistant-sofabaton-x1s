@@ -954,6 +954,52 @@ test.describe("control panel, shell", () => {
     expect(menu.x + menu.width).toBeLessThanOrEqual(width);
     await page.screenshot({ path: shot(testInfo, "phone-setup"), fullPage: false });
   });
+
+  test("a tab visited before comes back with its content at once; it reads again only after a job ended while it was away", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    const snapshot = {
+      snapshot_id: "abc123", captured_at: "2026-09-16T10:00:00Z", engine_generation: 3, complete: true, payload_profile: "x1s",
+      devices: [{ kind: "device", device: { device_id: 1, name: "TV" }, complete: true, editable: true, fetched_at: "2026-09-16T10:00:00Z" }],
+      activities: [
+        { kind: "activity", device: { device_id: 101, name: "Watch TV" }, complete: true, editable: true, fetched_at: "2026-09-16T10:00:00Z" },
+        { kind: "activity", device: { device_id: 102, name: "Listen" }, complete: true, editable: true, fetched_at: "2026-09-16T10:00:00Z" },
+      ],
+    };
+    let snapshotReads = 0;
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => {
+      snapshotReads++;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+    });
+    await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/activities`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect.poll(() => sockets.length).toBe(1);
+    // The snapshot is the catalog's read alone (the Wifi Commands view lists activities too).
+    const before = snapshotReads;
+
+    // Away and back: the shell keeps the view (Lit's cache), so the list is there
+    // without a placeholder and without another read of the server.
+    await page.click('#tabs button[data-tab="wifi"]');
+    await expect(page.locator("sb-panel-wifi-devices")).toBeVisible();
+    await expect(page.locator("sb-panel-catalog")).toHaveCount(0);
+    await page.click('#tabs button[data-tab="hub"]');
+    await expect(rows).toHaveCount(2);
+    await expect(page.locator("#catalog-rows .cache-state")).toHaveCount(0);
+    await page.waitForTimeout(400);
+    expect(snapshotReads).toBe(before);
+
+    // A job that ended while the view was away (a Wifi deploy on the Wifi
+    // Commands tab) moves the hub's last_job: back on the Hub tab it reads again.
+    await page.click('#tabs button[data-tab="wifi"]');
+    await expect(page.locator("sb-panel-wifi-devices")).toBeVisible();
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: job({ job_id: "j9", kind: "deploy_wifi_device", status: "done", finished_at: new Date().toISOString() }) }));
+    await page.waitForTimeout(200);
+    expect(snapshotReads).toBe(before);
+    await page.click('#tabs button[data-tab="hub"]');
+    await expect.poll(() => snapshotReads).toBe(before + 1);
+    await expect(rows).toHaveCount(2);
+  });
 });
 
 test.describe("control panel, views", () => {
@@ -1288,6 +1334,38 @@ test.describe("control panel, views", () => {
     await expect(increment).toBeEnabled();
     await increment.click();
     await expect(editor.locator(".stepper output")).toHaveText("3");
+  });
+
+  test("Save keeps its place while it works: the label swap does not move the right-aligned control", async ({ page }) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    let release = null;
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/ui/remote-card`, async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await new Promise((resolve) => { release = resolve; });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ hub_id: LIVING.hub_id, document: route.request().postDataJSON().document, updated_at: "2026-09-16T01:00:00Z" }) });
+    });
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    await page.click("#remote-json");
+    await page.fill("#remote-doc", '{"show_dpad": true}');
+    const save = page.locator("#remote-save");
+    await expect(save).toBeEnabled();
+    const before = await save.boundingBox();
+    await save.click();
+    await expect(save).toBeDisabled();
+    await expect(save).toHaveText("Working…", { useInnerText: true });
+    // The mode buttons are not part of the save: they keep their look (no fieldset-wide disable).
+    await expect(page.locator("#remote-visual")).toBeEnabled();
+    await expect(page.locator("#remote-json")).toBeEnabled();
+    await expect(page.locator("#remote-doc")).toBeDisabled();
+    const during = await save.boundingBox();
+    expect(Math.abs(during.x - before.x)).toBeLessThan(1);
+    expect(Math.abs(during.width - before.width)).toBeLessThan(1);
+    await expect.poll(() => release !== null).toBe(true);
+    release();
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    await expect(save).toHaveText("Save", { useInnerText: true });
+    const after = await save.boundingBox();
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1);
   });
 
   test("remote configuration actions sit at the right of the editor mode row", async ({ page }, testInfo) => {

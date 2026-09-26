@@ -109,6 +109,11 @@ export class SbPanelRemote extends LitElement {
       .split > .primary { border-radius: 6px 0 0 6px; }
       .split > .caret { border-radius: 0 6px 6px 0; padding: 0 6px; margin-left: -1px; border-left-color: rgba(255, 255, 255, 0.4); }
       .split > .caret .mdi { width: 18px; height: 18px; display: block; }
+      /* Save's two labels share one cell, so the control keeps the wider one's width while it works
+         and does not walk left (the row is right-aligned) and back on every save. */
+      .swap { display: inline-grid; }
+      .swap > span { grid-area: 1 / 1; }
+      .swap > .ghost { visibility: hidden; }
       .split .menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-panel); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16); z-index: 30; }
       .split .menu[hidden] { display: none; }
       .split .menu button { text-align: left; border-color: transparent; background: none; font-weight: 500; }
@@ -155,6 +160,9 @@ export class SbPanelRemote extends LitElement {
     super.connectedCallback();
     this._fitObserver = new ResizeObserver(() => this._fit());
     window.addEventListener("resize", this._onWindowResize);
+    // Back from the shell's view cache: the fit frame was let go below, so
+    // watch it (and measure) again even if no property moved meanwhile.
+    if (this.hasUpdated) this.requestUpdate();
   }
 
   disconnectedCallback(): void {
@@ -164,7 +172,11 @@ export class SbPanelRemote extends LitElement {
     this._fitObserver?.disconnect();
     this._fitObserver = null;
     this._fitFrame = null;
-    this._unmount();
+    // The card and its backend stay mounted: the shell keeps this view in
+    // its cache across tab switches, and a remote that is rebuilt on every
+    // return shows its empty-then-loaded stages each time. The backend's
+    // stream socket stays open while hidden; a hub change or the shell
+    // dropping the element (_unmount in updated / a page unload) ends it.
   }
 
   protected willUpdate(changed: PropertyValues): void {
@@ -345,7 +357,7 @@ export class SbPanelRemote extends LitElement {
   }
 
   private _switchMode(mode: "visual" | "json"): void {
-    if (mode === this._mode) return;
+    if (mode === this._mode || this._busy) return;
     if (mode === "visual") {
       const parsed = this._readDocument();
       if (!parsed) return;
@@ -499,19 +511,21 @@ export class SbPanelRemote extends LitElement {
     `;
   }
 
+  /** Only the load disables the whole editor. A running save disables its own parts (Save, the caret, the
+   *  editor, the JSON field): dimming the mode buttons too made the row blink on every save. */
   private _renderLayout(hub: HubView | null): TemplateResult {
     return html`
       <div class="layout-content">
         <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save; its buttons do not control the hub.</div>
         <div class="layout-grid">
           <div class="editor">
-            <fieldset ?disabled=${!hub || !this._loaded || this._busy}>
+            <fieldset ?disabled=${!hub || !this._loaded}>
               <div class="mode-tabs" aria-label="Configuration editor">
                 <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
                 <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
                 <span class="doc-actions">
                   <span class="split" id="remote-actions" @keydown=${this._menuKeydown}>
-                    <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy || !this._isDirty()} @click=${this._save}>${this._busy ? "Working…" : "Save"}</button>
+                    <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy || !this._isDirty()} @click=${this._save}><span class="swap"><span class=${this._busy ? "ghost" : ""}>Save</span><span class=${this._busy ? "" : "ghost"}>Working…</span></span></button>
                     <button class="primary caret" id="remote-save-menu" aria-haspopup="menu" aria-expanded=${this._menuOpen ? "true" : "false"} aria-label="More actions" title="More actions"
                       ?disabled=${!hub || !this._loaded || this._busy} @click=${this._toggleMenu}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></button>
                     <div class="menu" role="menu" id="remote-actions-menu" ?hidden=${!this._menuOpen}>
@@ -527,8 +541,8 @@ export class SbPanelRemote extends LitElement {
                   @document-changed=${(ev: CustomEvent<{ document: Record<string, unknown> }>) => { ev.stopPropagation(); this._edit(ev.detail.document); }}
                   @layout-selected=${(ev: CustomEvent<{ selection: string }>) => { ev.stopPropagation(); this._selection = ev.detail.selection; this._updateCard(); }}
                 ></sb-panel-remote-editor>` : html`
-                <textarea id="remote-doc" aria-label="Remote configuration JSON" .value=${this._documentText} @input=${(ev: Event) => { this._documentText = (ev.target as HTMLTextAreaElement).value; this._setStatus("Unsaved JSON changes"); }} placeholder='{ "show_dpad": true }'></textarea>
-                <button @click=${() => { const parsed = this._readDocument(); if (parsed) this._edit(parsed); }}>Update preview</button>`}
+                <textarea id="remote-doc" aria-label="Remote configuration JSON" ?disabled=${this._busy} .value=${this._documentText} @input=${(ev: Event) => { this._documentText = (ev.target as HTMLTextAreaElement).value; this._setStatus("Unsaved JSON changes"); }} placeholder='{ "show_dpad": true }'></textarea>
+                <button ?disabled=${this._busy} @click=${() => { const parsed = this._readDocument(); if (parsed) this._edit(parsed); }}>Update preview</button>`}
             </fieldset>
             <textarea id="remote-embed-field" class="embed-field" aria-hidden="true" tabindex="-1" readonly></textarea>
           </div>

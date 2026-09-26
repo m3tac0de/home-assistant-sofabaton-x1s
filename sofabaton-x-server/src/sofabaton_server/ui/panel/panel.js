@@ -91,8 +91,8 @@ var y = class extends HTMLElement {
   }
   static createProperty(t5, s7 = b) {
     if (s7.state && (s7.attribute = false), this._$Ei(), this.prototype.hasOwnProperty(t5) && ((s7 = Object.create(s7)).wrapped = true), this.elementProperties.set(t5, s7), !s7.noAccessor) {
-      const i8 = /* @__PURE__ */ Symbol(), h6 = this.getPropertyDescriptor(t5, i8, s7);
-      void 0 !== h6 && e2(this.prototype, t5, h6);
+      const i8 = /* @__PURE__ */ Symbol(), h7 = this.getPropertyDescriptor(t5, i8, s7);
+      void 0 !== h7 && e2(this.prototype, t5, h7);
     }
   }
   static getPropertyDescriptor(t5, s7, i8) {
@@ -102,8 +102,8 @@ var y = class extends HTMLElement {
       this[s7] = t6;
     } };
     return { get: e6, set(s8) {
-      const h6 = e6?.call(this);
-      r6?.call(this, s8), this.requestUpdate(t5, h6, i8);
+      const h7 = e6?.call(this);
+      r6?.call(this, s8), this.requestUpdate(t5, h7, i8);
     }, configurable: true, enumerable: true };
   }
   static getPropertyOptions(t5) {
@@ -179,29 +179,29 @@ var y = class extends HTMLElement {
   _$ET(t5, s7) {
     const i8 = this.constructor.elementProperties.get(t5), e6 = this.constructor._$Eu(t5, i8);
     if (void 0 !== e6 && true === i8.reflect) {
-      const h6 = (void 0 !== i8.converter?.toAttribute ? i8.converter : u).toAttribute(s7, i8.type);
-      this._$Em = t5, null == h6 ? this.removeAttribute(e6) : this.setAttribute(e6, h6), this._$Em = null;
+      const h7 = (void 0 !== i8.converter?.toAttribute ? i8.converter : u).toAttribute(s7, i8.type);
+      this._$Em = t5, null == h7 ? this.removeAttribute(e6) : this.setAttribute(e6, h7), this._$Em = null;
     }
   }
   _$AK(t5, s7) {
     const i8 = this.constructor, e6 = i8._$Eh.get(t5);
     if (void 0 !== e6 && this._$Em !== e6) {
-      const t6 = i8.getPropertyOptions(e6), h6 = "function" == typeof t6.converter ? { fromAttribute: t6.converter } : void 0 !== t6.converter?.fromAttribute ? t6.converter : u;
+      const t6 = i8.getPropertyOptions(e6), h7 = "function" == typeof t6.converter ? { fromAttribute: t6.converter } : void 0 !== t6.converter?.fromAttribute ? t6.converter : u;
       this._$Em = e6;
-      const r6 = h6.fromAttribute(s7, t6.type);
+      const r6 = h7.fromAttribute(s7, t6.type);
       this[e6] = r6 ?? this._$Ej?.get(e6) ?? r6, this._$Em = null;
     }
   }
-  requestUpdate(t5, s7, i8, e6 = false, h6) {
+  requestUpdate(t5, s7, i8, e6 = false, h7) {
     if (void 0 !== t5) {
       const r6 = this.constructor;
-      if (false === e6 && (h6 = this[t5]), i8 ?? (i8 = r6.getPropertyOptions(t5)), !((i8.hasChanged ?? f)(h6, s7) || i8.useDefault && i8.reflect && h6 === this._$Ej?.get(t5) && !this.hasAttribute(r6._$Eu(t5, i8)))) return;
+      if (false === e6 && (h7 = this[t5]), i8 ?? (i8 = r6.getPropertyOptions(t5)), !((i8.hasChanged ?? f)(h7, s7) || i8.useDefault && i8.reflect && h7 === this._$Ej?.get(t5) && !this.hasAttribute(r6._$Eu(t5, i8)))) return;
       this.C(t5, s7, i8);
     }
     false === this.isUpdatePending && (this._$ES = this._$EP());
   }
-  C(t5, s7, { useDefault: i8, reflect: e6, wrapped: h6 }, r6) {
-    i8 && !(this._$Ej ?? (this._$Ej = /* @__PURE__ */ new Map())).has(t5) && (this._$Ej.set(t5, r6 ?? s7 ?? this[t5]), true !== h6 || void 0 !== r6) || (this._$AL.has(t5) || (this.hasUpdated || i8 || (s7 = void 0), this._$AL.set(t5, s7)), true === e6 && this._$Em !== t5 && (this._$Eq ?? (this._$Eq = /* @__PURE__ */ new Set())).add(t5));
+  C(t5, s7, { useDefault: i8, reflect: e6, wrapped: h7 }, r6) {
+    i8 && !(this._$Ej ?? (this._$Ej = /* @__PURE__ */ new Map())).has(t5) && (this._$Ej.set(t5, r6 ?? s7 ?? this[t5]), true !== h7 || void 0 !== r6) || (this._$AL.has(t5) || (this.hasUpdated || i8 || (s7 = void 0), this._$AL.set(t5, s7)), true === e6 && this._$Em !== t5 && (this._$Eq ?? (this._$Eq = /* @__PURE__ */ new Set())).add(t5));
   }
   async _$EP() {
     this.isUpdatePending = true;
@@ -302,46 +302,46 @@ function V(t5, i8) {
 }
 var N = (t5, i8) => {
   const s7 = t5.length - 1, e6 = [];
-  let n7, l5 = 2 === i8 ? "<svg>" : 3 === i8 ? "<math>" : "", c7 = v;
+  let n7, l6 = 2 === i8 ? "<svg>" : 3 === i8 ? "<math>" : "", c7 = v;
   for (let i9 = 0; i9 < s7; i9++) {
     const s8 = t5[i9];
-    let a4, u6, d3 = -1, f4 = 0;
-    for (; f4 < s8.length && (c7.lastIndex = f4, u6 = c7.exec(s8), null !== u6); ) f4 = c7.lastIndex, c7 === v ? "!--" === u6[1] ? c7 = _ : void 0 !== u6[1] ? c7 = m : void 0 !== u6[2] ? (y2.test(u6[2]) && (n7 = RegExp("</" + u6[2], "g")), c7 = p2) : void 0 !== u6[3] && (c7 = p2) : c7 === p2 ? ">" === u6[0] ? (c7 = n7 ?? v, d3 = -1) : void 0 === u6[1] ? d3 = -2 : (d3 = c7.lastIndex - u6[2].length, a4 = u6[1], c7 = void 0 === u6[3] ? p2 : '"' === u6[3] ? $ : g) : c7 === $ || c7 === g ? c7 = p2 : c7 === _ || c7 === m ? c7 = v : (c7 = p2, n7 = void 0);
+    let a4, u6, d5 = -1, f4 = 0;
+    for (; f4 < s8.length && (c7.lastIndex = f4, u6 = c7.exec(s8), null !== u6); ) f4 = c7.lastIndex, c7 === v ? "!--" === u6[1] ? c7 = _ : void 0 !== u6[1] ? c7 = m : void 0 !== u6[2] ? (y2.test(u6[2]) && (n7 = RegExp("</" + u6[2], "g")), c7 = p2) : void 0 !== u6[3] && (c7 = p2) : c7 === p2 ? ">" === u6[0] ? (c7 = n7 ?? v, d5 = -1) : void 0 === u6[1] ? d5 = -2 : (d5 = c7.lastIndex - u6[2].length, a4 = u6[1], c7 = void 0 === u6[3] ? p2 : '"' === u6[3] ? $ : g) : c7 === $ || c7 === g ? c7 = p2 : c7 === _ || c7 === m ? c7 = v : (c7 = p2, n7 = void 0);
     const x2 = c7 === p2 && t5[i9 + 1].startsWith("/>") ? " " : "";
-    l5 += c7 === v ? s8 + r3 : d3 >= 0 ? (e6.push(a4), s8.slice(0, d3) + h2 + s8.slice(d3) + o3 + x2) : s8 + o3 + (-2 === d3 ? i9 : x2);
+    l6 += c7 === v ? s8 + r3 : d5 >= 0 ? (e6.push(a4), s8.slice(0, d5) + h2 + s8.slice(d5) + o3 + x2) : s8 + o3 + (-2 === d5 ? i9 : x2);
   }
-  return [V(t5, l5 + (t5[s7] || "<?>") + (2 === i8 ? "</svg>" : 3 === i8 ? "</math>" : "")), e6];
+  return [V(t5, l6 + (t5[s7] || "<?>") + (2 === i8 ? "</svg>" : 3 === i8 ? "</math>" : "")), e6];
 };
 var S2 = class _S {
   constructor({ strings: t5, _$litType$: i8 }, e6) {
     let r6;
     this.parts = [];
-    let l5 = 0, a4 = 0;
-    const u6 = t5.length - 1, d3 = this.parts, [f4, v3] = N(t5, i8);
+    let l6 = 0, a4 = 0;
+    const u6 = t5.length - 1, d5 = this.parts, [f4, v3] = N(t5, i8);
     if (this.el = _S.createElement(f4, e6), P.currentNode = this.el.content, 2 === i8 || 3 === i8) {
       const t6 = this.el.content.firstChild;
       t6.replaceWith(...t6.childNodes);
     }
-    for (; null !== (r6 = P.nextNode()) && d3.length < u6; ) {
+    for (; null !== (r6 = P.nextNode()) && d5.length < u6; ) {
       if (1 === r6.nodeType) {
         if (r6.hasAttributes()) for (const t6 of r6.getAttributeNames()) if (t6.endsWith(h2)) {
           const i9 = v3[a4++], s7 = r6.getAttribute(t6).split(o3), e7 = /([.?@])?(.*)/.exec(i9);
-          d3.push({ type: 1, index: l5, name: e7[2], strings: s7, ctor: "." === e7[1] ? I : "?" === e7[1] ? L : "@" === e7[1] ? z : H }), r6.removeAttribute(t6);
-        } else t6.startsWith(o3) && (d3.push({ type: 6, index: l5 }), r6.removeAttribute(t6));
+          d5.push({ type: 1, index: l6, name: e7[2], strings: s7, ctor: "." === e7[1] ? I : "?" === e7[1] ? L : "@" === e7[1] ? z : H }), r6.removeAttribute(t6);
+        } else t6.startsWith(o3) && (d5.push({ type: 6, index: l6 }), r6.removeAttribute(t6));
         if (y2.test(r6.tagName)) {
           const t6 = r6.textContent.split(o3), i9 = t6.length - 1;
           if (i9 > 0) {
             r6.textContent = s2 ? s2.emptyScript : "";
-            for (let s7 = 0; s7 < i9; s7++) r6.append(t6[s7], c3()), P.nextNode(), d3.push({ type: 2, index: ++l5 });
+            for (let s7 = 0; s7 < i9; s7++) r6.append(t6[s7], c3()), P.nextNode(), d5.push({ type: 2, index: ++l6 });
             r6.append(t6[i9], c3());
           }
         }
-      } else if (8 === r6.nodeType) if (r6.data === n3) d3.push({ type: 2, index: l5 });
+      } else if (8 === r6.nodeType) if (r6.data === n3) d5.push({ type: 2, index: l6 });
       else {
         let t6 = -1;
-        for (; -1 !== (t6 = r6.data.indexOf(o3, t6 + 1)); ) d3.push({ type: 7, index: l5 }), t6 += o3.length - 1;
+        for (; -1 !== (t6 = r6.data.indexOf(o3, t6 + 1)); ) d5.push({ type: 7, index: l6 }), t6 += o3.length - 1;
       }
-      l5++;
+      l6++;
     }
   }
   static createElement(t5, i8) {
@@ -351,9 +351,9 @@ var S2 = class _S {
 };
 function M(t5, i8, s7 = t5, e6) {
   if (i8 === E) return i8;
-  let h6 = void 0 !== e6 ? s7._$Co?.[e6] : s7._$Cl;
+  let h7 = void 0 !== e6 ? s7._$Co?.[e6] : s7._$Cl;
   const o8 = a2(i8) ? void 0 : i8._$litDirective$;
-  return h6?.constructor !== o8 && (h6?._$AO?.(false), void 0 === o8 ? h6 = void 0 : (h6 = new o8(t5), h6._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h6 : s7._$Cl = h6), void 0 !== h6 && (i8 = M(t5, h6._$AS(t5, i8.values), h6, e6)), i8;
+  return h7?.constructor !== o8 && (h7?._$AO?.(false), void 0 === o8 ? h7 = void 0 : (h7 = new o8(t5), h7._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h7 : s7._$Cl = h7), void 0 !== h7 && (i8 = M(t5, h7._$AS(t5, i8.values), h7, e6)), i8;
 }
 var R = class {
   constructor(t5, i8) {
@@ -368,13 +368,13 @@ var R = class {
   u(t5) {
     const { el: { content: i8 }, parts: s7 } = this._$AD, e6 = (t5?.creationScope ?? l2).importNode(i8, true);
     P.currentNode = e6;
-    let h6 = P.nextNode(), o8 = 0, n7 = 0, r6 = s7[0];
+    let h7 = P.nextNode(), o8 = 0, n7 = 0, r6 = s7[0];
     for (; void 0 !== r6; ) {
       if (o8 === r6.index) {
         let i9;
-        2 === r6.type ? i9 = new k(h6, h6.nextSibling, this, t5) : 1 === r6.type ? i9 = new r6.ctor(h6, r6.name, r6.strings, this, t5) : 6 === r6.type && (i9 = new Z(h6, this, t5)), this._$AV.push(i9), r6 = s7[++n7];
+        2 === r6.type ? i9 = new k(h7, h7.nextSibling, this, t5) : 1 === r6.type ? i9 = new r6.ctor(h7, r6.name, r6.strings, this, t5) : 6 === r6.type && (i9 = new Z(h7, this, t5)), this._$AV.push(i9), r6 = s7[++n7];
       }
-      o8 !== r6?.index && (h6 = P.nextNode(), o8++);
+      o8 !== r6?.index && (h7 = P.nextNode(), o8++);
     }
     return P.currentNode = l2, e6;
   }
@@ -429,7 +429,7 @@ var k = class _k {
     u2(this._$AH) || (this._$AH = [], this._$AR());
     const i8 = this._$AH;
     let s7, e6 = 0;
-    for (const h6 of t5) e6 === i8.length ? i8.push(s7 = new _k(this.O(c3()), this.O(c3()), this, this.options)) : s7 = i8[e6], s7._$AI(h6), e6++;
+    for (const h7 of t5) e6 === i8.length ? i8.push(s7 = new _k(this.O(c3()), this.O(c3()), this, this.options)) : s7 = i8[e6], s7._$AI(h7), e6++;
     e6 < i8.length && (this._$AR(s7 && s7._$AB.nextSibling, e6), i8.length = e6);
   }
   _$AR(t5 = this._$AA.nextSibling, s7) {
@@ -449,17 +449,17 @@ var H = class {
   get _$AU() {
     return this._$AM._$AU;
   }
-  constructor(t5, i8, s7, e6, h6) {
-    this.type = 1, this._$AH = A, this._$AN = void 0, this.element = t5, this.name = i8, this._$AM = e6, this.options = h6, s7.length > 2 || "" !== s7[0] || "" !== s7[1] ? (this._$AH = Array(s7.length - 1).fill(new String()), this.strings = s7) : this._$AH = A;
+  constructor(t5, i8, s7, e6, h7) {
+    this.type = 1, this._$AH = A, this._$AN = void 0, this.element = t5, this.name = i8, this._$AM = e6, this.options = h7, s7.length > 2 || "" !== s7[0] || "" !== s7[1] ? (this._$AH = Array(s7.length - 1).fill(new String()), this.strings = s7) : this._$AH = A;
   }
   _$AI(t5, i8 = this, s7, e6) {
-    const h6 = this.strings;
+    const h7 = this.strings;
     let o8 = false;
-    if (void 0 === h6) t5 = M(this, t5, i8, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
+    if (void 0 === h7) t5 = M(this, t5, i8, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
     else {
       const e7 = t5;
       let n7, r6;
-      for (t5 = h6[0], n7 = 0; n7 < h6.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h6[n7 + 1]), this._$AH[n7] = r6;
+      for (t5 = h7[0], n7 = 0; n7 < h7.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h7[n7 + 1]), this._$AH[n7] = r6;
     }
     o8 && !e6 && this.j(t5);
   }
@@ -484,13 +484,13 @@ var L = class extends H {
   }
 };
 var z = class extends H {
-  constructor(t5, i8, s7, e6, h6) {
-    super(t5, i8, s7, e6, h6), this.type = 5;
+  constructor(t5, i8, s7, e6, h7) {
+    super(t5, i8, s7, e6, h7), this.type = 5;
   }
   _$AI(t5, i8 = this) {
     if ((t5 = M(this, t5, i8, 0) ?? A) === E) return;
-    const s7 = this._$AH, e6 = t5 === A && s7 !== A || t5.capture !== s7.capture || t5.once !== s7.once || t5.passive !== s7.passive, h6 = t5 !== A && (s7 === A || e6);
-    e6 && this.element.removeEventListener(this.name, this, s7), h6 && this.element.addEventListener(this.name, this, t5), this._$AH = t5;
+    const s7 = this._$AH, e6 = t5 === A && s7 !== A || t5.capture !== s7.capture || t5.once !== s7.once || t5.passive !== s7.passive, h7 = t5 !== A && (s7 === A || e6);
+    e6 && this.element.removeEventListener(this.name, this, s7), h7 && this.element.addEventListener(this.name, this, t5), this._$AH = t5;
   }
   handleEvent(t5) {
     "function" == typeof this._$AH ? this._$AH.call(this.options?.host ?? this.element, t5) : this._$AH.handleEvent(t5);
@@ -512,12 +512,12 @@ var B = t2.litHtmlPolyfillSupport;
 B?.(S2, k), (t2.litHtmlVersions ?? (t2.litHtmlVersions = [])).push("3.3.2");
 var D = (t5, i8, s7) => {
   const e6 = s7?.renderBefore ?? i8;
-  let h6 = e6._$litPart$;
-  if (void 0 === h6) {
+  let h7 = e6._$litPart$;
+  if (void 0 === h7) {
     const t6 = s7?.renderBefore ?? null;
-    e6._$litPart$ = h6 = new k(i8.insertBefore(c3(), t6), t6, void 0, s7 ?? {});
+    e6._$litPart$ = h7 = new k(i8.insertBefore(c3(), t6), t6, void 0, s7 ?? {});
   }
-  return h6._$AI(t5), h6;
+  return h7._$AI(t5), h7;
 };
 
 // node_modules/lit-element/lit-element.js
@@ -573,12 +573,14 @@ var i5 = class {
 // node_modules/lit-html/directive-helpers.js
 var { I: t4 } = j;
 var i6 = (o8) => o8;
+var l3 = (o8, t5) => void 0 === t5 ? void 0 !== o8?._$litType$ : o8?._$litType$ === t5;
+var d3 = (o8) => null != o8?._$litType$?.h;
 var r4 = (o8) => void 0 === o8.strings;
 var s4 = () => document.createComment("");
 var v2 = (o8, n7, e6) => {
-  const l5 = o8._$AA.parentNode, d3 = void 0 === n7 ? o8._$AB : n7._$AA;
+  const l6 = o8._$AA.parentNode, d5 = void 0 === n7 ? o8._$AB : n7._$AA;
   if (void 0 === e6) {
-    const i8 = l5.insertBefore(s4(), d3), n8 = l5.insertBefore(s4(), d3);
+    const i8 = l6.insertBefore(s4(), d5), n8 = l6.insertBefore(s4(), d5);
     e6 = new t4(i8, n8, o8, o8.options);
   } else {
     const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o8;
@@ -586,11 +588,11 @@ var v2 = (o8, n7, e6) => {
       let t6;
       e6._$AQ?.(o8), e6._$AM = o8, void 0 !== e6._$AP && (t6 = o8._$AU) !== n8._$AU && e6._$AP(t6);
     }
-    if (t5 !== d3 || c7) {
+    if (t5 !== d5 || c7) {
       let o9 = e6._$AA;
       for (; o9 !== t5; ) {
         const t6 = i6(o9).nextSibling;
-        i6(l5).insertBefore(o9, d3), o9 = t6;
+        i6(l6).insertBefore(o9, d5), o9 = t6;
       }
     }
   }
@@ -603,11 +605,14 @@ var M2 = (o8) => o8._$AH;
 var h3 = (o8) => {
   o8._$AR(), o8._$AA.remove();
 };
+var j2 = (o8) => {
+  o8._$AR();
+};
 
 // node_modules/lit-html/directives/repeat.js
 var u4 = (e6, s7, t5) => {
   const r6 = /* @__PURE__ */ new Map();
-  for (let l5 = s7; l5 <= t5; l5++) r6.set(e6[l5], l5);
+  for (let l6 = s7; l6 <= t5; l6++) r6.set(e6[l6], l6);
   return r6;
 };
 var c4 = e4(class extends i5 {
@@ -617,40 +622,40 @@ var c4 = e4(class extends i5 {
   dt(e6, s7, t5) {
     let r6;
     void 0 === t5 ? t5 = s7 : void 0 !== s7 && (r6 = s7);
-    const l5 = [], o8 = [];
+    const l6 = [], o8 = [];
     let i8 = 0;
-    for (const s8 of e6) l5[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
-    return { values: o8, keys: l5 };
+    for (const s8 of e6) l6[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
+    return { values: o8, keys: l6 };
   }
   render(e6, s7, t5) {
     return this.dt(e6, s7, t5).values;
   }
   update(s7, [t5, r6, c7]) {
-    const d3 = M2(s7), { values: p4, keys: a4 } = this.dt(t5, r6, c7);
-    if (!Array.isArray(d3)) return this.ut = a4, p4;
-    const h6 = this.ut ?? (this.ut = []), v3 = [];
-    let m3, y3, x2 = 0, j2 = d3.length - 1, k2 = 0, w2 = p4.length - 1;
-    for (; x2 <= j2 && k2 <= w2; ) if (null === d3[x2]) x2++;
-    else if (null === d3[j2]) j2--;
-    else if (h6[x2] === a4[k2]) v3[k2] = u3(d3[x2], p4[k2]), x2++, k2++;
-    else if (h6[j2] === a4[w2]) v3[w2] = u3(d3[j2], p4[w2]), j2--, w2--;
-    else if (h6[x2] === a4[w2]) v3[w2] = u3(d3[x2], p4[w2]), v2(s7, v3[w2 + 1], d3[x2]), x2++, w2--;
-    else if (h6[j2] === a4[k2]) v3[k2] = u3(d3[j2], p4[k2]), v2(s7, d3[x2], d3[j2]), j2--, k2++;
-    else if (void 0 === m3 && (m3 = u4(a4, k2, w2), y3 = u4(h6, x2, j2)), m3.has(h6[x2])) if (m3.has(h6[j2])) {
-      const e6 = y3.get(a4[k2]), t6 = void 0 !== e6 ? d3[e6] : null;
+    const d5 = M2(s7), { values: p4, keys: a4 } = this.dt(t5, r6, c7);
+    if (!Array.isArray(d5)) return this.ut = a4, p4;
+    const h7 = this.ut ?? (this.ut = []), v3 = [];
+    let m3, y3, x2 = 0, j3 = d5.length - 1, k2 = 0, w2 = p4.length - 1;
+    for (; x2 <= j3 && k2 <= w2; ) if (null === d5[x2]) x2++;
+    else if (null === d5[j3]) j3--;
+    else if (h7[x2] === a4[k2]) v3[k2] = u3(d5[x2], p4[k2]), x2++, k2++;
+    else if (h7[j3] === a4[w2]) v3[w2] = u3(d5[j3], p4[w2]), j3--, w2--;
+    else if (h7[x2] === a4[w2]) v3[w2] = u3(d5[x2], p4[w2]), v2(s7, v3[w2 + 1], d5[x2]), x2++, w2--;
+    else if (h7[j3] === a4[k2]) v3[k2] = u3(d5[j3], p4[k2]), v2(s7, d5[x2], d5[j3]), j3--, k2++;
+    else if (void 0 === m3 && (m3 = u4(a4, k2, w2), y3 = u4(h7, x2, j3)), m3.has(h7[x2])) if (m3.has(h7[j3])) {
+      const e6 = y3.get(a4[k2]), t6 = void 0 !== e6 ? d5[e6] : null;
       if (null === t6) {
-        const e7 = v2(s7, d3[x2]);
+        const e7 = v2(s7, d5[x2]);
         u3(e7, p4[k2]), v3[k2] = e7;
-      } else v3[k2] = u3(t6, p4[k2]), v2(s7, d3[x2], t6), d3[e6] = null;
+      } else v3[k2] = u3(t6, p4[k2]), v2(s7, d5[x2], t6), d5[e6] = null;
       k2++;
-    } else h3(d3[j2]), j2--;
-    else h3(d3[x2]), x2++;
+    } else h3(d5[j3]), j3--;
+    else h3(d5[x2]), x2++;
     for (; k2 <= w2; ) {
       const e6 = v2(s7, v3[w2 + 1]);
       u3(e6, p4[k2]), v3[k2++] = e6;
     }
-    for (; x2 <= j2; ) {
-      const e6 = d3[x2++];
+    for (; x2 <= j3; ) {
+      const e6 = d5[x2++];
       null !== e6 && h3(e6);
     }
     return this.ut = a4, p3(s7, v3), E;
@@ -683,8 +688,8 @@ function h4(i8) {
   void 0 !== this._$AN ? (o5(this), this._$AM = i8, r5(this)) : this._$AM = i8;
 }
 function n4(i8, t5 = false, e6 = 0) {
-  const r6 = this._$AH, h6 = this._$AN;
-  if (void 0 !== h6 && 0 !== h6.size) if (t5) if (Array.isArray(r6)) for (let i9 = e6; i9 < r6.length; i9++) s5(r6[i9], false), o5(r6[i9]);
+  const r6 = this._$AH, h7 = this._$AN;
+  if (void 0 !== h7 && 0 !== h7.size) if (t5) if (Array.isArray(r6)) for (let i9 = e6; i9 < r6.length; i9++) s5(r6[i9], false), o5(r6[i9]);
   else null != r6 && (s5(r6, false), o5(r6));
   else s5(this, i8);
 }
@@ -3053,9 +3058,9 @@ var HoldRepeatTimer = class {
     this.intervalMs = options.intervalMs ?? HOLD_REPEAT_INTERVAL_MS;
     this.timers = {
       setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
-      clearTimeout: options.clearTimeout ?? ((h6) => clearTimeout(h6)),
+      clearTimeout: options.clearTimeout ?? ((h7) => clearTimeout(h7)),
       setInterval: options.setInterval ?? ((fn, ms) => setInterval(fn, ms)),
-      clearInterval: options.clearInterval ?? ((h6) => clearInterval(h6))
+      clearInterval: options.clearInterval ?? ((h7) => clearInterval(h7))
     };
   }
   /** True while a hold is armed or repeating. */
@@ -3122,7 +3127,7 @@ var LongPressTimer = class {
     this.delayMs = options.delayMs ?? LONG_PRESS_HOLD_MS;
     this.timers = {
       setTimeout: options.setTimeout ?? ((fn, ms) => setTimeout(fn, ms)),
-      clearTimeout: options.clearTimeout ?? ((h6) => clearTimeout(h6))
+      clearTimeout: options.clearTimeout ?? ((h7) => clearTimeout(h7))
     };
   }
   /** True while a hold is armed (the fire has not happened or been cancelled). */
@@ -5629,7 +5634,7 @@ var o7 = (t5) => {
   if (t5?.r === a3) return t5?._$litStatic$;
 };
 var s6 = (t5) => ({ _$litStatic$: t5, r: a3 });
-var l3 = /* @__PURE__ */ new Map();
+var l4 = /* @__PURE__ */ new Map();
 var n6 = (t5) => (r6, ...e6) => {
   const a4 = e6.length;
   let s7, i8;
@@ -5641,7 +5646,7 @@ var n6 = (t5) => (r6, ...e6) => {
   }
   if ($3 === a4 && n7.push(r6[a4]), f4) {
     const t6 = n7.join("$$lit$$");
-    void 0 === (r6 = l3.get(t6)) && (n7.raw = n7, l3.set(t6, r6 = n7)), e6 = u6;
+    void 0 === (r6 = l4.get(t6)) && (n7.raw = n7, l4.set(t6, r6 = n7)), e6 = u6;
   }
   return t5(r6, ...e6);
 };
@@ -11531,6 +11536,40 @@ function defineAuthDialog() {
   if (!customElements.get(AUTH_DIALOG_TAG)) customElements.define(AUTH_DIALOG_TAG, SbPanelAuth);
 }
 
+// node_modules/lit-html/directives/cache.js
+var d4 = (t5) => d3(t5) ? t5._$litType$.h : t5.strings;
+var h6 = e4(class extends i5 {
+  constructor(t5) {
+    super(t5), this.et = /* @__PURE__ */ new WeakMap();
+  }
+  render(t5) {
+    return [t5];
+  }
+  update(s7, [e6]) {
+    const u6 = l3(this.it) ? d4(this.it) : null, h7 = l3(e6) ? d4(e6) : null;
+    if (null !== u6 && (null === h7 || u6 !== h7)) {
+      const e7 = M2(s7).pop();
+      let o8 = this.et.get(u6);
+      if (void 0 === o8) {
+        const s8 = document.createDocumentFragment();
+        o8 = D(A, s8), o8.setConnected(false), this.et.set(u6, o8);
+      }
+      p3(o8, [e7]), v2(o8, void 0, e7);
+    }
+    if (null !== h7) {
+      if (null === u6 || u6 !== h7) {
+        const t5 = this.et.get(h7);
+        if (void 0 !== t5) {
+          const i8 = M2(t5).pop();
+          j2(s7), v2(s7, void 0, i8), p3(s7, [i8]);
+        }
+      }
+      this.it = e6;
+    } else this.it = void 0;
+    return this.render(e6);
+  }
+});
+
 // node_modules/lit-html/directives/keyed.js
 var i7 = e4(class extends i5 {
   constructor() {
@@ -11744,9 +11783,9 @@ function hubDisplayName(hub) {
 }
 function unregisteredHubs(seen, hubs) {
   const macKey = (value) => String(value ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
-  return seen.filter((s7) => !hubs.some((h6) => {
+  return seen.filter((s7) => !hubs.some((h7) => {
     const mac = macKey(s7.config.mac);
-    return h6.hub_id === s7.registered_hub_id || h6.config.host === s7.config.host || Boolean(mac && (mac === macKey(h6.config.mac) || mac === h6.hub_id));
+    return h7.hub_id === s7.registered_hub_id || h7.config.host === s7.config.host || Boolean(mac && (mac === macKey(h7.config.mac) || mac === h7.hub_id));
   }));
 }
 function formatWhen(iso) {
@@ -12293,7 +12332,7 @@ function summarizeMessage(data) {
       return `job_event ${m3.hub_id} ${m3.job?.kind} ${m3.job?.status}${suffix}`;
     }
     case "hello":
-      return `hello v${m3.server_version} instance=${m3.instance_id} hubs=${(m3.hubs ?? []).map((h6) => h6.hub_id).join(",")}`;
+      return `hello v${m3.server_version} instance=${m3.instance_id} hubs=${(m3.hubs ?? []).map((h7) => h7.hub_id).join(",")}`;
     case "dropped":
       return `dropped ${m3.count}`;
     default:
@@ -12584,7 +12623,7 @@ var PanelStore = class {
       this._set({ listLoaded: true });
     }
     const selected = this._snapshot.selectedHubId;
-    if (hubs.length && !hubs.some((h6) => h6.hub_id === selected)) this.selectHub(hubs[0].hub_id);
+    if (hubs.length && !hubs.some((h7) => h7.hub_id === selected)) this.selectHub(hubs[0].hub_id);
     if (!hubs.length) {
       if (selected !== null) this.selectHub(null);
       if (this._snapshot.route.kind === "hub") this.navigate(toolRoute("setup"), { replace: true });
@@ -13282,9 +13321,9 @@ var SofabatonServerPanel = class extends i4 {
     void this.store.refreshHubs();
   }
   _onNavigate(event) {
-    const d3 = event.detail;
-    if (d3.page) this._go(toolRoute(d3.page));
-    else if (d3.tab) this._go(hubRoute(null, d3.tab, d3.sub, d3.entity, d3.item));
+    const d5 = event.detail;
+    if (d5.page) this._go(toolRoute(d5.page));
+    else if (d5.tab) this._go(hubRoute(null, d5.tab, d5.sub, d5.entity, d5.item));
   }
   // -- render ---------------------------------------------------------------------------
   _renderView(ctx) {
@@ -13410,7 +13449,7 @@ var SofabatonServerPanel = class extends i4 {
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
-          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
+          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${h6(this._renderView(ctx))}</div>
           ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
         ${renderBottomDock({
@@ -14108,8 +14147,8 @@ var SbPanelMqtt = class extends i4 {
   }
   _dirty() {
     const saved = draftFrom(this._config);
-    const d3 = this._draft;
-    return Boolean(d3.password) || d3.clearPassword || Object.keys(saved).some((k2) => k2 !== "password" && k2 !== "clearPassword" && saved[k2] !== d3[k2]);
+    const d5 = this._draft;
+    return Boolean(d5.password) || d5.clearPassword || Object.keys(saved).some((k2) => k2 !== "password" && k2 !== "clearPassword" && saved[k2] !== d5[k2]);
   }
   /** The saved password would be dropped: the destination moved and no new one was typed. */
   _dropsPassword() {
@@ -14227,7 +14266,7 @@ var SbPanelMqtt = class extends i4 {
     `;
   }
   _renderForm() {
-    const d3 = this._draft;
+    const d5 = this._draft;
     const c7 = this._config;
     const busy = this._busy !== "";
     const dirty = this._dirty();
@@ -14235,28 +14274,28 @@ var SbPanelMqtt = class extends i4 {
       <div class="panel" id="mqtt-form">
         <h2>Broker</h2>
         <div class="fields">
-          <div><label for="mqtt-host">Host</label><input id="mqtt-host" type="text" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or broker.lan" .value=${d3.host} @input=${(e6) => this._set("host", e6.target.value)} /></div>
-          <div><label for="mqtt-port">Port</label><input id="mqtt-port" type="number" min="1" max="65535" inputmode="numeric" placeholder=${d3.tls ? "8883" : "1883"} .value=${d3.port} @input=${(e6) => this._set("port", e6.target.value)} /></div>
-          <div><label for="mqtt-username">User name</label><input id="mqtt-username" type="text" autocomplete="off" spellcheck="false" .value=${d3.username} @input=${(e6) => this._set("username", e6.target.value)} /></div>
+          <div><label for="mqtt-host">Host</label><input id="mqtt-host" type="text" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or broker.lan" .value=${d5.host} @input=${(e6) => this._set("host", e6.target.value)} /></div>
+          <div><label for="mqtt-port">Port</label><input id="mqtt-port" type="number" min="1" max="65535" inputmode="numeric" placeholder=${d5.tls ? "8883" : "1883"} .value=${d5.port} @input=${(e6) => this._set("port", e6.target.value)} /></div>
+          <div><label for="mqtt-username">User name</label><input id="mqtt-username" type="text" autocomplete="off" spellcheck="false" .value=${d5.username} @input=${(e6) => this._set("username", e6.target.value)} /></div>
           <div>
             <label for="mqtt-password">Password</label>
-            <input id="mqtt-password" type="password" autocomplete="new-password" placeholder=${c7?.password_set && !d3.clearPassword ? "saved; leave empty to keep" : ""} .value=${d3.password} ?disabled=${d3.clearPassword} @input=${(e6) => this._set("password", e6.target.value)} />
-            ${c7?.password_set ? b2`<div class="pw-note">${d3.clearPassword ? b2`<span id="mqtt-password-clearing">The saved password is removed on Save.</span><button class="small" type="button" @click=${() => this._set("clearPassword", false)}>Keep it</button>` : b2`<button class="small" type="button" id="mqtt-password-clear" @click=${() => {
+            <input id="mqtt-password" type="password" autocomplete="new-password" placeholder=${c7?.password_set && !d5.clearPassword ? "saved; leave empty to keep" : ""} .value=${d5.password} ?disabled=${d5.clearPassword} @input=${(e6) => this._set("password", e6.target.value)} />
+            ${c7?.password_set ? b2`<div class="pw-note">${d5.clearPassword ? b2`<span id="mqtt-password-clearing">The saved password is removed on Save.</span><button class="small" type="button" @click=${() => this._set("clearPassword", false)}>Keep it</button>` : b2`<button class="small" type="button" id="mqtt-password-clear" @click=${() => {
       this._draft = { ...this._draft, password: "", clearPassword: true };
     }}>Remove saved password</button>`}</div>` : A}
           </div>
         </div>
         <div class="checks">
-          <label class="inline" for="mqtt-tls"><input id="mqtt-tls" type="checkbox" .checked=${d3.tls} @change=${(e6) => this._set("tls", e6.target.checked)} /> Connect over TLS</label>
-          <label class="inline" for="mqtt-insecure"><input id="mqtt-insecure" type="checkbox" .checked=${d3.tls_insecure} ?disabled=${!d3.tls} @change=${(e6) => this._set("tls_insecure", e6.target.checked)} /> Do not check the broker's certificate</label>
+          <label class="inline" for="mqtt-tls"><input id="mqtt-tls" type="checkbox" .checked=${d5.tls} @change=${(e6) => this._set("tls", e6.target.checked)} /> Connect over TLS</label>
+          <label class="inline" for="mqtt-insecure"><input id="mqtt-insecure" type="checkbox" .checked=${d5.tls_insecure} ?disabled=${!d5.tls} @change=${(e6) => this._set("tls_insecure", e6.target.checked)} /> Do not check the broker's certificate</label>
         </div>
-        ${d3.tls ? b2`<div class="fields"><div><label for="mqtt-ca">CA certificate file on the server (optional)</label><input id="mqtt-ca" type="text" spellcheck="false" placeholder="/data/ca.pem; empty = the system's store" .value=${d3.tls_ca} @input=${(e6) => this._set("tls_ca", e6.target.value)} /></div></div>` : A}
-        <details ?open=${Boolean(d3.client_id)}>
+        ${d5.tls ? b2`<div class="fields"><div><label for="mqtt-ca">CA certificate file on the server (optional)</label><input id="mqtt-ca" type="text" spellcheck="false" placeholder="/data/ca.pem; empty = the system's store" .value=${d5.tls_ca} @input=${(e6) => this._set("tls_ca", e6.target.value)} /></div></div>` : A}
+        <details ?open=${Boolean(d5.client_id)}>
           <summary>Advanced</summary>
-          <div class="fields"><div><label for="mqtt-client-id">Client id</label><input id="mqtt-client-id" type="text" spellcheck="false" placeholder="automatic" .value=${d3.client_id} @input=${(e6) => this._set("client_id", e6.target.value)} /></div></div>
+          <div class="fields"><div><label for="mqtt-client-id">Client id</label><input id="mqtt-client-id" type="text" spellcheck="false" placeholder="automatic" .value=${d5.client_id} @input=${(e6) => this._set("client_id", e6.target.value)} /></div></div>
         </details>
         ${this._dropsPassword() ? b2`<div class="warn" id="mqtt-drop-warning">You changed where the password is sent. The saved password is dropped on Save unless you enter it again, so it never goes to a new place by itself.</div>` : A}
-        ${d3.tls && d3.tls_insecure ? b2`<div class="warn">Without a certificate check, anyone in the path can pose as the broker and read the password.</div>` : A}
+        ${d5.tls && d5.tls_insecure ? b2`<div class="warn">Without a certificate check, anyone in the path can pose as the broker and read the password.</div>` : A}
         ${this._test ? b2`<div class="result ${this._test.ok ? "msg-ok" : "msg-err"}" id="mqtt-test-result">${this._test.ok ? `Connected (${this._test.elapsed_ms} ms). Nothing was saved.` : `Could not connect: ${this._test.error}`}</div>` : A}
         <div class="actions">
           <button class="small" id="mqtt-test" type="button" ?disabled=${busy || !this.reachable} @click=${this._runTest}>${this._busy === "test" ? "testing\u2026" : "Test connection"}</button>
@@ -14488,7 +14527,7 @@ var SbPanelApi = class extends i4 {
           <pre id="rawreq">${this._request}</pre>
           <label>History</label>
           <div class="history" id="history">
-            ${this._history.map((h6) => b2`<button @click=${() => this._recall(h6)}>${h6.at}  ${h6.status}  ${h6.method} ${h6.path}${h6.query ? `?${h6.query}` : ""}</button>`)}
+            ${this._history.map((h7) => b2`<button @click=${() => this._recall(h7)}>${h7.at}  ${h7.status}  ${h7.method} ${h7.path}${h7.query ? `?${h7.query}` : ""}</button>`)}
           </div>
         </div>
         <div class="panel">
@@ -18357,6 +18396,7 @@ var SbPanelBackup = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearExpiryTimer();
+    this._jobsKey = "";
     this._activitySorter.cancel();
     this._deviceSorter.cancel();
     this._announceDirty(false);
@@ -19111,9 +19151,9 @@ function buildCatalog(devices, activities, snapshot) {
   for (const e6 of snapshot?.devices ?? []) provenance.set(entryKey("device", e6.device.device_id), e6);
   for (const e6 of snapshot?.activities ?? []) provenance.set(entryKey("activity", e6.device.device_id), e6);
   const entries = [];
-  for (const d3 of devices) {
-    const p4 = provenance.get(entryKey("device", d3.device_id));
-    entries.push({ kind: "device", id: d3.device_id, name: d3.name, device: d3, activity: null, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("device", p4) });
+  for (const d5 of devices) {
+    const p4 = provenance.get(entryKey("device", d5.device_id));
+    entries.push({ kind: "device", id: d5.device_id, name: d5.name, device: d5, activity: null, fetched_at: p4?.fetched_at ?? null, complete: p4?.complete ?? false, counts: countsFromSnapshot("device", p4) });
   }
   for (const a4 of activities) {
     const p4 = provenance.get(entryKey("activity", a4.activity_id));
@@ -19439,8 +19479,8 @@ var SbPanelCatalog = class extends i4 {
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
-        onUpdate: (j2) => {
-          this._refresh = { key, text: jobPhrase(j2) };
+        onUpdate: (j3) => {
+          this._refresh = { key, text: jobPhrase(j3) };
         }
       });
       if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
@@ -23763,13 +23803,13 @@ var SbPanelHubs = class extends i4 {
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
     if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
-    const h6 = this.hub;
-    const key = h6 ? `${h6.hub_id}:${h6.enabled}:${Boolean(h6.status)}:${Boolean(h6.status?.hub_connected)}` : "";
+    const h7 = this.hub;
+    const key = h7 ? `${h7.hub_id}:${h7.enabled}:${Boolean(h7.status)}:${Boolean(h7.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
       this._infoKey = key;
       const seq = ++this._infoSeq;
-      this._firmware = h6?.enabled && h6.status ? "Loading\u2026" : "Not available";
-      if (h6?.enabled && h6.status && this.api) void this._loadFirmware(h6.hub_id, seq);
+      this._firmware = h7?.enabled && h7.status ? "Loading\u2026" : "Not available";
+      if (h7?.enabled && h7.status && this.api) void this._loadFirmware(h7.hub_id, seq);
     }
   }
   async _loadFirmware(hubId, seq) {
@@ -23795,7 +23835,7 @@ var SbPanelHubs = class extends i4 {
       this._confirmRemove = hubId;
       return;
     }
-    const record = this.hubs.find((h6) => h6.hub_id === hubId) ?? null;
+    const record = this.hubs.find((h7) => h7.hub_id === hubId) ?? null;
     this._busy = new Set(this._busy).add(hubId);
     try {
       const response = action === "remove" ? await this.api.removeHub(hubId) : action === "enable" ? await this.api.enableHub(hubId) : await this.api.disableHub(hubId);
@@ -23850,50 +23890,50 @@ var SbPanelHubs = class extends i4 {
     return b2`<div class="panel" id="hub-detail">${this._renderDetail()}</div>`;
   }
   _renderDetail() {
-    const h6 = this.hub;
-    if (!h6) return b2`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Use the hub picker to find or add a hub. <button class="small" @click=${(event) => {
+    const h7 = this.hub;
+    if (!h7) return b2`<div class="hint">${this.hubs.length ? "No hub selected." : "No hubs registered yet."} Use the hub picker to find or add a hub. <button class="small" @click=${(event) => {
       event.stopPropagation();
       this._emit("sb-open-picker");
     }}>Find or add a hub</button></div>`;
-    const { text, tone } = hubState(h6);
-    const s7 = h6.status;
-    const busy = this._busy.has(h6.hub_id);
-    const proxyOn = h6.config.proxy_enabled !== false;
-    const model = h6.config.hub_version || s7?.hub_version || "unknown";
+    const { text, tone } = hubState(h7);
+    const s7 = h7.status;
+    const busy = this._busy.has(h7.hub_id);
+    const proxyOn = h7.config.proxy_enabled !== false;
+    const model = h7.config.hub_version || s7?.hub_version || "unknown";
     const facts = [
       ["state", b2`<span class="tone-${tone}">${text}</span>`],
-      ["host", b2`<span class="mono">${h6.config.host}</span>`],
+      ["host", b2`<span class="mono">${h7.config.host}</span>`],
       ["model", model],
       ["firmware version", this._firmware],
-      ["hub id", b2`<span class="mono">${h6.hub_id}</span>`],
-      ["mac", b2`<span class="mono">${h6.config.mac || "not yet known"}</span>`],
-      ["last seen", formatWhen(h6.last_seen)],
-      ["added", formatWhen(h6.added_at)],
+      ["hub id", b2`<span class="mono">${h7.hub_id}</span>`],
+      ["mac", b2`<span class="mono">${h7.config.mac || "not yet known"}</span>`],
+      ["last seen", formatWhen(h7.last_seen)],
+      ["added", formatWhen(h7.added_at)],
       ["cache", s7 ? `${s7.devices_cached} devices \xB7 ${s7.activities_cached} activities` : "no proxy running"],
       ["app proxy", proxyOn ? s7?.app_connected ? "on, the app is connected" : "on" : s7?.app_connected ? "off, the app stays until it disconnects" : "off"],
       ["running activity", s7?.running_activity ? String(s7.running_activity.name || s7.running_activity.activity_id) : "none"]
     ];
     return b2`
-      <div class="headline"><span class="dot ${tone}"></span><span class="title">${hubDisplayName(h6)}</span><span class="id mono">${h6.config.name ? h6.hub_id : ""}</span></div>
+      <div class="headline"><span class="dot ${tone}"></span><span class="title">${hubDisplayName(h7)}</span><span class="id mono">${h7.config.name ? h7.hub_id : ""}</span></div>
       <dl class="facts">${facts.map(([k2, v3]) => b2`<div><dt>${k2}</dt><dd>${v3}</dd></div>`)}</dl>
       <div class="actions" id="hub-actions">
-        ${this._confirmRemove === h6.hub_id ? b2`
-          <p class="confirm" id="remove-question">Remove <b>${hubDisplayName(h6)}</b>? The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.</p>
-          <button class="danger" id="remove-confirm" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>${busy ? "Removing\u2026" : "Remove"}</button>
+        ${this._confirmRemove === h7.hub_id ? b2`
+          <p class="confirm" id="remove-question">Remove <b>${hubDisplayName(h7)}</b>? The server stops its proxy, hands the hub back, and forgets its record, cached state and web remote layout. The hub itself is not changed.</p>
+          <button class="danger" id="remove-confirm" ?disabled=${busy} @click=${() => this._act(h7.hub_id, "remove")}>${busy ? "Removing\u2026" : "Remove"}</button>
           <button ?disabled=${busy} @click=${() => {
       this._confirmRemove = null;
     }}>Cancel</button>
         ` : b2`
-        ${!h6.enabled ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Enable</button>` : A}
-        ${h6.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "enable")}>Retry start</button>` : A}
-        ${h6.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h6.hub_id, "disable")}>Disable</button>` : A}
+        ${!h7.enabled ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h7.hub_id, "enable")}>Enable</button>` : A}
+        ${h7.enabled && !s7 ? b2`<button class="primary" ?disabled=${busy} @click=${() => this._act(h7.hub_id, "enable")}>Retry start</button>` : A}
+        ${h7.enabled ? b2`<button ?disabled=${busy} @click=${() => this._act(h7.hub_id, "disable")}>Disable</button>` : A}
         <button id="proxy-toggle" ?disabled=${busy}
           title=${proxyOn ? "Stop offering this hub to the official Sofabaton app" : "Let the official Sofabaton app reach this hub through the server"}
-          @click=${() => this._setProxy(h6.hub_id, !proxyOn)}>${proxyOn ? "Turn app proxy off" : "Turn app proxy on"}</button>
-        ${h6.enabled && s7 ? b2`<button id="resync-remote" ?disabled=${busy || !s7.controllable || this.ctx?.free === false}
+          @click=${() => this._setProxy(h7.hub_id, !proxyOn)}>${proxyOn ? "Turn app proxy off" : "Turn app proxy on"}</button>
+        ${h7.enabled && s7 ? b2`<button id="resync-remote" ?disabled=${busy || !s7.controllable || this.ctx?.free === false}
           title="Make the physical remotes run a full sync with the hub"
-          @click=${() => this._resyncRemote(h6.hub_id)}>Sync remote</button>` : A}
-        <button class="danger" ?disabled=${busy} @click=${() => this._act(h6.hub_id, "remove")}>Remove…</button>
+          @click=${() => this._resyncRemote(h7.hub_id)}>Sync remote</button>` : A}
+        <button class="danger" ?disabled=${busy} @click=${() => this._act(h7.hub_id, "remove")}>Remove…</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "hub" })}>Open hub</button>
         <button @click=${() => this._emit("sb-navigate", { tab: "remote" })}>Open remote</button>
         `}
@@ -23929,7 +23969,7 @@ function defineHubsView() {
 }
 
 // node_modules/lit-html/directives/live.js
-var l4 = e4(class extends i5 {
+var l5 = e4(class extends i5 {
   constructor(r6) {
     if (super(r6), r6.type !== t3.PROPERTY && r6.type !== t3.ATTRIBUTE && r6.type !== t3.BOOLEAN_ATTRIBUTE) throw Error("The `live` directive is not allowed on child or event bindings");
     if (!r4(r6)) throw Error("`live` bindings can only contain a single expression");
@@ -23939,12 +23979,12 @@ var l4 = e4(class extends i5 {
   }
   update(i8, [t5]) {
     if (t5 === E || t5 === A) return t5;
-    const o8 = i8.element, l5 = i8.name;
+    const o8 = i8.element, l6 = i8.name;
     if (i8.type === t3.PROPERTY) {
-      if (t5 === o8[l5]) return E;
+      if (t5 === o8[l6]) return E;
     } else if (i8.type === t3.BOOLEAN_ATTRIBUTE) {
-      if (!!t5 === o8.hasAttribute(l5)) return E;
-    } else if (i8.type === t3.ATTRIBUTE && o8.getAttribute(l5) === t5 + "") return E;
+      if (!!t5 === o8.hasAttribute(l6)) return E;
+    } else if (i8.type === t3.ATTRIBUTE && o8.getAttribute(l6) === t5 + "") return E;
     return p3(i8), t5;
   }
 });
@@ -24359,7 +24399,7 @@ var SbPanelRemoteEditor = class extends i4 {
     const order = groupOrderListForEditor(c7, s7).filter((key) => this._visible(key));
     const toggle = (label, value, patch) => this._toggle(label, value, (v3) => this._patch(patch(v3)));
     const slotDevice = parseDeviceLayoutKey(s7);
-    const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d3) => Number(d3.id) === slotDevice);
+    const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d5) => Number(d5.id) === slotDevice);
     const cells = (key) => {
       if (key === "shortcuts") return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return b2`${toggle(e6.commands, commandsEnabled(c7, s7), commandsTogglePatch)}${toggle(e6.power, powerEnabled(c7, s7), powerTogglePatch)}`;
@@ -24561,7 +24601,7 @@ var SbPanelRemoteEditor = class extends i4 {
         <div class="icon-field">
           ${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
           <input role="combobox" aria-label=${e6.shortcutIcon} aria-autocomplete="list" aria-expanded=${this._iconOpen ? "true" : "false"} aria-controls="icon-options"
-            autocomplete="off" spellcheck="false" .value=${l4(this._icon)}
+            autocomplete="off" spellcheck="false" .value=${l5(this._icon)}
             @focus=${() => {
       this._iconOpen = true;
       this._iconActive = -1;
@@ -24598,7 +24638,7 @@ var SbPanelRemoteEditor = class extends i4 {
       this._device({ enabled: v3 ? void 0 : false, ...!v3 ? { open_device: void 0 } : {} });
       if (!v3 && isDeviceLayoutKey(this.selection)) this._select("default");
     }, e6.deviceModeDescription)}
-          ${enabled ? b2`${this._selectField(e6.initialView, String(openDeviceFromConfig(c7) ?? "current"), [{ value: "current", label: e6.openOnCurrentActivity }, ...devices.map((d3) => ({ value: String(d3.id), label: d3.name }))], (v3) => this._device({ open_device: v3 === "current" ? void 0 : Number(v3) }))}<p class="field-help">${e6.initialViewHelper}</p>` : A}
+          ${enabled ? b2`${this._selectField(e6.initialView, String(openDeviceFromConfig(c7) ?? "current"), [{ value: "current", label: e6.openOnCurrentActivity }, ...devices.map((d5) => ({ value: String(d5.id), label: d5.name }))], (v3) => this._device({ open_device: v3 === "current" ? void 0 : Number(v3) }))}<p class="field-help">${e6.initialViewHelper}</p>` : A}
         </div>
         <div class="feature">
           ${this._toggle(e6.longPress, longPress.enabled, (v3) => this._set({ hold_repeat: longPressEnabledPatch(v3) }), e6.longPressDescription)}
@@ -24606,7 +24646,7 @@ var SbPanelRemoteEditor = class extends i4 {
         </div>
       </div></details>
       <details name="remote-options">${this._heading(e6.stylingOptions, mdiPalette)}<div class="body">
-        <div class="feature"><div class="field"><label><span class="field-label">Maximum width (px)</span><input aria-label="Maximum width (px)" type="number" min="230" max="1200" step="5" .value=${l4(String(c7.max_width ?? 360))} @change=${(ev) => {
+        <div class="feature"><div class="field"><label><span class="field-label">Maximum width (px)</span><input aria-label="Maximum width (px)" type="number" min="230" max="1200" step="5" .value=${l5(String(c7.max_width ?? 360))} @change=${(ev) => {
       const input = ev.target;
       if (input.value && input.checkValidity()) this._set({ max_width: input.valueAsNumber === 360 ? void 0 : input.valueAsNumber });
     }}></label></div></div>
@@ -24614,7 +24654,7 @@ var SbPanelRemoteEditor = class extends i4 {
         <div class="feature">${this._toggle(e6.tintedPanels, tintedPanelsFromConfig(c7), (v3) => this._set({ tinted_panels: v3 || void 0, ...c7.key_style === "panel" ? { key_style: void 0 } : {} }), e6.tintedPanelsDescription)}</div>
         <div class="feature">
           ${this._toggle(e6.fieldLabels.use_background_override, !!c7.background_override, (v3) => this._set({ background_override: v3 ? [255, 255, 255] : void 0, use_background_override: void 0 }))}
-          ${c7.background_override ? b2`<div class="field"><label><span class="field-label">Background color</span><input type="color" aria-label="Background color" .value=${l4(hex)} @input=${(ev) => {
+          ${c7.background_override ? b2`<div class="field"><label><span class="field-label">Background color</span><input type="color" aria-label="Background color" .value=${l5(hex)} @input=${(ev) => {
       const value = ev.target.value;
       this._set({ background_override: [1, 3, 5].map((i8) => parseInt(value.slice(i8, i8 + 2), 16)) });
     }}></label></div>` : A}
@@ -24629,7 +24669,7 @@ var SbPanelRemoteEditor = class extends i4 {
           <mwc-list-item class="sb-option-default" .value=${"default"}>${e6.defaultLayoutOption}</mwc-list-item>
           ${activities.map((a4) => b2`<mwc-list-item .value=${String(a4.id)}>${a4.name}</mwc-list-item>`)}
           ${enabled ? b2`<mwc-list-item class="sb-option-default" .value=${"device:default"}>${e6.allDevicesOption}</mwc-list-item>
-            ${devices.map((d3) => b2`<mwc-list-item .value=${`device:${d3.id}`}>${d3.name}</mwc-list-item>`)}` : A}
+            ${devices.map((d5) => b2`<mwc-list-item .value=${`device:${d5.id}`}>${d5.name}</mwc-list-item>`)}` : A}
         </ha-select>
         <p class="layout-note">${layoutSelectionNote(c7, this.selection)}</p>
         ${this._groups()}
@@ -24882,6 +24922,7 @@ var SbPanelRemote = class extends i4 {
     super.connectedCallback();
     this._fitObserver = new ResizeObserver(() => this._fit());
     window.addEventListener("resize", this._onWindowResize);
+    if (this.hasUpdated) this.requestUpdate();
   }
   disconnectedCallback() {
     super.disconnectedCallback();
@@ -24890,7 +24931,6 @@ var SbPanelRemote = class extends i4 {
     this._fitObserver?.disconnect();
     this._fitObserver = null;
     this._fitFrame = null;
-    this._unmount();
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
@@ -25046,7 +25086,7 @@ var SbPanelRemote = class extends i4 {
     this._updateCard();
   }
   _switchMode(mode) {
-    if (mode === this._mode) return;
+    if (mode === this._mode || this._busy) return;
     if (mode === "visual") {
       const parsed = this._readDocument();
       if (!parsed) return;
@@ -25127,19 +25167,21 @@ var SbPanelRemote = class extends i4 {
         <div class="dock-probe" aria-hidden="true"></div>
     `;
   }
+  /** Only the load disables the whole editor. A running save disables its own parts (Save, the caret, the
+   *  editor, the JSON field): dimming the mode buttons too made the row blink on every save. */
   _renderLayout(hub) {
     return b2`
       <div class="layout-content">
         <div class="hint">Customize the remote shared by every phone, tablet and wall panel for ${hub ? hubDisplayName(hub) : "this hub"}. Changes stay in the preview until you save; its buttons do not control the hub.</div>
         <div class="layout-grid">
           <div class="editor">
-            <fieldset ?disabled=${!hub || !this._loaded || this._busy}>
+            <fieldset ?disabled=${!hub || !this._loaded}>
               <div class="mode-tabs" aria-label="Configuration editor">
                 <button id="remote-visual" aria-pressed=${this._mode === "visual"} @click=${() => this._switchMode("visual")}>Visual editor</button>
                 <button id="remote-json" aria-pressed=${this._mode === "json"} @click=${() => this._switchMode("json")}>JSON</button>
                 <span class="doc-actions">
                   <span class="split" id="remote-actions" @keydown=${this._menuKeydown}>
-                    <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy || !this._isDirty()} @click=${this._save}>${this._busy ? "Working\u2026" : "Save"}</button>
+                    <button class="primary" id="remote-save" ?disabled=${!hub || !this._loaded || this._busy || !this._isDirty()} @click=${this._save}><span class="swap"><span class=${this._busy ? "ghost" : ""}>Save</span><span class=${this._busy ? "" : "ghost"}>Working…</span></span></button>
                     <button class="primary caret" id="remote-save-menu" aria-haspopup="menu" aria-expanded=${this._menuOpen ? "true" : "false"} aria-label="More actions" title="More actions"
                       ?disabled=${!hub || !this._loaded || this._busy} @click=${this._toggleMenu}><svg class="mdi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></button>
                     <div class="menu" role="menu" id="remote-actions-menu" ?hidden=${!this._menuOpen}>
@@ -25162,11 +25204,11 @@ var SbPanelRemote = class extends i4 {
       this._updateCard();
     }}
                 ></sb-panel-remote-editor>` : b2`
-                <textarea id="remote-doc" aria-label="Remote configuration JSON" .value=${this._documentText} @input=${(ev) => {
+                <textarea id="remote-doc" aria-label="Remote configuration JSON" ?disabled=${this._busy} .value=${this._documentText} @input=${(ev) => {
       this._documentText = ev.target.value;
       this._setStatus("Unsaved JSON changes");
     }} placeholder='{ "show_dpad": true }'></textarea>
-                <button @click=${() => {
+                <button ?disabled=${this._busy} @click=${() => {
       const parsed = this._readDocument();
       if (parsed) this._edit(parsed);
     }}>Update preview</button>`}
@@ -25242,6 +25284,11 @@ SbPanelRemote.styles = [
       .split > .primary { border-radius: 6px 0 0 6px; }
       .split > .caret { border-radius: 0 6px 6px 0; padding: 0 6px; margin-left: -1px; border-left-color: rgba(255, 255, 255, 0.4); }
       .split > .caret .mdi { width: 18px; height: 18px; display: block; }
+      /* Save's two labels share one cell, so the control keeps the wider one's width while it works
+         and does not walk left (the row is right-aligned) and back on every save. */
+      .swap { display: inline-grid; }
+      .swap > span { grid-area: 1 / 1; }
+      .swap > .ghost { visibility: hidden; }
       .split .menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--sbp-line); border-radius: 8px; background: var(--sbp-panel); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16); z-index: 30; }
       .split .menu[hidden] { display: none; }
       .split .menu button { text-align: left; border-color: transparent; background: none; font-weight: 500; }

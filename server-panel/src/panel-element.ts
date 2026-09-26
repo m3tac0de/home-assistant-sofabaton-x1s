@@ -7,6 +7,11 @@
 // the hub list, the selection, the route and the resync points; the
 // shell mirrors the route into the URL hash and forwards the views'
 // events (sb-message, sb-hubs-changed, sb-select-hub, sb-navigate).
+// The views render under Lit's cache(): a tab's element survives switching
+// away, so coming back paints its last content at once instead of a
+// placeholder and a re-read. Each view's own change tracking (the hub's
+// last_job, which the store patches from the stream the moment a job ends)
+// decides on re-attach whether to read again.
 // It also owns access (docs/internal/sofabaton-x-server-auth-plan.md,
 // section 8): it asks GET /auth before anything else, shows the sign-in
 // wall to a signed-out browser of a claimed server (the store is not
@@ -15,6 +20,7 @@
 // call, or the stream's `auth` server event), over the mounted view.
 
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
+import { cache } from "lit/directives/cache.js";
 
 import { renderBottomDock, type DockLink } from "./components/bottom-dock";
 import { HUB_PICKER_CSS, renderHubPicker, type HubAction } from "./components/hub-picker";
@@ -818,7 +824,7 @@ export class SofabatonServerPanel extends LitElement {
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
-          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
+          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${cache(this._renderView(ctx))}</div>
           ${blocked
             ? html`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>`
             : nothing}
