@@ -13,7 +13,7 @@ from sofabaton_server import API_PREFIX
 from sofabaton_server.app import create_app
 from sofabaton_server.config import Settings
 from sofabaton_server.manager import HubManager
-from sofabaton_server.routes_ui import MAX_DOCUMENT_BYTES, PANEL_DIR, REMOTE_DIR
+from sofabaton_server.routes_ui import EMBED_DIR, MAX_DOCUMENT_BYTES, PANEL_DIR, REMOTE_DIR
 
 from fakes import Factory, no_network_discovery
 
@@ -44,6 +44,49 @@ def test_page_assets_ship_in_the_package() -> None:
     assert "<sofabaton-server-panel>" in html and 'src="panel.js"' in html
     bundle = (PANEL_DIR / "panel.js").read_text(encoding="utf-8")
     assert "sofabaton-server-panel" in bundle and "/api/v1" in bundle
+    embed = (EMBED_DIR / "sofabaton-remote.js").read_text(encoding="utf-8")
+    assert '"sofabaton-remote"' in embed and "/ui/embed/" in embed and "/api/v1" in embed
+
+
+def test_embed_asset_is_public_for_every_origin(rig) -> None:
+    """Remote embed plan, E4: the module script other dashboards load
+    cross-origin carries ``*``; the API keeps the listed-origin rule."""
+
+    client, _, _ = rig
+    js = client.get("/ui/embed/sofabaton-remote.js")
+    assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
+    assert js.headers["access-control-allow-origin"] == "*"
+    assert js.headers["cache-control"] == "no-cache" and js.headers["etag"]
+    # An unlisted origin gets the script (and nothing on the API).
+    foreign = client.get("/ui/embed/sofabaton-remote.js", headers={"Origin": "https://dash.example"})
+    assert foreign.status_code == 200 and foreign.headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-origin" not in client.get(HUBS, headers={"Origin": "https://dash.example"}).headers
+    # A revalidation is CORS-checked too.
+    again = client.get("/ui/embed/sofabaton-remote.js", headers={
+        "if-none-match": js.headers["etag"], "Origin": "https://dash.example"})
+    assert again.status_code == 304 and again.headers["access-control-allow-origin"] == "*"
+    # Only the bundle is reachable under /ui/embed/.
+    assert client.get("/ui/embed/routes_ui.py").status_code == 404
+    assert client.get("/ui/embed/nope.js").json()["type"] == "ui_asset_not_found"
+    assert client.get("/ui/embed", follow_redirects=False).status_code == 404
+
+
+def test_embed_asset_keeps_a_single_origin_header_for_a_listed_origin(tmp_path: Path) -> None:
+    """The CORS middleware echoes a listed origin on every response; the
+    embed asset already carries ``*`` and a second value would make the
+    browser reject the script."""
+
+    dash = "http://nas:8123"
+    factory = Factory()
+    settings = Settings(data_dir=tmp_path, allowed_origins=(dash,))
+    manager = HubManager(settings, proxy_factory=factory)
+    app = create_app(settings, manager=manager, discovery=no_network_discovery(settings, manager))
+    with TestClient(app) as client:
+        js = client.get("/ui/embed/sofabaton-remote.js", headers={"Origin": dash})
+        assert js.status_code == 200
+        assert js.headers.get_list("access-control-allow-origin") == ["*"]
+        assert client.get(HUBS, headers={"Origin": dash}).headers.get_list("access-control-allow-origin") == [dash]
+        assert client.get("/ui/remote/remote-web.js", headers={"Origin": dash}).headers["access-control-allow-origin"] == dash
 
 
 def test_root_and_harness_redirect_to_the_panel(rig) -> None:

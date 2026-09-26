@@ -12,8 +12,13 @@ import { ServerRemoteBackend, SERVER_API_PREFIX } from "./backend/server-backend
 import { SofabatonRemoteCard } from "./remote-card-element";
 import { CARD_VERSION, TYPE, logPillsOnce } from "./remote-card-shared";
 import {
+  loadStoredDocument,
+  resolveHub,
+  unavailableBannerText,
+  type HubSummary,
+} from "./remote-host";
+import {
   cardConfigForWebRemote,
-  normalizeHubId,
   parseWebRemoteParams,
   serverBaseFromPageUrl,
   type WebRemoteParams,
@@ -22,19 +27,6 @@ import { installRemoteWebShims } from "./shims/index";
 import "./remote-card-translations";
 
 export const WEB_REMOTE_TAG = "sofabaton-remote-web";
-
-interface HubSummary {
-  hub_id: string;
-  enabled: boolean;
-  config?: { host?: string; name?: string | null };
-  status?: { hub_version?: string | null; mode?: string } | null;
-}
-
-interface UiDocumentResponse {
-  hub_id: string;
-  document: Record<string, unknown> | null;
-  updated_at: string | null;
-}
 
 const HOST_CSS = `
   :host {
@@ -112,37 +104,24 @@ export class SofabatonRemoteWeb extends HTMLElement {
     if (params.theme) document.documentElement.dataset.theme = params.theme;
     // The server may be mounted under a root path; the page's own URL says where.
     const serverBase = serverBaseFromPageUrl(location.href);
-    const api = `${serverBase}${SERVER_API_PREFIX}`;
+    const fetchImpl: typeof fetch = (input, init) => fetch(input, init);
 
-    let hubs: HubSummary[] = [];
-    let hubsError: string | null = null;
-    try {
-      const response = await fetch(`${api}/hubs`, { headers: { accept: "application/json" } });
-      if (!response.ok) throw new Error(`GET /hubs -> ${response.status}`);
-      hubs = (await response.json()) as HubSummary[];
-    } catch (err) {
-      hubsError = err instanceof Error ? err.message : String(err);
-    }
-
-    // Match the id the way the server spells it; use its spelling from here on.
-    const known = params.hub
-      ? hubs.find((hub) => normalizeHubId(hub.hub_id) === params.hub)
-      : undefined;
-    if (!params.hub || !known) {
-      this._renderInstructions(params.hub, hubs, hubsError);
+    // Shared with the embeddable element (remote-host.ts): the hub is
+    // matched in any spelling and the server's own spelling is used from
+    // here on.
+    const resolution = await resolveHub(serverBase, params.hub, fetchImpl, { pageOrigin: location.origin });
+    const known = resolution.hub;
+    if (!known) {
+      const listError =
+        resolution.error && resolution.error.code !== "hub_missing" && resolution.error.code !== "hub_not_found"
+          ? resolution.error.message
+          : null;
+      this._renderInstructions(params.hub, resolution.hubs, listError);
       return;
     }
     const hubId = known.hub_id;
 
-    let storedDocument: Record<string, unknown> | null = null;
-    try {
-      const response = await fetch(`${api}/hubs/${encodeURIComponent(hubId)}/ui/remote-card`, {
-        headers: { accept: "application/json" },
-      });
-      if (response.ok) storedDocument = ((await response.json()) as UiDocumentResponse).document ?? null;
-    } catch (_err) {
-      storedDocument = null;
-    }
+    const storedDocument = await loadStoredDocument(serverBase, hubId, fetchImpl);
 
     const backend = new ServerRemoteBackend({ baseUrl: serverBase });
     backend.setTarget(hubId);
@@ -173,13 +152,7 @@ export class SofabatonRemoteWeb extends HTMLElement {
   private _syncBanner(): void {
     const banner = this._shadow.getElementById("banner") as HTMLElement | null;
     if (!banner || !this._backend) return;
-    const snapshot = this._backend.snapshot();
-    const unavailable = !snapshot || snapshot.state === "unavailable";
-    const text = unavailable
-      ? this._backend.lastError
-        ? `The server cannot reach the hub (${this._backend.lastError}).`
-        : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)."
-      : null;
+    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError);
     if (text === this._lastBanner) return;
     this._lastBanner = text;
     banner.hidden = !text;
@@ -196,7 +169,7 @@ export class SofabatonRemoteWeb extends HTMLElement {
           })
           .join("")}</ul>`
       : error
-        ? `<p>The server did not answer <code>${SERVER_API_PREFIX}/hubs</code>: ${escapeHtml(error)}.</p>`
+        ? `<p>The server did not answer <code>${SERVER_API_PREFIX}/hubs</code>: ${escapeHtml(error)}</p>`
         : `<p>This server has no hubs registered yet. Add one with <code>POST ${SERVER_API_PREFIX}/hubs</code> or from the <a href="../">control panel</a>.</p>`;
     const why = requested
       ? `<p>No hub with id <code>${escapeHtml(requested)}</code> is registered on this server.</p>`

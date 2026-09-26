@@ -6,7 +6,20 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
-No changes yet.
+**The remote as a web component for other dashboards.** The server
+serves `<sofabaton-remote>` at `/ui/embed/sofabaton-remote.js`: place
+the element on any page whose origin is in `allowed_origins`, and the
+card loads that hub's saved layout, inherits the page's colours and
+follows the event stream. The same element is published to npm as
+`sofabaton-x-remote` for dashboards with a build step. See
+[Embed the remote](docs/web-remote.md#embed-the-remote-in-your-own-dashboard).
+
+- The embed script is the one asset served with
+  `Access-Control-Allow-Origin: *`, so an unlisted dashboard still gets
+  the notice that names the origin to add; the API keeps the
+  listed-origin rule.
+- A listed origin's CORS preflight that asks for Chrome's Private
+  Network Access is granted.
 
 ## 0.2.2 (2026-09-25)
 

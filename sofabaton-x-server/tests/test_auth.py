@@ -460,6 +460,30 @@ def test_allowed_origins_get_cors_without_credentials(tmp_path: Path) -> None:
         assert "access-control-allow-origin" not in other.headers
 
 
+def test_preflight_grants_private_network_access_when_asked(tmp_path: Path) -> None:
+    """Remote embed plan, E4: Chrome's Private Network Access preflight from
+    a public page to a LAN server must be answered with the grant, or the
+    request is dropped whatever ``allowed_origins`` says. Mirrored, not
+    volunteered: a preflight without the request header gets no grant."""
+
+    dash = "https://dash.example"
+    with _client(Settings(data_dir=tmp_path, allowed_origins=(dash,))) as client:
+        asked = client.options(f"{API}/hubs/x/send", headers={
+            "Origin": dash, "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Private-Network": "true"})
+        assert asked.status_code == 204
+        assert asked.headers["access-control-allow-private-network"] == "true"
+        assert asked.headers["access-control-allow-origin"] == dash
+        plain = client.options(f"{API}/hubs/x/send", headers={"Origin": dash, "Access-Control-Request-Method": "POST"})
+        assert plain.status_code == 204 and "access-control-allow-private-network" not in plain.headers
+        # An unlisted origin gets no CORS answer at all, private network or not.
+        unlisted = client.options(f"{API}/hubs/x/send", headers={
+            "Origin": "https://other.example", "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Private-Network": "true"})
+        assert "access-control-allow-private-network" not in unlisted.headers
+        assert "access-control-allow-origin" not in unlisted.headers
+
+
 def test_a_listed_origin_cannot_ride_the_cookie(tmp_path: Path) -> None:
     dash = "http://nas:8123"
     with _client(Settings(data_dir=tmp_path, allowed_origins=(dash,))) as client:

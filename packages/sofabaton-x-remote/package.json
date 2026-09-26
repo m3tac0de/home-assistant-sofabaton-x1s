@@ -1,0 +1,47 @@
+{
+  "name": "sofabaton-x-remote",
+  "version": "0.1.0",
+  "description": "The Sofabaton remote card as a web component for your own dashboard, talking to sofabaton-x-server",
+  "type": "module",
+  "main": "./dist/sofabaton-remote.js",
+  "module": "./dist/sofabaton-remote.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./dist/sofabaton-remote.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "sideEffects": true,
+  "license": "MIT",
+  "author": "m3tac0de",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/m3tac0de/home-assistant-sofabaton-x1s.git",
+    "directory": "packages/sofabaton-x-remote"
+  },
+  "homepage": "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/packages/sofabaton-x-remote",
+  "bugs": "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues",
+  "keywords": [
+    "sofabaton",
+    "x1",
+    "x1s",
+    "x2",
+    "universal-remote",
+    "web-component",
+    "custom-element",
+    "dashboard",
+    "home-automation"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

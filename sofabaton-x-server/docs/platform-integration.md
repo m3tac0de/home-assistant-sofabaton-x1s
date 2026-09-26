@@ -700,6 +700,7 @@ How to hand it to your users depends on what your platform can show:
 | platform can | do this |
 | --- | --- |
 | frame a URL in a dashboard (Hubitat dashboards, openHAB MainUI webview, Node-RED dashboards, Home Assistant's iframe card) | frame `/ui/remote/?hub=<hub id>`; add `zoom=` for a wall panel |
+| render its own HTML or load a script (a custom web dashboard, Node-RED's template node) | place `<sofabaton-remote hub="<hub id>">` with the script from `/ui/embed/sofabaton-remote.js` (or the npm package `sofabaton-x-remote`); the dashboard's origin must be in `allowed_origins`; see [the web remote guide](web-remote.md#embed-the-remote-in-your-own-dashboard) |
 | open a URL (Homey, SmartThings, a phone) | link to the page; it carries a web manifest, so "Add to Home Screen" gives an app-like window |
 | neither | let users open it in a browser on the LAN; the id is `hub_id` from `GET /hubs` |
 

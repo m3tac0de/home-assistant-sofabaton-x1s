@@ -412,20 +412,30 @@ class CorsMiddleware:
             await self.app(scope, receive, send)
             return
         if scope.get("method") == "OPTIONS" and "access-control-request-method" in headers:
-            response = Response(status_code=204, headers={
+            preflight = {
                 "Access-Control-Allow-Origin": origin,
                 "Access-Control-Allow-Methods": _CORS_METHODS,
                 "Access-Control-Allow-Headers": headers.get("access-control-request-headers") or _CORS_DEFAULT_HEADERS,
                 "Access-Control-Max-Age": "600",
                 "Vary": "Origin",
-            })
+            }
+            # Chrome's Private Network Access: a public (https) page calling
+            # a LAN address preflights with this request header and drops
+            # the request unless the reply grants it, whatever the origin
+            # rule says (docs/internal/remote-embed-plan.md, E4).
+            if headers.get("access-control-request-private-network", "").lower() == "true":
+                preflight["Access-Control-Allow-Private-Network"] = "true"
+            response = Response(status_code=204, headers=preflight)
             await response(scope, receive, send)
             return
 
         async def send_with_cors(message: Message) -> None:
             if message["type"] == "http.response.start":
                 raw = list(message.get("headers") or [])
-                raw.append((b"access-control-allow-origin", origin.encode("latin-1")))
+                # A public asset (the embeddable remote's bundle) carries its
+                # own ``*``; a second value would make the browser reject it.
+                if not any(name.lower() == b"access-control-allow-origin" for name, _ in raw):
+                    raw.append((b"access-control-allow-origin", origin.encode("latin-1")))
                 raw.append((b"access-control-expose-headers", _CORS_EXPOSE.encode("latin-1")))
                 raw.append((b"vary", b"Origin"))
                 message = {**message, "headers": raw}

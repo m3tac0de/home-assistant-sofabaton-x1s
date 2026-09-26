@@ -36,6 +36,10 @@ const server = createServer((req, res) => {
   res.writeHead(200, {
     "Content-Type": mimeTypes[extname(filePath)] || "application/octet-stream",
     "Cache-Control": "no-store",
+    // As the server serves the embeddable remote's bundle (remote embed
+    // plan, E4): a host page on another origin (localhost against
+    // 127.0.0.1 in the embed spec) loads it as a module script.
+    "Access-Control-Allow-Origin": "*",
   });
   createReadStream(filePath).pipe(res);
 });

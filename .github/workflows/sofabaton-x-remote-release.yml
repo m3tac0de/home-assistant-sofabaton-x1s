@@ -1,0 +1,78 @@
+# Release pipeline for sofabaton-x-remote (the embeddable remote card on
+# npm; docs/internal/remote-embed-plan.md, E6).
+#
+# Trigger: push a tag named sofabaton-x-remote-vX.Y.Z (after setting
+# "version" in packages/sofabaton-x-remote/package.json to X.Y.Z; the
+# verify-version step refuses mismatched tags).
+#
+# npm trusted publishing (OIDC), no tokens. One-time setup on npmjs.com
+# -> package sofabaton-x-remote -> Settings -> Trusted publisher: GitHub
+# Actions, owner m3tac0de, repo home-assistant-sofabaton-x1s, workflow
+# sofabaton-x-remote-release.yml, environment npm. The first publish of a
+# new package name needs a token once; after that the trusted publisher
+# takes over.
+name: sofabaton-x-remote release
+
+on:
+  push:
+    tags:
+      - "sofabaton-x-remote-v*"
+
+jobs:
+  test:
+    name: typecheck, build, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build:remote-embed
+      - name: Committed server bundle matches source
+        shell: bash
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- sofabaton-x-server/src/sofabaton_server/ui/embed)"
+          if [[ -n "$changes" ]]; then
+            printf '%s\n' "$changes"
+            exit 1
+          fi
+      - run: npm run test:frontend
+      - name: Verify tag matches the package version
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#sofabaton-x-remote-v}"
+          PKG_VERSION="$(node -p "require('./packages/sofabaton-x-remote/package.json').version")"
+          echo "tag=$TAG_VERSION package=$PKG_VERSION"
+          test -n "$PKG_VERSION"
+          test "$TAG_VERSION" = "$PKG_VERSION"
+      - name: Pack
+        run: cd packages/sofabaton-x-remote && npm pack --pack-destination ../../dist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: sofabaton-x-remote-dist
+          path: dist/
+
+  publish:
+    name: publish to npm
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/sofabaton-x-remote
+    permissions:
+      id-token: write  # OIDC for npm trusted publishing and provenance
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+      - run: npm ci
+      - run: npm run build:remote-embed
+      - name: Publish
+        run: cd packages/sofabaton-x-remote && npm publish --provenance --access public

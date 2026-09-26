@@ -357,7 +357,14 @@ read and use control calls, and once access is set up can write only
 with a token. The server ignores the panel's session cookie on these
 writes, even on the same host. Unlisted origins get no
 CORS headers. Framing the [web remote](web-remote.md) in a dashboard
-needs none of this: the framed page is the server's own.
+needs none of this: the framed page is the server's own. Placing the
+[embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)
+in a dashboard does need the dashboard's origin listed: the element
+calls the API from that page. Its script at `/ui/embed/` is the one
+public asset (served to every origin), so an unlisted dashboard still
+shows the notice that names the origin to add. A preflight that asks
+for Chrome's Private Network Access (a public https page calling a LAN
+address) is granted for a listed origin.
 
 ### Recovery
 

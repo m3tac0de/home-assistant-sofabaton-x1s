@@ -136,6 +136,13 @@ are answered, responses carry `Access-Control-Allow-Origin` and expose
 the session cookie on guarded writes from a listed origin, so such a page can
 read, call control routes and, once claimed, write only with a token. Unlisted origins
 get no CORS headers. The `/events` WebSocket is not subject to CORS.
+Two exceptions: the embeddable remote's script, `/ui/embed/sofabaton-remote.js`,
+is served with `Access-Control-Allow-Origin: *` to every origin (a
+module script only runs cross-origin with it, and the element is what
+tells an unlisted dashboard which origin to list); and a listed origin's
+preflight carrying `Access-Control-Request-Private-Network: true`
+(Chrome, public page to a LAN address) is answered with
+`Access-Control-Allow-Private-Network: true`.
 `GET /server/settings` returns `{"allowed_origins": {"value": [...],
 "pinned": false}}` alongside the port settings. To change the list, send
 `PUT /server/settings` with `{"allowed_origins": ["http://nas:8123"]}`

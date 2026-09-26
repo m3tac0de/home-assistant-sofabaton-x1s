@@ -110,6 +110,10 @@ for a standalone remote. Select a hub, bookmark the page, or add it to
 your phone's home screen. Customize its buttons and layout in
 **Remote → Layout** and save the configuration for that hub.
 
+The same card is also a web component for your own dashboard: load
+`/ui/embed/sofabaton-remote.js` from the server and place
+`<sofabaton-remote hub="...">` on any page whose origin you list under
+Server settings → Access (or install `sofabaton-x-remote` from npm).
 See the [web remote guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/web-remote.md)
 for layout options, device mode and dashboard embedding.
 

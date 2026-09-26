@@ -94,5 +94,54 @@ port-forward it.
 
 Framing the page in a dashboard needs no server setting. Only a page on
 another origin that calls the server's API itself (a dashboard with its
-own buttons, for example at `http://nas:8123`) needs that origin listed
+own buttons, or the embeddable element below) needs that origin listed
 in `allowed_origins`; see [Browser origins](running-server.md#browser-origins).
+
+## Embed the remote in your own dashboard
+
+Instead of framing the page, a dashboard can place the card itself: the
+server serves the remote as a web component,
+`<sofabaton-remote>`, that sizes to its container, inherits the page's
+colours and talks to the server directly.
+
+1. **List the dashboard's origin.** Add it under **Server settings →
+   Access → Browser origins** (or `--allowed-origin http://dash:3000`):
+   exact scheme, host and port, no path. Until it is listed, the element
+   shows a notice naming the origin to add.
+2. **Load the script** from the server, and place the element:
+
+   ```html
+   <script type="module" src="http://nas:8480/ui/embed/sofabaton-remote.js"></script>
+   <sofabaton-remote hub="e26a44861b45"></sofabaton-remote>
+   ```
+
+   The hub id is `hub_id` from `GET /api/v1/hubs` (the MAC, any
+   spelling); the element finds the server from the script's own URL.
+   The layout is the one saved for the hub under **Remote → Layout**.
+
+Attributes: `hub` (required), `theme` (`inherit`, the default, or
+`light` / `dark` for the Home Assistant palette), `lang`, `device` (open
+in device mode on that device id), `config` (a layout override as JSON),
+and `server` to point at another server. It fires
+`sofabaton-remote-ready` and `sofabaton-remote-error` (with a `code` and
+the notice text) and has `refreshTheme()` and `reload()` methods. With
+`theme="inherit"` the element uses the page's `--primary-color`,
+`--primary-text-color`, `--card-background-color` and the other Home
+Assistant palette variables where the page defines them and fills in
+the defaults elsewhere, light or dark depending on the page's own text
+and background colours. Define your variables before the element
+connects, or call `refreshTheme()` after changing them.
+
+For a dashboard with a build step there is the same element on npm as
+[`sofabaton-x-remote`](https://www.npmjs.com/package/sofabaton-x-remote)
+(`import "sofabaton-x-remote"`, then the element with a `server`
+attribute); its README has the details. The server's own copy at
+`/ui/embed/` never gets out of step with the server, so prefer it when
+the dashboard can load a script from the server.
+
+Two limits: an https dashboard cannot call an http server (the browser
+blocks mixed content; put the server behind TLS), and a public website
+calling a LAN server is subject to Chrome's Private Network Access
+(the page must be https and the user is asked for permission). The
+element is control-only and needs no token; anyone who can open the
+dashboard can use the remote.
