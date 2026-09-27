@@ -184,7 +184,7 @@ MQTT is offered when the hub identifies as X2 and Home Assistant's MQTT integrat
 
 MQTT Wifi Commands avoid port `8060`, but any Wifi Events still require the HTTP listener.
 
-For retry and offline behavior, message structure, measured latency, and other implementation details, see the [networking guide](networking.md#-optional--mqtt-delivery-x2) and [Wifi Commands protocol notes](protocol/wifi-commands.md#-virtual-mqtt-devices-wifi_mqtt-class-0x20-x2-only).
+For retry and offline behavior, message structure, measured latency, and other implementation details, see the [networking guide](networking.md#optional--mqtt-delivery-x2) and [Wifi Commands protocol notes](protocol/wifi-commands.md#-virtual-mqtt-devices-wifi_mqtt-class-0x20-x2-only).
 
 ## ◇ Wifi Commands: synchronization, recovery, and limitations
 
