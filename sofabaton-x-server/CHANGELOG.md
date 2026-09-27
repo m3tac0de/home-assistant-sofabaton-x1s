@@ -6,12 +6,22 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+No changes yet.
+
+## 0.2.3 (2026-09-28)
+
+Changes since `sofabaton-x-server-v0.2.2`. Requires
+**sofabaton-x >=0.2.2,<0.3**; no new library release is required.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+### Added
+
 **The remote as a web component for other dashboards.** The server
 serves `<sofabaton-remote>` at `/ui/embed/sofabaton-remote.js`: place
 the element on any page whose origin is in `allowed_origins`, and the
 card loads that hub's saved layout, inherits the page's colours and
-follows the event stream. The same element is published to npm as
-`sofabaton-x-remote` for dashboards with a build step. See
+follows the event stream. The same element is packaged separately as
+`sofabaton-x-remote` for npm distribution. See
 [Embed the remote](docs/web-remote.md#embed-the-remote-in-your-own-dashboard).
 
 - The embed script is the one asset served with
@@ -21,8 +31,45 @@ follows the event stream. The same element is published to npm as
 - A listed origin's CORS preflight that asks for Chrome's Private
   Network Access is granted.
 - **Copy embed HTML** in the control panel's Remote → Layout: the
-  markup for another dashboard with the layout you made inlined, next to
-  Save.
+  arrow next to **Save** opens a menu containing this action. It copies
+  the current layout into the markup, including unsaved edits, so the
+  dashboard owns that copy of the layout.
+
+### Changed
+
+- The remote layout's **Save** button is enabled only when the layout
+  differs from the saved configuration. **Reset to defaults** is in the
+  same arrow menu as **Copy embed HTML**.
+- The panel retains views when switching tabs, reducing placeholder flashes
+  and unnecessary reloads. The Backup view refreshes its staged-download
+  expiry tracking when reopened.
+- The bottom status bar stays on one line, with full text available on
+  hover. Click a persistent notice, or focus it and press Enter or Space,
+  to dismiss it. The bar no longer has separate **Cancel** or **Dismiss**
+  buttons; cancellable jobs can still be cancelled through the API.
+- Refined the panel's spacing and frame on wide screens.
+
+### Fixed
+
+- The remote layout editor now offers the DVR switch only for X2 hubs,
+  matching the Home Assistant card editor.
+
+### Upgrade notes
+
+- Update the server to `sofabaton-x-server>=0.2.3,<0.3` with the same data
+  directory, then reload open panel and remote pages. No manual conversion
+  of registrations, access settings or saved layouts is needed.
+- The server-hosted embed script requires 0.2.3. Add the dashboard's exact
+  origin under **Server settings → Access → Browser origins** before using
+  the element. Existing standalone remote and iframe URLs continue to work.
+- Embeds without a `config` override load the hub's saved layout. **Copy
+  embed HTML** includes an override: later server-side layout edits do not
+  update that copy until you export and paste it again.
+- The npm package has its own version and release tag. Its minimum server
+  version remains 0.2.2; publishing the server does not publish the npm package.
+- REST and WebSocket operations are unchanged. For upgrades from 0.2.1 or
+  earlier, also follow the [0.2.2 upgrade notes](#022-2026-09-25), including
+  access setup and browser-origin configuration.
 
 ## 0.2.2 (2026-09-25)
 

@@ -51,7 +51,7 @@ already manages the hub, disable that hub there first.
 Install the server and start it (the protocol library is included):
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.3,<0.3"
 sofabaton-x-server
 ```
 
@@ -165,14 +165,13 @@ For a bug report, [open an issue](https://github.com/m3tac0de/home-assistant-sof
 with your server version, hub model and firmware, installation method,
 relevant logs and steps to reproduce the problem.
 
-This README describes **0.2.2**, using **API 1** and
+This README describes **0.2.3**, using **API 1** and
 **sofabaton-x >=0.2.2,<0.3**. Read the
 [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md)
-when updating. This release adds optional access control and integration
-tokens, browser-origin checks, MQTT broker setup in the panel, an X2
-number pad, optional update checks, per-hub app-proxy controls and firmware
-guidance, and fixes hub display
-order and discovery by the official app.
+when updating. This release adds the embeddable remote and layout export
+for other dashboards, improves the layout Save menu and panel navigation,
+and limits the DVR layout switch to X2 hubs. Existing access settings,
+hub registrations and saved layouts carry forward without conversion.
 
 ## Development
 

@@ -228,17 +228,20 @@ Server release checklist (after the library it depends on is on PyPI):
 1. Set `__version__` in `sofabaton-x-server/src/sofabaton_server/__init__.py`;
    bump the dependency range in `sofabaton-x-server/pyproject.toml` when
    the server needs a newer library.
-2. `npm run build:frontend` and commit the bundles (the web remote and the
-   control panel ship inside the wheel; frontend CI checks for drift).
-3. `python -m sofabaton_server.openapi` after any API change; commit
+2. `npm run build:frontend` and commit the bundles (the web remote,
+   embeddable remote and control panel ship inside the wheel; frontend CI
+   checks for drift).
+3. `python -m sofabaton_server.openapi` after any API or server version change; commit
    `openapi.json`. Server README links must be absolute GitHub URLs (PyPI
    renders it outside the repository).
 4. `pytest sofabaton-x-server/tests -q`, `npm run test:frontend`, and the
    Playwright specs `server-panel.spec.js` and `web-remote.spec.js`.
 5. Update `sofabaton-x-server/CHANGELOG.md` with changes since its previous
-   tag and any client migration steps. Finalize the pending release dates
-   in both changelogs and update their README/guide links and preparation
-   notices. Update the server documentation, commit, then
+   tag and any client migration steps. Finalize the server's release date
+   and update its README, guides and preparation notices. Update the library's
+   changelog and version only when releasing library changes. See the
+   [server release steps](sofabaton-x-server/docs/development.md#release-order).
+   Update the server documentation, commit, then
    `git tag sofabaton-x-server-vX.Y.Z && git push origin sofabaton-x-server-vX.Y.Z`.
    Confirm the publishing workflow succeeded and the version is available
    on PyPI. No GitHub Release is created.

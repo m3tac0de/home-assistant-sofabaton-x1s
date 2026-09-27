@@ -292,9 +292,7 @@ Check the job's `cancellable` field before requesting cancellation with
 Cancellation can remain pending while the current entity/item finishes.
 Repeating the request while cancellation is pending changes nothing. Wait
 for terminal status before another operation; disable/remove is refused
-while a job holds the hub. A graceful stop requests cancellation of
-cancellable work and waits for non-cancellable writes, with a bounded drain
-timeout. It does not guarantee completion after an abrupt process exit.
+while a job holds the hub.
 
 `202` means accepted, not successful. Terminal states are `done`, `failed`
 and `cancelled`. On failure inspect both `error` and `result`, which may

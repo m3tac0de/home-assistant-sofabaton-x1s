@@ -30,7 +30,7 @@ dashboard *is* Home Assistant, use the HACS card instead.
    <script type="module" src="https://cdn.jsdelivr.net/npm/sofabaton-x-remote@0/dist/sofabaton-remote.js"></script>
    ```
 
-   A server also serves its own copy at `<server>/ui/embed/sofabaton-remote.js`,
+   Server 0.2.3 and later also serve their own copy at `<server>/ui/embed/sofabaton-remote.js`,
    which needs no `server` attribute and never gets out of step with it.
 3. **Place it.**
 
@@ -89,6 +89,9 @@ The element sizes to its container and has no background of its own.
 The package declares the oldest server it works with
 (`MIN_SERVER_VERSION`, `0.2.2`, the release that added `allowed_origins`)
 and shows "server too old" below it. Newer servers are accepted.
+The server-hosted script at `/ui/embed/sofabaton-remote.js` was added in
+server 0.2.3. This npm package has its own version and release cycle;
+its version does not need to match the server's.
 
 ## Limits
 

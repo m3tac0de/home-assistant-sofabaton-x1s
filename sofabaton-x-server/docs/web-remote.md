@@ -23,6 +23,8 @@ shortcuts. Choose which key groups appear, their order, hold-to-repeat
 and key style. Drag the handles to reorder groups, or focus a handle and
 use the arrow keys.
 
+The DVR and Number pad switches are offered only for X2 hubs.
+
 The preview updates as you edit and does not send commands to the hub.
 **Save** stores the layout on the server for that hub; it is enabled
 only while something differs from what the server holds. Reload other
@@ -108,7 +110,7 @@ in `allowed_origins`; see [Browser origins](running-server.md#browser-origins).
 ## Embed the remote in your own dashboard
 
 Instead of framing the page, a dashboard can place the card itself: the
-server serves the remote as a web component,
+server 0.2.3 and later serve the remote as a web component,
 `<sofabaton-remote>`, that sizes to its container, inherits the page's
 colours and talks to the server directly.
 
@@ -126,7 +128,8 @@ colours and talks to the server directly.
    The hub id is `hub_id` from `GET /api/v1/hubs` (the MAC, any
    spelling); the element finds the server from the script's own URL.
    Without a `config` attribute the layout is the one saved for the hub
-   under **Remote → Layout**. **Copy embed HTML** on that screen gives
+   under **Remote → Layout**. **Copy embed HTML** in the arrow menu next
+   to **Save** on that screen gives
    you this markup with the layout you made inlined as `config` instead,
    so the dashboard owns it.
 
@@ -143,10 +146,11 @@ the defaults elsewhere, light or dark depending on the page's own text
 and background colours. Define your variables before the element
 connects, or call `refreshTheme()` after changing them.
 
-For a dashboard with a build step there is the same element on npm as
-[`sofabaton-x-remote`](https://www.npmjs.com/package/sofabaton-x-remote)
-(`import "sofabaton-x-remote"`, then the element with a `server`
-attribute); its README has the details. The server's own copy at
+For a dashboard with a build step, the same element is packaged for npm as
+`sofabaton-x-remote` (`import "sofabaton-x-remote"`, then the element with
+a `server` attribute); its [README](../../packages/sofabaton-x-remote/README.md)
+has the details. That package is released separately and accepts servers
+from 0.2.2 onward. The server's own copy at
 `/ui/embed/` never gets out of step with the server, so prefer it when
 the dashboard can load a script from the server.
 
