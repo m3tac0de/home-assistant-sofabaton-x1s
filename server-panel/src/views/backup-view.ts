@@ -307,6 +307,10 @@ export class SbPanelBackup extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._clearExpiryTimer();
+    // The shell keeps this view in its cache across tab switches. The jobs
+    // key is what arms the expiry timer, so forget it: the re-attach reads
+    // the jobs again and arms the timer for a bundle that is still staged.
+    this._jobsKey = "";
     this._activitySorter.cancel();
     this._deviceSorter.cancel();
     this._announceDirty(false);

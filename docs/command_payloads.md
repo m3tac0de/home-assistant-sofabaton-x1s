@@ -89,14 +89,14 @@ learned signal or an IR database. Raw IR works across X1, X1S, and X2 hubs.
 When the integration recognizes a payload, the editor shows its fields in a
 structured form:
 
-| Class | Structured fields |
-| --- | --- |
-| `ir` | Descriptive IR string beginning with `P:` (X2 hubs only) |
-| `wifi_ip` | Host, port, method, path, headers, content type, and body |
-| `wifi_roku` | Command path |
-| `wifi_hue` | Path and request body |
-| `wifi_sonos` | Path and request body |
-| `wifi_mqtt` | Device ID and command ID (ignored by the hub; X2 hubs only) |
+| Class        | Structured fields                                           |
+| ------------ | ----------------------------------------------------------- |
+| `ir`         | Descriptive IR string beginning with `P:` (X2 hubs only)    |
+| `wifi_ip`    | Host, port, method, path, headers, content type, and body   |
+| `wifi_roku`  | Command path                                                |
+| `wifi_hue`   | Path and request body                                       |
+| `wifi_sonos` | Path and request body                                       |
+| `wifi_mqtt`  | Device ID and command ID (ignored by the hub; X2 hubs only) |
 
 The two IDs stored in an MQTT command payload can be written, but the hub
 ignores their values. When the command runs, it publishes the actual device
@@ -168,12 +168,12 @@ See the [backup and restore guide](backup.md) for the complete backup workflow.
 
 ## ◇ Advanced Home Assistant Actions
 
-The legacy Action names still use *blob*:
+The legacy Action names still use _blob_:
 
-| Action | Purpose |
-| --- | --- |
-| `sofabaton_x1s.fetch_blob` | Fetch a command payload from the hub |
-| `sofabaton_x1s.play_ir_blob` | Test an IR payload without saving it |
+| Action                          | Purpose                                             |
+| ------------------------------- | --------------------------------------------------- |
+| `sofabaton_x1s.fetch_blob`      | Fetch a command payload from the hub                |
+| `sofabaton_x1s.play_ir_blob`    | Test an IR payload without saving it                |
 | `sofabaton_x1s.persist_ir_blob` | Add an IR command directly to an existing IR Device |
 
 These Actions are useful in scripts and automations, but the Control Panel is

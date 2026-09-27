@@ -20,7 +20,7 @@ and you have tested control. Disable any existing proxy for that hub first.
 Install from PyPI (Python 3.11+; the library comes with it):
 
 ```
-python -m pip install "sofabaton-x-server>=0.2.2,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.3,<0.3"
 sofabaton-x-server
 ```
 
@@ -357,7 +357,14 @@ read and use control calls, and once access is set up can write only
 with a token. The server ignores the panel's session cookie on these
 writes, even on the same host. Unlisted origins get no
 CORS headers. Framing the [web remote](web-remote.md) in a dashboard
-needs none of this: the framed page is the server's own.
+needs none of this: the framed page is the server's own. Placing the
+[embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)
+in a dashboard does need the dashboard's origin listed: the element
+calls the API from that page. Its script at `/ui/embed/` is the one
+public asset (served to every origin), so an unlisted dashboard still
+shows the notice that names the origin to add. A preflight that asks
+for Chrome's Private Network Access (a public https page calling a LAN
+address) is granted for a listed origin.
 
 ### Recovery
 
@@ -431,22 +438,29 @@ the server, install the selected release in the same Python environment
 (or rebuild the Docker image), then restart with the same data directory
 and settings. Confirm your hubs reconnect and test the web remote.
 
-For the 0.2.2 release, after stopping the server:
+For the 0.2.3 release, after stopping the server:
 
 ```sh
-python -m pip install --upgrade "sofabaton-x-server>=0.2.2,<0.3"
+python -m pip install --upgrade "sofabaton-x-server>=0.2.3,<0.3"
 ```
 
-This also installs `sofabaton-x>=0.2.2,<0.3`. Existing registrations,
-callback devices and saved layouts require no manual conversion. Reload
-open browser pages after restarting. Integrations should regenerate
-clients from the new OpenAPI document; the API prefix remains `/api/v1`.
+The library requirement remains `sofabaton-x>=0.2.2,<0.3`. Existing
+registrations, callback devices and saved layouts require no manual conversion. Reload
+open browser pages after restarting. The 0.2.3 REST and WebSocket operations
+are unchanged from 0.2.2; the API prefix remains `/api/v1`. Integrations
+upgrading from an earlier release should regenerate clients from the
+release's OpenAPI document.
+
+The [embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)
+is served by 0.2.3 at `/ui/embed/sofabaton-remote.js`. Existing iframe
+embeds need no changes; a dashboard using the new element must have its
+origin listed in `allowed_origins`.
 
 From 0.2.2 the server can require tokens for writes (see
 [Security](#security)). Existing configuration writes stay open until you
-set up access; after that integrations that write need a token. The new
-[browser-origin checks](#browser-origins) apply immediately on upgrade,
-including to control calls and unclaimed servers. List the origins of
+set up access; after that integrations that write need a token. When
+upgrading from before 0.2.2, the [browser-origin checks](#browser-origins)
+apply immediately, including to control calls and unclaimed servers. List the origins of
 browser clients that call the API directly; embedding the server's web
 remote in an iframe needs no change.
 

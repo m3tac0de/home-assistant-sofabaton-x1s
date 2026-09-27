@@ -33,8 +33,10 @@ from .problems import ApiProblem, hub_not_found
 UI_DIR = Path(__file__).resolve().parent / "ui"
 PANEL_DIR = UI_DIR / "panel"
 REMOTE_DIR = UI_DIR / "remote"
+EMBED_DIR = UI_DIR / "embed"
 PANEL_PREFIX = "/ui"
 UI_PREFIX = "/ui/remote"
+EMBED_PREFIX = "/ui/embed"
 
 # Only these files are served; nothing else in the directories is reachable.
 _PANEL_ASSETS: dict[str, str] = {
@@ -48,6 +50,16 @@ _REMOTE_ASSETS: dict[str, str] = {
     "manifest.webmanifest": "application/manifest+json",
     "icon.svg": "image/svg+xml",
 }
+# The embeddable remote (docs/internal/remote-embed-plan.md, E4): a module
+# script other people's dashboards load cross-origin. A module script is
+# fetched in CORS mode, so it carries ``Access-Control-Allow-Origin: *``
+# whatever the origin: an unlisted dashboard must still run the element,
+# which is what shows the "list your origin" notice. The API keeps the
+# listed-origin rule (access.py); this asset is public and credential-free.
+_EMBED_ASSETS: dict[str, str] = {
+    "sofabaton-remote.js": "text/javascript; charset=utf-8",
+}
+_EMBED_HEADERS: dict[str, str] = {"Access-Control-Allow-Origin": "*"}
 
 # A layout document is a few kilobytes; anything near this is not one.
 MAX_DOCUMENT_BYTES = 64 * 1024
@@ -148,18 +160,21 @@ def _etag(path: Path) -> str:
     return f'"{digest.hexdigest()[:24]}"'
 
 
-def _asset_response(request: Request, directory: Path, assets: dict[str, str], name: str) -> Response:
+def _asset_response(request: Request, directory: Path, assets: dict[str, str], name: str,
+                    extra_headers: Optional[dict[str, str]] = None) -> Response:
     media_type = assets.get(name)
     path = directory / name
     if media_type is None or not path.is_file():
         raise ApiProblem(404, "ui_asset_not_found", "No such page asset", detail=name)
     etag = _etag(path)
+    extra = dict(extra_headers or {})
     if request.headers.get("if-none-match") == etag:
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+        # A revalidated module script is CORS-checked on the 304 too.
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag, **extra})
     # Always revalidate: the bundle changes with every server release, and
     # a wall panel must not keep last month's card after an upgrade.
     return FileResponse(path, media_type=media_type,
-                        headers={"ETag": etag, "Cache-Control": "no-cache"})
+                        headers={"ETag": etag, "Cache-Control": "no-cache", **extra})
 
 
 # Relative asset URLs in each index.html resolve against the directory, so
@@ -201,6 +216,13 @@ async def ui_remote_index(request: Request) -> Response:
 @ui_pages_router.get(f"{UI_PREFIX}/{{asset}}")
 async def ui_remote_asset(request: Request, asset: str) -> Response:
     return _asset_response(request, REMOTE_DIR, _REMOTE_ASSETS, asset)
+
+
+@ui_pages_router.get(f"{EMBED_PREFIX}/{{asset}}")
+async def ui_embed_asset(request: Request, asset: str) -> Response:
+    """The embeddable remote's bundle: ``<script type="module" src=".../ui/embed/sofabaton-remote.js">``."""
+
+    return _asset_response(request, EMBED_DIR, _EMBED_ASSETS, asset, extra_headers=_EMBED_HEADERS)
 
 
 # Declared after the remote routes: a literal ``/ui/remote`` wins over ``/ui/{asset}``.

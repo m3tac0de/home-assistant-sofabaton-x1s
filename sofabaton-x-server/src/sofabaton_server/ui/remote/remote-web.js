@@ -8371,6 +8371,82 @@ function cardConfigForWebRemote(hubId, document2, options = {}) {
   return config;
 }
 
+// remote-card/src/remote-host.ts
+function describe(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+async function classifyFetchFailure(serverBase, fetchImpl, err, options = {}) {
+  try {
+    await fetchImpl(`${serverBase}${SERVER_API_PREFIX}/server`, { mode: "no-cors", cache: "no-store" });
+  } catch (_probeErr) {
+    return {
+      code: "server_unreachable",
+      message: `The server at ${serverBase} did not answer (${describe(err)}).`
+    };
+  }
+  const origin = options.pageOrigin ? ` ${options.pageOrigin}` : "";
+  return {
+    code: "cross_origin_refused",
+    message: `The server at ${serverBase} refused this page: add this page's origin${origin} to the server's allowed_origins setting (control panel, Server settings).`
+  };
+}
+async function resolveHub(serverBase, requested, fetchImpl, options = {}) {
+  const wanted = normalizeHubId(requested);
+  const api = `${serverBase}${SERVER_API_PREFIX}`;
+  let hubs = [];
+  try {
+    const response = await fetchImpl(`${api}/hubs`, { headers: { accept: "application/json" } });
+    if (!response.ok) {
+      return {
+        hub: null,
+        hubs,
+        error: {
+          code: "server_unreachable",
+          message: `The server at ${serverBase} answered GET ${SERVER_API_PREFIX}/hubs with ${response.status}.`
+        }
+      };
+    }
+    const body = await response.json();
+    hubs = Array.isArray(body) ? body : [];
+  } catch (err) {
+    return { hub: null, hubs, error: await classifyFetchFailure(serverBase, fetchImpl, err, options) };
+  }
+  if (!wanted) {
+    return {
+      hub: null,
+      hubs,
+      error: { code: "hub_missing", message: "No hub id given: set hub to the hub's MAC (any spelling)." }
+    };
+  }
+  const hub = hubs.find((row) => normalizeHubId(row.hub_id) === wanted) ?? null;
+  if (!hub) {
+    return {
+      hub: null,
+      hubs,
+      error: { code: "hub_not_found", message: `No hub with id ${wanted} is registered on this server.` }
+    };
+  }
+  return { hub, hubs, error: null };
+}
+async function loadStoredDocument(serverBase, hubId, fetchImpl) {
+  try {
+    const response = await fetchImpl(
+      `${serverBase}${SERVER_API_PREFIX}/hubs/${encodeURIComponent(hubId)}/ui/remote-card`,
+      { headers: { accept: "application/json" } }
+    );
+    if (!response.ok) return null;
+    const body = await response.json();
+    return body && typeof body === "object" ? body.document ?? null : null;
+  } catch (_err) {
+    return null;
+  }
+}
+function unavailableBannerText(snapshot, lastError) {
+  const unavailable = !snapshot || snapshot.state === "unavailable";
+  if (!unavailable) return null;
+  return lastError ? `The server cannot reach the hub (${lastError}).` : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected).";
+}
+
 // remote-card/src/shims/ha-card.ts
 var SbHaCard = class extends HTMLElement {
   constructor() {
@@ -10936,31 +11012,16 @@ var SofabatonRemoteWeb = class extends HTMLElement {
     this._params = params;
     if (params.theme) document.documentElement.dataset.theme = params.theme;
     const serverBase = serverBaseFromPageUrl(location.href);
-    const api = `${serverBase}${SERVER_API_PREFIX}`;
-    let hubs = [];
-    let hubsError = null;
-    try {
-      const response = await fetch(`${api}/hubs`, { headers: { accept: "application/json" } });
-      if (!response.ok) throw new Error(`GET /hubs -> ${response.status}`);
-      hubs = await response.json();
-    } catch (err) {
-      hubsError = err instanceof Error ? err.message : String(err);
-    }
-    const known = params.hub ? hubs.find((hub) => normalizeHubId(hub.hub_id) === params.hub) : void 0;
-    if (!params.hub || !known) {
-      this._renderInstructions(params.hub, hubs, hubsError);
+    const fetchImpl = (input, init) => fetch(input, init);
+    const resolution = await resolveHub(serverBase, params.hub, fetchImpl, { pageOrigin: location.origin });
+    const known = resolution.hub;
+    if (!known) {
+      const listError = resolution.error && resolution.error.code !== "hub_missing" && resolution.error.code !== "hub_not_found" ? resolution.error.message : null;
+      this._renderInstructions(params.hub, resolution.hubs, listError);
       return;
     }
     const hubId = known.hub_id;
-    let storedDocument = null;
-    try {
-      const response = await fetch(`${api}/hubs/${encodeURIComponent(hubId)}/ui/remote-card`, {
-        headers: { accept: "application/json" }
-      });
-      if (response.ok) storedDocument = (await response.json()).document ?? null;
-    } catch (_err) {
-      storedDocument = null;
-    }
+    const storedDocument = await loadStoredDocument(serverBase, hubId, fetchImpl);
     const backend = new ServerRemoteBackend({ baseUrl: serverBase });
     backend.setTarget(hubId);
     this._backend = backend;
@@ -10986,9 +11047,7 @@ var SofabatonRemoteWeb = class extends HTMLElement {
   _syncBanner() {
     const banner = this._shadow.getElementById("banner");
     if (!banner || !this._backend) return;
-    const snapshot = this._backend.snapshot();
-    const unavailable = !snapshot || snapshot.state === "unavailable";
-    const text = unavailable ? this._backend.lastError ? `The server cannot reach the hub (${this._backend.lastError}).` : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)." : null;
+    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError);
     if (text === this._lastBanner) return;
     this._lastBanner = text;
     banner.hidden = !text;
@@ -10999,7 +11058,7 @@ var SofabatonRemoteWeb = class extends HTMLElement {
       const href = `?hub=${encodeURIComponent(hub.hub_id)}`;
       const label = `${escapeHtml(hub.config?.name || hub.hub_id)} (${escapeHtml(hub.status?.hub_version || "?")}, ${hub.enabled ? escapeHtml(hub.status?.mode || "starting") : "disabled"})`;
       return `<li><a href="${href}">${label}</a> <code>${escapeHtml(hub.hub_id)}</code></li>`;
-    }).join("")}</ul>` : error ? `<p>The server did not answer <code>${SERVER_API_PREFIX}/hubs</code>: ${escapeHtml(error)}.</p>` : `<p>This server has no hubs registered yet. Add one with <code>POST ${SERVER_API_PREFIX}/hubs</code> or from the <a href="../">control panel</a>.</p>`;
+    }).join("")}</ul>` : error ? `<p>The server did not answer <code>${SERVER_API_PREFIX}/hubs</code>: ${escapeHtml(error)}</p>` : `<p>This server has no hubs registered yet. Add one with <code>POST ${SERVER_API_PREFIX}/hubs</code> or from the <a href="../">control panel</a>.</p>`;
     const why = requested ? `<p>No hub with id <code>${escapeHtml(requested)}</code> is registered on this server.</p>` : `<p>Open this page with <code>?hub=&lt;hub id&gt;</code>. The id is the hub's MAC (any spelling), or the host it was registered by before its first sync.</p>`;
     this._shadow.innerHTML = `<style>${HOST_CSS}</style>
       <div class="notice">

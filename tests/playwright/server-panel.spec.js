@@ -293,7 +293,7 @@ async function selectRemoteLayout(select, value) {
 }
 
 test.describe("control panel, responsive docks", () => {
-  for (const width of [320, 390, 600, 768, 844, 1040, 1440]) {
+  for (const width of [320, 390, 600, 768, 844, 1040, 1440, 1920]) {
     test(`docks and menus fit at ${width}px with long names and two actions`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: width === 844 ? 390 : 844 });
       const longName = "Living room and home cinema upstairs — family hub";
@@ -330,8 +330,20 @@ test.describe("control panel, responsive docks", () => {
       }
       const status = page.locator("#dock-status");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect(await status.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-      expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).not.toBe("nowrap");
+      // One row, always: the text is cut with an ellipsis rather than wrapped, and the actions and the pill share its line.
+      expect(await status.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("nowrap");
+      expect(await status.evaluate((el) => getComputedStyle(el).textOverflow)).toBe("ellipsis");
+      await expect(status).toHaveAttribute("title", "An apply stopped partway; resume or discard it");
+      const statusBox = await status.boundingBox();
+      const resumeBox = await page.locator("#dock-resume").boundingBox();
+      const pillBox = await page.locator("#dock-pill").boundingBox();
+      expect(statusBox.height).toBeLessThan(24);
+      expect(Math.abs(statusBox.y + statusBox.height / 2 - (resumeBox.y + resumeBox.height / 2))).toBeLessThan(2);
+      expect(Math.abs(statusBox.y + statusBox.height / 2 - (pillBox.y + pillBox.height / 2))).toBeLessThan(2);
+      expect(statusBox.x + statusBox.width).toBeLessThanOrEqual(resumeBox.x);
+      expect((await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(60);
+      await expect(page.locator("#dock-cancel")).toHaveCount(0);
+      await expect(page.locator("#dock-dismiss")).toHaveCount(0);
       await expect.poll(() => page.locator(".page").evaluate((el) => {
         // The dock's height is reserved, plus the same gap the subtab row keeps under the top dock.
         const dock = el.querySelector("#bottom-dock");
@@ -346,7 +358,7 @@ test.describe("control panel, responsive docks", () => {
     });
   }
 
-  test("scrolling keeps both docks visible and the last content clear of a wrapped notice", async ({ page }, testInfo) => {
+  test("scrolling keeps both docks visible and the last content clear of a long notice, which stays on one line", async ({ page }, testInfo) => {
     const error = "The hub disconnected while restoring the living room devices. Reconnect the hub, then check its configuration before continuing. ".repeat(4).trim();
     await mockServer(page, {
       hubs: [{ ...LIVING, last_job: job({ status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: error } }) }],
@@ -354,6 +366,12 @@ test.describe("control panel, responsive docks", () => {
     });
     await page.goto(`${PAGE}#/setup/hubs`);
     await expect(page.locator("#dock-status")).toContainText(error);
+    // Cut with an ellipsis, the whole text in the title, the dock at its one-row height.
+    const status = page.locator("#dock-status");
+    expect(await status.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expect(status).toHaveAttribute("title", `Restoring the backup: Hub disconnected · ${error} (click to dismiss)`);
+    await expect(status).toHaveAttribute("role", "button");
+    expect((await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(60);
     // A long view exercises sticky positioning even on a tall desktop.
     await page.locator("#stage-wrap").evaluate((el) => el.style.minHeight = "1600px");
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -363,8 +381,11 @@ test.describe("control panel, responsive docks", () => {
     expect(content.y + content.height).toBeLessThan(dock.y);
     expect(Math.round(dock.y + dock.height)).toBe(page.viewportSize().height);
     await page.screenshot({ path: shot(testInfo, "docks-scrolled-notice") });
-    await page.click("#dock-dismiss");
-    await expect.poll(async () => (await page.locator("#bottom-dock").boundingBox()).height).toBeLessThan(dock.height);
+    await expect(page.locator("#dock-dismiss")).toHaveCount(0);
+    await page.click("#dock-status");
+    // A tool page has no doc link: the dock is empty, and no shorter than it was with the notice.
+    await expect(page.locator("#dock-status")).toHaveCount(0);
+    expect((await page.locator("#bottom-dock").boundingBox()).height).toBe(dock.height);
   });
 });
 
@@ -750,8 +771,9 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#add-entity")).toBeEnabled();
     await expect(page.locator("#dock-status")).toHaveText("Restoring the backup: done");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
-    await page.click("#dock-dismiss");
-    await expect(page.locator("#dock-link")).toBeVisible();
+    // No Dismiss: a done notice expires on its own (the store's 6 s), as on the HA card.
+    await expect(page.locator("#dock-dismiss")).toHaveCount(0);
+    await expect(page.locator("#dock-link")).toBeVisible({ timeout: 10_000 });
 
     // A failure stays until dismissed, and survives a reload until then.
     const failed = job({ job_id: "j2", status: "failed", finished_at: new Date().toISOString(), error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
@@ -761,13 +783,15 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
     await page.reload();
     await expect(page.locator("#dock-status")).toContainText("Restoring the backup: Hub disconnected");
-    await page.click("#dock-dismiss");
+    // A sticky notice has no button either: it goes on a click on its text (also Enter and Space).
+    await expect(page.locator("#dock-status")).toHaveAttribute("role", "button");
+    await page.click("#dock-status");
     await expect(page.locator("#dock-link")).toBeVisible();
     await page.reload();
     await expect(page.locator("#dock-link")).toBeVisible();
   });
 
-  test("a cancellable job offers Cancel; the ask is shown until the server drains the job", async ({ page }) => {
+  test("a cancellable job shows no Cancel in the dock; a cancel through the store is narrated until the server drains the job", async ({ page }) => {
     const running = { ...LIVING, active_job: job({ kind: "refresh", cancellable: true, progress: { completed_steps: 3, total_steps: 12 } }) };
     const state = { hubs: [running], seen: [] };
     const { calls, sockets } = await mockServer(page, state);
@@ -779,10 +803,9 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12");
     await expect(page.locator("#dock-progress")).toHaveAttribute("data-indeterminate", "false");
     await expect(page.locator("#dock-progress")).toHaveAttribute("style", /width: 25%/);
-    await page.click("#dock-cancel");
+    await expect(page.locator("#dock-cancel")).toHaveCount(0);
+    await page.evaluate((hubId) => document.querySelector("sofabaton-server-panel").store.cancelActiveJob(hubId), LIVING.hub_id);
     await expect.poll(() => calls.some((c) => c.key === `DELETE /hubs/${LIVING.hub_id}/jobs/j1`)).toBe(true);
-    await expect(page.locator("#dock-cancel")).toHaveText("Cancelling…");
-    await expect(page.locator("#dock-cancel")).toBeDisabled();
     await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12 · cancelling");
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
@@ -931,6 +954,52 @@ test.describe("control panel, shell", () => {
     expect(menu.x + menu.width).toBeLessThanOrEqual(width);
     await page.screenshot({ path: shot(testInfo, "phone-setup"), fullPage: false });
   });
+
+  test("a tab visited before comes back with its content at once; it reads again only after a job ended while it was away", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    const snapshot = {
+      snapshot_id: "abc123", captured_at: "2026-09-16T10:00:00Z", engine_generation: 3, complete: true, payload_profile: "x1s",
+      devices: [{ kind: "device", device: { device_id: 1, name: "TV" }, complete: true, editable: true, fetched_at: "2026-09-16T10:00:00Z" }],
+      activities: [
+        { kind: "activity", device: { device_id: 101, name: "Watch TV" }, complete: true, editable: true, fetched_at: "2026-09-16T10:00:00Z" },
+        { kind: "activity", device: { device_id: 102, name: "Listen" }, complete: true, editable: true, fetched_at: "2026-09-16T10:00:00Z" },
+      ],
+    };
+    let snapshotReads = 0;
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => {
+      snapshotReads++;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+    });
+    await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/activities`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect.poll(() => sockets.length).toBe(1);
+    // The snapshot is the catalog's read alone (the Wifi Commands view lists activities too).
+    const before = snapshotReads;
+
+    // Away and back: the shell keeps the view (Lit's cache), so the list is there
+    // without a placeholder and without another read of the server.
+    await page.click('#tabs button[data-tab="wifi"]');
+    await expect(page.locator("sb-panel-wifi-devices")).toBeVisible();
+    await expect(page.locator("sb-panel-catalog")).toHaveCount(0);
+    await page.click('#tabs button[data-tab="hub"]');
+    await expect(rows).toHaveCount(2);
+    await expect(page.locator("#catalog-rows .cache-state")).toHaveCount(0);
+    await page.waitForTimeout(400);
+    expect(snapshotReads).toBe(before);
+
+    // A job that ended while the view was away (a Wifi deploy on the Wifi
+    // Commands tab) moves the hub's last_job: back on the Hub tab it reads again.
+    await page.click('#tabs button[data-tab="wifi"]');
+    await expect(page.locator("sb-panel-wifi-devices")).toBeVisible();
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: job({ job_id: "j9", kind: "deploy_wifi_device", status: "done", finished_at: new Date().toISOString() }) }));
+    await page.waitForTimeout(200);
+    expect(snapshotReads).toBe(before);
+    await page.click('#tabs button[data-tab="hub"]');
+    await expect.poll(() => snapshotReads).toBe(before + 1);
+    await expect(rows).toHaveCount(2);
+  });
 });
 
 test.describe("control panel, views", () => {
@@ -989,7 +1058,10 @@ test.describe("control panel, views", () => {
     ]);
 
     await page.click('#subtabs button[data-sub="layout"]');
+    // Reset lives behind the Save control's caret.
+    await page.click("#remote-save-menu");
     await page.click("#remote-delete");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
     await expect.poll(() => calls.some((c) => c.key === "DELETE /hubs/e26a44861b45/ui/remote-card")).toBe(true);
     await expect(page.locator("#remote-status")).toContainText("reset");
     await expect(page.locator("#remote-doc")).toHaveValue("");
@@ -1179,6 +1251,8 @@ test.describe("control panel, views", () => {
     await expect(numpad).toBeChecked();
     await numpad.uncheck();
     await expect(dpadRow.getByRole("switch", { name: "Direction pad", exact: true })).toBeChecked();
+    // The DVR keys are an X2 feature too: their switch sits on the Playback row for an X2 only.
+    await expect(editor.locator('[data-group="media"]').getByRole("switch", { name: "DVR", exact: true })).toHaveCount(1);
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("saved");
     expect(state.document.layouts.default.show_numpad).toBe(false);
@@ -1186,8 +1260,13 @@ test.describe("control panel, views", () => {
     await page.unroute(`**${API}/hubs/${x2.hub_id}/status`);
     await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(`${PAGE}#/${LIVING.hub_id}/remote/layout`);
+    // The X2 stand-in shares this hub id: a hash-only goto keeps the page, so reload for the X1S mock to apply.
+    await page.reload();
     await editor.locator("summary").filter({ hasText: "Layout options" }).click();
+    await expect(editor.locator('[data-group="dpad"]').getByRole("switch", { name: "Direction pad", exact: true })).toHaveCount(1);
     await expect(editor.locator('[data-group="dpad"]').getByRole("switch", { name: "Number pad", exact: true })).toHaveCount(0);
+    await expect(editor.locator('[data-group="media"]').getByRole("switch", { name: "Playback", exact: true })).toHaveCount(1);
+    await expect(editor.locator('[data-group="media"]').getByRole("switch", { name: "DVR", exact: true })).toHaveCount(0);
   });
 
   test("remote editor groups layout choices and keeps field focus clear of labels", async ({ page }, testInfo) => {
@@ -1257,6 +1336,38 @@ test.describe("control panel, views", () => {
     await expect(editor.locator(".stepper output")).toHaveText("3");
   });
 
+  test("Save keeps its place while it works: the label swap does not move the right-aligned control", async ({ page }) => {
+    await mockServer(page, { hubs: [LIVING], seen: [] });
+    let release = null;
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/ui/remote-card`, async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await new Promise((resolve) => { release = resolve; });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ hub_id: LIVING.hub_id, document: route.request().postDataJSON().document, updated_at: "2026-09-16T01:00:00Z" }) });
+    });
+    await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
+    await page.click("#remote-json");
+    await page.fill("#remote-doc", '{"show_dpad": true}');
+    const save = page.locator("#remote-save");
+    await expect(save).toBeEnabled();
+    const before = await save.boundingBox();
+    await save.click();
+    await expect(save).toBeDisabled();
+    await expect(save).toHaveText("Working…", { useInnerText: true });
+    // The mode buttons are not part of the save: they keep their look (no fieldset-wide disable).
+    await expect(page.locator("#remote-visual")).toBeEnabled();
+    await expect(page.locator("#remote-json")).toBeEnabled();
+    await expect(page.locator("#remote-doc")).toBeDisabled();
+    const during = await save.boundingBox();
+    expect(Math.abs(during.x - before.x)).toBeLessThan(1);
+    expect(Math.abs(during.width - before.width)).toBeLessThan(1);
+    await expect.poll(() => release !== null).toBe(true);
+    release();
+    await expect(page.locator("#remote-status")).toContainText("saved");
+    await expect(save).toHaveText("Save", { useInnerText: true });
+    const after = await save.boundingBox();
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+  });
+
   test("remote configuration actions sit at the right of the editor mode row", async ({ page }, testInfo) => {
     await mockServer(page, { hubs: [LIVING], seen: [] });
     await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
@@ -1267,23 +1378,65 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-load")).toHaveCount(0);
     await expect(page.locator("footer.layout-actions")).toHaveCount(0);
     await expect(page.locator(".preview h3")).toHaveCount(0);
+    // One control at the right: Save, with a caret that holds the other ways out of the draft.
     const json = await page.locator("#remote-json").boundingBox();
     const save = await page.locator("#remote-save").boundingBox();
-    const reset = await page.locator("#remote-delete").boundingBox();
+    const caret = await page.locator("#remote-save-menu").boundingBox();
     const editorBox = await page.locator(".editor").boundingBox();
     if (page.viewportSize().width >= 700) {
-      // One row on a desktop; the phone wraps the actions under the mode buttons.
+      // One row on a desktop; the phone wraps the control under the mode buttons.
       expect(Math.abs(save.y - json.y)).toBeLessThan(2);
-      expect(Math.abs(reset.y - json.y)).toBeLessThan(2);
       expect(save.x).toBeGreaterThan(json.x + json.width);
     }
-    expect(reset.x).toBeGreaterThan(save.x + save.width);
-    expect(reset.x + reset.width).toBeGreaterThan(editorBox.x + editorBox.width - 4);
+    expect(Math.abs(caret.x - (save.x + save.width))).toBeLessThan(2);
+    expect(caret.x + caret.width).toBeGreaterThan(editorBox.x + editorBox.width - 4);
+    await expect(page.locator("#remote-copy-embed")).toBeHidden();
+    await expect(page.locator("#remote-delete")).toBeHidden();
+    // Nothing to save yet: Save is disabled, the caret is not.
+    await expect(page.locator("#remote-save")).toBeDisabled();
+    await expect(page.locator("#remote-save-menu")).toBeEnabled();
+    await page.click("#remote-save-menu");
+    await expect(page.locator("#remote-actions-menu")).toBeVisible();
+    await expect(page.locator("#remote-copy-embed")).toBeVisible();
+    await expect(page.locator("#remote-delete")).toBeVisible();
     await page.screenshot({ path: shot(testInfo, "remote-mode-row-actions") });
+    // Escape and a click elsewhere close it without acting.
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    await page.click("#remote-save-menu");
+    await page.locator(".layout-content > .hint").click();
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    // A change enables Save; a change back to what the server holds disables it again.
     await page.click("#remote-json");
+    await page.fill("#remote-doc", '{"show_dpad": false}');
+    await expect(page.locator("#remote-save")).toBeEnabled();
+    await page.fill("#remote-doc", "{}");
+    await expect(page.locator("#remote-save")).toBeDisabled();
     await page.fill("#remote-doc", "{invalid");
+    await expect(page.locator("#remote-save")).toBeEnabled();
     await page.click("#remote-save");
     await expect(page.locator("#remote-status")).toContainText("not valid JSON");
+    // Copy embed HTML takes the draft as it is, unsaved, with the layout inlined as config; the menu closes on the pick.
+    await page.click("#remote-save-menu");
+    await page.click("#remote-copy-embed");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    await expect(page.locator("#remote-status")).toContainText("not valid JSON");
+    await page.fill("#remote-doc", '{"show_dpad": false, "key_style": "flat"}');
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.click("#remote-save-menu");
+    await page.click("#remote-copy-embed");
+    await expect(page.locator("#remote-actions-menu")).toBeHidden();
+    await expect(page.locator("#remote-status")).toContainText("Copied the embed HTML");
+    await expect(page.locator("#remote-status")).toContainText("Browser origins");
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    // The panel derives the server base from its own URL: everything before /ui/.
+    const base = page.url().replace(/\/ui\/.*$/, "");
+    // The OS clipboard hands newlines back as CRLF on Windows.
+    expect(copied.split(/\r?\n/)).toEqual([
+      `<script type="module" src="${base}/ui/embed/sofabaton-remote.js"></script>`,
+      `<sofabaton-remote hub="e26a44861b45" config='{"show_dpad":false,"key_style":"flat"}'></sofabaton-remote>`,
+    ]);
+    // Nothing was written to the server by the copy.
     await page.fill("#remote-doc", "{}");
     await page.click("#remote-visual");
     await expect(editor.locator("details[open]")).toHaveCount(0);
@@ -2146,7 +2299,7 @@ test.describe("control panel, views", () => {
     end("del1", { status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     await expect(editor.locator("#editor-delete-error")).toContainText("Delete failed: the hub went away");
     await expect(editor.locator("#editor-title")).toHaveText("Gaming");
-    await page.click("#dock-dismiss");
+    await page.click("#dock-status");
 
     // Sync: the same swap, titled as on the card, with the running step and its counter.
     await editor.locator("#editor-rename").click();

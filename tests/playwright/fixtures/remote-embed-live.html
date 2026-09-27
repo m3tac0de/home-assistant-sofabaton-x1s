@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Embed live check</title>
+  <style>
+    :root {
+      --primary-color: #ff6600;
+      --card-background-color: #202020;
+      --primary-text-color: #f0f0f0;
+    }
+    body { margin: 0; padding: 16px; background: #181818; color: #f0f0f0; font-family: system-ui, sans-serif; }
+    .tile { max-width: 420px; margin: 0 auto; }
+    #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; opacity: 0.8; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="tile" id="tile"></div>
+  <div id="log"></div>
+  <script type="module">
+    // A live check against a real server (remote embed plan, E7): open
+    // this page from the fixtures server (its origin is then the
+    // dashboard's) with ?script=<server>/ui/embed/sofabaton-remote.js and
+    // the element's attributes (hub=..., theme=..., server=...). The
+    // script is imported from the server, cross-origin, exactly as a
+    // dashboard would.
+    const params = new URLSearchParams(location.search);
+    const log = (line) => { document.getElementById("log").textContent += line + "\n"; };
+    window.__events = [];
+    const script = params.get("script");
+    if (!script) {
+      log("Add ?script=<server base>/ui/embed/sofabaton-remote.js&hub=<hub id>");
+    } else {
+      try {
+        await import(script);
+        log(`loaded ${script}`);
+      } catch (err) {
+        log(`the script did not load: ${err}`);
+      }
+      const element = document.createElement("sofabaton-remote");
+      for (const [name, value] of params) if (name !== "script") element.setAttribute(name, value);
+      for (const type of ["sofabaton-remote-ready", "sofabaton-remote-error"]) {
+        element.addEventListener(type, (event) => {
+          window.__events.push({ type, detail: event.detail });
+          log(`${type} ${JSON.stringify(event.detail)}`);
+        });
+      }
+      document.getElementById("tile").appendChild(element);
+      window.__remote = element;
+    }
+  </script>
+</body>
+</html>

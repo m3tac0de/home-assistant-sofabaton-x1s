@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Somebody's dashboard, on another origin</title>
+  <style>
+    /* Same dashboard palette as remote-embed-host.html: orange accent,
+       dark surfaces, light text, no --rgb-* twins. */
+    :root {
+      --primary-color: #ff6600;
+      --card-background-color: #202020;
+      --primary-text-color: #f0f0f0;
+    }
+    body { margin: 0; padding: 16px; background: #181818; font-family: system-ui, sans-serif; }
+    .tile { max-width: 420px; margin: 0 auto; }
+  </style>
+  <!-- The page is opened at http://localhost:4173, the script (and with it
+       the server the element derives from the script URL) lives at
+       http://127.0.0.1:4173: a genuine second origin without a second
+       server (remote embed plan, E5). -->
+  <script type="module" src="http://127.0.0.1:4173/sofabaton-x-server/src/sofabaton_server/ui/embed/sofabaton-remote.js"></script>
+</head>
+<body>
+  <div class="tile" id="tile"></div>
+  <script>
+    window.__events = [];
+    const params = new URLSearchParams(location.search);
+    const element = document.createElement("sofabaton-remote");
+    for (const [name, value] of params) element.setAttribute(name, value);
+    for (const type of ["sofabaton-remote-ready", "sofabaton-remote-error"]) {
+      element.addEventListener(type, (event) => window.__events.push({ type, detail: event.detail }));
+    }
+    document.getElementById("tile").appendChild(element);
+  </script>
+</body>
+</html>

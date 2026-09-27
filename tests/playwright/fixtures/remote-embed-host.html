@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Somebody's dashboard</title>
+  <style>
+    /* A dashboard with its own palette: orange accent, dark surfaces,
+       light text, and no --rgb-* twins (most non-HA pages have none). */
+    :root {
+      --primary-color: #ff6600;
+      --card-background-color: #202020;
+      --primary-text-color: #f0f0f0;
+    }
+    body { margin: 0; padding: 16px; background: #181818; font-family: system-ui, sans-serif; }
+    .tile { max-width: 420px; margin: 0 auto; }
+  </style>
+  <script>
+    // This dashboard has its own <ha-icon> and <ha-card> (as a host page
+    // that also loads Home Assistant's frontend would). The embed's
+    // internals are prefixed (E3), so neither side sees the other.
+    customElements.define("ha-icon", class extends HTMLElement {
+      connectedCallback() { this.textContent = "host icon"; }
+    });
+    customElements.define("ha-card", class extends HTMLElement {
+      connectedCallback() { this.dataset.host = "card"; }
+    });
+  </script>
+  <script type="module" src="/sofabaton-x-server/src/sofabaton_server/ui/embed/sofabaton-remote.js"></script>
+</head>
+<body>
+  <div class="tile" id="tile"></div>
+  <script>
+    // The test drives the element through the query string: every parameter
+    // becomes an attribute (hub, theme, config, device, lang, server).
+    window.__events = [];
+    const params = new URLSearchParams(location.search);
+    const element = document.createElement("sofabaton-remote");
+    for (const [name, value] of params) element.setAttribute(name, value);
+    for (const type of ["sofabaton-remote-ready", "sofabaton-remote-error"]) {
+      element.addEventListener(type, (event) => window.__events.push({ type, detail: event.detail }));
+    }
+    document.getElementById("tile").appendChild(element);
+  </script>
+</body>
+</html>

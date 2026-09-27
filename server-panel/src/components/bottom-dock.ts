@@ -1,9 +1,12 @@
 // The bottom dock (docs/internal/server-panel-state-plan.md, decision
 // 11): fixed at the viewport's bottom, narrating the selected hub by the
-// card's precedence: a running job with its progress line and Cancel, a
-// view's one-line message, a notice a finished job left with Dismiss, a
-// stopped apply with Resume and Discard, a gate, and idle with the doc
-// link. The connectivity pill on the right says whether the hub and the
+// card's precedence: a running job with its progress line, a view's
+// one-line message, a notice a finished job left, a stopped apply with
+// Resume and Discard, a gate, and idle with the doc link. One row, always:
+// the text is cut with an ellipsis and carries the whole of it in its
+// title. No Cancel and no Dismiss button (2026-09-26, as on the HA card):
+// a sticky notice, the one that does not expire, goes on a click on its
+// text. The connectivity pill on the right says whether the hub and the
 // app are connected; a press on the physical remote sweeps a band across
 // the dock, keyed on the press so every fresh one restarts it.
 
@@ -26,7 +29,6 @@ export function renderBottomDock(params: {
   press: PressEvent | null;
   docLink: DockLink | null;
   onDismiss: () => void;
-  onCancel: () => void;
   onResume: (applyId: string) => void;
   onDiscard: (applyId: string) => void;
   onKeepDraft: () => void;
@@ -36,41 +38,51 @@ export function renderBottomDock(params: {
   let tone = "";
   let center: TemplateResult;
   let actions: TemplateResult | typeof nothing = nothing;
+  // The one-line status, with the whole text in its title for when the row cuts it.
+  const status = (text: string, id = "dock-status") => html`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
   if (model.kind === "running") {
     tone = "dock--running";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
-    actions = model.cancellable
-      ? html`<button class="small dock-action" id="dock-cancel" type="button" ?disabled=${model.cancelling} @click=${params.onCancel}>${model.cancelling ? "Cancelling…" : "Cancel"}</button>`
-      : nothing;
+    center = status(model.text);
   } else if (message) {
     tone = message.ok ? "dock--message" : "dock--error";
-    center = html`<span class="dock-status" id="hubs-msg">${message.text}</span>`;
+    center = status(message.text, "hubs-msg");
   } else if (model.kind === "notice") {
-    tone = `dock--${model.notice.tone}`;
-    center = html`<span class="dock-status" id="dock-status">${model.notice.label}${model.notice.detail ? html`<span class="dock-detail"> · ${model.notice.detail}</span>` : nothing}</span>`;
-    actions = html`<button class="small dock-action" id="dock-dismiss" type="button" @click=${params.onDismiss}>Dismiss</button>`;
+    const notice = model.notice;
+    tone = `dock--${notice.tone}`;
+    const full = notice.detail ? `${notice.label} · ${notice.detail}` : notice.label;
+    const body = html`${notice.label}${notice.detail ? html`<span class="dock-detail"> · ${notice.detail}</span>` : nothing}`;
+    center = notice.sticky
+      ? html`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
+          @click=${params.onDismiss}
+          @keydown=${(event: KeyboardEvent) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              params.onDismiss();
+            }
+          }}>${body}</span>`
+      : html`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
     actions = html`
       ${model.resumable ? html`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : nothing}
       <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
   } else if (model.kind === "draft_stale") {
     tone = "dock--warn";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
     actions = html`
       <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
       <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
     actions = html`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
     tone = "dock--dirty";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
   } else if (model.kind === "gate") {
     tone = "dock--gate";
-    center = html`<span class="dock-status" id="dock-status">${model.text}</span>`;
+    center = status(model.text);
   } else if (params.docLink) {
     center = html`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
   } else {

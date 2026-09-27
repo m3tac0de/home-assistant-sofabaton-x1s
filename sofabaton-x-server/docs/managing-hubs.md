@@ -66,6 +66,12 @@ physical remote to synchronize; it does not save an unfinished editor draft.
 
 ### If a change is interrupted
 
+The bottom status bar shows the active operation on one line; hover over
+truncated text to read it in full. Persistent notices can be dismissed by
+clicking their text, or by focusing the notice and pressing Enter or Space.
+The bar has no separate **Cancel** or **Dismiss** button. Integrations can
+cancel supported jobs through the [job API](api-reference.md#jobs).
+
 A failed or cancelled operation may have already changed part of the hub.
 Read the reported outcome, then refresh and inspect the affected
 configuration before retrying. **Resume** is available for some stopped

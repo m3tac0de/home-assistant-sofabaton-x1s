@@ -5,7 +5,75 @@
 // The HA default theme's values for the custom properties the remote card
 // reads, so the web remote looks like the HA card out of the box. Light on
 // :root, dark under prefers-color-scheme; the page host may pin either with
-// data-theme="light" | "dark" on <html>.
+// data-theme="light" | "dark" on <html>. The embeddable element
+// (docs/internal/remote-embed-plan.md, E2) never touches :root: it takes
+// the same values from REMOTE_WEB_PALETTE_VARS and sets them on itself.
+
+export type PaletteMode = "light" | "dark";
+
+/** The palette as data: variable name (with its dashes) to value, per mode. */
+export const REMOTE_WEB_PALETTE_VARS: Record<PaletteMode, Record<string, string>> = {
+  "light": {
+    "--primary-color": "#009ac7",
+    "--rgb-primary-color": "0, 154, 199",
+    "--primary-text-color": "#141414",
+    "--rgb-primary-text-color": "33, 33, 33",
+    "--secondary-text-color": "#5e5e5e",
+    "--disabled-text-color": "#bdbdbd",
+    "--primary-background-color": "#fafafa",
+    "--secondary-background-color": "#e5e5e5",
+    "--card-background-color": "#ffffff",
+    "--divider-color": "rgba(0, 0, 0, 0.12)",
+    "--error-color": "#db4437",
+    "--rgb-error-color": "219, 68, 55",
+    "--warning-color": "#ffa600",
+    "--success-color": "#43a047",
+    "--info-color": "#039be5",
+    "--state-icon-color": "#44739e",
+    "--input-fill-color": "rgb(245, 245, 245)",
+    "--ha-color-form-background": "#f3f3f3",
+    "--ha-color-fill-neutral-normal-resting": "#e6e6e6",
+    "--ha-color-fill-neutral-quiet-hover": "#e6e6e6",
+    "--ha-color-fill-primary-quiet-hover": "#dff3fc",
+    "--ha-color-border-neutral-loud": "#5e5e5e",
+    "--ha-color-border-neutral-quiet": "#e6e6e6",
+    "--ha-color-fill-primary-quiet-resting": "#eff9fe",
+    "--mdc-theme-primary": "#009ac7",
+    "--mdc-theme-surface": "#ffffff",
+    "--mdc-select-label-ink-color": "rgba(0, 0, 0, 0.6)",
+    "--wa-color-neutral-fill-normal": "#e6e6e6"
+  },
+  "dark": {
+    "--primary-color": "#009ac7",
+    "--rgb-primary-color": "0, 154, 199",
+    "--primary-text-color": "#e1e1e1",
+    "--rgb-primary-text-color": "33, 33, 33",
+    "--secondary-text-color": "#9b9b9b",
+    "--disabled-text-color": "#6f6f6f",
+    "--primary-background-color": "#111111",
+    "--secondary-background-color": "#282828",
+    "--card-background-color": "#1c1c1c",
+    "--divider-color": "rgba(225, 225, 225, 0.12)",
+    "--error-color": "#db4437",
+    "--rgb-error-color": "219, 68, 55",
+    "--warning-color": "#ffa600",
+    "--success-color": "#43a047",
+    "--info-color": "#039be5",
+    "--state-icon-color": "#44739e",
+    "--input-fill-color": "rgba(255, 255, 255, 0.05)",
+    "--ha-color-form-background": "#363636",
+    "--ha-color-fill-neutral-normal-resting": "#202020",
+    "--ha-color-fill-neutral-quiet-hover": "#202020",
+    "--ha-color-fill-primary-quiet-hover": "#002e3e",
+    "--ha-color-border-neutral-loud": "#b1b1b1",
+    "--ha-color-border-neutral-quiet": "#5e5e5e",
+    "--ha-color-fill-primary-quiet-resting": "#001721",
+    "--mdc-theme-primary": "#009ac7",
+    "--mdc-theme-surface": "#1c1c1c",
+    "--mdc-select-label-ink-color": "rgba(255, 255, 255, 0.6)",
+    "--wa-color-neutral-fill-normal": "#202020"
+  }
+};
 
 export const REMOTE_WEB_PALETTE_CSS = `
 :root {

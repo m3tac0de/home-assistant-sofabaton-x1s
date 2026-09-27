@@ -23,14 +23,24 @@ shortcuts. Choose which key groups appear, their order, hold-to-repeat
 and key style. Drag the handles to reorder groups, or focus a handle and
 use the arrow keys.
 
-The preview updates as you edit and does not send commands to the hub.
-**Save** stores the layout on the server for that hub; reload other open
-web remotes to pick it up. It changes the browser remote's layout, not
-the physical remote's button assignments.
+The DVR and Number pad switches are offered only for X2 hubs.
 
-**Reset to defaults** deletes the hub's stored layout. Unsaved edits are
-local to the current view and are not retained after switching hubs or
-reloading the page.
+The preview updates as you edit and does not send commands to the hub.
+**Save** stores the layout on the server for that hub; it is enabled
+only while something differs from what the server holds. Reload other
+open web remotes to pick a saved layout up. It changes the browser
+remote's layout, not the physical remote's button assignments.
+
+The arrow next to Save holds the other ways out of a layout:
+
+- **Copy embed HTML** copies the markup for
+  [your own dashboard](#embed-the-remote-in-your-own-dashboard) with this
+  layout inlined, saved or not. That dashboard then owns the layout:
+  later edits here do not reach it until you paste again.
+- **Reset to defaults** deletes the hub's stored layout.
+
+Unsaved edits are local to the current view and are not retained after
+switching hubs or reloading the page.
 
 Enable **Show device names** in the favorites layout options to label
 favorites with their device, useful when several devices have a command
@@ -94,5 +104,59 @@ port-forward it.
 
 Framing the page in a dashboard needs no server setting. Only a page on
 another origin that calls the server's API itself (a dashboard with its
-own buttons, for example at `http://nas:8123`) needs that origin listed
+own buttons, or the embeddable element below) needs that origin listed
 in `allowed_origins`; see [Browser origins](running-server.md#browser-origins).
+
+## Embed the remote in your own dashboard
+
+Instead of framing the page, a dashboard can place the card itself: the
+server 0.2.3 and later serve the remote as a web component,
+`<sofabaton-remote>`, that sizes to its container, inherits the page's
+colours and talks to the server directly.
+
+1. **List the dashboard's origin.** Add it under **Server settings →
+   Access → Browser origins** (or `--allowed-origin http://dash:3000`):
+   exact scheme, host and port, no path. Until it is listed, the element
+   shows a notice naming the origin to add.
+2. **Load the script** from the server, and place the element:
+
+   ```html
+   <script type="module" src="http://nas:8480/ui/embed/sofabaton-remote.js"></script>
+   <sofabaton-remote hub="e26a44861b45"></sofabaton-remote>
+   ```
+
+   The hub id is `hub_id` from `GET /api/v1/hubs` (the MAC, any
+   spelling); the element finds the server from the script's own URL.
+   Without a `config` attribute the layout is the one saved for the hub
+   under **Remote → Layout**. **Copy embed HTML** in the arrow menu next
+   to **Save** on that screen gives
+   you this markup with the layout you made inlined as `config` instead,
+   so the dashboard owns it.
+
+Attributes: `hub` (required), `theme` (`inherit`, the default, or
+`light` / `dark` for the Home Assistant palette), `lang`, `device` (open
+in device mode on that device id), `config` (a layout override as JSON),
+and `server` to point at another server. It fires
+`sofabaton-remote-ready` and `sofabaton-remote-error` (with a `code` and
+the notice text) and has `refreshTheme()` and `reload()` methods. With
+`theme="inherit"` the element uses the page's `--primary-color`,
+`--primary-text-color`, `--card-background-color` and the other Home
+Assistant palette variables where the page defines them and fills in
+the defaults elsewhere, light or dark depending on the page's own text
+and background colours. Define your variables before the element
+connects, or call `refreshTheme()` after changing them.
+
+For a dashboard with a build step, the same element is packaged for npm as
+`sofabaton-x-remote` (`import "sofabaton-x-remote"`, then the element with
+a `server` attribute); its [README](../../packages/sofabaton-x-remote/README.md)
+has the details. That package is released separately and accepts servers
+from 0.2.2 onward. The server's own copy at
+`/ui/embed/` never gets out of step with the server, so prefer it when
+the dashboard can load a script from the server.
+
+Two limits: an https dashboard cannot call an http server (the browser
+blocks mixed content; put the server behind TLS), and a public website
+calling a LAN server is subject to Chrome's Private Network Access
+(the page must be https and the user is asked for permission). The
+element is control-only and needs no token; anyone who can open the
+dashboard can use the remote.

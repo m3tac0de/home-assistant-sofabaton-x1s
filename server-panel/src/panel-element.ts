@@ -7,6 +7,11 @@
 // the hub list, the selection, the route and the resync points; the
 // shell mirrors the route into the URL hash and forwards the views'
 // events (sb-message, sb-hubs-changed, sb-select-hub, sb-navigate).
+// The views render under Lit's cache(): a tab's element survives switching
+// away, so coming back paints its last content at once instead of a
+// placeholder and a re-read. Each view's own change tracking (the hub's
+// last_job, which the store patches from the stream the moment a job ends)
+// decides on re-attach whether to read again.
 // It also owns access (docs/internal/sofabaton-x-server-auth-plan.md,
 // section 8): it asks GET /auth before anything else, shows the sign-in
 // wall to a signed-out browser of a claimed server (the store is not
@@ -15,6 +20,7 @@
 // call, or the stream's `auth` server event), over the mounted view.
 
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
+import { cache } from "lit/directives/cache.js";
 
 import { renderBottomDock, type DockLink } from "./components/bottom-dock";
 import { HUB_PICKER_CSS, renderHubPicker, type HubAction } from "./components/hub-picker";
@@ -74,6 +80,10 @@ export class SofabatonServerPanel extends LitElement {
     PANEL_BASE_CSS,
     css`
       :host { display: block; min-height: 100%; background: var(--sbp-bg); container-type: inline-size; }
+      /* The column sits on a tinted well, as the remote card does in the Remote view: the well is the page's height (the
+         host's is the viewport's), so it stays under the column however far the page scrolls; a soft accent glow at the top.
+         The frame ring and lift come on wide viewports, where the well shows (below). */
+      .well { --well-ring: color-mix(in srgb, var(--sbp-line) 80%, transparent); min-height: 100dvh; background: radial-gradient(1100px 480px at 50% 0, rgba(var(--sbp-accent-rgb), 0.09), transparent 70%), color-mix(in srgb, var(--sbp-text) 5%, var(--sbp-bg)); }
       .page {
         --dock-surface: linear-gradient(180deg, color-mix(in srgb, var(--sbp-accent) 8%, var(--sbp-panel)), color-mix(in srgb, var(--sbp-accent) 4%, var(--sbp-panel)));
         --page-gutter: 16px;
@@ -81,6 +91,7 @@ export class SofabatonServerPanel extends LitElement {
         --view-gap: 10px;
         max-width: 1040px; min-height: 100dvh; margin: 0 auto;
         padding: 0 var(--page-gutter) calc(var(--bottom-dock-height, 56px) + var(--view-gap));
+        background: var(--sbp-bg);
       }
       button:focus-visible, a:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -3px; }
 
@@ -154,9 +165,14 @@ export class SofabatonServerPanel extends LitElement {
       /* -- bottom dock -------------------------------------------------------- */
       /* The dock is the column's width, centred like it, not the viewport's. */
       .dock { position: fixed; left: 0; right: 0; bottom: 0; margin-inline: auto; max-width: 1040px; z-index: 30; background: var(--dock-surface); border-top: 1px solid var(--sbp-line); padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 -3px 8px rgba(0, 0, 0, 0.03); overflow: hidden; }
-      .dock-inner { min-height: 48px; padding: 6px var(--page-gutter); display: flex; align-items: center; gap: 16px; }
+      /* One row, always: the text takes what the actions and the pill leave and is cut with an ellipsis (its title
+         carries the whole of it); nothing wraps and the dock keeps its height whatever it says. */
+      .dock-inner { min-height: 48px; padding: 6px var(--page-gutter); display: flex; flex-wrap: nowrap; align-items: center; gap: 16px; }
       .dock-center { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; align-items: center; font-size: 12px; line-height: 1.5; }
-      .dock-status { min-width: 0; overflow-wrap: anywhere; max-height: 30dvh; overflow-y: auto; }
+      .dock-status, .dock-link { display: block; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .dock-status.is-dismissable { cursor: pointer; border-radius: 4px; }
+      .dock-status.is-dismissable:hover { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 50%, transparent); text-underline-offset: 2px; }
+      .dock-status.is-dismissable:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
       .dock-detail { color: var(--sbp-muted); }
       .dock-link { font-size: 12px; color: var(--sbp-muted); text-decoration: none; }
       .dock-link:hover { color: var(--sbp-accent); }
@@ -197,6 +213,15 @@ export class SofabatonServerPanel extends LitElement {
         .dock-flash::before { animation: none; opacity: 0; }
       }
 
+      /* -- wide ---------------------------------------------------------------- */
+      /* Past the column's width the well shows on both sides: the column and the fixed dock get the same 1px ring, so the
+         docks read as the ends of one framed surface, and the column a lift off the well. The ring sits outside the
+         1040px box on both, so they stay flush. */
+      @container (min-width: 1041px) {
+        .page { box-shadow: 0 0 0 1px var(--well-ring), 0 24px 80px -24px rgba(0, 0, 0, 0.28), 0 0 48px rgba(0, 0, 0, 0.05); }
+        .dock { box-shadow: 0 0 0 1px var(--well-ring), 0 -3px 8px rgba(0, 0, 0, 0.03); }
+      }
+
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
         .brand-caption { display: none; }
@@ -214,9 +239,7 @@ export class SofabatonServerPanel extends LitElement {
         .subtab-count { padding: 1px 5px; }
         .stage { padding: 12px 12px 12px; }
         .dock-inner { gap: 8px; }
-        .dock:has(.dock-actions) .dock-inner { flex-direction: column; align-items: stretch; padding-block: 8px; }
-        .dock:has(.dock-actions) .dock-center { justify-content: flex-start; }
-        .dock:has(.dock-actions) .dock-right { justify-content: space-between; }
+        .dock-right { gap: 8px; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
         .page { --view-chrome-block: calc(12px + 12px + 12px + 1px + var(--view-gap)); }
@@ -740,7 +763,7 @@ export class SofabatonServerPanel extends LitElement {
     // The stream down while REST answers: a hint, nothing blocked (decision 13).
     const streamLost = !streamOn && s.server.reachable && s.listLoaded;
     return html`
-      <div class="page">
+      <div class="well"><div class="page">
         <header class="top-dock" id="top-dock">
           <div class="top-row">
             <div class="brand"><span class="stream ${streamLost ? "lost" : ""}" id="stream-state" role="img" aria-label=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"} title=${streamOn ? "Event stream live" : streamLost ? "Live updates paused, reconnecting" : "Event stream off, reconnecting"}><span class="dot ${streamOn ? "ok" : streamLost ? "warn" : "off"}" id="ws-dot"></span></span><b>Sofabaton X</b><span class="brand-caption">control panel</span></div>
@@ -801,7 +824,7 @@ export class SofabatonServerPanel extends LitElement {
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
-          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${this._renderView(ctx)}</div>
+          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${cache(this._renderView(ctx))}</div>
           ${blocked
             ? html`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>`
             : nothing}
@@ -815,9 +838,6 @@ export class SofabatonServerPanel extends LitElement {
           docLink: route.kind === "hub" ? DOC_LINKS[route.tab] : null,
           onDismiss: () => {
             if (s.selectedHubId) this.store.dismissNotice(s.selectedHubId);
-          },
-          onCancel: () => {
-            if (s.selectedHubId) void this.store.cancelActiveJob(s.selectedHubId);
           },
           onResume: (applyId) => {
             if (s.selectedHubId) void this.store.resumeApply(s.selectedHubId, applyId);
@@ -833,7 +853,7 @@ export class SofabatonServerPanel extends LitElement {
           },
         })}
         ${this._renderAuthDialog()}
-      </div>
+      </div></div>
     `;
   }
 }

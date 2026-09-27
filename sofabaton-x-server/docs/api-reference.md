@@ -136,6 +136,13 @@ are answered, responses carry `Access-Control-Allow-Origin` and expose
 the session cookie on guarded writes from a listed origin, so such a page can
 read, call control routes and, once claimed, write only with a token. Unlisted origins
 get no CORS headers. The `/events` WebSocket is not subject to CORS.
+Two exceptions: the embeddable remote's script, `/ui/embed/sofabaton-remote.js`,
+is served with `Access-Control-Allow-Origin: *` to every origin (a
+module script only runs cross-origin with it, and the element is what
+tells an unlisted dashboard which origin to list); and a listed origin's
+preflight carrying `Access-Control-Request-Private-Network: true`
+(Chrome, public page to a LAN address) is answered with
+`Access-Control-Allow-Private-Network: true`.
 `GET /server/settings` returns `{"allowed_origins": {"value": [...],
 "pinned": false}}` alongside the port settings. To change the list, send
 `PUT /server/settings` with `{"allowed_origins": ["http://nas:8123"]}`
@@ -285,9 +292,7 @@ Check the job's `cancellable` field before requesting cancellation with
 Cancellation can remain pending while the current entity/item finishes.
 Repeating the request while cancellation is pending changes nothing. Wait
 for terminal status before another operation; disable/remove is refused
-while a job holds the hub. A graceful stop requests cancellation of
-cancellable work and waits for non-cancellable writes, with a bounded drain
-timeout. It does not guarantee completion after an abrupt process exit.
+while a job holds the hub.
 
 `202` means accepted, not successful. Terminal states are `done`, `failed`
 and `cancelled`. On failure inspect both `error` and `result`, which may
