@@ -14,7 +14,8 @@ In the **Sofabaton Control Panel**, open **Hub → Devices**, select a Device, a
 choose **Edit device**. Under **Commands**:
 
 - use the pencil to rename a command;
-- use the braces (`{}`) to fetch and edit its payload.
+- use the braces (`{}`) to fetch and edit its payload;
+- use the trash can to remove a command.
 
 The payload is fetched from the hub only when you open the editor. Recognized
 payloads get a structured form; everything else is shown as raw hexadecimal
@@ -48,6 +49,22 @@ The form depends on the Device class:
 
 The new command is staged alongside the other Device edits and created during
 the next Sync.
+
+## ◇ Remove a command
+
+Choose the trash can next to a command in the Device editor. The confirmation
+lists the favorites, button assignments, and sequence steps that use the
+command. Removal is staged like any other Device edit: review the pending
+changes and choose **Sync** to delete the command from the hub.
+
+Deleting a command also removes its references on the hub, and the order of
+the remaining commands is updated. A button that was assigned to the command
+is left unassigned, so reassign it afterwards if you still need it.
+
+Devices managed by **Wifi Commands** are the exception: their commands are
+read-only in the Device editor and are removed under
+**Automation → Wifi Commands** instead. See the
+[remote and hub trigger guide](wifi_commands.md).
 
 ## ◇ Learn a payload
 
