@@ -170,6 +170,11 @@ default scenario list and the harness in sync.
 ## ◇ Documentation
 
 - User docs live in `docs/`; keep links **relative** (they are read on GitHub).
+- The Virtual Remote's user README and guides live in the separate
+  [sofabaton-virtual-remote repository](https://github.com/m3tac0de/sofabaton-virtual-remote).
+  Update them when changing card settings or behavior. Its release JavaScript
+  is a copy of the built `custom_components/sofabaton_x1s/www/remote-card.js`,
+  named `sofabaton-virtual-remote.js`; TypeScript sources stay in this repository.
 - Protocol findings go in `docs/protocol/` in this project's own terminology.
 - The library README shown on PyPI is `sofabaton-x/README.md`; links in it
   must be absolute GitHub URLs, since PyPI renders it outside the repo.
@@ -180,9 +185,17 @@ The integration, library and server are **versioned independently**:
 
 | Component             | Version lives in                                                                | Released by                                                                                                                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HA integration        | `custom_components/sofabaton_x1s/manifest.json` (plus the badge in `README.md`) | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). |
+| HA integration        | `custom_components/sofabaton_x1s/manifest.json` | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). The README release badge updates automatically. |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
 | `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.2,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+
+The Virtual Remote has its own `CARD_VERSION` in
+`remote-card/src/remote-card-shared.ts`. When an integration release includes
+card changes, coordinate a release in the separate card repository: rebuild
+and copy the HA bundle, update the card README's version badge and guides, and
+publish the matching card release. Home Assistant installations with the HACS
+card use that copy instead of the integration's bundled card, so updating the
+integration alone does not update their remote.
 
 Library stability contract: names exported from the package root
 (`sofabaton.__all__`) follow semver; everything else is internal. Changes to
