@@ -691,6 +691,37 @@ test.describe("remote card playwright harness", () => {
     await expect(page.locator(".dpad")).toHaveCount(0);
   });
 
+  test("number pad: the official integration sends a digit as an assigned key", async ({ page }) => {
+    await mountCard(page, "hub_numpad");
+    const dpad = page.locator(".dpad");
+    await expect(dpad).toHaveClass(/dpad--numpad-ready/);
+    await page.locator(".dpad-numpad-toggle").click();
+    await expect(dpad).toHaveClass(/dpad--numpad-open/);
+
+    // 5 is code 165; unbound keys (dash, Enter) stay disabled.
+    await page.locator(".dpad-face--numpad sb-key-button", { hasText: "5" }).click();
+    await expect
+      .poll(async () => page.evaluate(() => window.__remoteCardHarness.getServiceCalls()))
+      .toContainEqual(
+        expect.objectContaining({
+          domain: "remote",
+          service: "send_command",
+          data: expect.objectContaining({
+            command: ["type:send_assigned_key", "activity_id:201", "key_id:165"],
+          }),
+        }),
+      );
+    await expect(
+      page.locator(".dpad-face--numpad sb-key-button.disabled", { hasText: "E" }),
+    ).toHaveCount(1);
+  });
+
+  test("number pad: the official integration without keypad keys shows no toggle", async ({ page }) => {
+    await mountCard(page, "hub_x2");
+    await expect(page.locator(".dpad")).not.toHaveClass(/dpad--numpad-ready/);
+    await expect(page.locator(".dpad-numpad-toggle")).toHaveCount(0);
+  });
+
   test("number pad: an X1S never carries the keypad", async ({ page }) => {
     await mountCard(page, "active");
     await expect(page.locator(".dpad")).not.toHaveClass(/dpad--numpad-ready/);

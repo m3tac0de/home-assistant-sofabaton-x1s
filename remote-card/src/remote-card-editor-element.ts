@@ -847,9 +847,10 @@ export class SofabatonRemoteCardEditor extends LitElement {
           channelEnabled: channelGroupEnabled(layoutCfg),
           mediaEnabled: mediaGroupEnabled(layoutCfg),
           dvrEnabled: dvrGroupEnabled(layoutCfg),
-          // The official integration maps no numeric keys, so the standalone
-          // card never shows the keypad nor its switch.
-          showNumpadSwitch: isEditorX2 && this._isX1sIntegrationForEditor(),
+          // Positive integration check: an undetected entity gets no switch.
+          showNumpadSwitch:
+            isEditorX2 &&
+            (this._isX1sIntegrationForEditor() || this._isHubIntegrationForEditor()),
           numpadEnabled: numpadEnabledForEditor(this._config, this._layoutSelectionKey()),
           isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
           shortcutsStrip,

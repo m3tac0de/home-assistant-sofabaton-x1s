@@ -740,6 +740,17 @@ scenarios.numpad = (() => {
   return base;
 })();
 
+// The official integration on the running activity with the keypad bound
+// as the X2 reports it over MQTT (live capture 2026-09-28: 0 and 1-9, no
+// dash, no Enter).
+scenarios.hub_numpad = (() => {
+  const base = clone(scenarios.hub_x2);
+  base.states[remoteEntityId].attributes.assigned_keys = {
+    201: [...COMMAND_IDS, 159, 161, 162, 163, 164, 165, 166, 167, 168, 169],
+  };
+  return base;
+})();
+
 scenarios.device_mode = (() => {
   const base = clone(scenarios.active);
   base.states[remoteEntityId].attributes.devices = [

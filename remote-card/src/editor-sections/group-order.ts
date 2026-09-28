@@ -37,7 +37,7 @@ export interface GroupOrderSectionParams {
   mediaEnabled: boolean;
   dvrEnabled: boolean;
   /**
-   * X2 on the x1s integration only: the Number pad switch on the D-pad row
+   * X2 only (either integration): the Number pad switch on the D-pad row
    * (docs/internal/numpad-plan.md). Independent of the D-pad switch: with
    * the D-pad off the keypad stands on its own in that slot.
    */

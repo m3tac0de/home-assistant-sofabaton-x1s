@@ -161,7 +161,7 @@ function renderKey(params: KeyGroupsParams, spec: KeySpec): TemplateResult | typ
 
 /**
  * Number pad behind the D-pad (docs/internal/numpad-plan.md). `available`
- * is the card's gate (X2, x1s integration, layout switch, a bound key or
+ * is the card's gate (X2, layout switch, a bound key or
  * the edit preview); without it the group renders the plain D-pad and
  * nothing else changes.
  */

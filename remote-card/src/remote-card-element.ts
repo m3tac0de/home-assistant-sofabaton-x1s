@@ -918,15 +918,15 @@ export class SofabatonRemoteCard extends LitElement {
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
 
-    // Number pad availability (docs/internal/numpad-plan.md §4): X2 on the
-    // x1s integration (the official one maps no numeric keys), the layout
+    // Number pad availability (docs/internal/numpad-plan.md §4): an X2 on
+    // either integration (the official one reports bound keypad ids in
+    // assigned_keys and sends them like any assigned key), the layout
     // switch on, and at least one keypad key bound on the current page.
     // With the D-pad off the keypad stands on its own in the D-pad's slot.
     // The edit preview drops the data gate so the switch visualizes like
     // every other layout toggle.
     const numpadAvailable =
       derived.isX2 &&
-      !store.isHubIntegration() &&
       numpadEnabled(layoutConfig) &&
       (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
     const numpadPageKey = `${derived.mode}:${

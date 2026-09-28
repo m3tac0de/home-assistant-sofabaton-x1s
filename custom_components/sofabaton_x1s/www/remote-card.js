@@ -4738,9 +4738,8 @@ var SofabatonRemoteCardEditor = class extends i4 {
       channelEnabled: channelGroupEnabled(layoutCfg),
       mediaEnabled: mediaGroupEnabled(layoutCfg),
       dvrEnabled: dvrGroupEnabled(layoutCfg),
-      // The official integration maps no numeric keys, so the standalone
-      // card never shows the keypad nor its switch.
-      showNumpadSwitch: isEditorX2 && this._isX1sIntegrationForEditor(),
+      // Positive integration check: an undetected entity gets no switch.
+      showNumpadSwitch: isEditorX2 && (this._isX1sIntegrationForEditor() || this._isHubIntegrationForEditor()),
       numpadEnabled: numpadEnabledForEditor(this._config, this._layoutSelectionKey()),
       isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
       shortcutsStrip,
@@ -9347,7 +9346,7 @@ var SofabatonRemoteCard = class extends i4 {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
-    const numpadAvailable = derived.isX2 && !store.isHubIntegration() && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
+    const numpadAvailable = derived.isX2 && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
     const numpadPageKey = `${derived.mode}:${deviceMode ? derived.deviceId ?? "" : derived.activityId ?? ""}`;
     if (!numpadAvailable || numpadPageKey !== this._numpadPageKey) {
       this._numpadOpen = false;
