@@ -2057,28 +2057,36 @@ class ActivitySyncMixin:
 
         total = len(steps)
         counters: dict[str, int] = {}
-        for index, step in enumerate(steps):
-            # step_name carries the user's own command label for the record
-            # steps, so the control panel can name it inside translated copy.
-            step_name = step.payload.get("command_name") or step.payload.get("name")
-            _progress(phase="writing", message=step.label,
-                      step_kind=_progress_step_kind(step),
-                      step_name=str(step_name) if step_name else None,
-                      completed_steps=index, total_steps=total)
-            ok = self._dispatch_activity_sync_step(step)
-            if not ok:
-                # Every in-place step is an idempotent rewrite, so a transient
-                # ack miss (observed live: a macro-save ack lost under
-                # background hub traffic) is safely retried once.
-                self._log.warning(
-                    "[WIFI_INPLACE] step %s failed; retrying once", step.kind
-                )
-                time.sleep(2.0)
+        # Same run-state lifetime as sync_activity / sync_device: the live
+        # favorite cache, allocator remaps and session key ids belong to this
+        # walk only. A long-lived engine (HA, the facade) walks again later,
+        # and a leftover fav-id map would resolve deletes against stale ids.
+        self._activity_sync_reset_run_state()
+        try:
+            for index, step in enumerate(steps):
+                # step_name carries the user's own command label for the record
+                # steps, so the control panel can name it inside translated copy.
+                step_name = step.payload.get("command_name") or step.payload.get("name")
+                _progress(phase="writing", message=step.label,
+                          step_kind=_progress_step_kind(step),
+                          step_name=str(step_name) if step_name else None,
+                          completed_steps=index, total_steps=total)
                 ok = self._dispatch_activity_sync_step(step)
-            if not ok:
-                return {"status": "failed", "failed_at": step.kind,
-                        "message": f"The hub rejected: {step.label}", "completed_steps": index}
-            counters[step.kind] = counters.get(step.kind, 0) + 1
+                if not ok:
+                    # Every in-place step is an idempotent rewrite, so a transient
+                    # ack miss (observed live: a macro-save ack lost under
+                    # background hub traffic) is safely retried once.
+                    self._log.warning(
+                        "[WIFI_INPLACE] step %s failed; retrying once", step.kind
+                    )
+                    time.sleep(2.0)
+                    ok = self._dispatch_activity_sync_step(step)
+                if not ok:
+                    return {"status": "failed", "failed_at": step.kind,
+                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
+                counters[step.kind] = counters.get(step.kind, 0) + 1
+        finally:
+            self._activity_sync_reset_run_state()
         _progress(phase="completed", message="Synced to hub.", step_kind=None, step_name=None,
                   completed_steps=total, total_steps=total)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
