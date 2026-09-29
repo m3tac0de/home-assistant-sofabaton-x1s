@@ -107,6 +107,35 @@ class ExchangeMixin:
                         sender=self._send_cmd_frame,
                     )
 
+    def _status_exchange(
+        self,
+        name: str,
+        opcode: int,
+        payload: bytes,
+        *,
+        timeout: float = 5.0,
+        reset_acks: bool = False,
+    ) -> AckOutcome:
+        """Send one raw opcode in its own exchange and classify the hub's
+        STATUS_ACK the way every step does (L-P3): status 0x00 is acked, any
+        other status a rejection, no answer a timeout."""
+
+        with self.exchange(name):
+            if reset_acks:
+                self.reset_ack_queues()
+            send_ts = time.monotonic()
+            self._send_cmd_frame(opcode, payload)
+            ack = self.wait_for_ack_any([(ACK_OPCODE_STATUS, None)], timeout=timeout, not_before=send_ts)
+        if ack is None:
+            return AckOutcome.timeout
+        body = ack[1]
+        if body and body[0] != ACK_STATUS_BYTE_OK:
+            self._log.warning(
+                "%s[STEP] %s hub rejected status=0x%02X", LogTag.ACK, name, body[0]
+            )
+            return AckOutcome.rejected
+        return AckOutcome.acked
+
     def execute_exchange(
         self,
         *,

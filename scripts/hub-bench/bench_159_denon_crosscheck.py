@@ -48,7 +48,7 @@ def probe_timing_layout(blob: bytes) -> list[dict]:
 
     The validated exporter layout is header(6) + carrier BE32 at [6:10] +
     words at [10:]. Hub-captured database blobs have been observed with
-    different headers (lib.proxy_ir_blob._looks_like_x1_database_capture_blob),
+    different headers (a header check the lib once had),
     so probe a few starts and report every candidate whose words all land
     in a plausible duration range until a zero terminator.
     """

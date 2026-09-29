@@ -33,11 +33,13 @@ LIB_DIR = (
 
 
 def _stub_device_restore(monkeypatch, proxy, fn) -> None:
-    """Stub a bundle restore's device phase; ``fn`` has restore_device's
-    signature (the bundle calls _restore_device_outcome, which also
-    reports a half-made device)."""
+    """Stub a bundle restore's device phase, catalog read included; ``fn``
+    has restore_device's signature (the bundle calls
+    _restore_device_outcome, which also reports a half-made device)."""
 
     monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (fn(payload=payload), None))
+    # The bundle's one catalog read belongs to the device phase too.
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
 
 def _load_lib() -> types.ModuleType:
     name = "sofabaton_real_engine_test_pkg"
@@ -1426,7 +1428,7 @@ def test_strict_preflight_refuses_what_the_lenient_one_lets_through(monkeypatch)
     verdict, message = engine._activity_sync_preflight(doc, 101, strict=True)
     assert verdict == "unreadable" and "re-read" in message and "nothing was written" in message
     assert engine._device_sync_preflight(doc, 5, strict=True)[0] == "unreadable"
-    assert engine._activity_sync_is_stale(doc, 101) is False  # the lenient wrapper is unchanged
+    assert engine._activity_sync_preflight(doc, 101, strict=False)[0] != "changed"  # lenient: proceeds
 
     monkeypatch.setattr(engine, "backup_activity", lambda *a, **kw: {**doc["activities"][0], "complete": False})
     assert engine._activity_sync_preflight(doc, 101, strict=False) == (None, None)

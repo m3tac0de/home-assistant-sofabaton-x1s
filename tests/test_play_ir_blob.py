@@ -33,13 +33,21 @@ import re
 
 import pytest
 
-from custom_components.sofabaton_x1s.lib.commands import build_denonk_ir_blob
+from custom_components.sofabaton_x1s.lib.commands import build_denonk_ir_blob, looks_like_descriptive_play_blob
+from custom_components.sofabaton_x1s.lib.protocol_const import PLAY_BLOB_BODY_HEADER_LEN
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
 # ---------------------------------------------------------------------------
 # Captured frames (full wire bytes, including a5 5a magic and trailing sum8).
 # ---------------------------------------------------------------------------
+
+
+def _finalize(proxy, library_data: bytes) -> bytes:
+    """``library_data`` plus its trailing body sum8, as the play-blob writer
+    seals it (the body buffer without its 12-byte header)."""
+
+    return proxy._build_play_blob_body_buffer(bytes(library_data))[PLAY_BLOB_BODY_HEADER_LEN:]
 
 def _hx(s: str) -> bytes:
     return bytes.fromhex(re.sub(r"\s", "", s))
@@ -672,7 +680,7 @@ def test_play_ir_blob_fails_when_chunk_ack_is_missing(monkeypatch) -> None:
 def test_finalize_play_blob_body_keeps_descriptor_rule() -> None:
     proxy = _new_proxy()
 
-    finalized = proxy._finalize_play_blob_body(_canonical_blob_body(DENON_DB_POWER_ON_WIRE))
+    finalized = _finalize(proxy, _canonical_blob_body(DENON_DB_POWER_ON_WIRE))
 
     assert finalized == _reconstruct_blob(DENON_DB_POWER_ON_WIRE)
 
@@ -680,10 +688,10 @@ def test_finalize_play_blob_body_keeps_descriptor_rule() -> None:
 def test_descriptor_shape_detection_is_not_tied_to_checksum_field() -> None:
     proxy = _new_proxy()
 
-    assert proxy._looks_like_descriptive_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)) is True
-    assert proxy._looks_like_descriptive_play_blob(SONY12_DESCRIPTOR_BLOB) is True
-    assert proxy._looks_like_descriptive_play_blob(NEC_DESCRIPTOR_BLOB) is True
-    assert proxy._looks_like_descriptive_play_blob(_reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)) is False
+    assert looks_like_descriptive_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)) is True
+    assert looks_like_descriptive_play_blob(SONY12_DESCRIPTOR_BLOB) is True
+    assert looks_like_descriptive_play_blob(NEC_DESCRIPTOR_BLOB) is True
+    assert looks_like_descriptive_play_blob(_reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)) is False
 
 
 def test_finalize_play_blob_body_uses_general_tail_rule_for_descriptors() -> None:
@@ -692,8 +700,8 @@ def test_finalize_play_blob_body_uses_general_tail_rule_for_descriptors() -> Non
     sony_body = SONY12_DESCRIPTOR_BLOB[:-1]
     nec_body = NEC_DESCRIPTOR_BLOB[:-1]
 
-    assert proxy._finalize_play_blob_body(sony_body) == sony_body + bytes([(sum(sony_body) + 2) & 0xFF])
-    assert proxy._finalize_play_blob_body(nec_body) == nec_body + bytes([(sum(nec_body) + 2) & 0xFF])
+    assert _finalize(proxy, sony_body) == sony_body + bytes([(sum(sony_body) + 2) & 0xFF])
+    assert _finalize(proxy, nec_body) == nec_body + bytes([(sum(nec_body) + 2) & 0xFF])
 
 
 def test_descriptive_play_blob_text_extracts_ascii_descriptor() -> None:
@@ -743,7 +751,7 @@ def test_finalize_play_blob_body_x1_long_rule_matches_mode_movie_capture() -> No
     proxy = _new_proxy()
     dumped = _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)[:-1]
 
-    finalized = proxy._finalize_play_blob_body(dumped)
+    finalized = _finalize(proxy, dumped)
 
     assert finalized == _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)
 
@@ -752,7 +760,7 @@ def test_finalize_play_blob_body_x1_long_rule_matches_cblsat_capture() -> None:
     proxy = _new_proxy()
     dumped = _reconstruct_blob(X1_CBLSAT_APP_WIRE)[:-1]
 
-    finalized = proxy._finalize_play_blob_body(dumped)
+    finalized = _finalize(proxy, dumped)
 
     assert finalized == _reconstruct_blob(X1_CBLSAT_APP_WIRE)
 
@@ -768,7 +776,7 @@ def test_finalize_play_blob_body_x1_long_rule_matches_cblsat_capture() -> None:
 def test_normalize_play_blob_x1_singleframe_rule_matches_capture(dumped_blob: bytes, wire_frames: list[bytes]) -> None:
     proxy = _new_proxy()
 
-    normalized = proxy._finalize_play_blob_body(dumped_blob[:-1])
+    normalized = _finalize(proxy, dumped_blob[:-1])
 
     assert normalized == _reconstruct_blob(wire_frames)
 

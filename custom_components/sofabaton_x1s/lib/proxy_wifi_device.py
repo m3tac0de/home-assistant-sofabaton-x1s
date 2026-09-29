@@ -27,6 +27,7 @@ import re
 import time
 from typing import Any
 
+from .ack import AckOutcome
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from .blob_decoders import render_wifi_ip_http_text, render_wifi_roku_blob_body
 from .device_create import DeviceCreateRequest, DeviceCreateResult, run_device_create
@@ -365,16 +366,11 @@ class WifiDeviceMixin:
             "[WIFI][STEP] publish-finalize tx opcode=0x%04X expect_ack=0x0103 first_byte=* attempt=1/1",
             0xD508,
         )
-        with self.exchange("publish_finalize"):
-            send_ts = time.monotonic()
-            self._send_cmd_frame(0xD508, finalize_payload)
-            ack = self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts)
-        if ack is None:
-            self._log.warning(
-                "[WIFI][STEP] publish-finalize failed waiting ack=0x0103 first_byte=*"
-            )
+        outcome = self._status_exchange("publish_finalize", 0xD508, finalize_payload)
+        if outcome is not AckOutcome.acked:
+            self._log.warning("[WIFI][STEP] publish-finalize %s (ack=0x0103)", outcome.value)
             return False
-        self._log.info("[WIFI][STEP] publish-finalize acked via 0x%04X", ack[0])
+        self._log.info("[WIFI][STEP] publish-finalize acked via 0x0103")
         return True
 
     def _wait_for_wifi_input_refresh(

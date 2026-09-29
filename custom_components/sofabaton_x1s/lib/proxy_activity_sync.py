@@ -23,6 +23,7 @@ import time
 from dataclasses import replace
 from typing import Any, Callable, Mapping
 
+from .ack import AckOutcome
 from .activity_sync import ACTIVITY_ID_BASE, SyncStep, build_activity_sync_plan, build_device_sync_plan
 from .device_create import (
     ACK_OPCODE_STATUS,
@@ -36,6 +37,8 @@ from .device_create import (
     synthesize_command_code,
     build_key_sort_steps,
     encode_command_sort_body,
+    rebuild_command_sort,
+    sort_pairs_from_hex,
 )
 from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
 from .devices import build_device_create_payload, parse_device_record
@@ -404,7 +407,13 @@ class ActivitySyncMixin:
         }
         order_getter = getattr(self, "request_favorites_order", None)
         if callable(order_getter):
-            for fav_id, _slot in order_getter(act_lo) or []:
+            current_order = order_getter(act_lo)
+            if current_order is None:
+                # Same rule: no blind allocation when the table is unknown.
+                raise RuntimeError(
+                    f"the favorites order of activity 0x{act_lo:02X} could not be read"
+                )
+            for fav_id, _slot in current_order:
                 occupied.add(_int(fav_id) & 0xFF)
         records_getter = getattr(self, "get_cached_macro_records", None)
         if callable(records_getter):
@@ -460,42 +469,24 @@ class ActivitySyncMixin:
         if not plan:
             return {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {}}
 
-        self._activity_sync_reset_run_state()
+        # Stale pre-flight (§4.5): re-read the activity block and compare with
+        # the baseline the session captured. A mismatch means the hub changed
+        # (e.g. a vendor-app edit through the proxy) — fail fast, don't write.
+        _progress(phase="stale_check", message="Checking the activity hasn't changed…",
+                  completed_steps=0, total_steps=len(plan), current_activity_id=activity_id)
+        verdict, message = self._activity_sync_preflight(
+            baseline, activity_id, strict=strict_preflight
+        )
+        if verdict is not None:
+            return {"status": "failed", "failed_at": "stale_check",
+                    "preflight": verdict, "message": message}
 
-        try:
-            # Stale pre-flight (§4.5): re-read the activity block and compare with
-            # the baseline the session captured. A mismatch means the hub changed
-            # (e.g. a vendor-app edit through the proxy) — fail fast, don't write.
-            _progress(phase="stale_check", message="Checking the activity hasn't changed…",
-                      completed_steps=0, total_steps=len(plan), current_activity_id=activity_id)
-            verdict, message = self._activity_sync_preflight(
-                baseline, activity_id, strict=strict_preflight
-            )
-            if verdict is not None:
-                return {"status": "failed", "failed_at": "stale_check",
-                        "preflight": verdict, "message": message}
-
-            total = len(plan)
-            counters: dict[str, int] = {}
-            for index, step in enumerate(plan):
-                _progress(phase="writing", message=step.label,
-                          step_kind=_progress_step_kind(step),
-                          step_device_id=step.target_device_id,
-                          completed_steps=index,
-                          total_steps=total, current_activity_id=activity_id)
-                ok = self._dispatch_activity_sync_step(step)
-                if not ok:
-                    target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
-                    return {"status": "failed", "failed_at": f"{step.kind}{target}",
-                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
-                counters[step.kind] = counters.get(step.kind, 0) + 1
-        finally:
-            # Run state (allocator remaps, session key ids, live fav cache) is
-            # meaningful only while this run's steps execute. Clear it so no
-            # later flow — restore, HA services, the next editor session —
-            # can resolve against this run's leftovers (e.g. the fav-id
-            # validator accepting a session key id that no longer exists).
-            self._activity_sync_reset_run_state()
+        failure, counters = self._walk_sync_plan(
+            plan, progress=_progress, context={"current_activity_id": activity_id}
+        )
+        if failure is not None:
+            return failure
+        total = len(plan)
 
         # The settle window below can take seconds; "completed" is only
         # emitted once it finishes so the UI never claims synced while the
@@ -520,6 +511,79 @@ class ActivitySyncMixin:
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_activity_id=activity_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
+
+    def _walk_sync_plan(
+        self,
+        steps: Any,
+        *,
+        progress: Callable[..., None],
+        context: Mapping[str, Any] | None = None,
+        retry_once: bool = False,
+        name_steps: bool = False,
+    ) -> tuple[dict[str, Any] | None, dict[str, int]]:
+        """Write a plan's steps serially, ack-gated, stopping at the first
+        rejection. Returns ``(failure, counters)``; ``failure`` is None when
+        every step landed.
+
+        The one walker for ``sync_activity``, ``sync_device`` and
+        ``run_wifi_inplace_plan``, so the progress shape, the failure shape
+        and the run-state lifetime cannot drift apart. ``retry_once`` retries
+        a failed step once (the Wifi in-place steps are idempotent);
+        ``name_steps`` reports each step's own command label as
+        ``step_name`` instead of its ``step_device_id``.
+        """
+
+        steps = tuple(steps)
+        total = len(steps)
+        extra = dict(context or {})
+        counters: dict[str, int] = {}
+        # Run state (allocator remaps, session key ids, live fav cache) is
+        # meaningful only while this walk's steps execute. Clear it on both
+        # sides so no later flow (restore, HA services, the next editor
+        # session) can resolve against this walk's leftovers.
+        self._activity_sync_reset_run_state()
+        try:
+            for index, step in enumerate(steps):
+                fields: dict[str, Any] = {
+                    "phase": "writing",
+                    "message": step.label,
+                    "step_kind": _progress_step_kind(step),
+                    "completed_steps": index,
+                    "total_steps": total,
+                    **extra,
+                }
+                if name_steps:
+                    # The user's own command label, so the control panel can
+                    # name it inside translated copy.
+                    step_name = step.payload.get("command_name") or step.payload.get("name")
+                    fields["step_name"] = str(step_name) if step_name else None
+                else:
+                    fields["step_device_id"] = step.target_device_id
+                progress(**fields)
+                ok = self._dispatch_activity_sync_step(step)
+                if not ok and retry_once:
+                    self._log.warning("[SYNC] step %s failed; retrying once", step.kind)
+                    time.sleep(2.0)
+                    ok = self._dispatch_activity_sync_step(step)
+                if not ok:
+                    target = (
+                        "" if name_steps or step.target_device_id is None
+                        else f" (device {step.target_device_id})"
+                    )
+                    return {
+                        "status": "failed",
+                        "failed_at": f"{step.kind}{target}",
+                        "message": f"The hub rejected: {step.label}",
+                        "completed_steps": index,
+                        # What landed before the stop, so a report (and a
+                        # resume) can show "2 of 5" and the counters so far.
+                        "total_steps": total,
+                        "counters": dict(counters),
+                    }, counters
+                counters[step.kind] = counters.get(step.kind, 0) + 1
+        finally:
+            self._activity_sync_reset_run_state()
+        return None, counters
 
     def _settle_post_sync_reread(self, read_signature: Callable[[], str], *, log_tag: str) -> None:
         """Re-read an entity after a sync until consecutive captures agree.
@@ -585,35 +649,21 @@ class ActivitySyncMixin:
         if not plan:
             return {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {}}
 
-        self._activity_sync_reset_run_state()
+        _progress(phase="stale_check", message="Checking the device hasn't changed…",
+                  completed_steps=0, total_steps=len(plan), current_device_id=device_id)
+        verdict, message = self._device_sync_preflight(
+            baseline, device_id, strict=strict_preflight
+        )
+        if verdict is not None:
+            return {"status": "failed", "failed_at": "stale_check",
+                    "preflight": verdict, "message": message}
 
-        try:
-            _progress(phase="stale_check", message="Checking the device hasn't changed…",
-                      completed_steps=0, total_steps=len(plan), current_device_id=device_id)
-            verdict, message = self._device_sync_preflight(
-                baseline, device_id, strict=strict_preflight
-            )
-            if verdict is not None:
-                return {"status": "failed", "failed_at": "stale_check",
-                        "preflight": verdict, "message": message}
-
-            total = len(plan)
-            counters: dict[str, int] = {}
-            for index, step in enumerate(plan):
-                _progress(phase="writing", message=step.label,
-                          step_kind=_progress_step_kind(step),
-                          step_device_id=step.target_device_id,
-                          completed_steps=index,
-                          total_steps=total, current_device_id=device_id)
-                ok = self._dispatch_activity_sync_step(step)
-                if not ok:
-                    target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
-                    return {"status": "failed", "failed_at": f"{step.kind}{target}",
-                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
-                counters[step.kind] = counters.get(step.kind, 0) + 1
-        finally:
-            # See sync_activity: run state must not outlive the step walk.
-            self._activity_sync_reset_run_state()
+        failure, counters = self._walk_sync_plan(
+            plan, progress=_progress, context={"current_device_id": device_id}
+        )
+        if failure is not None:
+            return failure
+        total = len(plan)
 
         # See sync_activity: "completed" waits for the settle window, and
         # step_kind is cleared so the merge in progress consumers cannot
@@ -686,12 +736,6 @@ class ActivitySyncMixin:
         )
         return "changed"
 
-    def _preflight_is_stale(self, **kwargs: Any) -> bool:
-        """Lenient form: only a confirmed change counts (an unreadable or
-        incomplete re-read lets the write proceed, logged)."""
-
-        return self._preflight_verdict(**kwargs) == "changed"
-
     @staticmethod
     def _preflight_failure(verdict: str | None, what: str, *, strict: bool) -> tuple[str | None, str | None]:
         """``(verdict, message)`` when the sync must stop, ``(None, None)`` to proceed."""
@@ -703,9 +747,6 @@ class ActivitySyncMixin:
         if verdict == "unreadable":
             return verdict, f"The {what} could not be re-read from the hub before writing; nothing was written."
         return verdict, f"The {what} re-read was incomplete; nothing was written."
-
-    def _device_sync_is_stale(self, baseline: Mapping[str, Any], device_id: int) -> bool:
-        return self._device_sync_preflight(baseline, device_id, strict=False)[0] == "changed"
 
     def _device_sync_preflight(
         self, baseline: Mapping[str, Any], device_id: int, *, strict: bool
@@ -723,9 +764,6 @@ class ActivitySyncMixin:
             entity_label=f"device=0x{device_id & 0xFF:02X}",
         )
         return self._preflight_failure(verdict, "device", strict=strict)
-
-    def _activity_sync_is_stale(self, baseline: Mapping[str, Any], activity_id: int) -> bool:
-        return self._activity_sync_preflight(baseline, activity_id, strict=False)[0] == "changed"
 
     def _activity_sync_preflight(
         self, baseline: Mapping[str, Any], activity_id: int, *, strict: bool
@@ -880,8 +918,16 @@ class ActivitySyncMixin:
                 continue
             content = (_int(entry.get("device_id")) & 0xFF, _int(entry.get("command_id")) & 0xFF)
             fav_id = fav_id_by_content.get(content)
-            if fav_id is not None:
-                order.append(fav_id)
+            if fav_id is None:
+                # Leaving it out would write an order table without it, and a
+                # favorite without a slot is invisible on the remote.
+                self._log.warning(
+                    "[ACTIVITY_SYNC] favorite_order: favorite (dev=0x%02X cmd=0x%02X) "
+                    "is not on the hub; not writing a partial order",
+                    content[0], content[1],
+                )
+                return False
+            order.append(fav_id)
         if not order:
             # Nothing resolvable — no reorder to perform.
             return True
@@ -897,12 +943,19 @@ class ActivitySyncMixin:
         2026-07-11)."""
         act_lo = activity_id & 0xFF
         self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=True)
-        self._fetch_and_wait(
+        if not self._fetch_and_wait(
             f"buttons:{act_lo}",
             lambda: self.get_buttons_for_entity(act_lo, fetch_if_missing=True),
             lambda: act_lo in self.state.buttons,
             timeout=10.0,
-        )
+        ):
+            # The cache was just cleared: an empty map here would read as
+            # "no favorites" and every caller would act on it (skip a
+            # delete, write an order table without the favorites, allocate
+            # a macro id blind). Raise, and let nothing cache it.
+            raise RuntimeError(
+                f"the keymap of activity 0x{act_lo:02X} could not be re-read"
+            )
         mapping: dict[tuple[int, int], int] = {}
         state = getattr(self, "state", None)
         slots = state.get_activity_favorite_slots(act_lo) if state is not None else []
@@ -951,6 +1004,9 @@ class ActivitySyncMixin:
             try:
                 live = self._activity_sync_live_favorite_fav_ids(activity_id)
             except Exception:
+                self._log.exception(
+                    "[ACTIVITY_SYNC] macro_delete: live fav-id read failed; deleting without the guard"
+                )
                 live = None
             if live and button_id in set(live.values()):
                 self._log.warning(
@@ -1544,13 +1600,9 @@ class ActivitySyncMixin:
         if not act_lo:
             return False
 
-        # Reflect the new name in cached state first so the X1 builder (which
-        # re-encodes from state) and any subsequent read see it. The X1S/X2
-        # builder patches the raw row directly.
-        activity = self.state.entities("activity").get(act_lo)
-        if isinstance(activity, dict):
-            activity["name"] = new_name
-
+        # Both builders take the new name directly (the X1 one re-encodes
+        # the row, the X1S/X2 one patches the raw row); the cache follows
+        # only once the hub has taken it.
         confirm_payload = self._build_activity_confirm_payload(act_lo, name=new_name)
         if confirm_payload is None:
             self._log.warning("[ACTIVITY_SYNC] activity_rename: no row for act=0x%02X", act_lo)
@@ -1561,16 +1613,17 @@ class ActivitySyncMixin:
             if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
             else OP_ACTIVITY_CONFIRM
         )
-        with self.exchange("rename_confirm"):
-            self.reset_ack_queues()
-            send_ts = time.monotonic()
-            self._send_cmd_frame(confirm_opcode, confirm_payload)
-            confirm_ack = self.wait_for_ack_any(
-                [(0x0103, None)], timeout=5.0, not_before=send_ts
+        outcome = self._status_exchange(
+            "rename_confirm", confirm_opcode, confirm_payload, reset_acks=True
+        )
+        if outcome is not AckOutcome.acked:
+            self._log.warning(
+                "[ACTIVITY_SYNC] activity_rename: %s act=0x%02X", outcome.value, act_lo
             )
-        if confirm_ack is None:
-            self._log.warning("[ACTIVITY_SYNC] activity_rename: missing ACK act=0x%02X", act_lo)
             return False
+        activity = self.state.entities("activity").get(act_lo)
+        if isinstance(activity, dict):
+            activity["name"] = new_name
         return True
 
     def _sync_step_device_rename(self, payload: Mapping[str, Any]) -> bool:
@@ -1753,30 +1806,17 @@ class ActivitySyncMixin:
         if not dev_lo:
             return False
         table = self.fetch_device_key_sort(dev_lo) or {}
-        try:
-            raw = bytes.fromhex(str(table.get("msg_hex") or "").replace(" ", ""))
-        except ValueError:
-            raw = b""
-        pairs = [(raw[i], raw[i + 1]) for i in range(0, len(raw) - 1, 2)]
-        positioned = [
-            (cmd, pos) for cmd, pos in pairs
-            if cmd not in removed and 1 <= pos <= 0xFE
-        ]
-        if not positioned:
+        pairs = sort_pairs_from_hex(str(table.get("msg_hex") or ""))
+        if not any(cmd not in removed and 1 <= pos <= 0xFE for cmd, pos in pairs):
             self._log.info(
                 "[DEVICE_SYNC] sort rewrite dev=0x%02X: table positions nothing; left alone",
                 dev_lo,
             )
             return True
-        positioned.sort(key=lambda pair: pair[1])
-        listed = {cmd for cmd, _ in positioned}
         known: set[int] = set()
         known.update(int(c) & 0xFF for c in (self.state.commands.get(dev_lo) or {}))
         known.update(int(c) & 0xFF for c in (self.state.command_metadata.get(dev_lo) or {}))
-        ordered = [cmd for cmd, _ in positioned] + sorted(
-            c for c in known if c not in listed and c not in removed
-        )
-        new_pairs = [(cmd, index + 1) for index, cmd in enumerate(ordered)]
+        new_pairs = rebuild_command_sort(pairs, known, removed=removed)
         try:
             steps = build_key_sort_steps(
                 device_id=dev_lo,
@@ -2055,38 +2095,15 @@ class ActivitySyncMixin:
             return {"status": "failed", "failed_at": "unavailable",
                     "message": "The hub is not reachable (the Sofabaton app may be connected)."}
 
+        # Every in-place step is an idempotent rewrite, so a transient ack
+        # miss (observed live: a macro-save ack lost under background hub
+        # traffic) is safely retried once.
+        failure, counters = self._walk_sync_plan(
+            steps, progress=_progress, retry_once=True, name_steps=True
+        )
+        if failure is not None:
+            return failure
         total = len(steps)
-        counters: dict[str, int] = {}
-        # Same run-state lifetime as sync_activity / sync_device: the live
-        # favorite cache, allocator remaps and session key ids belong to this
-        # walk only. A long-lived engine (HA, the facade) walks again later,
-        # and a leftover fav-id map would resolve deletes against stale ids.
-        self._activity_sync_reset_run_state()
-        try:
-            for index, step in enumerate(steps):
-                # step_name carries the user's own command label for the record
-                # steps, so the control panel can name it inside translated copy.
-                step_name = step.payload.get("command_name") or step.payload.get("name")
-                _progress(phase="writing", message=step.label,
-                          step_kind=_progress_step_kind(step),
-                          step_name=str(step_name) if step_name else None,
-                          completed_steps=index, total_steps=total)
-                ok = self._dispatch_activity_sync_step(step)
-                if not ok:
-                    # Every in-place step is an idempotent rewrite, so a transient
-                    # ack miss (observed live: a macro-save ack lost under
-                    # background hub traffic) is safely retried once.
-                    self._log.warning(
-                        "[WIFI_INPLACE] step %s failed; retrying once", step.kind
-                    )
-                    time.sleep(2.0)
-                    ok = self._dispatch_activity_sync_step(step)
-                if not ok:
-                    return {"status": "failed", "failed_at": step.kind,
-                            "message": f"The hub rejected: {step.label}", "completed_steps": index}
-                counters[step.kind] = counters.get(step.kind, 0) + 1
-        finally:
-            self._activity_sync_reset_run_state()
         _progress(phase="completed", message="Synced to hub.", step_kind=None, step_name=None,
                   completed_steps=total, total_steps=total)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}

@@ -3874,9 +3874,7 @@ def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypat
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     def _request_activities() -> bool:
-        proxy._burst.active = True
-        proxy._burst.kind = "activities"
-        proxy._burst.active = False
+        proxy._activities_commit_serial += 1  # the activities list committed
         proxy.state.activities[0x66] = {"name": "heyo", "active": False, "needs_confirm": True}
         proxy.state.activities[0x65] = {"name": "test", "active": True, "needs_confirm": False}
         return True
@@ -3903,6 +3901,8 @@ def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypat
         "confirmed_activities": [0x66],
         "impacted_activities": [0x66],
         "status": "success",
+        "confirm_incomplete": False,
+        "unconfirmed_activities": [],
     }
     assert [opcode for opcode, _payload in sent] == [0x0109, 0x7B38]
     assert sent[0][1] == b""
@@ -3931,9 +3931,7 @@ def test_delete_device_uses_x1s_finalize_opcode_for_activity_confirmation(monkey
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     def _request_activities() -> bool:
-        proxy._burst.active = True
-        proxy._burst.kind = "activities"
-        proxy._burst.active = False
+        proxy._activities_commit_serial += 1  # the activities list committed
         row_payload = bytearray(214)
         row_payload[0] = 0x04
         row_payload[6:8] = (0x0068).to_bytes(2, "big")
@@ -3970,9 +3968,17 @@ def test_delete_device_uses_120_second_delete_ack_timeout(monkeypatch) -> None:
 
     monkeypatch.setattr(proxy, "wait_for_ack_any", _wait_for_ack_any)
     monkeypatch.setattr(proxy, "request_activities", lambda: False)
+    proxy.state.devices[0x04] = {"name": "TV"}
 
-    assert proxy.delete_device(0x04) is None
+    result = proxy.delete_device(0x04)
+
     assert observed["timeout"] == 120.0
+    # The hub acked the delete: it happened, even though the activities
+    # re-read failed. The device is gone; the follow-up is reported.
+    assert result["status"] == "success" and result["confirm_incomplete"] is True
+    assert 0x04 not in proxy.state.devices
+
+
 def test_delete_device_requires_delete_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -4045,9 +4051,7 @@ def test_delete_device_clears_stale_referencing_activity_caches(monkeypatch) -> 
     )
 
     def _request_activities() -> bool:
-        proxy._burst.active = True
-        proxy._burst.kind = "activities"
-        proxy._burst.active = False
+        proxy._activities_commit_serial += 1  # the activities list committed
         proxy.state.activities[0x66]["needs_confirm"] = True
         return True
 

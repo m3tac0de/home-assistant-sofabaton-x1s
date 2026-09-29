@@ -64,11 +64,13 @@ from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
 def _stub_device_restore(monkeypatch, proxy, fn) -> None:
-    """Stub a bundle restore's device phase; ``fn`` has restore_device's
-    signature (the bundle calls _restore_device_outcome, which also
-    reports a half-made device)."""
+    """Stub a bundle restore's device phase, catalog read included; ``fn``
+    has restore_device's signature (the bundle calls
+    _restore_device_outcome, which also reports a half-made device)."""
 
     monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (fn(payload=payload), None))
+    # The bundle's one catalog read belongs to the device phase too.
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
 
 def _device_payload(
     *,
@@ -1536,6 +1538,7 @@ def test_restore_activity_still_validates_standalone(monkeypatch) -> None:
 
 def test_a_failed_bundle_restore_still_syncs_the_remotes_when_something_landed(monkeypatch) -> None:
     proxy = _proxy(monkeypatch)
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
     syncs: list[int] = []
     monkeypatch.setattr(proxy, "resync_remote", lambda *a, **kw: syncs.append(1) or True)
     bundle = {

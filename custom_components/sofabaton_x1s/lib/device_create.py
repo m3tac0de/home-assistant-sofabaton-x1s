@@ -872,6 +872,46 @@ def build_command_write_steps(
     return steps
 
 
+def sort_pairs_from_hex(msg_hex: str) -> list[tuple[int, int]]:
+    """``(command_id, sort_position)`` pairs from a key-sort table's hex."""
+
+    try:
+        raw = bytes.fromhex(str(msg_hex or "").replace(" ", ""))
+    except ValueError:
+        return []
+    return [(raw[i], raw[i + 1]) for i in range(0, len(raw) - 1, 2)]
+
+
+def rebuild_command_sort(
+    current_pairs: Iterable[tuple[int, int]],
+    known_ids: Iterable[int],
+    *,
+    removed: Iterable[int] = (),
+    appended: Iterable[int] = (),
+) -> list[tuple[int, int]]:
+    """The one device key-sort policy, for adds and deletes alike.
+
+    Commands the table positions keep their order; every other known
+    command follows in id order; ``appended`` go last; ``removed`` go.
+    Then renumber 1..n. Positions 0x00 and 0xFF are the hub's
+    "never positioned" sentinels, not slots (an all-0xFF table orders
+    nothing, X2 bench 2026-09-16).
+    """
+
+    gone = {int(c) & 0xFF for c in removed}
+    tail = [int(c) & 0xFF for c in appended if (int(c) & 0xFF) not in gone]
+    skip = gone | set(tail)
+    positioned = sorted(
+        ((cmd & 0xFF, pos & 0xFF) for cmd, pos in current_pairs
+         if (cmd & 0xFF) not in skip and 1 <= (pos & 0xFF) <= 0xFE),
+        key=lambda pair: pair[1],
+    )
+    listed = {cmd for cmd, _ in positioned}
+    rest = sorted({int(c) & 0xFF for c in known_ids} - listed - skip)
+    ordered = [cmd for cmd, _ in positioned] + rest + tail
+    return [(cmd, index + 1) for index, cmd in enumerate(ordered)]
+
+
 def encode_command_sort_body(
     ordered_pairs: list[tuple[int, int]],
 ) -> bytes:
