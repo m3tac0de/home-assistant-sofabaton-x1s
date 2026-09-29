@@ -92,6 +92,25 @@ class _InMemoryLogHandler(logging.Handler):
             logger = logging.getLogger(logger_name)
             logger.removeHandler(self)
 
+class _ForwardToRootHandler(logging.Handler):
+    """Pass records at or above the user's own level on to the root logger.
+
+    The capture lowers our loggers to DEBUG (so the Logs tab gets every
+    line) and stops propagation (so HA's log is not flooded with DEBUG).
+    Without this handler that also silenced every WARNING and ERROR the
+    integration and the library log. Its level is the logger's effective
+    level from before the capture, so what HA would have logged still
+    reaches home-assistant.log and the system log, exactly once.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # callHandlers, not handle: since Python 3.13 Logger.handle has a
+        # thread-local recursion guard shared by all loggers, and this runs
+        # while the originating logger is still handling the record, so
+        # handle() would silently drop it.
+        logging.getLogger().callHandlers(record)
+
+
 def _get_handler(hass: HomeAssistant) -> _InMemoryLogHandler:
     domain_data = hass.data.setdefault(DOMAIN, {})
     handler: _InMemoryLogHandler | None = domain_data.get("_diag_handler")
@@ -131,6 +150,14 @@ def _attach_capture(hass: HomeAssistant) -> None:
         if _should_route_to_home_assistant(logger):
             # User wants normal/debug logging to flow to HA; honor their choice.
             continue
+
+        forwarders: dict[str, _ForwardToRootHandler] = domain_data.setdefault(
+            "_forward_handlers", {}
+        )
+        if logger_name not in forwarders:
+            forwarder = _ForwardToRootHandler(logger.getEffectiveLevel())
+            logger.addHandler(forwarder)
+            forwarders[logger_name] = forwarder
 
         logger.setLevel(logging.DEBUG)
         logger.propagate = False
@@ -198,6 +225,9 @@ def _detach_capture(hass: HomeAssistant) -> None:
     logger_state: dict[str, tuple[int, bool]] = domain_data.get("_logger_state", {})
     if handler:
         handler.detach()
+
+    for logger_name, forwarder in domain_data.pop("_forward_handlers", {}).items():
+        logging.getLogger(logger_name).removeHandler(forwarder)
 
     for logger_name, (level, propagate) in logger_state.items():
         logger = logging.getLogger(logger_name)
