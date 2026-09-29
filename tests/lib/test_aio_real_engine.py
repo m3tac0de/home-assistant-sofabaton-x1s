@@ -1357,13 +1357,14 @@ def test_write_batch_reports_a_failed_trigger_and_can_drop_it(monkeypatch) -> No
     engine.begin_write_batch()
     engine.resync_remote()
     assert engine.end_write_batch()["remote_sync"] == "failed"
-    # send_remote_sync=False drops the pending requests without sending.
+    # send_remote_sync=False drops the pending requests without sending,
+    # and says so: the remotes are not up to date.
     enqueued: list = []
     monkeypatch.setattr(engine, "enqueue_cmd", lambda *a, **kw: enqueued.append(a) or True)
     engine.begin_write_batch()
     engine.resync_remote()
     summary = engine.end_write_batch(send_remote_sync=False)
-    assert summary["remote_sync"] == "not_needed" and summary["remote_sync_requests"] == 1
+    assert summary["remote_sync"] == "skipped" and summary["remote_sync_requests"] == 1
     assert enqueued == []
 
 

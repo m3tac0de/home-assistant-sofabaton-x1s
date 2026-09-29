@@ -2671,7 +2671,8 @@ class _ApplyFake(FakeProxy):
         self.batch_calls.append(("end", send_remote_sync))
         asked = sum(1 for c in self.write_calls if c[0] in ("create_device", "create_activity",
                                                              "reorder_devices", "reorder_activities"))
-        return {"remote_sync": "sent" if asked and send_remote_sync else "not_needed",
+        status = ("sent" if send_remote_sync else "skipped") if asked else "not_needed"
+        return {"remote_sync": status,
                 "remote_sync_requests": asked, "origins": []}
 
     def _sync(self, kind, baseline, edited, entity_id, kw):
@@ -3144,6 +3145,26 @@ def test_the_holder_reads_the_hub_itself_and_nested_holds_release_once() -> None
             assert [d.device_id for d in await proxy.devices(timeout=2.0)] == [5]
             assert ("devices", None) in fake.fetch_calls
         assert proxy._hub_holds == 0 and proxy._hub_free.is_set() and proxy._hub_held_by is None
+
+    asyncio.run(main())
+
+
+def test_the_app_is_kept_out_while_the_facade_holds_the_hub() -> None:
+    class _GatedTransport(FakeProxy._Transport):
+        gate = None
+
+        def set_busy_gate(self, gate):
+            self.gate = gate
+
+    async def main():
+        fake = FakeProxy()
+        fake.transport = _GatedTransport()
+        proxy = _wrap(fake)
+        gate = fake.transport.gate
+        assert gate is not None and gate() is False
+        async with proxy._holding_hub("a restore"):
+            assert gate() is True  # a CALL_ME now waits, as it does in HA
+        assert gate() is False
 
     asyncio.run(main())
 

@@ -120,14 +120,15 @@ class WriteBatchMixin:
     def end_write_batch(self, *, send_remote_sync: bool = True) -> dict[str, Any]:
         """Close the batch and send the one coalesced trigger.
 
-        Returns ``{"remote_sync": "sent" | "failed" | "not_needed",
-        "remote_sync_requests": n, "origins": [...]}``. ``not_needed``
-        means no participating write asked for a trigger (nothing that
-        needs one was written). ``failed`` means the trigger could not
-        be enqueued (the hub is not writable); the configuration
-        writes themselves are unaffected and the caller may retry the
-        trigger alone with ``resync_remote``. ``send_remote_sync=False``
-        drops the pending requests without sending.
+        Returns ``{"remote_sync": "sent" | "failed" | "not_needed" |
+        "skipped", "remote_sync_requests": n, "origins": [...]}``.
+        ``not_needed`` means no participating write asked for a trigger
+        (nothing that needs one was written). ``failed`` means the
+        trigger could not be enqueued (the hub is not writable); the
+        configuration writes themselves are unaffected and the caller may
+        retry the trigger alone with ``resync_remote``. ``skipped`` means
+        writes asked for one but ``send_remote_sync=False`` dropped it:
+        the remotes are not up to date.
         """
 
         with self._write_batch_lock:
@@ -136,8 +137,11 @@ class WriteBatchMixin:
                 raise RuntimeError("no write batch is open")
             self._write_batch = None
         status = "not_needed"
-        if batch.remote_sync_pending and send_remote_sync:
-            status = "sent" if self.resync_remote() else "failed"
+        if batch.remote_sync_pending:
+            if not send_remote_sync:
+                status = "skipped"
+            else:
+                status = "sent" if self.resync_remote() else "failed"
         self._log.info(
             "[BATCH] write batch closed: %d remote-sync request(s) from %s -> %s",
             batch.remote_sync_requests, batch.origins or "nothing", status,

@@ -605,6 +605,13 @@ class AsyncXProxy:
         self._hub_held_by: Optional[str] = None
         self._hub_free = asyncio.Event()
         self._hub_free.set()
+        # The vendor app's CALL_ME waits while an exclusive operation holds
+        # the hub, as it does in HA: an app taking the session mid-restore
+        # would stop the job partway. Read on the demuxer thread; an int
+        # read is atomic.
+        transport = getattr(self._proxy, "transport", None)
+        if transport is not None and hasattr(transport, "set_busy_gate"):
+            transport.set_busy_gate(lambda: self._hub_holds > 0)
         self._whole_refresh_task: Optional[asyncio.Task] = None
         # Id of the last projection handed out or announced; a rebase
         # emits ``snapshot_changed`` only when the id moved past it.

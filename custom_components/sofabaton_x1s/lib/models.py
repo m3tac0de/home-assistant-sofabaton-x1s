@@ -261,7 +261,9 @@ class BatchOutcome:
     """What closing :meth:`AsyncXProxy.batch_writes` did.
 
     ``remote_sync``: ``"sent"`` (one coalesced trigger went out),
-    ``"not_needed"`` (no participating write asked for one) or
+    ``"not_needed"`` (no participating write asked for one),
+    ``"skipped"`` (writes asked for one but the caller passed
+    ``send_remote_sync=False``; the remotes are not up to date) or
     ``"failed"`` (the trigger could not be enqueued; the configuration
     writes are unaffected and ``resync_remote`` can be retried alone).
     ``device_ids`` / ``activity_ids`` are every entity the batch's
@@ -270,7 +272,7 @@ class BatchOutcome:
     after the batch.
     """
 
-    remote_sync: Literal["sent", "failed", "not_needed"]
+    remote_sync: Literal["sent", "failed", "not_needed", "skipped"]
     remote_sync_requests: int
     device_ids: tuple[int, ...]
     activity_ids: tuple[int, ...]
