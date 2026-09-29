@@ -49,9 +49,7 @@ RAW_SEND_ATTRS = {"_send_cmd_frame", "_send_family_frame"}
 # is not a call and needs no entry here.
 ALLOWED: set[tuple[str, str]] = {
     ("device_create.py", "run_create_sequence"),
-    ("proxy_ack_waiters.py", "query_device_input_index"),
-    ("proxy_ack_waiters.py", "fetch_device_input_entries"),
-    ("proxy_ack_waiters.py", "fetch_device_input_record"),
+    ("proxy_ack_waiters.py", "_read_inputs_burst"),
     ("proxy_ack_waiters.py", "fetch_device_key_sort"),
     ("proxy_activity_ops.py", "delete_device"),
     ("proxy_activity_ops.py", "add_device_to_activity"),

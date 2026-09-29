@@ -5155,6 +5155,47 @@ def test_query_device_input_index_returns_ordinal(monkeypatch) -> None:
     assert sent == [(OP_REQ_ACTIVITY_INPUTS, bytes([0x05]))]
 
 
+def test_an_inputs_page_that_stalls_mid_burst_is_read_whole(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X1")
+
+    header = _make_x1_input_page1_header(device_id=0x05, num_inputs=3)
+    page1 = header + _make_activity_inputs_entry(1, 1)
+    # The second page's 3-byte wrapper, then the rest of the body.
+    page2 = bytes([0x01, 0x00, 0x02]) + (
+        _make_activity_inputs_entry(2, 2) + _make_activity_inputs_entry(3, 3) + bytes(107) + bytes(1)
+    )
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+    # A retransmitted segment: the idle window closes after page 1.
+    returns = iter([(page1,), (page2,)])
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_activity_inputs_burst",
+        lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked, payloads=next(returns)),
+    )
+
+    rows = proxy.fetch_device_input_entries(0x05, timeout=2.0)
+
+    assert [row["command_id"] for row in rows] == [1, 2, 3]
+
+
+def test_an_inputs_page_that_never_completes_is_a_timeout(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X1")
+
+    page1 = _make_x1_input_page1_header(device_id=0x05, num_inputs=3) + _make_activity_inputs_entry(1, 1)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+    served = []
+
+    def _wait(timeout=5.0):
+        if served:
+            return InputsBurstResult(outcome=AckOutcome.timeout)
+        served.append(1)
+        return InputsBurstResult(outcome=AckOutcome.acked, payloads=(page1,))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _wait)
+
+    assert proxy.fetch_device_input_entries(0x05, timeout=0.2) is None
+
+
 def test_query_device_input_index_returns_none_on_timeout(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 

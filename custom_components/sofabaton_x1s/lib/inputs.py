@@ -374,6 +374,27 @@ def _decode_favorites(region: bytes) -> tuple[FavoriteSlot, ...]:
     )
 
 
+def inputs_burst_complete(payloads: Sequence[bytes], *, hub_version: str) -> bool:
+    """False while the burst lacks entry bytes its header declares.
+
+    Frames arrive whole, so a burst can only be short by whole pages: one
+    still in flight when the reader's idle window closed (a retransmitted
+    segment on Wi-Fi). Without a header there is nothing to wait for.
+    """
+
+    if not payloads:
+        return True
+    page1 = payloads[0]
+    header_offset = INPUTS_OUTER_WRAPPER_LEN
+    if len(page1) < header_offset + INPUTS_BODY_HEADER_LEN:
+        return True
+    entry_count = page1[header_offset + 5]
+    body_len = len(page1) - header_offset - INPUTS_BODY_HEADER_LEN + sum(
+        max(0, len(page) - INPUTS_OUTER_WRAPPER_LEN) for page in payloads[1:]
+    )
+    return body_len >= entry_count * schema_for(hub_version).input_entry_stride
+
+
 def parse_inputs_burst(payloads: Sequence[bytes], *, hub_version: str) -> InputsRecord:
     """Decode an accumulated family-0x46 burst into an :class:`InputsRecord`.
 
@@ -491,5 +512,6 @@ __all__ = [
     "InputEntry",
     "InputsRecord",
     "build_inputs_write",
+    "inputs_burst_complete",
     "parse_inputs_burst",
 ]
