@@ -2927,6 +2927,74 @@ def test_sync_hub_resume_adopts_a_create_that_landed_without_its_id() -> None:
     asyncio.run(main())
 
 
+def _created_device_run(fake, proxy):
+    """Run 1 of an apply that creates device -1 (with a binding, so it has
+    a sync item) to success; the tests rewrite its record into the state
+    an interrupted run leaves behind."""
+
+    async def run():
+        base = copy.deepcopy((await proxy.snapshot()).bundle)
+        desired = copy.deepcopy(base)
+        desired["devices"].append({"device": {"device_id": -1, "name": "Projector", "device_class": "ir"},
+                                   "button_bindings": [_apply_binding(0xB6, -1, 1)], "commands": [], "macros": []})
+        first = await proxy.sync_hub(baseline=base, desired=desired)
+        assert first.ok and first.id_map == {-1: 8}
+        assert [i.kind for i in first.items][:2] == ["add_device", "sync_device"]
+        return first.state.to_dict()
+
+    return run()
+
+
+def test_sync_hub_resume_runs_the_pending_sync_of_a_created_entity() -> None:
+    """CR-L5-1: the create landed, its sync item never ran. The created
+    entity is not in the baseline, so stage B must not compare it with the
+    baseline (that always read as 'changed on the hub')."""
+
+    async def main():
+        fake = _ApplyFake()
+        proxy = _wrap(fake)
+        doc = await _created_device_run(fake, proxy)
+        doc["status"], doc["cursor"] = "stopped", 1
+        for item in doc["items"]:
+            if item["kind"] != "add_device":
+                item["status"] = "not_attempted"
+        assert doc["items"][1]["entity_id"] == 8
+        syncs_before = len(fake.syncs)
+
+        second = await proxy.sync_hub(state=hub_apply.ApplyState.from_dict(doc))
+        assert second.ok, (second.failed_at, second.message)
+        assert [(k, e) for k, e, _s, _strict in fake.syncs[syncs_before:]] == [("device", 8)]
+        assert [c[0] for c in fake.write_calls] == ["create_device"], "no duplicate create"
+
+    asyncio.run(main())
+
+
+def test_sync_hub_resume_adopts_a_create_whose_read_back_failed() -> None:
+    """CR-L5-13: the create landed and its id was persisted, only the
+    read-back failed (uncertain / reread). Resume adopts the known id
+    instead of creating the entity a second time."""
+
+    async def main():
+        fake = _ApplyFake()
+        proxy = _wrap(fake)
+        doc = await _created_device_run(fake, proxy)
+        doc["status"], doc["cursor"] = "stopped", 0
+        for item in doc["items"]:
+            if item["kind"] == "add_device":
+                item["status"], item["failed_at"] = "uncertain", "reread"
+                item["message"] = "created as 8 but could not be read back"
+            else:
+                item["status"] = "not_attempted"
+
+        second = await proxy.sync_hub(state=hub_apply.ApplyState.from_dict(doc))
+        assert second.ok, (second.failed_at, second.message)
+        assert second.id_map == {-1: 8}
+        assert [c[0] for c in fake.write_calls] == ["create_device"], "no duplicate create"
+        assert [i.status for i in second.items][:2] == ["done", "done"]
+
+    asyncio.run(main())
+
+
 def test_sync_hub_refuses_bad_input_before_any_traffic() -> None:
     async def main():
         fake = _ApplyFake()

@@ -522,7 +522,10 @@ class _Run:
                     continue
                 # A not-attempted entity must still be what the baseline says;
                 # a partial or uncertain one is re-planned from wherever it is.
-                _add(item.entity_kind or "", physical, item.status == "not_attempted")
+                # An entity this apply created has no baseline row to compare
+                # with (it is re-read, not compared).
+                in_baseline = physical in _by_id(state.baseline, item.entity_kind or "")
+                _add(item.entity_kind or "", physical, item.status == "not_attempted" and in_baseline)
 
         for kind, entity_id, compare in refs:
             self._say(None, "live_check", f"Re-reading {kind} {entity_id} before writing…",
@@ -641,7 +644,13 @@ class _Run:
         elif kind in ("add_device", "add_activity"):
             name = str(item.payload["name"])
             entity_kind = "device" if kind == "add_device" else "activity"
-            new_id = self._adopt_in_flight_create(item, entity_kind, name) if was_in_flight else None
+            if was_in_flight:
+                new_id = self._adopt_in_flight_create(item, entity_kind, name)
+            else:
+                # A create that landed in an earlier run (its read-back failed,
+                # so the item ended uncertain) already has its id recorded:
+                # adopt it instead of creating the entity a second time.
+                new_id = self._recorded_create_id(item)
             if new_id is None:
                 if kind == "add_device":
                     new_id = await proxy.add_device(name, str(item.payload["device_class"]))
@@ -717,6 +726,13 @@ class _Run:
             self._done(item, writes=1)
         else:
             item.status, item.failed_at, item.message = "failed", "plan", f"unknown item kind {kind!r}"
+
+    def _recorded_create_id(self, item: ApplyItem) -> Optional[int]:
+        """The id an earlier run recorded for this create, if any."""
+
+        if item.placeholder_id is not None and self.pm.physical(item.placeholder_id) is not None:
+            return self.pm.physical(item.placeholder_id)
+        return item.entity_id
 
     def _adopt_in_flight_create(self, item: ApplyItem, entity_kind: str, name: str) -> Optional[int]:
         """A create that was in flight when the state was saved may have
