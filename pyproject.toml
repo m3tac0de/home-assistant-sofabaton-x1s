@@ -62,3 +62,31 @@ include = [
     "sofabaton-x/examples/**",
     "LICENSE",
 ]
+
+# Code review program (docs/internal/code-review-plan.md, R0): report-only
+# static analysis. Not a CI gate yet; see the plan's section 13.
+[tool.ruff]
+target-version = "py311"
+extend-exclude = [
+    "IrScrutinizer", "scripts/hub-bench", "node_modules", "dist", "dist-bench",
+    "out", "artifacts", "test-results", ".venv*",
+]
+
+[tool.ruff.lint]
+select = [
+    "F", "E9", "B", "ASYNC", "RUF006", "BLE", "S110", "PLE",
+    "C901", "PLR0912", "PLR0915", "SIM",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.pyright]
+include = [
+    "custom_components/sofabaton_x1s/lib",
+    "sofabaton-x-server/src",
+]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv-py313"
