@@ -1125,7 +1125,13 @@ class CallbackService:
             raise CallbackDeviceMissing(hub_id)
         device_id = record.device_id
         removed: dict[str, Any] = {"key": key, "device_id": device_id, "hub_device_removed": False}
-        if device_id is not None:
+        if device_id is not None and record.stale:
+            # A stale record's device left the hub. Whatever holds that id now
+            # is not proven ours (a verified comeback clears the flag, see
+            # _check_stale_one), and the hub reuses freed ids: never delete it.
+            log.info("hub %s: forgetting stale callback device record %s; device %s on the hub is left alone",
+                     hub_id, key, device_id)
+        elif device_id is not None:
             snap = await proxy.snapshot()
             present = snap.entity("device", device_id) is not None
             if present:

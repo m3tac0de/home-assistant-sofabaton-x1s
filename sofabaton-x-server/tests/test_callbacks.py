@@ -346,6 +346,45 @@ def test_purged_device_goes_stale_and_redeploys(tmp_path: Path) -> None:
         _until(lambda: not client.get(f"{HUBS}/{hub_id}/callback-device").json()["stale"])
 
 
+def test_removing_a_stale_record_never_deletes_the_device_that_reused_its_id(tmp_path: Path) -> None:
+    """CR-S2-1: the app purged our device and the hub gave its id to an
+    unrelated TV. Deleting the stale record forgets it; the TV stays, and
+    the TV's activities are not reported as references of ours."""
+    client, factory = _rig(tmp_path)
+    with client:
+        hub_id, proxy = _hub(client, factory)
+        dev = _deploy(client, hub_id)["device_id"]
+        proxy.devices_data = [d for d in proxy.devices_data if d.device_id != dev]
+        client.portal.call(functools.partial(proxy._emit_snapshot_changed, device_ids=(dev,)))
+        _until(lambda: client.get(f"{HUBS}/{hub_id}/callback-device").json()["stale"])
+
+        # A TV now holds the id, used by activity 101. The fake keys device
+        # blocks and payloads by id: drop ours so the TV is really a
+        # different device (brand, name and first record).
+        from sofabaton import Device
+        proxy.device_blocks.pop(dev, None)
+        for key in [k for k in proxy.payloads if k[0] == dev]:
+            proxy.payloads.pop(key)
+        proxy.devices_data.append(Device(device_id=dev, name="Living Room TV", brand="Samsung", device_class="ir",
+                                         device_class_code=0x01, power_state=None, idle_behavior=None))
+        proxy.fetched.add(101)
+        proxy.edited_entities[("activity", 101)] = {
+            **proxy._entity("activity", 101, "Watch TV"),
+            "referenced_source_device_ids": [1, dev],
+            "button_bindings": [{"button_id": 0xB6, "device_id": dev, "command_id": 1}],
+        }
+        client.portal.call(functools.partial(proxy._emit_snapshot_changed, device_ids=(dev,)))
+        assert client.get(f"{HUBS}/{hub_id}/callback-device").json()["stale"] is True
+
+        r = client.delete(f"{HUBS}/{hub_id}/callback-device")
+        assert r.status_code == 202, r.json()
+        job = _wait(client, hub_id, r.json()["job_id"])
+        assert job["status"] == "done" and job["result"]["hub_device_removed"] is False
+        assert ("remove_device", (dev,)) not in proxy.intents
+        assert any(d.device_id == dev for d in proxy.devices_data)
+        assert client.get(f"{HUBS}/{hub_id}/callback-device").status_code == 404
+
+
 # -- restart recovery ---------------------------------------------------------------------
 
 

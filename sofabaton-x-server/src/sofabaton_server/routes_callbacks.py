@@ -377,7 +377,9 @@ async def _remove(request: Request, hub_id: str, *, key: str, force: bool, kind:
     record = service.record(hub_id, key)
     if record is None:
         raise _not_found(hub_id, key)
-    if record.device_id is not None and not force:
+    # A stale record deletes nothing on the hub (the id may belong to another
+    # device now), so there are no references of ours to report.
+    if record.device_id is not None and not record.stale and not force:
         try:
             own_spec = record.deployment().spec
         except ValueError:
