@@ -4354,6 +4354,11 @@ var RemoteCardStore = class {
     this._deviceId = null;
     this.deviceKeymaps = {};
     this.deviceKeymapFetching = /* @__PURE__ */ new Set();
+    /** Backoff after the backend could not answer a keymap (CR-F4a-1): without
+     *  it, the render that follows the null answer re-fetched at once, a loop
+     *  paced only by the HTTP round trip while the hub was busy or offline. */
+    this.deviceKeymapRetry = /* @__PURE__ */ new Map();
+    this.deviceKeymapRetryTimer = null;
     this.initialViewApplied = false;
     this.commandFilter = "";
     // Drawer / menu UI state (direction math stays in the element)
@@ -4453,6 +4458,8 @@ var RemoteCardStore = class {
     this.commandPulseTimeout = null;
     this.commandPulseUntil = 0;
     this.activityLoadTimeout = null;
+    if (this.deviceKeymapRetryTimer) clearTimeout(this.deviceKeymapRetryTimer);
+    this.deviceKeymapRetryTimer = null;
   }
   // ---------- update gating ----------
   invalidateFingerprint() {
@@ -4702,12 +4709,24 @@ var RemoteCardStore = class {
     if (entry.status === "loading") return false;
     return (entry.version ?? 0) !== this.keymapVersion(deviceId);
   }
+  /** Re-render once the keymap backoff ends, so the fetch is retried even
+   *  when nothing else changes meanwhile. */
+  scheduleKeymapRetry(delayMs) {
+    if (this.deviceKeymapRetryTimer) clearTimeout(this.deviceKeymapRetryTimer);
+    this.deviceKeymapRetryTimer = setTimeout(() => {
+      this.deviceKeymapRetryTimer = null;
+      this.invalidateFingerprint();
+      this.onChange();
+    }, delayMs);
+  }
   async ensureDeviceKeymap(deviceId) {
     const key = String(deviceId);
     if (!this.keymapStale(deviceId)) return;
     const backend = this._backend;
     if (!backend) return;
     if (this.deviceKeymapFetching.has(key)) return;
+    const retry = this.deviceKeymapRetry.get(key);
+    if (retry && Date.now() < retry.at) return;
     const version = this.keymapVersion(deviceId);
     const previous = this.deviceKeymaps[key];
     if (!previous) {
@@ -4717,6 +4736,9 @@ var RemoteCardStore = class {
     try {
       const response = await backend.deviceKeymap(deviceId);
       if (response === null) {
+        const delayMs = Math.min((retry?.delayMs ?? 500) * 2, 3e4);
+        this.deviceKeymapRetry.set(key, { at: Date.now() + delayMs, delayMs });
+        this.scheduleKeymapRetry(delayMs);
         if (!previous) {
           delete this.deviceKeymaps[key];
           this.invalidateFingerprint();
@@ -4724,6 +4746,7 @@ var RemoteCardStore = class {
         }
         return;
       }
+      this.deviceKeymapRetry.delete(key);
       const keymap = response?.keymap;
       if (!keymap) {
         this.deviceKeymaps[key] = {
