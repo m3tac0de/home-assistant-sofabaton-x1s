@@ -108,6 +108,10 @@ _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.
 # id offset always equals the record's slot count (long = short + N,
 # live-validated at N=6/10/50 — docs/internal/wifi-events-plan.md §11).
 _WIFI_COMMAND_SLOT_COUNT = 10
+# How long a fetch or prime waits for an activity's buttons burst. Longer
+# than the macro/activity-map waits (5 s): the buttons page of a large
+# activity takes several frames.
+BUTTONS_WAIT_TIMEOUT = 10.0
 
 
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
@@ -986,6 +990,8 @@ class SofabatonHub:
                 self.devices_ready = False
                 self._pending_button_fetch.clear()
                 self._commands_in_flight.clear()
+                # No buttons burst can land now; wake whoever waits for one.
+                self._release_button_waiters()
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
             if connected:
@@ -2820,14 +2826,32 @@ class SofabatonHub:
             act_lo,
         )
 
-    async def _async_wait_for_buttons_ready(self, ent_id: int) -> None:
+    async def _async_wait_for_buttons_ready(
+        self, ent_id: int, *, timeout: float = BUTTONS_WAIT_TIMEOUT
+    ) -> None:
         if ent_id in self._buttons_ready_for:
+            return
+        if not self._proxy.can_issue_commands():
+            # With the vendor app connected (or the hub down) no buttons
+            # request was sent and none will be: nothing would resolve the
+            # wait. Callers go on with what is cached.
+            self._log.debug(
+                "[%s] buttons for 0x%02X cannot be requested now; not waiting",
+                self.entry_id,
+                ent_id & 0xFF,
+            )
             return
 
         future = self.hass.loop.create_future()
         self._button_waiters.setdefault(ent_id, []).append(future)
         try:
-            await future
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            self._log.debug(
+                "[%s] timed out waiting for buttons for 0x%02X",
+                self.entry_id,
+                ent_id & 0xFF,
+            )
         finally:
             waiters = self._button_waiters.get(ent_id)
             if waiters and future in waiters:
@@ -2899,6 +2923,15 @@ class SofabatonHub:
         )
         return {}
 
+    def _release_button_waiters(self, ent_id: int | None = None) -> None:
+        """Wake every wait on ``ent_id`` (all entities when None). A waiter
+        must never be dropped unresolved: nothing would ever wake it."""
+        keys = list(self._button_waiters) if ent_id is None else [ent_id]
+        for key in keys:
+            for waiter in self._button_waiters.pop(key, []):
+                if not waiter.done():
+                    waiter.set_result(None)
+
     def _reset_entity_cache(
         self,
         ent_id: int,
@@ -2912,7 +2945,7 @@ class SofabatonHub:
         if clear_buttons:
             self._buttons_ready_for.discard(ent_id)
             self._pending_button_fetch.discard(ent_id)
-            self._button_waiters.pop(ent_id, None)
+            self._release_button_waiters(ent_id)
 
         if clear_favorites:
             self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
@@ -2982,6 +3015,11 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
         else:
             await self._async_wait_for_buttons_ready(act_id)
+            if act_id not in self._buttons_ready_for:
+                # The wait ended without the burst (nothing could be
+                # requested, a timeout, a reset or a hub drop). Leaving the
+                # activity pending would make the next prime skip it.
+                self._pending_button_fetch.discard(act_id)
 
         map_cached = await self.hass.async_add_executor_job(self._activity_map_cached, act_id)
         if not map_cached:

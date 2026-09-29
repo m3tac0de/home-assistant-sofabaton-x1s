@@ -6444,3 +6444,68 @@ def test_async_send_key_resolution(monkeypatch):
             loop.run_until_complete(hub.async_send_key("VOL_UP"))
     finally:
         loop.close()
+
+
+def _bare_hub(loop):
+    hass = FakeHass(loop)
+    hub = SofabatonHub(hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    hub.hub_connected = True
+    return hub
+
+
+def test_buttons_wait_returns_when_nothing_can_be_requested(monkeypatch):
+    """CR-H1-1 (a)/(c): with the vendor app connected (or the hub down) no
+    buttons request is ever sent; the wait must not block forever."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = _bare_hub(loop)
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: False)
+    loop.run_until_complete(asyncio.wait_for(hub._async_wait_for_buttons_ready(0x65), 2))
+    assert hub._button_waiters == {}
+
+
+def test_buttons_wait_has_a_deadline(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = _bare_hub(loop)
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+    loop.run_until_complete(
+        asyncio.wait_for(hub._async_wait_for_buttons_ready(0x65, timeout=0.05), 2)
+    )
+    assert hub._button_waiters == {}
+
+
+def test_cache_reset_and_hub_drop_release_button_waiters(monkeypatch):
+    """CR-H1-1 (b)/(d): a reset or a hub disconnect must wake a running wait,
+    not strand it."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = _bare_hub(loop)
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: True)
+
+    async def main():
+        waiting = asyncio.ensure_future(hub._async_wait_for_buttons_ready(0x65, timeout=30))
+        await asyncio.sleep(0)
+        hub._reset_entity_cache(0x65, clear_buttons=True, clear_favorites=False, clear_macros=False)
+        await asyncio.wait_for(waiting, 2)
+
+        waiting = asyncio.ensure_future(hub._async_wait_for_buttons_ready(0x66, timeout=30))
+        await asyncio.sleep(0)
+        hub._on_hub_state_change(False)
+        await asyncio.wait_for(waiting, 2)
+        assert hub._button_waiters == {}
+
+    loop.run_until_complete(main())
+
+
+def test_prime_does_not_stay_pending_when_nothing_was_requested(monkeypatch):
+    """CR-H1-1 (c): a prime that could not ask the hub must not leave its
+    activity pending, or the re-prime after the app disconnects is skipped."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = _bare_hub(loop)
+    monkeypatch.setattr(hub._proxy, "can_issue_commands", lambda: False)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_a, **_k: ([], False))
+    monkeypatch.setattr(hub, "_activity_map_cached", lambda *_a: True)
+    loop.run_until_complete(asyncio.wait_for(hub._async_prime_buttons_for(0x65), 2))
+    assert 0x65 not in hub._pending_button_fetch
