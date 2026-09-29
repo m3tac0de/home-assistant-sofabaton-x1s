@@ -1335,7 +1335,8 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
             dev_id = payload[6]
             command_id = payload[7]
             if len(payload) >= 76 and payload[8] == 0x1C:
-                label = payload[16:76].decode("utf-16le", errors="ignore").split("\x00", 1)[0].strip()
+                # A 60-byte UTF-16BE slot at offset 15, like every X1S/X2 label.
+                label = payload[15:75].decode("utf-16-be", errors="ignore").split("\x00", 1)[0].strip()
             else:
                 label_bytes = payload[15:45]
                 label = label_bytes.split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()

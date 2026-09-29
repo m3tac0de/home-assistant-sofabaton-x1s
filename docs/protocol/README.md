@@ -72,8 +72,8 @@ At a high level:
 5. Many requests return multi-frame bursts rather than one self-contained reply.
 
 One important protocol characteristic is that text encoding is family-specific:
-- many modern X1S/X2 families use UTF-16BE
-- some WiFi/IP-specific flows use UTF-16LE
+- X1S/X2 label slots are UTF-16BE, including the WiFi/IP command and device
+  names (see data-structures.md, "Label encodings")
 - older X1 traffic often uses ASCII or UTF-8-compatible text
 
 Clients should therefore select string decoding based on the opcode family and
