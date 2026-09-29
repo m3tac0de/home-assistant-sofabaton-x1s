@@ -175,3 +175,44 @@ def test_notify_demuxer_register_logs_with_hub_prefix(monkeypatch):
         logger.propagate = previous_propagate
 
     assert any(message.startswith("[entry-1] [DEMUX] registered proxy") for message in handler.messages)
+
+
+def test_hub_logger_records_point_at_the_real_caller():
+    """CR-L1-3: without stacklevel every record's source was the wrapper
+    (hub_logging.py, funcName 'log'), which HA's system log uses to group
+    and dedupe entries."""
+    import logging as _logging
+
+    from custom_components.sofabaton_x1s.lib.hub_logging import HubLogger
+
+    records: list[_logging.LogRecord] = []
+
+    class _Keep(_logging.Handler):
+        def emit(self, record: _logging.LogRecord) -> None:
+            records.append(record)
+
+    base = _logging.getLogger("test.hub_logger.caller")
+    base.setLevel(_logging.DEBUG)
+    base.propagate = False
+    base.addHandler(_Keep())
+    hub_log = HubLogger(base, "entry-1")
+
+    def first_caller() -> None:
+        hub_log.warning("one %s", "x")
+
+    def second_caller() -> None:
+        hub_log.log(_logging.ERROR, "two")
+
+    def third_caller() -> None:
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            hub_log.exception("three")
+
+    first_caller()
+    second_caller()
+    third_caller()
+    assert [r.funcName for r in records] == ["first_caller", "second_caller", "third_caller"]
+    assert all(r.pathname.endswith("test_logging_utils.py") for r in records)
+    assert records[0].getMessage() == "[entry-1] one x"
+    assert records[2].exc_info is not None

@@ -45,16 +45,6 @@ class InputEntryLayout(Enum):
     WIDE_UTF16BE = "wide_utf16be"
 
 
-class InputsTrailingLayout(Enum):
-    """Shape of the trailing region following the entry list in a
-    family-0x46 inputs page. Phase 3 fleshes out the canonical layout;
-    Phase 1 simply needs a stable enum tag per variant so call sites
-    stop branching on raw ``hub_version`` strings.
-    """
-
-    CONTROL_KEYS_PLUS_FAVORITES = "control_keys_plus_favorites"
-
-
 @dataclass(slots=True, frozen=True)
 class WireSchema:
     """All per-variant wire choices for one hub firmware line."""
@@ -92,10 +82,6 @@ class WireSchema:
     #: Tag describing per-entry field layout. See :class:`InputEntryLayout`.
     input_entry_layout: InputEntryLayout
 
-    #: Tag describing the shape of the trailing region (control keys,
-    #: favorite slots, state byte) following the entries.
-    inputs_trailing_layout: InputsTrailingLayout
-
 
 _X1_SCHEMA: Final[WireSchema] = WireSchema(
     device_slot_width=30,
@@ -108,7 +94,6 @@ _X1_SCHEMA: Final[WireSchema] = WireSchema(
     macro_label_encoding="ascii",
     input_entry_stride=27,
     input_entry_layout=InputEntryLayout.NARROW_ASCII,
-    inputs_trailing_layout=InputsTrailingLayout.CONTROL_KEYS_PLUS_FAVORITES,
 )
 
 
@@ -123,7 +108,6 @@ _X1S_X2_SCHEMA: Final[WireSchema] = WireSchema(
     macro_label_encoding="utf-16-be",
     input_entry_stride=48,
     input_entry_layout=InputEntryLayout.WIDE_UTF16BE,
-    inputs_trailing_layout=InputsTrailingLayout.CONTROL_KEYS_PLUS_FAVORITES,
 )
 
 
@@ -157,7 +141,6 @@ def schema_for(hub_version: str) -> WireSchema:
 
 __all__ = [
     "InputEntryLayout",
-    "InputsTrailingLayout",
     "SCHEMAS",
     "WireSchema",
     "schema_for",

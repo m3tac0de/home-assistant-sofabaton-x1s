@@ -50,8 +50,12 @@ sofabaton = "sofabaton.cli:main"
 path = "custom_components/sofabaton_x1s/lib/version.py"
 
 [tool.hatch.build.targets.wheel]
-# The in-tree package directory ships as top-level "sofabaton".
-[tool.hatch.build.targets.wheel.force-include]
+# The in-tree package directory ships as top-level "sofabaton". A sources
+# remap (not force-include) so the normal file selection applies: ignored
+# files such as a local version.py.bak or __pycache__ never ship (CR-R1-14).
+packages = ["custom_components/sofabaton_x1s/lib"]
+
+[tool.hatch.build.targets.wheel.sources]
 "custom_components/sofabaton_x1s/lib" = "sofabaton"
 
 [tool.hatch.build.targets.sdist]

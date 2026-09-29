@@ -42,7 +42,6 @@ from custom_components.sofabaton_x1s.const import (
 from custom_components.sofabaton_x1s.lib.devices import _slot_widths_for
 from custom_components.sofabaton_x1s.lib.wire_schema import (
     InputEntryLayout,
-    InputsTrailingLayout,
     SCHEMAS,
     WireSchema,
     schema_for,
@@ -72,7 +71,6 @@ def test_schema_for_x1_carries_narrow_ascii_layout() -> None:
     assert schema.macro_label_encoding == "ascii"
     assert schema.input_entry_stride == 27
     assert schema.input_entry_layout is InputEntryLayout.NARROW_ASCII
-    assert schema.inputs_trailing_layout is InputsTrailingLayout.CONTROL_KEYS_PLUS_FAVORITES
 
 
 @pytest.mark.parametrize("hub_version", [HUB_VERSION_X1S, HUB_VERSION_X2])
