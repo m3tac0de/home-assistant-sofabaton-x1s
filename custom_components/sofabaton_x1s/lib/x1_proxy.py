@@ -1615,8 +1615,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         schema (no need to re-scan for 0xFF separators, codec heuristics, or
         expanded-pair collapses).
 
-        We append, rather than dedup/reorder, to mirror the official app's
-        in-memory model: the device list grows by one when a device is added
+        We append, rather than dedup/reorder, because that is how the hub's
+        own list behaves on the wire: it grows by one when a device is added
         and the new device's rows land at the end of the sequence.
         """
 

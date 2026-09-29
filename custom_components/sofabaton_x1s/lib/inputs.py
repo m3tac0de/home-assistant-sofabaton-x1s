@@ -25,9 +25,7 @@ Layout (described in our own field names)::
       [0]         body marker (0x01)
       [1..2]      total_pages big-endian
       [3]         device_id
-      [4]         source_id_byte    (what the app sometimes calls
-                                     "source_type" or "input_id" --
-                                     0x00 for "no inputs configured",
+      [4]         source_id_byte    (0x00 for "no inputs configured",
                                      0x01 for direct-inputs, 0x02 for
                                      "no input switching", etc.)
       [5]         entry_count       (== len(entries))

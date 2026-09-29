@@ -76,9 +76,8 @@ def _idle_behavior_mode(device_block: dict[str, Any]) -> int | None:
     the bundle's ``power_mode`` field is deliberately gone: that field
     holds the record-tail byte, which bench captures (2026-08-25) show
     is a different, always-1-in-practice value, so the fallback wrote
-    mode 1 over devices whose real idle byte was 0, 2, 3, or 4. The
-    vendor app likewise treats a missing value as unknown rather than
-    substituting the record byte.
+    mode 1 over devices whose real idle byte was 0, 2, 3, or 4. A
+    missing value stays unknown; the record byte is never substituted.
     """
 
     raw = device_block.get("idle_behavior")
@@ -824,9 +823,8 @@ class RestoreMixin:
     def _refresh_destination_catalog(self, *, timeout: float = 5.0) -> None:
         """Synchronously refresh the destination hub's device + activity lists.
 
-        Mirrors the official Android app's
-        :class:`LoadingActivity.setIds()` prelude: before allocating
-        restore ids, query the *live* hub via ``request_devices`` /
+        Before allocating restore ids, query the *live* hub via
+        ``request_devices`` /
         ``request_activities`` so the subsequent
         :meth:`_allocate_restore_device_id` allocates against fresh
         ground truth rather than the proxy's local state (which can be
@@ -1040,8 +1038,8 @@ class RestoreMixin:
         _input_create_step = _input_create_step_factory()
         device_block = request.device_block
         device_class = self._restore_device_class(device_block)
-        # Match the official app's setIds() prelude: query the live hub
-        # for its current device/activity lists before picking an id, so
+        # Query the live hub for its current device/activity lists before
+        # picking an id, so
         # the allocator avoids slots the hub already considers taken.
         # Without this, stale proxy state can lead us to target an id
         # the hub silently overrides -- and subsequent writes end up

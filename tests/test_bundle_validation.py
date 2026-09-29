@@ -332,7 +332,7 @@ def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
 
 def test_unbound_zero_command_binding_rows_are_grandfathered_only_when_tolerated():
     # The vendor app clears a hard-button slot by writing command_id 0 into
-    # the KeyToKey row instead of deleting it (observed on the FWD button of
+    # the binding row instead of deleting it (observed on the FWD button of
     # cloud-provisioned device pages). Captured hub truth must not block a
     # sync, but a 0 row without baseline precedent stays invalid.
     stale = valid_bundle()

@@ -202,3 +202,19 @@ def test_macro_assembler_reset_drops_an_interrupted_burst() -> None:
     assert [r.key_id for r in records] == [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0xC6, 0xC7]
     assert [r.label for r in records][:2] == ["PS5 Start", "PS5 Off"]
 
+
+
+def test_frame_parser_and_assembler_agree_on_continuation_offsets() -> None:
+    """CR-L2-12: parse_macro_burst_frame reported data_start 7 for a
+    continuation while the assembler strips 3; both now use one rule."""
+    from custom_components.sofabaton_x1s.lib.macros import parse_macro_burst_frame
+
+    frames = _x1_burst_frames()
+    continuation = frames[1]  # the second frame of the capture continues record 1
+    opcode = int.from_bytes(continuation[2:4], "big")
+    parsed = parse_macro_burst_frame(opcode, continuation)
+    assert parsed is not None and parsed.role == "continuation"
+    assert parsed.data_start == 3
+    head = parse_macro_burst_frame(int.from_bytes(frames[0][2:4], "big"), frames[0])
+    assert head is not None and head.role == "record_start" and head.data_start == 7
+    assert head.activity_id == 0x68

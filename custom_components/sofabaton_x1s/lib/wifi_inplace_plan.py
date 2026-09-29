@@ -325,7 +325,7 @@ def build_wifi_inplace_plan(
         )
 
     # ── 3b. device-page key bindings (role-group capability rows) ────────
-    # Same keymap primitives as activity bindings — the KeyToKey table is
+    # Same keymap primitives as activity bindings — the binding table is
     # uniform, addressed here with the device's own id. Ownership follows
     # the same rule: desired keys are written over whatever is live, only
     # keys WE deployed are cleaned up, foreign device-page rows survive.

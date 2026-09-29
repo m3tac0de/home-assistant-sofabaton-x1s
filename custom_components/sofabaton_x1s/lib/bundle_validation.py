@@ -356,7 +356,7 @@ def _validate_bindings(
         device_id = binding.get("device_id", owner_id if owner_kind == "device" else None)
         device_id = _integer(device_id, f"{binding_path}.device_id", minimum=1, maximum=0xFF)
         # The vendor app clears a hard-button slot by writing command_id 0
-        # into the KeyToKey row instead of deleting it, so captured hub truth
+        # into the binding row instead of deleting it, so captured hub truth
         # can carry unbound rows. Accept the 0 sentinel structurally; the
         # reference check below still rejects it unless the baseline scan
         # grandfathered it (a command list can never contain id 0).
@@ -591,7 +591,7 @@ def collect_missing_command_refs(bundle: Any) -> dict[int, set[int]]:
     hub tolerates those rows and simply does nothing when the key is pressed.
 
     The vendor app also clears a hard-button binding by writing command_id 0
-    into the KeyToKey row instead of deleting it. Command lists can never
+    into the binding row instead of deleting it. Command lists can never
     contain id 0, so such unbound rows surface here as a missing reference to
     command 0 and are grandfathered through the same mechanism.
 
@@ -699,7 +699,7 @@ def collect_unknown_button_rows(bundle: Any) -> dict[int, set[int]]:
     """Best-effort scan for binding rows on buttons outside our catalog.
 
     The button catalog encodes our knowledge of the remote, not the hub's: a
-    vendor firmware or app update can start writing KeyToKey rows for a
+    vendor firmware or app update can start writing binding rows for a
     button id we have not mapped yet. Returns ``{owner_id: {button_id, ...}}``
     for every binding row in ``bundle`` whose button id falls outside the
     catalog of the bundle's declared model, so a captured baseline can

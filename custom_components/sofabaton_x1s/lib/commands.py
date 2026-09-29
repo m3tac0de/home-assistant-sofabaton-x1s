@@ -276,7 +276,7 @@ class ButtonBurstFrame:
 # the page-1 preamble + count byte kept in `concat[0..3]`.
 #
 # Therefore, when the integration calls the new iterator on its post-assembly
-# body, the body already starts at what the app sees as `concat[4]`. The
+# body, the body already starts at `concat[4]` of the full burst. The
 # record count must be supplied separately (by the caller, who has it as
 # `parsed.total_commands`).
 # ---------------------------------------------------------------------------

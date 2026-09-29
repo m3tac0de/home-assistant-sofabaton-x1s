@@ -247,8 +247,8 @@ class ActivityCache:
         if button_id in BUTTONNAME_BY_CODE:
             self.buttons[act_lo].add(button_id)
             details: Dict[str, int] = {"device_id": device_id, "command_id": command_id}
-            # Per the official KeyToKeyGets parser, each 18-byte keymap
-            # record's long-press triple lives at:
+            # Each 18-byte binding row carries its long-press triple at
+            # (bench captures):
             #   [10]        long_press_device_id
             #   [11..16]    long_press_button_code (6B BE)
             #   [17]        long_press_button_id   (== long_press_command_id)
@@ -650,8 +650,8 @@ class BurstScheduler:
     # buttons, ir_dump) detects its own completion from the frame stream and
     # calls ``finish()`` / ``try_finish_*`` the instant the last expected frame
     # arrives, so a healthy hub never waits on this timer. Because of that we
-    # can afford a generous 5s window — matching what the official app allows —
-    # with no added latency for healthy hubs, while giving a congested link
+    # can afford a generous 5s window with no added latency for healthy
+    # hubs, while giving a congested link
     # enough time to answer instead of being mistaken for an empty or partial
     # response.
     def __init__(self, *, idle_s: float = 0.15, response_grace: float = 5.0) -> None:

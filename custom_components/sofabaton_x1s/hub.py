@@ -5231,7 +5231,7 @@ class SofabatonHub:
                 # they make the Wifi Device selectable as a role-group
                 # controller (volume/navigation/…) in activity editors and
                 # respond to direct presses on the remote's device page. The
-                # KeyToKey table is uniform, so the same binding write applies
+                # binding table is uniform, so the same binding write applies
                 # with the device's own id as the keymap entity.
                 for dev_button_id, dev_command_id, dev_long_id in derive_device_level_bindings(
                     commands[:slot_count],

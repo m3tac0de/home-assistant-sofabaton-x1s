@@ -871,8 +871,8 @@ def _decode_x1s_needs_confirm_flag(payload: bytes) -> bool:
     sub-token pair within that block; ``YY == 0x01`` means the activity was
     impacted by a recent device delete and must be re-saved by the app.
 
-    No structured parse for this flag is exposed by the official app's row
-    parser, so we locate it by scanning the tail block for the trailing
+    The row layout has no fixed offset for this flag, so we locate it by
+    scanning the tail block for the trailing
     ``fc XX fc YY`` pair. The scan is intentionally scoped to the schema's
     tail region rather than an arbitrary window at the end of the payload.
     """
