@@ -533,14 +533,12 @@ def command_defs_from_spec(spec: WifiDeviceSpec) -> list[dict[str, Any]]:
     for index, slot in enumerate(normalized.slots):
         defs.append({
             "display_name": slot.label,
-            "trigger_name": slot.label,
             "press_type": "short",
             "command_index": index,
         })
     for index, slot in enumerate(normalized.slots):
         defs.append({
             "display_name": str(slot.long_label),
-            "trigger_name": slot.label,
             "press_type": "long",
             "command_index": index,
         })

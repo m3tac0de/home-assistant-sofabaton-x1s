@@ -2931,13 +2931,11 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
             "commands": [
                 {
                     "display_name": "Command 1",
-                    "trigger_name": "Command 1",
                     "press_type": "short",
                     "command_index": 0,
                 },
                 {
                     "display_name": "Command 1 Long Press",
-                    "trigger_name": "Command 1",
                     "press_type": "long",
                     "command_index": 0,
                 },
@@ -4536,10 +4534,10 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
         {
             "device_name": "Home Assistant",
             "commands": [
-                {"display_name": "HDMI 1", "trigger_name": "HDMI 1", "press_type": "short", "command_index": 0},
-                {"display_name": "Favorite Command", "trigger_name": "Favorite Command", "press_type": "short", "command_index": 1},
-                {"display_name": "HDMI 1 Long Press", "trigger_name": "HDMI 1", "press_type": "long", "command_index": 0},
-                {"display_name": "Favorite Command Long Press", "trigger_name": "Favorite Command", "press_type": "long", "command_index": 1},
+                {"display_name": "HDMI 1", "press_type": "short", "command_index": 0},
+                {"display_name": "Favorite Command", "press_type": "short", "command_index": 1},
+                {"display_name": "HDMI 1 Long Press", "press_type": "long", "command_index": 0},
+                {"display_name": "Favorite Command Long Press", "press_type": "long", "command_index": 1},
             ],
             "request_port": 8060,
             "brand_name": "m3-default-abc",

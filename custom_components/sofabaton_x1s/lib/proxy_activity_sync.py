@@ -1866,7 +1866,6 @@ class ActivitySyncMixin:
         command_defs = [
             {
                 "display_name": labels.get(cid, f"Command {cid}"),
-                "trigger_name": labels.get(cid, f"Command {cid}"),
                 "press_type": "short",
                 "command_index": cid - 1,
             }

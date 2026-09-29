@@ -33,6 +33,7 @@ from .device_create import DeviceCreateRequest, DeviceCreateResult, run_device_c
 from .devices import DeviceConfig, build_device_create_payload
 from .inputs import InputEntry, build_inputs_write
 from .macros import MacroKeyEntry, build_macro_save_payload
+from .wire_schema import encode_label_slot
 from .protocol_const import (
     ButtonName,
     DEVICE_CLASS_WIFI_IP,
@@ -132,11 +133,7 @@ def utf16be_label_slot(text: str, size: int) -> bytes:
     garbled everything else.
     """
 
-    data = str(text or "").encode("utf-16-be")
-    data = data[: size - (size % 2)]
-    if len(data) >= 2 and 0xD8 <= data[-2] <= 0xDB:
-        data = data[:-2]
-    return data.ljust(size, b"\x00")
+    return encode_label_slot(text, size, "utf-16-be")
 
 
 class WifiDeviceMixin:
@@ -846,15 +843,9 @@ class WifiDeviceMixin:
                 slot, code = _ROKU_APP_SLOTS[idx]
                 if isinstance(command_spec, dict):
                     command_name = _wifi_command_label(command_spec, idx)
-                    trigger_name = str(
-                        command_spec.get("trigger_name")
-                        or command_spec.get("name")
-                        or command_name
-                    ).strip() or command_name
                     press_type = str(command_spec.get("press_type") or "short").strip().lower()
                 else:
                     command_name = _wifi_command_label(command_spec, idx)
-                    trigger_name = command_name
                     press_type = "short"
                 command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
                 action = self._build_launch_action_path(
@@ -865,10 +856,8 @@ class WifiDeviceMixin:
                 command_defs.append((slot, code, command_name, action))
 
         for slot, code, name, action in command_defs:
-            if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
-                name_blob = utf16be_label_slot(name, 60)
-            else:
-                name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
+            # Only X1 hubs take the Roku flow (X1S/X2 use the virtual-IP one).
+            name_blob = encode_label_slot(name, 30, "ascii")
             # Cap the path at 255 bytes so render_wifi_roku_blob_body's
             # 1-byte length prefix never overflows. The canonical
             # writer in blob_decoders is what backups round-trip
@@ -1047,15 +1036,9 @@ class WifiDeviceMixin:
             slot = (idx + 1) & 0xFF
             if isinstance(command_spec, dict):
                 command_name = _wifi_command_label(command_spec, idx)
-                trigger_name = str(
-                    command_spec.get("trigger_name")
-                    or command_spec.get("name")
-                    or command_name
-                ).strip() or command_name
                 press_type = str(command_spec.get("press_type") or "short").strip().lower()
             else:
                 command_name = _wifi_command_label(command_spec, idx)
-                trigger_name = command_name
                 press_type = "short"
             # The command label is a 60-byte UTF-16BE slot at payload offset 15
             # (the byte before it is the last of the zero run). Its width keeps

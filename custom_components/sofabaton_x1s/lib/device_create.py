@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Protocol
 
 from .devices import DeviceConfig, build_device_create_payload
-from .wire_schema import schema_for
+from .wire_schema import encode_label_slot, schema_for
 
 
 #: Discriminant for :class:`DeviceCreateRequest.transport`. ``"ir"`` covers
@@ -676,20 +676,6 @@ def build_device_update_step(
     )
 
 
-def _body_checksum(body: bytes) -> int:
-    """Compute the internal body-checksum byte.
-
-    Every multi-byte write body in this family ends with a 1-byte
-    checksum at the last position; the hub validates it before
-    accepting the write. The reduction is ``sum(body[:-1]) & 0xFF``
-    (the same algorithm the transport uses for the outer frame
-    checksum). Pass the body **without** the trailing checksum byte
-    or with that byte zeroed; both produce the same result.
-    """
-
-    return sum(body[:-1] if body else b"") & 0xFF
-
-
 def _seal_body(body: bytearray) -> bytes:
     """Write the body checksum into ``body[-1]`` and return as bytes."""
 
@@ -773,7 +759,6 @@ def build_command_write_steps(
     label: str,
     library_data: bytes,
     ack_timeout: float = 5.0,
-    inter_page_retry_delay: float = 0.0,
 ) -> list[CreateStep]:
     """Build the paged command-record write for one command (family ``0x0E``).
 
@@ -816,16 +801,12 @@ def build_command_write_steps(
             IR-DB sourced devices, others for BT / RF / learned codes.
         button_code: 48-bit canonical command identifier used by
             binding and macro flows to reference this command.
-        label: User-visible command label, ASCII, truncated to 30
-            bytes.
+        label: User-visible command label. 30-byte ASCII slot on X1
+            (non-ASCII characters dropped), 60-byte UTF-16BE on X1S/X2.
         library_data: Opaque codec bytes appended after the label
             slot. Format depends on ``library_type``.
         ack_timeout: Per-page ack timeout. Defaults to 5 s, matching
             the hub's typical command-write turnaround.
-        inter_page_retry_delay: Sleep between page retries on the
-            sequencer. Defaults to ``0`` -- pages do not retry by
-            default; the caller can pass a positive value to enable a
-            single-retry pattern.
     """
 
     if command_seq < 1 or command_seq > 0xFF:
@@ -846,8 +827,7 @@ def build_command_write_steps(
     schema = schema_for(hub_version)
     label_slot_len = schema.command_label_slot_len
     label_encoding = schema.command_label_encoding
-    label_bytes = label.encode(label_encoding, errors="replace")[:label_slot_len]
-    label_slot_bytes = label_bytes + b"\x00" * (label_slot_len - len(label_bytes))
+    label_slot_bytes = encode_label_slot(label, label_slot_len, label_encoding)
 
     # Body content excluding final checksum byte. Pages chunk this
     # buffer; the checksum is computed over the whole sealed body and
@@ -894,7 +874,6 @@ def build_command_write_steps(
                 ack_first_byte=ACK_STATUS_BYTE_OK,
                 ack_reject_first_bytes=(_REJECT_BYTE_BAD_SAVE,),
                 timeout=ack_timeout,
-                retry_delay=inter_page_retry_delay,
             )
         )
     return steps
@@ -1135,8 +1114,7 @@ def build_macro_step(
             f"max {max_steps} for hub_version={hub_version!r}"
         )
     label_encoding = schema.macro_label_encoding
-    label_bytes = label.encode(label_encoding, errors="replace")[:label_slot_len]
-    label_slot = label_bytes + b"\x00" * (label_slot_len - len(label_bytes))
+    label_slot = encode_label_slot(label, label_slot_len, label_encoding)
 
     # body layout: 6-byte preamble + steps + L-byte label slot + 1-byte checksum
     body_len = 6 + len(step_records) + label_slot_len + 1

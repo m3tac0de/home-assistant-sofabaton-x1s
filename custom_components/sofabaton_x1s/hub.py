@@ -4928,7 +4928,6 @@ class SofabatonHub:
                     command_defs.append(
                         {
                             "display_name": name,
-                            "trigger_name": name,
                             "press_type": "short",
                             "command_index": idx,
                         }
@@ -4938,7 +4937,6 @@ class SofabatonHub:
                     command_defs.append(
                         {
                             "display_name": f"{name} Long Press",
-                            "trigger_name": name,
                             "press_type": "long",
                             "command_index": idx,
                         }

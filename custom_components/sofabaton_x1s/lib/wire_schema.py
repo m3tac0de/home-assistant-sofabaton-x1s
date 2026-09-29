@@ -83,6 +83,25 @@ class WireSchema:
     input_entry_layout: InputEntryLayout
 
 
+def encode_label_slot(text: str, slot_len: int, encoding: str) -> bytes:
+    """Encode ``text`` into a fixed-width label slot, zero-padded.
+
+    ``ascii`` drops characters it cannot encode (never a ``?`` stand-in),
+    which is what every other label writer and ``hub_command_label`` do.
+    ``utf-16-be`` cuts at whole code units and never keeps half of a
+    surrogate pair. The one encoder for command and macro labels (CR-L2-14).
+    """
+
+    value = str(text or "")
+    if encoding.replace("_", "-").lower() in ("utf-16-be", "utf-16be"):
+        data = value.encode("utf-16-be")[: slot_len - (slot_len % 2)]
+        if len(data) >= 2 and 0xD8 <= data[-2] <= 0xDB:
+            data = data[:-2]
+    else:
+        data = value.encode(encoding, errors="ignore")[:slot_len]
+    return data.ljust(slot_len, b"\x00")
+
+
 _X1_SCHEMA: Final[WireSchema] = WireSchema(
     device_slot_width=30,
     device_body_len=120,
@@ -140,6 +159,7 @@ def schema_for(hub_version: str) -> WireSchema:
 
 
 __all__ = [
+    "encode_label_slot",
     "InputEntryLayout",
     "SCHEMAS",
     "WireSchema",
