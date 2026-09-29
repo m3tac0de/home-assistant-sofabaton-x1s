@@ -67,7 +67,7 @@ from .inputs import (
     build_inputs_write,
     parse_inputs_burst,
 )
-from .wire_schema import InputEntryLayout, schema_for
+from .wire_schema import InputEntryLayout, page_family_body, schema_for
 from .macros import (
     MACRO_WRITE_PAGE_BODY_CHUNK,
     MacroAssembler,
@@ -1496,15 +1496,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         if len(payload) < 4:
             return [payload]
 
-        body = payload[3:]
-        chunk_size = 247
-        total_pages = max(1, (len(body) + chunk_size - 1) // chunk_size)
-
-        paged_payloads: list[bytes] = []
-        for seq in range(1, total_pages + 1):
-            chunk = body[(seq - 1) * chunk_size : seq * chunk_size]
-            paged_payloads.append(bytes([0x01]) + seq.to_bytes(2, "big") + bytes(chunk))
-        return paged_payloads
+        return page_family_body(payload[3:])
 
     def _send_paged_macro_save(
         self,

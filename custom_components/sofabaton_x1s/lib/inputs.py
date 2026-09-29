@@ -65,7 +65,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final, Sequence
 
-from .wire_schema import InputEntryLayout, schema_for
+from .wire_schema import InputEntryLayout, paged_write_total_pages, schema_for
 
 
 #: Width of the trailing region in bytes: four control-key rows + ten
@@ -90,10 +90,6 @@ INPUTS_BODY_HEADER_LEN: Final[int] = 8
 #: page on the wire (page marker + 2-byte sequence number).
 INPUTS_OUTER_WRAPPER_LEN: Final[int] = 3
 
-#: Page chunk size used by the family-0x12 / family-0x46 paged writers.
-#: Mirrored from :data:`~custom_components.sofabaton_x1s.lib.macros.MACRO_WRITE_PAGE_BODY_CHUNK`
-#: so we don't import the macros module from here.
-_PAGE_BODY_CHUNK: Final[int] = 247
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +319,7 @@ def build_inputs_write(
     body.extend(trailing)
     body.append(0x00)                          # checksum slot
 
-    total_pages = max(1, (len(body) + _PAGE_BODY_CHUNK - 1) // _PAGE_BODY_CHUNK)
+    total_pages = paged_write_total_pages(len(body))
     body[1:3] = (total_pages & 0xFFFF).to_bytes(2, "big")
     body[-1] = sum(body[:-1]) & 0xFF
 

@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Protocol
 
 from .devices import DeviceConfig, build_device_create_payload
-from .wire_schema import encode_label_slot, schema_for
+from .wire_schema import PAGED_WRITE_WRAPPER_LEN, encode_label_slot, page_family_body, schema_for
 
 
 #: Discriminant for :class:`DeviceCreateRequest.transport`. ``"ir"`` covers
@@ -143,8 +143,6 @@ ACK_STATUS_BYTE_OK = 0x00
 # ---------------------------------------------------------------------------
 
 
-_PAGED_WRITE_OUTER_WRAPPER_LEN = 3
-_PAGED_WRITE_BODY_CHUNK = 247
 
 
 class _ProxyLike(Protocol):
@@ -246,17 +244,11 @@ def _page_create_step_payloads(step: CreateStep) -> list[bytes]:
     if (
         step.family != FAMILY_INPUTS
         or len(step.payload) <= 250
-        or len(step.payload) <= _PAGED_WRITE_OUTER_WRAPPER_LEN
+        or len(step.payload) <= PAGED_WRITE_WRAPPER_LEN
     ):
         return [step.payload]
 
-    body = step.payload[_PAGED_WRITE_OUTER_WRAPPER_LEN:]
-    payloads: list[bytes] = []
-    total_pages = max(1, (len(body) + _PAGED_WRITE_BODY_CHUNK - 1) // _PAGED_WRITE_BODY_CHUNK)
-    for seq in range(1, total_pages + 1):
-        chunk = body[(seq - 1) * _PAGED_WRITE_BODY_CHUNK : seq * _PAGED_WRITE_BODY_CHUNK]
-        payloads.append(bytes([0x01]) + seq.to_bytes(2, "big") + bytes(chunk))
-    return payloads
+    return page_family_body(step.payload[PAGED_WRITE_WRAPPER_LEN:])
 
 
 def run_create_sequence(

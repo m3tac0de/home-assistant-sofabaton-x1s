@@ -152,3 +152,22 @@ def test_default_hub_version_constant_removed() -> None:
     from custom_components.sofabaton_x1s import const
 
     assert not hasattr(const, "DEFAULT_HUB_VERSION")
+
+
+def test_the_pager_produces_exactly_the_pages_a_body_declares() -> None:
+    """CR-L2-7: builders write total_pages from paged_write_total_pages and
+    both pagers split with page_family_body; one chunk size for all."""
+    from custom_components.sofabaton_x1s.lib.wire_schema import (
+        PAGED_WRITE_BODY_CHUNK,
+        page_family_body,
+        paged_write_total_pages,
+    )
+
+    for size in (0, 1, PAGED_WRITE_BODY_CHUNK - 1, PAGED_WRITE_BODY_CHUNK, PAGED_WRITE_BODY_CHUNK + 1, 3 * PAGED_WRITE_BODY_CHUNK + 5):
+        body = bytes(range(256)) * (size // 256 + 1)
+        body = body[:size]
+        pages = page_family_body(body)
+        assert len(pages) == paged_write_total_pages(size)
+        assert [p[:3] for p in pages] == [bytes([0x01]) + n.to_bytes(2, "big") for n in range(1, len(pages) + 1)]
+        assert b"".join(p[3:] for p in pages) == body
+        assert all(len(p) - 3 <= PAGED_WRITE_BODY_CHUNK for p in pages)

@@ -83,6 +83,35 @@ class WireSchema:
     input_entry_layout: InputEntryLayout
 
 
+#: Body bytes one paged family write page carries (family-0x12 macro saves,
+#: family-0x46 inputs), after its 3-byte ``[0x01][page_no_be]`` wrapper.
+PAGED_WRITE_BODY_CHUNK: Final[int] = 247
+PAGED_WRITE_WRAPPER_LEN: Final[int] = 3
+
+
+def paged_write_total_pages(body_len: int) -> int:
+    """How many pages a paged write body of ``body_len`` bytes needs.
+
+    The builders write this into the body header; :func:`page_family_body`
+    produces exactly that many pages. Both use the same chunk size, so a
+    body can never declare a page count its pager does not produce.
+    """
+
+    return max(1, (int(body_len) + PAGED_WRITE_BODY_CHUNK - 1) // PAGED_WRITE_BODY_CHUNK)
+
+
+def page_family_body(body: bytes) -> list[bytes]:
+    """Split a paged write body into wire pages, each ``[0x01][page_no_be]``
+    followed by up to :data:`PAGED_WRITE_BODY_CHUNK` body bytes."""
+
+    data = bytes(body)
+    return [
+        bytes([0x01]) + page.to_bytes(2, "big")
+        + data[(page - 1) * PAGED_WRITE_BODY_CHUNK : page * PAGED_WRITE_BODY_CHUNK]
+        for page in range(1, paged_write_total_pages(len(data)) + 1)
+    ]
+
+
 def encode_label_slot(text: str, slot_len: int, encoding: str) -> bytes:
     """Encode ``text`` into a fixed-width label slot, zero-padded.
 
@@ -159,6 +188,10 @@ def schema_for(hub_version: str) -> WireSchema:
 
 
 __all__ = [
+    "PAGED_WRITE_BODY_CHUNK",
+    "PAGED_WRITE_WRAPPER_LEN",
+    "page_family_body",
+    "paged_write_total_pages",
     "encode_label_slot",
     "InputEntryLayout",
     "SCHEMAS",

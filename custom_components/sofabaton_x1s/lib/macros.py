@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S
 from .protocol_const import FAMILY_MACROS, opcode_family, opcode_hi
-from .wire_schema import schema_for
+from .wire_schema import PAGED_WRITE_BODY_CHUNK, paged_write_total_pages, schema_for
 
 
 @dataclass(slots=True)
@@ -549,8 +549,9 @@ def parse_macro_record_from_region(
     )
 
 
-#: Maximum body chunk size carried per family-0x12 write page.
-MACRO_WRITE_PAGE_BODY_CHUNK = 247
+#: Maximum body chunk size carried per family-0x12 write page (the shared
+#: paging rule in wire_schema; the name stays for callers).
+MACRO_WRITE_PAGE_BODY_CHUNK = PAGED_WRITE_BODY_CHUNK
 
 
 def build_macro_save_payload(
@@ -608,7 +609,7 @@ def build_macro_save_payload(
     body.extend(slot_bytes)
     body.append(0x00)  # checksum slot
 
-    total_pages = max(1, (len(body) + MACRO_WRITE_PAGE_BODY_CHUNK - 1) // MACRO_WRITE_PAGE_BODY_CHUNK)
+    total_pages = paged_write_total_pages(len(body))
     body[1:3] = (total_pages & 0xFFFF).to_bytes(2, "big")
     body[-1] = sum(body[:-1]) & 0xFF
 
