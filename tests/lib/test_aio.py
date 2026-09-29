@@ -3194,3 +3194,23 @@ def test_a_failed_replacing_restore_says_the_hub_was_erased() -> None:
         assert replaced.to_dict()["erased"] is True
 
     asyncio.run(main())
+
+
+def test_sync_hub_awaits_an_async_state_persister_before_returning() -> None:
+    async def main():
+        fake = _ApplyFake()
+        proxy = _wrap(fake)
+        base, desired = _apply_docs(await proxy.snapshot())
+        persisted: list = []
+
+        async def persist(state) -> None:
+            await asyncio.sleep(0.05)  # a slow store
+            persisted.append(state.status)
+
+        result = await proxy.sync_hub(baseline=base, desired=desired, on_state=persist)
+
+        # The final record landed before sync_hub returned: a script that
+        # exits right after (asyncio.run) no longer loses it.
+        assert result.ok and persisted and persisted[-1] == "success"
+
+    asyncio.run(main())

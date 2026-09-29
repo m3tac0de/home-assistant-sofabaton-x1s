@@ -329,6 +329,19 @@ def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
             worse, hub_version="X1S", grandfather_baseline=stale
         )
 
+    # Nor may an edit copy the grandfathered pair onto a new row: only the
+    # row the hub holds is tolerated (CR-L5-4).
+    copied = copy.deepcopy(stale)
+    copied["devices"][0]["button_bindings"].append({"button_id": 0xAF, "command_id": 99})
+    with pytest.raises(ValueError, match="missing command 99 on device 1"):
+        validate_hub_bundle_for_model(copied, hub_version="X1S", grandfather_baseline=stale)
+    favorited = copy.deepcopy(stale)
+    favorited["activities"][0]["favorite_slots"].append(
+        {"button_id": 5, "device_id": 1, "command_id": 99, "name": "Ghost"}
+    )
+    with pytest.raises(ValueError, match="missing command 99 on device 1"):
+        validate_hub_bundle_for_model(favorited, hub_version="X1S", grandfather_baseline=stale)
+
 
 def test_unbound_zero_command_binding_rows_are_grandfathered_only_when_tolerated():
     # The vendor app clears a hard-button slot by writing command_id 0 into
@@ -618,3 +631,16 @@ def test_invalid_hex_and_byte_overflow_are_rejected():
     with pytest.raises(ValueError, match="between 0 and 255"):
         validate_hub_bundle_for_model(overflow, hub_version="X1S")
 
+
+
+def test_an_edit_may_not_favorite_the_same_command_twice():
+    baseline = valid_bundle("X1S")
+    edited = copy.deepcopy(baseline)
+    edited["activities"][0]["favorite_slots"].append(
+        {"button_id": 3, "device_id": 1, "command_id": 10, "name": "Power"}
+    )
+    with pytest.raises(ValueError, match="more than once"):
+        validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=baseline)
+
+    # A duplicate the hub already holds is hub truth and passes.
+    validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=edited)

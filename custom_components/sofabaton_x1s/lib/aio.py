@@ -29,6 +29,7 @@ from .discovery import (
     discover_hubs,
 )
 from .backup_export import normalize_dump_to_blobs, now_iso as _now_iso
+from .bundle_validation import validate_entity_rename
 from .errors import (
     FetchTimeoutError,
     HubBusyError,
@@ -1462,6 +1463,10 @@ class AsyncXProxy:
 
         self._raise_if_cannot_fetch(f"sync_activity({int(activity_id) & 0xFF})")
         await self._check_sync_baseline(baseline, "activity", activity_id, snapshot_id)
+        validate_entity_rename(
+            baseline, edited, kind="activity", entity_id=activity_id,
+            hub_version=getattr(self._proxy, "hub_version", None),
+        )
         async with self._holding_hub("a sync"):
             result = await self.run(
                 self._proxy.sync_activity,
@@ -1506,6 +1511,10 @@ class AsyncXProxy:
         dev_lo = int(device_id) & 0xFF
         self._raise_if_cannot_fetch(f"sync_device({dev_lo})")
         await self._check_sync_baseline(baseline, "device", device_id, snapshot_id)
+        validate_entity_rename(
+            baseline, edited, kind="device", entity_id=dev_lo,
+            hub_version=getattr(self._proxy, "hub_version", None),
+        )
         # Asked before the write: the cache's references are what the scan reads.
         referencing = await self._activities_referencing(dev_lo)
         async with self._holding_hub("a sync"):

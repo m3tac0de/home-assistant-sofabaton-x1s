@@ -1590,3 +1590,33 @@ def test_restore_catalog_refreshes_add_no_listeners_and_run_once_per_bundle(monk
     })
     assert len(calls) == 2 and reads == ["devices", "activities"]
     assert not proxy._bundle_catalog_fresh
+
+
+def test_a_full_backup_drops_steps_into_devices_the_hub_no_longer_has() -> None:
+    from custom_components.sofabaton_x1s.lib import backup_export as bx
+
+    def _activity_with_steps() -> dict:
+        return {
+            "kind": "activity_backup",
+            "device": {"device_id": 101, "name": "Watch TV"},
+            "macros": [{"button_id": 198, "steps": [
+                {"device_id": 1, "command_id": 5},
+                {"device_id": 9, "command_id": 5},    # device 9 is gone
+                {"device_id": 0xFF, "command_id": 0xFF, "delay": 3},
+            ]}],
+        }
+
+    devices = [{"kind": "device_backup", "device": {"device_id": 1}, "complete": True}]
+    full = bx.assemble_hub_bundle(
+        device_payloads=devices, activity_payloads=[_activity_with_steps()], hub_info={},
+    )
+    assert [s["device_id"] for s in full["activities"][0]["macros"][0]["steps"]] == [1, 0xFF]
+    assert full["skipped_macro_steps"] == 1
+
+    # The structural projection is the editor's baseline: hub truth, untouched.
+    structural = bx.assemble_hub_bundle(
+        device_payloads=devices, activity_payloads=[_activity_with_steps()], hub_info={},
+        payload_profile=bx.PAYLOAD_PROFILE_STRUCTURAL,
+    )
+    assert len(structural["activities"][0]["macros"][0]["steps"]) == 3
+    assert "skipped_macro_steps" not in structural

@@ -41,7 +41,7 @@ from .device_create import (
     synthesize_command_code,
 )
 from .backup_export import PAYLOAD_PROFILE_FULL
-from .hub_sync import iter_entity_references
+from .entity_refs import iter_entity_references
 from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write

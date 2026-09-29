@@ -477,3 +477,9 @@ def test_network_command_trailer_round_trips() -> None:
     assert NetworkCommand.from_dict(cmd.to_dict()) == cmd
     assert cmd.decoded["trailer_hex"] == "f1"
     assert _pkg.payloads.payload_from_body("wifi_roku", cmd.blob) == cmd
+
+
+def test_the_derived_long_label_fits_the_slot() -> None:
+    spec = WifiSlotSpec(label="Living room lamp scene bright")  # 29 characters
+    slot = spec.normalized(1)
+    assert len(slot.long_label) <= 30 and slot.long_label.endswith(" Long")
