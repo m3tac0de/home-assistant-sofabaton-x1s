@@ -430,6 +430,20 @@ class CatalogMixin:
             sender=self._send_cmd_frame,
         )
 
+    def forget_idle_behavior(self, device_id: int | None = None) -> None:
+        """Drop what is known about a device's idle record (every device when
+        ``device_id`` is None). The hub reuses freed device ids, and a new
+        device never has an idle record, so nothing may outlive the id."""
+
+        with self._idle_behavior_lock:
+            if device_id is None:
+                self._idle_behavior_values.clear()
+                self._idle_behavior_absent.clear()
+                return
+            dev_lo = int(device_id) & 0xFF
+            self._idle_behavior_values.pop(dev_lo, None)
+            self._idle_behavior_absent.discard(dev_lo)
+
     def record_idle_behavior_absent(self, device_id: int) -> None:
         """The hub holds no idle record for the device: remember that and
         wake the waiter. ``get_idle_behavior`` then answers ``(None, True)``
@@ -441,6 +455,9 @@ class CatalogMixin:
             self._idle_behavior_absent.add(dev_lo)
             self._idle_behavior_pending = None
             event = self._idle_behavior_events.get(dev_lo)
+        entry = self.state.devices.get(dev_lo)
+        if isinstance(entry, dict):
+            entry.pop("idle_behavior", None)
         if event is not None:
             event.set()
         self._log.info("[REMOTE] idle dev=0x%02X: no idle record on the hub", dev_lo)
@@ -754,9 +771,11 @@ class CatalogMixin:
                 cached_mode = int(prior["idle_behavior"]) & 0xFF
             if cached_mode is not None:
                 merged["idle_behavior"] = cached_mode
-                merged["power_mode"] = cached_mode
-                merged["power_model"] = cached_mode
             committed[dev_id] = merged
+        with self._idle_behavior_lock:
+            gone = (set(self._idle_behavior_values) | self._idle_behavior_absent) - set(committed)
+        for dev_id in gone:
+            self.forget_idle_behavior(dev_id)
         self.state.devices = committed
         self._devices_catalog_ready = True
 

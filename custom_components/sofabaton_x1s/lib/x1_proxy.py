@@ -10,17 +10,13 @@
 # tests/lib/test_sequencer_boundary.py enforces this at CI time.
 from __future__ import annotations
 
-import contextlib
 import logging
-import ipaddress
 import re
 import socket
-import struct
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import replace
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 from .hub_versions import (
     HUB_VERSION_X1,
@@ -32,44 +28,21 @@ from .hub_versions import (
     mdns_service_type_for_props,
 )
 from .hub_logging import LogTag, get_hub_logger
-from .ack import AckOutcome, InputsBurstResult, SendStepResult
 from .commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
-    descriptive_play_blob_text,
-    extract_ir_dump_blob,
-    extract_ir_dump_label_field,
-    looks_like_descriptive_play_blob,
-    parse_ir_command_dump_frame,
 )
 from .device_create import (
     ACK_OPCODE_STATUS,
     ACK_STATUS_BYTE_OK,
-    FAMILY_ACTIVITY_CREATE,
     FAMILY_INPUTS,
     CreateStep,
-    build_button_binding_step,
-    build_command_write_steps,
-    build_device_create_step,
-    build_device_update_step,
-    build_macro_step,
-    build_macro_step_record,
-    build_remote_sync_step,
-    run_create_sequence,
-    synthesize_command_code,
+    # Not called here: proxy_restore routes create sequences through this
+    # module attribute so tests can monkeypatch one symbol.
+    run_create_sequence,  # noqa: F401
 )
-from .devices import device_config_from_backup
-from .inputs import (
-    ControlKeyBlock,
-    FavoriteSlot,
-    InputEntry,
-    InputsRecord,
-    build_inputs_write,
-    parse_inputs_burst,
-)
-from .wire_schema import InputEntryLayout, page_family_body, schema_for
+from .wire_schema import page_family_body
 from .macros import (
-    MACRO_WRITE_PAGE_BODY_CHUNK,
     MacroAssembler,
     MacroKeyEntry,
     MacroRecord,
@@ -77,78 +50,21 @@ from .macros import (
 )
 
 from .protocol_const import (
-    BUTTONNAME_BY_CODE,
     ButtonName,
-    DEVICE_CLASS_BLUETOOTH,
-    DEVICE_CLASS_IR,
-    DEVICE_CLASS_RF_315,
-    DEVICE_CLASS_RF_433,
-    DEVICE_CLASS_WIFI_HUE,
-    DEVICE_CLASS_WIFI_IP,
-    DEVICE_CLASS_WIFI_MQTT,
-    DEVICE_CLASS_WIFI_ROKU,
-    DEVICE_CLASS_WIFI_SONOS,
-    known_public_device_classes,
     OPNAMES,
-    normalize_device_class,
     opcode_family,
-    opcode_lo,
-    OP_ACK_READY,
-    OP_BANNER,
-    OP_CALL_ME,
-    OP_CATALOG_ROW_ACTIVITY,
-    OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_HEADER,
-    OP_DEVBTN_MORE,
-    OP_DEVBTN_PAGE,
-    OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
     OP_SET_HUB_NAME,
-    OP_INFO_BANNER,
-    OP_CREATE_DEVICE_HEAD,
-    OP_DEFINE_IP_CMD,
-    OP_DEFINE_IP_CMD_EXISTING,
-    OP_PREPARE_SAVE,
-    OP_FINALIZE_DEVICE,
-    OP_DEVICE_SAVE_HEAD,
-    OP_SAVE_COMMIT,
-    OP_KEYMAP_CONT,
-    OP_KEYMAP_TBL_A,
-    OP_KEYMAP_TBL_B,
-    OP_KEYMAP_TBL_C,
-    OP_KEYMAP_TBL_D,
-    OP_KEYMAP_TBL_E,
-    OP_KEYMAP_EXTRA,
-    OP_MACROS_A1,
-    OP_MACROS_A2,
-    OP_MACROS_B1,
-    OP_MACROS_B2,
-    OP_MARKER,
-    OP_PING2,
     OP_SET_IDLE_BEHAVIOR,
     OP_REQ_ACTIVITIES,
     OP_REQ_ACTIVATE,
     OP_REQ_IDLE_BEHAVIOR,
-    OP_REQ_ACTIVITY_MAP,
     OP_REQ_BANNER,
-    OP_DELETE_DEVICE,
-    OP_STATUS_ACK,
-    OP_ACTIVITY_ASSIGN_FINALIZE,
-    OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
     OP_REQ_BLOB,
     OP_REQ_COMMANDS,
-    OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
-    OP_REQ_MACRO_LABELS,
-    OP_IDLE_BEHAVIOR,
-    OP_ACTIVITY_DEVICE_CONFIRM,
-    OP_REQ_ACTIVITY_INPUTS,
-    OP_REQ_VERSION,
-    OP_WIFI_FW,
-    FAMILY_FAV_DELETE,
-    FAMILY_FAV_ORDER_REQ,
     FAMILY_HUB_NAME_REPLY,
     SYNC0,
     SYNC1,
@@ -284,14 +200,6 @@ def _input_create_step(
     )
 
 
-def _hex_to_bytes(raw_hex: str) -> bytes:
-    return bytes.fromhex(raw_hex)
-
-
-def _ascii_padded(value: str, *, length: int) -> bytes:
-    return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
-
-
 def _to_dbc(value: str) -> str:
     """Collapse full-width forms to the GB2312-friendly half-width variant."""
 
@@ -318,25 +226,12 @@ def _decode_hub_name_wire(payload: bytes, *, hub_version: str | None) -> str:
     return raw.decode("gb2312", errors="ignore").strip("\x00").strip()
 
 
-# Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
-# See the activity-row schema comment in ``opcode_handlers`` for details.
-_ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
-_ACTIVITY_ROW_TAIL_LEN = 60
-
-
-# ACTIVITY_INPUTS (family 0x46 / response 0x47) schema lives in
-# :mod:`lib.inputs`; see its module docstring for the canonical
-# per-variant entry stride and trailing-region layout. Parser and
-# builder are exposed there as :func:`parse_inputs_burst` and
-# :func:`build_inputs_write`.
-
-
-
 def _normalize_mdns_instance(name: str) -> str:
     """Return an mDNS-friendly instance name without whitespace."""
 
     normalized = re.sub(r"\s+", "-", name.strip())
     return normalized or "X1-HUB-PROXY"
+
 
 def _route_local_ip(peer_ip: str) -> str:
     try:
@@ -349,38 +244,6 @@ def _route_local_ip(peer_ip: str) -> str:
         try: s.close()
         except Exception: pass
 
-def _pick_port_near(base: int, tries: int = 64) -> int:
-    for i in range(tries):
-        cand = base + i
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("0.0.0.0", cand))
-            s.close()
-            return cand
-        except OSError:
-            continue
-    raise OSError("No free port near %d" % base)
-
-def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10, count: int = 3) -> None:
-    try: sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    except Exception: pass
-    try:  # Linux
-        TCP_KEEPIDLE = getattr(socket, "TCP_KEEPIDLE", None)
-        TCP_KEEPINTVL = getattr(socket, "TCP_KEEPINTVL", None)
-        TCP_KEEPCNT = getattr(socket, "TCP_KEEPCNT", None)
-        if TCP_KEEPIDLE is not None:  sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPIDLE, idle)
-        if TCP_KEEPINTVL is not None: sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPINTVL, interval)
-        if TCP_KEEPCNT is not None:   sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPCNT, count)
-    except Exception: pass
-    try:  # macOS/Windows approx
-        TCP_KEEPALIVE = getattr(socket, "TCP_KEEPALIVE", None)
-        if TCP_KEEPALIVE is not None: sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, idle)
-    except Exception: pass
-
-
-
-# Deframer moved to lib/deframer.py — re-exported above.
 
 # ============================================================================
 # Proxy
@@ -988,17 +851,17 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         """Return cached idle behavior, optionally querying the hub if missing."""
 
         dev_lo = device_id & 0xFF
+        with self._idle_behavior_lock:
+            absent = dev_lo in self._idle_behavior_absent
+            value = self._idle_behavior_values.get(dev_lo)
+        if absent:
+            return (None, True)
+
         cached = self.state.entities("device").get(dev_lo, {}).get("idle_behavior")
         if isinstance(cached, int):
             return (cached & 0xFF, True)
-
-        with self._idle_behavior_lock:
-            value = self._idle_behavior_values.get(dev_lo)
-
         if value is not None:
             return (value, True)
-        if dev_lo in self._idle_behavior_absent:
-            return (None, True)
 
         if fetch_if_missing and self.can_issue_commands():
             self.request_idle_behavior(dev_lo)
@@ -1184,8 +1047,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         existing = dict(self.state.entities("device").get(dev_lo, {}))
         existing["idle_behavior"] = normalized_mode
-        existing["power_mode"] = normalized_mode
-        existing["power_model"] = normalized_mode
         self.state.devices[dev_lo] = normalize_device_entry(existing)
 
         self._log.info(
@@ -1377,8 +1238,12 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         return record
 
     def find_remote(self, hub_version: str | None = None) -> bool:
-        """Trigger the hub's "find my remote" feature."""
-        version = hub_version or self.hub_version
+        """Trigger the hub's "find my remote" feature.
+
+        ``hub_version`` only picks the opcode while the engine does not know
+        its variant yet; the banner owns ``self.hub_version``.
+        """
+        version = self.hub_version or hub_version
         if not version:
             try:
                 version = classify_hub_version(self.mdns_txt)
@@ -1387,7 +1252,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
                     "%s find-remote: hub_version unknown; cannot pick opcode.", LogTag.REMOTE
                 )
                 return False
-        self.hub_version = version
 
         if version == HUB_VERSION_X2:
             return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")

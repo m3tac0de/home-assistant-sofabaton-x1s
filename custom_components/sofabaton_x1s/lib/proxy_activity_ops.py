@@ -253,6 +253,7 @@ class ActivityOpsMixin:
         self.state.ip_buttons.pop(dev_lo, None)
         self.state.device_input_records.pop(dev_lo, None)
         self._forget_detail("device", dev_lo)
+        self.forget_idle_behavior(dev_lo)
         # Full clear: the bare form leaves the device's macro records,
         # button details, and command metadata orphaned under a dead id —
         # nothing ever overwrites entries keyed by an id that no longer

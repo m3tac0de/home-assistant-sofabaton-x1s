@@ -7,12 +7,10 @@ import time
 import unicodedata
 from typing import TYPE_CHECKING
 
-from .hub_versions import HUB_VERSION_X1
 from .commands import decode_burst_frame, parse_ir_command_dump_frame
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
 from .state_helpers import one_slot_per_fav_id
 from .macros import (
-    MacroAssembler,
     parse_macro_burst_frame,
     parse_macro_records_from_burst,
 )
@@ -28,36 +26,8 @@ from .protocol_const import (
     OP_ACK_READY,
     OP_CATALOG_ROW_ACTIVITY,
     OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_HEADER,
-    OP_DEVBTN_MORE,
-    OP_DEVBTN_PAGE,
-    OP_DEVBTN_PAGE_ALT1,
-    OP_DEVBTN_PAGE_ALT2,
-    OP_DEVBTN_PAGE_ALT3,
-    OP_DEVBTN_PAGE_ALT4,
-    OP_DEVBTN_PAGE_ALT5,
-    OP_DEVBTN_PAGE_ALT6,
     OP_DEVBTN_SINGLE,
-    OP_DEVBTN_TAIL,
     OP_IDLE_BEHAVIOR,
-    OP_MACROS_A1,
-    OP_MACROS_A2,
-    OP_MACROS_B1,
-    OP_MACROS_B2,
-    OP_KEYMAP_CONT,
-    OP_KEYMAP_FINAL_X1S,
-    OP_KEYMAP_OVERLAY_X1,
-    OP_KEYMAP_PAGE_X1_663D,
-    OP_KEYMAP_PAGE_X1_AE3D,
-    OP_KEYMAP_PAGE_X1_E43D,
-    OP_KEYMAP_PAGE_X2_C03D,
-    OP_KEYMAP_TBL_A,
-    OP_KEYMAP_TBL_B,
-    OP_KEYMAP_TBL_C,
-    OP_KEYMAP_TBL_D,
-    OP_KEYMAP_TBL_F,
-    OP_KEYMAP_TBL_E,
-    OP_KEYMAP_TBL_G,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
     OP_DEFINE_IP_CMD_EXISTING,
@@ -65,16 +35,13 @@ from .protocol_const import (
     OP_FINALIZE_DEVICE,
     OP_DEVICE_SAVE_HEAD,
     OP_SAVE_COMMIT,
-    OP_REQ_IPCMD_SYNC,
     OP_IPCMD_ROW_A,
     OP_IPCMD_ROW_B,
     OP_IPCMD_ROW_C,
     OP_IPCMD_ROW_D,
     ACK_SUCCESS,
-    OP_MARKER,
     OP_REQ_ACTIVATE,
     OP_REQ_ACTIVITY_MAP,
-    OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_IDLE_BEHAVIOR,
     OP_REQ_ACTIVITIES,
@@ -85,7 +52,6 @@ from .protocol_const import (
     OP_ACTIVITY_CREATE_ACK,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
-    OP_KEYMAP_EXTRA,
     classify_device_class_code,
     opcode_family,
 )
@@ -212,10 +178,8 @@ class MacroHandler(BaseFrameHandler):
         for activity_id, assembled, boundaries in completed:
             act_lo = activity_id & 0xFF
             macros: list[dict[str, int | str]] = []
-            # Production REQ_MACROS uses the assembled fixed-width parser via
-            # `parse_macro_records_from_burst`. The legacy
-            # `decode_macro_records` remains importable for tests and
-            # external callers.
+            # REQ_MACROS records are parsed by the assembled fixed-width
+            # parser, `parse_macro_records_from_burst`.
             for record in parse_macro_records_from_burst(
                 assembled,
                 activity_id=activity_id,
@@ -742,7 +706,10 @@ class CatalogDeviceHandler(BaseFrameHandler):
         device_class_code = payload[10] if len(payload) > 10 else None
         device_class = classify_device_class_code(device_class_code)
         name_bytes_raw = raw[36 : 36 + 60]
-        device_label = name_bytes_raw.decode("utf-16be").strip("\x00")
+        # Lenient like every other label decode: a lone surrogate (a name
+        # cut mid code unit by any writer) must not drop the row, or the
+        # devices snapshot never completes.
+        device_label = name_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
         brand_bytes_raw = raw[96 : 96 + 60]
         brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
 
@@ -1152,7 +1119,6 @@ class KeymapHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         raw = frame.raw
-        payload = frame.payload
         now = time.monotonic()
         burst_act_lo = self._burst_activity(proxy)
         parsed = decode_burst_frame(frame.opcode, raw, hub_version=proxy.hub_version)

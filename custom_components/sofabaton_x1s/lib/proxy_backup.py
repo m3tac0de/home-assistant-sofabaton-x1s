@@ -562,6 +562,7 @@ class CacheBackupMixin:
             self.state.ip_devices.pop(ent_lo, None)
             self.state.ip_buttons.pop(ent_lo, None)
             self._commands_complete.discard(ent_lo)
+            self.forget_idle_behavior(ent_lo)
             return
 
         if kind == "activity":
@@ -671,7 +672,7 @@ class CacheBackupMixin:
         self._pending_command_requests.clear()
         self._pending_macro_requests.clear()
         self._pending_activity_map_requests.clear()
-
+        self.forget_idle_behavior()
 
     def erase_configuration(
         self,

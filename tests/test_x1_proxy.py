@@ -5765,7 +5765,9 @@ def test_restore_activity_replays_create_and_remaps_device_ids(monkeypatch) -> N
     assert len(sequence_calls) >= 1
     create_steps = sequence_calls[0]
     assert len(create_steps) == 1
-    assert create_steps[0].family == x1_proxy_module.FAMILY_ACTIVITY_CREATE
+    from custom_components.sofabaton_x1s.lib.device_create import FAMILY_ACTIVITY_CREATE
+
+    assert create_steps[0].family == FAMILY_ACTIVITY_CREATE
 
     # Second sequence call: post-create (bindings + macro + sync).
     post_steps = sequence_calls[1]

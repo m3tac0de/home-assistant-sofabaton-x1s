@@ -1058,6 +1058,37 @@ def test_catalog_device_handler_decodes_shared_device_class_code() -> None:
     }
 
 
+def test_catalog_device_handler_ingests_a_name_with_a_lone_surrogate() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy._begin_device_request()
+
+    payload = bytearray(218)
+    payload[0] = 0x01
+    payload[3] = 0x01
+    payload[6:8] = (0x0007).to_bytes(2, "big")
+    payload[10] = 0x0D
+    raw = bytearray([0xA5, 0x5A, 0xD5, 0x0B]) + payload + bytearray([0x00])
+    # "TV" followed by the high half of an emoji the slot cut off.
+    name = "TV".encode("utf-16be") + b"\xd8\x3d"
+    raw[36 : 36 + len(name)] = name
+
+    CatalogDeviceHandler().handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=OP_CATALOG_ROW_DEVICE,
+            direction="H→A",
+            payload=bytes(payload),
+            raw=bytes(raw),
+            name="CATALOG_ROW_DEVICE",
+        )
+    )
+    proxy._on_devices_burst_end("devices")
+
+    assert proxy.state.devices[0x07]["name"] == "TV"
+
+
 def test_x1_activity_row_updates_state_and_trims_label() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -1491,8 +1522,7 @@ def test_idle_behavior_reply_updates_device_cache() -> None:
     handler.handle(frame)
 
     assert proxy.state.devices[0x0C]["idle_behavior"] == 3
-    assert proxy.state.devices[0x0C]["power_mode"] == 3
-    assert proxy.state.devices[0x0C]["power_model"] == 3
+    assert "power_mode" not in proxy.state.devices[0x0C]
 
 
 def test_set_idle_behavior_handler_updates_cache_from_app_command() -> None:
@@ -1538,8 +1568,6 @@ def test_device_snapshot_commit_preserves_cached_idle_behavior() -> None:
         "name": "TV",
         "brand": "Sony",
         "idle_behavior": 3,
-        "power_mode": 3,
-        "power_model": 3,
     }
     proxy.record_idle_behavior_value(0x0C, 3)
     proxy._begin_device_request()
@@ -1560,8 +1588,6 @@ def test_device_snapshot_commit_preserves_cached_idle_behavior() -> None:
     proxy._on_devices_burst_end("devices")
 
     assert proxy.state.devices[0x0C]["idle_behavior"] == 3
-    assert proxy.state.devices[0x0C]["power_mode"] == 3
-    assert proxy.state.devices[0x0C]["power_model"] == 3
 
 
 def test_keymap_handler_parses_x2_followup_d73d_page_buttons() -> None:
@@ -2080,3 +2106,38 @@ def test_favorites_order_keeps_one_slot_per_id() -> None:
     # A clean table is stored as read.
     handler.handle(_favorites_order_frame(proxy, 0x6B, [(2, 1), (1, 2)]))
     assert proxy.state.activity_favorites_order[0x6B] == [(2, 1), (1, 2)]
+
+
+def test_hub_no_idle_record_answer_beats_a_stale_cached_value() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.state.devices[0x05] = {"name": "Old", "brand": "Sony"}
+    proxy.record_idle_behavior_value(0x05, 3)
+
+    proxy.record_idle_behavior_absent(0x05)
+
+    assert "idle_behavior" not in proxy.state.devices[0x05]
+    assert proxy.get_idle_behavior(0x05, fetch_if_missing=False) == (None, True)
+
+
+def test_idle_behavior_is_forgotten_for_ids_a_devices_snapshot_drops() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.record_idle_behavior_value(0x05, 3)
+    proxy.record_idle_behavior_absent(0x06)
+    proxy._begin_device_request()
+    proxy.ingest_device_row(
+        row_idx=1,
+        expected_rows=1,
+        dev_id=0x0C,
+        device={"brand": "Sony", "name": "TV", "device_class": "ir", "device_class_code": 0x0D},
+    )
+    proxy._on_devices_burst_end("devices")
+
+    # The hub reuses freed ids; a device created at 0x05 later must not
+    # inherit mode 3, and 0x06 must be asked again.
+    proxy.state.devices[0x05] = {"name": "New", "brand": "LG"}
+    assert proxy.get_idle_behavior(0x05, fetch_if_missing=False) == (None, False)
+    assert proxy.get_idle_behavior(0x06, fetch_if_missing=False) == (None, False)

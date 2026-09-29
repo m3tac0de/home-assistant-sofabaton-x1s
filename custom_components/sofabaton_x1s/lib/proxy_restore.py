@@ -800,10 +800,7 @@ class RestoreMixin:
             "device_class_code": int(device_block.get("device_class_code", 0)) & 0xFF,
         }
         if idle_mode is not None:
-            # Same aliased key triple record_idle_behavior_value writes.
             entry["idle_behavior"] = idle_mode
-            entry["power_mode"] = idle_mode
-            entry["power_model"] = idle_mode
         self.state.devices[device_id] = entry
 
         return DeviceCreateResult(
