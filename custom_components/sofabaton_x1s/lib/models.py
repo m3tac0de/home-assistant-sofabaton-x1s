@@ -487,6 +487,8 @@ class RestoreResult:
     (``restore(replace=True)``): a failure after that has changed the hub
     even when no entity was restored. ``partial_device_ids`` are devices a
     failed restore left half-made on the hub (their rollback failed too).
+    ``hub_name`` / ``hub_name_restored`` report the bundle's hub name a
+    successful replacing restore applied (None when it did not try).
     """
 
     status: Literal["success", "failed"]
@@ -498,6 +500,8 @@ class RestoreResult:
     restored: dict[str, list[dict[str, Any]]] = field(default_factory=dict, compare=False)
     erased: bool = False
     partial_device_ids: tuple[int, ...] = ()
+    hub_name: Optional[str] = None
+    hub_name_restored: Optional[bool] = None
 
     @property
     def ok(self) -> bool:
@@ -555,6 +559,10 @@ class RestoreResult:
             erased=bool(erased),
             partial_device_ids=tuple(
                 int(i) & 0xFF for i in data.get("partial_device_ids") or () if isinstance(i, int)
+            ),
+            hub_name=data.get("hub_name") if isinstance(data.get("hub_name"), str) else None,
+            hub_name_restored=(
+                bool(data["hub_name_restored"]) if data.get("hub_name_restored") is not None else None
             ),
         )
 

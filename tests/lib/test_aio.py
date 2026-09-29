@@ -875,14 +875,14 @@ def test_delegated_method_runs_in_executor() -> None:
     async def main():
         call_thread = {}
 
-        # restore_device is a delegated PROXY_METHODS name.
+        # backup_device is a delegated PROXY_METHODS name.
         class WithProvision(FakeProxy):
-            def restore_device(self, *args, **kwargs):
+            def backup_device(self, *args, **kwargs):
                 call_thread["t"] = threading.get_ident()
                 return {"ok": True}
 
         proxy = _wrap(WithProvision())
-        assert await proxy.restore_device({}) == {"ok": True}
+        assert await proxy.backup_device(5) == {"ok": True}
         assert call_thread["t"] != threading.get_ident()
 
     asyncio.run(main())
@@ -2082,6 +2082,7 @@ def test_intents_raise_typed_rejection_and_validate_inputs() -> None:
     async def main():
         fake = _write_fake()
         fake.reject = True
+        fake.lands_catalogs = True  # the rejected create's verification read is answered
         proxy = _wrap(fake)
         for coro in (proxy.add_device("Lamp", "ir"), proxy.remove_device(5),
                      proxy.set_hub_name("Den"), proxy.erase(), proxy.play(bytes(16))):
@@ -3212,5 +3213,217 @@ def test_sync_hub_awaits_an_async_state_persister_before_returning() -> None:
         # The final record landed before sync_hub returned: a script that
         # exits right after (asyncio.run) no longer loses it.
         assert result.ok and persisted and persisted[-1] == "success"
+
+    asyncio.run(main())
+
+
+def test_two_writes_in_two_tasks_never_overlap_in_the_engine() -> None:
+    import threading
+    import time as _time
+
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+        active = []
+        overlap = []
+        lock = threading.Lock()
+
+        def _slow_write(*_a, **_kw):
+            with lock:
+                active.append(1)
+                if len(active) > 1:
+                    overlap.append(True)
+            _time.sleep(0.05)
+            with lock:
+                active.pop()
+            return {"status": "success"}
+
+        await asyncio.gather(
+            proxy._write("one", _slow_write),
+            proxy._write("two", _slow_write),
+        )
+        assert overlap == []
+
+    asyncio.run(main())
+
+
+def test_a_cancelled_write_keeps_the_hold_until_the_engine_lands() -> None:
+    import threading
+
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+        release = threading.Event()
+        landed = []
+
+        def _write(*_a, **_kw):
+            release.wait(2)
+            landed.append(1)
+            return {"status": "success"}
+
+        task = asyncio.ensure_future(proxy._write("slow", _write))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert proxy._hub_holds == 1  # still held: the engine is writing
+        release.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert landed == [1] and proxy._hub_holds == 0
+
+    asyncio.run(main())
+
+
+def test_payload_and_banner_reads_wait_out_another_operations_hold() -> None:
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+        dumps: list = []
+        banners: list = []
+        fake.request_ir_command_dump = lambda *a, **kw: dumps.append(a)  # type: ignore[attr-defined]
+        fake.fetch_banner_info = lambda **kw: banners.append(kw)  # type: ignore[attr-defined]
+        fake.get_banner_info = lambda: {}  # type: ignore[attr-defined]
+        release = asyncio.Event()
+
+        async def _hold():
+            async with proxy._holding_hub("a restore"):
+                await release.wait()
+
+        holder = asyncio.ensure_future(_hold())
+        await asyncio.sleep(0.01)
+        try:
+            await proxy.read_payload(5, 1, timeout=0.05)
+        except errors.FetchTimeoutError as err:
+            assert "a restore holds the hub" in str(err)
+        else:
+            raise AssertionError("expected FetchTimeoutError")
+        assert dumps == []  # nothing went to the hub mid-restore
+        release.set()
+        await holder
+
+    asyncio.run(main())
+
+
+def test_a_create_that_landed_despite_a_failure_is_adopted_not_rejected() -> None:
+    class LostAck(FakeProxy):
+        def create_device(self, name, *, device_class):
+            super().create_device(name, device_class=device_class)
+            return None  # the device exists, the id never came back
+
+    async def main():
+        fake = LostAck()
+        fake.lands_catalogs = True
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+
+        new_id = await proxy.add_device("Lamp", "ir")
+
+        assert new_id == 6  # adopted: a resume must not create it again
+
+        # Nothing changed on the hub: a real rejection stays one.
+        fake.reject = True
+        try:
+            await proxy.add_device("Fan", "ir")
+        except errors.HubRejectedError:
+            pass
+        else:
+            raise AssertionError("expected HubRejectedError")
+
+    asyncio.run(main())
+
+
+def test_a_replacing_restore_applies_the_bundles_hub_name() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.lands_catalogs = True
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+        bundle = {"kind": "hub_bundle", "tag": "t", "hub": {"name": "Living Room"}}
+
+        replaced = await proxy.restore(bundle, replace=True)
+        assert ("set_hub_name", "Living Room") in fake.write_calls
+        assert replaced.hub_name == "Living Room" and replaced.hub_name_restored is True
+
+        # A merge keeps the hub's own name.
+        fake.write_calls.clear()
+        merged = await proxy.restore(bundle, replace=False)
+        assert not any(call[0] == "set_hub_name" for call in fake.write_calls)
+        assert merged.hub_name is None and merged.hub_name_restored is None
+
+    asyncio.run(main())
+
+
+def test_the_facade_pauses_reconnects_when_the_hub_announces_a_firmware_update() -> None:
+    class _OtaTransport(FakeProxy._Transport):
+        def __init__(self):
+            self.paused = []
+
+        def pause_for_ota(self, seconds):
+            self.paused.append(seconds)
+
+    async def main():
+        fake = FakeProxy()
+        fake.transport = _OtaTransport()
+        listeners = []
+        fake.on_ota_update = listeners.append  # type: ignore[attr-defined]
+        _wrap(fake)
+
+        assert len(listeners) == 1  # registered at construction, not with events()
+        listeners[0]()  # the frame thread reports 0x0167
+        await asyncio.sleep(0.01)
+        assert fake.transport.paused == [aio.OTA_PAUSE_S]
+
+    asyncio.run(main())
+
+
+def test_cancelling_the_first_refresh_caller_leaves_a_joined_caller_its_snapshot() -> None:
+    async def main():
+        started, release = threading.Event(), threading.Event()
+
+        class Slow(FakeProxy):
+            def backup_device(self, device_id, **kwargs):
+                started.set()
+                assert release.wait(10)
+                return super().backup_device(device_id, **kwargs)
+
+        fake = Slow()
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+
+        async def catalog(**kwargs):
+            return []
+
+        proxy.devices = proxy.activities = catalog     # skip the catalog bursts
+        first = asyncio.ensure_future(proxy.refresh())
+        assert await asyncio.get_running_loop().run_in_executor(None, started.wait, 2)
+        joined = asyncio.ensure_future(proxy.refresh())
+        await asyncio.sleep(0.02)
+        first.cancel()
+        await asyncio.sleep(0.02)
+        release.set()
+        snap = await asyncio.wait_for(joined, 5)       # not cancelled: it gets the snapshot
+        assert snap is not None and not joined.cancelled()
+        try:
+            await first
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(main())
+
+
+def test_a_raising_progress_callback_never_breaks_a_write() -> None:
+    reporter_cls = aio._ProgressReporter
+
+    async def main():
+        def _broken(_report):
+            raise RuntimeError("the UI closed its sink")
+
+        reporter = reporter_cls(asyncio.get_running_loop(), _broken)
+        reporter(phase="writing", message="x", completed_steps=0, total_steps=1)  # logged, not raised
 
     asyncio.run(main())

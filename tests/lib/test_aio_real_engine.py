@@ -1605,3 +1605,56 @@ def test_inbound_frames_are_dispatched_whatever_the_diag_flags(diag_dump, diag_p
     info = engine.get_banner_info()
     assert info.get("model") == "X1S" and str(info.get("mac", "")).upper() == "E26A44861B45", info
     assert engine.has_banner_identity()
+
+
+def test_a_cancel_during_the_batch_begin_never_leaves_the_engine_batch_open(monkeypatch) -> None:
+    import threading
+
+    async def main():
+        engine = _engine()
+        proxy = aio.AsyncXProxy.wrap(engine)
+        real_begin = engine.begin_write_batch
+        entered = threading.Event()
+        release = threading.Event()
+
+        def _slow_begin():
+            real_begin()  # the engine batch is open from here
+            entered.set()
+            release.wait(2)
+
+        monkeypatch.setattr(engine, "begin_write_batch", _slow_begin)
+
+        async def _batch():
+            async with proxy.batch_writes():
+                pass
+
+        task = asyncio.ensure_future(_batch())
+        while not entered.is_set():
+            await asyncio.sleep(0.01)
+        task.cancel()
+        release.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert not engine.write_batch_open
+        async with proxy.batch_writes():  # a later batch opens normally
+            pass
+
+    asyncio.run(main())
+
+
+def test_backup_with_an_empty_or_out_of_range_id_list_is_refused_not_widened() -> None:
+    async def main():
+        engine = _engine()
+        _hub_link(engine, True)
+        proxy = aio.AsyncXProxy.wrap(engine)
+        for ids in ([], [256]):
+            try:
+                await proxy.backup(device_ids=ids)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"backup(device_ids={ids}) must be refused")
+
+    asyncio.run(main())
