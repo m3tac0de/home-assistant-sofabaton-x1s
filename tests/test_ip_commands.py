@@ -93,3 +93,30 @@ def test_ip_command_sync_rows_decode_http_metadata() -> None:
 # HTTP-text writer in ``lib.blob_decoders.render_wifi_ip_http_text``
 # is now the single source of truth for the bytes that flow into
 # wifi_ip command records.
+
+
+def test_ip_command_capture_never_rewrites_the_device_catalog() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    managed = {"name": "Kitchen", "brand": "m3-kitchen-1a2b", "device_class": "wifi_ip"}
+    proxy.state.devices[8] = dict(managed)
+
+    proxy.state.record_virtual_device(8, name="Kitchen", button_id=3, method="GET", url="/x")
+
+    assert proxy.state.devices[8]["brand"] == "m3-kitchen-1a2b"
+    assert 8 not in proxy.state.buttons
+    assert proxy.state.ip_devices[8]["name"] == "Kitchen"
+    assert proxy.state.ip_buttons[8][3]["url"] == "/x"
+
+
+def test_a_committed_capture_is_consumed_once() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.update_virtual_device(device_id=9, device_name="Lamp", button_id=1)
+    proxy.update_virtual_device(status="success")
+
+    assert proxy._pending_virtual is None
+    assert proxy.wait_for_virtual_device(timeout=0)["device_id"] == 9
+    assert proxy.wait_for_virtual_device(timeout=0) is None

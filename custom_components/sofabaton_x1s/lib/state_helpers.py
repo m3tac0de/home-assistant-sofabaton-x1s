@@ -15,7 +15,6 @@ from .commands import (
 )
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
-    DEVICE_CLASS_WIFI_IP,
     classify_device_class_code,
     normalize_device_class,
 )
@@ -583,18 +582,11 @@ class ActivityCache:
         headers: dict[str, str] | None = None,
         button_name: str | None = None,
     ) -> None:
+        # Observe-mode capture of the vendor app's IP command traffic. It
+        # lives in its own namespace: the device catalog and keymaps are the
+        # hub's truth, and a managed Wifi device's brand is its deploy
+        # commit marker, so this never writes state.devices or state.buttons.
         brand = "Virtual HTTP"
-        self.devices[device_id & 0xFF] = normalize_device_entry(
-            {
-                **(self.devices.get(device_id & 0xFF, {})),
-                "brand": brand,
-                "name": name,
-            },
-            default_class=DEVICE_CLASS_WIFI_IP,
-            default_class_code=0x1C,
-        )
-        if button_id is not None:
-            self.buttons.setdefault(device_id & 0xFF, set()).add(button_id)
         meta: Dict[str, Any] = {
             "device_id": device_id & 0xFF,
             "name": name,

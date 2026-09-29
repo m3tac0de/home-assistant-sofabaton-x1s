@@ -358,6 +358,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._pending_virtual: dict[str, Any] | None = None
         self._pending_virtual_event = threading.Event()
         self._pending_virtual_lock = threading.Lock()
+        self._last_virtual_result: dict[str, Any] | None = None
         self._pending_assigned_device_id: int | None = None
         self._pending_assigned_device_event = threading.Event()
         self._pending_assigned_device_lock = threading.Lock()
@@ -1335,6 +1336,12 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
                 button_name=snapshot.get("button_name"),
             )
 
+        if kwargs.get("status") == "success":
+            # The save committed: consume the capture so later ACK_SUCCESS
+            # frames do not keep re-recording it.
+            with self._pending_virtual_lock:
+                self._pending_virtual = None
+                self._last_virtual_result = snapshot
         if kwargs.get("status") == "success" or kwargs.get("device_id") is not None:
             self._pending_virtual_event.set()
 
@@ -1344,11 +1351,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._pending_virtual_event.wait(timeout)
         with self._pending_virtual_lock:
             if self._pending_virtual is None:
-                return None
-            snapshot = dict(self._pending_virtual)
-            if snapshot.get("status") == "success":
-                self._pending_virtual = None
-        return snapshot
+                result, self._last_virtual_result = self._last_virtual_result, None
+                return result
+            return dict(self._pending_virtual)
 
     def _build_macro_record_entry(
         self,
