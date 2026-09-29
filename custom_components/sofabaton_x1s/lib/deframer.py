@@ -10,7 +10,7 @@ the proxy stays a thin orchestrator.
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from .protocol_const import SYNC0, SYNC1
 
@@ -20,9 +20,20 @@ def _sum8(b: bytes) -> int:
 
 
 class Deframer:
-    def __init__(self) -> None:
+    """``on_drop(kind, n)`` hears every discarded span: ``("junk", bytes)``
+    skipped before a sync pair, ``("malformed", frame_len)`` for a frame
+    whose checksum failed."""
+
+    def __init__(self, on_drop: Optional[Callable[[str, int], None]] = None) -> None:
         self.buf = bytearray()
         self._cur_start_cid: Optional[int] = None
+        self._on_drop = on_drop
+
+    def reset(self) -> None:
+        """Forget any partial frame (the stream it belonged to ended)."""
+
+        self.buf.clear()
+        self._cur_start_cid = None
 
     def feed(self, data: bytes, cid: int) -> List[Tuple[int, bytes, bytes, int, int]]:
         out: List[Tuple[int, bytes, bytes, int, int]] = []
@@ -46,6 +57,8 @@ class Deframer:
                         self.buf.clear()
                     self._cur_start_cid = None
                     break
+                if idx and self._on_drop is not None:
+                    self._on_drop("junk", idx)
                 del self.buf[:idx]
                 self._cur_start_cid = None
 
@@ -67,6 +80,8 @@ class Deframer:
                 continue
 
             # Bad checksum at this sync: drop one byte and rescan.
+            if self._on_drop is not None:
+                self._on_drop("malformed", frame_len)
             del self.buf[0]
             self._cur_start_cid = None
 
