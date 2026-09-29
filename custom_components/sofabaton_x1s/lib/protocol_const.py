@@ -111,16 +111,10 @@ OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites map
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_SET_HUB_NAME = 0x0030  # payload: GB2312-encoded hub name bytes
 FAMILY_HUB_NAME_REPLY = 0x31  # H→A variable-length hub-name reply family
-OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
+OP_FIND_REMOTE = 0x0023  # payload: empty; triggers the remote buzzer (X1/X1S)
 OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
 # Identical across X1, X1S, X2. The hub commonly disconnects after the ack; clients
 # must reconnect and re-fetch the catalogs from scratch. See docs/protocol/erase.md.
-# NOTE: opcode_hi=0x00 contradicts the documented 1-byte payload (frame
-# invariant says payload length == opcode_hi). Two possibilities:
-#   - The actual opcode is 0x0123 (1-byte payload) and was mis-recorded, or
-#   - The payload is empty and the "[0x01]" in this comment is wrong.
-# The X2 variant OP_FIND_REMOTE_X2 = 0x0323 correctly has a 3-byte payload.
-# Worth verifying against a captured X1/X1S buzzer frame.
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
 OP_REMOTE_SYNC = 0x0064  # payload: empty; force remote<->hub sync on X1/X1S
 OP_X2_REMOTE_LIST = 0x012E  # payload: [0x00]; request connected remotes on X2
@@ -165,10 +159,10 @@ OP_SAVE_COMMIT = 0x6501
 #   0x60  ACK_READY family — posts "activity_update" event globally
 #   0x67  OTA-update push event from hub
 #
-# `ACK_SUCCESS = 0x0301` and `OP_STATUS_ACK = 0x0103` are both opcode-lo 0x03;
-# they are the same family with different payload widths. The naming is
-# retained for backward compatibility but the dispatcher logic should treat
-# any opcode with low byte 0x03 as a status frame.
+# `ACK_SUCCESS = 0x0301` is NOT a status frame: its low byte is 0x01, so it is
+# its own family-0x01 save ack (3-byte payload; handled by SaveCommitHandler).
+# Only opcodes with low byte 0x03 (`OP_STATUS_ACK = 0x0103` and friends) are
+# the status/ack family.
 ACK_SUCCESS = 0x0301
 OP_STATUS_ACK = 0x0103  # H→A generic status/ack frame; payload[0] carries the status byte
 # Status-ack family identifier (low byte). Use `opcode & 0xFF == FAMILY_STATUS_ACK`.
@@ -412,7 +406,7 @@ def opcode_family(opcode: int) -> int:
 
 
 # Known opcode families (low byte) grouped by semantic row/page type
-FAMILY_STATUS_ACK = 0x03  # generic status / ack responses
+# (FAMILY_STATUS_ACK, the generic status / ack family 0x03, is defined above.)
 FAMILY_DEV_ROW = 0x0B  # device catalog rows (OP_CATALOG_ROW_DEVICE, OP_X1_DEVICE)
 FAMILY_ACT_ROW = 0x3B  # activity catalog rows (OP_CATALOG_ROW_ACTIVITY, OP_X1_ACTIVITY)
 FAMILY_REMOTE_STATUS = 0x2F  # remote/hub status rows; opcode high byte varies by payload length
@@ -611,20 +605,6 @@ def opcode_family_name(opcode: int) -> str | None:
     return FAMILY_NAMES.get(opcode_family(opcode))
 
 
-def group_known_opcodes_by_family() -> dict[int, list[str]]:
-    """Return a mapping of low-byte opcode families to names defined here."""
-
-    family_map: dict[int, list[str]] = {}
-    for name, value in globals().items():
-        if not name.startswith("OP_"):
-            continue
-        if not isinstance(value, int):
-            continue
-        low = opcode_lo(value)
-        family_map.setdefault(low, []).append(name)
-    return family_map
-
-
 __all__ = [
     "SYNC0",
     "SYNC1",
@@ -766,4 +746,21 @@ __all__ = [
     "FAMILY_FAV_ORDER_RESP",
     "FAMILY_IR_LEARN_DATA",
     "FAMILY_COMMAND_WRITE",
+    "FAMILY_BLOB_ROW",
+    "FAMILY_KEY_SORT_REQ",
+    "FAMILY_KEY_SORT_RESP",
+    "FAMILY_PLAY_BLOB",
+    "IDLE_BEHAVIOR_ALWAYS_ON",
+    "IDLE_BEHAVIOR_AUTO_OFF",
+    "IDLE_BEHAVIOR_DISABLED",
+    "IDLE_BEHAVIOR_STAY_ON",
+    "OP_ACTIVITY_ASSIGN_COMMIT",
+    "OP_ACTIVITY_CREATE_ACK",
+    "OP_DEVBTN_PAGE_ALT7",
+    "OP_ERASE_CONFIGURATION",
+    "OP_REQ_MACROS",
+    "PLAY_BLOB_BODY_HEADER_LEN",
+    "PLAY_BLOB_CHUNK_SIZE",
+    "PLAY_BLOB_MAX_PAYLOAD",
+    "PLAY_BLOB_PAGE_HEADER_LEN",
 ]

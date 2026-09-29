@@ -70,8 +70,10 @@ class EntityPayload(BaseModel):
     """An edited ``activities[]`` / ``devices[]`` element of the snapshot document.
 
     Only ``device.device_id`` is checked here (it must match the path);
-    the tables are the library's ``hub_bundle`` rows and are validated by
-    the planner, which refuses anything outside the entity being edited.
+    the tables are the library's ``hub_bundle`` rows. The planner refuses
+    anything outside the entity being edited, and a changed name must fit
+    the hub's name slot; the rest of the rows are not validated the way
+    the HA editor validates them.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -110,11 +112,17 @@ class SyncPlan(BaseModel):
 
 
 class RenameRequest(BaseModel):
+    # An activity, device or command name slot holds 30 characters (30
+    # UTF-16 code units; plain ASCII letters, digits and spaces on an X1).
+    name: str = Field(min_length=1, max_length=30)
+
+
+class HubRenameRequest(BaseModel):
     name: str = Field(min_length=1, max_length=64)
 
 
 class DeviceRenameRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=30)
     brand: Optional[str] = Field(None, max_length=64)
 
 
@@ -558,7 +566,7 @@ async def add_activity(request: Request, hub_id: str, body: ActivityCreateReques
 
 @router.put("/name", operation_id="renameHub", response_model=JobView, status_code=202,
             summary="Rename the hub", responses=_WRITE_ERRORS)
-async def rename_hub(request: Request, hub_id: str, body: RenameRequest,
+async def rename_hub(request: Request, hub_id: str, body: HubRenameRequest,
                      if_match: Optional[str] = IF_MATCH) -> JobView:
     async def body_fn(proxy: AsyncXProxy):
         await proxy.set_hub_name(body.name)

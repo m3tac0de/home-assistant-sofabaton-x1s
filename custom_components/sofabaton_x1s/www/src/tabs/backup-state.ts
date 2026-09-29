@@ -3440,7 +3440,7 @@ export function deleteDeviceButtonBinding(
 //
 // The narrative editor's "Buttons on the remote" section asks
 // four questions ("Volume buttons control …") instead of ~20 per-button
-// dialogs. Each answer fans out to individual KeyToKey binding rows,
+// dialogs. Each answer fans out to individual binding rows,
 // copied from the target device's DEVICE-MODE bindings — cloud-sourced
 // devices ship with those, so no label heuristics are needed. Reading an
 // existing configuration back is lossy by design: a group that doesn't

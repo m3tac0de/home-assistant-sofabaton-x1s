@@ -274,7 +274,7 @@ def test_ws_activity_sync_tolerates_hub_dangling_command_refs(monkeypatch):
 
 def test_ws_activity_sync_tolerates_unbound_zero_command_binding_rows(monkeypatch):
     # The vendor app clears a hard-button slot by writing command_id 0 into
-    # the KeyToKey row instead of deleting it (user report: FWD button on
+    # the binding row instead of deleting it (user report: FWD button on
     # cloud-provisioned Apple TV and PS5 pages). Both bundles carry that hub
     # truth on an unchanged bystander device; it must not block syncing an
     # activity edit.

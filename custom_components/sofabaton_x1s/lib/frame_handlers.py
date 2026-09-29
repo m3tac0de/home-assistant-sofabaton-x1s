@@ -17,6 +17,7 @@ by passing ``directions=("A→H",)`` (or ``("H→A",)``) to ``register_handler``
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol, Sequence, Iterator, Optional, runtime_checkable, TYPE_CHECKING
 
@@ -73,6 +74,9 @@ class BaseFrameHandler(FrameHandler):
         return opcode_match and direction_match
 
 
+_log = logging.getLogger("x1proxy")
+
+
 class FrameHandlerRegistry:
     """Collection of registered handlers."""
 
@@ -89,6 +93,9 @@ class FrameHandlerRegistry:
                 if handler.matches(opcode, direction):
                     yield handler
             except Exception:
+                _log.debug(
+                    "%s.matches failed on op 0x%04X", handler.__class__.__name__, opcode, exc_info=True
+                )
                 continue
 
 

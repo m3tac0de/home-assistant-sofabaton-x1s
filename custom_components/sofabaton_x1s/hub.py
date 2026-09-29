@@ -582,11 +582,18 @@ class SofabatonHub:
         return store
 
     async def _async_persist_cache_if_enabled(self) -> bool:
+        """Persist the cache when enabled. Best effort: a failure is logged
+        and never ends the caller (the initial sync persists mid-way)."""
+
         store = await self._async_get_persistent_cache_store()
         if not store.enabled:
             return False
 
-        await store.async_set_hub_cache(self.entry_id, await self.async_export_cache_state())
+        try:
+            await store.async_set_hub_cache(self.entry_id, await self.async_export_cache_state())
+        except Exception:
+            self._log.exception("[%s] Failed to persist the hub cache", self.entry_id)
+            return False
         return True
 
     def _activity_catalog_signature(
@@ -1282,9 +1289,7 @@ class SofabatonHub:
         for key in (
             "activity_macros",
             "activity_favorite_slots",
-            "activity_keybinding_slots",
             "activity_favorite_labels",
-            "activity_keybinding_labels",
             "activity_members",
         ):
             rows = data.get(key, {})
@@ -2717,7 +2722,7 @@ class SofabatonHub:
         """Re-warm every cached activity that references *device_id*.
 
         Rewriting a device's command records leaves the referencing
-        activities' cached favorite/keybinding label maps and macro views
+        activities' cached favorite label maps and macro views
         holding pre-edit values (they are resolved copies, not references
         into the device catalog). Callers that just rewrote a device's
         records use this to mirror the full-refresh behaviour for exactly
@@ -2950,12 +2955,9 @@ class SofabatonHub:
         if clear_favorites:
             self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
-            self._proxy.state.activity_keybinding_slots.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_members.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_labels.pop(ent_id & 0xFF, None)
-            self._proxy.state.activity_keybinding_labels.pop(ent_id & 0xFF, None)
             self._proxy._clear_favorite_label_requests_for_activity(ent_id & 0xFF)
-            self._proxy._clear_keybinding_label_requests_for_activity(ent_id & 0xFF)
 
         if clear_macros:
             self._proxy.state.activity_macros.pop(ent_id & 0xFF, None)
@@ -4572,7 +4574,7 @@ class SofabatonHub:
         if command_records_touched:
             await self.async_fetch_device_commands(dev_id)
             # Record rewrites change labels that other activities' cached
-            # favorite/keybinding label maps still hold (they are resolved
+            # favorite label maps still hold (they are resolved
             # copies, not references into the device catalog). Re-warm
             # every activity referencing the managed device, not just the
             # ones the plan wrote to directly — mirroring what a full
@@ -4928,7 +4930,6 @@ class SofabatonHub:
                     command_defs.append(
                         {
                             "display_name": name,
-                            "trigger_name": name,
                             "press_type": "short",
                             "command_index": idx,
                         }
@@ -4938,7 +4939,6 @@ class SofabatonHub:
                     command_defs.append(
                         {
                             "display_name": f"{name} Long Press",
-                            "trigger_name": name,
                             "press_type": "long",
                             "command_index": idx,
                         }
@@ -5233,7 +5233,7 @@ class SofabatonHub:
                 # they make the Wifi Device selectable as a role-group
                 # controller (volume/navigation/…) in activity editors and
                 # respond to direct presses on the remote's device page. The
-                # KeyToKey table is uniform, so the same binding write applies
+                # binding table is uniform, so the same binding write applies
                 # with the device's own id as the keymap entity.
                 for dev_button_id, dev_command_id, dev_long_id in derive_device_level_bindings(
                     commands[:slot_count],

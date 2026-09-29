@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S
 from .protocol_const import FAMILY_MACROS, opcode_family, opcode_hi
-from .wire_schema import schema_for
+from .wire_schema import PAGED_WRITE_BODY_CHUNK, paged_write_total_pages, schema_for
 
 
 @dataclass(slots=True)
@@ -43,21 +43,56 @@ class MacroBurstFrame:
         return "REQ_MACRO_LABELS_PAGE" if self.is_record_start else "REQ_MACRO_LABELS_CONT"
 
 
+def _record_start_header(payload: bytes) -> tuple[int, int, int | None, int | None] | None:
+    """``(activity_id, fragment_index, total_records, record_pages)`` when
+    ``payload`` opens a macro record, else None.
+
+    The one record-start rule for the frame parser and the assembler
+    (CR-L2-12). Two independent counts live in the preamble:
+
+    - ``payload[3]`` is the number of records in the surrounding burst
+      (1 for a single-record fetch, N when the hub returns N macros at once).
+    - ``payload[4..5]`` big-endian is the number of frames this individual
+      record spans; the trailing frames arrive as continuations with no
+      preamble of their own.
+
+    Counts outside 1..64 read as unknown (None).
+    """
+
+    if len(payload) < 7:
+        return None
+    p0, _, x, p3, _, y, a = payload[:7]
+    if not (x == 0x01 and y in (0x01, 0x02) and a != 0x00):
+        return None
+    total_records = p3 or None
+    if total_records is not None and not (1 <= total_records <= 64):
+        total_records = None
+    record_pages = int.from_bytes(payload[4:6], "big") or None
+    if record_pages is not None and not (1 <= record_pages <= 64):
+        record_pages = None
+    return a, p0 or 1, total_records, record_pages
+
+
+# Bytes a continuation frame carries before its share of the record body
+# (the assembler strips exactly these; see _parse_header_from_payload).
+_CONTINUATION_DATA_START = 3
+
+
 def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | None:
     """Return parsed family metadata for a macro frame.
 
     Macro pages are intended to assemble into one deterministic buffer rather
     than being interpreted record-by-record at the frame level:
 
-        concat[3]     = deviceID
-        concat[4]     = keyID
+        concat[3]     = device id
+        concat[4]     = key id
         concat[5]     = N (count of 10-byte key entries)
         concat[6 .. 6 + N*10]      = N x 10-byte key entries
-                                     [deviceID, keyID, fid_byte*6,
+                                     [device id, key id, fid_byte*6,
                                       duration (signed; -1 means delay-only),
                                       delay]
                                      If entry[1] == 0xFF, this is a
-                                     no-op / delay-only entry (type=0).
+                                     no-op / delay-only entry.
         concat[length-31 .. length-1]  = label, ASCII (X1)
         concat[length-61 .. length-1]  = label, UTF-16BE (X1S/X2)
 
@@ -76,46 +111,23 @@ def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | 
         return None
 
     payload_len_matches_hi = opcode_hi(opcode) == len(payload)
-    if len(payload) < 7:
-        return MacroBurstFrame(
-            opcode=opcode,
-            role="continuation",
-            fragment_index=None,
-            total_fragments=None,
-            activity_id=None,
-            start_command_id=None,
-            data_start=len(payload),
-            payload_length_matches_hi=payload_len_matches_hi,
-        )
-
-    p0, _, x, p3, _, y, a = payload[:7]
-    if x == 0x01 and y in (0x01, 0x02) and a != 0x00:
-        # Two independent counts live in the record-start preamble:
-        # - payload[3] is the number of records in the surrounding burst
-        #   (1 for a single-record fetch, N when the hub returns N macros
-        #   at once).
-        # - payload[4..5] big-endian is the number of frames this
-        #   individual record spans. Records whose body is too large to
-        #   fit in one frame split across multiple frames; the trailing
-        #   frames arrive as continuations with no preamble of their own.
-        total_fragments = p3 or None
-        if total_fragments is not None and not (1 <= total_fragments <= 64):
-            total_fragments = None
-        record_pages = int.from_bytes(payload[4:6], "big") or None
-        if record_pages is not None and not (1 <= record_pages <= 64):
-            record_pages = None
+    header = _record_start_header(payload)
+    if header is not None:
+        activity_id, fragment_index, total_fragments, record_pages = header
         return MacroBurstFrame(
             opcode=opcode,
             role="record_start",
-            fragment_index=p0 or 1,
+            fragment_index=fragment_index,
             total_fragments=total_fragments,
-            activity_id=a,
+            activity_id=activity_id,
             start_command_id=payload[7] if len(payload) > 7 else None,
             data_start=7,
             payload_length_matches_hi=payload_len_matches_hi,
             record_pages=record_pages,
         )
 
+    # A continuation: the same offsets the assembler uses (a short frame is
+    # all body, a full one carries 3 bytes before its body).
     return MacroBurstFrame(
         opcode=opcode,
         role="continuation",
@@ -123,7 +135,7 @@ def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | 
         total_fragments=None,
         activity_id=None,
         start_command_id=None,
-        data_start=7 if len(payload) > 7 else len(payload),
+        data_start=0 if len(payload) < 7 else _CONTINUATION_DATA_START,
         payload_length_matches_hi=payload_len_matches_hi,
         record_pages=None,
     )
@@ -135,6 +147,17 @@ class MacroAssembler:
     def __init__(self) -> None:
         self._buffers: Dict[int, _MacroBurst] = {}
         self._last_activity_id: int | None = None
+
+    def reset(self, activity_id: int) -> None:
+        """Drop any partial buffer for ``activity_id``.
+
+        Called when a new REQ_MACROS request goes out for the activity: a
+        burst that was cut off earlier (a dropped connection, a timeout) left
+        a partial buffer, and the new burst's records must not be appended to
+        it (stale record, duplicate key, a record missing: CR-L2-3)."""
+
+        self._buffers.pop(int(activity_id) & 0xFF, None)
+        self._buffers.pop(int(activity_id), None)
 
     def _get_buffer(self, activity_id: int) -> _MacroBurst:
         buf = self._buffers.get(activity_id)
@@ -166,39 +189,18 @@ class MacroAssembler:
         if len(payload) < 7:
             return self._last_activity_id, 1, None, None, payload, False
 
-        p0, _, x, p3, _, y, a = payload[:7]
-
-        activity_id: int | None
-        frame_no: int | None
-        expected_records: int | None
-        record_pages: int | None
-
         # End the body at opcode_hi (the invariant-declared payload length)
         # when known, so 1-byte transcription drift in synthetic fixtures
         # doesn't shift the schema parser's offsets. Falls back to the full
         # payload when opcode_hi isn't supplied.
         body_end = opcode_hi if opcode_hi is not None else len(payload)
 
-        if x == 0x01 and y in (0x01, 0x02) and a != 0x00:
-            activity_id = a
-            frame_no = p0 or 1
-            expected_records = p3 or None
-            if expected_records is not None and not (1 <= expected_records <= 64):
-                expected_records = None
-            record_pages = int.from_bytes(payload[4:6], "big") or None
-            if record_pages is not None and not (1 <= record_pages <= 64):
-                record_pages = None
-            body = payload[7:body_end]
-            is_record_start = True
-        else:
-            activity_id = self._last_activity_id
-            frame_no = None
-            expected_records = None
-            record_pages = None
-            body = payload[3:body_end]
-            is_record_start = False
-
-        return activity_id, frame_no, expected_records, record_pages, body, is_record_start
+        header = _record_start_header(payload)
+        if header is not None:
+            activity_id, frame_no, expected_records, record_pages = header
+            return activity_id, frame_no, expected_records, record_pages, payload[7:body_end], True
+        return (self._last_activity_id, None, None, None,
+                payload[_CONTINUATION_DATA_START:body_end], False)
 
     def _process_fragment(
         self,
@@ -314,10 +316,10 @@ class MacroAssembler:
 #     region[-60:]           = label slot, X1S/X2 UTF-16BE
 #
 # Key entry (10 bytes):
-#     [0]   deviceID
-#     [1]   keyID  (0xFF means delay-only / no-op entry)
+#     [0]   device id
+#     [1]   key id  (0xFF means delay-only / no-op entry)
 #     [2..7] fid  (6-byte BE int)
-#     [8]   duration / inputSign
+#     [8]   duration (signed; -1 means delay-only)
 #     [9]   delay (ms before next entry)
 # ---------------------------------------------------------------------------
 
@@ -452,15 +454,15 @@ def _encode_macro_schema_label(label: str, *, label_len: int, encoding: str) -> 
     return encoded[:label_len].ljust(label_len, b"\x00")
 
 
-def _parse_macro_key_entry(bean: bytes) -> MacroKeyEntry:
+def _parse_macro_key_entry(raw: bytes) -> MacroKeyEntry:
     """Parse one 10-byte macro key-entry payload."""
 
     return MacroKeyEntry(
-        device_id=bean[0],
-        key_id=bean[1],
-        fid=int.from_bytes(bean[2:8], "big"),
-        duration=bean[8],
-        delay=bean[9],
+        device_id=raw[0],
+        key_id=raw[1],
+        fid=int.from_bytes(raw[2:8], "big"),
+        duration=raw[8],
+        delay=raw[9],
     )
 
 
@@ -529,19 +531,11 @@ def parse_macro_record_from_region(
 
     entries: list[MacroKeyEntry] = []
     for i in range(count):
-        bean_start = MACRO_KEY_ENTRY_START + i * MACRO_KEY_ENTRY_SIZE
-        bean = region[bean_start : bean_start + MACRO_KEY_ENTRY_SIZE]
-        if len(bean) < MACRO_KEY_ENTRY_SIZE:
+        entry_start = MACRO_KEY_ENTRY_START + i * MACRO_KEY_ENTRY_SIZE
+        raw = region[entry_start : entry_start + MACRO_KEY_ENTRY_SIZE]
+        if len(raw) < MACRO_KEY_ENTRY_SIZE:
             break
-        entries.append(
-            MacroKeyEntry(
-                device_id=bean[0],
-                key_id=bean[1],
-                fid=int.from_bytes(bean[2:8], "big"),
-                duration=bean[8],
-                delay=bean[9],
-            )
-        )
+        entries.append(_parse_macro_key_entry(raw))
 
     label_slot_bytes = bytes(region[label_start:label_end])
     label = _decode_macro_schema_label(label_slot_bytes, encoding)
@@ -555,8 +549,9 @@ def parse_macro_record_from_region(
     )
 
 
-#: Maximum body chunk size carried per family-0x12 write page.
-MACRO_WRITE_PAGE_BODY_CHUNK = 247
+#: Maximum body chunk size carried per family-0x12 write page (the shared
+#: paging rule in wire_schema; the name stays for callers).
+MACRO_WRITE_PAGE_BODY_CHUNK = PAGED_WRITE_BODY_CHUNK
 
 
 def build_macro_save_payload(
@@ -614,7 +609,7 @@ def build_macro_save_payload(
     body.extend(slot_bytes)
     body.append(0x00)  # checksum slot
 
-    total_pages = max(1, (len(body) + MACRO_WRITE_PAGE_BODY_CHUNK - 1) // MACRO_WRITE_PAGE_BODY_CHUNK)
+    total_pages = paged_write_total_pages(len(body))
     body[1:3] = (total_pages & 0xFFFF).to_bytes(2, "big")
     body[-1] = sum(body[:-1]) & 0xFF
 

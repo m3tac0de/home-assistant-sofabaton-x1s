@@ -206,7 +206,6 @@ def test_replace_keymap_rows_stops_at_standard_buttons() -> None:
     assert cache.get_activity_command_refs(act) == {(0x03, 0x03), (0x03, 0x07)}
 
     assert cache.buttons.get(act, set()) == {0xAE}
-    assert cache.get_activity_keybinding_slots(act) == []
 
 
 def test_activity_favorite_labels_with_slots() -> None:
@@ -263,7 +262,6 @@ def test_replace_keymap_rows_does_not_treat_slot_0x0b_as_standard_button() -> No
     assert {slot["button_id"] for slot in cache.get_activity_favorite_slots(act)} == {0x01, 0x0B, 0x0F}
     assert cache.get_activity_command_refs(act) == {(0x0B, 0x01), (0x01, 0x17), (0x01, 0x0F)}
     assert cache.buttons.get(act, set()) == {ButtonName.UP}
-    assert cache.get_activity_keybinding_slots(act) == []
 
 
 def test_replace_keymap_rows_does_not_infer_ch_up_mapping_target() -> None:
@@ -279,38 +277,21 @@ def test_replace_keymap_rows_does_not_infer_ch_up_mapping_target() -> None:
     cache.replace_keymap_rows(act, payload)
 
     assert cache.get_activity_command_refs(act) == {(0x0B, 0x01)}
-    assert cache.get_activity_keybinding_slots(act) == []
     assert cache.buttons.get(act, set()) == {ButtonName.UP, ButtonName.CH_UP}
     assert cache.get_activity_favorite_slots(act) == [{"button_id": 0x01, "device_id": 0x0B, "command_id": 0x01, "source": "keymap"}]
 
 
-def test_activity_mapping_upsert_overrides_keymap_duplicate_pair() -> None:
-    cache = ActivityCache()
-    act = 0x67
 
-    cache.replace_keymap_rows(
-        act,
-        bytes.fromhex(
-            "67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
-        ),
-    )
-    cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
-
-    slots = [
-        slot
-        for slot in cache.get_activity_favorite_slots(act)
-        if slot["device_id"] == 0x0B and slot["command_id"] == 0x06
-    ]
-
-    assert len(slots) == 1
-    assert slots[0]["button_id"] == 0x99
 
 
 def test_keymap_favorite_overrides_legacy_activity_map_duplicate_pair() -> None:
     cache = ActivityCache()
     act = 0x67
 
-    cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
+    # A legacy activity-map slot, as older persisted caches still hold.
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0x99, "device_id": 0x0B, "command_id": 0x06, "source": "activity_map"}
+    ]
     cache.replace_keymap_rows(
         act,
         bytes.fromhex(
@@ -342,7 +323,6 @@ def test_replace_keymap_rows_ignores_home_and_vol_up_as_favorites() -> None:
     cache.replace_keymap_rows(act, payload)
 
     assert cache.get_activity_command_refs(act) == set()
-    assert cache.get_activity_keybinding_slots(act) == []
     assert cache.buttons.get(act, set()) == {ButtonName.HOME, ButtonName.VOL_UP, ButtonName.CH_UP}
     assert cache.get_activity_favorite_slots(act) == []
 
@@ -360,7 +340,6 @@ def test_replace_keymap_rows_keeps_alternate_button_presence_without_keybindings
 
     cache.replace_keymap_rows(act, payload)
 
-    assert cache.get_activity_keybinding_slots(act) == []
     assert cache.buttons.get(act, set()) == {
         ButtonName.OK,
         ButtonName.BACK,
@@ -369,24 +348,7 @@ def test_replace_keymap_rows_keeps_alternate_button_presence_without_keybindings
     }
 
 
-def test_activity_keybinding_labels_with_slots() -> None:
-    cache = ActivityCache()
-    act = 0x21
 
-    cache.activity_keybinding_slots[act] = [
-        {"button_id": ButtonName.CH_UP, "device_id": 0x10, "command_id": 0x05},
-        {"button_id": ButtonName.CH_DOWN, "device_id": 0x11, "command_id": 0x06},
-    ]
-
-    cache.record_keybinding_label(act, 0x10, 0x05, "Channel Up")
-    cache.record_keybinding_label(act, 0x11, 0x06, "Channel Down")
-
-    keybindings = cache.get_activity_keybinding_labels(act)
-
-    assert keybindings == [
-        {"button_id": ButtonName.CH_UP, "name": "Channel Up", "device_id": 0x10, "command_id": 0x05},
-        {"button_id": ButtonName.CH_DOWN, "name": "Channel Down", "device_id": 0x11, "command_id": 0x06},
-    ]
 
 
 def test_replace_keymap_rows_extracts_long_press_details() -> None:
@@ -416,7 +378,6 @@ def test_replace_keymap_rows_extracts_long_press_details() -> None:
     assert details["command_id"] == 0x01
     assert details["long_press_device_id"] == 0x05
     assert details["long_press_command_id"] == 0x02
-    assert cache.get_activity_keybinding_slots(act) == []
 
 
 def test_replace_keymap_rows_no_long_press_omits_long_press_details() -> None:
@@ -505,3 +466,142 @@ def test_replace_keymap_rows_reports_nothing_dropped_for_favorites() -> None:
     assert cache.replace_keymap_rows(act, payload) == []
     assert ButtonName.UP in cache.buttons[act]
     assert [slot["button_id"] for slot in cache.get_activity_favorite_slots(act)] == [0x01]
+
+
+def _read(scheduler: BurstScheduler, sent: list, kind: str, *, can_issue=lambda: True) -> None:
+    scheduler.queue_or_send(
+        opcode=0x0B,
+        payload=kind.encode(),
+        expects_burst=True,
+        burst_kind=kind,
+        can_issue=can_issue,
+        sender=lambda op, payload: sent.append(payload.decode()),
+    )
+
+
+def test_a_read_burst_inside_an_exchange_nests_under_the_hold() -> None:
+    sent: list[str] = []
+    ended: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.on_burst_end("macros", ended.append)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    scheduler.start("exchange:membership_remove")
+    _read(scheduler, sent, "buttons:101")  # fire-and-forget read, deferred
+    scheduler.start("macros:101")  # the exchange's own macro read streams in
+    assert scheduler.finish("macros:101", can_issue=lambda: True, sender=send)
+
+    # The record's listeners ran, but the wire is still the exchange's.
+    assert ended == ["macros:101"]
+    assert scheduler.active and scheduler.kind == "exchange:membership_remove"
+    assert sent == []
+    scheduler.tick(10**9, can_issue=lambda: True, sender=send)
+    assert sent == []
+
+    scheduler.end_exchange(can_issue=lambda: True, sender=send)
+    assert sent == ["buttons:101"]
+    assert scheduler.kind == "buttons:101"
+
+
+def test_ending_an_exchange_ends_a_nested_burst_it_left_open() -> None:
+    sent: list[str] = []
+    ended: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.on_any_burst_end(ended.append)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    scheduler.start("exchange:x")
+    scheduler.start("macros:5")
+    scheduler.end_exchange(can_issue=lambda: True, sender=send)
+
+    assert ended == ["macros:5", "exchange:x"]
+    assert not scheduler.active and scheduler.kind is None
+
+
+def test_a_dropped_queued_read_is_reported_not_silently_lost() -> None:
+    sent: list[str] = []
+    dropped: list[str] = []
+    allowed = [True]
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.on_dropped(dropped.append)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    _read(scheduler, sent, "devices")
+    _read(scheduler, sent, "buttons:101")
+    allowed[0] = False  # the vendor app connects
+    scheduler.finish("devices", can_issue=lambda: allowed[0], sender=send)
+
+    assert sent == ["devices"]
+    assert dropped == ["buttons:101"]
+    assert not scheduler.queue
+
+
+def test_a_dropped_read_releases_the_engines_pending_flag() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy._send_cmd_frame = lambda *_a, **_k: None
+    allowed = [True]
+    proxy.can_issue_commands = lambda: allowed[0]
+
+    assert proxy.request_devices()
+    assert proxy.request_buttons_for_entity(0x65)
+    proxy.get_macros_for_activity(0x65)
+    assert 0x65 in proxy._pending_button_requests
+
+    allowed[0] = False
+    proxy._burst.finish("devices", can_issue=proxy.can_issue_commands, sender=proxy._send_cmd_frame)
+
+    assert 0x65 not in proxy._pending_button_requests
+    assert 0x65 not in proxy._pending_macro_requests
+    allowed[0] = True
+    assert proxy.request_buttons_for_entity(0x65)  # not suppressed as a duplicate
+
+
+def test_an_inactive_scheduler_never_strands_a_queue() -> None:
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+    scheduler.queue.append((0x0B, b"late", False, None))  # the pre-lock race's leftover
+
+    scheduler.tick(0.0, can_issue=lambda: True, sender=send)
+
+    assert sent == ["late"]
+
+
+def test_try_claim_never_overwrites_a_burst_another_thread_started() -> None:
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    _read(scheduler, sent, "devices")  # lands between an exchange's check and claim
+    assert scheduler.try_claim("exchange:create") is False
+    assert scheduler.kind == "devices"
+
+    scheduler.finish("devices", can_issue=lambda: True, sender=send)
+    assert scheduler.try_claim("exchange:create") is True
+    assert scheduler.kind == "exchange:create"
+
+
+def test_a_whole_cache_read_disturbed_by_ingest_is_retried() -> None:
+    import pytest
+
+    from custom_components.sofabaton_x1s.lib.state_helpers import reads_live_state
+
+    calls = []
+
+    @reads_live_state
+    def export():
+        calls.append(1)
+        if len(calls) < 3:
+            raise RuntimeError("dictionary changed size during iteration")
+        return {"ok": True}
+
+    assert export() == {"ok": True} and len(calls) == 3
+
+    @reads_live_state
+    def broken():
+        raise RuntimeError("something else")
+
+    with pytest.raises(RuntimeError, match="something else"):
+        broken()

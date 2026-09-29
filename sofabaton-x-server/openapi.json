@@ -1418,7 +1418,7 @@
             "title": "Brand"
           },
           "name": {
-            "maxLength": 64,
+            "maxLength": 30,
             "minLength": 1,
             "title": "Name",
             "type": "string"
@@ -1477,7 +1477,7 @@
       },
       "EntityPayload": {
         "additionalProperties": true,
-        "description": "An edited ``activities[]`` / ``devices[]`` element of the snapshot document.\n\nOnly ``device.device_id`` is checked here (it must match the path);\nthe tables are the library's ``hub_bundle`` rows and are validated by\nthe planner, which refuses anything outside the entity being edited.",
+        "description": "An edited ``activities[]`` / ``devices[]`` element of the snapshot document.\n\nOnly ``device.device_id`` is checked here (it must match the path);\nthe tables are the library's ``hub_bundle`` rows. The planner refuses\nanything outside the entity being edited, and a changed name must fit\nthe hub's name slot; the rest of the rows are not validated the way\nthe HA editor validates them.",
         "properties": {
           "device": {
             "additionalProperties": true,
@@ -1939,6 +1939,21 @@
           "production_batch"
         ],
         "title": "HubInfo",
+        "type": "object"
+      },
+      "HubRenameRequest": {
+        "properties": {
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "HubRenameRequest",
         "type": "object"
       },
       "HubStatus": {
@@ -3460,7 +3475,7 @@
       "RenameRequest": {
         "properties": {
           "name": {
-            "maxLength": 64,
+            "maxLength": 30,
             "minLength": 1,
             "title": "Name",
             "type": "string"
@@ -12110,7 +12125,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RenameRequest"
+                "$ref": "#/components/schemas/HubRenameRequest"
               }
             }
           },

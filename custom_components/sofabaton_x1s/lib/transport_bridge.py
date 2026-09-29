@@ -13,11 +13,9 @@ from typing import Callable, Dict, Optional, Tuple
 from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
+from .deframer import Deframer
 from .notify_demuxer import (
-    BROADCAST_LISTEN_PORT,
-    build_connect_ready_beacon,
     get_notify_demuxer,
-    _broadcast_ip,
 )
 
 log = logging.getLogger("x1proxy.transport")
@@ -696,7 +694,7 @@ class TransportBridge:
     def _run_bridge_loop(self, selector: selectors.BaseSelector) -> None:
         app_to_hub = bytearray()
         hub_to_app = bytearray()
-        app_partial_frame = bytearray()
+        app_deframer = Deframer(on_drop=self._log_client_drop)
 
         while not self._stop.is_set():
             with self._hub_lock:
@@ -739,7 +737,7 @@ class TransportBridge:
                     wake_reader,
                     app_to_hub,
                     hub_to_app,
-                    app_partial_frame,
+                    app_deframer,
                 )
                 time.sleep(0.05)
                 continue
@@ -794,7 +792,7 @@ class TransportBridge:
                 elif not data:
                     if self._drop_app(app):
                         app_to_hub.clear()
-                        app_partial_frame.clear()
+                        app_deframer.reset()
                         hub_to_app.clear()
                         self._notify_client_state(False)
                 else:
@@ -802,54 +800,8 @@ class TransportBridge:
                     cid = self._chunk_id
                     for cb in self._app_frame_cbs:
                         cb(data, cid)
-                    # Split the app-side stream into whole frames using
-                    # the opcode-hi length invariant (frame_len = 5 +
-                    # buf[2]). See docs/protocol/frame-format.md.
-                    buffer = bytearray(app_partial_frame)
-                    buffer.extend(data)
-                    app_partial_frame.clear()
-
-                    frames_to_send: list[bytes] = []
-                    while True:
-                        if len(buffer) < 2:
-                            break
-                        if buffer[0] != SYNC0 or buffer[1] != SYNC1:
-                            idx = buffer.find(bytes([SYNC0, SYNC1]))
-                            if idx < 0:
-                                # Keep a trailing lone SYNC0 across reads.
-                                if buffer and buffer[-1] == SYNC0:
-                                    del buffer[:-1]
-                                else:
-                                    buffer.clear()
-                                break
-                            if idx and self._log.isEnabledFor(logging.DEBUG):
-                                self._log.debug(
-                                    "%s drop %dB junk before sync (client→hub)",
-                                    LogTag.PARSE,
-                                    idx,
-                                )
-                            del buffer[:idx]
-                        if len(buffer) < 5:
-                            break
-                        frame_len = 5 + buffer[2]
-                        if len(buffer) < frame_len:
-                            break
-                        cand = bytes(buffer[:frame_len])
-                        if cand[-1] == (_sum8(cand[:-1]) & 0xFF):
-                            frames_to_send.append(cand)
-                            del buffer[:frame_len]
-                            continue
-                        # Bad checksum at this sync — drop one byte and
-                        # rescan for the next sync pair.
-                        if self._log.isEnabledFor(logging.DEBUG):
-                            self._log.debug(
-                                "%s drop malformed frame len=%d (client→hub)",
-                                LogTag.PARSE,
-                                frame_len,
-                            )
-                        del buffer[0]
-
-                    app_partial_frame.extend(buffer)
+                    # Forward whole frames only (docs/protocol/frame-format.md).
+                    frames_to_send = [raw for _op, raw, *_ in app_deframer.feed(data, cid)]
 
                     for idx, frame in enumerate(frames_to_send):
                         app_to_hub.extend(frame)
@@ -882,7 +834,7 @@ class TransportBridge:
                     if _flush_buffer(app, hub_to_app, "hub", self._log):
                         if self._drop_app(app):
                             hub_to_app.clear()
-                            app_partial_frame.clear()
+                            app_deframer.reset()
                             self._notify_client_state(False)
 
             for cb in self._idle_cbs:
@@ -892,6 +844,14 @@ class TransportBridge:
                 with self._hub_lock:
                     if self._hub_sock is None:
                         self._local_to_hub.clear()
+
+    def _log_client_drop(self, kind: str, n: int) -> None:
+        if not self._log.isEnabledFor(logging.DEBUG):
+            return
+        if kind == "junk":
+            self._log.debug("%s drop %dB junk before sync (client→hub)", LogTag.PARSE, n)
+        else:
+            self._log.debug("%s drop malformed frame len=%d (client→hub)", LogTag.PARSE, n)
 
     @staticmethod
     def _sync_selector(
@@ -926,7 +886,7 @@ class TransportBridge:
         wake_reader: Optional[socket.socket],
         app_to_hub: bytearray,
         hub_to_app: bytearray,
-        app_partial_frame: bytearray,
+        app_deframer: Deframer,
     ) -> None:
         """React to a failed selector pass instead of retrying blindly.
 
@@ -972,7 +932,7 @@ class TransportBridge:
         if app is not None and (force or not _socket_is_usable(app)):
             if self._drop_app(app):
                 app_to_hub.clear()
-                app_partial_frame.clear()
+                app_deframer.reset()
                 hub_to_app.clear()
                 self._notify_client_state(False)
                 self._log.warning(

@@ -140,7 +140,7 @@ A→H a5 5a 3c 12 01 00 01 01 00 01 65 04 02 <2 rows> "test 5 step" ...     (rep
 ### Delete a key-row = 0x0210 (+ 0x61 reorder + 0x65 commit)
 
 One primitive covers **button-binding removal, favorite removal, and
-user-macro deletion** — the hub's KeyToKey table is uniform, so all
+user-macro deletion** — the hub's binding table is uniform, so all
 three are "delete the row for (activity, key code)".
 
 - `0x0210` (family `0x10`, `FAMILY_FAV_DELETE`) payload `[act][key]`,
@@ -234,7 +234,7 @@ Confirmed on **both** X1 and X1S:
   <self>, long_press_command_id}` — identical in shape to app-created
   reference rows.
 - **Key-row delete at device scope** — `0x0210 [dev][key]` + `0x0165`
-  commit, previously proven only for activities. The hub's KeyToKey
+  commit, previously proven only for activities. The hub's binding
   table treats device and activity ids uniformly (split purely by the
   id range, `>= 0x65` = activity).
 - **Device macro writes (power sequences 198/199)** — the single-page

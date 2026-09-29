@@ -90,7 +90,26 @@ def test_add_registration_keeps_real_positions_and_appends(monkeypatch):
         proxy_ir_blob, "_run_create_sequence",
         lambda _p, steps: captured.setdefault("steps", list(steps)) and SimpleNamespace(success=True, rejected=False, failed_index=None),
     )
+    # The hub's live table wins over the cached positions (a vendor-app
+    # reorder can leave the cache stale): 7 first, then 8.
+    fake = _Fake(
+        commands={1: {7: {}, 8: {}}},
+        metadata={1: {7: {"sort_id": 2}, 8: {"sort_id": 1}}},
+        table_hex=_table([(7, 1), (8, 2)]),
+    )
+    _IR_BLOB_CLASS._register_command_in_device_sort(fake, dev_lo=1, new_command_id=9, ack_timeout=5.0)
+    assert fake.fetched == [1]
+    assert _pairs_written(captured["steps"]) == [(7, 1), (8, 2), (9, 3)]
+
+
+def test_add_registration_falls_back_to_cached_positions_when_the_table_is_unreadable(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        proxy_ir_blob, "_run_create_sequence",
+        lambda _p, steps: captured.setdefault("steps", list(steps)) and SimpleNamespace(success=True, rejected=False, failed_index=None),
+    )
     fake = _Fake(commands={1: {7: {}, 8: {}}}, metadata={1: {7: {"sort_id": 2}, 8: {"sort_id": 1}}})
+    fake.fetch_device_key_sort = lambda device_id: None
     _IR_BLOB_CLASS._register_command_in_device_sort(fake, dev_lo=1, new_command_id=9, ack_timeout=5.0)
     assert _pairs_written(captured["steps"]) == [(8, 1), (7, 2), (9, 3)]
 

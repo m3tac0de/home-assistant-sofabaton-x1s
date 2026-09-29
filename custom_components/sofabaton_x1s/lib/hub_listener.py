@@ -11,9 +11,7 @@ dispatch key.
 This singleton mirrors the existing :mod:`notify_demuxer` pattern:
 each ``TransportBridge`` registers ``(real_hub_ip, on_socket_cb)``;
 the listener accepts on one port and routes the socket to the
-matching bridge. Registrations also carry the hub's expected MAC
-(from the mDNS advertisement) for a sanity-check log if the peer IP
-maps to a different MAC than we expected.
+matching bridge.
 """
 
 from __future__ import annotations
@@ -72,7 +70,6 @@ class _Release:
 class HubRegistration:
     proxy_id: str
     real_hub_ip: str
-    expected_mac_bytes: bytes  # 6 bytes; all-zero if unknown
     on_socket: OnSocketCallback
 
 
@@ -106,14 +103,12 @@ class HubListener:
         proxy_id: str,
         real_hub_ip: str,
         on_socket: OnSocketCallback,
-        expected_mac_bytes: bytes = b"\x00" * 6,
     ) -> int:
         """Register one bridge; return the listen port to advertise."""
 
         reg = HubRegistration(
             proxy_id=proxy_id,
             real_hub_ip=real_hub_ip,
-            expected_mac_bytes=bytes(expected_mac_bytes[:6]).ljust(6, b"\x00"),
             on_socket=on_socket,
         )
         with self._lock:
@@ -323,13 +318,24 @@ class HubListener:
         sock = self._sock
         if sock is None:
             return
+        last_error_log = 0.0
         while not self._stop_event.is_set():
             try:
                 client, addr = sock.accept()
             except socket.timeout:
                 continue
-            except OSError:
-                break
+            except OSError as exc:
+                # Only a closed socket ends the loop. A transient accept
+                # error (a peer reset before accept, EMFILE) must not
+                # leave the port listening with nobody serving it.
+                if self._stop_event.is_set() or sock.fileno() == -1:
+                    break
+                now = time.monotonic()
+                if now - last_error_log >= 5.0:
+                    last_error_log = now
+                    log.warning("[LISTEN] accept failed, still listening: %s", exc)
+                time.sleep(0.1)
+                continue
             peer_ip, peer_port = addr[0], addr[1]
             if self._stop_event.is_set():
                 # The stop's own wake-up connection, or a handshake the

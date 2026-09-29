@@ -218,7 +218,10 @@ def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
         return ApiProblem(status, "restore_failed", "The restore did not complete",
                           detail=f"{detail}; {err.result.restored_devices} device(s) and "
                                  f"{err.result.restored_activities} activity(ies) were restored first"
-                                 + ("; the hub had been erased for the replace" if err.result.erased else ""),
+                                 + ("; the hub had been erased for the replace" if err.result.erased else "")
+                                 + ("; a half-made device stayed on the hub (id "
+                                    + ", ".join(str(i) for i in err.result.partial_device_ids) + ")"
+                                    if err.result.partial_device_ids else ""),
                           hub_id=hub_id)
     if isinstance(err, SyncFailed):
         status = 409 if err.result.wrote_nothing else 502

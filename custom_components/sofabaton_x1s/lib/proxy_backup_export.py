@@ -21,6 +21,7 @@ from typing import Any, Callable, Optional
 from . import backup_export as _bx
 from .devices import DeviceConfig, parse_device_record
 from .protocol_const import DEVICE_CLASS_IR, normalize_device_class
+from .state_helpers import reads_live_state
 
 
 def _key_sort_row_or_fallback(
@@ -302,6 +303,7 @@ class BackupExportMixin:
             dev_lo, blob_source=blob_source, include_blobs=include_blobs
         )
 
+    @reads_live_state
     def assemble_device_backup_from_state(
         self,
         device_id: int,
@@ -520,6 +522,7 @@ class BackupExportMixin:
 
         return self.assemble_activity_backup_from_state(act_lo)
 
+    @reads_live_state
     def assemble_activity_backup_from_state(
         self, activity_id: int
     ) -> dict[str, Any] | None:
@@ -673,7 +676,13 @@ class BackupExportMixin:
                 total_steps=total_steps,
                 current_device_id=dev_id,
             )
-            payload = self.backup_device(dev_id, wait_timeout=wait_timeout, include_blobs=include_blobs)
+            # The catalogs were read once above; no per-entity re-read.
+            payload = self.backup_device(
+                dev_id,
+                wait_timeout=wait_timeout,
+                include_blobs=include_blobs,
+                refresh_catalog=False,
+            )
             if payload is None:
                 raise ValueError(f"Hub did not return device data for device {dev_id}")
             device_payloads.append(payload)
@@ -697,7 +706,7 @@ class BackupExportMixin:
                 total_steps=total_steps,
                 current_activity_id=act_id,
             )
-            payload = self.backup_activity(act_id, wait_timeout=wait_timeout)
+            payload = self.backup_activity(act_id, wait_timeout=wait_timeout, refresh_catalog=False)
             if payload is None:
                 raise ValueError(f"Hub did not return activity data for activity {act_id}")
             activity_payloads.append(payload)
@@ -736,6 +745,7 @@ class BackupExportMixin:
             ),
         )
 
+    @reads_live_state
     def assemble_hub_bundle_from_state(
         self,
         *,

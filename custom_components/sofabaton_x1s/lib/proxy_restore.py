@@ -16,7 +16,7 @@ an existing schema-driven builder (``build_device_create_step``,
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .hub_versions import (
@@ -37,12 +37,11 @@ from .device_create import (
     build_macro_step,
     build_macro_step_record,
     build_set_idle_behavior_step,
-    run_create_sequence,
     run_device_create,
     synthesize_command_code,
 )
 from .backup_export import PAYLOAD_PROFILE_FULL
-from .hub_sync import iter_entity_references
+from .entity_refs import iter_entity_references
 from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write
@@ -76,9 +75,8 @@ def _idle_behavior_mode(device_block: dict[str, Any]) -> int | None:
     the bundle's ``power_mode`` field is deliberately gone: that field
     holds the record-tail byte, which bench captures (2026-08-25) show
     is a different, always-1-in-practice value, so the fallback wrote
-    mode 1 over devices whose real idle byte was 0, 2, 3, or 4. The
-    vendor app likewise treats a missing value as unknown rather than
-    substituting the record byte.
+    mode 1 over devices whose real idle byte was 0, 2, 3, or 4. A
+    missing value stays unknown; the record byte is never substituted.
     """
 
     raw = device_block.get("idle_behavior")
@@ -149,6 +147,7 @@ def _restore_device_dict_from_result(
         "restored_inputs": result.restored_inputs,
         "skipped_favorites": result.skipped_favorites,
         "skipped_macro_steps": result.skipped_macro_steps,
+        "skipped_button_bindings": result.skipped_button_bindings,
         "command_id_map": {
             str(old): new for old, new in sorted(result.command_id_map.items())
         },
@@ -165,6 +164,23 @@ def _run_create_sequence(*args, **kwargs):
 
 
 _X1_IMPORT_COMMAND_ACK_TIMEOUT = 10.0
+
+
+@dataclass
+class _DeviceReplayParts:
+    """The replay steps a restored device needs, built once for both
+    device-create flows, with the counters for what was dropped."""
+
+    command_steps: list[Any]
+    command_id_map: dict[int, int]
+    command_names: dict[int, str]
+    inputs_step: Any = None
+    restored_inputs: int = 0
+    macro_steps: list[Any] = field(default_factory=list)
+    restored_macros: int = 0
+    skipped_macro_steps: int = 0
+    binding_steps: list[Any] = field(default_factory=list)
+    skipped_button_bindings: int = 0
 
 
 class RestoreMixin:
@@ -298,38 +314,6 @@ class RestoreMixin:
         # mismatch surfaces as a wire-schema lookup error, not a guard
         # at this layer.
 
-    def _restore_ir_commands(
-        self,
-        *,
-        payload: dict[str, Any],
-        device_id: int,
-    ) -> tuple[dict[int, int], int]:
-        """Replay IR command records from a backup onto ``device_id``.
-
-        Each command row carries a ``restore_data`` block with
-        ``library_type``, ``button_code`` (48-bit canonical identifier),
-        and ``data_hex``. These are written verbatim via
-        :meth:`persist_command_record`, preserving full wire fidelity.
-        Rows without a usable ``restore_data`` block are skipped.
-
-        Returns ``(command_id_map, restored_commands)`` where
-        ``command_id_map`` translates backup command ids to the
-        hub-assigned ids on the new device. The matching captured
-        ``button_code`` per new id is also recorded in
-        :attr:`_restore_button_code_map_buffer` for the post-create
-        binding step to read.
-        """
-
-        _command_steps, command_id_map, button_code_map, _command_names = (
-            self._build_restore_command_batch(
-                payload=payload,
-                device_id=device_id,
-                strict=False,
-            )
-        )
-        self._restore_button_code_map_buffer = dict(button_code_map)
-        return command_id_map, len(command_id_map)
-
     def _resolve_macro_step_duration(
         self,
         *,
@@ -354,7 +338,8 @@ class RestoreMixin:
         bundle context, i.e. during a hub-bundle restore):
 
         1. Source ordinal -> source device's input row's
-           ``command_id`` (via the bundled device's ``inputs`` block).
+           ``command_id`` (via the bundled device's
+           ``input_record.entries``).
         2. Source ``command_id`` -> destination ``command_id`` via the
            per-source-device map captured during the devices phase.
         3. Destination ``command_id`` -> destination ordinal via a
@@ -788,8 +773,17 @@ class RestoreMixin:
         skipped_macro_steps: int,
         command_id_map: dict[int, int],
         request: DeviceCreateRequest,
+        skipped_button_bindings: int = 0,
     ) -> DeviceCreateResult:
         """Persist local state and build the shared result surface."""
+
+        if skipped_button_bindings:
+            self._log.warning(
+                "[RESTORE] dev=0x%02X: %d button binding row(s) not restored "
+                "(no restorable short-press command)",
+                device_id & 0xFF,
+                skipped_button_bindings,
+            )
 
         self.state.commands[device_id] = dict(command_names)
         self._commands_complete.add(device_id)
@@ -801,10 +795,7 @@ class RestoreMixin:
             "device_class_code": int(device_block.get("device_class_code", 0)) & 0xFF,
         }
         if idle_mode is not None:
-            # Same aliased key triple record_idle_behavior_value writes.
             entry["idle_behavior"] = idle_mode
-            entry["power_mode"] = idle_mode
-            entry["power_model"] = idle_mode
         self.state.devices[device_id] = entry
 
         return DeviceCreateResult(
@@ -818,15 +809,15 @@ class RestoreMixin:
             restored_inputs=restored_inputs,
             skipped_favorites=len(request.favorites),
             skipped_macro_steps=skipped_macro_steps,
+            skipped_button_bindings=skipped_button_bindings,
             command_id_map=dict(command_id_map),
         )
 
     def _refresh_destination_catalog(self, *, timeout: float = 5.0) -> None:
         """Synchronously refresh the destination hub's device + activity lists.
 
-        Mirrors the official Android app's
-        :class:`LoadingActivity.setIds()` prelude: before allocating
-        restore ids, query the *live* hub via ``request_devices`` /
+        Before allocating restore ids, query the *live* hub via
+        ``request_devices`` /
         ``request_activities`` so the subsequent
         :meth:`_allocate_restore_device_id` allocates against fresh
         ground truth rather than the proxy's local state (which can be
@@ -840,23 +831,17 @@ class RestoreMixin:
         the existing allocator already copes with empty state.
         """
 
-        import threading
-
         if not self.can_issue_commands():
             return
+        if getattr(self, "_bundle_catalog_fresh", False):
+            # A bundle restore refreshed once at its start; the devices it
+            # creates since are recorded locally as they land.
+            return
 
-        devices_done = threading.Event()
-        activities_done = threading.Event()
-
-        def _devices_cb(_: str) -> None:
-            devices_done.set()
-
-        def _activities_cb(_: str) -> None:
-            activities_done.set()
-
-        self._burst.on_burst_end("devices", _devices_cb)
-        self._burst.on_burst_end("activities", _activities_cb)
-
+        # The shared waiter registers one listener per kind, ever; a raw
+        # on_burst_end here left two dead listeners per restored device.
+        devices_done = self._backup_burst_waiter.arm("devices")
+        activities_done = self._backup_burst_waiter.arm("activities")
         if not self.request_devices():
             devices_done.set()
         if not self.request_activities():
@@ -883,54 +868,6 @@ class RestoreMixin:
                 return candidate
         raise ValueError("destination hub has no free device ids for restore")
 
-    def _restore_hub_code_record_commands(
-        self,
-        *,
-        payload: dict[str, Any],
-        device_id: int,
-    ) -> tuple[dict[int, int], int]:
-        """Replay opaque hub-owned command records for Bluetooth and RF devices."""
-        _command_steps, command_id_map, button_code_map, _command_names = (
-            self._build_restore_command_batch(
-                payload=payload,
-                device_id=device_id,
-                strict=True,
-            )
-        )
-        self._restore_button_code_map_buffer = dict(button_code_map)
-        return command_id_map, len(command_id_map)
-
-    def _restore_commands_for_device_class(
-        self,
-        *,
-        payload: dict[str, Any],
-        device_id: int,
-        device_class: str | None,
-    ) -> tuple[dict[int, int], int]:
-        """Dispatch command replay to the correct device-class writer."""
-
-        if device_class == DEVICE_CLASS_IR:
-            return self._restore_ir_commands(payload=payload, device_id=device_id)
-        if device_class in (
-            DEVICE_CLASS_BLUETOOTH,
-            DEVICE_CLASS_RF_315,
-            DEVICE_CLASS_RF_433,
-            DEVICE_CLASS_WIFI_ROKU,
-            DEVICE_CLASS_WIFI_IP,
-            DEVICE_CLASS_WIFI_HUE,
-            DEVICE_CLASS_WIFI_MQTT,
-            DEVICE_CLASS_WIFI_SONOS,
-        ):
-            return self._restore_hub_code_record_commands(
-                payload=payload,
-                device_id=device_id,
-            )
-
-        raise ValueError(
-            "restore_device command replay is not implemented yet for "
-            f"device_class={device_class or 'unknown'}"
-        )
-
     def restore_device(
         self,
         payload: dict[str, Any],
@@ -956,11 +893,22 @@ class RestoreMixin:
         """
 
         del wifi_commands_request_port  # retained for API compatibility
+        return self._restore_device_outcome(payload)[0]
+
+    def _restore_device_outcome(
+        self, payload: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, int | None]:
+        """``restore_device``'s work: ``(result, partial_device_id)``.
+
+        On failure the result is None and ``partial_device_id`` names a
+        device the create left on the hub (its rollback failed too), so a
+        bundle restore can say the hub changed and read it back.
+        """
 
         try:
             if not self.can_issue_commands():
                 self._log.info("[RESTORE] restore_device ignored: proxy client is connected")
-                return None
+                return None, None
 
             if not isinstance(payload, dict):
                 raise ValueError("restore payload must be a dictionary")
@@ -1008,8 +956,9 @@ class RestoreMixin:
 
             result = run_device_create(self, request)
             if not result.success or result.device_id is None:
-                return None
-            return _restore_device_dict_from_result(request, result)
+                partial = None if result.device_id is None else int(result.device_id) & 0xFF
+                return None, partial
+            return _restore_device_dict_from_result(request, result), None
         except Exception:
             self._log.exception("[RESTORE] restore_device failed")
             raise
@@ -1037,15 +986,13 @@ class RestoreMixin:
     ) -> DeviceCreateResult:
         """Run the restore-style device-create flow used on X1S/X2."""
 
-        _input_create_step = _input_create_step_factory()
         device_block = request.device_block
         device_class = self._restore_device_class(device_block)
-        # Match the official app's setIds() prelude: query the live hub
-        # for its current device/activity lists before picking an id, so
-        # the allocator avoids slots the hub already considers taken.
-        # Without this, stale proxy state can lead us to target an id
-        # the hub silently overrides -- and subsequent writes end up
-        # addressing the wrong (or no) device on the hub.
+        # Query the live hub for its current device/activity lists before
+        # picking an id, so the allocator avoids slots the hub already
+        # considers taken. Without this, stale proxy state can lead us to
+        # target an id the hub silently overrides -- and subsequent writes
+        # end up addressing the wrong (or no) device on the hub.
         self._refresh_destination_catalog()
         target_device_id = self._allocate_restore_device_id(
             int(device_block.get("device_id", 0)) & 0xFF
@@ -1054,63 +1001,19 @@ class RestoreMixin:
             device_config_from_backup(device_block, for_create=False),
             device_id=target_device_id,
         )
-
-        self.reset_ack_queues()
-        create_result = _run_create_sequence(
-            self,
-            [build_device_create_step(create_config, hub_version=self.hub_version)],
+        new_device_id, failed = self._create_restored_device_head(
+            create_config, old_device_id=int(device_block.get("device_id", 0)), flow=""
         )
-        if not create_result.success or create_result.assigned_device_id is None:
-            failed = (
-                create_result.failed_step.label
-                if create_result.failed_step is not None
-                else "device-create"
-            )
-            self._log.warning("[RESTORE] create phase failed at step %s", failed)
+        if new_device_id is None:
             return DeviceCreateResult(success=False, failed_step_label=failed)
-
-        old_device_id = int(device_block.get("device_id", 0)) & 0xFF
-        new_device_id = create_result.assigned_device_id & 0xFF
         if new_device_id != target_device_id:
             self._log.warning(
                 "[RESTORE] hub assigned device_id=0x%02X after targeting 0x%02X",
                 new_device_id,
                 target_device_id,
             )
-        self._log.info(
-            "[RESTORE] created device from backup old=0x%02X new=0x%02X",
-            old_device_id,
-            new_device_id,
-        )
 
-        self.state.commands.pop(new_device_id, None)
-        self.state.buttons.pop(new_device_id, None)
-        self.state.button_details.pop(new_device_id, None)
-        self.clear_entity_cache(new_device_id, clear_buttons=True)
-
-        command_steps, command_id_map, button_code_map, command_names = (
-            self._build_restore_command_batch(
-                payload={"commands": request.commands},
-                device_id=new_device_id,
-                strict=(device_class != DEVICE_CLASS_IR),
-            )
-        )
-        restored_commands = len(command_id_map)
-        self._restore_button_code_map_buffer = dict(button_code_map)
-
-        def _map_command_id(raw_command_id: Any) -> int | None:
-            try:
-                old_command_id = int(raw_command_id) & 0xFF
-            except (TypeError, ValueError):
-                return None
-            if old_command_id == 0:
-                return None
-            return command_id_map.get(old_command_id)
-
-        def _button_code_for(command_id: int) -> int:
-            captured = button_code_map.get(command_id, 0)
-            return captured or synthesize_command_code(command_id)
-
+        parts = self._device_replay_parts(request, new_device_id, device_class)
         post_steps = []
         idle_mode = _idle_behavior_mode(device_block)
         if idle_mode is not None:
@@ -1120,7 +1023,7 @@ class RestoreMixin:
                     mode=idle_mode,
                 )
             )
-        post_steps.extend(command_steps)
+        post_steps.extend(parts.command_steps)
         if isinstance(request.key_sort, dict):
             key_sort_msg_hex = str(request.key_sort.get("msg_hex") or "").strip()
             if key_sort_msg_hex and _key_sort_table_has_positions(key_sort_msg_hex):
@@ -1136,139 +1039,13 @@ class RestoreMixin:
                     "captured table has no positioned commands",
                     new_device_id,
                 )
+        if parts.inputs_step is not None:
+            post_steps.append(parts.inputs_step)
+        post_steps.extend(parts.macro_steps)
+        post_steps.extend(parts.binding_steps)
 
-        restored_inputs = 0
-        input_mode = int(device_block.get("input_mode", 0)) & 0xFF
-        inputs_configured = bool(device_block.get("inputs_configured", input_mode != 0))
-        if inputs_configured and (request.inputs or request.input_record):
-            inputs_payload, restored_inputs = self._restore_input_payload(
-                device_id=new_device_id,
-                input_record=request.input_record,
-                inputs=request.inputs,
-                map_command_id=_map_command_id,
-            )
-            if inputs_payload is not None:
-                post_steps.append(
-                    _input_create_step(
-                        device_id=new_device_id,
-                        payload=inputs_payload,
-                        label_suffix=f"count={restored_inputs}",
-                    )
-                )
-
-        skipped_macro_steps = 0
-        restored_macros = 0
-        for row in sorted(
-            (item for item in request.macros if isinstance(item, dict)),
-            key=lambda item: int(item.get("button_id", 0)),
-        ):
-            button_id = int(row.get("button_id", 0)) & 0xFF
-            if button_id == 0:
-                continue
-            step_records = bytearray()
-            steps = row.get("steps")
-            if isinstance(steps, list):
-                for entry in steps:
-                    if not isinstance(entry, dict):
-                        continue
-                    raw_command_id = entry.get("command_id")
-                    raw_command_lo = int(raw_command_id or 0) & 0xFF
-                    if raw_command_lo == 0xFF:
-                        # Delay/wait row: emit the firmware sentinel
-                        # record. All head bytes are 0xFF (dev_id,
-                        # cmd_id, the 6-byte fid, and the duration
-                        # byte); the last byte holds the pause length.
-                        step_records.extend(
-                            build_macro_step_record(
-                                device_id=0xFF,
-                                command_id=0xFF,
-                                fid=0xFFFFFFFFFFFF,
-                                duration=0xFF,
-                                delay=int(entry.get("delay", 0xFF)) & 0xFF,
-                            )
-                        )
-                        continue
-                    mapped_command_id = _map_command_id(raw_command_id)
-                    if mapped_command_id is None:
-                        if raw_command_lo != 0:
-                            self._log.warning(
-                                "[RESTORE] macro key=0x%02X skipped step "
-                                "with unmapped command_id=%r",
-                                button_id,
-                                raw_command_id,
-                            )
-                            skipped_macro_steps += 1
-                        continue
-                    step_records.extend(
-                        build_macro_step_record(
-                            device_id=new_device_id,
-                            command_id=mapped_command_id,
-                            fid=_button_code_for(mapped_command_id),
-                            duration=int(entry.get("duration", 0)) & 0xFF,
-                            delay=int(entry.get("delay", 0xFF)) & 0xFF,
-                        )
-                    )
-            post_steps.append(
-                build_macro_step(
-                    hub_version=self.hub_version,
-                    device_id=new_device_id,
-                    key_id=button_id,
-                    label=str(row.get("name") or ""),
-                    step_records=bytes(step_records),
-                )
-            )
-            restored_macros += 1
-
-        for row in sorted(
-            (item for item in request.button_bindings if isinstance(item, dict)),
-            key=lambda item: int(item.get("button_id", 0)),
-        ):
-            new_command_id = _map_command_id(row.get("command_id"))
-            button_id = int(row.get("button_id", 0)) & 0xFF
-            if button_id == 0 or new_command_id is None:
-                continue
-            long_press_command_id = _map_command_id(row.get("long_press_command_id"))
-            kwargs: dict[str, Any] = {
-                "device_id": new_device_id,
-                "button_id": button_id,
-                "short_press_device_id": new_device_id,
-                "short_press_button_code": _button_code_for(new_command_id),
-                "short_press_button_id": new_command_id,
-            }
-            if long_press_command_id is not None:
-                kwargs["long_press_device_id"] = new_device_id
-                kwargs["long_press_button_code"] = _button_code_for(long_press_command_id)
-                kwargs["long_press_button_id"] = long_press_command_id
-            post_steps.append(build_button_binding_step(**kwargs))
-
-        self.reset_ack_queues()
-        post_result = _run_create_sequence(self, post_steps)
-        if not post_result.success:
-            failed = (
-                post_result.failed_step.label
-                if post_result.failed_step is not None
-                else "post-create"
-            )
-            self._log.warning("[RESTORE] finalize phase failed at step %s", failed)
-            rolled_back = self._rollback_restored_device(new_device_id, failed)
-            return DeviceCreateResult(
-                success=False,
-                device_id=None if rolled_back else new_device_id,
-                failed_step_label=failed,
-            )
-
-        return self._finalize_restore_device_result(
-            device_block=device_block,
-            device_class=device_class,
-            device_id=new_device_id,
-            command_names=command_names,
-            post_steps=post_steps,
-            restored_commands=restored_commands,
-            restored_inputs=restored_inputs,
-            restored_macros=restored_macros,
-            skipped_macro_steps=skipped_macro_steps,
-            command_id_map=command_id_map,
-            request=request,
+        return self._finish_restored_device(
+            request, device_class, new_device_id, parts, post_steps, flow=""
         )
 
     def _run_x1_import_device_create(
@@ -1276,7 +1053,6 @@ class RestoreMixin:
     ) -> DeviceCreateResult:
         """Run an X1-specific import flow modeled after normal app add-device."""
 
-        _input_create_step = _input_create_step_factory()
         device_block = request.device_block
         device_class = self._restore_device_class(device_block)
         create_config = replace(
@@ -1288,82 +1064,17 @@ class RestoreMixin:
             input_flag=0,
             input_mode=0,
         )
-
-        self.reset_ack_queues()
-        create_result = _run_create_sequence(
-            self,
-            [build_device_create_step(create_config, hub_version=self.hub_version)],
+        new_device_id, failed = self._create_restored_device_head(
+            create_config, old_device_id=int(device_block.get("device_id", 0)), flow="X1 import "
         )
-        if not create_result.success or create_result.assigned_device_id is None:
-            failed = (
-                create_result.failed_step.label
-                if create_result.failed_step is not None
-                else "device-create"
-            )
-            self._log.warning("[RESTORE] X1 import create phase failed at step %s", failed)
+        if new_device_id is None:
             return DeviceCreateResult(success=False, failed_step_label=failed)
 
-        old_device_id = int(device_block.get("device_id", 0)) & 0xFF
-        new_device_id = create_result.assigned_device_id & 0xFF
-        self._log.info(
-            "[RESTORE] X1 import created device from backup old=0x%02X new=0x%02X",
-            old_device_id,
-            new_device_id,
+        parts = self._device_replay_parts(
+            request, new_device_id, device_class, command_ack_timeout=_X1_IMPORT_COMMAND_ACK_TIMEOUT
         )
-
-        self.state.commands.pop(new_device_id, None)
-        self.state.buttons.pop(new_device_id, None)
-        self.state.button_details.pop(new_device_id, None)
-        self.clear_entity_cache(new_device_id, clear_buttons=True)
-
-        command_steps, command_id_map, button_code_map, command_names = (
-            self._build_restore_command_batch(
-                payload={"commands": request.commands},
-                device_id=new_device_id,
-                strict=(device_class != DEVICE_CLASS_IR),
-                ack_timeout=_X1_IMPORT_COMMAND_ACK_TIMEOUT,
-            )
-        )
-        restored_commands = len(command_id_map)
-        self._restore_button_code_map_buffer = dict(button_code_map)
-
-        def _map_command_id(raw_command_id: Any) -> int | None:
-            try:
-                old_command_id = int(raw_command_id) & 0xFF
-            except (TypeError, ValueError):
-                return None
-            if old_command_id == 0:
-                return None
-            return command_id_map.get(old_command_id)
-
-        def _button_code_for(command_id: int) -> int:
-            captured = button_code_map.get(command_id, 0)
-            return captured or synthesize_command_code(command_id)
-
-        post_steps = list(command_steps)
-
-        for row in sorted(
-            (item for item in request.button_bindings if isinstance(item, dict)),
-            key=lambda item: int(item.get("button_id", 0)),
-        ):
-            new_command_id = _map_command_id(row.get("command_id"))
-            button_id = int(row.get("button_id", 0)) & 0xFF
-            if button_id == 0 or new_command_id is None:
-                continue
-            long_press_command_id = _map_command_id(row.get("long_press_command_id"))
-            kwargs: dict[str, Any] = {
-                "device_id": new_device_id,
-                "button_id": button_id,
-                "short_press_device_id": new_device_id,
-                "short_press_button_code": _button_code_for(new_command_id),
-                "short_press_button_id": new_command_id,
-            }
-            if long_press_command_id is not None:
-                kwargs["long_press_device_id"] = new_device_id
-                kwargs["long_press_button_code"] = _button_code_for(long_press_command_id)
-                kwargs["long_press_button_id"] = long_press_command_id
-            post_steps.append(build_button_binding_step(**kwargs))
-
+        post_steps = list(parts.command_steps)
+        post_steps.extend(parts.binding_steps)
         idle_mode = _idle_behavior_mode(device_block)
         if idle_mode is not None:
             post_steps.append(
@@ -1372,89 +1083,9 @@ class RestoreMixin:
                     mode=idle_mode,
                 )
             )
-
-        skipped_macro_steps = 0
-        restored_macros = 0
-        for row in sorted(
-            (item for item in request.macros if isinstance(item, dict)),
-            key=lambda item: int(item.get("button_id", 0)),
-        ):
-            button_id = int(row.get("button_id", 0)) & 0xFF
-            if button_id == 0:
-                continue
-            step_records = bytearray()
-            steps = row.get("steps")
-            if isinstance(steps, list):
-                for entry in steps:
-                    if not isinstance(entry, dict):
-                        continue
-                    raw_command_id = entry.get("command_id")
-                    raw_command_lo = int(raw_command_id or 0) & 0xFF
-                    if raw_command_lo == 0xFF:
-                        # Delay/wait row: emit the firmware sentinel
-                        # record. All head bytes are 0xFF (dev_id,
-                        # cmd_id, the 6-byte fid, and the duration
-                        # byte); the last byte holds the pause length.
-                        step_records.extend(
-                            build_macro_step_record(
-                                device_id=0xFF,
-                                command_id=0xFF,
-                                fid=0xFFFFFFFFFFFF,
-                                duration=0xFF,
-                                delay=int(entry.get("delay", 0xFF)) & 0xFF,
-                            )
-                        )
-                        continue
-                    mapped_command_id = _map_command_id(raw_command_id)
-                    if mapped_command_id is None:
-                        if raw_command_lo != 0:
-                            self._log.warning(
-                                "[RESTORE] macro key=0x%02X skipped step "
-                                "with unmapped command_id=%r",
-                                button_id,
-                                raw_command_id,
-                            )
-                            skipped_macro_steps += 1
-                        continue
-                    step_records.extend(
-                        build_macro_step_record(
-                            device_id=new_device_id,
-                            command_id=mapped_command_id,
-                            fid=_button_code_for(mapped_command_id),
-                            duration=int(entry.get("duration", 0)) & 0xFF,
-                            delay=int(entry.get("delay", 0xFF)) & 0xFF,
-                        )
-                    )
-            post_steps.append(
-                build_macro_step(
-                    hub_version=self.hub_version,
-                    device_id=new_device_id,
-                    key_id=button_id,
-                    label=str(row.get("name") or ""),
-                    step_records=bytes(step_records),
-                )
-            )
-            restored_macros += 1
-
-        restored_inputs = 0
-        input_mode = int(device_block.get("input_mode", 0)) & 0xFF
-        inputs_configured = bool(device_block.get("inputs_configured", input_mode != 0))
-        inputs_payload: bytes | None = None
-        if inputs_configured and (request.inputs or request.input_record):
-            inputs_payload, restored_inputs = self._restore_input_payload(
-                device_id=new_device_id,
-                input_record=request.input_record,
-                inputs=request.inputs,
-                map_command_id=_map_command_id,
-            )
-        if inputs_payload is not None:
-            post_steps.append(
-                _input_create_step(
-                    device_id=new_device_id,
-                    payload=inputs_payload,
-                    label_suffix=f"count={restored_inputs}",
-                )
-            )
+        post_steps.extend(parts.macro_steps)
+        if parts.inputs_step is not None:
+            post_steps.append(parts.inputs_step)
         elif request.commands or device_class != DEVICE_CLASS_WIFI_ROKU:
             # Default (empty) inputs page. The X1 hub refuses it for a
             # wifi_roku record that has no commands yet (STATUS_ACK 0x04,
@@ -1463,7 +1094,7 @@ class RestoreMixin:
             # device") therefore skips it and the editor's later sync
             # writes the real input configuration.
             post_steps.append(
-                _input_create_step(
+                _input_create_step_factory()(
                     device_id=new_device_id,
                     payload=build_inputs_write(
                         hub_version=self.hub_version,
@@ -1485,6 +1116,200 @@ class RestoreMixin:
             )
         )
 
+        return self._finish_restored_device(
+            request, device_class, new_device_id, parts, post_steps, flow="X1 import "
+        )
+
+    def _create_restored_device_head(
+        self, create_config: Any, *, old_device_id: int, flow: str
+    ) -> tuple[int | None, str | None]:
+        """Write the device head; ``(new_device_id, None)`` or ``(None,
+        failed_step_label)``. Clears whatever the cache holds for the new id."""
+
+        self.reset_ack_queues()
+        create_result = _run_create_sequence(
+            self,
+            [build_device_create_step(create_config, hub_version=self.hub_version)],
+        )
+        if not create_result.success or create_result.assigned_device_id is None:
+            failed = (
+                create_result.failed_step.label
+                if create_result.failed_step is not None
+                else "device-create"
+            )
+            self._log.warning("[RESTORE] %screate phase failed at step %s", flow, failed)
+            return None, failed
+
+        new_device_id = create_result.assigned_device_id & 0xFF
+        self._log.info(
+            "[RESTORE] %screated device from backup old=0x%02X new=0x%02X",
+            flow,
+            old_device_id & 0xFF,
+            new_device_id,
+        )
+        self.state.commands.pop(new_device_id, None)
+        self.state.buttons.pop(new_device_id, None)
+        self.state.button_details.pop(new_device_id, None)
+        self.clear_entity_cache(new_device_id, clear_buttons=True)
+        return new_device_id, None
+
+    def _device_replay_parts(
+        self,
+        request: DeviceCreateRequest,
+        new_device_id: int,
+        device_class: str | None,
+        *,
+        command_ack_timeout: float = 5.0,
+    ) -> "_DeviceReplayParts":
+        """Every replay step a restored device needs, built once for both
+        flows (each orders them its own way): commands, the inputs page,
+        macros and button bindings, with the counters for what was dropped."""
+
+        command_steps, command_id_map, button_code_map, command_names = (
+            self._build_restore_command_batch(
+                payload={"commands": request.commands},
+                device_id=new_device_id,
+                strict=(device_class != DEVICE_CLASS_IR),
+                ack_timeout=command_ack_timeout,
+            )
+        )
+
+        def _map_command_id(raw_command_id: Any) -> int | None:
+            try:
+                old_command_id = int(raw_command_id) & 0xFF
+            except (TypeError, ValueError):
+                return None
+            if old_command_id == 0:
+                return None
+            return command_id_map.get(old_command_id)
+
+        def _button_code_for(command_id: int) -> int:
+            captured = button_code_map.get(command_id, 0)
+            return captured or synthesize_command_code(command_id)
+
+        parts = _DeviceReplayParts(
+            command_steps=list(command_steps),
+            command_id_map=command_id_map,
+            command_names=command_names,
+        )
+
+        device_block = request.device_block
+        input_mode = int(device_block.get("input_mode", 0)) & 0xFF
+        inputs_configured = bool(device_block.get("inputs_configured", input_mode != 0))
+        if inputs_configured and (request.inputs or request.input_record):
+            inputs_payload, parts.restored_inputs = self._restore_input_payload(
+                device_id=new_device_id,
+                input_record=request.input_record,
+                inputs=request.inputs,
+                map_command_id=_map_command_id,
+            )
+            if inputs_payload is not None:
+                parts.inputs_step = _input_create_step_factory()(
+                    device_id=new_device_id,
+                    payload=inputs_payload,
+                    label_suffix=f"count={parts.restored_inputs}",
+                )
+
+        for row in sorted(
+            (item for item in request.macros if isinstance(item, dict)),
+            key=lambda item: int(item.get("button_id", 0)),
+        ):
+            button_id = int(row.get("button_id", 0)) & 0xFF
+            if button_id == 0:
+                continue
+            step_records = bytearray()
+            steps = row.get("steps")
+            if isinstance(steps, list):
+                for entry in steps:
+                    if not isinstance(entry, dict):
+                        continue
+                    raw_command_id = entry.get("command_id")
+                    raw_command_lo = int(raw_command_id or 0) & 0xFF
+                    if raw_command_lo == 0xFF:
+                        # Delay/wait row: emit the firmware sentinel
+                        # record. All head bytes are 0xFF (dev_id,
+                        # cmd_id, the 6-byte fid, and the duration
+                        # byte); the last byte holds the pause length.
+                        step_records.extend(
+                            build_macro_step_record(
+                                device_id=0xFF,
+                                command_id=0xFF,
+                                fid=0xFFFFFFFFFFFF,
+                                duration=0xFF,
+                                delay=int(entry.get("delay", 0xFF)) & 0xFF,
+                            )
+                        )
+                        continue
+                    mapped_command_id = _map_command_id(raw_command_id)
+                    if mapped_command_id is None:
+                        if raw_command_lo != 0:
+                            self._log.warning(
+                                "[RESTORE] macro key=0x%02X skipped step "
+                                "with unmapped command_id=%r",
+                                button_id,
+                                raw_command_id,
+                            )
+                            parts.skipped_macro_steps += 1
+                        continue
+                    step_records.extend(
+                        build_macro_step_record(
+                            device_id=new_device_id,
+                            command_id=mapped_command_id,
+                            fid=_button_code_for(mapped_command_id),
+                            duration=int(entry.get("duration", 0)) & 0xFF,
+                            delay=int(entry.get("delay", 0xFF)) & 0xFF,
+                        )
+                    )
+            parts.macro_steps.append(
+                build_macro_step(
+                    hub_version=self.hub_version,
+                    device_id=new_device_id,
+                    key_id=button_id,
+                    label=str(row.get("name") or ""),
+                    step_records=bytes(step_records),
+                )
+            )
+            parts.restored_macros += 1
+
+        for row in sorted(
+            (item for item in request.button_bindings if isinstance(item, dict)),
+            key=lambda item: int(item.get("button_id", 0)),
+        ):
+            new_command_id = _map_command_id(row.get("command_id"))
+            button_id = int(row.get("button_id", 0)) & 0xFF
+            if button_id == 0 or new_command_id is None:
+                # Includes a long-press-only row (short command 0): whether
+                # the hub takes one back is still open (bench program BP2).
+                parts.skipped_button_bindings += 1
+                continue
+            long_press_command_id = _map_command_id(row.get("long_press_command_id"))
+            kwargs: dict[str, Any] = {
+                "device_id": new_device_id,
+                "button_id": button_id,
+                "short_press_device_id": new_device_id,
+                "short_press_button_code": _button_code_for(new_command_id),
+                "short_press_button_id": new_command_id,
+            }
+            if long_press_command_id is not None:
+                kwargs["long_press_device_id"] = new_device_id
+                kwargs["long_press_button_code"] = _button_code_for(long_press_command_id)
+                kwargs["long_press_button_id"] = long_press_command_id
+            parts.binding_steps.append(build_button_binding_step(**kwargs))
+
+        return parts
+
+    def _finish_restored_device(
+        self,
+        request: DeviceCreateRequest,
+        device_class: str | None,
+        new_device_id: int,
+        parts: "_DeviceReplayParts",
+        post_steps: list[Any],
+        *,
+        flow: str,
+    ) -> DeviceCreateResult:
+        """Send the replay steps; roll the device back if one fails."""
+
         self.reset_ack_queues()
         post_result = _run_create_sequence(self, post_steps)
         if not post_result.success:
@@ -1493,7 +1318,7 @@ class RestoreMixin:
                 if post_result.failed_step is not None
                 else "post-create"
             )
-            self._log.warning("[RESTORE] X1 import finalize phase failed at step %s", failed)
+            self._log.warning("[RESTORE] %sfinalize phase failed at step %s", flow, failed)
             rolled_back = self._rollback_restored_device(new_device_id, failed)
             return DeviceCreateResult(
                 success=False,
@@ -1502,16 +1327,17 @@ class RestoreMixin:
             )
 
         return self._finalize_restore_device_result(
-            device_block=device_block,
+            device_block=request.device_block,
             device_class=device_class,
             device_id=new_device_id,
-            command_names=command_names,
+            command_names=parts.command_names,
             post_steps=post_steps,
-            restored_commands=restored_commands,
-            restored_inputs=restored_inputs,
-            restored_macros=restored_macros,
-            skipped_macro_steps=skipped_macro_steps,
-            command_id_map=command_id_map,
+            restored_commands=len(parts.command_id_map),
+            restored_inputs=parts.restored_inputs,
+            restored_macros=parts.restored_macros,
+            skipped_macro_steps=parts.skipped_macro_steps,
+            skipped_button_bindings=parts.skipped_button_bindings,
+            command_id_map=parts.command_id_map,
             request=request,
         )
 
@@ -1619,6 +1445,7 @@ class RestoreMixin:
                 "restored_favorites": result.restored_inputs,
                 "skipped_favorites": result.skipped_favorites,
                 "skipped_macro_steps": result.skipped_macro_steps,
+        "skipped_button_bindings": result.skipped_button_bindings,
                 "skipped_input_ordinals": result.skipped_input_ordinals,
                 "device_id_map": {
                     str(old): new for old, new in sorted(remap_lookup.items())
@@ -1680,11 +1507,13 @@ class RestoreMixin:
             device_block = device_payload.get("device")
             if not isinstance(device_block, dict):
                 raise ValueError("restore payload must include a 'device' block")
+            device_class = self._restore_device_class(device_block)
             self._validate_restore_capabilities(
                 hub_version=self.hub_version,
-                device_class=self._restore_device_class(device_block),
+                device_class=device_class,
                 payload=device_payload,
             )
+            self._preflight_device_content(device_payload, device_class)
         # Cross-activity references (chain steps) need the target's
         # hub-assigned id before the referencing activity is written, so
         # restore in dependency order. Cycles cannot be ordered: fail the
@@ -1718,6 +1547,34 @@ class RestoreMixin:
             )
         activities = self._sort_bundle_activities_for_restore(raw_activities)
         return devices, activities
+
+    def _preflight_device_content(self, device_payload: dict[str, Any], device_class: str) -> None:
+        """Build (never send) the device's command, key-sort and inputs
+        writes, so a row the restore would raise on fails the preflight
+        instead of stopping a restore partway, after an erase."""
+
+        _steps, command_id_map, _codes, _names = self._build_restore_command_batch(
+            payload={"commands": list(device_payload.get("commands") or [])},
+            device_id=1,
+            strict=(device_class != DEVICE_CLASS_IR),
+        )
+        key_sort = device_payload.get("key_sort")
+        if isinstance(key_sort, dict):
+            msg_hex = str(key_sort.get("msg_hex") or "").strip()
+            if msg_hex and _key_sort_table_has_positions(msg_hex):
+                build_key_sort_steps(device_id=1, msg_hex=msg_hex)
+        input_record = device_payload.get("input_record")
+        if isinstance(input_record, dict):
+
+            def _map(raw: Any) -> int | None:
+                try:
+                    return command_id_map.get(int(raw) & 0xFF)
+                except (TypeError, ValueError):
+                    return None
+
+            self._restore_input_payload(
+                device_id=1, input_record=dict(input_record), inputs=[], map_command_id=_map
+            )
 
     def preflight_restore_bundle(self, payload: Any) -> dict[str, int]:
         """Check a ``hub_bundle`` the way a restore would, without writing.
@@ -1762,19 +1619,47 @@ class RestoreMixin:
 
         On mid-bundle failure no rollback is attempted: previously
         restored devices stay on the hub and the unfinished tail is
-        skipped. The caller surfaces the partial state to the user.
+        skipped. The caller surfaces the partial state to the user. When
+        anything was written, the one terminal remote sync still goes out.
         """
 
-        def _progress(**progress_payload: Any) -> None:
-            if callable(progress_callback):
-                progress_callback(**progress_payload)
-
+        del wifi_commands_request_port  # retained for API compatibility
         devices, activities = self._restore_bundle_preflight(payload)
         if not self.can_issue_commands():
             self._log.info(
                 "[RESTORE] restore_hub_bundle ignored: proxy client is connected"
             )
             return {"status": "failed", "failed_at": ["proxy", None]}
+        # One live catalog read for the whole bundle (not one per device).
+        self._refresh_destination_catalog()
+        self._bundle_catalog_fresh = True
+        try:
+            return self._restore_bundle_entities(
+                devices,
+                activities,
+                progress_callback=progress_callback,
+                progress_offset=progress_offset,
+                progress_total_steps=progress_total_steps,
+            )
+        finally:
+            self._bundle_catalog_fresh = False
+
+    def _restore_bundle_entities(
+        self,
+        devices: list[Any],
+        activities: list[Any],
+        *,
+        progress_callback,
+        progress_offset: int,
+        progress_total_steps: int | None,
+    ) -> dict[str, Any]:
+        """The devices phase, then the activities phase, then the one
+        terminal remote sync (see :meth:`restore_hub_bundle`)."""
+
+        def _progress(**progress_payload: Any) -> None:
+            if callable(progress_callback):
+                progress_callback(**progress_payload)
+
         total_steps = int(progress_total_steps or (progress_offset + len(devices) + len(activities)))
         completed_steps = int(progress_offset)
 
@@ -1782,6 +1667,30 @@ class RestoreMixin:
         command_id_maps: dict[int, dict[int, int]] = {}
         bundle_devices_by_source_id: dict[int, dict[str, Any]] = {}
         restored_devices: list[dict[str, Any]] = []
+        restored_activities: list[dict[str, Any]] = []
+
+        def _failed(kind: str, source_id: int, *, partial_id: int | None = None) -> dict[str, Any]:
+            failure: dict[str, Any] = {
+                "status": "failed",
+                "failed_at": [kind, source_id],
+                "device_id_map": {str(s): n for s, n in sorted(device_id_map.items())},
+                "restored_devices": restored_devices,
+                "restored_activities": restored_activities,
+            }
+            if partial_id is not None:
+                # A half-made device stayed on the hub (its rollback
+                # failed): the hub is not as it was.
+                failure["partial_device_ids"] = [partial_id]
+            if restored_devices or restored_activities or partial_id is not None:
+                # What landed must reach the remotes too: without the one
+                # terminal trigger they keep the old configuration until an
+                # unrelated write syncs them.
+                if not self.resync_remote():
+                    self._log.warning(
+                        "[RESTORE] remote-sync trigger was not sent after the failed restore"
+                    )
+            return failure
+
         for device_payload in devices:
             if not isinstance(device_payload, dict):
                 continue
@@ -1801,25 +1710,19 @@ class RestoreMixin:
                 current_device_id=src_id,
             )
             bundle_devices_by_source_id[src_id] = device_payload
-            result = self.restore_device(
-                payload=device_payload,
-                wifi_commands_request_port=wifi_commands_request_port,
-            )
+            partial_id: int | None = None
+            try:
+                result, partial_id = self._restore_device_outcome(device_payload)
+            except Exception:
+                self._log.exception("[RESTORE] bundle device 0x%02X raised", src_id)
+                result = None
             if not isinstance(result, dict) or result.get("status") != "success":
                 self._log.warning(
                     "[RESTORE] bundle device 0x%02X failed -- "
                     "leaving previously restored devices in place",
                     src_id,
                 )
-                return {
-                    "status": "failed",
-                    "failed_at": ["device", src_id],
-                    "device_id_map": {
-                        str(s): n for s, n in sorted(device_id_map.items())
-                    },
-                    "restored_devices": restored_devices,
-                    "restored_activities": [],
-                }
+                return _failed("device", src_id, partial_id=partial_id)
             new_id = int(result.get("device_id", 0)) & 0xFF
             device_id_map[src_id] = new_id
             cmd_map_raw = result.get("command_id_map") or {}
@@ -1843,7 +1746,6 @@ class RestoreMixin:
                 current_device_id=src_id,
             )
 
-        restored_activities: list[dict[str, Any]] = []
         activity_id_map: dict[int, int] = {}
         for activity_payload in activities:
             if not isinstance(activity_payload, dict):
@@ -1874,25 +1776,9 @@ class RestoreMixin:
                 self._log.exception(
                     "[RESTORE] bundle activity 0x%02X raised", src_act_id
                 )
-                return {
-                    "status": "failed",
-                    "failed_at": ["activity", src_act_id],
-                    "device_id_map": {
-                        str(s): n for s, n in sorted(device_id_map.items())
-                    },
-                    "restored_devices": restored_devices,
-                    "restored_activities": restored_activities,
-                }
+                return _failed("activity", src_act_id)
             if not isinstance(result, dict) or result.get("status") != "success":
-                return {
-                    "status": "failed",
-                    "failed_at": ["activity", src_act_id],
-                    "device_id_map": {
-                        str(s): n for s, n in sorted(device_id_map.items())
-                    },
-                    "restored_devices": restored_devices,
-                    "restored_activities": restored_activities,
-                }
+                return _failed("activity", src_act_id)
             new_activity_id = int(result.get("activity_id", 0)) & 0xFF
             if src_act_id > 0 and new_activity_id > 0:
                 activity_id_map[src_act_id] = new_activity_id

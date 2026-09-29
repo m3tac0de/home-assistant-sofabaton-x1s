@@ -3,9 +3,14 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 import re
-from typing import Any, Dict, Iterable, Iterator, List, Tuple
+from typing import Dict, Iterator, List, Tuple
 
-from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .blob_decoders import (
+    descriptive_ir_descriptor,
+    looks_like_descriptive_ir_blob,
+    render_ir_descriptive_blob_body,
+)
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S
 from .wire_schema import schema_for
 from .protocol_const import (
     FAMILY_KEYMAP,
@@ -13,21 +18,7 @@ from .protocol_const import (
     opcode_family,
     OP_MARKER,
     OP_DEVBTN_SINGLE,
-    OP_KEYMAP_CONT,
-    OP_KEYMAP_FINAL_X1S,
-    OP_KEYMAP_PAGE_X2_C03D,
-    OP_KEYMAP_EXTRA,
     OP_KEYMAP_OVERLAY_X1,
-    OP_KEYMAP_PAGE_X1_663D,
-    OP_KEYMAP_PAGE_X1_AE3D,
-    OP_KEYMAP_PAGE_X1_E43D,
-    OP_KEYMAP_TBL_A,
-    OP_KEYMAP_TBL_B,
-    OP_KEYMAP_TBL_C,
-    OP_KEYMAP_TBL_D,
-    OP_KEYMAP_TBL_E,
-    OP_KEYMAP_TBL_F,
-    OP_KEYMAP_TBL_G,
 )
 
 
@@ -42,28 +33,6 @@ def _is_keymap_family(opcode: int) -> bool:
 
     return opcode_family(opcode) == FAMILY_KEYMAP
 
-
-_KEYMAP_HEADER_OPCODES: set[int] = {
-    OP_KEYMAP_TBL_A,
-    OP_KEYMAP_TBL_B,
-    OP_KEYMAP_TBL_C,
-    OP_KEYMAP_TBL_D,
-    OP_KEYMAP_TBL_E,
-    OP_KEYMAP_TBL_F,
-    OP_KEYMAP_TBL_G,
-    OP_KEYMAP_EXTRA,
-}
-
-_KEYMAP_X1_PAGE_OPCODES: set[int] = {
-    OP_KEYMAP_PAGE_X1_663D,
-    OP_KEYMAP_PAGE_X1_AE3D,
-    OP_KEYMAP_PAGE_X1_E43D,
-}
-
-_KEYMAP_X1S_PAGE_OPCODES: set[int] = {
-    OP_KEYMAP_CONT,
-    OP_KEYMAP_PAGE_X2_C03D,
-}
 
 @dataclass(slots=True)
 class CommandRecord:
@@ -307,7 +276,7 @@ class ButtonBurstFrame:
 # the page-1 preamble + count byte kept in `concat[0..3]`.
 #
 # Therefore, when the integration calls the new iterator on its post-assembly
-# body, the body already starts at what the app sees as `concat[4]`. The
+# body, the body already starts at `concat[4]` of the full burst. The
 # record count must be supplied separately (by the caller, who has it as
 # `parsed.total_commands`).
 # ---------------------------------------------------------------------------
@@ -453,20 +422,14 @@ def iter_command_records_from_assembled(
         )
 
 
-def _button_hub_line(hub_version: str) -> str:
-    """Return the burst-frame ``hub_line`` tag for the hub variant.
+def _hub_line(hub_version: str) -> str:
+    """Return the burst-frame ``hub_line`` tag for the hub variant: ``x1``
+    or ``x1s_x2``.
 
     Validates ``hub_version`` against the shared schema so unknown
     values fail at the call site rather than silently falling back to
     a shape-sniffing heuristic.
     """
-
-    schema_for(hub_version)
-    return "x1" if hub_version == HUB_VERSION_X1 else "x1s_x2"
-
-
-def _command_hub_line(hub_version: str) -> str:
-    """Return the burst-frame ``hub_line`` tag for the hub variant."""
 
     schema_for(hub_version)
     return "x1" if hub_version == HUB_VERSION_X1 else "x1s_x2"
@@ -494,7 +457,7 @@ def parse_button_burst_frame(
         return None
 
     frame_no = payload[2]
-    hinted_line = _button_hub_line(hub_version)
+    hinted_line = _hub_line(hub_version)
     total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
     if total_frames == 0:
         total_frames = None
@@ -520,7 +483,7 @@ def parse_button_burst_frame(
     if opcode == OP_MARKER:
         return ButtonBurstFrame(
             opcode=opcode,
-            hub_line="x1s_x2" if hinted_line != "x1" else "x1",
+            hub_line=hinted_line,
             layout_kind="x1s_marker",
             role="marker",
             frame_no=frame_no,
@@ -560,8 +523,6 @@ def parse_button_burst_frame(
     # from page-2+ row bytes -- inner record bytes can accidentally match a
     # row-start shape and route the page to the wrong burst.
     inferred_line = hinted_line
-    if inferred_line == "shared":
-        inferred_line = "x1s_x2" if frame_no > 1 else "shared"
 
     role = "final" if total_frames is not None and frame_no >= total_frames else "page"
     layout_kind = "page"
@@ -609,7 +570,7 @@ def parse_command_burst_frame(
     if len(payload) < 4:
         return None
 
-    hinted_line = _command_hub_line(hub_version)
+    hinted_line = _hub_line(hub_version)
     frame_no = payload[2]
 
     is_input_refresh_layout = (
@@ -669,11 +630,7 @@ def parse_command_burst_frame(
         return None
 
     if frame_no == 1 and len(payload) > 7 and payload[4] == 0x00:
-        layout_kind = "shared_classic"
-        if hinted_line == "x1":
-            layout_kind = "x1_classic"
-        elif hinted_line == "x1s_x2":
-            layout_kind = "x1s_x2"
+        layout_kind = "x1_classic" if hinted_line == "x1" else "x1s_x2"
         return CommandBurstFrame(
             opcode=opcode,
             hub_line=hinted_line,
@@ -691,7 +648,7 @@ def parse_command_burst_frame(
     if frame_no == 1 and len(payload) > 8:
         return CommandBurstFrame(
             opcode=opcode,
-            hub_line="x1" if hinted_line == "shared" else hinted_line,
+            hub_line=hinted_line,
             layout_kind="x1_wifi",
             role="header",
             frame_no=frame_no,
@@ -753,32 +710,19 @@ def looks_like_descriptive_play_blob(blob: bytes) -> bool:
         blob[0..1] = declared length BE (>= 1, == len of the ASCII descriptor)
         blob[2..5] = 0x00 0x00 0x11 0x00
         blob[6..7] = 0x94 0x70
-        blob[8..]  = ASCII descriptor starting with "P:" + four trailing nulls
+        blob[8..]  = ASCII descriptor ("P:..."), then four trailing nulls
+
+    The same rule as :func:`blob_decoders.looks_like_descriptive_ir_blob`.
     """
 
-    return (
-        len(blob) >= 14
-        and blob[2:6] == b"\x00\x00\x11\x00"
-        and blob[6:8] == b"\x94\x70"
-        and blob[8:10] == b"P:"
-    )
+    return looks_like_descriptive_ir_blob(blob)
 
 
 def descriptive_play_blob_text(blob: bytes) -> str | None:
     """Return the human-readable descriptor text from a descriptive blob body."""
 
-    if not looks_like_descriptive_play_blob(blob):
-        return None
-    declared_len = int.from_bytes(blob[0:2], "big")
-    if declared_len <= 0:
-        return None
-    text_end = 8 + declared_len
-    if text_end > len(blob):
-        return None
-    try:
-        return blob[8:text_end].decode("ascii").rstrip("\x00")
-    except UnicodeDecodeError:
-        return None
+    descriptor = descriptive_ir_descriptor(blob)
+    return None if descriptor is None else descriptor.rstrip("\x00")
 
 
 def split_play_blob_tail(blob: bytes) -> tuple[bytes, int]:
@@ -859,11 +803,6 @@ def build_descriptive_ir_blob_body(descriptor: str) -> bytes:
         raise ValueError("descriptor text must start with 'P:'")
 
     text = _canonicalize_denonk_descriptor(text)
-    # Import locally to avoid a circular import at module load time:
-    # blob_decoders only imports from protocol_const, but commands is
-    # a heavy dependency that some early-loaded modules pull in.
-    from .blob_decoders import render_ir_descriptive_blob_body
-
     return render_ir_descriptive_blob_body(text) + b"\x00\x00\x00\x00"
 
 
@@ -1161,13 +1100,6 @@ class DeviceCommandAssembler:
         burst.frames[frame_no] = frame_payload
 
         completed: List[Tuple[int, bytes]] = []
-        if burst.frames:
-            max_frame_no = max(burst.frames)
-            frames_are_contiguous = len(burst.frames) == max_frame_no and 1 in burst.frames
-        else:
-            max_frame_no = 0
-            frames_are_contiguous = False
-
         if is_single_cmd:
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
@@ -1176,32 +1108,6 @@ class DeviceCommandAssembler:
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
             del self._buffers[dev_id]
-
-        return completed
-
-    def finalize_contiguous(self, dev_id: int | None = None) -> List[Tuple[int, bytes]]:
-        """Flush buffered bursts whose frames are contiguous starting at 1.
-
-        Some hubs over-report the total frame count and never send a tail. In
-        those cases, complete bursts manually once all contiguous frames have
-        arrived.
-        """
-
-        targets = [dev_id] if dev_id is not None else list(self._buffers)
-        completed: List[Tuple[int, bytes]] = []
-
-        for target in targets:
-            burst = self._buffers.get(target)
-            if not burst or not burst.frames:
-                continue
-
-            max_frame = max(burst.frames)
-            if len(burst.frames) != max_frame or 1 not in burst.frames:
-                continue
-
-            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
-            completed.append((target, ordered_payload))
-            del self._buffers[target]
 
         return completed
 

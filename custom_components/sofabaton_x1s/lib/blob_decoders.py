@@ -355,11 +355,14 @@ def render_wifi_ip_blob_body(
     if len(host_parts) != 4:
         raise ValueError(f"wifi_ip host is not a dotted quad: {host!r}")
     try:
-        ip_bytes = bytes(int(part) & 0xFF for part in host_parts)
+        octets = [int(part) for part in host_parts]
     except ValueError as exc:
         raise ValueError(f"wifi_ip host octet not an int: {host!r}") from exc
-    if not all(0 <= octet <= 255 for octet in ip_bytes):
+    # Range-check before packing: masking first made .256 encode as .0 while
+    # the Host line still said .256 (CR-L2-4).
+    if not all(0 <= octet <= 255 for octet in octets):
         raise ValueError(f"wifi_ip host octet out of range: {host!r}")
+    ip_bytes = bytes(octets)
     if port < 0 or port > 0xFFFF:
         raise ValueError(f"wifi_ip port out of range: {port}")
 
@@ -799,7 +802,7 @@ def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
 
     if not isinstance(blob, (bytes, bytearray)) or len(blob) < 8 + 2 * 4 + 4:
         raise ValueError("blob too short for a raw IR timing body")
-    if looks_like_descriptive_ir_blob(bytes(blob)):
+    if bytes(blob[2:8]) == _DESCRIPTIVE_IR_MAGIC:
         raise ValueError("descriptive IR payload carries no raw timings")
     carrier_hz = int.from_bytes(blob[6:8], "big")
     if not 10_000 <= carrier_hz <= 500_000:
@@ -830,10 +833,25 @@ def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
     return timings, carrier_hz
 
 
-def looks_like_descriptive_ir_blob(blob: bytes) -> bool:
-    """Content sniff for the descriptive (``P:``) replay payload class."""
+def descriptive_ir_descriptor(blob: bytes) -> str | None:
+    """The ASCII descriptor of a descriptive (``P:``) replay blob, or None.
 
-    return len(blob) >= 8 and blob[2:8] == _DESCRIPTIVE_IR_MAGIC
+    The one rule every caller uses (CR-L2-8): the descriptive magic, a
+    declared length that fits the blob, and ASCII text. The facade's
+    ``IrPayload.kind``, the X2 parser-reset gate and the backup decoder all
+    classify a blob the same way through this function.
+    """
+
+    try:
+        return _decode_descriptive_ir(bytes(blob))["descriptor"]
+    except (ValueError, TypeError):
+        return None
+
+
+def looks_like_descriptive_ir_blob(blob: bytes) -> bool:
+    """True for a well-formed descriptive (``P:``) replay payload."""
+
+    return descriptive_ir_descriptor(blob) is not None
 
 
 #: Pronto words are 16-bit; longer gaps clamp to the maximum.

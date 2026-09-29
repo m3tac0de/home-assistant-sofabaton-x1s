@@ -7,7 +7,7 @@ Covers the opcode-hi length invariant documented in
 from __future__ import annotations
 
 from custom_components.sofabaton_x1s.lib.protocol_const import SYNC0, SYNC1
-from custom_components.sofabaton_x1s.lib.x1_proxy import Deframer
+from custom_components.sofabaton_x1s.lib.deframer import Deframer
 
 
 def _checksum(data: bytes) -> int:
@@ -127,3 +127,30 @@ def test_buffer_cap_does_not_split_aligned_frames():
     out = d.feed(frame, cid=2)
     assert len(out) == 1
     assert out[0][1] == frame
+
+
+def test_reports_what_it_drops_and_forwards_only_whole_frames():
+    """The bridge forwards app->hub bytes through a Deframer; junk and a
+    frame whose checksum fails never reach the hub."""
+
+    drops: list[tuple[str, int]] = []
+    d = Deframer(on_drop=lambda kind, n: drops.append((kind, n)))
+    good = _frame(0x0201, b"\x05\x06")
+    bad = bytearray(_frame(0x0102, b"\x07"))
+    bad[-1] ^= 0xFF
+
+    out = d.feed(b"\x00\x11\x22" + bytes(bad) + good, cid=1)
+
+    assert [raw for _op, raw, *_ in out] == [good]
+    assert drops[0] == ("junk", 3)
+    assert ("malformed", len(bad)) in drops
+
+
+def test_reset_forgets_a_partial_frame():
+    d = Deframer()
+    frame = _frame(0x0201, b"\x05\x06")
+    d.feed(frame[:4], cid=1)  # the app disconnects mid-frame
+
+    d.reset()
+
+    assert d.feed(frame, cid=2)[0][1] == frame

@@ -299,6 +299,14 @@ def test_failed_restore_is_a_failed_job_with_the_result(tmp_path: Path) -> None:
         assert job["error"]["status"] == 502 and "had been erased" in job["error"]["detail"]
         assert job["result"]["erased"] is True and job["result"]["restored_devices"] == 0
 
+        # A first device left half-made on the hub (its rollback failed):
+        # the hub changed, so it is not a 409 "nothing written".
+        proxy.restore_failure = {"status": "failed", "failed_at": ["device", 3], "device_id_map": {},
+                                 "restored_devices": [], "restored_activities": [], "partial_device_ids": [33]}
+        r = client.post(f"{H}/restore", json={"bundle": {"kind": "hub_bundle"}})
+        job = _wait(client, r.json()["job_id"])
+        assert job["error"]["status"] == 502 and "half-made device" in job["error"]["detail"]
+
 
 def test_disable_and_remove_are_refused_while_a_job_holds_the_hub(tmp_path: Path) -> None:
     # Review of 635ecfe, finding 3: disable used to release the proxy under

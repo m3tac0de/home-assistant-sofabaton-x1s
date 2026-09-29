@@ -110,7 +110,12 @@ class HubLogger:
     def isEnabledFor(self, level: int) -> bool:
         return self._logger.isEnabledFor(level)
 
-    def log(self, level: int, message: str, *args: Any, **kwargs: Any) -> None:
+    def log(self, level: int, message: str, *args: Any, stacklevel: int = 1, **kwargs: Any) -> None:
+        """Log with the hub prefix. ``stacklevel`` counts from the caller of
+        this method, as for :meth:`logging.Logger.log`: the record's source
+        (pathname, lineno, funcName) is the real call site, not this
+        wrapper. HA's system log groups and dedupes entries by that source."""
+
         normalized_message = str(message or "")
         normalized_args = args
 
@@ -128,24 +133,26 @@ class HubLogger:
             level,
             format_hub_log_message(self._entry_id, normalized_message),
             *normalized_args,
+            stacklevel=stacklevel + 1,
             **kwargs,
         )
 
-    def debug(self, message: str, *args: Any, **kwargs: Any) -> None:
-        self.log(logging.DEBUG, message, *args, **kwargs)
+    # Each level method adds its own frame to the count.
+    def debug(self, message: str, *args: Any, stacklevel: int = 1, **kwargs: Any) -> None:
+        self.log(logging.DEBUG, message, *args, stacklevel=stacklevel + 1, **kwargs)
 
-    def info(self, message: str, *args: Any, **kwargs: Any) -> None:
-        self.log(logging.INFO, message, *args, **kwargs)
+    def info(self, message: str, *args: Any, stacklevel: int = 1, **kwargs: Any) -> None:
+        self.log(logging.INFO, message, *args, stacklevel=stacklevel + 1, **kwargs)
 
-    def warning(self, message: str, *args: Any, **kwargs: Any) -> None:
-        self.log(logging.WARNING, message, *args, **kwargs)
+    def warning(self, message: str, *args: Any, stacklevel: int = 1, **kwargs: Any) -> None:
+        self.log(logging.WARNING, message, *args, stacklevel=stacklevel + 1, **kwargs)
 
-    def error(self, message: str, *args: Any, **kwargs: Any) -> None:
-        self.log(logging.ERROR, message, *args, **kwargs)
+    def error(self, message: str, *args: Any, stacklevel: int = 1, **kwargs: Any) -> None:
+        self.log(logging.ERROR, message, *args, stacklevel=stacklevel + 1, **kwargs)
 
-    def exception(self, message: str, *args: Any, **kwargs: Any) -> None:
+    def exception(self, message: str, *args: Any, stacklevel: int = 1, **kwargs: Any) -> None:
         kwargs.setdefault("exc_info", True)
-        self.log(logging.ERROR, message, *args, **kwargs)
+        self.log(logging.ERROR, message, *args, stacklevel=stacklevel + 1, **kwargs)
 
 
 def get_hub_logger(logger: logging.Logger, entry_id: str) -> HubLogger:

@@ -261,7 +261,9 @@ class BatchOutcome:
     """What closing :meth:`AsyncXProxy.batch_writes` did.
 
     ``remote_sync``: ``"sent"`` (one coalesced trigger went out),
-    ``"not_needed"`` (no participating write asked for one) or
+    ``"not_needed"`` (no participating write asked for one),
+    ``"skipped"`` (writes asked for one but the caller passed
+    ``send_remote_sync=False``; the remotes are not up to date) or
     ``"failed"`` (the trigger could not be enqueued; the configuration
     writes are unaffected and ``resync_remote`` can be retried alone).
     ``device_ids`` / ``activity_ids`` are every entity the batch's
@@ -270,7 +272,7 @@ class BatchOutcome:
     after the batch.
     """
 
-    remote_sync: Literal["sent", "failed", "not_needed"]
+    remote_sync: Literal["sent", "failed", "not_needed", "skipped"]
     remote_sync_requests: int
     device_ids: tuple[int, ...]
     activity_ids: tuple[int, ...]
@@ -483,7 +485,10 @@ class RestoreResult:
     the engine's per-entity records are ``restored`` (kept as the engine
     returned them). ``erased`` says the hub was wiped first
     (``restore(replace=True)``): a failure after that has changed the hub
-    even when no entity was restored.
+    even when no entity was restored. ``partial_device_ids`` are devices a
+    failed restore left half-made on the hub (their rollback failed too).
+    ``hub_name`` / ``hub_name_restored`` report the bundle's hub name a
+    successful replacing restore applied (None when it did not try).
     """
 
     status: Literal["success", "failed"]
@@ -494,6 +499,9 @@ class RestoreResult:
     snapshot_id: Optional[str]
     restored: dict[str, list[dict[str, Any]]] = field(default_factory=dict, compare=False)
     erased: bool = False
+    partial_device_ids: tuple[int, ...] = ()
+    hub_name: Optional[str] = None
+    hub_name_restored: Optional[bool] = None
 
     @property
     def ok(self) -> bool:
@@ -501,9 +509,16 @@ class RestoreResult:
 
     @property
     def wrote_nothing(self) -> bool:
-        """True when the hub is as it was: no entity restored, and not erased first."""
+        """True when the hub is as it was: no entity restored or left
+        half-made, and not erased first."""
 
-        return not self.ok and not self.erased and self.restored_devices == 0 and self.restored_activities == 0
+        return (
+            not self.ok
+            and not self.erased
+            and not self.partial_device_ids
+            and self.restored_devices == 0
+            and self.restored_activities == 0
+        )
 
     @classmethod
     def from_engine(cls, result: Any, *, snapshot_id: Optional[str], erased: bool = False) -> "RestoreResult":
@@ -542,6 +557,13 @@ class RestoreResult:
                 "activities": _records(data.get("restored_activities")),
             },
             erased=bool(erased),
+            partial_device_ids=tuple(
+                int(i) & 0xFF for i in data.get("partial_device_ids") or () if isinstance(i, int)
+            ),
+            hub_name=data.get("hub_name") if isinstance(data.get("hub_name"), str) else None,
+            hub_name_restored=(
+                bool(data["hub_name_restored"]) if data.get("hub_name_restored") is not None else None
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:

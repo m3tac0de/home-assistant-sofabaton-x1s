@@ -637,3 +637,39 @@ def test_derived_binding_labels_are_not_a_change() -> None:
     _find(desired, "activity", 101)["button_bindings"] = [_binding(POWER_ON, 5, 2)]
     plan = build(base, desired)
     assert [s.kind for s in plan.items[0].steps][0] == "binding_write"
+
+
+def test_an_entity_name_must_fit_the_hub_slot() -> None:
+    base = _bundle()
+    too_long = copy.deepcopy(base)
+    _find(too_long, "activity", 101)["device"]["name"] = "A" * 31
+    with pytest.raises(hub_sync.InvalidDocumentError, match="at most 30"):
+        build(base, too_long)
+
+    x1 = copy.deepcopy(base)
+    x1["hub"]["version"] = "X1"
+    cafe = copy.deepcopy(x1)
+    _find(cafe, "activity", 101)["device"]["name"] = "Café"
+    with pytest.raises(hub_sync.InvalidDocumentError, match="unsupported by X1"):
+        build(x1, cafe)
+
+
+def test_a_name_the_hub_already_holds_passes_the_slot_rule() -> None:
+    # A vendor-app name outside the editor's charset is hub truth.
+    base = _bundle()
+    _find(base, "activity", 101)["device"]["name"] = "Movie™ Night"
+    desired = copy.deepcopy(base)
+    desired = _pkg.edits.bind_button(desired, 101, VOL_UP, 7, 3)
+    assert _kinds(build(base, desired)) == [("sync_activity", 101)]
+
+
+def test_a_mirror_only_change_is_not_a_member_change() -> None:
+    # The planners agree on membership: the derived referenced_source list
+    # alone changes no member (the entity planner emits no member step).
+    base = _bundle()
+    desired = copy.deepcopy(base)
+    activity = _find(desired, "activity", 101)
+    activity["referenced_source_device_ids"] = sorted(set(activity.get("referenced_source_device_ids") or []) | {9})
+    desired = _pkg.edits.bind_button(desired, 101, VOL_UP, 7, 3)  # a real edit so the activity is planned
+    plan = build(base, desired)
+    assert not any("member devices change" in note for note in plan.notes)

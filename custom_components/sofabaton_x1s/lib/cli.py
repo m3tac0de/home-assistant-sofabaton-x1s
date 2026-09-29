@@ -724,10 +724,15 @@ class AsyncShell:
         if not name:
             print("usage: hubname <new name>")
             return
-        if await self._safe("hubname", self.p.set_hub_name(name)) is not None or True:
-            info = await self._safe("hub_info", self.p.hub_info())
-            if info is not None:
-                print(f"hub is now named {info.name!r}")
+        try:
+            await self.p.set_hub_name(name)
+        except (RuntimeError, TimeoutError, ValueError) as err:
+            print(f"[hubname] {err}")
+            print("hub name unchanged")
+            return
+        info = await self._safe("hub_info", self.p.hub_info())
+        if info is not None:
+            print(f"hub is now named {info.name!r}")
 
     # ----- meta -------------------------------------------------------------
 

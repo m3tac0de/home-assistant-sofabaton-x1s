@@ -87,9 +87,10 @@ until you have migrated:
 python -m pip install "sofabaton-x>=0.1,<0.2"
 ```
 
-Python 3.11+. The only dependency is
+Python 3.11+. The dependencies are
 [python-zeroconf](https://pypi.org/project/zeroconf/) (mDNS advertising and
-hub discovery).
+hub discovery) and [ifaddr](https://pypi.org/project/ifaddr/) (interface
+netmasks for app discovery replies; zeroconf requires it as well).
 
 ## Quickstart
 

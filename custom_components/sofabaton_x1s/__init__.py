@@ -3169,7 +3169,7 @@ async def _run_entity_sync_operation(
         await hub.async_refresh_entity_structure(kind=entity_kind, ent_id=entity_id)
         if entity_kind == "device":
             # Command-record rewrites also change labels held by every
-            # referencing activity's cached favorite/keybinding maps;
+            # referencing activity's cached favorite maps;
             # refreshing only the device would leave those stale until an
             # unrelated activity re-read.
             counters = (result or {}).get("counters") or {}
@@ -4682,7 +4682,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN]["storage_resources_registered"] = False
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
-            await _async_persist_hub_cache(hass, hub)
+            try:
+                await _async_persist_hub_cache(hass, hub)
+            except Exception:
+                # Best effort: the hub must still stop, or the old proxy
+                # keeps its threads, sockets and listener registration.
+                _LOGGER.exception("[%s] Failed to persist cache for hub %s during unload", DOMAIN, hub.entry_id)
             await hub.async_stop_wifi_mqtt_ingress()
             await hub.async_stop_activity_state_ingress()
             roku_listener = await async_get_roku_listener(hass)

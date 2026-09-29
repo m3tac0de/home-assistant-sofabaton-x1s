@@ -13,7 +13,7 @@ Design invariants (docs/internal/live-activity-editor-plan.md §6.2):
   bundle pairs with golden plan outputs.
 * **Scope guard** — every difference between the two bundles must be
   attributable to the edited activity or a known device-side effect
-  (idle behaviour, input records, command renames, HA-action hosts). Any
+  (idle behaviour, input records, command renames). Any
   other device/activity change raises ``ValueError`` — the defence against
   an editor bug silently rewriting unrelated config.
 * **Record-level granularity** — a macro / binding / favorite that is
@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Any, Mapping
+
+from .entity_refs import iter_entity_references
 
 # ── Wire constants (kept local so this module stays import-light/pure) ──
 POWER_ON_MACRO_BUTTON_ID = 198
@@ -229,25 +231,15 @@ def _member_device_ids(activity: Mapping[str, Any]) -> set[int]:
     """Devices this activity references (power refs, favorites, bindings,
     real macro command steps) — excluding the activity's own id."""
     self_id = _activity_id_of(activity)
-    ids: set[int] = set()
-
-    def _add(value: Any) -> None:
-        did = _int(value)
-        # Ids >= ACTIVITY_ID_BASE are cross-activity chain references (an
-        # activity byte), not source devices, and must not be treated as
-        # activity members.
-        if 0 < did < ACTIVITY_ID_BASE and did != self_id:
-            ids.add(did)
-
-    for macro in activity.get("macros") or []:
-        for step in macro.get("steps") or []:
-            _add(step.get("device_id"))
-    for fav in activity.get("favorite_slots") or []:
-        _add(fav.get("device_id"))
-    for binding in activity.get("button_bindings") or []:
-        _add(binding.get("device_id"))
-        _add(binding.get("long_press_device_id"))
-    return ids
+    # Ids >= ACTIVITY_ID_BASE are cross-activity chain references (an
+    # activity byte), not source devices, and are not members.
+    return {
+        target
+        for _referrer, _site, target in iter_entity_references(
+            {"activities": [activity]}, exclude_sites=("referenced_source",)
+        )
+        if 0 < target < ACTIVITY_ID_BASE and target != self_id
+    }
 
 
 # ── Device-side scope helpers ──────────────────────────────────────────
