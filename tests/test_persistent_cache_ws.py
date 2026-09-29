@@ -402,6 +402,8 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "total_steps": None,
                         "device_key": None,
                         "device_name": None,
+                        "last_operation": None,
+                        "last_wifi_deploys": {},
                     },
                 }
             ],
