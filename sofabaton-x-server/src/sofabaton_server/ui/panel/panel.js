@@ -12976,8 +12976,15 @@ var SofabatonServerPanel = class extends i4 {
     this._dockObserver = null;
     this._onHashChange = () => {
       const parsed = parseRoute(location.hash);
-      if (parsed) this.store.navigate(parsed, { replace: true });
-      else this._syncHash();
+      if (!parsed) {
+        this._syncHash();
+        return;
+      }
+      if (!this._confirmLeave({ route: parsed })) {
+        history.replaceState(null, "", hashFor(this._snapshot.route));
+        return;
+      }
+      this.store.navigate(parsed, { replace: true });
     };
     this._onDocumentClick = (event) => {
       if (!this._pickerOpen && !this._cogOpen) return;

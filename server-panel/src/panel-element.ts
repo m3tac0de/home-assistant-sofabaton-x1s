@@ -279,8 +279,19 @@ export class SofabatonServerPanel extends LitElement {
   private _dockObserver: ResizeObserver | null = null;
   private readonly _onHashChange = () => {
     const parsed = parseRoute(location.hash);
-    if (parsed) this.store.navigate(parsed, { replace: true });
-    else this._syncHash();
+    if (!parsed) {
+      this._syncHash();
+      return;
+    }
+    // Browser Back/Forward, the phone's back gesture or an edited URL: the
+    // same leave guard as an in-panel move. If the user stays (or is asked),
+    // put the address back to where the panel still is; a confirmed leave
+    // navigates from the guard's callback.
+    if (!this._confirmLeave({ route: parsed })) {
+      history.replaceState(null, "", hashFor(this._snapshot.route));
+      return;
+    }
+    this.store.navigate(parsed, { replace: true });
   };
   private readonly _onDocumentClick = (event: Event) => {
     if (!this._pickerOpen && !this._cogOpen) return;

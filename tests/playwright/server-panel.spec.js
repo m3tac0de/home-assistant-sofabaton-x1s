@@ -1833,8 +1833,12 @@ test.describe("control panel, views", () => {
     await expect(editor.locator('[data-kind="command"]').nth(0)).toContainText("Power toggle");
     await page.screenshot({ path: shot(testInfo, "device-editor"), fullPage: true });
 
-    // A wifi class opens the card's structured form; a field edit rides the Sync with the fetched bytes.
+    // An edited URL with unsynced changes asks too (CR-F5a-1); leaving drops the draft.
     await page.goto(`${PAGE}#/e26a44861b45/hub/devices/2`);
+    await expect(editor.locator("#exit-dialog .dialog-title")).toHaveText("Unsynced changes");
+    await editor.locator("#exit-leave").click();
+
+    // A wifi class opens the card's structured form; a field edit rides the Sync with the fetched bytes.
     await expect(editor.locator("#editor-title")).toHaveText("Roku");
     await expect(editor.locator(".detail-section-nav-btn")).toHaveText(["On/Off", "Network", "Commands", "Buttons"]);
     await editor.locator('[data-kind="command"]').nth(0).locator(".command-payload").click();
@@ -3221,6 +3225,14 @@ test.describe("control panel, wifi commands", () => {
     await expect(leave.locator(".dialog-title")).toHaveText("Unsynced changes");
     await leave.getByRole("button", { name: "Keep editing" }).last().click();
     await expect(page).toHaveURL(/wifi\/devices\/a1b2c3d4$/);
+
+    // Browser Back (the phone's back gesture) asks too (CR-F5a-1): Keep editing
+    // keeps the draft and puts the address back.
+    await page.goBack();
+    await expect(leave.locator(".dialog-title")).toHaveText("Unsynced changes");
+    await leave.getByRole("button", { name: "Keep editing" }).last().click();
+    await expect(page).toHaveURL(/wifi\/devices\/a1b2c3d4$/);
+    await expect(detail.locator(".detail-title")).toHaveText("Lamps");
 
     await detail.locator("#wifi-sync").click();
     await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
