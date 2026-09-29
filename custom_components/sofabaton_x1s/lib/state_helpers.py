@@ -578,6 +578,17 @@ class BurstScheduler:
             base = time.monotonic() if now is None else now
             self.last_ts = base + self.response_grace
 
+    def try_claim(self, kind: str, *, now: Optional[float] = None) -> bool:
+        """Start ``kind`` only if the wire is quiet, atomically: a burst
+        another thread starts between a caller's check and its start can
+        never be overwritten."""
+
+        with self._lock:
+            if self.active:
+                return False
+            self.start(kind, now=now)
+            return True
+
     def queue_or_send(
         self,
         *,

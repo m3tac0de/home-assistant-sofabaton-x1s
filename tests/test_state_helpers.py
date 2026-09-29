@@ -567,3 +567,17 @@ def test_an_inactive_scheduler_never_strands_a_queue() -> None:
     scheduler.tick(0.0, can_issue=lambda: True, sender=send)
 
     assert sent == ["late"]
+
+
+def test_try_claim_never_overwrites_a_burst_another_thread_started() -> None:
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    _read(scheduler, sent, "devices")  # lands between an exchange's check and claim
+    assert scheduler.try_claim("exchange:create") is False
+    assert scheduler.kind == "devices"
+
+    scheduler.finish("devices", can_issue=lambda: True, sender=send)
+    assert scheduler.try_claim("exchange:create") is True
+    assert scheduler.kind == "exchange:create"

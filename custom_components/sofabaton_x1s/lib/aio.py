@@ -3076,7 +3076,6 @@ ENGINE_ONLY: dict[str, str] = {
             "wait_for_assigned_device_id",
             "wait_for_macro_record",
             "wait_for_activity_inputs_burst",
-            "wait_for_read_burst_quiesce",
             "wait_for_x2_remote_sync_id",
             "wait_for_virtual_device",
             "clear_ack_queue",

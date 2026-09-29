@@ -37,31 +37,31 @@ from .hub_logging import LogTag
 class ExchangeMixin:
     """Mixin providing the exchange guard and the one-step executor."""
 
-    def wait_for_read_burst_quiesce(self, timeout: float = 8.0) -> bool:
-        """Block until no read burst is streaming, up to ``timeout``.
+    def _claim_wire(self, kind: str, timeout: float = 8.0) -> None:
+        """Wait for a quiet wire and take it for ``kind`` in one atomic step.
 
         The hub serializes requests and silently drops a frame that
         arrives while it is answering a read burst (devices, activities,
-        commands, ...). Write steps call this before hitting the wire so
-        that e.g. a scheduled catalog refresh that fired between two
-        steps finishes first (live-bench finding: an X1 device-create
-        sent 1 ms after REQ_DEVICES was dropped and timed out).
-
-        Returns ``False`` when a burst is still active at timeout; the
-        caller proceeds anyway and the per-step ack timeout governs.
+        commands, ...), so an exchange waits for any in-flight read to
+        finish first (live-bench finding: an X1 device-create sent 1 ms
+        after REQ_DEVICES was dropped and timed out). The check and the
+        claim are one step, so a burst started in between cannot be
+        overwritten. On timeout the exchange takes the wire anyway and
+        the per-step ack timeout governs.
         """
 
         deadline = time.monotonic() + timeout
-        while self._burst.active and time.monotonic() < deadline:
+        while not self._burst.try_claim(kind):
+            if time.monotonic() >= deadline:
+                self._log.warning(
+                    "%s read burst (%s) still active after %.1fs quiesce wait",
+                    LogTag.CMD,
+                    self._burst.kind,
+                    timeout,
+                )
+                self._burst.start(kind)
+                return
             time.sleep(0.05)
-        still_active = self._burst.active
-        if still_active:
-            self._log.warning(
-                "[WIFI] read burst (%s) still active after %.1fs quiesce wait",
-                self._burst.kind,
-                timeout,
-            )
-        return not still_active
 
     @contextlib.contextmanager
     def exchange(self, name: str):
@@ -97,8 +97,7 @@ class ExchangeMixin:
             self._exchange_depth += 1
             try:
                 if self._exchange_depth == 1:
-                    self.wait_for_read_burst_quiesce()
-                    self._burst.start(f"exchange:{name}")
+                    self._claim_wire(f"exchange:{name}")
                 yield
             finally:
                 self._exchange_depth -= 1
@@ -179,7 +178,7 @@ class ExchangeMixin:
                 if attempt < total_attempts:
                     self._log.warning(
                         "%s[STEP] %s retrying after ack timeout (attempt %d/%d)",
-                        LogTag.WIFI,
+                        LogTag.ACK,
                         step_name,
                         attempt,
                         total_attempts,
@@ -189,7 +188,7 @@ class ExchangeMixin:
 
         self._log.warning(
             "%s[STEP] %s timeout waiting ack=0x%04X first_byte=%s",
-            LogTag.WIFI,
+            LogTag.ACK,
             step_name,
             ack_opcode,
             f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
@@ -213,7 +212,7 @@ class ExchangeMixin:
 
         self._log.debug(
             "%s[STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s attempt=%d/%d",
-            LogTag.WIFI,
+            LogTag.ACK,
             step_name,
             family,
             ack_opcode,
@@ -242,7 +241,7 @@ class ExchangeMixin:
         if is_status_reject:
             self._log.warning(
                 "%s[STEP] %s hub rejected status=0x%02X",
-                LogTag.WIFI,
+                LogTag.ACK,
                 step_name,
                 first_byte,
             )
@@ -254,12 +253,12 @@ class ExchangeMixin:
         if matched_opcode != ack_opcode:
             self._log.warning(
                 "%s[STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
-                LogTag.WIFI,
+                LogTag.ACK,
                 step_name,
                 matched_opcode,
                 ack_opcode,
             )
-        self._log.debug("%s[STEP] %s acked via 0x%04X", LogTag.WIFI, step_name, matched_opcode)
+        self._log.debug("%s[STEP] %s acked via 0x%04X", LogTag.ACK, step_name, matched_opcode)
         return SendStepResult(
             outcome=AckOutcome.acked,
             ack_opcode=matched_opcode,
