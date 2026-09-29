@@ -296,6 +296,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # deframers
         self._df_h2a = Deframer()
         self._df_a2h = Deframer()
+        self._handler_failures_seen: set[tuple[str, str]] = set()
         self._adv_started = False
 
         self.state = ActivityCache()
