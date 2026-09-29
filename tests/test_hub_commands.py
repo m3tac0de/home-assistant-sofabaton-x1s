@@ -1592,7 +1592,6 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
 
     act_id = 0x65
     dev_id = 0x04
-    keybinding_button_id = 0xB7
 
     hub.activities[act_id] = {"name": "Movies", "active": True}
     hub.devices[dev_id] = {"name": "Denon", "device_class": "ir", "device_class_code": 0x0D}
@@ -1602,10 +1601,6 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
         {"button_id": 0x01, "device_id": dev_id, "command_id": 0x06, "source": "activity_map"}
     ]
     hub._proxy.state.record_favorite_label(act_id, dev_id, 0x06, "Power")
-    hub._proxy.state.activity_keybinding_slots[act_id] = [
-        {"button_id": keybinding_button_id, "device_id": dev_id, "command_id": 0x07, "source": "keymap"}
-    ]
-    hub._proxy.state.record_keybinding_label(act_id, dev_id, 0x07, "Volume Up")
     hub._proxy.state.replace_activity_macros(act_id, [{"command_id": 0x09, "label": "Night Mode"}])
 
     payload = loop.run_until_complete(hub.async_get_cache_contents())

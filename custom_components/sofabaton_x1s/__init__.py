@@ -3169,7 +3169,7 @@ async def _run_entity_sync_operation(
         await hub.async_refresh_entity_structure(kind=entity_kind, ent_id=entity_id)
         if entity_kind == "device":
             # Command-record rewrites also change labels held by every
-            # referencing activity's cached favorite/keybinding maps;
+            # referencing activity's cached favorite maps;
             # refreshing only the device would leave those stale until an
             # unrelated activity re-read.
             counters = (result or {}).get("counters") or {}

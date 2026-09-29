@@ -1141,14 +1141,6 @@ class KeymapHandler(BaseFrameHandler):
             else:
                 proxy._burst.start(burst_key, now=now)
 
-            total_frames = parsed.total_frames
-            if total_frames is not None:
-                proxy.note_buttons_frame(
-                    activity_id_decimal,
-                    frame_no=parsed.frame_no,
-                    total_frames=total_frames,
-                )
-
             total_rows = (
                 f" total_rows={parsed.total_rows}"
                 if parsed.total_rows is not None
@@ -1364,19 +1356,15 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                 for cmd_id, label in commands.items():
                     pair = (complete_dev_id, cmd_id)
                     awaiting = proxy._favorite_label_requests.get(pair)
-                    awaiting_keybindings = proxy._keybinding_label_requests.get(pair)
-                    if awaiting or awaiting_keybindings:
-                        for act_id in awaiting or set():
+                    if awaiting:
+                        for act_id in awaiting:
                             proxy.state.record_favorite_label(act_id, complete_dev_id, cmd_id, label)
-                        for act_id in awaiting_keybindings or set():
-                            proxy.state.record_keybinding_label(act_id, complete_dev_id, cmd_id, label)
                         proxy._favorite_label_requests.pop(pair, None)
-                        proxy._keybinding_label_requests.pop(pair, None)
                         continue
 
                     pending_for_device = [
                         candidate
-                        for candidate in set(proxy._favorite_label_requests) | set(proxy._keybinding_label_requests)
+                        for candidate in proxy._favorite_label_requests
                         if candidate[0] == complete_dev_id
                     ]
 
@@ -1387,12 +1375,7 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                             proxy.state.record_favorite_label(
                                 act_id, complete_dev_id, pending_cmd_id, label
                             )
-                        for act_id in proxy._keybinding_label_requests.get(pending_pair, set()):
-                            proxy.state.record_keybinding_label(
-                                act_id, complete_dev_id, pending_cmd_id, label
-                            )
                         proxy._favorite_label_requests.pop(pending_pair, None)
-                        proxy._keybinding_label_requests.pop(pending_pair, None)
 
                         cmds = proxy.state.commands.setdefault(dev_key, {})
                         cmds[cmd_id] = label

@@ -605,24 +605,6 @@ class CatalogMixin:
 
         return False
 
-    def note_buttons_frame(self, act_lo: int, *, frame_no: int | None, total_frames: int | None) -> None:
-        if frame_no != 1:
-            return
-        if total_frames is None or total_frames <= 0:
-            return
-        self._button_burst_expected_frames[act_lo & 0xFF] = total_frames
-
-    def try_finish_buttons_burst(self, act_lo: int, *, frame_no: int | None) -> bool:
-        ent_lo = act_lo & 0xFF
-        expected = self._button_burst_expected_frames.get(ent_lo)
-        if expected is None or frame_no is None or frame_no < expected:
-            return False
-        return self._burst.finish(
-            f"buttons:{ent_lo}",
-            can_issue=self.can_issue_commands,
-            sender=self._send_cmd_frame,
-        )
-
     def try_finish_activity_map_burst(self, act_lo: int) -> bool:
         ent_lo = act_lo & 0xFF
         if ent_lo not in self._activity_map_complete:
@@ -1104,12 +1086,9 @@ class CatalogMixin:
         if clear_favorites:
             self.state.activity_command_refs.pop(ent_lo, None)
             self.state.activity_favorite_slots.pop(ent_lo, None)
-            self.state.activity_keybinding_slots.pop(ent_lo, None)
             self.state.activity_members.pop(ent_lo, None)
             self.state.activity_favorite_labels.pop(ent_lo, None)
-            self.state.activity_keybinding_labels.pop(ent_lo, None)
             self._clear_favorite_label_requests_for_activity(ent_lo)
-            self._clear_keybinding_label_requests_for_activity(ent_lo)
             self._pending_activity_map_requests.discard(ent_lo)
             self._activity_map_complete.discard(ent_lo)
 
@@ -1144,22 +1123,12 @@ class CatalogMixin:
         for act_lo, refs in self.state.activity_command_refs.items():
             if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in refs):
                 referencing.add(act_lo)
-        for slot_map in (
-            self.state.activity_favorite_slots,
-            self.state.activity_keybinding_slots,
-        ):
-            for act_lo, slots in slot_map.items():
-                if any(
-                    (int(slot.get("device_id", 0)) & 0xFF) == dev_lo for slot in slots
-                ):
-                    referencing.add(act_lo)
-        for label_map in (
-            self.state.activity_favorite_labels,
-            self.state.activity_keybinding_labels,
-        ):
-            for act_lo, labels in label_map.items():
-                if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in labels):
-                    referencing.add(act_lo)
+        for act_lo, slots in self.state.activity_favorite_slots.items():
+            if any((int(slot.get("device_id", 0)) & 0xFF) == dev_lo for slot in slots):
+                referencing.add(act_lo)
+        for act_lo, labels in self.state.activity_favorite_labels.items():
+            if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in labels):
+                referencing.add(act_lo)
         for act_lo, details in self.state.button_details.items():
             for meta in details.values():
                 if (int(meta.get("device_id", 0)) & 0xFF) == dev_lo or (
@@ -1194,16 +1163,6 @@ class CatalogMixin:
         for pair in to_delete:
             self._favorite_label_requests.pop(pair, None)
 
-    def _clear_keybinding_label_requests_for_activity(self, act_lo: int) -> None:
-        to_delete: list[tuple[int, int]] = []
-
-        for pair, act_ids in self._keybinding_label_requests.items():
-            act_ids.discard(act_lo)
-            if not act_ids:
-                to_delete.append(pair)
-
-        for pair in to_delete:
-            self._keybinding_label_requests.pop(pair, None)
 
 
 __all__ = ["CatalogMixin"]

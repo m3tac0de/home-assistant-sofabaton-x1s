@@ -305,7 +305,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._macro_assembler = MacroAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
-        self._button_burst_expected_frames: dict[int, int] = {}
         # Track pending command fetches per device, so multiple targeted
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
@@ -341,7 +340,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._activity_pending_payloads: dict[int, bytes] = {}
         self._activity_pending_hint: int | None = None
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
-        self._keybinding_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._activity_list_update_listeners: list[Callable[[], None]] = []
         self._hub_state_listeners: list[callable] = []
@@ -1754,13 +1752,10 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             try:
                 ent_lo = int(key.split(":", 1)[1])
                 self._pending_button_requests.discard(ent_lo)
-                self._button_burst_expected_frames.pop(ent_lo, None)
             except ValueError:
                 self._pending_button_requests.clear()
-                self._button_burst_expected_frames.clear()
         else:
             self._pending_button_requests.clear()
-            self._button_burst_expected_frames.clear()
 
     def _on_read_dropped(self, kind: str) -> None:
         """A queued read was dropped unsent (commands blocked when its turn
@@ -1777,7 +1772,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             return
         if prefix == "buttons":
             self._pending_button_requests.discard(ent_lo)
-            self._button_burst_expected_frames.pop(ent_lo, None)
         elif prefix == "macros":
             self._pending_macro_requests.discard(ent_lo)
         elif prefix == "activity_map":

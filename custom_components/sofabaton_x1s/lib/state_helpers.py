@@ -115,7 +115,6 @@ class ActivityCache:
         self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
         self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
-        self.activity_keybinding_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
         self.activity_members: dict[int, set[int]] = defaultdict(set)
         # Favorites ordering: maps act_lo → list of (fav_id, slot) pairs in hub order
         # Populated by OP_FAV_ORDER_RESP (family 0x63) response to OP_FAV_ORDER_REQ (0x0162)
@@ -136,7 +135,6 @@ class ActivityCache:
         # a consumer can tell the cache moved without hashing it.
         self.generation: int = 0
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
-        self.activity_keybinding_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
@@ -275,52 +273,6 @@ class ActivityCache:
             return True, True
         return favorites_allowed, False
 
-    def _upsert_activity_keybinding_slot(
-        self,
-        act_lo: int,
-        *,
-        button_id: int,
-        device_id: int,
-        command_id: int,
-        source: str,
-    ) -> None:
-        pair = (device_id & 0xFF, command_id & 0xFF)
-        if pair[0] == 0 or pair[1] in (0x00, 0xFC):
-            return
-
-        self.activity_command_refs[act_lo].add(pair)
-        slots = self.activity_keybinding_slots[act_lo]
-
-        for idx, slot in enumerate(slots):
-            if slot["button_id"] != (button_id & 0xFF):
-                continue
-            existing_source = slot.get("source", "keymap")
-            # Preserve legacy activity-map slots for compatibility, but treat
-            # keymap-derived data as the authoritative source when both exist.
-            if existing_source == "activity_map" and source != "activity_map":
-                slots[idx] = {
-                    "button_id": button_id & 0xFF,
-                    "device_id": pair[0],
-                    "command_id": pair[1],
-                    "source": source,
-                }
-            else:
-                slots[idx].update({
-                    "device_id": pair[0],
-                    "command_id": pair[1],
-                    "source": source,
-                })
-            return
-
-        slots.append(
-            {
-                "button_id": button_id & 0xFF,
-                "device_id": pair[0],
-                "command_id": pair[1],
-                "source": source,
-            }
-        )
-
     def _upsert_activity_favorite_slot(
         self,
         act_lo: int,
@@ -371,11 +323,6 @@ class ActivityCache:
 
         return list(self.activity_favorite_slots.get(act_lo, []))
 
-    def get_activity_keybinding_slots(self, act_lo: int) -> list[dict[str, int]]:
-        """Return metadata for keybinding slots in this activity."""
-
-        return list(self.activity_keybinding_slots.get(act_lo, []))
-
     def record_activity_member(self, act_lo: int, device_id: int) -> None:
         """Record a device as being linked to the activity."""
 
@@ -388,33 +335,6 @@ class ActivityCache:
 
         return sorted(self.activity_members.get(act_lo & 0xFF, set()))
 
-    def record_activity_mapping(
-        self,
-        act_lo: int,
-        device_id: int,
-        command_id: int,
-        *,
-        button_id: int | None = None,
-    ) -> None:
-        """Record a legacy activity-map favorite mapping entry.
-
-        Current protocol findings suggest activity favorites primarily come
-        from REQ_BUTTONS/keymap rows; REQ_ACTIVITY_MAP is now treated as a
-        membership roster. This helper remains for compatibility with restored
-        cache data and older tests.
-        """
-
-        dev_lo = device_id & 0xFF
-        self.record_activity_member(act_lo, dev_lo)
-
-        self._upsert_activity_favorite_slot(
-            act_lo,
-            button_id=button_id if button_id is not None else 0,
-            device_id=device_id & 0xFF,
-            command_id=command_id & 0xFF,
-            source="activity_map",
-        )
-
     def record_favorite_label(
         self, act_lo: int, device_id: int, command_id: int, label: str
     ) -> None:
@@ -422,26 +342,12 @@ class ActivityCache:
 
         self.activity_favorite_labels[act_lo][(device_id, command_id)] = label
 
-    def record_keybinding_label(
-        self, act_lo: int, device_id: int, command_id: int, label: str
-    ) -> None:
-        """Store the resolved label for an activity keybinding command."""
-
-        self.activity_keybinding_labels[act_lo][(device_id, command_id)] = label
-
     def get_favorite_label(
         self, act_lo: int, device_id: int, command_id: int
     ) -> str | None:
         """Return the known label for a favorite command, if any."""
 
         return self.activity_favorite_labels.get(act_lo, {}).get((device_id, command_id))
-
-    def get_keybinding_label(
-        self, act_lo: int, device_id: int, command_id: int
-    ) -> str | None:
-        """Return the known label for an activity keybinding command, if any."""
-
-        return self.activity_keybinding_labels.get(act_lo, {}).get((device_id, command_id))
 
     def get_activity_favorite_labels(self, act_lo: int) -> list[dict[str, int | str]]:
         """Return favorite slots decorated with resolved labels."""
@@ -468,34 +374,6 @@ class ActivityCache:
             )
 
         return favorites
-
-    def get_activity_keybinding_labels(self, act_lo: int) -> list[dict[str, int | str]]:
-        """Return keybinding slots decorated with resolved labels."""
-
-        slots = self.activity_keybinding_slots.get(act_lo, [])
-        labels = self.activity_keybinding_labels.get(act_lo, {})
-
-        keybindings: list[dict[str, int | str]] = []
-        seen: set[int] = set()
-        for slot in slots:
-            button_id = slot["button_id"]
-            if button_id in seen:
-                continue
-            pair = (slot["device_id"], slot["command_id"])
-            label = labels.get(pair)
-            if not label:
-                continue
-            seen.add(button_id)
-            keybindings.append(
-                {
-                    "button_id": button_id,
-                    "name": label,
-                    "device_id": slot["device_id"],
-                    "command_id": slot["command_id"],
-                }
-            )
-
-        return keybindings
 
     def replace_activity_macros(
         self, act_lo: int, macros: list[dict[str, int | str]]

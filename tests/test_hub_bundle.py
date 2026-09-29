@@ -876,9 +876,7 @@ def _erase_proxy(monkeypatch: pytest.MonkeyPatch) -> X1Proxy:
     proxy.state.activity_macros[0x65] = [{"button_id": 0xC6}]
     proxy.state.activity_members[0x65] = {0x01, 0x02}
     proxy.state.activity_favorite_slots[0x65] = [{"button_id": 0xA0}]
-    proxy.state.activity_keybinding_slots[0x65] = [{"button_id": 0xA1}]
     proxy.state.activity_favorite_labels[0x65] = {(0x01, 1): "POWER"}
-    proxy.state.activity_keybinding_labels[0x65] = {(0x01, 1): "POWER"}
     proxy.state.activity_command_refs[0x65] = {(0x01, 1)}
     proxy._commands_complete.add(0x01)
     proxy._macros_complete.add(0x65)
@@ -924,9 +922,7 @@ def test_erase_configuration_success_wipes_state_and_returns_true(
     assert proxy.state.activity_macros == {}
     assert proxy.state.activity_members == {}
     assert proxy.state.activity_favorite_slots == {}
-    assert proxy.state.activity_keybinding_slots == {}
     assert proxy.state.activity_favorite_labels == {}
-    assert proxy.state.activity_keybinding_labels == {}
     assert proxy.state.activity_command_refs == {}
     assert proxy._commands_complete == set()
     assert proxy._macros_complete == set()

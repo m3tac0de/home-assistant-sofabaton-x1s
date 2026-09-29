@@ -206,7 +206,6 @@ def test_replace_keymap_rows_stops_at_standard_buttons() -> None:
     assert cache.get_activity_command_refs(act) == {(0x03, 0x03), (0x03, 0x07)}
 
     assert cache.buttons.get(act, set()) == {0xAE}
-    assert cache.get_activity_keybinding_slots(act) == []
 
 
 def test_activity_favorite_labels_with_slots() -> None:
@@ -263,7 +262,6 @@ def test_replace_keymap_rows_does_not_treat_slot_0x0b_as_standard_button() -> No
     assert {slot["button_id"] for slot in cache.get_activity_favorite_slots(act)} == {0x01, 0x0B, 0x0F}
     assert cache.get_activity_command_refs(act) == {(0x0B, 0x01), (0x01, 0x17), (0x01, 0x0F)}
     assert cache.buttons.get(act, set()) == {ButtonName.UP}
-    assert cache.get_activity_keybinding_slots(act) == []
 
 
 def test_replace_keymap_rows_does_not_infer_ch_up_mapping_target() -> None:
@@ -279,38 +277,21 @@ def test_replace_keymap_rows_does_not_infer_ch_up_mapping_target() -> None:
     cache.replace_keymap_rows(act, payload)
 
     assert cache.get_activity_command_refs(act) == {(0x0B, 0x01)}
-    assert cache.get_activity_keybinding_slots(act) == []
     assert cache.buttons.get(act, set()) == {ButtonName.UP, ButtonName.CH_UP}
     assert cache.get_activity_favorite_slots(act) == [{"button_id": 0x01, "device_id": 0x0B, "command_id": 0x01, "source": "keymap"}]
 
 
-def test_activity_mapping_upsert_overrides_keymap_duplicate_pair() -> None:
-    cache = ActivityCache()
-    act = 0x67
 
-    cache.replace_keymap_rows(
-        act,
-        bytes.fromhex(
-            "67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
-        ),
-    )
-    cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
-
-    slots = [
-        slot
-        for slot in cache.get_activity_favorite_slots(act)
-        if slot["device_id"] == 0x0B and slot["command_id"] == 0x06
-    ]
-
-    assert len(slots) == 1
-    assert slots[0]["button_id"] == 0x99
 
 
 def test_keymap_favorite_overrides_legacy_activity_map_duplicate_pair() -> None:
     cache = ActivityCache()
     act = 0x67
 
-    cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
+    # A legacy activity-map slot, as older persisted caches still hold.
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0x99, "device_id": 0x0B, "command_id": 0x06, "source": "activity_map"}
+    ]
     cache.replace_keymap_rows(
         act,
         bytes.fromhex(
@@ -342,7 +323,6 @@ def test_replace_keymap_rows_ignores_home_and_vol_up_as_favorites() -> None:
     cache.replace_keymap_rows(act, payload)
 
     assert cache.get_activity_command_refs(act) == set()
-    assert cache.get_activity_keybinding_slots(act) == []
     assert cache.buttons.get(act, set()) == {ButtonName.HOME, ButtonName.VOL_UP, ButtonName.CH_UP}
     assert cache.get_activity_favorite_slots(act) == []
 
@@ -360,7 +340,6 @@ def test_replace_keymap_rows_keeps_alternate_button_presence_without_keybindings
 
     cache.replace_keymap_rows(act, payload)
 
-    assert cache.get_activity_keybinding_slots(act) == []
     assert cache.buttons.get(act, set()) == {
         ButtonName.OK,
         ButtonName.BACK,
@@ -369,24 +348,7 @@ def test_replace_keymap_rows_keeps_alternate_button_presence_without_keybindings
     }
 
 
-def test_activity_keybinding_labels_with_slots() -> None:
-    cache = ActivityCache()
-    act = 0x21
 
-    cache.activity_keybinding_slots[act] = [
-        {"button_id": ButtonName.CH_UP, "device_id": 0x10, "command_id": 0x05},
-        {"button_id": ButtonName.CH_DOWN, "device_id": 0x11, "command_id": 0x06},
-    ]
-
-    cache.record_keybinding_label(act, 0x10, 0x05, "Channel Up")
-    cache.record_keybinding_label(act, 0x11, 0x06, "Channel Down")
-
-    keybindings = cache.get_activity_keybinding_labels(act)
-
-    assert keybindings == [
-        {"button_id": ButtonName.CH_UP, "name": "Channel Up", "device_id": 0x10, "command_id": 0x05},
-        {"button_id": ButtonName.CH_DOWN, "name": "Channel Down", "device_id": 0x11, "command_id": 0x06},
-    ]
 
 
 def test_replace_keymap_rows_extracts_long_press_details() -> None:
@@ -416,7 +378,6 @@ def test_replace_keymap_rows_extracts_long_press_details() -> None:
     assert details["command_id"] == 0x01
     assert details["long_press_device_id"] == 0x05
     assert details["long_press_command_id"] == 0x02
-    assert cache.get_activity_keybinding_slots(act) == []
 
 
 def test_replace_keymap_rows_no_long_press_omits_long_press_details() -> None:

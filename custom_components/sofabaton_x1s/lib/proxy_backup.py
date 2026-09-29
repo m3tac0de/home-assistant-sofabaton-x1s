@@ -172,10 +172,6 @@ class CacheBackupMixin:
                 str(k): [dict(slot) for slot in slots]
                 for k, slots in self.state.activity_favorite_slots.items()
             },
-            "activity_keybinding_slots": {
-                str(k): [dict(slot) for slot in slots]
-                for k, slots in self.state.activity_keybinding_slots.items()
-            },
             "activity_members": {
                 str(k): sorted(members)
                 for k, members in self.state.activity_members.items()
@@ -190,17 +186,6 @@ class CacheBackupMixin:
                     for (dev_id, command_id), label in labels.items()
                 ]
                 for k, labels in self.state.activity_favorite_labels.items()
-            },
-            "activity_keybinding_labels": {
-                str(k): [
-                    {
-                        "device_id": dev_id,
-                        "command_id": command_id,
-                        "label": label,
-                    }
-                    for (dev_id, command_id), label in labels.items()
-                ]
-                for k, labels in self.state.activity_keybinding_labels.items()
             },
         }
 
@@ -445,27 +430,6 @@ class CacheBackupMixin:
             if normalized_slots:
                 self.state.activity_favorite_slots[act_lo] = normalized_slots
 
-        self.state.activity_keybinding_slots.clear()
-        activity_keybinding_slots = data.get("activity_keybinding_slots", {})
-        for key, slots in activity_keybinding_slots.items():
-            if not isinstance(slots, list):
-                continue
-            act_lo = int(key) & 0xFF
-            normalized_slots: list[dict[str, int]] = []
-            for slot in slots:
-                if not isinstance(slot, dict):
-                    continue
-                normalized_slots.append(
-                    {
-                        "button_id": int(slot.get("button_id", 0)) & 0xFF,
-                        "device_id": int(slot.get("device_id", 0)) & 0xFF,
-                        "command_id": int(slot.get("command_id", 0)) & 0xFF,
-                        "source": str(slot.get("source", "cache")),
-                    }
-                )
-            if normalized_slots:
-                self.state.activity_keybinding_slots[act_lo] = normalized_slots
-
         self.state.activity_members.clear()
         activity_members = data.get("activity_members", {})
         for key, members in activity_members.items():
@@ -489,24 +453,6 @@ class CacheBackupMixin:
                     parsed_labels[(dev_id, command_id)] = label
             if parsed_labels:
                 self.state.activity_favorite_labels[act_lo] = parsed_labels
-
-        self.state.activity_keybinding_labels.clear()
-        activity_keybinding_labels = data.get("activity_keybinding_labels", {})
-        for key, labels in activity_keybinding_labels.items():
-            if not isinstance(labels, list):
-                continue
-            act_lo = int(key) & 0xFF
-            parsed_labels: dict[tuple[int, int], str] = {}
-            for row in labels:
-                if not isinstance(row, dict):
-                    continue
-                dev_id = int(row.get("device_id", 0)) & 0xFF
-                command_id = int(row.get("command_id", 0)) & 0xFF
-                label = str(row.get("label", "")).strip()
-                if dev_id and command_id and label:
-                    parsed_labels[(dev_id, command_id)] = label
-            if parsed_labels:
-                self.state.activity_keybinding_labels[act_lo] = parsed_labels
 
         has_activities_catalog = "activities" in data
         activities = data.get("activities", {})
@@ -569,9 +515,7 @@ class CacheBackupMixin:
             self.state.activity_macros.pop(ent_lo, None)
             self.state.activity_members.pop(ent_lo, None)
             self.state.activity_favorite_slots.pop(ent_lo, None)
-            self.state.activity_keybinding_slots.pop(ent_lo, None)
             self.state.activity_favorite_labels.pop(ent_lo, None)
-            self.state.activity_keybinding_labels.pop(ent_lo, None)
             self.state.activity_command_refs.pop(ent_lo, None)
             self._forget_detail("activity", ent_lo)
             self._macros_complete.discard(ent_lo)
@@ -593,9 +537,7 @@ class CacheBackupMixin:
             set(self.state.activity_macros.keys())
             | set(self.state.activity_members.keys())
             | set(self.state.activity_favorite_slots.keys())
-            | set(self.state.activity_keybinding_slots.keys())
             | set(self.state.activity_favorite_labels.keys())
-            | set(self.state.activity_keybinding_labels.keys())
             | set(self.state.activity_command_refs.keys())
         )
 
@@ -614,7 +556,7 @@ class CacheBackupMixin:
     def clear_activities_catalog(self) -> None:
         """Clear only the activity name catalog before a fresh activity list fetch.
 
-        Deliberately does NOT clear per-activity keymaps, favorites, keybindings,
+        Deliberately does NOT clear per-activity keymaps, favorites,
         or macros — those are not returned by OP_REQ_ACTIVITIES and would not be
         repopulated by the burst.  Per-activity detail data for removed activities
         is pruned separately via clear_cached_entity_detail.
@@ -659,9 +601,7 @@ class CacheBackupMixin:
         self.state.activity_macros.clear()
         self.state.activity_members.clear()
         self.state.activity_favorite_slots.clear()
-        self.state.activity_keybinding_slots.clear()
         self.state.activity_favorite_labels.clear()
-        self.state.activity_keybinding_labels.clear()
         self.state.activity_command_refs.clear()
 
         # Completion / pending sets.

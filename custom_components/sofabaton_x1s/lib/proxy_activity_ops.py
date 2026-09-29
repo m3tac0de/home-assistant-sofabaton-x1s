@@ -637,9 +637,7 @@ class ActivityOpsMixin:
         self.state.activity_members.pop(act_lo, None)
         self.state.activity_command_refs.pop(act_lo, None)
         self.state.activity_favorite_slots.pop(act_lo, None)
-        self.state.activity_keybinding_slots.pop(act_lo, None)
         self.state.activity_favorite_labels.pop(act_lo, None)
-        self.state.activity_keybinding_labels.pop(act_lo, None)
         self._clear_favorite_label_requests_for_activity(act_lo)
 
         if not self.request_activity_mapping(act_lo):

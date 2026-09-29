@@ -1282,9 +1282,7 @@ class SofabatonHub:
         for key in (
             "activity_macros",
             "activity_favorite_slots",
-            "activity_keybinding_slots",
             "activity_favorite_labels",
-            "activity_keybinding_labels",
             "activity_members",
         ):
             rows = data.get(key, {})
@@ -2717,7 +2715,7 @@ class SofabatonHub:
         """Re-warm every cached activity that references *device_id*.
 
         Rewriting a device's command records leaves the referencing
-        activities' cached favorite/keybinding label maps and macro views
+        activities' cached favorite label maps and macro views
         holding pre-edit values (they are resolved copies, not references
         into the device catalog). Callers that just rewrote a device's
         records use this to mirror the full-refresh behaviour for exactly
@@ -2950,12 +2948,9 @@ class SofabatonHub:
         if clear_favorites:
             self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
-            self._proxy.state.activity_keybinding_slots.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_members.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_labels.pop(ent_id & 0xFF, None)
-            self._proxy.state.activity_keybinding_labels.pop(ent_id & 0xFF, None)
             self._proxy._clear_favorite_label_requests_for_activity(ent_id & 0xFF)
-            self._proxy._clear_keybinding_label_requests_for_activity(ent_id & 0xFF)
 
         if clear_macros:
             self._proxy.state.activity_macros.pop(ent_id & 0xFF, None)
@@ -4572,7 +4567,7 @@ class SofabatonHub:
         if command_records_touched:
             await self.async_fetch_device_commands(dev_id)
             # Record rewrites change labels that other activities' cached
-            # favorite/keybinding label maps still hold (they are resolved
+            # favorite label maps still hold (they are resolved
             # copies, not references into the device catalog). Re-warm
             # every activity referencing the managed device, not just the
             # ones the plan wrote to directly — mirroring what a full

@@ -516,15 +516,7 @@ def test_try_finish_activity_map_burst_ends_matching_burst() -> None:
     assert proxy._burst.active is False
 
 
-def test_try_finish_buttons_burst_requires_expected_final_frame() -> None:
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
-    proxy._burst.start("buttons:101", now=0.0)
-    proxy.note_buttons_frame(0x65, frame_no=1, total_frames=2)
-
-    assert proxy.try_finish_buttons_burst(0x65, frame_no=1) is False
-    assert proxy.try_finish_buttons_burst(0x65, frame_no=2) is True
-    assert proxy._burst.active is False
 
 
 def test_ghost_activity_row_is_ignored_without_request_in_flight() -> None:
@@ -658,16 +650,13 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
 
 
 
-def test_ensure_commands_for_activity_ignores_keybinding_slots(monkeypatch) -> None:
+def test_ensure_commands_for_activity_resolves_favorite_labels(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     cache = ActivityCache()
     act = 0x10
     cache.activity_favorite_slots[act] = [
         {"button_id": 0x01, "device_id": 0x01, "command_id": 0x1111},
-    ]
-    cache.activity_keybinding_slots[act] = [
-        {"button_id": ButtonName.VOL_DOWN, "device_id": 0x01, "command_id": 0x2222},
     ]
     proxy.state = cache
 
@@ -688,43 +677,8 @@ def test_ensure_commands_for_activity_ignores_keybinding_slots(monkeypatch) -> N
     assert calls == [(0x01, 0x1111, True)]
     assert commands_by_device == {0x01: {0x1111: "Favorite One"}}
     assert proxy.state.activity_favorite_labels[act] == {(0x01, 0x1111): "Favorite One"}
-    assert proxy.state.activity_keybinding_labels.get(act, {}) == {}
-    assert proxy._keybinding_label_requests == {}
 
 
-def test_ensure_commands_for_activity_leaves_existing_keybinding_requests_untouched(
-    monkeypatch,
-) -> None:
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
-
-    cache = ActivityCache()
-    act = 0x10
-    cache.activity_favorite_slots[act] = [
-        {"button_id": 0x01, "device_id": 0x01, "command_id": 0x1111},
-    ]
-    cache.activity_keybinding_slots[act] = [
-        {"button_id": ButtonName.VOL_DOWN, "device_id": 0x01, "command_id": 0x2222},
-    ]
-    proxy.state = cache
-    proxy._keybinding_label_requests[(0x01, 0x2222)] = {act}
-
-    calls: list[tuple[int, int, bool]] = []
-
-    def fake_get_single(ent_id: int, command_id: int, fetch_if_missing: bool = True):
-        calls.append((ent_id, command_id, fetch_if_missing))
-        mappings = {
-            (0x01, 0x1111): ({0x1111: "Favorite One"}, True),
-        }
-        return mappings.get((ent_id, command_id), ({}, False))
-
-    monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
-
-    commands_by_device, ready = proxy.ensure_commands_for_activity(act, fetch_if_missing=False)
-
-    assert ready is True
-    assert calls == [(0x01, 0x1111, False)]
-    assert commands_by_device == {0x01: {0x1111: "Favorite One"}}
-    assert proxy._keybinding_label_requests == {(0x01, 0x2222): {act}}
 
 def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
     registered = []
@@ -4119,11 +4073,7 @@ def test_activities_referencing_device_scans_all_cached_maps() -> None:
     proxy.state.activity_favorite_slots[0x62] = [
         {"device_id": dev, "command_id": 1, "button_id": 2, "source": "cache"}
     ]
-    proxy.state.activity_keybinding_slots[0x63] = [
-        {"device_id": dev, "command_id": 2, "button_id": 0xBE}
-    ]
     proxy.state.activity_favorite_labels[0x64][(dev, 1)] = "Zap"
-    proxy.state.activity_keybinding_labels[0x65][(dev, 2)] = "Blast"
     proxy.state.button_details[0x66][0xBE] = {
         "device_id": 0x09,
         "command_id": 3,
@@ -4147,7 +4097,7 @@ def test_activities_referencing_device_scans_all_cached_maps() -> None:
     proxy.state.button_details[dev][0xBE] = {"device_id": dev, "command_id": 1}
 
     assert proxy.activities_referencing_device(dev) == [
-        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+        0x60, 0x61, 0x62, 0x64, 0x66, 0x67,
     ]
 
 
