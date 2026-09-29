@@ -32,6 +32,7 @@ classifiers = [
 ]
 dependencies = [
     "zeroconf>=0.131",
+    "ifaddr>=0.2",
 ]
 
 [project.urls]
