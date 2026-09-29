@@ -716,6 +716,7 @@ class ActivityOpsMixin:
             self._log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
             with self.exchange("assign_macro_fetch"):
                 fetch_ts = time.monotonic()
+                self._macro_assembler.reset(act_lo)
                 self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
                 # A freshly created activity has no power macros yet: the hub

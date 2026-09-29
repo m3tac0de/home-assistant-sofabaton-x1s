@@ -136,6 +136,17 @@ class MacroAssembler:
         self._buffers: Dict[int, _MacroBurst] = {}
         self._last_activity_id: int | None = None
 
+    def reset(self, activity_id: int) -> None:
+        """Drop any partial buffer for ``activity_id``.
+
+        Called when a new REQ_MACROS request goes out for the activity: a
+        burst that was cut off earlier (a dropped connection, a timeout) left
+        a partial buffer, and the new burst's records must not be appended to
+        it (stale record, duplicate key, a record missing: CR-L2-3)."""
+
+        self._buffers.pop(int(activity_id) & 0xFF, None)
+        self._buffers.pop(int(activity_id), None)
+
     def _get_buffer(self, activity_id: int) -> _MacroBurst:
         buf = self._buffers.get(activity_id)
         if buf is None:

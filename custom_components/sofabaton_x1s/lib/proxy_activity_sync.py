@@ -1903,6 +1903,7 @@ class ActivitySyncMixin:
         # exchange inside _send_paged_macro_save is a reentrant no-op.
         with self.exchange("membership_remove"):
             self.reset_ack_queues()
+            self._macro_assembler.reset(act_lo)
             self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, ButtonName.POWER_ON & 0xFF]))
             record = self.wait_for_macro_record(act_lo, ButtonName.POWER_ON, timeout=5.0)
             if record is None:

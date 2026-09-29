@@ -79,6 +79,7 @@ class CatalogMixin:
             return False
 
         self._pending_macro_requests.add(act_lo)
+        self._macro_assembler.reset(act_lo)
         return self.enqueue_cmd(
             OP_REQ_MACRO_LABELS,
             bytes([act_lo, 0xFF]),
@@ -916,6 +917,7 @@ class CatalogMixin:
         if fetch_if_missing and self.can_issue_commands():
             if act_lo not in self._pending_macro_requests:
                 self._pending_macro_requests.add(act_lo)
+                self._macro_assembler.reset(act_lo)
                 self.enqueue_cmd(
                     OP_REQ_MACRO_LABELS,
                     bytes([act_lo, 0xFF]),

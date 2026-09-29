@@ -315,6 +315,14 @@ def run_create_sequence(
         for reject_byte in step.ack_reject_first_bytes:
             candidates.append((step.ack_opcode, reject_byte & 0xFF))
 
+        def _is_rejection(ack_payload: bytes) -> bool:
+            first_byte = ack_payload[0] if ack_payload else None
+            if first_byte is None:
+                return False
+            if step.ack_reject_first_bytes and (first_byte & 0xFF) in step.ack_reject_first_bytes:
+                return True
+            return wildcard_status_reject and (first_byte & 0xFF) != ACK_STATUS_BYTE_OK
+
         matched: tuple[int, bytes] | None = None
         page_payloads = _page_create_step_payloads(step)
 
@@ -349,6 +357,17 @@ def run_create_sequence(
 
             if matched is None:
                 break
+            # Every page carries its own verdict: a rejected page fails the
+            # step, and no further page is sent after it.
+            if _is_rejection(matched[1]):
+                return CreateSequenceResult(
+                    success=False,
+                    assigned_device_id=assigned_device_id,
+                    failed_step=step,
+                    failed_index=index,
+                    rejected=True,
+                    reject_payload=bytes(matched[1]),
+                )
 
         if matched is None:
             return CreateSequenceResult(
@@ -361,27 +380,6 @@ def run_create_sequence(
             )
 
         _ack_opcode, ack_payload = matched
-        first_byte = ack_payload[0] if ack_payload else None
-        is_explicit_reject = (
-            step.ack_reject_first_bytes
-            and first_byte is not None
-            and (first_byte & 0xFF) in step.ack_reject_first_bytes
-        )
-        is_status_wildcard_reject = (
-            wildcard_status_reject
-            and first_byte is not None
-            and (first_byte & 0xFF) != ACK_STATUS_BYTE_OK
-        )
-        if is_explicit_reject or is_status_wildcard_reject:
-            return CreateSequenceResult(
-                success=False,
-                assigned_device_id=assigned_device_id,
-                failed_step=step,
-                failed_index=index,
-                rejected=True,
-                reject_payload=bytes(ack_payload),
-            )
-
         if step.capture_device_id and ack_payload:
             assigned_device_id = ack_payload[0] & 0xFF
 

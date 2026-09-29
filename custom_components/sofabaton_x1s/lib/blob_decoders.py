@@ -355,11 +355,14 @@ def render_wifi_ip_blob_body(
     if len(host_parts) != 4:
         raise ValueError(f"wifi_ip host is not a dotted quad: {host!r}")
     try:
-        ip_bytes = bytes(int(part) & 0xFF for part in host_parts)
+        octets = [int(part) for part in host_parts]
     except ValueError as exc:
         raise ValueError(f"wifi_ip host octet not an int: {host!r}") from exc
-    if not all(0 <= octet <= 255 for octet in ip_bytes):
+    # Range-check before packing: masking first made .256 encode as .0 while
+    # the Host line still said .256 (CR-L2-4).
+    if not all(0 <= octet <= 255 for octet in octets):
         raise ValueError(f"wifi_ip host octet out of range: {host!r}")
+    ip_bytes = bytes(octets)
     if port < 0 or port > 0xFFFF:
         raise ValueError(f"wifi_ip port out of range: {port}")
 
