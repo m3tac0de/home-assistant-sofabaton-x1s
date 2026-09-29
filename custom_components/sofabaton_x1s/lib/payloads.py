@@ -18,6 +18,7 @@ from typing import Any, Literal, Mapping, Optional, Sequence, Union
 from .blob_decoders import (
     build_raw_ir_blob_body,
     encode_decoded_blob,
+    descriptive_ir_descriptor,
     looks_like_descriptive_ir_blob,
     parse_pronto_hex,
     try_decode_blob,
@@ -40,7 +41,6 @@ __all__ = ["IrPayload", "NetworkCommand", "CommandRecord", "CommandPayload", "pa
 MIN_PAYLOAD_BYTES = 10
 # Raw-blob layout: declared length (BE16), zeros, carrier Hz (BE16 at 6:8).
 _RAW_CARRIER_OFFSET = slice(6, 8)
-_DESCRIPTOR_OFFSET = 8
 
 IrPayloadKind = Literal["raw", "descriptive"]
 
@@ -118,11 +118,7 @@ class IrPayload:
     def descriptor(self) -> Optional[str]:
         """The protocol descriptor of a descriptive payload, else None."""
 
-        if self.kind != "descriptive":
-            return None
-        length = int.from_bytes(self.blob[0:2], "big")
-        raw = self.blob[_DESCRIPTOR_OFFSET:_DESCRIPTOR_OFFSET + length]
-        return raw.decode("ascii", errors="replace")
+        return descriptive_ir_descriptor(self.blob)
 
     @property
     def carrier_hz(self) -> Optional[int]:

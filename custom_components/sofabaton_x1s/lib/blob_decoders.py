@@ -802,7 +802,7 @@ def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
 
     if not isinstance(blob, (bytes, bytearray)) or len(blob) < 8 + 2 * 4 + 4:
         raise ValueError("blob too short for a raw IR timing body")
-    if looks_like_descriptive_ir_blob(bytes(blob)):
+    if bytes(blob[2:8]) == _DESCRIPTIVE_IR_MAGIC:
         raise ValueError("descriptive IR payload carries no raw timings")
     carrier_hz = int.from_bytes(blob[6:8], "big")
     if not 10_000 <= carrier_hz <= 500_000:
@@ -833,10 +833,25 @@ def parse_raw_ir_blob_body(blob: bytes) -> Tuple[list, int]:
     return timings, carrier_hz
 
 
-def looks_like_descriptive_ir_blob(blob: bytes) -> bool:
-    """Content sniff for the descriptive (``P:``) replay payload class."""
+def descriptive_ir_descriptor(blob: bytes) -> str | None:
+    """The ASCII descriptor of a descriptive (``P:``) replay blob, or None.
 
-    return len(blob) >= 8 and blob[2:8] == _DESCRIPTIVE_IR_MAGIC
+    The one rule every caller uses (CR-L2-8): the descriptive magic, a
+    declared length that fits the blob, and ASCII text. The facade's
+    ``IrPayload.kind``, the X2 parser-reset gate and the backup decoder all
+    classify a blob the same way through this function.
+    """
+
+    try:
+        return _decode_descriptive_ir(bytes(blob))["descriptor"]
+    except (ValueError, TypeError):
+        return None
+
+
+def looks_like_descriptive_ir_blob(blob: bytes) -> bool:
+    """True for a well-formed descriptive (``P:``) replay payload."""
+
+    return descriptive_ir_descriptor(blob) is not None
 
 
 #: Pronto words are 16-bit; longer gaps clamp to the maximum.

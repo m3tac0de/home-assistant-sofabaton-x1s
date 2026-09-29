@@ -5,6 +5,11 @@ from dataclasses import dataclass, field
 import re
 from typing import Dict, Iterator, List, Tuple
 
+from .blob_decoders import (
+    descriptive_ir_descriptor,
+    looks_like_descriptive_ir_blob,
+    render_ir_descriptive_blob_body,
+)
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S
 from .wire_schema import schema_for
 from .protocol_const import (
@@ -705,32 +710,19 @@ def looks_like_descriptive_play_blob(blob: bytes) -> bool:
         blob[0..1] = declared length BE (>= 1, == len of the ASCII descriptor)
         blob[2..5] = 0x00 0x00 0x11 0x00
         blob[6..7] = 0x94 0x70
-        blob[8..]  = ASCII descriptor starting with "P:" + four trailing nulls
+        blob[8..]  = ASCII descriptor ("P:..."), then four trailing nulls
+
+    The same rule as :func:`blob_decoders.looks_like_descriptive_ir_blob`.
     """
 
-    return (
-        len(blob) >= 14
-        and blob[2:6] == b"\x00\x00\x11\x00"
-        and blob[6:8] == b"\x94\x70"
-        and blob[8:10] == b"P:"
-    )
+    return looks_like_descriptive_ir_blob(blob)
 
 
 def descriptive_play_blob_text(blob: bytes) -> str | None:
     """Return the human-readable descriptor text from a descriptive blob body."""
 
-    if not looks_like_descriptive_play_blob(blob):
-        return None
-    declared_len = int.from_bytes(blob[0:2], "big")
-    if declared_len <= 0:
-        return None
-    text_end = 8 + declared_len
-    if text_end > len(blob):
-        return None
-    try:
-        return blob[8:text_end].decode("ascii").rstrip("\x00")
-    except UnicodeDecodeError:
-        return None
+    descriptor = descriptive_ir_descriptor(blob)
+    return None if descriptor is None else descriptor.rstrip("\x00")
 
 
 def split_play_blob_tail(blob: bytes) -> tuple[bytes, int]:
@@ -811,11 +803,6 @@ def build_descriptive_ir_blob_body(descriptor: str) -> bytes:
         raise ValueError("descriptor text must start with 'P:'")
 
     text = _canonicalize_denonk_descriptor(text)
-    # Import locally to avoid a circular import at module load time:
-    # blob_decoders only imports from protocol_const, but commands is
-    # a heavy dependency that some early-loaded modules pull in.
-    from .blob_decoders import render_ir_descriptive_blob_body
-
     return render_ir_descriptive_blob_body(text) + b"\x00\x00\x00\x00"
 
 
