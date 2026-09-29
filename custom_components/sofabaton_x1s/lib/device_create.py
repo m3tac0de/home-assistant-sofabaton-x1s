@@ -510,6 +510,7 @@ class DeviceCreateResult:
     restored_inputs: int = 0
     skipped_favorites: int = 0
     skipped_macro_steps: int = 0
+    skipped_button_bindings: int = 0
     #: Bundle-restore specific: macro 0xC5 ("set input on device") rows
     #: whose source-ordinal could not be re-resolved against the
     #: destination device's freshly-assigned command ids. Always 0

@@ -112,8 +112,9 @@ def build_device_block(
     ``idle_behavior`` is the device's automatic-power / idle-behavior mode
     byte (the 0x0242 reply). It lives in a separate hub query rather than
     the device record, so it is threaded in explicitly. ``None`` (the value
-    was not available) omits the field; restore then falls back to the
-    legacy ``power_mode`` reading for older backups.
+    was not available) omits the field; restore then writes no idle
+    behavior (the record-tail ``power_mode`` byte is a different field and
+    never stands in for it).
     """
 
     base: dict[str, Any] = {

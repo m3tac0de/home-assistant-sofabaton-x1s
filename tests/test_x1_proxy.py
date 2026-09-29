@@ -1110,7 +1110,16 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
                 "command_name": "Input",
                 "long_press_device_id": None,
                 "long_press_command_id": None,
-            }
+            },
+            # Long press only: counted, not restored (hub acceptance of a
+            # short-0 row is bench program BP2).
+            {
+                "button_id": 0x59,
+                "device_id": 11,
+                "command_id": 0,
+                "long_press_device_id": 11,
+                "long_press_command_id": 19,
+            },
         ],
         "macros": [
             {
@@ -1141,6 +1150,7 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
         "restored_inputs": 1,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
+        "skipped_button_bindings": 1,
         "command_id_map": {"18": 18, "19": 19},
     }
     assert len(sequence_calls) == 2
@@ -1758,6 +1768,7 @@ def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str)
         "restored_inputs": 0,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
+        "skipped_button_bindings": 0,
         "command_id_map": {"5": 5},
     }
     assert [step.label for step in sequence_calls[0]] == ["device-create"]

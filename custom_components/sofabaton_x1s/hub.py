@@ -582,11 +582,18 @@ class SofabatonHub:
         return store
 
     async def _async_persist_cache_if_enabled(self) -> bool:
+        """Persist the cache when enabled. Best effort: a failure is logged
+        and never ends the caller (the initial sync persists mid-way)."""
+
         store = await self._async_get_persistent_cache_store()
         if not store.enabled:
             return False
 
-        await store.async_set_hub_cache(self.entry_id, await self.async_export_cache_state())
+        try:
+            await store.async_set_hub_cache(self.entry_id, await self.async_export_cache_state())
+        except Exception:
+            self._log.exception("[%s] Failed to persist the hub cache", self.entry_id)
+            return False
         return True
 
     def _activity_catalog_signature(

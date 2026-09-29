@@ -31,6 +31,14 @@ LIB_DIR = (
 )
 
 
+
+def _stub_device_restore(monkeypatch, proxy, fn) -> None:
+    """Stub a bundle restore's device phase; ``fn`` has restore_device's
+    signature (the bundle calls _restore_device_outcome, which also
+    reports a half-made device)."""
+
+    monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (fn(payload=payload), None))
+
 def _load_lib() -> types.ModuleType:
     name = "sofabaton_real_engine_test_pkg"
     if name in sys.modules:
@@ -749,7 +757,7 @@ def test_restore_preflight_rejects_a_bad_bundle_before_any_write(monkeypatch) ->
         _hub_link(engine, True)
         writes = []
         monkeypatch.setattr(engine, "erase_configuration", lambda **kw: writes.append("erase") or True)
-        monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: writes.append("restore_device") or {"status": "success", "device_id": 9})
+        _stub_device_restore(monkeypatch, engine, lambda payload, **kw: writes.append("restore_device") or {"status": "success", "device_id": 9})
         monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
         proxy = aio.AsyncXProxy.wrap(engine)
         bad = [
@@ -763,6 +771,13 @@ def test_restore_preflight_rejects_a_bad_bundle_before_any_write(monkeypatch) ->
             _full_bundle(activities=[_activity(device={"device_id": 0x65, "name": "A"})]),
             _full_bundle(activities=[_activity(macros=[{"button_id": 0xC6, "steps": [{"device_id": 0x20, "command_id": 1}]}])]),
             _full_bundle(activities=[_activity(macros=[{"button_id": 0xC6, "steps": [{"device_id": 0x70, "command_id": 1}]}])]),
+            # Device content the device phase would raise on (CR-L4a-2):
+            # a duplicate command id and an unreadable command payload.
+            _full_bundle(devices=[{**_full_bundle()["devices"][0], "commands": [
+                {"command_id": 1, "name": "A"}, {"command_id": 1, "name": "B"}]}]),
+            _full_bundle(devices=[{**_full_bundle()["devices"][0], "commands": [
+                {"command_id": 1, "name": "A", "restore_data": {
+                    "transport": "hub_code_record", "data_hex": "zz", "library_type": 13}}]}]),
         ]
         for bundle in bad:
             try:
@@ -795,7 +810,7 @@ def test_restore_adapts_the_engine_result_shape(monkeypatch) -> None:
     async def main():
         engine = _engine()
         _hub_link(engine, True)
-        monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: {"status": "success", "device_id": 9, "restored_commands": 0})
+        _stub_device_restore(monkeypatch, engine, lambda payload, **kw: {"status": "success", "device_id": 9, "restored_commands": 0})
         monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
         rereads = _record_rereads(monkeypatch)
         proxy = aio.AsyncXProxy.wrap(engine)
@@ -806,10 +821,26 @@ def test_restore_adapts_the_engine_result_shape(monkeypatch) -> None:
         assert rereads == [((9,), (), True)]             # what the rebuild made, lists included
 
         # A first-entity failure keeps the counts honest and is not a success.
-        monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: None)
+        _stub_device_restore(monkeypatch, engine, lambda payload, **kw: None)
         failed = await proxy.restore(_full_bundle())
         assert not failed.ok and failed.failed_at == ("device", 5) and failed.wrote_nothing
         assert len(rereads) == 1                         # nothing made, nothing to read back
+
+        # A create whose finalize and rollback both failed leaves a device
+        # behind: the hub is NOT as it was, and the orphan is read back.
+        monkeypatch.setattr(engine, "_restore_device_outcome", lambda payload: (None, 0x21))
+        orphan = await proxy.restore(_full_bundle())
+        assert orphan.failed_at == ("device", 5) and orphan.partial_device_ids == (0x21,)
+        assert not orphan.wrote_nothing
+        assert rereads[-1][0] == (0x21,)
+
+        # A device phase that raises still says where it stopped.
+        def _raise(payload):
+            raise ValueError("invalid data_hex")
+
+        monkeypatch.setattr(engine, "_restore_device_outcome", _raise)
+        raised = await proxy.restore(_full_bundle())
+        assert not raised.ok and raised.failed_at == ("device", 5)
 
     asyncio.run(main())
 

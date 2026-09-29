@@ -19,8 +19,8 @@ from typing import Any
 
 from .backup_export import now_iso
 from .macros import MacroKeyEntry, MacroRecord
-from .protocol_const import OP_ERASE_CONFIGURATION
-from .state_helpers import normalize_device_entry, one_slot_per_fav_id
+from .protocol_const import OP_ERASE_CONFIGURATION, OP_STATUS_ACK
+from .state_helpers import normalize_device_entry, one_slot_per_fav_id, reads_live_state
 
 
 def _entry_with_raw_body_hex(entry: dict[str, Any]) -> dict[str, Any]:
@@ -78,6 +78,7 @@ class CacheBackupMixin:
 
         self.state.detail_fetched_at[kind].pop(ent_lo, None)
 
+    @reads_live_state
     def export_cache_state(self) -> dict[str, Any]:
         def _device_for_export(v: dict[str, Any]) -> dict[str, Any]:
             return _entry_with_raw_body_hex(v)
@@ -542,11 +543,11 @@ class CacheBackupMixin:
         )
 
     def clear_devices_catalog(self) -> None:
-        """Clear only the device name catalog before a fresh device list fetch.
+        """Clear only the device name catalog (erase wipes it this way).
 
-        Deliberately does NOT clear per-device commands or ip_buttons — those are
-        preserved for devices that still exist and pruned separately (via
-        clear_cached_entity_detail) for devices that were removed.
+        A catalog refresh never clears first: it fetches, then prunes what
+        the hub no longer lists. This clears just the names, not
+        per-device commands or ip_buttons.
         """
         self.state.devices.clear()
         self.state.ip_devices.clear()
@@ -554,12 +555,12 @@ class CacheBackupMixin:
         self.bump_cache_generation()
 
     def clear_activities_catalog(self) -> None:
-        """Clear only the activity name catalog before a fresh activity list fetch.
+        """Clear only the activity name catalog (erase wipes it this way).
 
-        Deliberately does NOT clear per-activity keymaps, favorites,
-        or macros — those are not returned by OP_REQ_ACTIVITIES and would not be
-        repopulated by the burst.  Per-activity detail data for removed activities
-        is pruned separately via clear_cached_entity_detail.
+        A catalog refresh never clears first: it fetches, then prunes what
+        the hub no longer lists. This clears just the names, not
+        per-activity keymaps, favorites or macros (OP_REQ_ACTIVITIES does
+        not return those).
         """
         self.state.activities.clear()
         self._activity_row_payloads.clear()
@@ -597,12 +598,17 @@ class CacheBackupMixin:
         self.state.ip_buttons.clear()
         self.state.ip_devices.clear()
 
-        # Per-activity detail surfaces.
+        # Per-activity detail surfaces. The hub reuses ids after an erase,
+        # so a macro record or favorites order left here would project onto
+        # the next activity that gets the id.
         self.state.activity_macros.clear()
         self.state.activity_members.clear()
         self.state.activity_favorite_slots.clear()
         self.state.activity_favorite_labels.clear()
         self.state.activity_command_refs.clear()
+        self.state.activity_favorites_order.clear()
+        with self._macro_payload_lock:
+            self._macro_records_cache.clear()
 
         # Completion / pending sets.
         self._commands_complete.clear()
@@ -679,6 +685,15 @@ class CacheBackupMixin:
             return False
 
         ack_opcode, ack_payload = result
+        if ack_opcode == OP_STATUS_ACK and ack_payload and ack_payload[0] != 0x00:
+            # A STATUS_ACK with a non-zero status is a rejection (L-P3):
+            # the hub kept its configuration, so a replace restore must not
+            # rebuild next to it. Any other first reply counts as done.
+            self._log.warning(
+                "[ERASE] hub rejected the erase (status=0x%02X) -- nothing wiped",
+                ack_payload[0],
+            )
+            return False
         self._log.info(
             "[ERASE] hub answered opcode=0x%04X payload_len=%d -- wiping local caches",
             ack_opcode,

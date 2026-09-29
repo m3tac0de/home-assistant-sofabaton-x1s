@@ -546,7 +546,7 @@ def test_a_dropped_read_releases_the_engines_pending_flag() -> None:
 
     assert proxy.request_devices()
     assert proxy.request_buttons_for_entity(0x65)
-    assert proxy.request_macros_for_activity(0x65)
+    proxy.get_macros_for_activity(0x65)
     assert 0x65 in proxy._pending_button_requests
 
     allowed[0] = False
@@ -581,3 +581,27 @@ def test_try_claim_never_overwrites_a_burst_another_thread_started() -> None:
     scheduler.finish("devices", can_issue=lambda: True, sender=send)
     assert scheduler.try_claim("exchange:create") is True
     assert scheduler.kind == "exchange:create"
+
+
+def test_a_whole_cache_read_disturbed_by_ingest_is_retried() -> None:
+    import pytest
+
+    from custom_components.sofabaton_x1s.lib.state_helpers import reads_live_state
+
+    calls = []
+
+    @reads_live_state
+    def export():
+        calls.append(1)
+        if len(calls) < 3:
+            raise RuntimeError("dictionary changed size during iteration")
+        return {"ok": True}
+
+    assert export() == {"ok": True} and len(calls) == 3
+
+    @reads_live_state
+    def broken():
+        raise RuntimeError("something else")
+
+    with pytest.raises(RuntimeError, match="something else"):
+        broken()

@@ -16,7 +16,6 @@ ingest path.
 
 from __future__ import annotations
 
-import threading
 import time
 from typing import Any
 
@@ -27,7 +26,6 @@ from .protocol_const import (
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_DEVICES,
-    OP_REQ_IPCMD_SYNC,
     OP_REQ_MACRO_LABELS,
 )
 from .state_helpers import normalize_device_entry
@@ -65,54 +63,6 @@ class CatalogMixin:
             expects_burst=True,
             burst_kind=f"activity_map:{act_lo}",
         )
-
-    def request_macros_for_activity(self, act_id: int) -> bool:
-        if not self.can_issue_commands():
-            self._log.info("[CMD] request_macros_for_activity ignored: proxy client is connected"); return False
-
-        act_lo = act_id & 0xFF
-        if act_lo in self._pending_macro_requests:
-            self._log.debug(
-                "[CMD] request_macros_for_activity ignored: burst already pending for 0x%02X",
-                act_lo,
-            )
-            return False
-
-        self._pending_macro_requests.add(act_lo)
-        self._macro_assembler.reset(act_lo)
-        return self.enqueue_cmd(
-            OP_REQ_MACRO_LABELS,
-            bytes([act_lo, 0xFF]),
-            expects_burst=True,
-            burst_kind=f"macros:{act_lo}",
-        )
-
-    def request_ip_commands_for_device(self, dev_id: int, *, wait: bool = False, timeout: float = 1.0) -> bool:
-        """Fetch IP command definitions for an existing device."""
-
-        if not self.can_issue_commands():
-            self._log.info("[CMD] request_ip_commands_for_device ignored: proxy client is connected"); return False
-
-        dev_lo = dev_id & 0xFF
-        event = threading.Event() if wait else None
-
-        if event:
-            def _done(_: str) -> None:
-                event.set()
-
-            self._burst.on_burst_end(f"commands:{dev_lo}", _done)
-
-        ok = self.enqueue_cmd(
-            OP_REQ_IPCMD_SYNC,
-            bytes([dev_lo, 0xFF, 0x14]),
-            expects_burst=True,
-            burst_kind=f"commands:{dev_lo}",
-        )
-
-        if event:
-            event.wait(timeout)
-
-        return ok
 
     def get_activities(self, *, force_refresh: bool = True) -> tuple[dict[int, dict], bool]:
         to_export_view = _to_export_view()
@@ -758,6 +708,12 @@ class CatalogMixin:
             gone = (set(self._idle_behavior_values) | self._idle_behavior_absent) - set(committed)
         for dev_id in gone:
             self.forget_idle_behavior(dev_id)
+        # The observe-mode capture of a device the hub no longer lists
+        # would keep it "known" (get_known_device_ids) forever, and a
+        # whole-hub backup would then ask the hub for it and fail.
+        for dev_id in set(self.state.ip_devices) - set(committed):
+            self.state.ip_devices.pop(dev_id, None)
+            self.state.ip_buttons.pop(dev_id, None)
         self.state.devices = committed
         self._devices_catalog_ready = True
 

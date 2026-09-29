@@ -2175,3 +2175,22 @@ def test_idle_behavior_is_forgotten_for_ids_a_devices_snapshot_drops() -> None:
     proxy.state.devices[0x05] = {"name": "New", "brand": "LG"}
     assert proxy.get_idle_behavior(0x05, fetch_if_missing=False) == (None, False)
     assert proxy.get_idle_behavior(0x06, fetch_if_missing=False) == (None, False)
+
+
+def test_a_devices_commit_drops_captures_of_devices_the_hub_no_longer_lists() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    # The vendor app synced Wifi device 9 through the proxy, then deleted it.
+    proxy.state.record_virtual_device(9, name="Lamp", button_id=1, method="GET", url="/x")
+    proxy._begin_device_request()
+    proxy.ingest_device_row(
+        row_idx=1,
+        expected_rows=1,
+        dev_id=0x01,
+        device={"brand": "Sony", "name": "TV", "device_class": "ir", "device_class_code": 0x0D},
+    )
+    proxy._on_devices_burst_end("devices")
+
+    assert proxy.get_known_device_ids() == {0x01}
+    assert 9 not in proxy.state.ip_buttons

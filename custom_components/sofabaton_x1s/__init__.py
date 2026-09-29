@@ -4682,7 +4682,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN]["storage_resources_registered"] = False
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
-            await _async_persist_hub_cache(hass, hub)
+            try:
+                await _async_persist_hub_cache(hass, hub)
+            except Exception:
+                # Best effort: the hub must still stop, or the old proxy
+                # keeps its threads, sockets and listener registration.
+                _LOGGER.exception("[%s] Failed to persist cache for hub %s during unload", DOMAIN, hub.entry_id)
             await hub.async_stop_wifi_mqtt_ingress()
             await hub.async_stop_activity_state_ingress()
             roku_listener = await async_get_roku_listener(hass)

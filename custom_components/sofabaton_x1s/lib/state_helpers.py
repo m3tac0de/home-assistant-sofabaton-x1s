@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import threading
 import time
 from collections import defaultdict, deque
@@ -511,6 +512,32 @@ class ActivityCache:
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         return list(self.app_activations)
+
+
+_LIVE_READ_ATTEMPTS = 5
+
+
+def reads_live_state(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Retry a whole-cache read that a concurrent ingest disturbed.
+
+    The frame thread keeps ingesting (new keys in the command, keymap and
+    catalog dicts) while a consumer projects the cache on another thread,
+    and a dict that grows mid-iteration raises ``RuntimeError``. The
+    wrapped reads have no side effects, so they are simply run again.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        for attempt in range(_LIVE_READ_ATTEMPTS):
+            try:
+                return fn(*args, **kwargs)
+            except RuntimeError as exc:
+                if "during iteration" not in str(exc) or attempt == _LIVE_READ_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.005)
+        raise AssertionError("unreachable")
+
+    return wrapper
 
 
 class BurstScheduler:

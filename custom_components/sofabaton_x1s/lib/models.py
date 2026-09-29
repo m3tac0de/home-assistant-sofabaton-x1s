@@ -485,7 +485,8 @@ class RestoreResult:
     the engine's per-entity records are ``restored`` (kept as the engine
     returned them). ``erased`` says the hub was wiped first
     (``restore(replace=True)``): a failure after that has changed the hub
-    even when no entity was restored.
+    even when no entity was restored. ``partial_device_ids`` are devices a
+    failed restore left half-made on the hub (their rollback failed too).
     """
 
     status: Literal["success", "failed"]
@@ -496,6 +497,7 @@ class RestoreResult:
     snapshot_id: Optional[str]
     restored: dict[str, list[dict[str, Any]]] = field(default_factory=dict, compare=False)
     erased: bool = False
+    partial_device_ids: tuple[int, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -503,9 +505,16 @@ class RestoreResult:
 
     @property
     def wrote_nothing(self) -> bool:
-        """True when the hub is as it was: no entity restored, and not erased first."""
+        """True when the hub is as it was: no entity restored or left
+        half-made, and not erased first."""
 
-        return not self.ok and not self.erased and self.restored_devices == 0 and self.restored_activities == 0
+        return (
+            not self.ok
+            and not self.erased
+            and not self.partial_device_ids
+            and self.restored_devices == 0
+            and self.restored_activities == 0
+        )
 
     @classmethod
     def from_engine(cls, result: Any, *, snapshot_id: Optional[str], erased: bool = False) -> "RestoreResult":
@@ -544,6 +553,9 @@ class RestoreResult:
                 "activities": _records(data.get("restored_activities")),
             },
             erased=bool(erased),
+            partial_device_ids=tuple(
+                int(i) & 0xFF for i in data.get("partial_device_ids") or () if isinstance(i, int)
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:

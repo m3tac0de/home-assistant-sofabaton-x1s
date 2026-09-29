@@ -13,7 +13,7 @@ Design invariants (docs/internal/live-activity-editor-plan.md §6.2):
   bundle pairs with golden plan outputs.
 * **Scope guard** — every difference between the two bundles must be
   attributable to the edited activity or a known device-side effect
-  (idle behaviour, input records, command renames, HA-action hosts). Any
+  (idle behaviour, input records, command renames). Any
   other device/activity change raises ``ValueError`` — the defence against
   an editor bug silently rewriting unrelated config.
 * **Record-level granularity** — a macro / binding / favorite that is

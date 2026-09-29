@@ -2393,7 +2393,8 @@ class AsyncXProxy:
             # follows shows the hub and not a row of unfetched entities.
             restored = result if isinstance(result, dict) else {}
             await self._reread_after_write(
-                [row.get("device_id") or 0 for row in restored.get("restored_devices") or () if isinstance(row, dict)],
+                [row.get("device_id") or 0 for row in restored.get("restored_devices") or () if isinstance(row, dict)]
+                + [int(i) for i in restored.get("partial_device_ids") or () if isinstance(i, int)],
                 [row.get("activity_id") or 0 for row in restored.get("restored_activities") or () if isinstance(row, dict)],
                 refresh_catalog=True,
                 progress=progress,
@@ -3140,8 +3141,6 @@ ENGINE_ONLY: dict[str, str] = {
             "get_single_command_for_entity",
             "request_buttons_for_entity",
             "request_commands_for_entity",
-            "request_macros_for_activity",
-            "request_ip_commands_for_device",
         ),
     ),
     **_reasons(_R_CARD, ("on_redundant_off_press",)),
