@@ -1,6 +1,7 @@
 import type {
   BackupProgressEvent,
   BackupSectionId,
+  ControlPanelRuntimeState,
   ControlPanelSnapshot,
   HassLike,
   HubAction,
@@ -111,6 +112,24 @@ function normalizeLoadedFrontendVersion(value: unknown): string {
 function normalizeExpectedFrontendVersion(value: unknown): string | null {
   const version = String(value ?? "").trim();
   return version || null;
+}
+
+/** How the operation that was running in `previous` ended, as far as the
+ *  backend reports it in `next`: a registry operation is matched by its id,
+ *  a Wifi deploy by its device key. Null when the outcome is unknown (older
+ *  backend, record already expired): then nothing is announced. */
+export function terminalOutcome(
+  previous: ControlPanelRuntimeState | null | undefined,
+  next: ControlPanelRuntimeState | null | undefined,
+): "success" | "failed" | null {
+  if (!previous || previous.kind !== "operation_running" || !next) return null;
+  if (previous.operation === "wifi_deploy") {
+    const key = String(previous.device_key ?? "");
+    return next.last_wifi_deploys?.[key] ?? null;
+  }
+  const last = next.last_operation;
+  if (!last || !previous.operation_id || last.operation_id !== previous.operation_id) return null;
+  return last.status === "success" || last.status === "failed" ? last.status : null;
 }
 
 const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
@@ -1094,20 +1113,28 @@ export class ControlPanelStore {
       && previousRuntime.operation !== "cache_refresh"
     ) {
       const operation = previousRuntime.operation;
-      const successLabel = operation === "backup_restore"
-        ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully
-        : operation === "backup_export"
-          ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully
-          : operation === "entity_sync"
-            ? TOOLS_CARD_STRINGS.activities.syncSuccess
-            : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
-      this.showRuntimeCompletion(
-        {
-          tone: "success",
-          label: successLabel,
-        },
-        nextHub?.entry_id ?? previousHub?.entry_id ?? null,
-      );
+      // The poll only sees the operation disappear; the backend reports how
+      // it ended. Announce success only for a known success, an error only
+      // for a known failure, and nothing when the outcome is unknown.
+      const outcome = terminalOutcome(previousRuntime, nextRuntime);
+      const entryId = nextHub?.entry_id ?? previousHub?.entry_id ?? null;
+      if (outcome === "success") {
+        const successLabel = operation === "backup_restore"
+          ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully
+          : operation === "backup_export"
+            ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully
+            : operation === "entity_sync"
+              ? TOOLS_CARD_STRINGS.activities.syncSuccess
+              : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
+        this.showRuntimeCompletion({ tone: "success", label: successLabel }, entryId);
+      } else if (outcome === "failed") {
+        const failureLabel = operation === "backup_restore"
+          ? TOOLS_CARD_STRINGS.backup.restoreFailed
+          : operation === "backup_export"
+            ? TOOLS_CARD_STRINGS.backup.backupFailed
+            : TOOLS_CARD_STRINGS.errors.syncFailed;
+        this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
+      }
     }
     this._scheduleRuntimeStatePoll();
   }

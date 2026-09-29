@@ -737,3 +737,60 @@ test("deviceClassIcon maps known cache device classes to the expected icons", ()
   assert.equal(deviceClassIcon("something_else"), "mdi:radio-tower");
   assert.equal(deviceClassIcon(undefined), "mdi:radio-tower");
 });
+
+// CR-F1-1: the dock announced "success" whenever a running operation left the
+// poll, although a failed restore/sync/deploy looks the same. The backend now
+// reports how it ended; the store follows that and stays quiet when unknown.
+async function runTransition(running: Record<string, unknown>, idle: Record<string, unknown>) {
+  const { store } = createStore();
+  let runtime: Record<string, unknown> = running;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          hubs: [{ ...baseState.hubs[0], runtime_state: runtime }],
+        }),
+      },
+    }),
+  );
+  await store.loadState();
+  runtime = idle;
+  await store.loadControlPanelState();
+  return store.snapshot.runtimeCompletionNoticeByHub["hub-1"] ?? null;
+}
+
+const RUNNING_RESTORE = { kind: "operation_running", operation: "backup_restore", operation_id: "op-7" };
+const IDLE = { kind: "idle", operation: null };
+
+test("dock reports a failed restore as an error, not success", async () => {
+  const notice = await runTransition(RUNNING_RESTORE, {
+    ...IDLE, last_operation: { operation_id: "op-7", status: "failed" }, last_wifi_deploys: {},
+  });
+  assert.equal(notice?.tone, "error");
+});
+
+test("dock reports a successful restore as success", async () => {
+  const notice = await runTransition(RUNNING_RESTORE, {
+    ...IDLE, last_operation: { operation_id: "op-7", status: "success" }, last_wifi_deploys: {},
+  });
+  assert.equal(notice?.tone, "success");
+});
+
+test("dock stays quiet when the outcome is unknown", async () => {
+  // An older backend (no last_operation) or an outcome of a different operation.
+  assert.equal(await runTransition(RUNNING_RESTORE, IDLE), null);
+  assert.equal(
+    await runTransition(RUNNING_RESTORE, { ...IDLE, last_operation: { operation_id: "op-6", status: "success" } }),
+    null,
+  );
+});
+
+test("dock reports a failed Wifi deploy per device key", async () => {
+  const notice = await runTransition(
+    { kind: "operation_running", operation: "wifi_deploy", device_key: "livingroom" },
+    { ...IDLE, last_operation: null, last_wifi_deploys: { livingroom: "failed", other: "success" } },
+  );
+  assert.equal(notice?.tone, "error");
+});

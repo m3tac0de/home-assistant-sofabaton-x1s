@@ -749,6 +749,7 @@ async def _async_build_control_panel_runtime_payload(
         return {
             "kind": "operation_running",
             "operation": operation,
+            "operation_id": active_backup_operation.get("operation_id"),
             "label": label,
             # `detail` is this module's own English prose and cannot be
             # translated in the frontend, so it is only a fallback now. The
@@ -781,15 +782,21 @@ async def _async_build_control_panel_runtime_payload(
             "total_steps": None,
             "device_key": None,
             "device_name": None,
+            "last_operation": _control_panel_last_operation(registry, hub.entry_id),
+            "last_wifi_deploys": {},
         }
 
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
     devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
+    last_wifi_deploys: dict[str, str] = {}
     for device in devices:
         device_key = str(device.get("device_key") or "")
         sync_payload = _build_wifi_device_sync_payload(hub, device, device_key=device_key)
-        if str(sync_payload.get("status") or "").strip().lower() != "running":
+        status = str(sync_payload.get("status") or "").strip().lower()
+        if status in {"success", "failed"}:
+            last_wifi_deploys[device_key] = status
+        if status != "running":
             continue
         return {
             "kind": "operation_running",
@@ -818,7 +825,23 @@ async def _async_build_control_panel_runtime_payload(
         "total_steps": None,
         "device_key": None,
         "device_name": None,
+        # How the operations that just ended went: the control panel sees a
+        # running operation disappear from the poll and must not announce
+        # success for one that failed.
+        "last_operation": _control_panel_last_operation(registry, hub.entry_id),
+        "last_wifi_deploys": last_wifi_deploys,
     }
+
+
+def _control_panel_last_operation(
+    registry: "_BackupOperationRegistry", entry_id: str
+) -> dict[str, Any] | None:
+    """The most recent registry operation of this hub, once it has ended."""
+
+    latest = registry.latest_for_entry(entry_id)
+    if not latest or str(latest.get("status") or "") not in {"success", "failed"}:
+        return None
+    return {"operation_id": latest.get("operation_id"), "status": str(latest.get("status"))}
 
 
 async def _async_build_control_panel_hub_payload(

@@ -108,6 +108,12 @@ export interface ControlPanelRuntimeState {
   total_steps?: number | null;
   device_key?: string | null;
   device_name?: string | null;
+  /** Registry id of a running backup/restore/sync operation. */
+  operation_id?: string;
+  /** When nothing runs: how the most recent registry operation ended. */
+  last_operation?: { operation_id?: string | null; status: "success" | "failed" } | null;
+  /** When nothing runs: last Wifi deploy outcome per device key. */
+  last_wifi_deploys?: Record<string, "success" | "failed"> | null;
 }
 
 export interface CacheHubState {

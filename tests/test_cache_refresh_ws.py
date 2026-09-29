@@ -189,3 +189,38 @@ def test_ws_structural_bundle_gated_on_cache_enabled(monkeypatch):
     _run(integration._ws_get_structural_bundle(hass, conn, {"id": 6, "entry_id": "entry-1"}))
     assert conn.error is None
     assert conn.result[1] == {"bundle": None, "generation": None}
+
+
+def test_runtime_payload_reports_how_the_last_operation_ended(monkeypatch):
+    """CR-F1-1: the control panel sees a running operation disappear from the
+    poll; the idle payload says whether it succeeded or failed, so a failed
+    restore is never announced as a success."""
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    operation_id = registry.create(kind="backup_restore", entry_id="entry-1", initial_state={"status": "running"})
+    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+
+    class _Devices:
+        async def async_list_hub_devices(self, entry_id, *, roku_listen_port=None):
+            return [{"device_key": "livingroom", "commands": []}, {"device_key": "kitchen", "commands": []}]
+
+    async def _store(_hass):
+        return _Devices()
+
+    progress = {"livingroom": {"status": "failed"}, "kitchen": {"status": "idle"}}
+    hub = SimpleNamespace(
+        entry_id="entry-1",
+        client_connected=False,
+        get_command_sync_progress=lambda key: dict(progress.get(key, {"status": "idle"})),
+        get_managed_command_hashes=lambda: {},
+    )
+    monkeypatch.setattr(integration, "_async_get_command_config_store", _store)
+    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda *_a: 8060)
+
+    running = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert running["kind"] == "operation_running" and running["operation_id"] == operation_id
+
+    registry.update(operation_id, status="failed")
+    idle = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert idle["kind"] == "idle"
+    assert idle["last_operation"] == {"operation_id": operation_id, "status": "failed"}
+    assert idle["last_wifi_deploys"] == {"livingroom": "failed"}

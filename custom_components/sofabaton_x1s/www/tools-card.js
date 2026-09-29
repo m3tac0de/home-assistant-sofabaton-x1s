@@ -3953,6 +3953,16 @@ function normalizeExpectedFrontendVersion(value) {
   const version = String(value ?? "").trim();
   return version || null;
 }
+function terminalOutcome(previous, next) {
+  if (!previous || previous.kind !== "operation_running" || !next) return null;
+  if (previous.operation === "wifi_deploy") {
+    const key = String(previous.device_key ?? "");
+    return next.last_wifi_deploys?.[key] ?? null;
+  }
+  const last = next.last_operation;
+  if (!last || !previous.operation_id || last.operation_id !== previous.operation_id) return null;
+  return last.status === "success" || last.status === "failed" ? last.status : null;
+}
 var INITIAL_SNAPSHOT = {
   hass: null,
   state: null,
@@ -4833,14 +4843,15 @@ var ControlPanelStore = class {
     const nextRuntime = nextHub?.runtime_state;
     if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
-      const successLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully : operation === "entity_sync" ? TOOLS_CARD_STRINGS.activities.syncSuccess : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
-      this.showRuntimeCompletion(
-        {
-          tone: "success",
-          label: successLabel
-        },
-        nextHub?.entry_id ?? previousHub?.entry_id ?? null
-      );
+      const outcome = terminalOutcome(previousRuntime, nextRuntime);
+      const entryId = nextHub?.entry_id ?? previousHub?.entry_id ?? null;
+      if (outcome === "success") {
+        const successLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully : operation === "entity_sync" ? TOOLS_CARD_STRINGS.activities.syncSuccess : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
+        this.showRuntimeCompletion({ tone: "success", label: successLabel }, entryId);
+      } else if (outcome === "failed") {
+        const failureLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreFailed : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupFailed : TOOLS_CARD_STRINGS.errors.syncFailed;
+        this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
+      }
     }
     this._scheduleRuntimeStatePoll();
   }
