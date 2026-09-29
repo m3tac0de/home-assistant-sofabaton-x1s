@@ -35,6 +35,8 @@ import {
   setDeviceMacroStepWait,
   synthesizeCommandCode,
   applyBundleDelete,
+  wifiEventsSlotCount,
+  isWifiEventsLongRecord,
   assertBackupBundleRestoreCompatible,
   backupUsesWholeHub,
   bundleButtonCatalog,
@@ -1725,3 +1727,48 @@ test("deleteBundleDeviceCommand drops the command's inputs-page entry and keeps 
   const plain = deleteBundleDeviceCommand({ ...b, devices: [{ ...b.devices[0], input_record: undefined }] } as BackupBundlePayload, 1, 10);
   assert.equal(plain.devices[0].input_record, undefined);
 });
+
+// CR-F2-2 / CR-X6-1: the events device pairs short record s+1 with long
+// record s+1+slotCount. The slot count is frozen; counting the working copy
+// shifted the pairing onto a neighbour after the first paired delete.
+function eventsBundle(slots: number) {
+  const commands = [];
+  for (let id = 1; id <= slots * 2; id += 1) commands.push({ command_id: id, name: `R${id}` });
+  return {
+    kind: "hub_bundle", schema_version: 1, hub: { name: "Hub" },
+    devices: [{ device: { device_id: 9, name: "Wifi Events", brand: "m3-haevents-abc" }, commands, button_bindings: [], macros: [] }],
+    activities: [],
+  } as unknown as Parameters<typeof applyBundleDelete>[0];
+}
+
+function deleteEvent(bundle: ReturnType<typeof eventsBundle>, shortId: number, slots: number) {
+  const opts = { reconcileMembership: false };
+  const once = applyBundleDelete(bundle, { kind: "command", deviceId: 9, commandId: shortId }, opts);
+  return applyBundleDelete(once, { kind: "command", deviceId: 9, commandId: shortId + slots }, opts);
+}
+
+test("two Wifi Event deletes in one session remove their own long records", () => {
+  const opened = eventsBundle(25);
+  const slots = wifiEventsSlotCount(opened.devices[0]);
+  assert.equal(slots, 25);
+  let working = deleteEvent(opened, 3, slots);
+  working = deleteEvent(working, 5, slots);
+  const ids = (working.devices[0].commands ?? []).map((row) => Number(row.command_id));
+  for (const gone of [3, 28, 5, 30]) assert.ok(!ids.includes(gone), `record ${gone} deleted`);
+  assert.ok(ids.includes(29), "event 4's long record survives");
+  // Counting the working copy instead is exactly the bug: 48 records read as 24 slots.
+  assert.equal(wifiEventsSlotCount(working.devices[0]), 23);
+});
+
+test("the slot count comes from HA's event records when known", () => {
+  // A later session: earlier deletes shrank the table to 48 records, but the
+  // device was created with 25 slots.
+  const shrunk = deleteEvent(eventsBundle(25), 3, 25);
+  const events = [{ command_id: 1, long_press_command_id: 26 }];
+  assert.equal(wifiEventsSlotCount(shrunk.devices[0], events), 25);
+  assert.equal(wifiEventsSlotCount(shrunk.devices[0], []), 24);
+  assert.equal(isWifiEventsLongRecord(26, 25), true);
+  assert.equal(isWifiEventsLongRecord(25, 25), false);
+  assert.equal(isWifiEventsLongRecord(26, 0), false);
+});
+

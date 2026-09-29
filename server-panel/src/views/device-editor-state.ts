@@ -10,6 +10,10 @@ import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../cu
 import type { Draft } from "../panel-store";
 import type { SnapshotDocument } from "../panel-api";
 import { entityDraftData, entityDraftScope, entityElement, withEntityElement } from "./entity-editor-state";
+import {
+  isWifiEventsLongRecord,
+  wifiEventsSlotCount as sharedWifiEventsSlotCount,
+} from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 
 /** The snapshot document is the library's `hub_bundle` with the header merged in; the card's helpers read it as one. */
 export function snapshotAsBundle(snapshot: SnapshotDocument): BackupBundlePayload {
@@ -74,13 +78,14 @@ export const IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[
 
 // -- Wifi Events pairing (the card's rules for the events device) ------------------------------
 
-/** Half the command count: the slot count that defines the long-record offset. */
-export function wifiEventsSlotCount(element: BackupBundleDevicePayload | null): number {
-  return Math.floor((element?.commands?.length ?? 0) / 2);
+/** The slot count that defines the long-record offset: the card's shared rule
+ *  (backup-state's wifiEventsSlotCount). Pass the element as the editor OPENED
+ *  it (the baseline), never the working copy: paired deletes shrink it. */
+export function wifiEventsSlotCount(openedElement: BackupBundleDevicePayload | null): number {
+  return sharedWifiEventsSlotCount(openedElement);
 }
 
 /** A long-press record (id above the slot count) has no delete of its own; its short twin carries it. */
-export function isLongRecord(element: BackupBundleDevicePayload | null, commandId: number): boolean {
-  const slots = wifiEventsSlotCount(element);
-  return slots > 0 && Number(commandId) > slots;
+export function isLongRecord(openedElement: BackupBundleDevicePayload | null, commandId: number): boolean {
+  return isWifiEventsLongRecord(commandId, wifiEventsSlotCount(openedElement));
 }

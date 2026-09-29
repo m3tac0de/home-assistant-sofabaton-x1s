@@ -8711,6 +8711,16 @@ function isWifiEventsBrand(brand) {
   const text = String(brand ?? "").trim();
   return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
 }
+function wifiEventsSlotCount(openedElement, events) {
+  for (const event of events ?? []) {
+    const offset = Number(event?.long_press_command_id) - Number(event?.command_id);
+    if (Number.isInteger(offset) && offset > 0) return offset;
+  }
+  return Math.floor((openedElement?.commands?.length ?? 0) / 2);
+}
+function isWifiEventsLongRecord(commandId, slotCount) {
+  return slotCount > 0 && Number(commandId) > slotCount;
+}
 function deviceIpAddress(bundle, deviceId) {
   if (!bundle) return null;
   const normalizedId = Number(deviceId);
@@ -10349,6 +10359,9 @@ var SofabatonEditDetailView = class extends i4 {
     // one selection covers both legs.
     this.wifiEvents = null;
     this._wifiEventsList = null;
+    /** The events device's slot count as the editor opened it (CR-F2-2): the
+     *  working bundle loses two records per paired delete. */
+    this._wifiEventsOpenedSlots = null;
     this._wifiEventBusy = false;
     this._wifiEventPrimary = { mode: "new", slot: null, name: "" };
     this._editDetailNameDraft = "";
@@ -11351,6 +11364,8 @@ var SofabatonEditDetailView = class extends i4 {
     }
   }
   _resetForEntity() {
+    this._wifiEventsOpenedSlots = null;
+    if (this._isWifiEventsLiveDevice()) this._loadWifiEvents();
     this._editDetailActiveSection = "power";
     this._powerControlMenuOpen = false;
     this._roleMenuOpen = null;
@@ -11527,22 +11542,25 @@ var SofabatonEditDetailView = class extends i4 {
   _isWifiEventsLiveDevice() {
     return this.mode === "live" && this.kind === "device" && this.entityId != null && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)));
   }
-  /** The Wifi Events device's per-slot short count (half its command
-   *  count, the slot_count that defines the long-record offset). */
+  /** The Wifi Events device's slot count (the long-record offset): from
+   *  HA's event records when loaded, else as the device was when the editor
+   *  opened. Never from the working bundle (see wifiEventsSlotCount). */
   _wifiEventsSlotCount() {
     if (this.entityId == null || !this.bundle) return 0;
-    const device = (this.bundle.devices ?? []).find(
-      (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId)
-    );
-    return Math.floor((device?.commands?.length ?? 0) / 2);
+    if (this._wifiEventsOpenedSlots == null) {
+      const device = (this.bundle.devices ?? []).find(
+        (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId)
+      );
+      this._wifiEventsOpenedSlots = wifiEventsSlotCount(device);
+    }
+    return wifiEventsSlotCount(null, this._wifiEventsList) || this._wifiEventsOpenedSlots;
   }
   /** True when a command id is a long-press record (id > slot_count) on
    *  the events device — long rows carry no independent delete; deleting
    *  the short row removes the pair. */
   _commandIsLongRecord(commandId) {
     if (!this._isWifiEventsLiveDevice()) return false;
-    const slotCount = this._wifiEventsSlotCount();
-    return slotCount > 0 && Number(commandId) > slotCount;
+    return isWifiEventsLongRecord(commandId, this._wifiEventsSlotCount());
   }
   _editDetailSectionItems(kind) {
     if (kind === "activity") {

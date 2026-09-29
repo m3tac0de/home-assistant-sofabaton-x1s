@@ -86,6 +86,8 @@ import {
   bundleDeviceClass,
   isManagedWifiBrand,
   isWifiEventsBrand,
+  isWifiEventsLongRecord,
+  wifiEventsSlotCount,
   bundleEditableDeviceOptions,
   bundleDeviceOptions,
   buttonName,
@@ -568,6 +570,9 @@ export class SofabatonEditDetailView extends LitElement {
   // one selection covers both legs.
   wifiEvents: WifiEventsHost | null = null;
   private _wifiEventsList: WifiEvent[] | null = null;
+  /** The events device's slot count as the editor opened it (CR-F2-2): the
+   *  working bundle loses two records per paired delete. */
+  private _wifiEventsOpenedSlots: number | null = null;
   private _wifiEventBusy = false;
   private _wifiEventPrimary: WifiEventTargetSel = { mode: "new", slot: null, name: "" };
   private _editDetailNameDraft = "";
@@ -709,6 +714,10 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _resetForEntity() {
+    this._wifiEventsOpenedSlots = null;
+    // The events device pairs records by HA's frozen slot count: load the
+    // event list (the authoritative source) as soon as it opens.
+    if (this._isWifiEventsLiveDevice()) this._loadWifiEvents();
     this._editDetailActiveSection = "power";
     this._powerControlMenuOpen = false;
     this._roleMenuOpen = null;
@@ -947,14 +956,18 @@ export class SofabatonEditDetailView extends LitElement {
     );
   }
 
-  /** The Wifi Events device's per-slot short count (half its command
-   *  count, the slot_count that defines the long-record offset). */
+  /** The Wifi Events device's slot count (the long-record offset): from
+   *  HA's event records when loaded, else as the device was when the editor
+   *  opened. Never from the working bundle (see wifiEventsSlotCount). */
   private _wifiEventsSlotCount(): number {
     if (this.entityId == null || !this.bundle) return 0;
-    const device = (this.bundle.devices ?? []).find(
-      (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId),
-    );
-    return Math.floor((device?.commands?.length ?? 0) / 2);
+    if (this._wifiEventsOpenedSlots == null) {
+      const device = (this.bundle.devices ?? []).find(
+        (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId),
+      );
+      this._wifiEventsOpenedSlots = wifiEventsSlotCount(device);
+    }
+    return wifiEventsSlotCount(null, this._wifiEventsList) || this._wifiEventsOpenedSlots;
   }
 
   /** True when a command id is a long-press record (id > slot_count) on
@@ -962,8 +975,7 @@ export class SofabatonEditDetailView extends LitElement {
    *  the short row removes the pair. */
   private _commandIsLongRecord(commandId: number): boolean {
     if (!this._isWifiEventsLiveDevice()) return false;
-    const slotCount = this._wifiEventsSlotCount();
-    return slotCount > 0 && Number(commandId) > slotCount;
+    return isWifiEventsLongRecord(commandId, this._wifiEventsSlotCount());
   }
 
   private _editDetailSectionItems(kind: BackupEditTargetKind): Array<{

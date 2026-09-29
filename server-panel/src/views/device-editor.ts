@@ -793,7 +793,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const deleteOptions = { reconcileMembership: this._offline };
     let next = applyBundleDelete(this._working, target, deleteOptions);
     if (target.kind === "command" && this._pairedRecords && !this._offline) {
-      const slots = wifiEventsSlotCount(this._workingElement);
+      // The count as the editor opened it: the working copy loses two records per paired delete.
+      const slots = wifiEventsSlotCount(this._baselineEntity as BackupBundleDevicePayload | null);
       if (slots > 0 && Number(target.commandId) <= slots) {
         next = applyBundleDelete(next, { kind: "command", deviceId, commandId: Number(target.commandId) + slots }, deleteOptions);
       }
@@ -1148,7 +1149,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                           ${pendingAdd(item.commandId) || (this._offline && !this._commandHasEditablePayload(item.commandId))
                             ? nothing
                             : html`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S.editPayloadAria} title=${S.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId)
+                          ${isLongRecord(this._pairedRecords ? (this._baselineEntity as BackupBundleDevicePayload | null) : null, item.commandId)
                             ? nothing
                             : html`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S.deleteCommandAria} title=${S.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon(mdiTrashCanOutline)}</button>`}`}
                   </div>

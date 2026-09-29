@@ -962,6 +962,33 @@ export function isWifiEventsBrand(brand: string): boolean {
 }
 
 /**
+ * The Wifi Events device's slot count: the long-record offset (the event in
+ * slot `s` owns short record `s + 1` and long record `s + 1 + slotCount`).
+ * It is frozen when the device is created, so it must never be read from a
+ * record count that deletes shrink: every paired delete removes two records
+ * and would shift the pairing onto a neighbour's long record. Taken from
+ * Home Assistant's event records when known (their long and short ids
+ * differ by exactly the slot count), else from the device element as it was
+ * when the editor opened (the deploy writes 2N records). Shared by the card
+ * and the server panel.
+ */
+export function wifiEventsSlotCount(
+  openedElement: BackupBundleDevicePayload | null | undefined,
+  events?: ReadonlyArray<{ command_id: number; long_press_command_id: number }> | null,
+): number {
+  for (const event of events ?? []) {
+    const offset = Number(event?.long_press_command_id) - Number(event?.command_id);
+    if (Number.isInteger(offset) && offset > 0) return offset;
+  }
+  return Math.floor((openedElement?.commands?.length ?? 0) / 2);
+}
+
+/** A long record (id above the slot count) has no delete of its own; its short twin carries it. */
+export function isWifiEventsLongRecord(commandId: number, slotCount: number): boolean {
+  return slotCount > 0 && Number(commandId) > slotCount;
+}
+
+/**
  * Read a device's `ip_address` from the bundle's device head. Returns
  * `null` for missing devices and empty / unset values (so the UI can
  * treat "no IP" uniformly regardless of whether the field was absent

@@ -16346,6 +16346,16 @@ function isWifiEventsBrand(brand) {
   const text = String(brand ?? "").trim();
   return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
 }
+function wifiEventsSlotCount(openedElement, events) {
+  for (const event of events ?? []) {
+    const offset = Number(event?.long_press_command_id) - Number(event?.command_id);
+    if (Number.isInteger(offset) && offset > 0) return offset;
+  }
+  return Math.floor((openedElement?.commands?.length ?? 0) / 2);
+}
+function isWifiEventsLongRecord(commandId, slotCount) {
+  return slotCount > 0 && Number(commandId) > slotCount;
+}
 function deviceIpAddress(bundle, deviceId) {
   if (!bundle) return null;
   const normalizedId = Number(deviceId);
@@ -18215,12 +18225,11 @@ function sanitizeName(hubVersion, value) {
 }
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function wifiEventsSlotCount(element) {
-  return Math.floor((element?.commands?.length ?? 0) / 2);
+function wifiEventsSlotCount2(openedElement) {
+  return wifiEventsSlotCount(openedElement);
 }
-function isLongRecord(element, commandId) {
-  const slots = wifiEventsSlotCount(element);
-  return slots > 0 && Number(commandId) > slots;
+function isLongRecord(openedElement, commandId) {
+  return isWifiEventsLongRecord(commandId, wifiEventsSlotCount2(openedElement));
 }
 
 // server-panel/src/views/backup-view.ts
@@ -19995,7 +20004,7 @@ var WIFI_EVENTS_ENABLED = false;
 function wifiEventSlots(bundle, callbackDeviceId) {
   if (callbackDeviceId == null) return [];
   const element = entityElement(bundle, "device", callbackDeviceId);
-  const count = wifiEventsSlotCount(element);
+  const count = wifiEventsSlotCount2(element);
   if (!element || count <= 0) return [];
   return (element.commands ?? []).map((row) => ({ id: Number(row?.command_id ?? 0), name: String(row?.name ?? "").trim() })).filter((row) => row.id >= 1 && row.id <= count).sort((a4, b3) => a4.id - b3.id).map((row) => ({ slot: row.id - 1, label: row.name || `Button ${row.id}`, shortCommandId: row.id, longCommandId: row.id + count }));
 }
@@ -22083,7 +22092,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       const deleteOptions = { reconcileMembership: this._offline };
       let next = applyBundleDelete(this._working, target, deleteOptions);
       if (target.kind === "command" && this._pairedRecords && !this._offline) {
-        const slots = wifiEventsSlotCount(this._workingElement);
+        const slots = wifiEventsSlotCount2(this._baselineEntity);
         if (slots > 0 && Number(target.commandId) <= slots) {
           next = applyBundleDelete(next, { kind: "command", deviceId, commandId: Number(target.commandId) + slots }, deleteOptions);
         }
@@ -22748,7 +22757,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                   <div class="quick-access-actions">
                     ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S6.renameCommandAria} title=${S6.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon4(mdiPencil)}</button>
                           ${pendingAdd(item.commandId) || this._offline && !this._commandHasEditablePayload(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S6.editPayloadAria} title=${S6.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon4(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S6.deleteCommandAria} title=${S6.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon4(mdiTrashCanOutline)}</button>`}`}
+                          ${isLongRecord(this._pairedRecords ? this._baselineEntity : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S6.deleteCommandAria} title=${S6.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon4(mdiTrashCanOutline)}</button>`}`}
                   </div>
                 </div>
               </div>`)}
