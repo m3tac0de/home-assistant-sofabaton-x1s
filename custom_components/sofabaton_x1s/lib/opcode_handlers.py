@@ -690,28 +690,25 @@ class AckReadyHandler(BaseFrameHandler):
                 proxy._notify_redundant_off_press()
 
 
-@register_handler(opcodes=(OP_CATALOG_ROW_DEVICE,), directions=("H→A",))
-class CatalogDeviceHandler(BaseFrameHandler):
-    """Handle catalog device rows emitted by the hub."""
+class _CatalogDeviceRowHandler(BaseFrameHandler):
+    """One device catalog row; the variants differ only in the label slots."""
+
+    def _labels(self, payload: bytes, raw: bytes) -> tuple[str, str]:
+        """Return ``(name, brand)`` from the row."""
+
+        raise NotImplementedError
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         now = time.monotonic()
 
         payload = frame.payload
-        raw = frame.raw
         row_idx = payload[0] if len(payload) >= 1 else None
         expected_rows = payload[3] if len(payload) >= 4 and payload[3] > 0 else None
         dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         device_class_code = payload[10] if len(payload) > 10 else None
         device_class = classify_device_class_code(device_class_code)
-        name_bytes_raw = raw[36 : 36 + 60]
-        # Lenient like every other label decode: a lone surrogate (a name
-        # cut mid code unit by any writer) must not drop the row, or the
-        # devices snapshot never completes.
-        device_label = name_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
-        brand_bytes_raw = raw[96 : 96 + 60]
-        brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
+        device_label, brand_label = self._labels(payload, frame.raw)
 
         # Keep the raw record body so the schema parser (parse_device_record)
         # can rebuild a faithful DeviceConfig on demand (e.g. for backup), with
@@ -751,61 +748,27 @@ class CatalogDeviceHandler(BaseFrameHandler):
         proxy.try_finish_devices_burst()
 
 
+@register_handler(opcodes=(OP_CATALOG_ROW_DEVICE,), directions=("H→A",))
+class CatalogDeviceHandler(_CatalogDeviceRowHandler):
+    """X1S/X2 device rows: 60-byte UTF-16BE name and brand slots."""
+
+    def _labels(self, payload: bytes, raw: bytes) -> tuple[str, str]:
+        # Lenient like every other label decode: a lone surrogate (a name
+        # cut mid code unit by any writer) must not drop the row, or the
+        # devices snapshot never completes.
+        name = raw[36 : 36 + 60].decode("utf-16be", errors="ignore").strip("\x00")
+        brand = raw[96 : 96 + 60].decode("utf-16be", errors="ignore").strip("\x00")
+        return name, brand
+
+
 @register_handler(opcodes=(OP_X1_DEVICE,), directions=("H→A",))
-class X1CatalogDeviceHandler(BaseFrameHandler):
-    """Handle X1 firmware device rows."""
+class X1CatalogDeviceHandler(_CatalogDeviceRowHandler):
+    """X1 device rows: null-terminated name and brand."""
 
-    def handle(self, frame: FrameContext) -> None:
-        proxy: X1Proxy = frame.proxy
-        now = time.monotonic()
-
-        payload = frame.payload
-        row_idx = payload[0] if payload else None
-        expected_rows = payload[3] if len(payload) >= 4 and payload[3] > 0 else None
-        dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-        device_class_code = payload[10] if len(payload) > 10 else None
-        device_class = classify_device_class_code(device_class_code)
-
-        name_bytes = payload[32:62]
-        device_label = name_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
-
-        brand_bytes = payload[62:]
-        brand_label = brand_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
-
-        record_body = bytes(payload[3:]) if len(payload) > 3 else b""
-
-        if dev_id is not None:
-            accepted = proxy.ingest_device_row(
-                row_idx=row_idx,
-                expected_rows=expected_rows,
-                dev_id=dev_id,
-                device={
-                    "brand": brand_label,
-                    "name": device_label,
-                    "device_class": device_class,
-                    "device_class_code": device_class_code,
-                    "raw_body": record_body,
-                },
-            )
-            if not accepted:
-                return
-            proxy._burst.start("devices", now=now)
-            proxy._log.info(
-                "[DEV] #%s/%s id=0x%04X (%d) class=%s/0x%02X brand='%s' name='%s'",
-                row_idx,
-                expected_rows if expected_rows is not None else "?",
-                dev_id,
-                dev_id,
-                device_class or "?",
-                device_class_code or 0,
-                brand_label,
-                device_label,
-            )
-        elif device_label:
-            proxy._log.info("[DEV] name='%s'", device_label)
-
-        proxy.try_finish_devices_burst()
-
+    def _labels(self, payload: bytes, raw: bytes) -> tuple[str, str]:
+        name = payload[32:62].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+        brand = payload[62:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+        return name, brand
 
 
 # --- X1S/X2 activity-row schema (CATALOG_ROW_ACTIVITY, 0xD53B) -------------
@@ -877,9 +840,14 @@ def _decode_x1s_activity_label(label_bytes: bytes) -> str:
         text = text[1:].lstrip()
     return text
 
-@register_handler(opcodes=(OP_CATALOG_ROW_ACTIVITY,), directions=("H→A",))
-class CatalogActivityHandler(BaseFrameHandler):
-    """Handle activity catalog rows."""
+class _CatalogActivityRowHandler(BaseFrameHandler):
+    """One activity catalog row; the variants differ only in how the label
+    and the needs-confirm flag are laid out."""
+
+    def _decode(self, payload: bytes, raw: bytes) -> tuple[str, bool]:
+        """Return ``(label, needs_confirm)`` from the row."""
+
+        raise NotImplementedError
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
@@ -888,129 +856,74 @@ class CatalogActivityHandler(BaseFrameHandler):
         payload = frame.payload
         raw = frame.raw
         row_idx = payload[0] if len(payload) >= 1 else None
-        # Start of a fresh activities list → reset 'active'
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        activity_label, needs_confirm = self._decode(payload, raw)
+        is_active = (raw[35] if len(raw) > 35 else 0) == 0x01
+
+        if act_id is not None:
+            accepted = proxy.ingest_activity_row(
+                row_idx=row_idx,
+                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
+                act_id=act_id,
+                activity={
+                    "id": act_id,
+                    "name": activity_label,
+                    "active": is_active,
+                    "needs_confirm": needs_confirm,
+                },
+                payload=payload,
+            )
+            if not accepted:
+                return
+            proxy._burst.start("activities", now=now)
+            if row_idx == 1:
+                proxy._log.info("[ACT] reset active (start of new activities list)")
+        elif activity_label:
+            proxy._log.info("[ACT] name='%s'", activity_label)
+
+        state = "ACTIVE" if is_active else "idle"
+        if row_idx is not None and act_id is not None:
+            proxy._log.info(
+                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
+                row_idx,
+                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
+                activity_label,
+                act_id,
+                act_id,
+                state,
+            )
+        elif act_id is not None:
+            proxy._log.info(
+                "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
+                activity_label,
+                act_id,
+                act_id,
+                state,
+            )
+        else:
+            proxy._log.info("[ACT] name='%s' state=%s", activity_label, state)
+
+        proxy.try_finish_activities_burst()
+
+
+@register_handler(opcodes=(OP_CATALOG_ROW_ACTIVITY,), directions=("H→A",))
+class CatalogActivityHandler(_CatalogActivityRowHandler):
+    """X1S/X2 activity rows: UTF-16BE label slot, flag in the tail tokens."""
+
+    def _decode(self, payload: bytes, raw: bytes) -> tuple[str, bool]:
         label_slot = raw[
             ACTIVITY_ROW_LABEL_OFFSET : ACTIVITY_ROW_LABEL_OFFSET + ACTIVITY_ROW_LABEL_LEN
         ]
-        activity_label = _decode_x1s_activity_label(label_slot)
-        active_state_byte = raw[35] if len(raw) > 35 else 0
-        is_active = active_state_byte == 0x01
-        needs_confirm = _decode_x1s_needs_confirm_flag(payload)
-
-        if act_id is not None:
-            accepted = proxy.ingest_activity_row(
-                row_idx=row_idx,
-                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
-                act_id=act_id,
-                activity={
-                    "id": act_id,
-                    "name": activity_label,
-                    "active": is_active,
-                    "needs_confirm": needs_confirm,
-                },
-                payload=payload,
-            )
-            if not accepted:
-                return
-            proxy._burst.start("activities", now=now)
-            if row_idx == 1:
-                proxy._log.info("[ACT] reset active (start of new activities list)")
-        elif activity_label:
-            proxy._log.info("[ACT] name='%s'", activity_label)
-
-        state = "ACTIVE" if is_active else "idle"
-        if row_idx is not None and act_id is not None:
-            proxy._log.info(
-                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
-                row_idx,
-                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
-                activity_label,
-                act_id,
-                act_id,
-                state,
-            )
-        elif act_id is not None:
-            proxy._log.info(
-                "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
-                activity_label,
-                act_id,
-                act_id,
-                state,
-            )
-        else:
-            proxy._log.info("[ACT] name='%s' state=%s", activity_label, state)
-
-        proxy.try_finish_activities_burst()
+        return _decode_x1s_activity_label(label_slot), _decode_x1s_needs_confirm_flag(payload)
 
 
 @register_handler(opcodes=(OP_X1_ACTIVITY,), directions=("H→A",))
-class X1CatalogActivityHandler(BaseFrameHandler):
-    """Handle activity catalog rows emitted by X1 firmware."""
+class X1CatalogActivityHandler(_CatalogActivityRowHandler):
+    """X1 activity rows: null-terminated label, flag at payload[95]."""
 
-    def handle(self, frame: FrameContext) -> None:
-        proxy: X1Proxy = frame.proxy
-        now = time.monotonic()
-
-        payload = frame.payload
-        row_idx = payload[0] if payload else None
-
-        act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-        active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
-        needs_confirm_flag = payload[95] if len(payload) > 95 else 0
-        activity_label = (
-            payload[32:]
-            .split(b"\x00", 1)[0]
-            .decode("utf-8", errors="ignore")
-            .strip()
-        )
-        is_active = active_flag == 1
-        needs_confirm = needs_confirm_flag == 1
-
-        if act_id is not None:
-            accepted = proxy.ingest_activity_row(
-                row_idx=row_idx,
-                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
-                act_id=act_id,
-                activity={
-                    "id": act_id,
-                    "name": activity_label,
-                    "active": is_active,
-                    "needs_confirm": needs_confirm,
-                },
-                payload=payload,
-            )
-            if not accepted:
-                return
-            proxy._burst.start("activities", now=now)
-            if row_idx == 1:
-                proxy._log.info("[ACT] reset active (start of new activities list)")
-        elif activity_label:
-            proxy._log.info("[ACT] name='%s'", activity_label)
-
-        state = "ACTIVE" if is_active else "idle"
-        if row_idx is not None and act_id is not None:
-            proxy._log.info(
-                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
-                row_idx,
-                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
-                activity_label,
-                act_id,
-                act_id,
-                state,
-            )
-        elif act_id is not None:
-            proxy._log.info(
-                "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
-                activity_label,
-                act_id,
-                act_id,
-                state,
-            )
-        else:
-            proxy._log.info("[ACT] name='%s' state=%s", activity_label, state)
-
-        proxy.try_finish_activities_burst()
+    def _decode(self, payload: bytes, raw: bytes) -> tuple[str, bool]:
+        label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore").strip()
+        return label, (payload[95] if len(payload) > 95 else 0) == 1
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVITY_MAP,), directions=("A→H",))
@@ -1400,8 +1313,12 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
             )
 
 
-class DeviceButtonHeaderHandler(BaseFrameHandler):
-    """Start device-command burst parsing."""
+class _DeviceCommandPageHandler(BaseFrameHandler):
+    """Feed one device-command page to the assembler; the header and the
+    payload pages differ only in how they open the burst."""
+
+    def _open_burst(self, proxy: X1Proxy, burst_key: str, now: float) -> None:
+        raise NotImplementedError
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
@@ -1420,7 +1337,7 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
 
         now = time.monotonic()
         burst_key = f"commands:{dev_id}"
-        proxy._burst.start(burst_key, now=now)
+        self._open_burst(proxy, burst_key, now)
 
         completed = proxy._command_assembler.feed(
             frame.opcode,
@@ -1447,54 +1364,21 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
             )
 
 
-class DeviceButtonPayloadHandler(BaseFrameHandler):
+class DeviceButtonHeaderHandler(_DeviceCommandPageHandler):
+    """Start device-command burst parsing."""
+
+    def _open_burst(self, proxy: X1Proxy, burst_key: str, now: float) -> None:
+        proxy._burst.start(burst_key, now=now)
+
+
+class DeviceButtonPayloadHandler(_DeviceCommandPageHandler):
     """Accumulate device command pages."""
 
-    def handle(self, frame: FrameContext) -> None:
-        proxy: X1Proxy = frame.proxy
-        payload = frame.payload
-        raw = frame.raw
-
-        if len(payload) < 4:
-            return
-
-        dev_id = _extract_dev_id(
-            raw,
-            payload,
-            frame.opcode,
-            hub_version=proxy.hub_version,
-        )
-
-        now = time.monotonic()
-        burst_key = f"commands:{dev_id}"
+    def _open_burst(self, proxy: X1Proxy, burst_key: str, now: float) -> None:
         if not proxy._burst.active:
             proxy._burst.start(burst_key, now=now)
         else:
             proxy._burst.last_ts = now + proxy._burst.response_grace
-
-        completed = proxy._command_assembler.feed(
-            frame.opcode,
-            raw,
-            dev_id_override=dev_id,
-            hub_version=proxy.hub_version,
-        )
-        for complete_dev_id, assembled_payload in completed:
-            commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
-            if commands:
-                dev_key = complete_dev_id & 0xFF
-                existing = proxy.state.commands.setdefault(dev_key, {})
-                existing.update(commands)
-                proxy._log.info(
-                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
-                )
-
-        if completed:
-            proxy._burst.finish(
-                burst_key,
-                can_issue=proxy.can_issue_commands,
-                sender=proxy._send_cmd_frame,
-                now=now,
-            )
 
 
 @register_handler(opcode_families_low=(FAMILY_DEVBTNS, 0x0D), directions=("H→A",))
