@@ -84,7 +84,8 @@ class ExchangeMixin:
           fire-and-forget reads enqueued meanwhile are deferred and
           auto-drained when the exchange ends. The idle tick never
           drains a pseudo-burst; this ``finally`` is its sole
-          terminator.
+          terminator. A read burst the exchange provokes nests under
+          the hold instead of replacing it.
         """
 
         if threading.get_ident() == self._frame_thread_ident:
@@ -102,12 +103,7 @@ class ExchangeMixin:
             finally:
                 self._exchange_depth -= 1
                 if self._exchange_depth == 0:
-                    # The active kind is the pseudo-burst this exchange
-                    # started (nothing else can start a burst while the
-                    # wire is held); the fallback only tolerates a
-                    # handler-driven finish that should not happen.
-                    self._burst.finish(
-                        self._burst.kind or f"exchange:{name}",
+                    self._burst.end_exchange(
                         can_issue=self.can_issue_commands,
                         sender=self._send_cmd_frame,
                     )

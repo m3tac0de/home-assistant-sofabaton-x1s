@@ -424,6 +424,11 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # to its power macro than it would on the TCP-only path.
         self._external_settle_event = threading.Event()
         self._external_settle_event.set()
+        # Presses leave the settle gate in arrival order: every
+        # send_command takes a ticket, and enqueues only on its turn.
+        self._press_order = threading.Condition()
+        self._press_next_ticket = 0
+        self._press_serving = 0
         self._external_settle_deadline = 0.0
         # True between an ACK_READY-triggered REQ_ACTIVITIES and the end of
         # its burst. An external push landing inside that window belongs
@@ -460,6 +465,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._burst.on_burst_end("devices", self._on_devices_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
         self._burst.on_any_burst_end(lambda _key: self.bump_cache_generation())  # W0 generation
+        self._burst.on_dropped(self._on_read_dropped)
         self._hub_connected: bool = False
         self._client_connected: bool = False
 
@@ -1207,13 +1213,26 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             )
             return False
 
-        self._wait_external_settle()
+        # Held presses all wake on the same gate release; the ticket keeps
+        # digits 1 then 2 from reaching the hub as 2 then 1.
+        with self._press_order:
+            ticket = self._press_next_ticket
+            self._press_next_ticket += 1
+        try:
+            self._wait_external_settle()
+        finally:
+            with self._press_order:
+                self._press_order.wait_for(lambda: self._press_serving == ticket)
+        try:
+            if key_code == ButtonName.POWER_ON:
+                self.state.set_hint(ent_id)
 
-        if key_code == ButtonName.POWER_ON:
-            self.state.set_hint(ent_id)
-
-        id_lo = ent_id & 0xFF
-        return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
+            id_lo = ent_id & 0xFF
+            return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
+        finally:
+            with self._press_order:
+                self._press_serving += 1
+                self._press_order.notify_all()
 
     def record_app_activation(
         self,
@@ -1737,6 +1756,33 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         else:
             self._pending_button_requests.clear()
             self._button_burst_expected_frames.clear()
+
+    def _on_read_dropped(self, kind: str) -> None:
+        """A queued read was dropped unsent (commands blocked when its turn
+        came). Release its pending flag so the next request is not
+        suppressed as a duplicate; nothing was fetched, so nothing is
+        marked complete."""
+
+        prefix, _, rest = kind.partition(":")
+        try:
+            ent_lo = int(rest.split(":", 1)[0]) & 0xFF if rest else None
+        except ValueError:
+            ent_lo = None
+        if ent_lo is None:
+            return
+        if prefix == "buttons":
+            self._pending_button_requests.discard(ent_lo)
+            self._button_burst_expected_frames.pop(ent_lo, None)
+        elif prefix == "macros":
+            self._pending_macro_requests.discard(ent_lo)
+        elif prefix == "activity_map":
+            self._pending_activity_map_requests.discard(ent_lo)
+        elif prefix == "commands":
+            pending = self._pending_command_requests.get(ent_lo)
+            if pending is not None:
+                pending.discard(0xFF)
+                if not pending:
+                    self._pending_command_requests.pop(ent_lo, None)
 
     def _handle_idle(self, now: float) -> None:
         if self._frame_thread_ident is None:

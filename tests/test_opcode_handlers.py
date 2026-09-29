@@ -2082,6 +2082,40 @@ def test_send_command_waits_out_settle_gate() -> None:
     assert _time.monotonic() - started < 0.04
 
 
+def test_presses_held_by_the_settle_gate_leave_in_arrival_order() -> None:
+    import threading
+    import time as _time
+
+    proxy, _changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    sent: list[int] = []
+    proxy.enqueue_cmd = lambda opcode, payload=b"", **kw: sent.append(payload[1]) or True  # type: ignore[assignment]
+    proxy.apply_external_activity_state(0x68)
+
+    # Digit 1 is pressed first but its thread wakes last from the release.
+    real_wait = proxy._wait_external_settle
+
+    def _wait() -> None:
+        real_wait()
+        if threading.current_thread().name == "digit-1":
+            _time.sleep(0.05)
+
+    proxy._wait_external_settle = _wait  # type: ignore[assignment]
+    threads = []
+    for key in (1, 2, 3):
+        t = threading.Thread(target=proxy.send_command, args=(0x68, key), name=f"digit-{key}")
+        t.start()
+        threads.append(t)
+        while proxy._press_next_ticket < key:
+            _time.sleep(0.001)
+
+    proxy.notify_hub_ready()
+    for t in threads:
+        t.join(timeout=2)
+
+    assert sent == [1, 2, 3]
+
+
 def _favorites_order_frame(proxy, act_lo: int, pairs: list[tuple[int, int]]) -> FrameContext:
     payload = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo]) + bytes(b for pair in pairs for b in pair)
     return FrameContext(proxy=proxy, opcode=0x0063, direction="H→A", payload=payload, raw=b"", name="FAV_ORDER_RESP")

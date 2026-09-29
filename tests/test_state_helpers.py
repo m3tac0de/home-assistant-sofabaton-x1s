@@ -505,3 +505,104 @@ def test_replace_keymap_rows_reports_nothing_dropped_for_favorites() -> None:
     assert cache.replace_keymap_rows(act, payload) == []
     assert ButtonName.UP in cache.buttons[act]
     assert [slot["button_id"] for slot in cache.get_activity_favorite_slots(act)] == [0x01]
+
+
+def _read(scheduler: BurstScheduler, sent: list, kind: str, *, can_issue=lambda: True) -> None:
+    scheduler.queue_or_send(
+        opcode=0x0B,
+        payload=kind.encode(),
+        expects_burst=True,
+        burst_kind=kind,
+        can_issue=can_issue,
+        sender=lambda op, payload: sent.append(payload.decode()),
+    )
+
+
+def test_a_read_burst_inside_an_exchange_nests_under_the_hold() -> None:
+    sent: list[str] = []
+    ended: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.on_burst_end("macros", ended.append)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    scheduler.start("exchange:membership_remove")
+    _read(scheduler, sent, "buttons:101")  # fire-and-forget read, deferred
+    scheduler.start("macros:101")  # the exchange's own macro read streams in
+    assert scheduler.finish("macros:101", can_issue=lambda: True, sender=send)
+
+    # The record's listeners ran, but the wire is still the exchange's.
+    assert ended == ["macros:101"]
+    assert scheduler.active and scheduler.kind == "exchange:membership_remove"
+    assert sent == []
+    scheduler.tick(10**9, can_issue=lambda: True, sender=send)
+    assert sent == []
+
+    scheduler.end_exchange(can_issue=lambda: True, sender=send)
+    assert sent == ["buttons:101"]
+    assert scheduler.kind == "buttons:101"
+
+
+def test_ending_an_exchange_ends_a_nested_burst_it_left_open() -> None:
+    sent: list[str] = []
+    ended: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.on_any_burst_end(ended.append)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    scheduler.start("exchange:x")
+    scheduler.start("macros:5")
+    scheduler.end_exchange(can_issue=lambda: True, sender=send)
+
+    assert ended == ["macros:5", "exchange:x"]
+    assert not scheduler.active and scheduler.kind is None
+
+
+def test_a_dropped_queued_read_is_reported_not_silently_lost() -> None:
+    sent: list[str] = []
+    dropped: list[str] = []
+    allowed = [True]
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    scheduler.on_dropped(dropped.append)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    _read(scheduler, sent, "devices")
+    _read(scheduler, sent, "buttons:101")
+    allowed[0] = False  # the vendor app connects
+    scheduler.finish("devices", can_issue=lambda: allowed[0], sender=send)
+
+    assert sent == ["devices"]
+    assert dropped == ["buttons:101"]
+    assert not scheduler.queue
+
+
+def test_a_dropped_read_releases_the_engines_pending_flag() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy._send_cmd_frame = lambda *_a, **_k: None
+    allowed = [True]
+    proxy.can_issue_commands = lambda: allowed[0]
+
+    assert proxy.request_devices()
+    assert proxy.request_buttons_for_entity(0x65)
+    assert proxy.request_macros_for_activity(0x65)
+    assert 0x65 in proxy._pending_button_requests
+
+    allowed[0] = False
+    proxy._burst.finish("devices", can_issue=proxy.can_issue_commands, sender=proxy._send_cmd_frame)
+
+    assert 0x65 not in proxy._pending_button_requests
+    assert 0x65 not in proxy._pending_macro_requests
+    allowed[0] = True
+    assert proxy.request_buttons_for_entity(0x65)  # not suppressed as a duplicate
+
+
+def test_an_inactive_scheduler_never_strands_a_queue() -> None:
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+    scheduler.queue.append((0x0B, b"late", False, None))  # the pre-lock race's leftover
+
+    scheduler.tick(0.0, can_issue=lambda: True, sender=send)
+
+    assert sent == ["late"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Literal, Mapping, Optional
@@ -654,6 +655,17 @@ class BurstScheduler:
     # hubs, while giving a congested link
     # enough time to answer instead of being mistaken for an empty or partial
     # response.
+    #
+    # Threads: executor threads enqueue while the frame thread starts and
+    # finishes bursts, so every state transition happens under ``_lock``.
+    # Senders and listeners always run outside it: the frame thread calls in
+    # here while holding transport locks, and a sender takes those locks.
+    #
+    # Exchanges: an ``exchange:<name>`` pseudo-burst holds the wire for a
+    # blocking request/response scope. A read burst a handler starts inside
+    # it (an exchange that sends REQ_MACRO_LABELS, say) nests under the hold:
+    # its own listeners fire when it ends, but the wire stays held and the
+    # queue waits for :meth:`end_exchange`.
     def __init__(self, *, idle_s: float = 0.15, response_grace: float = 5.0) -> None:
         self.idle_s = idle_s
         self.response_grace = response_grace
@@ -665,6 +677,12 @@ class BurstScheduler:
         # Called for every burst end regardless of key (after the keyed
         # listeners); the engine's cache-generation bump lives here.
         self.any_listeners: list[Callable[[str], None]] = []
+        # Called with the burst kind of every queued read dropped because
+        # commands were blocked when its turn came (it was never sent).
+        self.dropped_listeners: list[Callable[[str], None]] = []
+        # The exchange kind a nested read burst is holding the wire for.
+        self._held_by: str | None = None
+        self._lock = threading.RLock()
 
     def on_burst_end(self, key: str, cb: Callable[[str], None]) -> None:
         self.listeners.setdefault(key, []).append(cb)
@@ -672,11 +690,23 @@ class BurstScheduler:
     def on_any_burst_end(self, cb: Callable[[str], None]) -> None:
         self.any_listeners.append(cb)
 
+    def on_dropped(self, cb: Callable[[str], None]) -> None:
+        self.dropped_listeners.append(cb)
+
+    @staticmethod
+    def _is_exchange(kind: str | None) -> bool:
+        return kind is not None and kind.startswith("exchange:")
+
     def start(self, kind: str, *, now: Optional[float] = None) -> None:
-        self.active = True
-        self.kind = kind
-        base = time.monotonic() if now is None else now
-        self.last_ts = base + self.response_grace
+        with self._lock:
+            if self._is_exchange(kind):
+                self._held_by = None
+            elif self.active and self._is_exchange(self.kind):
+                self._held_by = self.kind
+            self.active = True
+            self.kind = kind
+            base = time.monotonic() if now is None else now
+            self.last_ts = base + self.response_grace
 
     def queue_or_send(
         self,
@@ -695,12 +725,12 @@ class BurstScheduler:
         if not can_issue():
             return False
 
-        if self.active:
-            self.queue.append((opcode, payload, is_burst, burst_kind))
-            return True
-
-        if is_burst:
-            self.start(burst_kind or "generic", now=current_time)
+        with self._lock:
+            if self.active or self.queue:
+                self.queue.append((opcode, payload, is_burst, burst_kind))
+                return True
+            if is_burst:
+                self.start(burst_kind or "generic", now=current_time)
 
         sender(opcode, payload)
         return True
@@ -712,16 +742,23 @@ class BurstScheduler:
         can_issue: Callable[[], bool],
         sender: Callable[[int, bytes], None],
     ) -> None:
-        # An ``exchange:<name>`` pseudo-burst marks the wire as held by a
-        # blocking request/response exchange, which may legitimately outlast
-        # the idle window (e.g. a multi-attempt step retrying a 7.5s wait).
-        # Only the exchange's own ``finally`` may finish it; the idle tick
-        # must never force-drain the queue mid-exchange.
-        if self.kind is not None and self.kind.startswith("exchange:"):
-            return
-        if not self.active:
-            return
-        if now - self.last_ts < self.idle_s:
+        with self._lock:
+            # Only the exchange's own ``end_exchange`` may finish its
+            # pseudo-burst; the idle tick must never drain mid-exchange.
+            if self._is_exchange(self.kind):
+                return
+            if self.active and now - self.last_ts < self.idle_s:
+                return
+            if self._held_by is not None:
+                ended = self._resume_exchange()
+            elif self.active or self.queue:
+                # (Inactive with a queue is a backstop; enqueue never
+                # leaves one behind.)
+                ended = None
+            else:
+                return
+        if ended is not None:
+            self._notify_burst_end(ended)
             return
         self._drain(can_issue=can_issue, sender=sender, now=now)
 
@@ -733,14 +770,52 @@ class BurstScheduler:
         sender: Callable[[int, bytes], None],
         now: Optional[float] = None,
     ) -> bool:
-        if not self.active or self.kind != key:
-            return False
+        with self._lock:
+            if not self.active or self.kind != key:
+                return False
+            nested = self._held_by is not None
+            if nested:
+                self._resume_exchange()
+        if nested:
+            self._notify_burst_end(key)
+            return True
         self._drain(
             can_issue=can_issue,
             sender=sender,
             now=time.monotonic() if now is None else now,
         )
         return True
+
+    def end_exchange(
+        self,
+        *,
+        can_issue: Callable[[], bool],
+        sender: Callable[[int, bytes], None],
+    ) -> None:
+        """Release an exchange's hold and drain what queued behind it.
+
+        A read burst still nested under the hold ends here too (its
+        listeners fire first), so nothing can keep the wire held after
+        the exchange scope closes.
+        """
+
+        with self._lock:
+            ended = self._resume_exchange() if self._held_by is not None else None
+            if not self.active and not self.queue:
+                return
+        if ended is not None:
+            self._notify_burst_end(ended)
+        self._drain(can_issue=can_issue, sender=sender, now=time.monotonic())
+
+    def _resume_exchange(self) -> str:
+        """End a nested read burst and give the wire back to its exchange
+        (caller holds ``_lock``). Returns the ended burst's kind."""
+
+        ended = self.kind or "generic"
+        self.kind = self._held_by
+        self._held_by = None
+        self.active = True
+        return ended
 
     def _drain(
         self,
@@ -749,20 +824,38 @@ class BurstScheduler:
         sender: Callable[[int, bytes], None],
         now: float,
     ) -> None:
-        finished_kind = self.kind or "generic"
-        self.active = False
-        self.kind = None
-        self._notify_burst_end(finished_kind)
+        with self._lock:
+            finished_kind = self.kind or "generic"
+            was_active = self.active
+            self.active = False
+            self.kind = None
+            self._held_by = None
 
-        while self.queue:
-            op, payload, is_burst, next_kind = self.queue.pop(0)
-            if not can_issue():
-                continue
-            if is_burst:
-                self.start(next_kind or "generic", now=now)
+        # Listeners run before the queue is popped: they may inspect what
+        # is still waiting (see CatalogMixin._activities_read_queued).
+        if was_active:
+            self._notify_burst_end(finished_kind)
+
+        to_send: list[tuple[int, bytes]] = []
+        dropped: list[str] = []
+        with self._lock:
+            # Another thread may have started a burst since the lock was
+            # released; the queue then waits for that burst to end.
+            while self.queue and not self.active:
+                op, payload, is_burst, next_kind = self.queue.pop(0)
+                if not can_issue():
+                    if next_kind:
+                        dropped.append(next_kind)
+                    continue
+                if is_burst:
+                    self.start(next_kind or "generic", now=now)
+                to_send.append((op, payload))
+
+        for op, payload in to_send:
             sender(op, payload)
-            if self.active:
-                break
+        for kind in dropped:
+            for cb in self.dropped_listeners:
+                cb(kind)
 
     def _notify_burst_end(self, key: str) -> None:
         for cb in self.listeners.get(key, []):
@@ -773,4 +866,5 @@ class BurstScheduler:
                 cb(key)
         for cb in self.any_listeners:
             cb(key)
+
 
