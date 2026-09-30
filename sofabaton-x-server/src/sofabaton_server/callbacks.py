@@ -631,6 +631,9 @@ class CallbackService:
         # Pending creates the boot pass could not verify, retried per hub once
         # it is ready.
         self._reconcile_tasks: dict[str, asyncio.Task] = {}
+        # ensure_listener runs started by server events, kept so they are not
+        # collected mid-run and are cancelled at stop (CR-S2-11).
+        self._ensure_tasks: set[asyncio.Task] = set()
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
         # The broker: the command line / environment when they set any of it,
         # else what the control panel stored in mqtt.json (mqtt_config.py).
@@ -707,7 +710,7 @@ class CallbackService:
         await self.ensure_listener()
 
     async def stop(self) -> None:
-        for task in [*self._verify_tasks.values(), *self._reconcile_tasks.values()]:
+        for task in [*self._verify_tasks.values(), *self._reconcile_tasks.values(), *self._ensure_tasks]:
             task.cancel()
         await self.listener.stop()
         await self.mqtt.close()
@@ -1477,7 +1480,14 @@ class CallbackService:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        loop.create_task(self.ensure_listener(), name="callback-listener-ensure")
+        task = loop.create_task(self.ensure_listener(), name="callback-listener-ensure")
+        self._ensure_tasks.add(task)
+        task.add_done_callback(self._ensure_done)
+
+    def _ensure_done(self, task: asyncio.Task) -> None:
+        self._ensure_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            log.error("bringing the callback ingresses in line failed", exc_info=task.exception())
 
     def _on_listener_state(self, kind: str) -> None:
         for hub_id in self._manager.ids():

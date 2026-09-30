@@ -616,3 +616,33 @@ def test_deleting_a_pending_create_the_hub_cannot_confirm_is_refused(tmp_path: P
         assert job["status"] == "failed" and job["error"]["type"] == "callback_device_unverifiable"
         assert service.record(HUB_ID) is not None
         assert ("remove_device", (7,)) not in proxy.intents
+
+
+def test_server_events_keep_their_listener_runs_and_log_failures(tmp_path: Path, caplog) -> None:
+    """CR-S2-11: the ensure_listener a hub event starts is referenced until it
+    ends, and a failure is logged when it happens, not at garbage collection."""
+    import asyncio
+    import logging
+
+    client, factory = _rig(tmp_path)
+    with client:
+        service = client.app.state.callbacks
+
+        async def main():
+            gate = asyncio.Event()
+
+            async def failing_ensure():
+                await gate.wait()
+                raise RuntimeError("broker unreachable")
+
+            service.ensure_listener = failing_ensure
+            service._on_server_event(HUB_ID, "hub_added")
+            held = len(service._ensure_tasks)
+            gate.set()
+            await asyncio.sleep(0.01)
+            return held, len(service._ensure_tasks)
+
+        with caplog.at_level(logging.ERROR, logger="sofabaton_server.callbacks"):
+            held, after = client.portal.call(main)
+        assert (held, after) == (1, 0)
+        assert "broker unreachable" in caplog.text
