@@ -74,6 +74,7 @@ def test_the_busy_gate_covers_a_wifi_sync_and_a_running_backup(monkeypatch):
     """CR-H1-7: the CALL_ME gate (is_long_running_task_active)."""
 
     import custom_components.sofabaton_x1s as integration
+    import custom_components.sofabaton_x1s.operations as operations_module
 
     loop = asyncio.new_event_loop()
     try:
@@ -84,7 +85,7 @@ def test_the_busy_gate_covers_a_wifi_sync_and_a_running_backup(monkeypatch):
             def has_running_for_entry(self, entry_id):
                 return entry_id == "entry-id" and running["value"]
 
-        monkeypatch.setattr(integration, "_backup_operation_registry", lambda _hass: _Registry())
+        monkeypatch.setattr(operations_module, "_backup_operation_registry", lambda _hass: _Registry())
         assert hub.is_long_running_task_active() is False
 
         running["value"] = True

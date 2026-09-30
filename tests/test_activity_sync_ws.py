@@ -9,6 +9,7 @@ import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
 class _Conn:
@@ -99,11 +100,11 @@ def test_ws_activity_sync_starts_operation(monkeypatch):
 def test_ws_activity_sync_busy(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="activity_sync", entry_id="entry-1",
                     initial_state={"status": "running"})
     hass = SimpleNamespace(async_create_task=lambda c: SimpleNamespace(),
-                           data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+                           data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     _run(integration._ws_activity_sync(hass, conn, {
         "id": 2, "entry_id": "entry-1", "activity_id": 101,
         "baseline": _bundle([]), "edited": _bundle([]),
@@ -185,10 +186,10 @@ def test_ws_activity_sync_rejects_nested_invalid_payload_before_operation(monkey
     conn = _Conn()
     _patch(monkeypatch)
     created_tasks = []
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     hass = SimpleNamespace(
         async_create_task=lambda coro: created_tasks.append(coro),
-        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+        data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}},
     )
     edited = copy.deepcopy(_bundle([
         {"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"},
@@ -445,10 +446,10 @@ def test_ws_device_sync_registry_kind_is_device_sync(monkeypatch):
     conn = _Conn()
     started = {}
     _patch(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     hass = SimpleNamespace(
         async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
-        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+        data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}},
     )
     _run(integration._ws_device_sync(hass, conn, {
         "id": 8, "entry_id": "entry-1", "device_id": 1,
@@ -565,7 +566,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     cascaded favorite/binding labels follow."""
     from custom_components.sofabaton_x1s.command_config import CommandConfigStore
 
-    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
 
     store = CommandConfigStore(SimpleNamespace())
@@ -611,7 +612,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
             self.refreshed_referencing = device_id
 
     hub = _SyncingHub()
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
@@ -685,9 +686,9 @@ def test_ws_entity_delete_busy(monkeypatch):
     conn = _Conn()
     hub = _DeletingHub({"status": "success"})
     _patch(monkeypatch, hub=hub)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     _run(integration._ws_device_delete(hass, conn, {
         "id": 43, "entry_id": "entry-1", "device_id": 3,
     }))
@@ -707,10 +708,10 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
     "running" until the cache refresh has completed."""
     tail_statuses = []
 
-    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
 
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="activity_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
@@ -761,7 +762,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
         compute_commands_hash,
     )
 
-    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
 
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
 
@@ -833,7 +834,7 @@ def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypat
     hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
         monkeypatch, in_sync=True
     )
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
@@ -862,7 +863,7 @@ def test_device_sync_rename_of_out_of_sync_record_updates_name_only(monkeypatch)
     hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
         monkeypatch, in_sync=False
     )
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
@@ -891,7 +892,7 @@ def test_device_sync_rename_of_unmanaged_device_leaves_store_alone(monkeypatch):
     for bundle in (baseline, edited):
         bundle["devices"][0]["device"]["brand"] = "Sony"
         bundle["devices"][0]["device"]["device_id"] = 9
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
@@ -1063,9 +1064,9 @@ def test_ws_device_create_busy(monkeypatch):
     conn = _Conn()
     hub = _CreatingHub({"status": "success", "device_id": 7})
     _patch(monkeypatch, hub=hub)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     _run(integration._ws_device_create(hass, conn, {
         "id": 55, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
     }))

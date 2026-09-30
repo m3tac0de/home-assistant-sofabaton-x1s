@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 from tests.test_activity_sync_ws import _bundle, _Conn, _device_bundle
 
@@ -171,7 +172,7 @@ def test_sync_from_snapshot_requires_dict_baseline_and_edited(monkeypatch) -> No
 
 def test_sync_from_snapshot_rejects_when_busy(monkeypatch) -> None:
     hub = _wire_hub(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="device_sync", entry_id=hub.entry_id, initial_state={"status": "running"})
     call = _FakeCall(
         {
@@ -180,7 +181,7 @@ def test_sync_from_snapshot_rejects_when_busy(monkeypatch) -> None:
             "baseline": _device_bundle([]),
             "edited": _device_bundle([]),
         },
-        hass=SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}}),
+        hass=SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}}),
     )
 
     with pytest.raises(integration.HomeAssistantError, match="already running"):
@@ -268,11 +269,11 @@ def test_sync_from_snapshot_stale_expected_generation_refuses_loudly(monkeypatch
 
     hub = _wire_hub(monkeypatch)
     hub.cache_generation = 44
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     call = _FakeCall(
         _sync_call_data(expected_generation=41),
         hass=SimpleNamespace(
-            data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}}
+            data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}}
         ),
     )
 

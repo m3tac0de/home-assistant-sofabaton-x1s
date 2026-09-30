@@ -119,7 +119,7 @@ class WifiDeployMixin:
         if self.hub_work_active:
             return True
         try:
-            from . import _backup_operation_registry  # local import to avoid cycle
+            from .operations import _backup_operation_registry  # local import to avoid cycle
         except Exception:
             return False
         try:

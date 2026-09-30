@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
 class _Conn:
@@ -80,11 +81,11 @@ def test_ws_refresh_all_cache_starts_operation(monkeypatch):
 def test_ws_refresh_all_cache_busy(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="cache_refresh", entry_id="entry-1", initial_state={"status": "running"})
     hass = SimpleNamespace(
         async_create_task=lambda c: SimpleNamespace(),
-        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+        data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}},
     )
     _run(integration._ws_refresh_all_cache(hass, conn, {"id": 2, "entry_id": "entry-1"}))
     assert conn.error[1] == "busy"
@@ -111,13 +112,13 @@ def test_cache_refresh_progress_messages_use_cache_language():
 
 
 def test_runtime_payload_labels_cache_refresh():
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(
         kind="cache_refresh",
         entry_id="entry-1",
         initial_state={"status": "running", "message": "Refreshing device 11…"},
     )
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     hub = SimpleNamespace(entry_id="entry-1", client_connected=False)
     payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
     assert payload["kind"] == "operation_running"
@@ -130,7 +131,7 @@ def test_runtime_payload_forwards_structured_progress_for_localization():
     """`detail` is English prose the frontend cannot translate, so the payload
     also carries the structured phase/target the control panel localizes into
     "Refreshing device 11…" in the user's own language."""
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     operation_id = registry.create(
         kind="cache_refresh",
         entry_id="entry-1",
@@ -144,7 +145,7 @@ def test_runtime_payload_forwards_structured_progress_for_localization():
         completed_steps=3,
         total_steps=9,
     )
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     hub = SimpleNamespace(entry_id="entry-1", client_connected=False)
 
     payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
@@ -195,9 +196,9 @@ def test_runtime_payload_reports_how_the_last_operation_ended(monkeypatch):
     """CR-F1-1: the control panel sees a running operation disappear from the
     poll; the idle payload says whether it succeeded or failed, so a failed
     restore is never announced as a success."""
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     operation_id = registry.create(kind="backup_restore", entry_id="entry-1", initial_state={"status": "running"})
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
 
     class _Devices:
         async def async_list_hub_devices(self, entry_id, *, roku_listen_port=None):
