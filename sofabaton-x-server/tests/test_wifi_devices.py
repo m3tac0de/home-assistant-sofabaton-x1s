@@ -99,6 +99,7 @@ def test_update_and_remove_by_key(tmp_path: Path) -> None:
     client, factory = _rig(tmp_path)
     with client:
         hub_id, proxy = _hub(client, factory)
+        proxy.fetched.update(a.activity_id for a in proxy.activities_data)   # every activity read
         a = _create(client, hub_id, {"name": "Lights", "slots": [{"label": "On"}]})
         b = _create(client, hub_id, {"name": "Blinds", "slots": [{"label": "Up"}]})
 
@@ -230,7 +231,7 @@ def test_delete_asks_only_about_references_the_spec_did_not_make(tmp_path: Path)
         hub_id, proxy = _hub(client, factory)
         a = _create(client, hub_id, {"name": "Lights", "slots": [{"label": "On", "favorite": True, "button": 182, "activities": [101]}]})
         dev = a["device_id"]
-        proxy.fetched.add(101)
+        proxy.fetched.update(a.activity_id for a in proxy.activities_data)   # every activity read
         ours = {**proxy._entity("activity", 101, "Watch TV"), "referenced_source_device_ids": [1, dev],
                 "favorite_slots": [{"device_id": dev, "command_id": 1}],
                 "button_bindings": [{"button_id": 182, "device_id": dev, "command_id": 1}]}
@@ -250,4 +251,19 @@ def test_delete_asks_only_about_references_the_spec_did_not_make(tmp_path: Path)
         # What its own slots put there goes with it, no force needed.
         proxy.edited_entities[("activity", 101)] = {**ours, "macros": power}
         r = client.delete(f"{HUBS}/{hub_id}/wifi-devices/{a['key']}")
+        assert r.status_code == 202 and _wait(client, hub_id, r.json()["job_id"])["status"] == "done"
+
+
+def test_delete_asks_about_activities_the_server_never_read(tmp_path: Path) -> None:
+    """CR-S2-7: an unread activity may hold a binding the delete would
+    cascade away, so it is reported (and a second press deletes anyway)."""
+    client, factory = _rig(tmp_path)
+    with client:
+        hub_id, proxy = _hub(client, factory)
+        a = _create(client, hub_id, {"name": "Lights", "slots": [{"label": "On"}]})
+        proxy.fetched.difference_update(x.activity_id for x in proxy.activities_data)
+        r = client.delete(f"{HUBS}/{hub_id}/wifi-devices/{a['key']}")
+        assert r.status_code == 409 and r.json()["type"] == "callback_device_referenced"
+        assert "not read yet" in r.json()["detail"]
+        r = client.delete(f"{HUBS}/{hub_id}/wifi-devices/{a['key']}?force=true")
         assert r.status_code == 202 and _wait(client, hub_id, r.json()["job_id"])["status"] == "done"

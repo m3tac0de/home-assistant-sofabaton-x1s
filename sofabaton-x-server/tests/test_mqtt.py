@@ -259,6 +259,7 @@ def test_an_x2_with_a_broker_gets_mqtt_devices_whose_presses_arrive_from_the_top
         client, factory = _rig(tmp_path, mqtt_host=LOOPBACK, mqtt_port=broker.port, mqtt_username="hub", mqtt_password="s3cret")
         with client:
             hub_id, proxy = _hub(client, factory)
+            proxy.fetched.update(a.activity_id for a in proxy.activities_data)   # every activity read
             # Not an X2: http only, and asking for mqtt anyway is refused with the reason.
             assert client.get(f"{HUBS}/{hub_id}/wifi-devices").json()["transports"] == ["http"]
             r = client.post(f"{HUBS}/{hub_id}/wifi-devices", json={"name": "Lights", "transport": "mqtt"})

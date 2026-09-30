@@ -1106,8 +1106,10 @@ class CallbackService:
 
     def references(self, snapshot: Any, device_id: int, *, spec: Optional[WifiDeviceSpec] = None) -> list[dict[str, Any]]:
         """Activities in the snapshot that name the device: membership,
-        favorites, bindings, macro steps. Unfetched activities cannot be
-        scanned and are reported as ``complete: False``.
+        favorites, bindings, macro steps. An activity whose detail was
+        never read cannot be scanned: it is reported too, as
+        ``kinds: ["unscanned"]`` with ``complete: False``, since it may
+        hold a reference the delete would cascade away (CR-S2-7).
 
         The steps a membership itself puts into an activity's power macros
         (power on, input, power off) are the membership, not a macro
@@ -1118,6 +1120,7 @@ class CallbackService:
         owned = self.owned_references(spec)
         power_macros = (0xC6, 0xC7)
         found: list[dict[str, Any]] = []
+        scanned: set[int] = set()
         for payload in (snapshot.bundle.get("activities") or []):
             if not isinstance(payload, dict):
                 continue
@@ -1140,9 +1143,20 @@ class CallbackService:
                    if int(macro.get("button_id", macro.get("key_id", 0)) or 0) not in power_macros
                    for step in macro.get("steps") or []):
                 kinds.append("macro")
+            complete = bool(payload.get("complete", False))
+            if complete:
+                scanned.add(activity_id)
+            elif not kinds:
+                kinds.append("unscanned")
             if kinds:
                 found.append({"activity_id": activity_id, "name": block.get("name"),
-                              "kinds": kinds, "complete": bool(payload.get("complete", False))})
+                              "kinds": kinds, "complete": complete})
+        reported = {row["activity_id"] for row in found}
+        for entity in getattr(snapshot, "activities", None) or []:
+            activity_id = int(entity.entity_id)
+            if activity_id in scanned or activity_id in reported or entity.complete:
+                continue
+            found.append({"activity_id": activity_id, "name": None, "kinds": ["unscanned"], "complete": False})
         return found
 
     async def remove(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY) -> dict[str, Any]:

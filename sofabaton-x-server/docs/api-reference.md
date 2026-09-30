@@ -537,7 +537,9 @@ server keeps retrying with backoff, and `POST
 Failures split two ways. An immediate `409` is something the record
 alone decides: `callback_device_exists`, `callback_device_stale`,
 `callback_device_not_stale`, `callback_device_referenced` (the detail
-names the activities and reference kinds), `callback_port_x1`. Anything
+names the activities and reference kinds; an activity the server has not
+read yet is named too, as "not read yet", because it may hold a
+reference; pass `?force=true` to delete anyway), `callback_port_x1`. Anything
 that needs the hub happens inside the accepted job and fails it with a
 coded error: `callback_update_declined` (a record's label matches
 neither what was deployed nor what you asked, so the device was edited

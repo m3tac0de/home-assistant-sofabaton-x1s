@@ -387,7 +387,10 @@ async def _remove(request: Request, hub_id: str, *, key: str, force: bool, kind:
             own_spec = None
         references = service.references(await proxy.snapshot(), record.device_id, spec=own_spec)
         if references:
-            names = ", ".join(f"{r['activity_id']} ({', '.join(r['kinds'])})" for r in references)
+            names = ", ".join(
+                f"{r['activity_id']} ({'not read yet' if r['kinds'] == ['unscanned'] else ', '.join(r['kinds'])})"
+                for r in references
+            )
             raise ApiProblem(409, "callback_device_referenced", "Activities still reference the callback device",
                              detail=f"referenced by activity {names}; clear them or pass ?force=true", hub_id=hub_id)
     await _require_control(proxy, hub_id)
