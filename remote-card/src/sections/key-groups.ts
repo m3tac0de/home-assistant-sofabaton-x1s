@@ -1,5 +1,4 @@
-// Key groups (dpad / nav / mid / media / colors / abc) for the Lit card.
-// Same structure and per-key configs as the legacy buildRemoteGroups(), but
+// Key groups (dpad / nav / mid / media / colors / abc) for the Lit card,
 // rendered declaratively around create-once <sb-key-button> hosts.
 
 import { html, nothing, type TemplateResult } from "lit";
@@ -19,6 +18,26 @@ export interface KeySpec {
   extraClass?: string;
   size?: string;
   color?: string;
+  /** The face is the key's localized name (str().keys), not `label`. */
+  localizedFace?: boolean;
+  /** The face is a glyph ("E"); screen readers and Key capture use the
+   *  key's localized name instead. */
+  glyphFace?: boolean;
+}
+
+/** The text a key shows on its face. */
+export function keyFaceLabel(spec: KeySpec): string {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+
+/**
+ * The key's name for screen readers and Key capture: its localized name
+ * whenever the face does not spell it (icons, glyphs, colours), otherwise
+ * the face itself (CR-F4b-3).
+ */
+export function keyAccessibleLabel(spec: KeySpec): string {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
 }
 
 // Mirrors the legacy _render()'s x2-only set.
@@ -45,7 +64,7 @@ const DPAD_KEYS: KeySpec[] = [
 
 // The X2's on-screen keypad, phone order (docs/internal/numpad-plan.md
 // §2.3). "E" is the remote's own Enter glyph, language neutral like A/B/C;
-// the assist label resolves to str().keys.numenter via the key fallback.
+// its accessible and capture name is str().keys.numenter (glyphFace).
 export const NUMPAD_KEYS: KeySpec[] = [
   { key: "num1", id: ID.NUM_1, cmd: ID.NUM_1, label: "1", icon: "", size: "small" },
   { key: "num2", id: ID.NUM_2, cmd: ID.NUM_2, label: "2", icon: "", size: "small" },
@@ -58,7 +77,7 @@ export const NUMPAD_KEYS: KeySpec[] = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" },
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true },
 ];
 
 const NAV_KEYS: KeySpec[] = [
@@ -86,7 +105,7 @@ const MEDIA_KEYS: KeySpec[] = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" },
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true },
 ];
 
 const COLOR_KEYS: KeySpec[] = [
@@ -138,15 +157,12 @@ function renderKey(params: KeyGroupsParams, spec: KeySpec): TemplateResult | typ
   const wrapClassName = spec.color
     ? "key key--color"
     : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label,
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
 
   return html`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -177,6 +193,8 @@ export interface DpadNumpadParams {
    * fat-fingered direction key never flips the face.
    */
   onOpen: () => void;
+  /** Keyboard close: Escape, or focus leaving the D-pad group (CR-F4b-7). */
+  onClose?: (restoreFocus: boolean) => void;
 }
 
 export function renderDpad(
@@ -208,8 +226,29 @@ export function renderDpad(
   // The keys face stays in flow and sets the group's height; the keypad
   // face sits on top inside the same padding, so the rows below never move
   // (Q1). `inert` keeps the hidden face out of tab order and hit testing.
+  // Keyboard users close the pad with Escape (focus returns to the toggle)
+  // or by tabbing out of the group; pointers keep the outside-tap close
+  // (L-B8). A focusout without a new target is the toggle going inert as
+  // the pad opens, not the user leaving.
+  const onKeydown = (ev: KeyboardEvent) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev: FocusEvent) => {
+    if (!open) return;
+    const next = ev.relatedTarget as Node | null;
+    if (!next || (ev.currentTarget as HTMLElement).contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return html`
-    <div class=${className} ${numpad?.hostRef ? ref(numpad.hostRef) : nothing}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? ref(numpad.hostRef) : nothing}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k) => renderKey(params, k))}
       </div>

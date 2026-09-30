@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import ts from "typescript";
+import { literalUiOffenders } from "./helpers/literal-ui-guard";
 import {
   TOOLS_CARD_STRINGS,
   TOOLS_CARD_STRINGS_EN,
@@ -56,7 +58,6 @@ test("bundled English (en-GB) uses proper English spelling and American English 
 
   assert.equal(TOOLS_CARD_STRINGS.cache.favorites, "Favourites");
   assert.equal(TOOLS_CARD_STRINGS.common.favoriteFallback(3), "Favourite 3");
-  assert.equal(TOOLS_CARD_STRINGS.activities.review.idleChanged("TV", "on"), '"TV" idle behaviour → on.');
   assert.equal(TOOLS_CARD_STRINGS.backup.customizeButtonsToggle, "Customise individual buttons");
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.colorGroup, "Colour");
   assert.equal(TOOLS_CARD_STRINGS.tabs.backup, TOOLS_CARD_STRINGS_EN.tabs.backup);
@@ -119,7 +120,6 @@ test("bundled complete control-panel translations select regional locales and pr
 
 test("Spanish power section labels describe both on and off behavior", () => {
   setToolsCardLanguage("es-ES");
-  assert.equal(TOOLS_CARD_STRINGS.activities.deviceReview.sectionPower, "Encendido y apagado");
   assert.equal(TOOLS_CARD_STRINGS.backup.detailPower, "Encendido y apagado");
   setToolsCardLanguage("en");
 });
@@ -233,7 +233,6 @@ test("French zero counts use the singular category", () => {
     [
       TOOLS_CARD_STRINGS.backup.selectedCount(0),
       TOOLS_CARD_STRINGS.backup.backupResultSummary(0, 0),
-      TOOLS_CARD_STRINGS.backup.activityMeta(0, 0),
       TOOLS_CARD_STRINGS.backup.deleteImpactActivities(0),
       TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(0),
       TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(0),
@@ -246,12 +245,10 @@ test("French zero counts use the singular category", () => {
       TOOLS_CARD_STRINGS.wifiCommands.inActivities(0),
       TOOLS_CARD_STRINGS.wifiCommands.eventsConfiguredPill(0, 3),
       TOOLS_CARD_STRINGS.wifiCommands.eventsShowUnconfigured(0),
-      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(0, 0, 0),
     ],
     [
       "0 sélectionné",
       "Sauvegarde de 0 activité et 0 appareil",
-      "0 favori · 0 macro",
       "0 activité y fait référence",
       "0 raccourci sera supprimé",
       "0 étape de séquence sera supprimée",
@@ -264,7 +261,6 @@ test("French zero counts use the singular category", () => {
       "dans 0 activité",
       "0 sur 3 configuré",
       "Afficher 0 non configuré…",
-      "Le hub supprimera aussi 0 raccourci et 0 attribution de touche qui y font référence ; l’étape est retirée de 0 macro (une macro sans étapes est supprimée).",
     ],
   );
 
@@ -291,10 +287,6 @@ test("bundled Simplified Chinese control-panel translation supports zh-Hans", ()
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.action, "动作");
   assert.equal(TOOLS_CARD_STRINGS.hubClick.lovelaceHint, "复制到仪表板 YAML：");
   assert.equal(TOOLS_CARD_STRINGS.backendState.restoreDevice(8), "正在恢复设备 8…");
-  assert.equal(
-    TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(1, 2, 3),
-    "Hub 还会移除引用此事件的 1 个快捷项和 2 个按键分配，并从 3 个宏中移除此步骤（没有步骤的宏会被删除）。",
-  );
 
   setToolsCardLanguage("en");
 });
@@ -388,8 +380,8 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       `${item.locale} Automation actions`,
     );
     assert.deepEqual(
-      [TOOLS_CARD_STRINGS.activities.syncRetry, TOOLS_CARD_STRINGS.wifiCommands.wifiEventRetrySync],
-      [item.retrySync, item.retrySync],
+      [TOOLS_CARD_STRINGS.activities.syncRetry],
+      [item.retrySync],
       `${item.locale} retry-sync actions`,
     );
   }
@@ -605,14 +597,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "0 favs / 1 macro / 2 buttons",
         "1 cmd",
         "2 cmds",
-        "1 favorite · 2 macros",
         "1 linked device",
         "1 of 1 button mapped",
         "1 of 2 buttons mapped",
         "1 configured",
         "2 configured",
-        "The hub will also remove 1 shortcut and 0 button assignments that reference it, and the step is removed from 1 macro (a macro left with no steps is removed).",
-        "The hub will also remove 2 shortcuts and 2 button assignments that reference it, and the step is removed from 2 macros (a macro left with no steps is removed).",
       ],
     },
     {
@@ -621,14 +610,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "0 favs / 1 macro / 2 buttons",
         "1 cmd",
         "2 cmds",
-        "1 favourite · 2 macros",
         "1 linked device",
         "1 of 1 button mapped",
         "1 of 2 buttons mapped",
         "1 configured",
         "2 configured",
-        "The hub will also remove 1 shortcut and 0 button assignments that reference it, and the step is removed from 1 macro (a macro left with no steps is removed).",
-        "The hub will also remove 2 shortcuts and 2 button assignments that reference it, and the step is removed from 2 macros (a macro left with no steps is removed).",
       ],
     },
     {
@@ -637,14 +623,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "0 fav. / 1 macro / 2 knoppen",
         "1 cmd",
         "2 cmd",
-        "1 favoriet · 2 macro's",
         "1 gekoppeld apparaat",
         "1 van 1 knop gekoppeld",
         "1 van 2 knoppen gekoppeld",
         "1 geconfigureerd",
         "2 geconfigureerd",
-        "De hub verwijdert ook 1 snelkoppeling en 0 knoptoewijzingen die ernaar verwijzen; de stap wordt uit 1 macro verwijderd (een macro zonder stappen wordt verwijderd).",
-        "De hub verwijdert ook 2 snelkoppelingen en 2 knoptoewijzingen die ernaar verwijzen; de stap wordt uit 2 macro's verwijderd (een macro zonder stappen wordt verwijderd).",
       ],
     },
     {
@@ -653,14 +636,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "0 Fav. / 1 Makro / 2 Tasten",
         "1 Bef.",
         "2 Bef.",
-        "1 Favorit · 2 Makros",
         "1 verknüpftes Gerät",
         "1 von 1 Taste belegt",
         "1 von 2 Tasten belegt",
         "1 konfiguriert",
         "2 konfiguriert",
-        "Der Hub entfernt außerdem 1 Verknüpfung und 0 Tastenbelegungen, die darauf verweisen; der Schritt wird aus 1 Makro entfernt (ein Makro ohne Schritte wird gelöscht).",
-        "Der Hub entfernt außerdem 2 Verknüpfungen und 2 Tastenbelegungen, die darauf verweisen; der Schritt wird aus 2 Makros entfernt (ein Makro ohne Schritte wird gelöscht).",
       ],
     },
     {
@@ -669,14 +649,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "0 fav. / 1 macro / 2 touches",
         "1 cmd",
         "2 cmd",
-        "1 favori · 2 macros",
         "1 appareil lié",
         "1 touche attribuée sur 1",
         "1 touche attribuée sur 2",
         "1 configurée",
         "2 configurées",
-        "Le hub supprimera aussi 1 raccourci et 0 attribution de touche qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
-        "Le hub supprimera aussi 2 raccourcis et 2 attributions de touches qui y font référence ; l’étape est retirée de 2 macros (une macro sans étapes est supprimée).",
       ],
     },
     {
@@ -685,14 +662,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "0 fav. / 1 macro / 2 botones",
         "1 cmd",
         "2 cmd",
-        "1 favorito · 2 macros",
         "1 dispositivo vinculado",
         "1 de 1 botón asignado",
         "1 de 2 botones asignados",
         "1 configurado",
         "2 configurados",
-        "El hub también eliminará 1 acceso directo y 0 asignaciones de botones que hacen referencia al evento; el paso se elimina de 1 macro (una macro sin pasos se elimina).",
-        "El hub también eliminará 2 accesos directos y 2 asignaciones de botones que hacen referencia al evento; el paso se elimina de 2 macros (una macro sin pasos se elimina).",
       ],
     },
   ];
@@ -703,14 +677,11 @@ test("control-panel count copy uses real singular and plural forms", () => {
       TOOLS_CARD_STRINGS.cache.activityCounts(0, 1, 2),
       TOOLS_CARD_STRINGS.cache.deviceCommandCount(1),
       TOOLS_CARD_STRINGS.cache.deviceCommandCount(2),
-      TOOLS_CARD_STRINGS.backup.activityMeta(1, 2),
       TOOLS_CARD_STRINGS.backup.linkedDevices(1),
       TOOLS_CARD_STRINGS.backup.roleMappedNote(1, 1),
       TOOLS_CARD_STRINGS.backup.roleMappedNote(1, 2),
       TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(1),
       TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(2),
-      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(1, 0, 1),
-      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(2, 2, 2),
     ];
     assert.deepEqual(actual, item.expected, item.locale);
   }
@@ -718,61 +689,8 @@ test("control-panel count copy uses real singular and plural forms", () => {
   setToolsCardLanguage("en");
 });
 
-function sourceFiles(root: string): string[] {
-  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
-    const target = path.join(root, entry.name);
-    return entry.isDirectory() ? sourceFiles(target) : [target];
-  });
-}
-
 function lineOf(source: ts.SourceFile, node: ts.Node): number {
   return source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-}
-
-function tagName(node: ts.TaggedTemplateExpression): string {
-  return node.tag.getText();
-}
-
-function templateText(node: ts.TaggedTemplateExpression): string {
-  const template = node.template;
-  if (ts.isNoSubstitutionTemplateLiteral(template)) return template.text;
-  return template.head.text
-    + template.templateSpans.map((span) => `__EXPR__${span.literal.text}`).join("");
-}
-
-function normalizeVisibleText(value: string): string {
-  return value
-    .replace(/__EXPR__/g, " ")
-    .replace(/&(?:amp|nbsp|mdash|hellip);/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function looksUserVisible(value: string): boolean {
-  const text = normalizeVisibleText(value);
-  return /[A-Za-z]{2}/.test(text);
-}
-
-function isInsideHtmlExpression(node: ts.Node): boolean {
-  for (let parent = node.parent; parent; parent = parent.parent) {
-    if (ts.isTaggedTemplateExpression(parent) && tagName(parent) === "html") return true;
-  }
-  return false;
-}
-
-function isTechnicalHtmlExpressionLiteral(node: ts.StringLiteralLike): boolean {
-  const value = node.text.trim();
-  if (value.includes("<") || value.includes(">")) return true;
-  if (/^[a-z-]+\s*:\s*[^;]+;?$/i.test(value)) return true;
-
-  for (let parent: ts.Node | undefined = node.parent; parent; parent = parent.parent) {
-    if (ts.isPropertyAssignment(parent)) {
-      const propertyName = parent.name.getText().replace(/["']/g, "");
-      if (propertyName === "class" || propertyName.endsWith("ClassName")) return true;
-    }
-    if (ts.isTaggedTemplateExpression(parent)) break;
-  }
-  return false;
 }
 
 test("western locale source uses compact ellipses and French non-breaking punctuation", () => {
@@ -820,76 +738,37 @@ test("western locale source uses compact ellipses and French non-breaking punctu
 });
 
 test("control-panel UI source does not introduce literal user-facing strings", () => {
-  const root = path.resolve("custom_components/sofabaton_x1s/www/src");
-  const files = sourceFiles(root).filter((file) => {
-    const relative = path.relative(root, file).replaceAll("\\", "/");
-    return file.endsWith(".ts")
-      && relative !== "strings.ts"
-      && !relative.startsWith("control-panel-translations/")
-      && !relative.startsWith("remote-card")
-      && !relative.startsWith("remote-card-translations/")
-      && !relative.startsWith("editor-sections/")
-      && !relative.startsWith("sections/")
-      && relative !== "state/remote-card-store.ts"
-      && !relative.endsWith("-styles.ts");
+  const offenders = literalUiOffenders({
+    root: "custom_components/sofabaton_x1s/www/src",
+    skip: (relative) => relative === "strings.ts"
+      || relative.startsWith("control-panel-translations/")
+      || relative.endsWith("-styles.ts"),
+    // Transport names, shown as the protocol spells them in every locale.
+    allowedValues: new Set(["MQTT", "HTTP"]),
   });
-
-  const offenders: string[] = [];
-  const uiProperties = new Set(["label", "title", "subtitle", "helper", "message", "placeholder"]);
-
-  for (const file of files) {
-    const source = ts.createSourceFile(
-      file,
-      readFileSync(file, "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
-    const relative = path.relative(root, file).replaceAll("\\", "/");
-
-    const report = (node: ts.Node, kind: string, value: string) => {
-      offenders.push(`${relative}:${lineOf(source, node)} ${kind}: ${normalizeVisibleText(value)}`);
-    };
-
-    const visit = (node: ts.Node) => {
-      if (ts.isTaggedTemplateExpression(node) && tagName(node) === "html") {
-        const raw = templateText(node);
-        for (const match of raw.matchAll(/(?:aria-label|title|placeholder)\s*=\s*["']([^"']+)["']/gi)) {
-          if (looksUserVisible(match[1])) report(node, "attribute", match[1]);
-        }
-        for (const match of raw.matchAll(/>([^<>]+)</g)) {
-          if (looksUserVisible(match[1])) report(node, "text", match[1]);
-        }
-      }
-
-      if (ts.isNewExpression(node)
-        && node.expression.getText(source) === "Error"
-        && node.arguments?.length
-        && ts.isStringLiteralLike(node.arguments[0])
-        && looksUserVisible(node.arguments[0].text)) {
-        report(node.arguments[0], "error", node.arguments[0].text);
-      }
-
-      if (ts.isPropertyAssignment(node)
-        && ts.isIdentifier(node.name)
-        && uiProperties.has(node.name.text)
-        && ts.isStringLiteralLike(node.initializer)
-        && looksUserVisible(node.initializer.text)) {
-        report(node.initializer, `property ${node.name.text}`, node.initializer.text);
-      }
-
-      if (ts.isStringLiteralLike(node)
-        && isInsideHtmlExpression(node)
-        && !isTechnicalHtmlExpressionLiteral(node)
-        && normalizeVisibleText(node.text).includes(" ")
-        && looksUserVisible(node.text)) {
-        report(node, "template expression", node.text);
-      }
-
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-  }
-
   assert.deepEqual(offenders, [], offenders.join("\n"));
+});
+
+test("the literal guard catches the single-word escapes that shipped (CR-X7-7)", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sb-literal-guard-"));
+  try {
+    writeFileSync(path.join(root, "sample.ts"), [
+      "const chip = ready ? \"required\" : \"command\";",
+      "const a = html`<x-field .label=${\"Name\"}></x-field>`;",
+      "const b = html`<span>${open ? \"Close\" : \"Open\"}</span>`;",
+      "const c = html`<div class=${open ? \"open\" : \"closed\"} data-kind=${\"device\"}>${icon(\"mdi:close\")}</div>`;",
+      "const d = html`<button aria-label=${busy ? \"Busy\" : S.ready}></button>`;",
+    ].join("\n"));
+    const offenders = literalUiOffenders({ root, skip: () => false }).map((line) => line.replace(/^sample\.ts:/, ""));
+    assert.deepEqual(offenders, [
+      "1 declaration chip: required",
+      "1 declaration chip: command",
+      "2 binding .label: Name",
+      "3 text binding: Close",
+      "3 text binding: Open",
+      "5 binding aria-label: Busy",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -186,8 +186,10 @@ test("embedHtmlSnippet is the script and the element, with the layout inlined an
   assert.match(serverLayout, /<sofabaton-remote hub="e26a44861b45"><\/sofabaton-remote>$/);
 });
 
-test("unavailableBannerText names the server's error, a generic reason, or nothing", () => {
-  assert.equal(unavailableBannerText(undefined, null), "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected).");
+test("unavailableBannerText adds only what the card cannot show (CR-X7-6, CR-F4a-7)", () => {
+  // The card shows its own localized notice for an unavailable hub.
+  assert.equal(unavailableBannerText(undefined, null), null);
   assert.equal(unavailableBannerText({ state: "unavailable" }, "GET /status -> 504"), "The server cannot reach the hub (GET /status -> 504).");
   assert.equal(unavailableBannerText({ state: "on" }, "stale"), null);
+  assert.equal(unavailableBannerText({ state: "on" }, null, true), "The hub did not take that command.");
 });

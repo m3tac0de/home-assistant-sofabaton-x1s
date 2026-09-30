@@ -128,7 +128,10 @@ The **Sofabaton Control Panel** is the management interface for hub configuratio
 ```yaml
 type: custom:sofabaton-control-panel
 card_height: 700
+admin_only: true   # optional: other users see a notice instead of the panel
 ```
+
+`admin_only` hides the panel from users who are not Home Assistant administrators. It is a dashboard setting only: the integration's actions stay available to every user.
 
 Its main areas are:
 

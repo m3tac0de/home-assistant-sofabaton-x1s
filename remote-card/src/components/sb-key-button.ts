@@ -9,6 +9,7 @@ import {
   LongPressTimer,
   attachPrimaryAction,
 } from "../remote-card-gestures";
+import { str } from "../remote-card-strings";
 
 const CONTROL_CSS = `
   :host {
@@ -373,7 +374,9 @@ export class SbKeyButton extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button",
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback,
     );
   }
 
@@ -423,17 +426,10 @@ export class SbKeyButton extends BaseElement {
       if (this._holdRepeat || this._longPress) ev.preventDefault();
     });
 
+    // Pointer taps arrive as pointerup; attachPrimaryAction also takes the
+    // native button's keyboard click (detail 0), through the same gate.
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic(),
-    });
-
-    // Pointer-generated clicks are handled by pointerup above. A native
-    // keyboard click has detail=0, so retain Enter/Space accessibility
-    // without opening another duplicate-send path.
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
     });
   }
 

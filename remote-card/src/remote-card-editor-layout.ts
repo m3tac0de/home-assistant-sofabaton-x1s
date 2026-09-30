@@ -29,7 +29,7 @@ import {
   toStoredDeviceLayer,
   volumeGroupEnabled,
 } from "./remote-card-layout";
-import { str } from "./remote-card-strings";
+import { str, type RemoteCardStrings } from "./remote-card-strings";
 
 /** Stored layer key inside device_mode.layouts for a "device:*" selection. */
 export function deviceStoredLayerKey(selection: unknown): string {
@@ -56,24 +56,22 @@ export function layoutHasCustomOverride(
 export function layoutSelectionNote(
   config: Record<string, any> | null | undefined,
   selection: unknown,
+  strings: RemoteCardStrings = str(),
 ) {
+  const e = strings.editor;
   if (selection === "default") {
-    return str().editor.noteDefaultLayout;
+    return e.noteDefaultLayout;
   }
   if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
-    return str().editor.noteDeviceDefaultLayout;
+    return e.noteDeviceDefaultLayout;
   }
   // Name the scope in both notes: activity and device labels can be
   // similar, and this line signals which of the two the user is editing.
   const isDevice = isDeviceLayoutKey(selection);
   if (layoutHasCustomOverride(config, selection)) {
-    return isDevice
-      ? str().editor.noteCustomDeviceLayout
-      : str().editor.noteCustomActivityLayout;
+    return isDevice ? e.noteCustomDeviceLayout : e.noteCustomActivityLayout;
   }
-  return isDevice
-    ? str().editor.noteUsingDeviceDefault
-    : str().editor.noteUsingActivityDefault;
+  return isDevice ? e.noteUsingDeviceDefault : e.noteUsingActivityDefault;
 }
 
 export function editorActivitiesFromState(state: any) {
@@ -324,8 +322,9 @@ export function resetEditorLayout(config: Record<string, any>, selection: string
   return next;
 }
 
-export function groupLabel(key: string) {
-  return str().groups[key] || key;
+/** `strings` lets an English-only host (the server panel) pass its own table. */
+export function groupLabel(key: string, strings: RemoteCardStrings = str()) {
+  return strings.groups[key] || key;
 }
 
 export function isGroupEnabled(

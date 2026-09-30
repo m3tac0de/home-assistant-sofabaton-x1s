@@ -36,6 +36,11 @@ export const REMOTE_CARD_STRINGS_FR = {
     deviceKeymapMissing:
       "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l’appareil dans l’onglet Hub du Panneau de contrôle Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
+    deviceKeymapMissingServer:
+      "Cet appareil ne figure pas dans le catalogue du hub. Actualisez le hub dans le panneau de contrôle Sofabaton, puis rechargez cette page.",
+    hubUnreachable: (detail: string) =>
+      `Le serveur ne parvient pas à joindre le hub (${detail}).`,
+    controlRefused: "Le hub n’a pas accepté cette commande.",
     poweredOff: "Éteinte",
     defaultLayout: "Disposition par défaut des activités",
     activityFallback: (id: number | string) => `Activité ${id}`,
@@ -46,7 +51,6 @@ export const REMOTE_CARD_STRINGS_FR = {
   },
   assist: {
     label: "Capture de touches",
-    start: "Démarrer",
     waiting: "En attente d’une pression sur une touche",
     exitEditMode: "Quittez le mode d’édition pour commencer",
     captured: (label: string) => `Capture : ${label}`,
@@ -104,18 +108,8 @@ export const REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un thème à la carte",
       use_background_override: "Personnaliser la couleur d’arrière-plan",
       background_override: "Sélectionner la couleur d’arrière-plan",
-      show_activity: "Sélecteur d’activité/appareil",
-      show_dpad: "Pavé directionnel",
-      show_nav: "Touches Retour/Accueil/Menu",
-      show_mid: "Touches de volume et de chaîne",
-      show_media: "Lecture",
-      show_colors: "Rouge/Vert/Jaune/Bleu",
-      show_abc: "Touches A/B/C",
-      show_macros_button: "Bouton des macros",
-      show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
       key_style: "Style des touches",
-      group_order: "Ordre des groupes",
     },
     generalOptionsTitle: "Options générales",
     keyCapture: "Capture de touches",
@@ -157,6 +151,9 @@ export const REMOTE_CARD_STRINGS_FR = {
       `Déplacer ${groupLabel} vers le haut`,
     moveGroupDown: (groupLabel: string) =>
       `Déplacer ${groupLabel} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel: string) => `Réordonner ${groupLabel} (touches fléchées)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",

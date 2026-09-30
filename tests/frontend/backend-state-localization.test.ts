@@ -14,7 +14,7 @@ import {
   localizeBackendProgress,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
 import { resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
-import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 
 test("structured backend errors are localized without relaying English exception text", () => {
   setToolsCardLanguage("de");
@@ -74,6 +74,24 @@ test("device creation errors are localized from stable codes", () => {
     );
   }
   setToolsCardLanguage("en");
+});
+
+test("Add Activity and the reorders speak the device-create codes (CR-X7-4, CR-X2-11)", () => {
+  setToolsCardLanguage("en");
+  for (const surface of ["activity_create", "catalog_write", "device_create"] as const) {
+    for (const code of ["busy", "unavailable", "another_operation"]) {
+      assert.equal(localizeBackendError({ code }, surface), TOOLS_CARD_STRINGS.errors.anotherOperation, `${surface} ${code}`);
+    }
+    assert.equal(localizeBackendError({ code: "not_found" }, surface), TOOLS_CARD_STRINGS.errors.selectedHubUnavailable);
+  }
+  assert.equal(localizeBackendError({ code: "invalid_name" }, "activity_create"), TOOLS_CARD_STRINGS.errors.activityNameInvalid);
+  assert.equal(localizeBackendError({ code: "create_failed" }, "activity_create"), TOOLS_CARD_STRINGS.errors.activityCreateFailed);
+  assert.equal(localizeBackendError({ code: "reorder_failed" }, "catalog_write"), TOOLS_CARD_STRINGS.errors.reorderFailed);
+  // Backend prose never becomes UI copy.
+  assert.equal(
+    localizeBackendError({ code: "unavailable", message: "sync_in_progress: _ws_activity_create" }, "activity_create"),
+    TOOLS_CARD_STRINGS.errors.anotherOperation,
+  );
 });
 
 test("structured backend progress is localized without relaying its English message", () => {

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { literalUiOffenders } from "./helpers/literal-ui-guard";
 import {
+  REMOTE_CARD_LOCALE_ALIASES,
   REMOTE_CARD_STRINGS_EN,
   isLocalizedPoweredOffLabel,
   registerRemoteCardTranslation,
@@ -11,7 +13,7 @@ import {
 } from "../../remote-card/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../remote-card/src/remote-card-state";
 import { drawerTabChevronIcon } from "../../remote-card/src/sections/macro-favorites";
-import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_LOCALE_ALIASES, TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import TOOLS_CARD_STRINGS_DE from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
 import TOOLS_CARD_STRINGS_ES from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
 import TOOLS_CARD_STRINGS_FR from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
@@ -161,20 +163,19 @@ test("missing shortcut commands stay distinct and bidi-safe", () => {
 
 test("layout row uses compact activity/device and mode labels", () => {
   const cases = [
-    ["en", "Activity/device", "Mode switch", "Activity/device selector"],
-    ["ar", "النشاط/الجهاز", "زر تبديل الوضع", "محدِّد النشاط/الجهاز"],
-    ["de", "Aktivität/Gerät", "Modusschalter", "Aktivitäts-/Geräteauswahl"],
-    ["es", "Actividad/dispositivo", "Botón de modo", "Selector de actividad/dispositivo"],
-    ["fr", "Activité/appareil", "Bouton de mode", "Sélecteur d’activité/appareil"],
-    ["nl", "Activiteit/apparaat", "Modusknop", "Activiteits-/apparaatkiezer"],
-    ["zh-Hans", "活动/设备", "模式切换", "活动/设备选择器"],
+    ["en", "Activity/device", "Mode switch"],
+    ["ar", "النشاط/الجهاز", "زر تبديل الوضع"],
+    ["de", "Aktivität/Gerät", "Modusschalter"],
+    ["es", "Actividad/dispositivo", "Botón de modo"],
+    ["fr", "Activité/appareil", "Bouton de mode"],
+    ["nl", "Activiteit/apparaat", "Modusknop"],
+    ["zh-Hans", "活动/设备", "模式切换"],
   ] as const;
 
-  for (const [locale, selector, modeSwitch, selectorField] of cases) {
+  for (const [locale, selector, modeSwitch] of cases) {
     setRemoteCardLanguage(locale);
     assert.equal(str().groups.activity, selector, `${locale}: selector`);
     assert.equal(str().editor.modeToggle, modeSwitch, `${locale}: mode switch`);
-    assert.equal(str().editor.fieldLabels.show_activity, selectorField, `${locale}: selector field`);
   }
 
   setRemoteCardLanguage("en");
@@ -204,7 +205,6 @@ test("Playback and physical-key names stay aligned in every Virtual Remote local
 
   for (const [locale, playback, fastForward] of cases) {
     setRemoteCardLanguage(locale);
-    assert.equal(str().editor.fieldLabels.show_media, playback, locale);
     assert.equal(str().editor.mediaControls, playback, locale);
     assert.equal(str().groups.media, playback, locale);
     assert.equal(str().keys.fwd, fastForward, locale);
@@ -419,4 +419,45 @@ test("powered-off detection matches localized and protocol labels", () => {
 
   setRemoteCardLanguage("en");
   assert.equal(isPoweredOffLabel("Uitgeschakeld"), false);
+});
+
+test("zh-CN and friends resolve to the Simplified Chinese catalogue (CR-X7-3)", () => {
+  for (const language of ["zh-CN", "zh_cn", "zh", "zh-SG", "zh-Hans-CN"]) {
+    setRemoteCardLanguage(language);
+    assert.equal(str().card.powerButton, "切换电源", language);
+  }
+  setRemoteCardLanguage("zh-TW");
+  assert.equal(str().card.powerButton, "Toggle power");
+  setRemoteCardLanguage("en");
+});
+
+test("the remote card and the tools card alias the same locales", () => {
+  assert.deepEqual({ ...REMOTE_CARD_LOCALE_ALIASES }, { ...TOOLS_CARD_LOCALE_ALIASES });
+});
+
+test("remote-card UI source does not introduce literal user-facing strings", () => {
+  // The same guard as the tools card's (CR-X7-7). Skipped: the string
+  // tables, the shims (HA's own components and the generated icon table)
+  // and the Automation Assist YAML builder (its output is YAML, not UI copy).
+  const offenders = literalUiOffenders({
+    root: "remote-card/src",
+    skip: (relative) => relative === "remote-card-strings.ts"
+      || relative.startsWith("remote-card-translations/")
+      || relative.startsWith("shims/")
+      || relative === "remote-card-assist-yaml.ts"
+      || relative.endsWith("-styles.ts"),
+    allowedValues: new Set([
+      // Key faces: DVR is the printed button name; Exit is localized at
+      // render time (localizedFace, keyFaceLabel).
+      "DVR",
+      "Exit",
+      // Host setup notices stay English by decision (L-T7).
+      "No such hub.",
+      "No hub id given: set hub to the hub's MAC (any spelling).",
+      // probeIntegration's errors are swallowed by the store, never shown.
+      "hass.callWS unavailable",
+      "no hub selected",
+    ]),
+  });
+  assert.deepEqual(offenders, [], offenders.join("\n"));
 });

@@ -35,6 +35,11 @@ const REMOTE_CARD_STRINGS_DE = {
     deviceKeymapMissing:
       "Die Befehle dieses Geräts sind noch nicht im Cache. Aktualisiere das Gerät im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Geräts konnten nicht geladen werden.",
+    deviceKeymapMissingServer:
+      "Dieses Gerät ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
+    hubUnreachable: (detail: string) =>
+      `Der Server erreicht den Hub nicht (${detail}).`,
+    controlRefused: "Der Hub hat diesen Befehl nicht angenommen.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivitätslayout",
     activityFallback: (id: number | string) => `Aktivität ${id}`,
@@ -45,7 +50,6 @@ const REMOTE_CARD_STRINGS_DE = {
   },
   assist: {
     label: "Tastendrücke erfassen",
-    start: "Starten",
     waiting: "Warten auf Tastendruck",
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label: string) => `Erfasst: ${label}`,
@@ -103,18 +107,8 @@ const REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe auswählen",
-      show_activity: "Aktivitäts-/Geräteauswahl",
-      show_dpad: "Steuerkreuz",
-      show_nav: "Zurück-, Home- und Menü-Tasten",
-      show_mid: "Lautstärke- und Kanalwippen",
-      show_media: "Wiedergabe",
-      show_colors: "Rot/Grün/Gelb/Blau",
-      show_abc: "A/B/C-Tasten",
-      show_macros_button: "Makrotaste",
-      show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
       key_style: "Tastenstil",
-      group_order: "Gruppenreihenfolge",
     },
     generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendrücke erfassen",
@@ -155,6 +149,9 @@ const REMOTE_CARD_STRINGS_DE = {
     moveGroupUp: (groupLabel: string) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel: string) =>
       `${groupLabel} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel: string) => `${groupLabel} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautstärke",

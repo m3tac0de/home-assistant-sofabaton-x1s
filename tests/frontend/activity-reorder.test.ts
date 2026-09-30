@@ -7,6 +7,7 @@ setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
 import { hubActivities, hubDevices } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { CacheHubState, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
 
 const baseState = {
   persistent_cache_enabled: true,
@@ -174,12 +175,14 @@ test("reorderActivities sends the full ordered id list and reloads state", async
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
-test("reorderActivities surfaces the backend failure message", async () => {
+// The reorders and Add Activity show localized copy keyed by the WS error
+// code, never the backend's English prose (CR-X7-4).
+test("reorderActivities reports a localized failure", async () => {
   const store = createStore();
   store.setHass(
     createHass({
       "sofabaton_x1s/activity/reorder": () => {
-        throw new Error("The hub did not confirm the new activity order");
+        throw Object.assign(new Error("The hub did not confirm the new activity order"), { code: "reorder_failed" });
       },
     }),
   );
@@ -187,7 +190,7 @@ test("reorderActivities surfaces the backend failure message", async () => {
 
   const failure = await store.reorderActivities([103, 101, 102]);
 
-  assert.match(String(failure), /did not confirm the new activity order/);
+  assert.equal(failure, TOOLS_CARD_STRINGS.errors.reorderFailed);
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
@@ -213,12 +216,12 @@ test("reorderDevices sends the full ordered id list and reloads state", async ()
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
-test("reorderDevices surfaces the backend failure message", async () => {
+test("reorderDevices reports a localized failure, and busy as another operation", async () => {
   const store = createStore();
   store.setHass(
     createHass({
       "sofabaton_x1s/device/reorder": () => {
-        throw new Error("The hub did not confirm the new device order");
+        throw Object.assign(new Error("Hub is busy"), { code: "busy" });
       },
     }),
   );
@@ -226,7 +229,7 @@ test("reorderDevices surfaces the backend failure message", async () => {
 
   const failure = await store.reorderDevices([3, 1, 2]);
 
-  assert.match(String(failure), /did not confirm the new device order/);
+  assert.equal(failure, TOOLS_CARD_STRINGS.errors.anotherOperation);
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
@@ -256,12 +259,12 @@ test("createActivity resolves the assigned id and refreshes its cache entry", as
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
-test("createActivity reports the backend error without opening the editor id", async () => {
+test("createActivity reports a localized error without opening the editor id", async () => {
   const store = createStore();
   store.setHass(
     createHass({
       "sofabaton_x1s/activity/create": () => {
-        throw new Error("The hub did not confirm creation of the new activity");
+        throw Object.assign(new Error("The hub did not confirm creation of the new activity"), { code: "create_failed" });
       },
     }),
   );
@@ -270,7 +273,7 @@ test("createActivity reports the backend error without opening the editor id", a
   const result = await store.createActivity("Movie Night");
 
   assert.ok("error" in result);
-  assert.match(String((result as { error: string }).error), /did not confirm creation/);
+  assert.equal((result as { error: string }).error, TOOLS_CARD_STRINGS.errors.activityCreateFailed);
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 

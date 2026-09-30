@@ -174,25 +174,6 @@ export function isActivityOn(
   return Boolean(currentActivityLabel) && !isPoweredOffLabel(currentActivityLabel);
 }
 
-export function optionsSignature(options: any[]) {
-  const names = Array.isArray(options)
-    ? options.map((opt) => String(opt ?? ""))
-    : [];
-  return `${names.length}:${names.join(",")}`;
-}
-
-export function drawerItemsSignature(items: any[]) {
-  const entries = Array.isArray(items)
-    ? items.map((item) => {
-        const commandId = String(item?.command_id ?? item?.id ?? "");
-        const deviceId = String(item?.device_id ?? item?.device ?? "");
-        const name = String(item?.name ?? "");
-        return `${commandId}:${deviceId}:${name}`;
-      })
-    : [];
-  return `${entries.length}:${entries.join(",")}`;
-}
-
 export function enabledButtonsSignature(raw: any) {
   if (!Array.isArray(raw)) return String(raw ?? "");
   return `${raw.length}:${raw.map((entry) => String(entry ?? "")).join(",")}`;

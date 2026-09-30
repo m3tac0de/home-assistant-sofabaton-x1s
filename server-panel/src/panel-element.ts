@@ -6,7 +6,7 @@
 // and coordinates the hub picker's transient forms and actions. The store owns
 // the hub list, the selection, the route and the resync points; the
 // shell mirrors the route into the URL hash and forwards the views'
-// events (sb-message, sb-hubs-changed, sb-select-hub, sb-navigate).
+// events (sb-message, sb-hubs-changed, sb-navigate).
 // The views render under Lit's cache(): a tab's element survives switching
 // away, so coming back paints its last content at once instead of a
 // placeholder and a re-read. Each view's own change tracking (the hub's
@@ -34,6 +34,7 @@ import { PanelStore, type PanelSnapshot } from "./panel-store";
 import { PanelStream, type StreamMessage } from "./panel-stream";
 import { PANEL_BASE_CSS } from "./panel-styles";
 import type { SbPanelEntityEditor } from "./views/entity-editor-base";
+import type { SbPanelRemote } from "./views/remote-view";
 import type { SbPanelWifiDevices } from "./views/wifi-devices-view";
 
 export const PANEL_TAG = "sofabaton-server-panel";
@@ -63,6 +64,9 @@ export class SofabatonServerPanel extends LitElement {
     _cogOpen: { state: true },
     _backupDirty: { state: true },
     _wifiDirty: { state: true },
+    _layoutDirty: { state: true },
+    _dockConfirm: { state: true },
+    _leaveAsk: { state: true },
     _pickerManual: { state: true },
     _pickerActionsHubId: { state: true },
     _pickerConfirmRemove: { state: true },
@@ -134,6 +138,10 @@ export class SofabatonServerPanel extends LitElement {
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
       .cog-wrap { position: relative; display: inline-flex; }
+      .leave-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
+      .leave-dialog { width: min(420px, 100%); display: grid; gap: 10px; padding: 16px; border: 1px solid var(--sbp-line); border-radius: 14px; background: var(--sbp-panel); color: var(--sbp-text); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3); }
+      .leave-title { font-weight: 700; }
+      .leave-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
       .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
@@ -256,8 +264,14 @@ export class SofabatonServerPanel extends LitElement {
   private _cogOpen = false;
   /** The Backup tab's Edit section holds edits only a download keeps (its sb-backup-dirty). */
   private _backupDirty = false;
+  /** The dock Discard waiting for its inline Yes/Keep (CR-R1-2). */
+  private _dockConfirm: "apply" | "draft" | null = null;
+  /** A move that waits on the panel's own leave dialog (CR-R1-2). */
+  private _leaveAsk: { hubId?: string | null; route?: Route; kept?: boolean } | null = null;
   /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
   private _wifiDirty = false;
+  /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
+  private _layoutDirty = false;
   private _pickerManual = false;
   private _pickerActionsHubId: string | null = null;
   private _pickerConfirmRemove: string | null = null;
@@ -509,6 +523,16 @@ export class SofabatonServerPanel extends LitElement {
         return false;
       }
     }
+    if (this._layoutDirty && this._snapshot.route.kind === "hub" && this._snapshot.route.tab === "remote") {
+      // The unsaved layout lives in the view, not in the draft slot: a hub
+      // switch or another tab would drop it (CR-F5a-4).
+      const staying = target.route?.kind === "hub" && target.route.tab === "remote" && target.hubId === undefined;
+      const view = this.renderRoot.querySelector<SbPanelRemote>("sb-panel-remote");
+      if (!staying && view && view.hasUnsyncedChanges()) {
+        this._leaveAsk = { ...target, kept: false };
+        return false;
+      }
+    }
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft!.scope;
@@ -527,7 +551,38 @@ export class SofabatonServerPanel extends LitElement {
       });
       return false;
     }
-    return confirm("You have unsaved changes here. They are kept for when you come back.\n\nLeave anyway?");
+    // A draft with no editor to ask (for example one waiting for a refresh):
+    // the panel asks with its own dialog, never a native confirm(), which
+    // answers "cancel" wherever dialogs are suppressed (CR-R1-2, L-S5).
+    this._leaveAsk = target;
+    return false;
+  }
+
+  private _renderLeaveDialog(): TemplateResult | typeof nothing {
+    const target = this._leaveAsk;
+    if (!target) return nothing;
+    const stay = () => {
+      this._leaveAsk = null;
+    };
+    const leave = () => {
+      this._leaveAsk = null;
+      if (target.kept === false) this._layoutDirty = false;
+      if (target.route) this.store.navigate(target.route);
+      else if (target.hubId !== undefined) this.store.selectHub(target.hubId);
+    };
+    return html`
+      <div class="leave-backdrop" @click=${stay}>
+        <div class="leave-dialog" id="leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-title"
+          @click=${(event: Event) => event.stopPropagation()}
+          @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") stay(); }}>
+          <div class="leave-title" id="leave-title">You have unsaved changes here</div>
+          <div class="hint">${target.kept === false ? "Leaving discards your layout changes." : "They are kept for when you come back."}</div>
+          <div class="leave-actions">
+            <button class="small" id="leave-stay" type="button" @click=${stay}>Stay</button>
+            <button class="small primary" id="leave-go" type="button" @click=${leave}>Leave anyway</button>
+          </div>
+        </div>
+      </div>`;
   }
 
   private _go(route: Route): void {
@@ -702,11 +757,6 @@ export class SofabatonServerPanel extends LitElement {
     void this.store.refreshAll();
   }
 
-  private _onSelectHub(event: CustomEvent<{ hubId: string }>): void {
-    this.store.selectHub(event.detail.hubId);
-    void this.store.refreshHubs();
-  }
-
   private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage; entity?: number; item?: string }>): void {
     const d = event.detail;
     if (d.page) this._go(toolRoute(d.page));
@@ -742,9 +792,9 @@ export class SofabatonServerPanel extends LitElement {
       case "backup":
         return html`<sb-panel-backup .ctx=${ctx} .store=${this.store} .section=${route.sub} @sb-backup-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._backupDirty = Boolean(event.detail?.dirty); }}></sb-panel-backup>`;
       case "wifi":
-        return html`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._wifiDirty = Boolean(event.detail?.dirty); }}></sb-panel-wifi-devices>`;
+        return html`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .stream=${this.stream} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._wifiDirty = Boolean(event.detail?.dirty); }}></sb-panel-wifi-devices>`;
       case "remote":
-        return html`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
+        return html`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._layoutDirty = Boolean(event.detail?.dirty); }}></sb-panel-remote>`;
       default:
         if (route.entity !== undefined && route.sub === "devices") {
           return html`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
@@ -754,6 +804,16 @@ export class SofabatonServerPanel extends LitElement {
         }
         return html`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
+  }
+
+  protected willUpdate(): void {
+    // A pending Discard belongs to the banner that asked; once the dock
+    // shows something else (another hub, the apply resumed) it is dropped.
+    if (!this._dockConfirm) return;
+    const runtime = selectedRuntime(this._snapshot);
+    const kind = dockModel(this._snapshot, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false }).kind;
+    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty" || kind === "draft_stale";
+    if (!matches) this._dockConfirm = null;
   }
 
   render(): TemplateResult {
@@ -833,7 +893,7 @@ export class SofabatonServerPanel extends LitElement {
             onSignOut: () => void this._signOut(),
           })}
         </header>
-        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
+        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${cache(this._renderView(ctx))}</div>
           ${blocked
@@ -841,7 +901,11 @@ export class SofabatonServerPanel extends LitElement {
             : nothing}
         </main>
         ${renderBottomDock({
-          model: dockModel(s, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi" }),
+          model: dockModel(s, runtime, {
+            unsavedBackup: this._backupDirty,
+            unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
+            unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote",
+          }),
           message: s.message,
           connectivity: connectivityFor(runtime),
           hasHub: ctx.hub !== null,
@@ -853,17 +917,30 @@ export class SofabatonServerPanel extends LitElement {
           onResume: (applyId) => {
             if (s.selectedHubId) void this.store.resumeApply(s.selectedHubId, applyId);
           },
-          onDiscard: (applyId) => {
-            if (s.selectedHubId && confirm("Discard this stopped apply? Its record is forgotten; the hub is not changed.")) void this.store.discardApply(s.selectedHubId, applyId);
+          onDiscard: () => {
+            this._dockConfirm = "apply";
           },
           onKeepDraft: () => {
             if (s.selectedHubId) this.store.keepStaleDraft(s.selectedHubId);
           },
           onDiscardDraft: () => {
-            if (s.selectedHubId && confirm("Discard your unsaved changes? The hub is not changed.")) this.store.discardDraft(s.selectedHubId);
+            this._dockConfirm = "draft";
+          },
+          confirming: this._dockConfirm,
+          onConfirmDiscard: () => {
+            const kind = this._dockConfirm;
+            this._dockConfirm = null;
+            if (!s.selectedHubId) return;
+            const model = dockModel(s, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false });
+            if (kind === "apply" && model.kind === "apply_stopped") void this.store.discardApply(s.selectedHubId, model.applyId);
+            if (kind === "draft") this.store.discardDraft(s.selectedHubId);
+          },
+          onCancelDiscard: () => {
+            this._dockConfirm = null;
           },
         })}
         ${this._renderAuthDialog()}
+        ${this._renderLeaveDialog()}
       </div></div>
     `;
   }

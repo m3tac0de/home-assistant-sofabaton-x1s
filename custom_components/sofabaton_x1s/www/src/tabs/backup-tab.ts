@@ -26,7 +26,6 @@ import {
   backupDeviceOptions,
   bundleActivityOptions,
   bundleDeviceOptions,
-  bundleEditableDeviceOptions,
   pruneBackupBundle,
   reconcileRestoreSelection,
   renameBundleHub,
@@ -54,11 +53,9 @@ class SofabatonBackupTab extends LitElement {
     setHubCommandBusy: { attribute: false },
     refreshControlPanelState: { attribute: false },
     hubCommandBusy: { type: Boolean },
-    hubCommandBusyLabel: { type: String },
     loading: { type: Boolean },
     error: { type: String },
     persistentCacheEnabled: { type: Boolean },
-    selectedHubProxyConnected: { type: Boolean },
     blockedTitle: { type: String },
     blockedMessage: { type: String },
     selectedSection: { attribute: false },
@@ -68,7 +65,6 @@ class SofabatonBackupTab extends LitElement {
     _backupError: { state: true },
     _backupProgress: { state: true },
     _restoreError: { state: true },
-    _restoreSuccess: { state: true },
     _restoreProgress: { state: true },
     _restoreMode: { state: true },
     _restoreBundle: { state: true },
@@ -100,11 +96,9 @@ class SofabatonBackupTab extends LitElement {
   setHubCommandBusy?: (busy: boolean, label?: string | null, entryId?: string) => void;
   refreshControlPanelState?: () => Promise<unknown>;
   hubCommandBusy = false;
-  hubCommandBusyLabel: string | null = null;
   loading = false;
   error: string | null = null;
   persistentCacheEnabled = false;
-  selectedHubProxyConnected = false;
   blockedTitle: string | null = null;
   blockedMessage: string | null = null;
   selectedSection: BackupSectionId = "make";
@@ -115,7 +109,6 @@ class SofabatonBackupTab extends LitElement {
   private _backupError: string | null = null;
   private _backupProgress: BackupProgressEvent | null = null;
   private _restoreError: string | null = null;
-  private _restoreSuccess: string | null = null;
   private _restoreProgress: BackupProgressEvent | null = null;
   private _restoreMode: "replace" | "merge" = "merge";
   private _restoreBundle: BackupBundlePayload | null = null;
@@ -183,7 +176,14 @@ class SofabatonBackupTab extends LitElement {
 
   protected updated(changed: Map<string, unknown>) {
     if (changed.has("hub")) {
-      void this._syncBackupOperationState();
+      // The hub object is replaced on every state poll; re-read backup/state
+      // only when the hub or its operation actually changed, so a local
+      // error (a refused file, a failed start) survives the poll (CR-F3-1).
+      const hydrationKey = this._backupHydrationKey();
+      if (hydrationKey !== this._lastHydrationKey) {
+        this._lastHydrationKey = hydrationKey;
+        void this._syncBackupOperationState();
+      }
       // Hub identity changed — re-attempt restore against the new hub's session.
       this._editSessionRestoreTried = false;
       // A loaded restore bundle is hub-specific: it was validated against the
@@ -215,6 +215,7 @@ class SofabatonBackupTab extends LitElement {
       this._editSessionRestoreTried = true;
       this._restoreEditSession();
     }
+    if (changed.has("_editBundle")) this._editSessionEnded = false;
     if (
       changed.has("_editBundle")
       || changed.has("_editFilename")
@@ -258,9 +259,12 @@ class SofabatonBackupTab extends LitElement {
     return `${SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
   }
 
+  // Set by a download (the "I'm done" signal); the next edit clears it.
+  private _editSessionEnded = false;
+
   private _persistEditSession() {
     const key = this._editSessionStorageKey();
-    if (!key) return;
+    if (!key || this._editSessionEnded) return;
     try {
       if (!this._editBundle) {
         window.localStorage.removeItem(key);
@@ -540,7 +544,7 @@ class SofabatonBackupTab extends LitElement {
   private _renderEditSectionContent() {
     const bundle = this._editBundle;
     const activityOptions = bundleActivityOptions(bundle);
-    const deviceOptions = bundleEditableDeviceOptions(bundle);
+    const deviceOptions = bundleDeviceOptions(bundle);
     return html`
       ${renderSecondaryTabContent({
         connected: true,
@@ -746,9 +750,8 @@ class SofabatonBackupTab extends LitElement {
   };
 
   private _handleDetailBundleChange = (event: CustomEvent<{ bundle: BackupBundlePayload }>) => {
-    // The element already ran the HA-action prune sweep; this host owns
-    // the "counts as a user edit" semantics (dirty flag + persistence
-    // via updated()).
+    // This host owns the "counts as a user edit" semantics (dirty flag +
+    // persistence via updated()).
     this._editBundle = event.detail.bundle;
     this._editBundleDirty = true;
   };
@@ -796,14 +799,14 @@ class SofabatonBackupTab extends LitElement {
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${TOOLS_CARD_STRINGS.backup.renameDialogTitle}</div>
-            <button class="dialog-close" @click=${this._closeHubRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeHubRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${useLegacyTextField()
               ? html`
                   <ha-textfield
                     id="sb-backup-hub-name"
-                    .label=${"Name"}
+                    .label=${TOOLS_CARD_STRINGS.backup.name}
                     .maxLength=${20}
                     .value=${this._hubRenameDraft}
                     @input=${this._handleHubRenameInput}
@@ -815,7 +818,7 @@ class SofabatonBackupTab extends LitElement {
                   <ha-input
                     id="sb-backup-hub-name"
                     type="text"
-                    .label=${"Name"}
+                    .label=${TOOLS_CARD_STRINGS.backup.name}
                     .maxlength=${20}
                     .value=${this._hubRenameDraft}
                     @input=${this._handleHubRenameInput}
@@ -921,14 +924,17 @@ class SofabatonBackupTab extends LitElement {
     document.body.appendChild(anchor);
     anchor.dispatchEvent(new MouseEvent("click"));
     document.body.removeChild(anchor);
-    // The download is the explicit "I'm done" signal — end the edit session
+    // The download is the explicit "I'm done" signal: end the edit session
     // so a stale draft doesn't reappear next time the user opens the tab.
-    this._clearEditSession();
-    // Clearing the dirty flag here (not on session clear) keeps the
-    // user's edits marked as in-progress even if they navigated away
-    // and came back via session restore — the only thing that
-    // "commits" their work is the download itself.
+    // Clearing the dirty flag here (not on session clear) keeps the user's
+    // edits marked as in-progress even if they navigated away and came
+    // back via session restore; only the download "commits" their work.
+    // updated() persists on every change to the draft's fields, which would
+    // bring the cleared draft straight back; the session stays ended until
+    // the next edit (CR-F3-14).
     this._editBundleDirty = false;
+    this._editSessionEnded = true;
+    this._clearEditSession();
   };
 
 
@@ -1288,7 +1294,6 @@ class SofabatonBackupTab extends LitElement {
       selectedDeviceIds: selection.selectedDeviceIds,
     });
     this._restoreError = null;
-    this._restoreSuccess = null;
     this._restoreProgress = null;
     this._discardEditSession();
     const entryId = this.hub.entry_id;
@@ -1353,7 +1358,6 @@ class SofabatonBackupTab extends LitElement {
       } else {
         if (!staleHub) this._restoreProgress = payload;
         if (payload.status === "success") {
-          if (!staleHub) this._restoreSuccess = TOOLS_CARD_STRINGS.backup.restoreCompletedStatus;
           this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
@@ -1389,7 +1393,6 @@ class SofabatonBackupTab extends LitElement {
     const file = input?.files?.[0];
     if (!file) return;
     this._restoreError = null;
-    this._restoreSuccess = null;
     try {
       const text = await file.text();
       const bundle = validateBackupBundle(JSON.parse(text));
@@ -1488,7 +1491,6 @@ class SofabatonBackupTab extends LitElement {
 
   private _resetRestoreComposer = () => {
     this._restoreError = null;
-    this._restoreSuccess = null;
     this._restoreProgress = null;
     this._restoreMode = "merge";
   };
@@ -1504,7 +1506,6 @@ class SofabatonBackupTab extends LitElement {
     this._restoreManualDeviceIds = [];
     this._restoreMode = "merge";
     this._restoreError = null;
-    this._restoreSuccess = null;
   }
 
   private async _completeRestoreResult() {
@@ -1528,6 +1529,17 @@ class SofabatonBackupTab extends LitElement {
       // Local reset still happens; next poll reconciles.
     }
     this._resetRestoreComposer();
+  }
+
+  private _lastHydrationKey: string | null = null;
+
+  private _backupHydrationKey(): string {
+    const operation = this.hub?.active_backup_operation;
+    return [
+      String(this.hub?.entry_id || "").trim(),
+      String(operation?.operation_id || ""),
+      String(operation?.status || ""),
+    ].join("|");
   }
 
   private async _syncBackupOperationState() {
@@ -1588,10 +1600,6 @@ class SofabatonBackupTab extends LitElement {
       this._restoreError =
         String(this._restoreProgress?.status || "") === "failed"
           ? String(this._restoreProgress?.error || this._restoreProgress?.message || TOOLS_CARD_STRINGS.backup.restoreFailed)
-          : null;
-      this._restoreSuccess =
-        String(this._restoreProgress?.status || "") === "success"
-          ? TOOLS_CARD_STRINGS.backup.restoreCompletedStatus
           : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {

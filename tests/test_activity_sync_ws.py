@@ -963,6 +963,63 @@ def test_ws_device_create_rejects_bad_names(monkeypatch, name):
 
 
 @pytest.mark.parametrize(
+    ("version", "name", "ok"),
+    [
+        ("X1", "Küche TV", False),  # the X1 encoder would drop the ü
+        ("X1", "Kitchen TV", True),
+        ("X1S", "Küche TV", True),
+        ("X2", "TV 💡", False),
+        ("X1S", "नमस्ते", True),
+    ],
+)
+def test_ws_device_create_refuses_names_the_hub_cannot_store(monkeypatch, version, name, ok):
+    # CR-X4-2: the editors' name rule, not only its length.
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7}, version=version)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 55, "entry_id": "entry-1", "name": name, "device_class": "ir",
+    }))
+    if ok:
+        assert conn.error is None
+        assert hub.created == (name, "ir")
+    else:
+        assert conn.error[1] == "invalid_name"
+        assert hub.created is None
+
+
+class _CreatingActivityHub(_CreatingHub):
+    async def async_create_activity(self, name):
+        self.created = name
+        return self._result
+
+
+@pytest.mark.parametrize(
+    ("version", "name", "error"),
+    [
+        ("X1", "Movie Night", None),
+        ("X1", "Café", "invalid_name"),
+        ("X1S", "Café", None),
+        ("X1S", "", "invalid_name"),
+        ("X2", "x" * 31, "invalid_name"),
+    ],
+)
+def test_ws_activity_create_applies_the_name_rule(monkeypatch, version, name, error):
+    conn = _Conn()
+    hub = _CreatingActivityHub({"status": "success", "activity_id": 104}, version=version)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_activity_create(hass, conn, {"id": 56, "entry_id": "entry-1", "name": name}))
+    if error is None:
+        assert conn.error is None
+        assert hub.created == name
+    else:
+        assert conn.error[1] == error
+        assert hub.created is None
+
+
+@pytest.mark.parametrize(
     ("version", "device_class"),
     [("X1S", "wifi_mqtt"), ("X1", "wifi_ip"), ("X2", "bluetooth"), ("X2", "rf_433mhz"), ("X2", "nonsense")],
 )

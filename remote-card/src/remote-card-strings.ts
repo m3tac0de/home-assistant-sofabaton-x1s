@@ -36,7 +36,11 @@ export const REMOTE_CARD_STRINGS_EN = {
     switchToActivityMode: "Switch to activity mode",
     deviceKeymapMissing:
       "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapMissingServer:
+      "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
+    hubUnreachable: (detail: string) => `The server cannot reach the hub (${detail}).`,
+    controlRefused: "The hub did not take that command.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id: number | string) => `Activity ${id}`,
@@ -47,7 +51,6 @@ export const REMOTE_CARD_STRINGS_EN = {
   },
   assist: {
     label: "Key capture",
-    start: "Start",
     waiting: "Waiting for keypress",
     exitEditMode: "Exit Edit mode to begin",
     captured: (label: string) => `Captured: ${label}`,
@@ -102,18 +105,8 @@ export const REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select background color",
-      show_activity: "Activity/device selector",
-      show_dpad: "Direction pad",
-      show_nav: "Back/Home/Menu keys",
-      show_mid: "Volume/Channel rockers",
-      show_media: "Playback",
-      show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C buttons",
-      show_macros_button: "Macros button",
-      show_favorites_button: "Favorites button",
       max_width: "Maximum card width (px)",
       key_style: "Button style",
-      group_order: "Group order",
     } as Record<string, string>,
     generalOptionsTitle: "General options",
     keyCapture: "Key capture",
@@ -153,6 +146,9 @@ export const REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel: string) => `Move ${groupLabel} up`,
     moveGroupDown: (groupLabel: string) => `Move ${groupLabel} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel: string) => `Reorder ${groupLabel} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -293,8 +289,22 @@ function deepMerge<T>(base: T, overlay: DeepPartial<T> | undefined): T {
   return out;
 }
 
+/**
+ * Browser and HA language codes served by another catalogue. Browsers
+ * report Simplified Chinese as zh-CN (or zh-SG, or bare zh), while the
+ * catalogue is zh-hans; the web remote and the embed read navigator.language
+ * (CR-X7-3). The tools card keeps the same table (TOOLS_CARD_LOCALE_ALIASES);
+ * a test holds the two equal. zh-TW / zh-Hant stay on English.
+ */
+export const REMOTE_CARD_LOCALE_ALIASES: Readonly<Record<string, string>> = {
+  "zh": "zh-hans",
+  "zh-cn": "zh-hans",
+  "zh-sg": "zh-hans",
+};
+
 function resolveTranslation(language: string): RemoteCardTranslation | null {
-  const lang = String(language || "").toLowerCase();
+  const raw = String(language || "").toLowerCase().replaceAll("_", "-");
+  const lang = REMOTE_CARD_LOCALE_ALIASES[raw] ?? (raw.startsWith("zh-hans-") ? "zh-hans" : raw);
   if (!lang) return null;
   if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
   const base = lang.split(/[-_]/)[0];

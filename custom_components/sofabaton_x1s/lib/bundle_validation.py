@@ -927,6 +927,19 @@ def _activity_direct_refs(activity: Any) -> set[int]:
     return refs
 
 
+def validate_new_entity_name(name: str, *, hub_version: str | None) -> None:
+    """Refuse a new activity or device name the hub could not store as given.
+
+    The same rule the editors apply (:func:`_validate_name`): X1 names are
+    ASCII letters, digits and spaces; X1S/X2 names take letters, digits and
+    combining marks in any script plus ASCII punctuation; 30 UTF-16 code
+    units at most. Raises ``ValueError``. The X1 encoder would otherwise drop
+    the characters it cannot store without a word.
+    """
+
+    _validate_name(name, "name", str(hub_version or "").upper())
+
+
 def validate_entity_rename(
     baseline: Any,
     edited: Any,

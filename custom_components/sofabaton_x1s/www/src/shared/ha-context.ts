@@ -30,6 +30,7 @@ export interface HassLike {
   states: Record<string, HassEntityState>;
   locale?: { language?: string };
   language?: string;
+  user?: { is_admin?: boolean } | null;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,
@@ -56,7 +57,11 @@ export interface ControlPanelHubState {
   ip_address?: string;
   activity_count?: number;
   device_count?: number;
+  /** The hub's TCP session, as the backend sees it (no HA entity needed). */
+  hub_connected?: boolean;
   proxy_client_connected?: boolean;
+  /** Backend-computed: the hub is connected and no app client holds it. */
+  actions?: { can_find_remote?: boolean; can_sync_remote?: boolean };
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
   activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
@@ -176,6 +181,54 @@ export interface WifiEvent {
   device_id: number | null;
   /** False for a staged slot whose deploy hasn't landed (needs sync). */
   deployed: boolean;
+}
+
+/** A Wifi Device's deploy state (command_sync/progress, and folded into each
+ *  command_devices/list row). */
+export interface WifiCommandSyncState {
+  status: string;
+  current_step: number;
+  total_steps: number;
+  /** Stable stage name the deploy pipeline reports; localized for display.
+   *  Cleared (null) for the in-place planner's per-step writes, which carry
+   *  a structured `step_kind` (+ the command's own label in `step_name`)
+   *  instead, falling back to `message` for unknown kinds. */
+  phase?: string | null;
+  step_kind?: string | null;
+  step_name?: string | null;
+  message: string;
+  commands_hash: string;
+  managed_command_hashes: string[];
+  sync_needed: boolean;
+}
+
+export interface WifiDeviceSummary extends WifiCommandSyncState {
+  device_key: string;
+  device_name: string;
+  configured_slot_count: number;
+  deployed_device_id?: number | null;
+  commands?: Array<Record<string, unknown>>;
+  power_on_command_id?: number | null;
+  power_off_command_id?: number | null;
+  requested_transport?: string;
+  deployed_transport?: string | null;
+}
+
+export interface WifiDevicesListResponse {
+  devices?: WifiDeviceSummary[];
+  max_devices?: number;
+  mqtt_available?: boolean;
+}
+
+export interface WifiCommandConfigResponse {
+  commands?: unknown[];
+  power_on_command_id?: number | null;
+  power_off_command_id?: number | null;
+}
+
+export interface HubEventActionsResponse {
+  actions?: Record<string, unknown>;
+  activity_actions?: Record<string, unknown>;
 }
 
 export interface WifiEventsListResponse {
@@ -334,10 +387,10 @@ export interface BackupBundleDeviceBlock {
   // One byte encodes the whole "Power On/Off Setup" + "Idle Behavior"
   // story. Lives in its own hub query, captured/restored separately from
   // the device record. Absent on backups that predate idle-behavior
-  // capture, which fall back to `power_mode`.
+  // capture; the editor then shows the mode as unknown.
   idle_behavior?: number | null;
-  // Legacy device-record power byte; retained for fallback on older
-  // backups that lack `idle_behavior`.
+  // The device record's tail byte. A different value from idle_behavior
+  // (it sits at 1 on real hubs) and never stands in for it.
   power_mode?: number | null;
 }
 

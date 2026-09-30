@@ -1,0 +1,16 @@
+{
+  "_comment": "Wifi Device, Wifi command and Wifi Event names (CR-X4-1). Read by tests/test_hub_operations.py (the backend refuses what 'ok' says is refused) and tests/frontend/wifi-names.test.ts (the card's sanitizer keeps an accepted name unchanged and changes a refused one). X1 hubs take ASCII letters, digits and spaces; X1S and X2 take letters, digits and combining marks in any script plus ASCII punctuation.",
+  "vectors": [
+    { "version": "X1S", "name": "สวัสดี", "ok": true, "why": "Thai vowel signs (category Mn)" },
+    { "version": "X2", "name": "नमस्ते", "ok": true, "why": "Devanagari virama" },
+    { "version": "X1S", "name": "Café Lights", "ok": true, "why": "precomposed accent" },
+    { "version": "X1S", "name": "Café", "ok": true, "why": "decomposed accent (combining mark)" },
+    { "version": "X2", "name": "日本語 TV", "ok": true, "why": "CJK letters" },
+    { "version": "X1S", "name": "Lights_2 (kitchen)!", "ok": true, "why": "ASCII punctuation" },
+    { "version": "X1S", "name": "Lights 💡", "ok": false, "why": "emoji is a symbol, not a letter" },
+    { "version": "X2", "name": "Tab\there", "ok": false, "why": "control character" },
+    { "version": "X1", "name": "Lights 2", "ok": true, "why": "ASCII letters, digits, space" },
+    { "version": "X1", "name": "Café", "ok": false, "why": "X1 names are ASCII" },
+    { "version": "X1", "name": "Lights-2", "ok": false, "why": "X1 names take no punctuation" }
+  ]
+}

@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LitElement } from "lit";
 import {
+  editorErrorMessage,
   sanitizeBundleName,
   useLegacyTextField,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { secondsToByte } from "../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
@@ -316,7 +318,8 @@ test("macro timing conversion covers invalid, boundary, rounding, and saturation
     ["NaN", 0],
     ["Infinity", 0],
   ];
-  for (const [raw, expected] of cases) assert.equal(element._secondsToByte(raw), expected, raw);
+  // The conversion is the shared rule (shared/hub-rules.ts, CR-X6-3) the panel uses too.
+  for (const [raw, expected] of cases) assert.equal(secondsToByte(raw), expected, raw);
   assert.equal(element._snapHalfSeconds("0.3"), "0.5");
   assert.equal(element._snapHalfSeconds("-2"), "0");
   assert.equal(element._snapHalfSeconds("999"), "127.5");
@@ -348,8 +351,8 @@ test("the attached-wait sub-row renders under every step except the last", () =>
   const element = createEditor();
   element._macroEditor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
   const item = { index: 0, kind: "command", commandId: 10, deviceId: 1, label: "TV · Power", hold: 0, wait: 2 };
-  assert.ok(templateText(element._renderMacroStepRow(item, false, false)).includes("step-wait"));
-  assert.ok(!templateText(element._renderMacroStepRow(item, false, true)).includes("step-wait"));
+  assert.ok(templateText(element._renderMacroStepRow(item, 0, 2)).includes("step-wait"));
+  assert.ok(!templateText(element._renderMacroStepRow(item, 1, 2)).includes("step-wait"));
 });
 
 test("macro step Save blocks incomplete input and commits a quantized valid step", () => {
@@ -547,6 +550,25 @@ test("live payload fetch failure surfaces an error and opens nothing", async () 
   assert.equal(element._payloadDialogOpen, false);
   assert.equal(element._payloadFetchError, "hub busy");
   assert.equal(element._payloadFetchingCommandId, null);
+});
+
+test("hub refusals in the live editor show localized copy, never [object Object] (CR-F2-1)", async () => {
+  const E = TOOLS_CARD_STRINGS.errors;
+  const element = createLiveDeviceEditor();
+  element.fetchCommandPayload = async () => { throw { code: "no_response", message: "Hub did not respond" }; };
+  await element._liveFetchAndOpenPayload(10);
+  assert.equal(element._payloadFetchError, E.hubNoResponse);
+
+  element.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
+  element.testCommandPayload = async () => { throw { code: "unavailable", message: "proxy client connected?" }; };
+  await element._liveFetchAndOpenPayload(10);
+  await element._runLivePayloadTest();
+  assert.equal(element._payloadDialogTestError, E.hubNotReady);
+
+  assert.equal(editorErrorMessage({ code: "duplicate_name", message: "exists" }, "wifi_event"), E.wifiEventNameTaken);
+  assert.equal(editorErrorMessage({ code: "busy", message: "Hub is busy" }, "wifi_event"), E.anotherOperation);
+  assert.equal(editorErrorMessage({ code: "invalid_blob", message: "bad" }, "hub_request"), E.payloadInvalid);
+  assert.equal(editorErrorMessage(new Error("our own copy"), "hub_request"), "our own copy");
 });
 
 test("delete confirm copy matches the mode and delete kind", () => {
@@ -1053,6 +1075,23 @@ test("the HA option needs the emitter plus a consumer or a non-empty inbox", asy
   }
 });
 
+test("removing the editor releases the hub window, the inbox and the ticker (CR-F2-4)", async () => {
+  const { host, calls } = learnHost();
+  const element = openLearnEditor(host);
+  await element._enterLearnMode();
+  await settle();
+  await element._startHubLearn();
+  calls.learnEvents!({ state: "listening", timeout_s: 30 });
+  assert.notEqual(element._payloadLearnTicker, null);
+
+  element.disconnectedCallback();
+
+  assert.equal(calls.learnCancelled, 1);
+  assert.equal(calls.emissionsUnsubscribed, 1);
+  assert.equal(element._payloadLearnTicker, null);
+  assert.equal(element._payloadLearnView, "off");
+});
+
 test("hub learn: listening countdown, then a learned payload lands in the hex editor", async () => {
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
@@ -1306,3 +1345,166 @@ test("add-command on an empty IR device keeps the IR path (hex tabs on X1S)", as
   assert.equal(element._payloadDialogAddMode, true);
   assert.equal(element._payloadDialogDecodedSnapshot, null);
 });
+
+test("macro steps reorder from the keyboard, with or without ha-sortable (CR-F2-11)", () => {
+  const element = createEditor("X1S", "device");
+  element.entityId = 1;
+  const device = element.bundle.devices[0];
+  device.commands = [{ command_id: 10, name: "Power" }, { command_id: 11, name: "Mute" }];
+  device.macros = [{
+    button_id: 0x5d,
+    name: "Night",
+    steps: [
+      { device_id: 1, command_id: 10, duration: 0, delay: 0 },
+      { device_id: 1, command_id: 11, duration: 0, delay: 0 },
+    ],
+  }];
+  element._haSortableReady = false;
+  element._macroEditor = { scope: "device", entityId: 1, buttonId: 0x5d, name: "Night" };
+  const before = element._currentMacroStepItems().map((item: { label: string }) => item.label);
+  assert.equal(before.length, 2);
+
+  // The handle is focusable and named even without ha-sortable.
+  const markup = templateText(element._renderMacroStepEditorView(element._macroEditor));
+  assert.match(markup, /role="button"/);
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.backup.reorderHandleAria(before[0])));
+
+  element._reorderSteps(0, 1);
+  const after = element._currentMacroStepItems().map((item: { label: string }) => item.label);
+  assert.deepEqual(after, [before[1], before[0]]);
+});
+
+test("icon-only back and close buttons carry accessible names (CR-F2-11)", () => {
+  const element = createLiveDeviceEditor();
+  element._openDetailRenameDialog();
+  const markup = templateText(element._renderEditRenameDialog());
+  assert.ok(markup.includes(`aria-label="${TOOLS_CARD_STRINGS.common.closeAria}"`) || markup.includes(TOOLS_CARD_STRINGS.common.closeAria));
+});
+
+// ── Wifi Event targets through the live host facade (CR-F2-13) ─────
+
+function wifiEvent(slot: number, name: string, deviceId: number | null = 9): Record<string, unknown> {
+  return {
+    slot_index: slot,
+    name,
+    long_press_enabled: false,
+    action: {},
+    long_press_action: {},
+    command_id: slot + 1,
+    long_press_command_id: slot + 1 + 25,
+    device_id: deviceId,
+    deployed: deviceId != null,
+  };
+}
+
+function withEventsDevice(bundle: BackupBundlePayload): BackupBundlePayload {
+  const next = structuredClone(bundle) as any;
+  next.devices.push({
+    kind: "device",
+    complete: true,
+    device: { device_id: 9, name: "Wifi Events", brand: "m3-haevents-hub1", device_class: "wifi_ip" },
+    commands: Array.from({ length: 50 }, (_, index) => ({ command_id: index + 1, name: `Event ${index + 1}` })),
+  });
+  return next;
+}
+
+function liveActivityEditorWithEvents(host: Record<string, unknown>) {
+  const element = createEditor("X1S", "activity");
+  element.mode = "live";
+  element.wifiEvents = host;
+  return element;
+}
+
+test("a new Wifi Event shortcut is created through the host and added as a favorite", async () => {
+  const created: string[] = [];
+  const element = liveActivityEditorWithEvents({
+    list: async () => [],
+    create: async (name: string) => {
+      created.push(name);
+      return { event: wifiEvent(4, name), bundle: withEventsDevice(element.bundle) };
+    },
+    ensureGrafted: async () => null,
+    enableLongPress: async () => {},
+  });
+  const changes = collectBundleChanges(element);
+  element._wifiEventPrimary = { mode: "new", slot: null, name: "  Movie time " };
+
+  await element._applyAddShortcutWifiEvent();
+
+  assert.deepEqual(created, ["Movie time"]);
+  assert.equal(element._addFavoriteError, "");
+  const activity = (changes.at(-1) as any).activities.find((entry: any) => entry.device.device_id === 101);
+  assert.ok(activity.favorite_slots.some((slot: any) => slot.device_id === 9 && slot.command_id === 5));
+});
+
+test("an existing Wifi Event shortcut grafts the events device instead of creating one", async () => {
+  let grafts = 0;
+  const element = liveActivityEditorWithEvents({
+    list: async () => [],
+    create: async () => { throw new Error("must not create"); },
+    ensureGrafted: async () => { grafts += 1; return withEventsDevice(element.bundle); },
+    enableLongPress: async () => {},
+  });
+  element._wifiEventsList = [wifiEvent(2, "Lights off")];
+  const changes = collectBundleChanges(element);
+  element._wifiEventPrimary = { mode: "existing", slot: 2, name: "" };
+
+  await element._applyAddShortcutWifiEvent();
+
+  assert.equal(grafts, 1);
+  const activity = (changes.at(-1) as any).activities.find((entry: any) => entry.device.device_id === 101);
+  assert.ok(activity.favorite_slots.some((slot: any) => slot.device_id === 9 && slot.command_id === 3));
+});
+
+test("a refused Wifi Event create keeps the dialog open with localized copy", async () => {
+  const element = liveActivityEditorWithEvents({
+    list: async () => [],
+    create: async () => { throw { code: "duplicate_name", message: "A Wifi Event with this name already exists" }; },
+    ensureGrafted: async () => null,
+    enableLongPress: async () => {},
+  });
+  const changes = collectBundleChanges(element);
+  element._wifiEventPrimary = { mode: "new", slot: null, name: "Movie time" };
+
+  await element._applyAddShortcutWifiEvent();
+
+  assert.equal(element._addFavoriteError, TOOLS_CARD_STRINGS.errors.wifiEventNameTaken);
+  assert.equal(changes.length, 0);
+  assert.equal(element._wifiEventBusy, false);
+});
+
+test("the new Wifi Event name input keeps only what the hub can store (CR-X4-1)", () => {
+  const element = liveActivityEditorWithEvents({});
+  let sel: { mode: string; slot: number | null; name: string } | null = null;
+  const markup = element._renderWifiEventTargetFields({
+    idPrefix: "t",
+    sel: { mode: "new", slot: null, name: "" },
+    onSelChange: (next: typeof sel) => { sel = next; },
+  });
+  assert.ok(markup);
+  const input = { value: "Lights 💡 on" };
+  // The input's @input handler is the one rendered for this field.
+  const handler = findInputHandler(markup);
+  handler({ target: input } as unknown as Event);
+  assert.equal(input.value, "Lights  on");
+  assert.equal(sel!.name, "Lights  on");
+});
+
+function findInputHandler(template: unknown): (event: Event) => void {
+  const stack = [template];
+  while (stack.length) {
+    const node = stack.pop() as { strings?: string[]; values?: unknown[] } | unknown[] | null;
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) { stack.push(...node); continue; }
+    const { strings, values } = node as { strings?: string[]; values?: unknown[] };
+    if (strings && values) {
+      for (let index = 0; index < values.length; index += 1) {
+        if (/@input=$/.test(strings[index]) && typeof values[index] === "function") {
+          return values[index] as (event: Event) => void;
+        }
+      }
+      stack.push(...values);
+    }
+  }
+  throw new Error("no @input handler rendered");
+}

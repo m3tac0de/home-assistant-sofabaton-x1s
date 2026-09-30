@@ -2656,6 +2656,24 @@
         },
       },
       {
+        id: "dock-completion", group: "Hub Status",
+        label: "Dock: error completion",
+        states: STATES_CONNECTED,
+        postLoad: async (card) => {
+          await clickTab(card, "Settings");
+          card._store.showRuntimeCompletion({ tone: "error", label: "Restore failed at device 3." }, "hub-1", 600000);
+        },
+      },
+      {
+        id: "dock-completion-success", group: "Hub Status",
+        label: "Dock: success completion",
+        states: STATES_CONNECTED,
+        postLoad: async (card) => {
+          await clickTab(card, "Settings");
+          card._store.showRuntimeCompletion({ tone: "success", label: "Synced to your hub." }, "hub-1", 600000);
+        },
+      },
+      {
         id: "automation-events", group: "Automation Events",
         label: "Events — configured actions",
         states: STATES_CONNECTED,

@@ -32,13 +32,6 @@ export function supportsUnicodeCommandNames(hubVersion: string, hubIntegration: 
   return isX2Hub(hubVersion, hubIntegration) || hubVersion.includes("X1S");
 }
 
-export function sanitizeCommandName(value: unknown, allowUnicode: boolean): string {
-  const pattern = allowUnicode ? /[^\p{L}\p{N} ]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "")
-    .replace(pattern, "")
-    .slice(0, 20);
-}
-
 // ---------- ha-select internals compat ----------
 // Newer HA builds replace <mwc-list-item> inside <ha-select> with
 // <ha-dropdown-item> (web-awesome based), which also renames the open/close
@@ -73,15 +66,6 @@ export function selectValueCompat(
   return selectedOption
     ? String(selectedOption.label ?? selectedOption.value ?? "")
     : resolvedValue;
-}
-
-export function setSelectValueCompat(
-  selectEl: { value?: string } | null | undefined,
-  value: unknown,
-  options: Array<{ value?: unknown; label?: unknown }> = [],
-): void {
-  if (!selectEl) return;
-  selectEl.value = selectValueCompat(value, options);
 }
 
 /** HA elements used by the card must be defined before the first render. */

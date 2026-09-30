@@ -177,3 +177,10 @@ test("display formatting round-trips through the parser", () => {
   assert.match(spaced, /^([0-9a-f]{2} )+[0-9a-f]{2}$/);
   assert.deepEqual(parseSofabatonBlob(spaced).timingsUs, vector.timings_us);
 });
+
+
+test("pronto words may carry a 0x prefix, as the send_pronto action accepts (CR-F1-14)", () => {
+  const plain = parseProntoHex("0000 006D 0001 0000 0010 0020");
+  const prefixed = parseProntoHex("0x0000 0x006D 0x0001 0x0000 0x0010 0x0020");
+  assert.deepEqual(prefixed, plain);
+});

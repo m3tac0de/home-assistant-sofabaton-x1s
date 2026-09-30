@@ -34,7 +34,6 @@ import {
   assertBackupBundleRestoreCompatible,
   bundleActivityOptions,
   bundleDeviceOptions,
-  bundleEditableDeviceOptions,
   pruneBackupBundle,
   reconcileRestoreSelection,
   renameBundleHub,
@@ -338,6 +337,8 @@ export class SbPanelBackup extends LitElement {
       if (key !== this._jobsKey) {
         this._jobsKey = key;
         void this._loadJobs();
+        // A job may have added or deleted a device: the Make list follows (CR-F5b-8).
+        if (hubId && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
       }
       // A device list read while the hub could not answer (disabled: a 409) is read again once it passes its gates.
       if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
@@ -436,8 +437,10 @@ export class SbPanelBackup extends LitElement {
   }
 
   private _acknowledge(jobId: string): void {
-    const live = new Set(this._jobs.map((job) => job.job_id));
-    this._acks = new Set([...this._acks].filter((id) => live.has(id) || id === jobId));
+    // Only this hub's jobs are listed here: pruning against them dropped the
+    // other hubs' acks and brought their results back (CR-F5b-11). The store
+    // keeps the newest 50; re-adding moves this one to the end.
+    this._acks = new Set([...this._acks].filter((id) => id !== jobId));
     this._acks.add(jobId);
     saveResultAcks(this.storage, this._acks);
   }
@@ -456,8 +459,17 @@ export class SbPanelBackup extends LitElement {
     try {
       const response = await api.snapshot(hubId);
       if (hubId !== this._hubId || !response.ok || !response.body) return;
+      const previous = this._deviceOptions;
+      const hadAll = previous.length > 0 && this._deviceIds.length === previous.length;
       this._deviceOptions = bundleDeviceOptions(snapshotAsBundle(response.body));
-      if (!this._deviceIds.length) this._deviceIds = this._deviceOptions.map((device) => device.id);
+      const all = this._deviceOptions.map((device) => device.id);
+      if (!previous.length || hadAll) {
+        this._deviceIds = all;
+      } else {
+        // A deleted device is no longer offered, nor sent to the backup (CR-F5b-8).
+        const known = new Set(all);
+        this._deviceIds = this._deviceIds.filter((id) => known.has(id));
+      }
     } catch {
       // Whole-hub backups need no list.
     }
@@ -624,7 +636,10 @@ export class SbPanelBackup extends LitElement {
   // -- Edit --------------------------------------------------------------------------------------------------------
 
   private _persistEditSession(): void {
-    if (!this._hubId || this._editSessionEnded) return;
+    // Until this hub's stored session was read (on the Edit section), the
+    // null here is only the hub-switch reset: writing it would delete the
+    // session the user left on this hub (CR-F5b-7).
+    if (!this._hubId || this._editSessionEnded || !this._editSessionTried) return;
     saveEditSession(this.storage, this._hubId, this._editBundle ? { filename: this._editFilename, bundle: this._editBundle, dirty: this._editDirty, detail: this._detail } : null, this.now());
   }
 
@@ -960,7 +975,7 @@ export class SbPanelBackup extends LitElement {
 
   private _renderEditOverview(bundle: BackupBundlePayload, picker: TemplateResult): TemplateResult {
     const activities = bundleActivityOptions(bundle);
-    const devices = bundleEditableDeviceOptions(bundle);
+    const devices = bundleDeviceOptions(bundle);
     const hubName = String(bundle.hub?.name ?? "").trim();
     const sorting = Boolean(this._activitySorter.state || this._deviceSorter.state);
     const rows = (kind: BackupEditTargetKind, options: BackupSelectionOption[], sorter: PointerReorder) => {

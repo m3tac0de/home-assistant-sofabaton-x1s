@@ -1120,44 +1120,6 @@ function numpadEnabled(layout) {
   return true;
 }
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var HARD_BUTTON_ID_MAP = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C
-};
-var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
 
 // remote-card/src/remote-card-compat.ts
 function hubVersionFromState(remoteState) {
@@ -1220,7 +1182,10 @@ var REMOTE_CARD_STRINGS_EN = {
     switchToDeviceMode: "Switch to device mode",
     switchToActivityMode: "Switch to activity mode",
     deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapMissingServer: "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
+    hubUnreachable: (detail) => `The server cannot reach the hub (${detail}).`,
+    controlRefused: "The hub did not take that command.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
@@ -1230,7 +1195,6 @@ var REMOTE_CARD_STRINGS_EN = {
   },
   assist: {
     label: "Key capture",
-    start: "Start",
     waiting: "Waiting for keypress",
     exitEditMode: "Exit Edit mode to begin",
     captured: (label) => `Captured: ${label}`,
@@ -1279,18 +1243,8 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select background color",
-      show_activity: "Activity/device selector",
-      show_dpad: "Direction pad",
-      show_nav: "Back/Home/Menu keys",
-      show_mid: "Volume/Channel rockers",
-      show_media: "Playback",
-      show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C buttons",
-      show_macros_button: "Macros button",
-      show_favorites_button: "Favorites button",
       max_width: "Maximum card width (px)",
-      key_style: "Button style",
-      group_order: "Group order"
+      key_style: "Button style"
     },
     generalOptionsTitle: "General options",
     keyCapture: "Key capture",
@@ -1326,6 +1280,9 @@ var REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel2) => `Reorder ${groupLabel2} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -1433,8 +1390,14 @@ function deepMerge(base, overlay) {
   }
   return out;
 }
+var REMOTE_CARD_LOCALE_ALIASES = {
+  "zh": "zh-hans",
+  "zh-cn": "zh-hans",
+  "zh-sg": "zh-hans"
+};
 function resolveTranslation(language) {
-  const lang = String(language || "").toLowerCase();
+  const raw = String(language || "").toLowerCase().replaceAll("_", "-");
+  const lang = REMOTE_CARD_LOCALE_ALIASES[raw] ?? (raw.startsWith("zh-hans-") ? "zh-hans" : raw);
   if (!lang) return null;
   if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
   const base = lang.split(/[-_]/)[0];
@@ -2970,8 +2933,8 @@ function attachPrimaryAction(els, fn, options = {}) {
     (el) => Boolean(el)
   );
   const gate = createPrimaryActionGate();
-  const wrapped = (ev) => {
-    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+  const wrapped = (ev, gateType = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: ev.pointerId }, Date.now())) return;
     if (typeof ev.preventDefault === "function") ev.preventDefault();
     if (typeof ev.stopPropagation === "function") ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === "function")
@@ -2982,21 +2945,34 @@ function attachPrimaryAction(els, fn, options = {}) {
     } catch (e6) {
     }
   };
+  const keyboardClick = (ev) => {
+    if (ev.detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev) => {
+    const key = ev.key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 var DRAWER_MAX_HEIGHT = 350;
@@ -3915,6 +3891,9 @@ var RemoteCardStore = class {
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
+      // A binding-only edit changes only this; the keys' long-press arming
+      // is computed at render time from it (CR-F4a-3).
+      stableJsonSignature(attrs?.long_press_keys),
       stableJsonSignature(this._config?.background_override),
       themeName,
       themeMode,
@@ -4390,6 +4369,17 @@ var RemoteCardStore = class {
       }
     }, 6e4);
   }
+  /**
+   * A control request was refused (the server answers 409/404, HA raises).
+   * The card must not keep waiting for an activity switch that will not
+   * happen; the rejection itself stops here (CR-F4a-7). The server backend
+   * shows it on the host's banner.
+   */
+  controlFailed() {
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.stopActivityLoading();
+  }
   stopActivityLoading(notify = true) {
     if (!this.activityLoadActive) return;
     this.activityLoadActive = false;
@@ -4783,7 +4773,7 @@ var RemoteCardStore = class {
     const deviceModeAvailable = this.deviceModeAvailable() && deviceToggleEnabled(layoutConfig);
     const layoutKey = mode === "device" ? deviceLayoutKey(deviceId) : activityId;
     const commands = keymapEntry?.status === "ready" ? this.filterAndSortCommands(keymapEntry.commands) : [];
-    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
+    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? this._backend?.kind === "server" ? str().card.deviceKeymapMissingServer : str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
     return {
       remote,
       isUnavailable,
@@ -4828,6 +4818,11 @@ var RemoteCardStore = class {
 };
 
 // remote-card/src/remote-card-assist-yaml.ts
+function yamlScalar(value) {
+  const text = String(value ?? "");
+  const plain = text !== "" && text === text.trim() && !/^[-?:,[\]{}#&*!|>'"%@`]/.test(text) && !/: |:$| #/.test(text) && !/^(?:y|yes|n|no|true|false|on|off|null|~)$/i.test(text) && !/^[-+]?(?:\d|\.\d)/.test(text) && !/[\u0000-\u001f]/.test(text);
+  return plain ? text : JSON.stringify(text);
+}
 function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
@@ -4849,7 +4844,7 @@ function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
       "target:",
       `  entity_id: ${entityId}`,
       "data:",
-      `  activity: ${capture.activityName}`
+      `  activity: ${yamlScalar(capture.activityName)}`
     ].join("\n");
   }
   if (kind === "power") {
@@ -4902,7 +4897,7 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
-    `name: ${label}`,
+    `name: ${yamlScalar(label)}`,
     `icon: ${icon7}`,
     "tap_action:",
     "  action: perform-action",
@@ -4982,6 +4977,11 @@ var AutomationAssistController = class {
     this.hubMacDetecting = false;
     this.mqttUnsub = null;
     this.mqttTopic = null;
+    // The current subscription, set BEFORE subscribeMessage resolves (HA acks
+    // it a round trip later). A render in that window must not subscribe
+    // again, and a subscription that resolves after being superseded is
+    // cancelled on arrival and never delivers (CR-F4a-2).
+    this.mqttToken = null;
     this.mqttLookupId = 0;
     this.mqttDeviceNames = /* @__PURE__ */ new Map();
     this.mqttDeviceCommands = /* @__PURE__ */ new Map();
@@ -4991,7 +4991,6 @@ var AutomationAssistController = class {
     // Activity-change baseline (drives capture of activity switches)
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
     this.host = host;
   }
   // ---------- session (per-tab, shared across card instances) ----------
@@ -5023,12 +5022,10 @@ var AutomationAssistController = class {
     const currentId = this.host.currentActivityId();
     this.lastActivityLabel = currentLabel;
     this.lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
   resetActivityBaseline() {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
   setActive(active) {
     const next = !!active;
@@ -5151,7 +5148,6 @@ var AutomationAssistController = class {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
   // ---------- notification ----------
@@ -5309,21 +5305,29 @@ var AutomationAssistController = class {
     const mac = this.hubMac;
     if (!mac) return;
     const topic = `${mac}/up`;
-    if (this.mqttTopic === topic && this.mqttUnsub) return;
+    if (this.mqttTopic === topic && this.mqttToken) return;
     this.unsubscribeMqtt();
     const hass = this.host.getHass();
     if (!hass?.connection?.subscribeMessage) return;
     this.mqttTopic = topic;
-    hass.connection.subscribeMessage((msg) => this.handleMqtt(msg), {
+    const token = /* @__PURE__ */ Symbol("mqtt-subscription");
+    this.mqttToken = token;
+    hass.connection.subscribeMessage((msg) => {
+      if (this.mqttToken === token) this.handleMqtt(msg);
+    }, {
       type: "mqtt/subscribe",
       topic
     }).then((unsub) => {
-      this.mqttUnsub = unsub;
+      if (this.mqttToken === token) this.mqttUnsub = unsub;
+      else this.safeUnsubscribe(unsub);
     }).catch(() => {
-      this.mqttUnsub = null;
+      if (this.mqttToken !== token) return;
+      this.mqttToken = null;
+      this.mqttTopic = null;
     });
   }
   unsubscribeMqtt() {
+    this.mqttToken = null;
     if (this.mqttUnsub) {
       const unsubscribe = this.mqttUnsub;
       this.mqttUnsub = null;
@@ -6097,7 +6101,9 @@ var SbKeyButton = class extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button"
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback
     );
   }
   connectedCallback() {
@@ -6134,11 +6140,6 @@ var SbKeyButton = class extends BaseElement {
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
-    });
   }
   disconnectedCallback() {
     this._hold.stop();
@@ -6150,6 +6151,13 @@ if (!customElements.get("sb-key-button")) {
 }
 
 // remote-card/src/sections/key-groups.ts
+function keyFaceLabel(spec) {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+function keyAccessibleLabel(spec) {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
+}
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.C,
   ID.B,
@@ -6181,7 +6189,7 @@ var NUMPAD_KEYS = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -6206,7 +6214,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -6226,14 +6234,11 @@ function renderKey(params, spec) {
   if (!shouldShow) return A;
   const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
   const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
   return b2`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -6263,8 +6268,25 @@ function renderDpad(params, visible, numpad = null) {
     ready ? "dpad--numpad-ready" : "",
     open ? "dpad--numpad-open" : ""
   ].filter(Boolean).join(" ");
+  const onKeydown = (ev) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || ev.currentTarget.contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return b2`
-    <div class=${className} ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n5(numpad.hostRef) : A}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
       </div>
@@ -7115,9 +7137,12 @@ var SofabatonRemoteCard = class extends i4 {
     this._lastSelectedActivityValue = String(value);
     this._lastSelectedActivityAt = now;
     this._fireEvent("haptic", "light");
-    Promise.resolve(this._store.setActivity(value)).catch((err) => {
-      console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
-    });
+    this._control(this._store.setActivity(value));
+  }
+  /** Run a control request: a refusal ends any activity wait instead of
+   *  escaping as an unhandled rejection (CR-F4a-7). */
+  _control(request) {
+    request.catch(() => this._store.controlFailed());
   }
   /**
    * Single stable entry point for the activity/device dropdown. The select's
@@ -7153,6 +7178,20 @@ var SofabatonRemoteCard = class extends i4 {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+  _closeNumpad(restoreFocus) {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  _focusDpadControl(selector) {
+    const target = this._dpadRef.value?.querySelector(selector);
+    const control = target?.shadowRoot?.querySelector(".sb-key-control") ?? target;
+    control?.focus();
   }
   _handleModeToggle() {
     if (this._editMode) return;
@@ -7471,7 +7510,7 @@ var SofabatonRemoteCard = class extends i4 {
           icon: model.icon
         });
         store.triggerCommandPulse();
-        void store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem);
+        this._control(store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem));
       },
       onCustomFavorite: ({ model, rawFavorite }) => {
         if (this._assist.active) {
@@ -7485,7 +7524,7 @@ var SofabatonRemoteCard = class extends i4 {
           return;
         }
         store.triggerCommandPulse();
-        void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
+        this._control(store.sendCustomFavoriteCommand(model.commandId, model.deviceId));
       }
     };
     const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && (this._editMode || store.devicePowerConfigured());
@@ -7494,7 +7533,7 @@ var SofabatonRemoteCard = class extends i4 {
       disabled: disableAll,
       label: str().card.powerButton,
       onToggle: () => {
-        void store.toggleDevicePower();
+        this._control(store.toggleDevicePower());
       }
     };
     const shortcutConfigs = deviceMode ? deviceShortcutsFromConfig(store.config, derived.deviceId) : {};
@@ -7614,7 +7653,8 @@ var SofabatonRemoteCard = class extends i4 {
         available: numpadAvailable,
         open: this._numpadOpen,
         hostRef: this._dpadRef,
-        onOpen: () => this._openNumpad()
+        onOpen: () => this._openNumpad(),
+        onClose: (restoreFocus) => this._closeNumpad(restoreFocus)
       }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -7682,12 +7722,12 @@ var SofabatonRemoteCard = class extends i4 {
         this._assist.setStatus(str().assist.notCaptured);
       }
       this._store.triggerCommandPulse();
-      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      this._control(this._store.sendLongPress(spec.cmd, targetDeviceId));
       return;
     }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",
@@ -7697,7 +7737,7 @@ var SofabatonRemoteCard = class extends i4 {
       });
     }
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(spec.cmd, targetDeviceId);
+    this._control(this._store.sendCommand(spec.cmd, targetDeviceId));
   }
   _onShortcutPress(slot) {
     if (slot.commandId == null) return;
@@ -7713,7 +7753,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(slot.commandId, deviceId);
+    this._control(this._store.sendCommand(slot.commandId, deviceId));
   }
   _onCommandItem(command) {
     const deviceId = this._store.currentDeviceId();
@@ -7728,7 +7768,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(command.command_id, deviceId);
+    this._control(this._store.sendCommand(command.command_id, deviceId));
   }
   updated(_changed) {
     const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
@@ -8159,9 +8199,6 @@ var MDI_ICON_PATHS = {
   "alert-circle": mdiAlertCircle,
   "alert-circle-outline": mdiAlertCircleOutline,
   "alert-outline": mdiAlertOutline,
-  "alpha-a-circle-outline": mdiAlphaACircleOutline,
-  "alpha-b-circle-outline": mdiAlphaBCircleOutline,
-  "alpha-c-circle-outline": mdiAlphaCCircleOutline,
   "amplifier": mdiAmplifier,
   "apple": mdiApple,
   "arrow-down": mdiArrowDown,
@@ -8217,11 +8254,9 @@ var MDI_ICON_PATHS = {
   "chevron-double-right": mdiChevronDoubleRight,
   "chevron-double-up": mdiChevronDoubleUp,
   "chevron-down": mdiChevronDown,
-  "chevron-down-circle-outline": mdiChevronDownCircleOutline,
   "chevron-left": mdiChevronLeft,
   "chevron-right": mdiChevronRight,
   "chevron-up": mdiChevronUp,
-  "chevron-up-circle-outline": mdiChevronUpCircleOutline,
   "circle": mdiCircle,
   "circle-outline": mdiCircleOutline,
   "clock": mdiClock,
@@ -8689,10 +8724,11 @@ var SbHaSelect = class extends HTMLElement {
         if (this.disabled) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          if (!this.hasAttribute("open")) this._openMenu();
+          const wasOpen = this.hasAttribute("open");
+          if (!wasOpen) this._openMenu();
           const buttons = Array.from(this._menu?.querySelectorAll(".option") ?? []);
-          const index = Math.max(0, this._options.findIndex((option) => option.value === this._value));
-          const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : Math.max(0, index - 1);
+          const selected = this._options.findIndex((option) => option.value === this._value);
+          const next = !wasOpen ? Math.max(0, selected) : event.key === "ArrowDown" ? Math.min(buttons.length - 1, selected + 1) : Math.max(0, selected - 1);
           buttons[next]?.focus();
         } else if (event.key === "Escape" && this.hasAttribute("open")) {
           event.preventDefault();
@@ -9025,6 +9061,9 @@ var REMOTE_CARD_STRINGS_AR = {
     switchToActivityMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
     deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
+    deviceKeymapMissingServer: `\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0643\u062A\u0627\u0644\u0648\u062C ${isolate("Hub")}. \u062D\u062F\u0650\u0651\u062B ${isolate("Hub")} \u0641\u064A \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 ${SOFABATON}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062D\u0629.`,
+    hubUnreachable: (detail) => `\u0644\u0627 \u064A\u0633\u062A\u0637\u064A\u0639 \u0627\u0644\u062E\u0627\u062F\u0645 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 ${isolate("Hub")} (${isolate(detail)}).`,
+    controlRefused: `\u0644\u0645 \u064A\u0642\u0628\u0644 ${isolate("Hub")} \u0647\u0630\u0627 \u0627\u0644\u0623\u0645\u0631.`,
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`,
@@ -9034,7 +9073,6 @@ var REMOTE_CARD_STRINGS_AR = {
   },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    start: "\u0628\u062F\u0621",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
     exitEditMode: "\u063A\u0627\u062F\u0631 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
     captured: (label) => `\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
@@ -9083,18 +9121,8 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
-      show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
-      show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
-      show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
-      show_media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
-      show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
-      show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
-      show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
-      show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
-      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-      group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -9130,6 +9158,9 @@ var REMOTE_CARD_STRINGS_AR = {
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    fewerVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0642\u0644",
+    moreVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0643\u062B\u0631",
+    reorderGroupHandle: (groupLabel2) => `\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 ${isolate(groupLabel2)} (\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u0623\u0633\u0647\u0645)`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -9221,8 +9252,7 @@ registerRemoteCardTranslation("en-gb", {
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select background colour",
-      show_favorites_button: "Favourites button"
+      background_override: "Select background colour"
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows"
@@ -9256,6 +9286,9 @@ var REMOTE_CARD_STRINGS_DE = {
     switchToActivityMode: "In den Aktivit\xE4tsmodus wechseln",
     deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
+    deviceKeymapMissingServer: "Dieses Ger\xE4t ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
+    hubUnreachable: (detail) => `Der Server erreicht den Hub nicht (${detail}).`,
+    controlRefused: "Der Hub hat diesen Befehl nicht angenommen.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivit\xE4tslayout",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
@@ -9265,7 +9298,6 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   assist: {
     label: "Tastendr\xFCcke erfassen",
-    start: "Starten",
     waiting: "Warten auf Tastendruck",
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label) => `Erfasst: ${label}`,
@@ -9314,18 +9346,8 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
-      show_dpad: "Steuerkreuz",
-      show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
-      show_mid: "Lautst\xE4rke- und Kanalwippen",
-      show_media: "Wiedergabe",
-      show_colors: "Rot/Gr\xFCn/Gelb/Blau",
-      show_abc: "A/B/C-Tasten",
-      show_macros_button: "Makrotaste",
-      show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
-      key_style: "Tastenstil",
-      group_order: "Gruppenreihenfolge"
+      key_style: "Tastenstil"
     },
     generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
@@ -9361,6 +9383,9 @@ var REMOTE_CARD_STRINGS_DE = {
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -9466,6 +9491,9 @@ var REMOTE_CARD_STRINGS_ES = {
     switchToActivityMode: "Cambiar al modo de actividad",
     deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
+    deviceKeymapMissingServer: "Este dispositivo no est\xE1 en el cat\xE1logo del hub. Actualiza el hub en el panel de control de Sofabaton y vuelve a cargar esta p\xE1gina.",
+    hubUnreachable: (detail) => `El servidor no puede comunicarse con el hub (${detail}).`,
+    controlRefused: "El hub no acept\xF3 ese comando.",
     poweredOff: "Apagado",
     defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
@@ -9475,7 +9503,6 @@ var REMOTE_CARD_STRINGS_ES = {
   },
   assist: {
     label: "Captura de botones",
-    start: "Iniciar",
     waiting: "Esperando a que se pulse un bot\xF3n",
     exitEditMode: "Sal del modo de edici\xF3n para comenzar",
     captured: (label) => `Capturado: ${label}`,
@@ -9524,18 +9551,8 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad/dispositivo",
-      show_dpad: "Control direccional",
-      show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
-      show_mid: "Controles de volumen y canal",
-      show_media: "Reproducci\xF3n",
-      show_colors: "Rojo/Verde/Amarillo/Azul",
-      show_abc: "Botones A/B/C",
-      show_macros_button: "Bot\xF3n de macros",
-      show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
-      key_style: "Estilo de los botones",
-      group_order: "Orden de los grupos"
+      key_style: "Estilo de los botones"
     },
     generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
@@ -9571,6 +9588,9 @@ var REMOTE_CARD_STRINGS_ES = {
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
+    fewerVisibleRows: "Menos filas visibles",
+    moreVisibleRows: "M\xE1s filas visibles",
+    reorderGroupHandle: (groupLabel2) => `Reordenar ${groupLabel2} (teclas de flecha)`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -9676,6 +9696,9 @@ var REMOTE_CARD_STRINGS_FR = {
     switchToActivityMode: "Passer en mode activit\xE9",
     deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
+    deviceKeymapMissingServer: "Cet appareil ne figure pas dans le catalogue du hub. Actualisez le hub dans le panneau de contr\xF4le Sofabaton, puis rechargez cette page.",
+    hubUnreachable: (detail) => `Le serveur ne parvient pas \xE0 joindre le hub (${detail}).`,
+    controlRefused: "Le hub n\u2019a pas accept\xE9 cette commande.",
     poweredOff: "\xC9teinte",
     defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
     activityFallback: (id) => `Activit\xE9 ${id}`,
@@ -9685,7 +9708,6 @@ var REMOTE_CARD_STRINGS_FR = {
   },
   assist: {
     label: "Capture de touches",
-    start: "D\xE9marrer",
     waiting: "En attente d\u2019une pression sur une touche",
     exitEditMode: "Quittez le mode d\u2019\xE9dition pour commencer",
     captured: (label) => `Capture\xA0: ${label}`,
@@ -9734,18 +9756,8 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
-      show_dpad: "Pav\xE9 directionnel",
-      show_nav: "Touches Retour/Accueil/Menu",
-      show_mid: "Touches de volume et de cha\xEEne",
-      show_media: "Lecture",
-      show_colors: "Rouge/Vert/Jaune/Bleu",
-      show_abc: "Touches A/B/C",
-      show_macros_button: "Bouton des macros",
-      show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
-      key_style: "Style des touches",
-      group_order: "Ordre des groupes"
+      key_style: "Style des touches"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
@@ -9781,6 +9793,9 @@ var REMOTE_CARD_STRINGS_FR = {
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel2) => `R\xE9ordonner ${groupLabel2} (touches fl\xE9ch\xE9es)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -9885,6 +9900,9 @@ var REMOTE_CARD_STRINGS_NL = {
     switchToActivityMode: "Naar activiteitsmodus schakelen",
     deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
+    deviceKeymapMissingServer: "Dit apparaat staat niet in de catalogus van de hub. Vernieuw de hub in het Sofabaton-bedieningspaneel en laad deze pagina daarna opnieuw.",
+    hubUnreachable: (detail) => `De server kan de hub niet bereiken (${detail}).`,
+    controlRefused: "De hub heeft dat commando niet aangenomen.",
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
@@ -9894,7 +9912,6 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   assist: {
     label: "Knopdrukken registreren",
-    start: "Starten",
     waiting: "Wachten op een knopdruk",
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label) => `Vastgelegd: ${label}`,
@@ -9943,18 +9960,8 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteits-/apparaatkiezer",
-      show_dpad: "Richtingsknoppen",
-      show_nav: "Terug/Home/Menu-knoppen",
-      show_mid: "Volume-/kanaalknoppen",
-      show_media: "Afspelen",
-      show_colors: "Rood/groen/geel/blauw",
-      show_abc: "A/B/C-knoppen",
-      show_macros_button: "Macroknop",
-      show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
-      key_style: "Knopstijl",
-      group_order: "Groepsvolgorde"
+      key_style: "Knopstijl"
     },
     generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
@@ -9990,6 +9997,9 @@ var REMOTE_CARD_STRINGS_NL = {
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
+    fewerVisibleRows: "Minder zichtbare rijen",
+    moreVisibleRows: "Meer zichtbare rijen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verplaatsen (pijltjestoetsen)`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -10094,6 +10104,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     switchToActivityMode: "\u5207\u6362\u5230\u6D3B\u52A8\u6A21\u5F0F",
     deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
     deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
+    deviceKeymapMissingServer: "\u6B64\u8BBE\u5907\u4E0D\u5728 Hub \u7684\u76EE\u5F55\u4E2D\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u4E2D\u5237\u65B0 Hub\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u6B64\u9875\u9762\u3002",
+    hubUnreachable: (detail) => `\u670D\u52A1\u5668\u65E0\u6CD5\u8FDE\u63A5\u5230 Hub\uFF08${detail}\uFF09\u3002`,
+    controlRefused: "Hub \u672A\u63A5\u53D7\u8BE5\u547D\u4EE4\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
     defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
@@ -10103,7 +10116,6 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",
-    start: "\u5F00\u59CB",
     waiting: "\u7B49\u5F85\u6309\u952E",
     exitEditMode: "\u9000\u51FA\u7F16\u8F91\u6A21\u5F0F\u540E\u5373\u53EF\u5F00\u59CB",
     captured: (label) => `\u5DF2\u6355\u83B7\uFF1A${label}`,
@@ -10152,18 +10164,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
-      show_dpad: "\u65B9\u5411\u952E",
-      show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
-      show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
-      show_media: "\u64AD\u653E",
-      show_colors: "\u7EA2/\u7EFF/\u9EC4/\u84DD",
-      show_abc: "A/B/C \u6309\u952E",
-      show_macros_button: "\u5B8F\u6309\u94AE",
-      show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
-      key_style: "\u6309\u952E\u6837\u5F0F",
-      group_order: "\u5206\u7EC4\u987A\u5E8F"
+      key_style: "\u6309\u952E\u6837\u5F0F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",
@@ -10199,6 +10201,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
+    fewerVisibleRows: "\u51CF\u5C11\u53EF\u89C1\u884C\u6570",
+    moreVisibleRows: "\u589E\u52A0\u53EF\u89C1\u884C\u6570",
+    reorderGroupHandle: (groupLabel2) => `\u8C03\u6574${groupLabel2}\u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",
@@ -10289,6 +10294,13 @@ function toNumber(value) {
   const n7 = Number(value);
   return Number.isFinite(n7) ? n7 : null;
 }
+var HttpError = class extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+};
+var CONTROL_REFUSED_BANNER_MS = 6e3;
 function errorText(err) {
   return err instanceof Error ? err.message : String(err);
 }
@@ -10321,6 +10333,8 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     /** The catalog has been read at least once (a disabled hub answers 409 to reads). */
     this.catalogLoaded = false;
     this._lastError = null;
+    /** When the server last refused a control request (for the host's banner). */
+    this._controlRefusedAt = null;
     /** True until the server has answered (or failed) once for this target. */
     this.firstAnswerPending = true;
     // Load ordering
@@ -10330,6 +10344,9 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     this.runningEpoch = 0;
     this.statusPromise = null;
     this.statusDirty = false;
+    // One page read per activity per load epoch: a reload supersedes the
+    // read in flight, which then discards its answer, so a new epoch must
+    // start its own read instead of waiting on the stale one (CR-F4a-4).
     this.pagePromises = {};
     // Retry of failed HTTP work (independent of the socket)
     this.retryTimer = null;
@@ -10505,7 +10522,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     const response = await this.fetchImpl(this.url(path), {
       headers: { accept: "application/json" }
     });
-    if (!response.ok) throw new Error(`GET ${path} -> ${response.status}`);
+    if (!response.ok) throw new HttpError(`GET ${path} -> ${response.status}`, response.status);
     return await response.json();
   }
   async post(path, body) {
@@ -10514,7 +10531,24 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       headers: body ? { accept: "application/json", "content-type": "application/json" } : { accept: "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
-    if (!response.ok) throw new Error(`POST ${path} -> ${response.status}`);
+    if (!response.ok) {
+      this.noteControlRefused();
+      throw new HttpError(`POST ${path} -> ${response.status}`, response.status);
+    }
+  }
+  /** The last control request the server refused, while it is recent. */
+  get controlRefused() {
+    return this._controlRefusedAt !== null;
+  }
+  noteControlRefused() {
+    const at = Date.now();
+    this._controlRefusedAt = at;
+    this.notify();
+    setTimeout(() => {
+      if (this._controlRefusedAt !== at) return;
+      this._controlRefusedAt = null;
+      this.notify();
+    }, CONTROL_REFUSED_BANNER_MS);
   }
   // ---------- loading ----------
   /** Load once; a load already in flight is shared. */
@@ -10578,6 +10612,10 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       this.cancelRetry();
     } catch (err) {
       if (!current()) return;
+      if (err instanceof HttpError && err.status === 404 && await this.relocateHub(hubId)) {
+        void this.reload();
+        return;
+      }
       this._lastError = errorText(err);
       this.hubStatus = null;
       this.firstAnswerPending = false;
@@ -10587,6 +10625,37 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     this.invalidate();
     this.notify();
     if (current() && this.running) await this.ensureActivityPages(this.running.activity_id);
+  }
+  /**
+   * A hub opened by host is re-keyed to its MAC on its first sync. The
+   * stream announces that (hub_rekeyed), but a page whose socket was down
+   * at the time (a server restart, a sleeping phone tab) only sees the old
+   * id answer 404. The host stays in the hub's config, so look it up there
+   * and follow it (CR-X3-2). True when the target moved.
+   */
+  async relocateHub(oldId) {
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}${SERVER_API_PREFIX}/hubs`, {
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok || oldId !== this.hubId) return false;
+      const hubs = await response.json();
+      const moved = Array.isArray(hubs) ? hubs.find((row) => row?.hub_id && row.hub_id !== oldId && row.config?.host === oldId) : null;
+      if (!moved?.hub_id || oldId !== this.hubId) return false;
+      this.moveTarget(String(moved.hub_id));
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+  /** Follow the hub to its new id; the socket re-narrows to it. */
+  moveTarget(nextId) {
+    this.hubId = nextId;
+    this.pagePromises = {};
+    const wasStreaming = this.streaming;
+    this.closeSocket();
+    if (wasStreaming) this.openSocket();
+    this.notify();
   }
   /** Re-read /status (and the running activity); one in flight, one pending. */
   refreshStatus() {
@@ -10615,6 +10684,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       this.hubStatus = status;
       this.firstAnswerPending = false;
       this._lastError = null;
+      this.retryDelay = this.retryBaseMs;
       if (_ServerRemoteBackend.readable(status)) {
         if (!this.catalogLoaded) {
           void this.reload();
@@ -10639,12 +10709,13 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
   ensureActivityPages(activityId) {
     const key = String(activityId);
     if (this.activityPages[key]) return Promise.resolve();
-    if (!this.pagePromises[key]) {
-      this.pagePromises[key] = this.loadActivityPages(activityId).finally(() => {
-        delete this.pagePromises[key];
-      });
-    }
-    return this.pagePromises[key];
+    const inFlight = this.pagePromises[key];
+    if (inFlight && inFlight.epoch === this.loadEpoch) return inFlight.promise;
+    const promise = this.loadActivityPages(activityId).finally(() => {
+      if (this.pagePromises[key]?.promise === promise) delete this.pagePromises[key];
+    });
+    this.pagePromises[key] = { epoch: this.loadEpoch, promise };
+    return promise;
   }
   async loadActivityPages(activityId) {
     const hubId = this.hubId;
@@ -10658,6 +10729,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       ]);
       if (!current()) return;
       this.activityPages[String(activityId)] = { buttons, macros, favorites };
+      this.retryDelay = this.retryBaseMs;
     } catch (err) {
       if (!current()) return;
       this._lastError = errorText(err);
@@ -10786,6 +10858,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       case "server_event":
         if (message.kind === "hub_rekeyed" && message.hub_id && message.hub_id !== this.hubId) {
           this.hubId = String(message.hub_id);
+          this.notify();
           void this.reload();
           return;
         }
@@ -10983,7 +11056,9 @@ function jobOutcomeText(job) {
   if (!job) return "The job could not be followed";
   if (job.status === "done") return null;
   if (job.error) return problemSummary(job.error) || "Failed";
-  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
+  if (job.status === "cancelled") return "Cancelled";
+  if (job.status === "failed") return "Failed";
+  return "Still running on the server; the dock shows when it ends";
 }
 var PanelApi = class {
   constructor(baseUrl, fetchImpl) {
@@ -11103,9 +11178,6 @@ var PanelApi = class {
   /** Saves to server.json; the ports apply on the next server start. */
   updateServerSettings(changes) {
     return this.request("PUT", "server/settings", { body: changes });
-  }
-  updateStatus() {
-    return this.request("GET", "server/updates");
   }
   /** One check against PyPI now; enables nothing, downloads nothing. */
   checkForUpdates() {
@@ -11301,21 +11373,37 @@ var PanelApi = class {
     return this.request("DELETE", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}`);
   }
   /**
-   * Poll a job until it reaches a terminal state (or the poll count runs
-   * out); `onUpdate` sees every answer. Resolves with the last view.
+   * Poll a job until it reaches a terminal state; `onUpdate` sees every
+   * answer. Jobs are server-authoritative, so a poll that fails in transit
+   * (a network blip, a 5xx) backs off and polls again instead of reporting
+   * the job as failed; only a terminal state, a 4xx answer (the job is
+   * gone) or the long cap ends it (CR-F5a-5). Resolves with the last view,
+   * which after the cap can still be running.
    */
   async followJob(hubId, jobId, options = {}) {
     const interval = options.intervalMs ?? 500;
-    const maxPolls = options.maxPolls ?? 600;
+    const maxPolls = options.maxPolls ?? 3600;
     const sleep2 = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     let last = null;
+    let failures = 0;
     for (let i8 = 0; i8 < maxPolls; i8++) {
-      const response = await this.job(hubId, jobId);
-      if (!response.ok || !response.body) return last;
-      last = response.body;
-      options.onUpdate?.(last);
-      if (TERMINAL_JOB_STATES.has(last.status)) return last;
-      await sleep2(interval);
+      let response = null;
+      try {
+        response = await this.job(hubId, jobId);
+      } catch {
+        response = null;
+      }
+      if (response && response.ok && response.body) {
+        failures = 0;
+        last = response.body;
+        options.onUpdate?.(last);
+        if (TERMINAL_JOB_STATES.has(last.status)) return last;
+        await sleep2(interval);
+        continue;
+      }
+      if (response && response.status >= 400 && response.status < 500) return last;
+      failures += 1;
+      await sleep2(Math.min(interval * 2 ** Math.min(failures, 5), 1e4));
     }
     return last;
   }
@@ -11613,6 +11701,9 @@ function renderBottomDock(params) {
   let center;
   let actions = A;
   const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const confirmActions = b2`
+    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
+    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
   if (model.kind === "running") {
     tone = "dock--running";
     center = status(model.text);
@@ -11632,6 +11723,14 @@ function renderBottomDock(params) {
         params.onDismiss();
       }
     }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
+  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
+    tone = "dock--warn";
+    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
+    actions = confirmActions;
+  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+    tone = "dock--warn";
+    center = status("Discard your unsaved changes? The hub is not changed.");
+    actions = confirmActions;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
     center = status(model.text);
@@ -12070,7 +12169,8 @@ function gateFor(snapshot, runtime) {
   if (!snapshot.server.reachable) return "server_unreachable";
   if (!runtime) return "pass";
   const hub = runtime.hub;
-  if (!hub.enabled || !hub.status) return "hub_disabled";
+  if (!hub.enabled) return "hub_disabled";
+  if (!hub.status) return "hub_not_running";
   if (!hub.status.hub_connected || hub.status.mode === "disconnected") return "hub_offline";
   if (hub.status.mode === "observe") return "app_holds_hub";
   if (!hub.status.catalog_ready) return "first_sync";
@@ -12079,6 +12179,7 @@ function gateFor(snapshot, runtime) {
 var GATE_LABELS = {
   server_unreachable: "The server is not answering",
   hub_disabled: "This hub is disabled",
+  hub_not_running: "The hub's proxy did not start",
   hub_offline: "Waiting for the hub to connect",
   app_holds_hub: "The Sofabaton app holds the hub",
   first_sync: "First sync running"
@@ -12224,6 +12325,7 @@ function dockModel(snapshot, runtime, view = {}) {
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes \u2014 download the edited backup" };
   if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes \u2014 sync to the hub to apply them" };
+  if (view.unsavedLayout) return { kind: "unsynced_view", text: "Unsaved layout changes \u2014 Save keeps them" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || gate !== "pass" && runtime) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };
@@ -12375,6 +12477,7 @@ function isHubRefreshTrigger(data) {
 // server-panel/src/panel-store.ts
 var ACKS_KEY = "sofabaton-panel-acks";
 var DRAFT_PREFIX = "sofabaton-panel-draft:";
+var APPLY_JOB_KINDS = /* @__PURE__ */ new Set(["sync_hub", "resume_apply"]);
 var STOPPED_APPLY_STATES = /* @__PURE__ */ new Set(["stopped", "cancelled"]);
 var CONFLICT_TYPE = "hub_job_running";
 var PanelStore = class {
@@ -12596,6 +12699,20 @@ var PanelStore = class {
     } catch {
     }
   }
+  /** Carry a re-keyed hub's persisted draft and acknowledgement to its new id. */
+  _moveHubKeys(fromId, toId) {
+    const draft = loadDraft(this._storage, fromId);
+    if (draft && !loadDraft(this._storage, toId)) {
+      saveDraft(this._storage, toId, draft);
+      this._patchRuntime(toId, { draft, draftCheck: draft.acceptedStale ? "kept" : "unchecked" });
+    }
+    saveDraft(this._storage, fromId, null);
+    if (fromId in this._acks) {
+      const { [fromId]: ack, ...rest } = this._acks;
+      this._acks = { ...rest, [toId]: ack };
+      saveAcks(this._storage, this._acks);
+    }
+  }
   async _loadApplies(hubId) {
     try {
       const response = await this._api.listApplies(hubId);
@@ -12646,7 +12763,12 @@ var PanelStore = class {
       this._set({ listLoaded: true });
     }
     const selected = this._snapshot.selectedHubId;
-    if (hubs.length && !hubs.some((h7) => h7.hub_id === selected)) this.selectHub(hubs[0].hub_id);
+    if (hubs.length && !hubs.some((h7) => h7.hub_id === selected)) {
+      const oldHost = selected ? previous.get(selected)?.hub.config?.host : void 0;
+      const moved = oldHost ? hubs.find((h7) => h7.config?.host === oldHost) : void 0;
+      if (moved && selected) this._moveHubKeys(selected, moved.hub_id);
+      this.selectHub((moved ?? hubs[0]).hub_id);
+    }
     if (!hubs.length) {
       if (selected !== null) this.selectHub(null);
       if (this._snapshot.route.kind === "hub") this.navigate(toolRoute("setup"), { replace: true });
@@ -12671,6 +12793,9 @@ var PanelStore = class {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "dropped":
+        void this.refreshAll();
         return;
       case "server_event":
         if (data.kind === "update_check") void this._loadServer();
@@ -12708,6 +12833,7 @@ var PanelStore = class {
       const again = previous !== null && previous.job_id === job.job_id;
       this._patchRuntime(hubId, { hub: { ...hub, active_job: active, last_job: older ? previous : job }, cancelRequestedJobId });
       if (!older && !again) this._noteFinished(hubId, job, { onLoad: false });
+      if (APPLY_JOB_KINDS.has(job.kind)) void this._loadApplies(hubId);
       this.refreshSoon();
     } else {
       this._patchRuntime(hubId, { hub: { ...hub, active_job: job } });
@@ -12816,11 +12942,15 @@ var PanelStore = class {
       const response = await this._api.resumeApply(hubId, applyId);
       if (response.status === 202 && response.body) {
         const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-        if (runtime) this._patchRuntime(hubId, { hub: { ...runtime.hub, active_job: response.body } });
-        await this._loadApplies(hubId);
+        if (runtime) {
+          this._patchRuntime(hubId, {
+            hub: { ...runtime.hub, active_job: response.body },
+            stoppedApplies: runtime.stoppedApplies.filter((a4) => a4.apply_id !== applyId)
+          });
+        }
         return true;
       }
-      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemLine(response)}`, false);
+      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemText(response)}`, false);
       return false;
     } catch (err) {
       this.say(`Resume failed: ${String(err)}`, false);
@@ -12837,7 +12967,7 @@ var PanelStore = class {
         await this._loadApplies(hubId);
         return true;
       }
-      this.say(`Discard refused: ${problemLine(response)}`, false);
+      this.say(`Discard refused: ${problemText(response)}`, false);
       return false;
     } catch (err) {
       this.say(`Discard failed: ${String(err)}`, false);
@@ -12876,9 +13006,6 @@ var PanelStore = class {
     }
   }
 };
-function problemLine(response) {
-  return problemText(response);
-}
 function loadAcks(storage) {
   if (!storage) return {};
   try {
@@ -12953,8 +13080,14 @@ var SofabatonServerPanel = class extends i4 {
     this._cogOpen = false;
     /** The Backup tab's Edit section holds edits only a download keeps (its sb-backup-dirty). */
     this._backupDirty = false;
+    /** The dock Discard waiting for its inline Yes/Keep (CR-R1-2). */
+    this._dockConfirm = null;
+    /** A move that waits on the panel's own leave dialog (CR-R1-2). */
+    this._leaveAsk = null;
     /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
     this._wifiDirty = false;
+    /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
+    this._layoutDirty = false;
     this._pickerManual = false;
     this._pickerActionsHubId = null;
     this._pickerConfirmRemove = null;
@@ -13175,6 +13308,14 @@ var SofabatonServerPanel = class extends i4 {
         return false;
       }
     }
+    if (this._layoutDirty && this._snapshot.route.kind === "hub" && this._snapshot.route.tab === "remote") {
+      const staying = target.route?.kind === "hub" && target.route.tab === "remote" && target.hubId === void 0;
+      const view = this.renderRoot.querySelector("sb-panel-remote");
+      if (!staying && view && view.hasUnsyncedChanges()) {
+        this._leaveAsk = { ...target, kept: false };
+        return false;
+      }
+    }
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft.scope;
@@ -13193,7 +13334,36 @@ var SofabatonServerPanel = class extends i4 {
       });
       return false;
     }
-    return confirm("You have unsaved changes here. They are kept for when you come back.\n\nLeave anyway?");
+    this._leaveAsk = target;
+    return false;
+  }
+  _renderLeaveDialog() {
+    const target = this._leaveAsk;
+    if (!target) return A;
+    const stay = () => {
+      this._leaveAsk = null;
+    };
+    const leave = () => {
+      this._leaveAsk = null;
+      if (target.kept === false) this._layoutDirty = false;
+      if (target.route) this.store.navigate(target.route);
+      else if (target.hubId !== void 0) this.store.selectHub(target.hubId);
+    };
+    return b2`
+      <div class="leave-backdrop" @click=${stay}>
+        <div class="leave-dialog" id="leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-title"
+          @click=${(event) => event.stopPropagation()}
+          @keydown=${(event) => {
+      if (event.key === "Escape") stay();
+    }}>
+          <div class="leave-title" id="leave-title">You have unsaved changes here</div>
+          <div class="hint">${target.kept === false ? "Leaving discards your layout changes." : "They are kept for when you come back."}</div>
+          <div class="leave-actions">
+            <button class="small" id="leave-stay" type="button" @click=${stay}>Stay</button>
+            <button class="small primary" id="leave-go" type="button" @click=${leave}>Leave anyway</button>
+          </div>
+        </div>
+      </div>`;
   }
   _go(route) {
     this._pickerOpen = false;
@@ -13346,10 +13516,6 @@ var SofabatonServerPanel = class extends i4 {
   _onHubsChanged() {
     void this.store.refreshAll();
   }
-  _onSelectHub(event) {
-    this.store.selectHub(event.detail.hubId);
-    void this.store.refreshHubs();
-  }
   _onNavigate(event) {
     const d5 = event.detail;
     if (d5.page) this._go(toolRoute(d5.page));
@@ -13389,11 +13555,13 @@ var SofabatonServerPanel = class extends i4 {
           this._backupDirty = Boolean(event.detail?.dirty);
         }}></sb-panel-backup>`;
       case "wifi":
-        return b2`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event) => {
+        return b2`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .stream=${this.stream} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event) => {
           this._wifiDirty = Boolean(event.detail?.dirty);
         }}></sb-panel-wifi-devices>`;
       case "remote":
-        return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
+        return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub} @sb-view-dirty=${(event) => {
+          this._layoutDirty = Boolean(event.detail?.dirty);
+        }}></sb-panel-remote>`;
       default:
         if (route.entity !== void 0 && route.sub === "devices") {
           return b2`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
@@ -13403,6 +13571,13 @@ var SofabatonServerPanel = class extends i4 {
         }
         return b2`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
+  }
+  willUpdate() {
+    if (!this._dockConfirm) return;
+    const runtime = selectedRuntime(this._snapshot);
+    const kind = dockModel(this._snapshot, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false }).kind;
+    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty" || kind === "draft_stale";
+    if (!matches) this._dockConfirm = null;
   }
   render() {
     if (this._authPhase === "checking") return b2`<div class="booting" id="auth-checking">Connecting…</div>`;
@@ -13477,13 +13652,17 @@ var SofabatonServerPanel = class extends i4 {
       onSignOut: () => void this._signOut()
     })}
         </header>
-        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
+        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${h6(this._renderView(ctx))}</div>
           ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
         ${renderBottomDock({
-      model: dockModel(s7, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi" }),
+      model: dockModel(s7, runtime, {
+        unsavedBackup: this._backupDirty,
+        unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
+        unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote"
+      }),
       message: s7.message,
       connectivity: connectivityFor(runtime),
       hasHub: ctx.hub !== null,
@@ -13495,17 +13674,30 @@ var SofabatonServerPanel = class extends i4 {
       onResume: (applyId) => {
         if (s7.selectedHubId) void this.store.resumeApply(s7.selectedHubId, applyId);
       },
-      onDiscard: (applyId) => {
-        if (s7.selectedHubId && confirm("Discard this stopped apply? Its record is forgotten; the hub is not changed.")) void this.store.discardApply(s7.selectedHubId, applyId);
+      onDiscard: () => {
+        this._dockConfirm = "apply";
       },
       onKeepDraft: () => {
         if (s7.selectedHubId) this.store.keepStaleDraft(s7.selectedHubId);
       },
       onDiscardDraft: () => {
-        if (s7.selectedHubId && confirm("Discard your unsaved changes? The hub is not changed.")) this.store.discardDraft(s7.selectedHubId);
+        this._dockConfirm = "draft";
+      },
+      confirming: this._dockConfirm,
+      onConfirmDiscard: () => {
+        const kind = this._dockConfirm;
+        this._dockConfirm = null;
+        if (!s7.selectedHubId) return;
+        const model = dockModel(s7, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false });
+        if (kind === "apply" && model.kind === "apply_stopped") void this.store.discardApply(s7.selectedHubId, model.applyId);
+        if (kind === "draft") this.store.discardDraft(s7.selectedHubId);
+      },
+      onCancelDiscard: () => {
+        this._dockConfirm = null;
       }
     })}
         ${this._renderAuthDialog()}
+        ${this._renderLeaveDialog()}
       </div></div>
     `;
   }
@@ -13516,6 +13708,9 @@ SofabatonServerPanel.properties = {
   _cogOpen: { state: true },
   _backupDirty: { state: true },
   _wifiDirty: { state: true },
+  _layoutDirty: { state: true },
+  _dockConfirm: { state: true },
+  _leaveAsk: { state: true },
   _pickerManual: { state: true },
   _pickerActionsHubId: { state: true },
   _pickerConfirmRemove: { state: true },
@@ -13586,6 +13781,10 @@ SofabatonServerPanel.styles = [
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
       .cog-wrap { position: relative; display: inline-flex; }
+      .leave-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
+      .leave-dialog { width: min(420px, 100%); display: grid; gap: 10px; padding: 16px; border: 1px solid var(--sbp-line); border-radius: 14px; background: var(--sbp-panel); color: var(--sbp-text); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3); }
+      .leave-title { font-weight: 700; }
+      .leave-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
       .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
@@ -13818,7 +14017,10 @@ var SbPanelAccess = class extends i4 {
       if (next) change.new_password = next;
       if (!change.username && !change.new_password) return this._say("account", "Nothing to change.", false);
       const response = await this.api.updateAdmin(change);
-      if (!response.ok || !response.body) return this._say("account", response.status === 403 ? "The current password is not right." : problemText(response), false);
+      if (!response.ok || !response.body) {
+        const wrongPassword = response.body?.type === "wrong_password";
+        return this._say("account", wrongPassword ? "The current password is not right." : problemText(response), false);
+      }
       for (const id of ["account-current", "account-new", "account-again"]) {
         const field = this._field(id);
         if (field) field.value = "";
@@ -14161,7 +14363,7 @@ var SbPanelMqtt = class extends i4 {
   }
   connectedCallback() {
     super.connectedCallback();
-    void this._load(true);
+    void this._load(!this._config || !this._dirty());
     this._offStream = this.stream?.onMessage((message) => {
       const kind = String(message.data.kind ?? "");
       if (message.data.type === "server_event" && (kind === "mqtt_config" || kind.startsWith("mqtt_"))) void this._load(kind === "mqtt_config" && !this._dirty());
@@ -14417,9 +14619,15 @@ var SbPanelApi = class extends i4 {
     this._sending = false;
     this._lastJob = null;
     this._storage = null;
+    /** Bumped by a new follow or leaving the page; a loop from an older one stops. */
+    this._followGeneration = 0;
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._followGeneration += 1;
   }
   connectedCallback() {
     super.connectedCallback();
@@ -14496,11 +14704,24 @@ var SbPanelApi = class extends i4 {
       this._response = { ok: false, status: 0, statusText: "no 202 job to follow yet", headers: [], text: "", body: null };
       return;
     }
+    const generation = ++this._followGeneration;
+    const path = `/hubs/${job.hub_id}/jobs/${job.job_id}`;
     for (let i8 = 0; i8 < 600; i8++) {
-      await this._send({ method: "GET", path: `/hubs/${job.hub_id}/jobs/${job.job_id}`, query: "", body: "", headers: {} });
-      const status = this._response?.body?.status;
-      if (!status || TERMINAL_JOB.has(status)) break;
+      let response;
+      try {
+        response = await this.api.request("GET", path);
+      } catch (err) {
+        if (generation === this._followGeneration) {
+          this._response = { ok: false, status: 0, statusText: `request failed: ${String(err)}`, headers: [], text: "", body: null };
+        }
+        return;
+      }
+      if (generation !== this._followGeneration) return;
+      this._response = response;
+      const status = response.body?.status;
+      if (!status || TERMINAL_JOB.has(status)) return;
       await new Promise((resolve) => setTimeout(resolve, 500));
+      if (generation !== this._followGeneration) return;
     }
   }
   _recall(entry) {
@@ -14618,10 +14839,13 @@ var TOOLS_CARD_STRINGS_EN = {
     macroFallback: (id) => `Macro ${id}`,
     favoriteFallback: (id) => `Favorite ${id}`,
     inputFallback: (id) => `Input ${id}`,
-    noInput: "no input"
+    noInput: "no input",
+    backAria: "Back",
+    closeAria: "Close"
   },
   card: {
     connectivityAria: "Connectivity",
+    toolsMenuAria: "Settings and logs",
     hubShort: "HUB",
     appShort: "APP",
     brand: (version) => `SOFABATON CONTROL PANEL - v${version}`,
@@ -14632,13 +14856,10 @@ var TOOLS_CARD_STRINGS_EN = {
     previewDescription: "Tools, cache, backups, logs & automations for your hub",
     editorHeight: "Card height",
     editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
+    editorAdminOnly: "Only Home Assistant admins can use this card",
+    editorAdminOnlyHint: "Other users see a notice instead of the control panel. This hides the card; it does not restrict the integration's actions.",
     pickerName: "Sofabaton Control Panel",
     pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi Commands."
-  },
-  docs: {
-    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
-    commandPayloadsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md"
   },
   tabs: {
     cache: "Hub",
@@ -14665,6 +14886,10 @@ var TOOLS_CARD_STRINGS_EN = {
     unknownVersion: "unknown",
     refreshingCache: "Refreshing cache\u2026",
     hubCommandInProgress: "Hub command in progress\u2026"
+  },
+  adminOnly: {
+    title: "Admins only",
+    copy: "This control panel is limited to Home Assistant administrators."
   },
   hubUnavailable: {
     title: "Hub unavailable",
@@ -14741,6 +14966,18 @@ var TOOLS_CARD_STRINGS_EN = {
     activityIdMissing: "The hub did not return the new activity id.",
     deviceIdMissing: "The hub did not return the new device id.",
     deviceCreateFailed: "The device could not be created on the hub.",
+    activityCreateFailed: "The activity could not be created on the hub.",
+    activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
+    reorderFailed: "The hub did not confirm the new order.",
+    hubNotReady: "The hub is not ready. Close the Sofabaton app or wait for the running operation, then try again.",
+    hubNoResponse: "The hub did not respond. Try again.",
+    hubRequestFailed: "The hub could not complete this request.",
+    payloadInvalid: "The hub cannot use this payload.",
+    wifiEventsFull: "All Wifi Event slots are in use.",
+    wifiEventPendingDelete: "A deleted Wifi Event is still being removed from the hub. Sync the hub, then try again.",
+    wifiEventNameTaken: "A Wifi Event with this name already exists.",
+    wifiEventNameInvalid: "Enter a Wifi Event name the hub can store.",
+    wifiEventFailed: "The Wifi Event could not be saved.",
     deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
     deviceTypeUnsupported: "This device type cannot be created on this hub.",
     selectedHubUnavailable: "The selected hub is no longer available."
@@ -14796,6 +15033,9 @@ var TOOLS_CARD_STRINGS_EN = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
+    refreshAllAria: "Refresh the whole hub cache",
+    refreshListAria: "Refresh this list",
+    refreshEntryAria: (name) => `Refresh ${name}`,
     editActivity: "Edit activity",
     editDevice: "Edit device",
     changeOrder: "Change order",
@@ -14968,19 +15208,13 @@ var TOOLS_CARD_STRINGS_EN = {
     firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    // Capture flow (§4.2).
-    captureTitle: "Reading your hub",
-    captureMessage: "Reading your hub's configuration\u2026",
-    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
     captureFailedTitle: "Couldn't read the hub",
-    captureFailedBody: "The hub stopped responding before we finished reading it.",
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
     syncToHub: "Sync to Hub",
@@ -14993,7 +15227,6 @@ var TOOLS_CARD_STRINGS_EN = {
     syncingMessage: "Writing your changes to the hub\u2026",
     wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first\u2026 this can take a minute the first time.",
     syncSuccess: "Synced to hub.",
-    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
     syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
@@ -15006,63 +15239,7 @@ var TOOLS_CARD_STRINGS_EN = {
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Dismiss label reused by the sync-success / delete-error banners.
-    discardConfirmCancel: "Keep editing",
-    // Review-list section titles + entry templates (activity-diff.ts).
-    review: {
-      sectionDevices: "Devices",
-      sectionStart: "When it starts",
-      sectionButtons: "Buttons",
-      sectionShortcuts: "Shortcuts",
-      sectionEnd: "When it ends",
-      sectionDeviceWide: "Device-wide changes",
-      deviceAdded: (name) => `Added "${name}" to this activity.`,
-      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
-      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
-      inputCleared: (device) => `"${device}" input cleared.`,
-      startReordered: "Start sequence reordered.",
-      roleNowControls: (group, device) => `${group} now control "${device}".`,
-      roleCustomized: (group) => `${group} customized.`,
-      roleCleared: (group) => `${group} no longer assigned.`,
-      shortcutAdded: (name) => `Added "${name}".`,
-      shortcutRemoved: (name) => `Removed "${name}".`,
-      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
-      shortcutsReordered: "Reordered shortcuts.",
-      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
-      roleGroups: {
-        volume: "Volume buttons",
-        navigation: "Navigation buttons",
-        playback: "Playback buttons",
-        channels: "Channel buttons",
-        numpad: "Number pad buttons"
-      },
-      idleShort: {
-        0: "not set",
-        1: "turns off when idle",
-        2: "never switches off",
-        3: "stays on",
-        4: "not managed by the hub"
-      }
-    },
-    // Review-list section titles + entry templates for the live *device*
-    // editor (activity-diff.ts, diffDeviceForReview).
-    deviceReview: {
-      sectionPower: "On/Off",
-      sectionNetwork: "Network",
-      sectionButtons: "Buttons",
-      sectionMacros: "Macros",
-      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
-      powerOnChanged: "Power-on sequence updated.",
-      powerOffChanged: "Power-off sequence updated.",
-      macroAdded: (name) => `Added macro "${name}".`,
-      macroRemoved: (name) => `Removed macro "${name}".`,
-      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
-      macroChanged: (name) => `Edited macro "${name}".`,
-      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" is no longer assigned.`,
-      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
-      ipCleared: "IP address cleared."
-    }
+    discardConfirmCancel: "Keep editing"
   },
   backup: {
     sectionMake: "Make",
@@ -15082,7 +15259,6 @@ var TOOLS_CARD_STRINGS_EN = {
     complete: "Complete",
     restoreCompletedTitle: "Restore completed",
     restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
-    restoreCompletedStatus: "Restore completed.",
     restoreCompletedSuccessfully: "Restore completed successfully.",
     backupCompletedSuccessfully: "Backup completed successfully.",
     wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
@@ -15096,8 +15272,6 @@ var TOOLS_CARD_STRINGS_EN = {
     startingRestore: "Starting restore\u2026",
     backupFailed: "Backup failed.",
     restoreFailed: "Restore failed.",
-    backupInProgress: "Backup in progress\u2026",
-    restoreInProgress: "Restore in progress\u2026",
     failedPrepareDownload: "Failed to prepare edited backup for download.",
     enterName: "Enter a name to continue.",
     renameDialogTitle: "Rename hub",
@@ -15108,7 +15282,6 @@ var TOOLS_CARD_STRINGS_EN = {
     devicesToInclude: "Devices to include",
     selectedCount: (count) => `${count} selected`,
     backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
-    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favorite" : "favorites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
     selectAll: "Select all",
@@ -15139,6 +15312,7 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteImpactMembers: (count) => `${count} ${count === 1 ? "device no longer powers" : "devices no longer power"} on and off with this activity`,
     deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -15150,7 +15324,6 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteActivityAria: "Delete activity",
     deleteDeviceAria: "Delete device",
     deleteCommandAria: "Delete command",
-    addFavoriteTitle: "Add command shortcut",
     addFavoriteDevice: "Device",
     addFavoriteCommand: "Command",
     addFavoriteAdd: "Add",
@@ -15181,9 +15354,6 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteBindingTitle: (name) => `Delete ${name} assignment?`,
     deleteBindingAria: "Delete assignment",
     deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
-    macrosTitle: "Macros",
-    macrosDeviceSub: "Edit the command sequences this device plays, including its power on/off.",
-    macroPowerChip: "on/off",
     // These headings name the hub's switching *behaviour*, not the electrical
     // supply. Translating the bare noun "Power" led every catalogue to the
     // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
@@ -15247,16 +15417,6 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutChipAction: "macro",
     shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
     shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
-    powerSectionTitle: "Power control",
-    powerActivitySub: "Each device the activity uses powers on here. Pick its input and adjust the timing.",
-    powerInputLabel: "Input",
-    powerInputNone: "\u2014 none \u2014",
-    powerDelayLabel: "Delay (s)",
-    powerNoDevices: "No devices yet. Add a favorite, assignment, or macro that uses one.",
-    powerOnSequence: "Power-on sequence",
-    powerOffSequence: "Power-off sequence",
-    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
-    macroRenameAria: "Rename macro",
     editStepsAria: "Edit steps",
     crumbActivities: "Activities",
     crumbDevices: "Devices",
@@ -15304,7 +15464,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation \u2192 Events.",
     wifiEventDeploying: "Staging the Wifi Event\u2026",
     wifiEventNoneYet: "No Wifi Events yet. Create one below.",
-    wifiEventNeedsSync: (name) => `${name} (needs sync)`,
     wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
     wifiEventNameRequired: "Enter a name for the new Wifi Event.",
     wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation \u2192 Events.",
@@ -15330,10 +15489,11 @@ var TOOLS_CARD_STRINGS_EN = {
     addCommand: "Add command",
     addCommandTitle: "Add command",
     editPayloadTitle: "Edit payload",
-    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
+    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. The bin removes a command with the next Sync.",
     commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
     newCommandChip: "new command",
     commandChip: "command",
+    requiredStepChip: "required",
     buttonChip: "button",
     ipChip: "ip",
     thisItem: "this item",
@@ -15344,6 +15504,7 @@ var TOOLS_CARD_STRINGS_EN = {
     fetchEditCommandAria: "Fetch and edit this command's payload",
     moveUpAria: "Move up",
     moveDownAria: "Move down",
+    reorderHandleAria: (label) => `Reorder ${label} (arrow keys)`,
     deviceClass: "Device class",
     name: "Name",
     nameHelper: "Shown on the remote and in every command picker.",
@@ -15415,7 +15576,6 @@ var TOOLS_CARD_STRINGS_EN = {
     renameCommand: "Rename command",
     ipAddress: "IP address",
     noPayloadReturned: "The hub returned no payload for this command.",
-    noTemplateCommand: "This device has no commands to use as a template \u2014 add its first command with the Sofabaton app.",
     newCommandNameRequired: "Enter a name for the new command.",
     descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
     payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
@@ -15475,18 +15635,6 @@ var TOOLS_CARD_STRINGS_EN = {
     macroTargetLabelText: (name) => `Macro \xB7 ${name}`
   },
   hub: {
-    loading: "Loading\u2026",
-    unknown: "Unknown",
-    connectionStatusAria: "Hub connection status",
-    hubConnected: "Hub connected",
-    hubNotConnected: "Hub not connected",
-    appConnected: "App connected",
-    appNotConnected: "App not connected",
-    version: "Version",
-    ipAddress: "IP address",
-    activities: "Activities",
-    devices: "Devices",
-    integrationVersion: "Integration version",
     firmwareVersion: (version) => `FW: v${version}`,
     productVersion: (version) => `Sofabaton ${version}`,
     firmwareUpdateRequired: "Firmware update required",
@@ -15540,8 +15688,6 @@ var TOOLS_CARD_STRINGS_EN = {
     incompatibleModels: (source, destination) => `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`
   },
   wifiCommands: {
-    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
     sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDeviceButton: "Add",
@@ -15551,6 +15697,11 @@ var TOOLS_CARD_STRINGS_EN = {
     maximumDevices: "Maximum number of devices reached",
     configuredSlots: (count) => `${count} slot${count === 1 ? "" : "s"}`,
     unableSaveAction: "Unable to save Action",
+    hubEventActionsLoadFailed: "The event actions could not be loaded, so they cannot be changed right now.",
+    hubEventResetFailed: "The action was not cleared. Try again.",
+    commandsLoadFailed: "This device's commands could not be loaded, so they cannot be changed right now.",
+    commandsSaveFailed: "The change was not saved. Try again.",
+    retryLoad: "Try again",
     hubCommandInProgress: "Hub command in progress\u2026",
     idle: "Idle",
     unableLoadSyncStatus: "Unable to load sync status",
@@ -15575,24 +15726,15 @@ var TOOLS_CARD_STRINGS_EN = {
     commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
-    syncInProgress: "Sync in progress",
     // Status line while the sync spins up — not the Sync button label.
     startSync: "Starting sync",
     syncFailedToStart: "Sync failed to start",
-    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
     syncMessageFailed: "Last sync failed.",
-    syncMessageNeeded: "Command config changes need to be synced to the hub.",
-    syncMessageUpToDate: "Hub command configuration is up to date.",
-    syncMessageIdle: "No sync needed.",
-    syncShortUnavailable: "Unavailable",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",
-    syncShortUpToDate: "Up to date",
-    syncShortIdle: "Idle",
     deviceDeleting: "Deleting\u2026",
     deviceSynced: "Synced",
-    seeDocumentation: "See documentation",
     actionButtonUnavailable: "Unavailable",
     actionButtonSyncing: "Syncing\u2026",
     actionButtonBusy: "Busy",
@@ -15659,9 +15801,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventRowLongPress: "and when it's pressed and held",
     wifiEventModalTitle: (name) => `When ${name} is pressed`,
     wifiEventLongModalTitle: (name) => `When ${name} is pressed and held`,
-    wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
-    wifiEventRetrySync: "Retry sync",
     // Orphaned-config notice, split around the clickable phrase so locales
     // can place it anywhere in the sentence.
     wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
@@ -15670,13 +15810,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
     wifiEventsStaleConfirmRemove: "Remove",
     wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
-    wifiEventDeleteTitle: "Delete Wifi Event",
-    wifiEventDeleteConfirmTitle: (name) => `Delete "${name}"?`,
-    wifiEventDeleteScanning: "Checking what references this event\u2026",
-    wifiEventDeleteNoRefs: "Nothing on the hub references this event.",
-    wifiEventDeleteRefs: (favorites, bindings, steps) => `The hub will also remove ${favorites} shortcut${favorites === 1 ? "" : "s"} and ${bindings} button assignment${bindings === 1 ? "" : "s"} that reference it, and the step is removed from ${steps} macro${steps === 1 ? "" : "s"} (a macro left with no steps is removed).`,
-    wifiEventDeleteConfirm: "Delete",
-    wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
     activityEventsTitle: "Activity Events",
     activityEventsSubtitle: "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
     activityEventStarts: (name) => `When ${name} starts`,
@@ -15804,77 +15937,77 @@ function hubIcon(kind, classes = "") {
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
 function decodedClassFormSpecs() {
-  const S9 = TOOLS_CARD_STRINGS.decodedPayload;
+  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
   return {
     wifi_ip: {
-      title: S9.httpTitle,
-      subtitle: S9.httpSubtitle,
+      title: S8.httpTitle,
+      subtitle: S8.httpSubtitle,
       fields: [
-        { key: "host", label: S9.hostIpv4, helper: S9.hostExample },
-        { key: "port", label: S9.port, numeric: true },
-        { key: "method", label: S9.httpMethod, helper: S9.httpMethodExample },
-        { key: "path", label: S9.path },
+        { key: "host", label: S8.hostIpv4, helper: S8.hostExample },
+        { key: "port", label: S8.port, numeric: true },
+        { key: "method", label: S8.httpMethod, helper: S8.httpMethodExample },
+        { key: "path", label: S8.path },
         {
           key: "header",
-          label: S9.extraHeaders,
+          label: S8.extraHeaders,
           multiline: true,
           crlfOnWire: true,
-          helper: S9.extraHeadersHelper
+          helper: S8.extraHeadersHelper
         },
-        { key: "content_type", label: S9.contentType },
-        { key: "body", label: S9.body, multiline: true }
+        { key: "content_type", label: S8.contentType },
+        { key: "body", label: S8.body, multiline: true }
       ]
     },
     wifi_roku: {
-      title: S9.rokuTitle,
+      title: S8.rokuTitle,
       fields: [
-        { key: "path", label: S9.ecpPath, helper: S9.ecpPathExample }
+        { key: "path", label: S8.ecpPath, helper: S8.ecpPathExample }
       ]
     },
     wifi_hue: {
-      title: S9.hueTitle,
-      subtitle: S9.bodyBlockSubtitle,
+      title: S8.hueTitle,
+      subtitle: S8.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S9.urlPath },
+        { key: "path", label: S8.urlPath },
         {
           key: "body_block",
-          label: S9.bodyBlock,
+          label: S8.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S9.bodyBlockHelper
+          helper: S8.bodyBlockHelper
         }
       ]
     },
     wifi_sonos: {
-      title: S9.sonosTitle,
-      subtitle: S9.bodyBlockSubtitle,
+      title: S8.sonosTitle,
+      subtitle: S8.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S9.urlPath },
+        { key: "path", label: S8.urlPath },
         {
           key: "body_block",
-          label: S9.bodyBlock,
+          label: S8.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S9.bodyBlockHelper
+          helper: S8.bodyBlockHelper
         }
       ]
     },
     wifi_mqtt: {
-      title: S9.mqttTitle,
-      subtitle: S9.mqttSubtitle,
+      title: S8.mqttTitle,
+      subtitle: S8.mqttSubtitle,
       fields: [
-        { key: "device_id", label: S9.mqttDeviceId, numeric: true, readonly: true },
-        { key: "command_id", label: S9.mqttCommandId, numeric: true, readonly: true }
+        { key: "device_id", label: S8.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S8.mqttCommandId, numeric: true, readonly: true }
       ]
     },
     ir: {
-      title: S9.irTitle,
-      subtitle: S9.irSubtitle,
+      title: S8.irTitle,
+      subtitle: S8.irSubtitle,
       fields: [
         {
           key: "descriptor",
-          label: S9.descriptor,
-          helper: S9.descriptorExample
+          label: S8.descriptor,
+          helper: S8.descriptorExample
         }
       ]
     }
@@ -16686,7 +16819,7 @@ function countAffectedBindings(bindings, transform) {
   return count;
 }
 function bundleDeleteImpact(bundle, target) {
-  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -16709,7 +16842,7 @@ function bundleDeleteImpact(bundle, target) {
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
       );
     }
-    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings, members: 0 };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -16742,15 +16875,37 @@ function bundleDeleteImpact(bundle, target) {
       if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
       else macroSteps += removed;
     }
-    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings, members: 0 };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
   }
+  if (target.kind === "favorite" || target.kind === "macro" || target.kind === "activity_binding") {
+    return activityEntryDeleteImpact(bundle, target);
+  }
   return empty;
 }
+function activityEntryDeleteImpact(bundle, target) {
+  const activityId = Number(target.activityId);
+  const before = findBundleActivity(bundle, activityId);
+  const after = findBundleActivity(applyBundleDelete(bundle, target), activityId);
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
+  if (!before || !after) return empty;
+  const afterBindings = new Map(
+    (after.button_bindings ?? []).map((row) => [Number(row?.button_id ?? -1), JSON.stringify(row)])
+  );
+  const deletedButton = target.kind === "activity_binding" ? Number(target.buttonId) : null;
+  const bindings = (before.button_bindings ?? []).filter((row) => {
+    const buttonId = Number(row?.button_id ?? -1);
+    if (buttonId === deletedButton) return false;
+    return afterBindings.get(buttonId) !== JSON.stringify(row);
+  }).length;
+  const remaining = new Set((after.referenced_source_device_ids ?? []).map(Number));
+  const members = (before.referenced_source_device_ids ?? []).filter((id) => !remaining.has(Number(id))).length;
+  return { ...empty, bindings, members };
+}
 function backupDeleteHasCascade(impact) {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0 || impact.members > 0;
 }
 function deleteBundleActivity(bundle, activityId) {
   const id = Number(activityId);
@@ -17172,7 +17327,7 @@ function removeActivityMemberDevice(bundle, activityId, deviceId) {
   return reconcileActivityPowerMacros(next, aId);
 }
 function activityMemberRemovalImpact(bundle, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -17196,7 +17351,7 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId)
   );
-  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings, members: 0 };
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -17557,57 +17712,57 @@ function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices)
   });
 }
 function sharedButtonCatalog() {
-  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 174, name: S9.up, group: S9.navigation },
-    { code: 178, name: S9.down, group: S9.navigation },
-    { code: 175, name: S9.left, group: S9.navigation },
-    { code: 177, name: S9.right, group: S9.navigation },
-    { code: 176, name: S9.ok, group: S9.navigation },
-    { code: 180, name: S9.home, group: S9.navigation },
-    { code: 179, name: S9.back, group: S9.navigation },
-    { code: 181, name: S9.menu, group: S9.navigation },
-    { code: 182, name: S9.volumeUp, group: S9.volumeChannel },
-    { code: 185, name: S9.volumeDown, group: S9.volumeChannel },
-    { code: 184, name: S9.mute, group: S9.volumeChannel },
-    { code: 183, name: S9.channelUp, group: S9.volumeChannel },
-    { code: 186, name: S9.channelDown, group: S9.volumeChannel },
-    { code: 187, name: S9.rewind, group: S9.transport },
-    { code: 188, name: S9.pause, group: S9.transport },
-    { code: 189, name: S9.forward, group: S9.transport },
-    { code: 190, name: S9.red, group: S9.colour },
-    { code: 191, name: S9.green, group: S9.colour },
-    { code: 192, name: S9.yellow, group: S9.colour },
-    { code: 193, name: S9.blue, group: S9.colour }
+    { code: 174, name: S8.up, group: S8.navigation },
+    { code: 178, name: S8.down, group: S8.navigation },
+    { code: 175, name: S8.left, group: S8.navigation },
+    { code: 177, name: S8.right, group: S8.navigation },
+    { code: 176, name: S8.ok, group: S8.navigation },
+    { code: 180, name: S8.home, group: S8.navigation },
+    { code: 179, name: S8.back, group: S8.navigation },
+    { code: 181, name: S8.menu, group: S8.navigation },
+    { code: 182, name: S8.volumeUp, group: S8.volumeChannel },
+    { code: 185, name: S8.volumeDown, group: S8.volumeChannel },
+    { code: 184, name: S8.mute, group: S8.volumeChannel },
+    { code: 183, name: S8.channelUp, group: S8.volumeChannel },
+    { code: 186, name: S8.channelDown, group: S8.volumeChannel },
+    { code: 187, name: S8.rewind, group: S8.transport },
+    { code: 188, name: S8.pause, group: S8.transport },
+    { code: 189, name: S8.forward, group: S8.transport },
+    { code: 190, name: S8.red, group: S8.colour },
+    { code: 191, name: S8.green, group: S8.colour },
+    { code: 192, name: S8.yellow, group: S8.colour },
+    { code: 193, name: S8.blue, group: S8.colour }
   ];
 }
 function x2ExtraButtonCatalog() {
-  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 153, name: "A", group: S9.extra },
-    { code: 152, name: "B", group: S9.extra },
-    { code: 151, name: "C", group: S9.extra },
-    { code: 154, name: S9.exit, group: S9.extra },
-    { code: 155, name: S9.dvr, group: S9.extra },
-    { code: 156, name: S9.play, group: S9.extra },
-    { code: 157, name: S9.guide, group: S9.extra }
+    { code: 153, name: "A", group: S8.extra },
+    { code: 152, name: "B", group: S8.extra },
+    { code: 151, name: "C", group: S8.extra },
+    { code: 154, name: S8.exit, group: S8.extra },
+    { code: 155, name: S8.dvr, group: S8.extra },
+    { code: 156, name: S8.play, group: S8.extra },
+    { code: 157, name: S8.guide, group: S8.extra }
   ];
 }
 function x2NumpadButtonCatalog() {
-  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 169, name: S9.num1, group: S9.numpad },
-    { code: 168, name: S9.num2, group: S9.numpad },
-    { code: 167, name: S9.num3, group: S9.numpad },
-    { code: 166, name: S9.num4, group: S9.numpad },
-    { code: 165, name: S9.num5, group: S9.numpad },
-    { code: 164, name: S9.num6, group: S9.numpad },
-    { code: 163, name: S9.num7, group: S9.numpad },
-    { code: 162, name: S9.num8, group: S9.numpad },
-    { code: 161, name: S9.num9, group: S9.numpad },
-    { code: 159, name: S9.num0, group: S9.numpad },
-    { code: 160, name: S9.numDash, group: S9.numpad },
-    { code: 158, name: S9.numEnter, group: S9.numpad }
+    { code: 169, name: S8.num1, group: S8.numpad },
+    { code: 168, name: S8.num2, group: S8.numpad },
+    { code: 167, name: S8.num3, group: S8.numpad },
+    { code: 166, name: S8.num4, group: S8.numpad },
+    { code: 165, name: S8.num5, group: S8.numpad },
+    { code: 164, name: S8.num6, group: S8.numpad },
+    { code: 163, name: S8.num7, group: S8.numpad },
+    { code: 162, name: S8.num8, group: S8.numpad },
+    { code: 161, name: S8.num9, group: S8.numpad },
+    { code: 159, name: S8.num0, group: S8.numpad },
+    { code: 160, name: S8.numDash, group: S8.numpad },
+    { code: 158, name: S8.numEnter, group: S8.numpad }
   ];
 }
 function bundleButtonCatalog(bundle) {
@@ -17899,9 +18054,6 @@ function setActivityRoleDevice(bundle, activityId, group, deviceId) {
   });
   return reconcileActivityMembershipChange(bundle, next, aId);
 }
-function bundleEditableDeviceOptions(bundle) {
-  return bundleDeviceOptions(bundle);
-}
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
   if (!sourceVersion) {
@@ -18184,6 +18336,40 @@ function editedFilename(filename) {
   return `${base}_edited.json`;
 }
 
+// custom_components/sofabaton_x1s/www/src/shared/hub-names.ts
+var WIFI_NAME_MAX = 20;
+var ENTITY_NAME_MAX = 30;
+function hubSupportsUnicodeNames(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return version.includes("X2") || version.includes("X1S");
+}
+function stripUnstorableNameChars(hubVersion, value) {
+  const pattern = hubSupportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "");
+}
+function sanitizeWifiName(hubVersion, value) {
+  return stripUnstorableNameChars(hubVersion, value).slice(0, WIFI_NAME_MAX);
+}
+function sanitizeEntityName(hubVersion, value) {
+  return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
+}
+
+// custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function byteToSeconds(byteValue) {
+  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+}
+function secondsToByte(value) {
+  const seconds = parseFloat(String(value));
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function hubSupportsPowerInput(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return !(version.includes("X1") && !version.includes("X1S"));
+}
+
 // server-panel/src/views/entity-editor-state.ts
 function rowsOf(bundle, kind) {
   return (kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
@@ -18222,14 +18408,6 @@ function withDraftData(bundle, kind, entityId, data) {
   for (const device of data.devices ?? []) next = withEntityElement(next, "device", idOf(device), device);
   return next;
 }
-function byteToSeconds(byteValue) {
-  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-}
-function secondsToByte(value) {
-  const seconds = parseFloat(String(value));
-  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-}
 
 // server-panel/src/views/device-editor-state.ts
 function snapshotAsBundle(snapshot) {
@@ -18245,16 +18423,7 @@ function snapshotAsBundle(snapshot) {
 function elementsEqual(a4, b3) {
   return JSON.stringify(a4) === JSON.stringify(b3);
 }
-function supportsUnicodeNames(hubVersion) {
-  const version = String(hubVersion ?? "").toUpperCase();
-  return version.includes("X2") || version.includes("X1S");
-}
-function sanitizeName(hubVersion, value) {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 30);
-}
-var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+var sanitizeName = sanitizeEntityName;
 function wifiEventsSlotCount2(openedElement) {
   return wifiEventsSlotCount(openedElement);
 }
@@ -18459,6 +18628,7 @@ var SbPanelBackup = class extends i4 {
       if (key !== this._jobsKey) {
         this._jobsKey = key;
         void this._loadJobs();
+        if (hubId && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
       }
       if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
     }
@@ -18545,8 +18715,7 @@ var SbPanelBackup = class extends i4 {
     this._expiryTimer = null;
   }
   _acknowledge(jobId) {
-    const live = new Set(this._jobs.map((job) => job.job_id));
-    this._acks = new Set([...this._acks].filter((id) => live.has(id) || id === jobId));
+    this._acks = new Set([...this._acks].filter((id) => id !== jobId));
     this._acks.add(jobId);
     saveResultAcks(this.storage, this._acks);
   }
@@ -18562,8 +18731,16 @@ var SbPanelBackup = class extends i4 {
     try {
       const response = await api.snapshot(hubId);
       if (hubId !== this._hubId || !response.ok || !response.body) return;
+      const previous = this._deviceOptions;
+      const hadAll = previous.length > 0 && this._deviceIds.length === previous.length;
       this._deviceOptions = bundleDeviceOptions(snapshotAsBundle(response.body));
-      if (!this._deviceIds.length) this._deviceIds = this._deviceOptions.map((device) => device.id);
+      const all = this._deviceOptions.map((device) => device.id);
+      if (!previous.length || hadAll) {
+        this._deviceIds = all;
+      } else {
+        const known = new Set(all);
+        this._deviceIds = this._deviceIds.filter((id) => known.has(id));
+      }
     } catch {
     }
   }
@@ -18684,7 +18861,7 @@ var SbPanelBackup = class extends i4 {
   }
   // -- Edit --------------------------------------------------------------------------------------------------------
   _persistEditSession() {
-    if (!this._hubId || this._editSessionEnded) return;
+    if (!this._hubId || this._editSessionEnded || !this._editSessionTried) return;
     saveEditSession(this.storage, this._hubId, this._editBundle ? { filename: this._editFilename, bundle: this._editBundle, dirty: this._editDirty, detail: this._detail } : null, this.now());
   }
   _discardEditSession() {
@@ -18911,7 +19088,7 @@ var SbPanelBackup = class extends i4 {
   }
   _renderEditOverview(bundle, picker) {
     const activities = bundleActivityOptions(bundle);
-    const devices = bundleEditableDeviceOptions(bundle);
+    const devices = bundleDeviceOptions(bundle);
     const hubName = String(bundle.hub?.name ?? "").trim();
     const sorting = Boolean(this._activitySorter.state || this._deviceSorter.state);
     const rows = (kind, options, sorter) => {
@@ -19302,6 +19479,7 @@ var SbPanelCatalog = class extends i4 {
       } catch (err) {
         error = String(err);
       }
+      if (this._loadedFor !== hubId) return;
       if (error) {
         this._reorder = { ...reorder, syncing: false, error };
         return;
@@ -19321,7 +19499,7 @@ var SbPanelCatalog = class extends i4 {
       if (!name || dialog.kind === "device" && !dialog.deviceClass) return;
       this._add = { ...dialog, busy: true, error: null };
       const fail = (error) => {
-        this._add = { ...dialog, busy: false, error };
+        if (this._loadedFor === hubId) this._add = { ...dialog, busy: false, error };
       };
       try {
         const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
@@ -19340,6 +19518,7 @@ var SbPanelCatalog = class extends i4 {
             if (read) this._lastJobId = read.job_id;
           }
         }
+        if (this._loadedFor !== hubId) return;
         this._add = null;
         this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: dialog.kind === "device" ? "devices" : "activities", entity: id } }));
       } catch (err) {
@@ -19375,6 +19554,7 @@ var SbPanelCatalog = class extends i4 {
         this._notice = null;
         this._reorder = null;
         this._add = null;
+        this._refresh = null;
         this._sorter.cancel();
         if (id) void this._load();
       } else {
@@ -19511,26 +19691,28 @@ var SbPanelCatalog = class extends i4 {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
     this._refresh = { key, text: "Starting\u2026" };
+    const here = () => this._loadedFor === hubId;
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
+        if (here()) this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
         onUpdate: (j3) => {
-          this._refresh = { key, text: jobPhrase(j3) };
+          if (here()) this._refresh = { key, text: jobPhrase(j3) };
         }
       });
+      if (!here()) return;
       if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `Refreshing ${label} failed: ${String(err)}`;
+      if (here()) this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
-      this._refresh = null;
+      if (here()) this._refresh = null;
     }
-    await this._reloadAll();
+    if (here()) await this._reloadAll();
   }
   _refreshAll() {
     if (this._locked) return;
@@ -19617,7 +19799,13 @@ var SbPanelCatalog = class extends i4 {
     const count = countLine(e6.kind, e6.counts) ?? (e6.kind === "device" ? e6.device?.device_class ?? "device" : "activity");
     const fetched = e6.fetched_at ? `read from the hub ${formatWhen(e6.fetched_at)}${e6.complete ? "" : ", incomplete"}` : "not read from the hub in full yet";
     return b2`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e6.id}>
-      <div class="entity-summary" @click=${() => this._toggle(e6)}>
+      <div class="entity-summary" role="button" tabindex="0" aria-expanded=${isOpen ? "true" : "false"}
+        @click=${() => this._toggle(e6)}
+        @keydown=${(event) => {
+      if (event.target !== event.currentTarget || event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      this._toggle(e6);
+    }}>
         <span class="entity-name">
           <span class="entity-name-icon">${icon3(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
           <span class="entity-name-copy">
@@ -19808,6 +19996,7 @@ SbPanelCatalog.styles = [
       .entity-block:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
       .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: 12px; transition: background-color 120ms ease; }
       .entity-summary:hover { background: color-mix(in srgb, var(--sbp-accent) 5%, var(--sbp-panel-2)); }
+      .entity-summary[role="button"]:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -2px; }
       /* The card pins the open drawer's header at the top of its scroll body;
          here the page scrolls under the shell's sticky top dock, so the
          header pins just under it (the shell measures the dock's height). */
@@ -19882,8 +20071,7 @@ function defineCatalogView() {
   if (!customElements.get(CATALOG_VIEW_TAG)) customElements.define(CATALOG_VIEW_TAG, SbPanelCatalog);
 }
 
-// custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
-var S5 = TOOLS_CARD_STRINGS.backup;
+// custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
 function overlayMenuPosition(anchor, align) {
   if (!anchor) return "";
@@ -19898,136 +20086,6 @@ function menuAnchorRect(event) {
   const target = event.currentTarget;
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
 }
-var activityEditorStyles = i`
-  .member-add {
-    position: relative;
-    display: inline-flex;
-  }
-  .member-add-backdrop {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin: 0;
-    cursor: default;
-    z-index: 4;
-  }
-  .member-add-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 5;
-    min-width: 180px;
-    max-height: 240px;
-    overflow-y: auto;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color);
-    border-radius: var(--backup-radius-md);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-    display: flex;
-    flex-direction: column;
-    padding: 4px;
-  }
-  .member-add-option {
-    border: none;
-    background: none;
-    text-align: left;
-    padding: 8px 10px;
-    font-size: 0.9rem;
-    color: var(--primary-text-color);
-    border-radius: var(--backup-radius-sm);
-    cursor: pointer;
-  }
-  .member-add-option:hover {
-    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
-  }
-  .member-add-empty {
-    padding: 8px 10px;
-    font-size: 0.85rem;
-    color: var(--secondary-text-color);
-    line-height: 1.4;
-  }
-  .role-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-  }
-  /* Advanced-mode footer: the last row of a quick-access list that drills
-     into the deeper editor for the rows above it. Tinted and separated by
-     a solid divider so it reads as attached to — but different from — the
-     list items. The extra class in the selector outranks the plain
-     sortable-item border rule that follows in the host tab's styles. */
-  .quick-access-sortable-item.quick-access-footer-item {
-    border-top: 1px solid var(--divider-color);
-    background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 55%, transparent);
-    border-radius: 0 0 calc(var(--backup-radius-lg) - 1px) calc(var(--backup-radius-lg) - 1px);
-    overflow: hidden;
-  }
-  .edit-selection-row--footer .selection-label {
-    color: var(--secondary-text-color);
-    font-size: 12.5px;
-    font-weight: 600;
-  }
-  .footer-row-icon {
-    flex: 0 0 auto;
-    color: var(--secondary-text-color);
-    --mdc-icon-size: 16px;
-  }
-  .role-icon {
-    color: var(--secondary-text-color);
-    --mdc-icon-size: 18px;
-    flex: none;
-  }
-  .role-main {
-    flex: 1;
-    min-width: 0;
-  }
-  .role-label {
-    font-size: 0.92rem;
-  }
-  .role-note {
-    font-size: 0.75rem;
-    color: var(--secondary-text-color);
-  }
-  .role-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 1px solid var(--divider-color);
-    border-radius: var(--backup-radius-sm);
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color);
-    padding: 5px 8px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    max-width: 190px;
-    --mdc-icon-size: 15px;
-  }
-  .role-trigger > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .role-trigger[data-state="unused"] > span {
-    color: var(--secondary-text-color);
-  }
-  .role-trigger[data-state="custom"] > span,
-  .role-trigger[data-state="customized"] > span {
-    font-style: italic;
-  }
-  .role-menu {
-    right: 0;
-    left: auto;
-    min-width: 200px;
-  }
-  .member-add-option:disabled {
-    color: var(--disabled-text-color, var(--secondary-text-color));
-    cursor: default;
-    opacity: 0.7;
-  }
-`;
 
 // server-panel/src/views/activity-editor-state.ts
 var WIFI_EVENTS_ENABLED = false;
@@ -20085,7 +20143,7 @@ var EDITOR_CSS = i`
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
     .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
-    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
+    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); opacity: 1; }
     .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
     .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
     .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
@@ -20302,6 +20360,8 @@ var SbPanelEntityEditor = class extends i4 {
     this._deleting = false;
     this._deleteError = null;
     this._notice = null;
+    /** The kept draft last spliced in (CR-F5b-4): never reload for the same one twice. */
+    this._splicedDraft = null;
     this._loadedKey = null;
     this._loadSeq = 0;
     /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
@@ -20381,7 +20441,16 @@ var SbPanelEntityEditor = class extends i4 {
       void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
+    } else if (changed.has("ctx") && this._stage === "editing" && !this._dirty && this._keptDraftWaiting()) {
+      this._splicedDraft = this.ctx?.runtime?.draft ?? null;
+      void this._load();
     }
+  }
+  /** A draft for this entity the user chose to keep past the stale prompt, not yet in the working copy. */
+  _keptDraftWaiting() {
+    const runtime = this.ctx?.runtime ?? null;
+    const draft = runtime?.draft ?? null;
+    return Boolean(draft && draft !== this._splicedDraft && runtime?.draftCheck === "kept" && this.entityId != null && draft.scope === entityDraftScope(this.entityKind, this.entityId));
   }
   _reset() {
     this._stage = "loading";
@@ -20390,10 +20459,18 @@ var SbPanelEntityEditor = class extends i4 {
     this._working = null;
     this._exitConfirm = null;
     this._syncing = false;
+    this._refreshing = false;
+    this._deleting = false;
     this._syncFailed = null;
     this._deleteError = null;
     this._notice = null;
     this._resetView();
+  }
+  /** True while the element still shows the entity a job started on: the
+   *  cached element is reused for every entity, and a job's continuation
+   *  must not act on the next one (CR-F5b-1). */
+  _stillOn(key) {
+    return this._loadedKey === key;
   }
   /** A job this editor did not start holds the hub (the card's `hubCommandBusy`): Sync and Delete wait for it. */
   get _hubBusy() {
@@ -20414,10 +20491,20 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
-    const [snapshot, callback] = await Promise.all([
-      this.api.snapshot(hubId),
-      this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
-    ]);
+    let snapshot;
+    let callback;
+    try {
+      [snapshot, callback] = await Promise.all([
+        this.api.snapshot(hubId),
+        this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
+      ]);
+    } catch (err) {
+      if (seq !== this._loadSeq) return;
+      this._notice = String(err);
+      this._stage = "missing";
+      this._loadedGate = null;
+      return;
+    }
     if (seq !== this._loadSeq) return;
     this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
     if (!snapshot.ok || !snapshot.body) {
@@ -20448,7 +20535,6 @@ var SbPanelEntityEditor = class extends i4 {
     const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
     const data = restorable ? entityDraftData(draft, kind, entityId) : null;
     this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
-    if (!data && draft?.scope === entityDraftScope(kind, entityId)) this.store.discardDraft(hubId);
     this._stage = "editing";
     this._syncFailed = null;
   }
@@ -20501,6 +20587,10 @@ var SbPanelEntityEditor = class extends i4 {
       then();
       return;
     }
+    if (this._syncing || this._deleting) {
+      this._dockError("Wait for the sync to finish before leaving.");
+      return;
+    }
     this._exitConfirm = { then };
   }
   /** A failure shown in the bottom dock (the shell's sb-message) where it is always in view. */
@@ -20536,23 +20626,28 @@ var SbPanelEntityEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || !this._workingEntity || !this._snapshot || this._syncing) return false;
+    if (!this._dirty) return true;
+    const key = this._loadedKey;
     this._syncing = true;
     this._syncFailed = null;
     this._deleteError = null;
     try {
       if (!await this._beforeSync(hubId)) return false;
+      if (!this._stillOn(key)) return false;
       const element = this._workingEntity;
       const snapshot = this._snapshot;
       if (!element || !snapshot) return false;
       const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      if (!this._stillOn(key)) return !failed;
       if (failed) return this._failSync(failed.stale, failed.message);
+      this._exitConfirm = null;
       this.store.discardDraft(hubId);
       await this._load({ keepDraft: false });
       return true;
     } catch (err) {
-      return this._failSync(false, String(err));
+      return this._stillOn(key) ? this._failSync(false, String(err)) : false;
     } finally {
-      this._syncing = false;
+      if (this._stillOn(key)) this._syncing = false;
     }
   }
   _failBeforeSync(stale, message) {
@@ -20563,6 +20658,7 @@ var SbPanelEntityEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._refreshing) return;
+    const key = this._loadedKey;
     this._refreshing = true;
     try {
       this.store.discardDraft(hubId);
@@ -20571,9 +20667,9 @@ var SbPanelEntityEditor = class extends i4 {
       if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
       else this.store.noteResponse(hubId, started);
     } finally {
-      this._refreshing = false;
+      if (this._stillOn(key)) this._refreshing = false;
     }
-    await this._load({ keepDraft: false });
+    if (this._stillOn(key)) await this._load({ keepDraft: false });
   }
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
   async _deleteEntity() {
@@ -20587,16 +20683,19 @@ var SbPanelEntityEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._deleting) return;
+    const key = this._loadedKey;
     this._deleting = true;
     this._deleteError = null;
     try {
       const started = await this._startDelete(hubId, entityId);
+      if (!this._stillOn(key)) return;
       if (started.status !== 202 || !started.body) {
         this.store.noteResponse(hubId, started);
         this._deleteError = `Delete refused: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
+      if (!this._stillOn(key)) return;
       if (!job || job.status !== "done") {
         this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
@@ -20604,38 +20703,38 @@ var SbPanelEntityEditor = class extends i4 {
       this.store.discardDraft(hubId);
       this._goToList();
     } catch (err) {
-      this._deleteError = `Delete failed: ${String(err)}`;
+      if (this._stillOn(key)) this._deleteError = `Delete failed: ${String(err)}`;
     } finally {
-      this._deleting = false;
+      if (this._stillOn(key)) this._deleting = false;
     }
   }
   // -- render ---------------------------------------------------------------------------------------------------
   render() {
-    const S9 = this.frameStrings;
+    const S8 = this.frameStrings;
     if (!this._hub && !this._offline || this.entityId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
-    const C4 = TOOLS_CARD_STRINGS.activities;
-    if (this._deleting) return this._renderProgress("editor-deleting", C4.deletingTitle(this.entityKind), C4.deletingMessage(this.entityKind));
-    if (this._syncing) return this._renderProgress("editor-syncing", C4.syncingTitle, jobStepMessage(activeJob(this._hub)) || C4.syncingMessage);
+    const C6 = TOOLS_CARD_STRINGS.activities;
+    if (this._deleting) return this._renderProgress("editor-deleting", C6.deletingTitle(this.entityKind), C6.deletingMessage(this.entityKind));
+    if (this._syncing) return this._renderProgress("editor-syncing", C6.syncingTitle, jobStepMessage(activeJob(this._hub)) || C6.syncingMessage);
     switch (this._stage) {
       case "loading":
-        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
+        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S8.loading}</div></div></div>`;
       case "guard_firmware": {
         const floor = firmwareFloor(this._hub);
-        return this._renderGuard(mdiChip, S9.firmwareUnsupportedTitle, S9.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-firmware");
+        return this._renderGuard(mdiChip, S8.firmwareUnsupportedTitle, S8.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-firmware");
       }
       case "needs_refresh":
-        return this._renderGuard(mdiDatabaseRefreshOutline, S9.needsRefreshTitle, S9.needsRefreshBody, b2`
-          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S9.refreshEntity}</button>
-          <button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-refresh");
+        return this._renderGuard(mdiDatabaseRefreshOutline, S8.needsRefreshTitle, S8.needsRefreshBody, b2`
+          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S8.refreshEntity}</button>
+          <button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-refresh");
       case "missing":
-        return this._renderGuard(mdiAlertCircleOutline, S9.missingTitle, this._notice ?? S9.missingBody, b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-missing");
+        return this._renderGuard(mdiAlertCircleOutline, S8.missingTitle, this._notice ?? S8.missingBody, b2`<button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-missing");
       case "sync_failed": {
         const failed = this._syncFailed;
         const stale = Boolean(failed?.stale);
-        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S9.syncStaleTitle : S9.syncFailedTitle, stale ? S9.syncStaleBody : failed?.message ?? "", b2`
-          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S9.syncRetry}</button>`}
-          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S9.syncReload}</button>
-          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S9.syncKeepEditing}</button>`, "sync-failed");
+        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S8.syncStaleTitle : S8.syncFailedTitle, stale ? S8.syncStaleBody : failed?.message ?? "", b2`
+          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S8.syncRetry}</button>`}
+          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S8.syncReload}</button>
+          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S8.syncKeepEditing}</button>`, "sync-failed");
       }
       default:
         return this._renderEditing();
@@ -20667,20 +20766,20 @@ var SbPanelEntityEditor = class extends i4 {
   }
   _renderExitConfirmDialog() {
     if (!this._exitConfirm) return A;
-    const S9 = this.frameStrings;
+    const S8 = this.frameStrings;
     const close = () => {
       this._exitConfirm = null;
     };
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S9.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S9.syncKeepEditing} @click=${close}>${icon4(mdiClose)}</button></div>
-          <div class="dialog-body"><div class="dialog-text">${S9.exitUnsyncedBody}</div></div>
+          <div class="dialog-header"><div class="dialog-title">${S8.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S8.syncKeepEditing} @click=${close}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-body"><div class="dialog-text">${S8.exitUnsyncedBody}</div></div>
           <div class="dialog-footer">
-            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S9.exitWithoutSync}</button>
+            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S8.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
-              <button class="btn" id="exit-keep" type="button" @click=${close}>${S9.syncKeepEditing}</button>
-              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S9.exitSyncNow}</button>
+              <button class="btn" id="exit-keep" type="button" @click=${close}>${S8.syncKeepEditing}</button>
+              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S8.exitSyncNow}</button>
             </div>
           </div>
         </div>
@@ -21097,7 +21196,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     return !WIFI_EVENTS_ENABLED || option.id !== this._callbackDeviceId;
   }
   _deviceOptions() {
-    return bundleEditableDeviceOptions(this._working).filter((option) => this._pickable(option));
+    return bundleDeviceOptions(this._working).filter((option) => this._pickable(option));
   }
   _addableMembers() {
     if (!this._working || this.activityId == null) return [];
@@ -21716,6 +21815,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             ${impact.macroSteps > 0 ? b2`<li>${icon4(mdiFormatListNumbered)}<span>${B2.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
             ${impact.powerSteps > 0 ? b2`<li>${icon4(mdiPower)}<span>${B2.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
             ${impact.bindings > 0 ? b2`<li>${icon4(mdiGestureTapButton)}<span>${B2.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+            ${impact.members > 0 ? b2`<li>${icon4(mdiPower)}<span>${B2.deleteImpactMembers(impact.members)}</span></li>` : A}
           </ul>` : A}
       <div class="delete-replace-note">${icon4(mdiInformationOutline)}<span>${this._offline ? B2.deleteReplaceNote : immediate ? B2.deleteImmediateNote : B2.deleteSyncNote}</span></div>`, b2`
       <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${B2.deleteCancel}</button>
@@ -21858,145 +21958,147 @@ function defineActivityEditor() {
 
 // server-panel/src/views/device-editor.ts
 var DEVICE_EDITOR_TAG = "sb-panel-device-editor";
-var S6 = {
-  crumbDevices: "Devices",
-  renameDevice: "Rename device",
-  deleteDeviceAria: "Delete device",
-  syncToHub: "Sync to Hub",
-  syncUpToDate: "Up to date",
-  detailPower: "On/Off",
-  detailNetwork: "Network",
-  detailCommands: "Commands",
-  detailButtons: "Buttons",
-  detailSectionsAria: "Detail sections",
-  powerSetupTitle: "Power control",
-  powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
-  powerOnLabel: "Power-on sequence",
-  powerOffLabel: "Power-off sequence",
-  macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
-  powerControlTitle: "Automatic power control",
-  powerControlUnset: "Not captured",
-  powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
-  powerControlDisabled: "Don't control power",
-  powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
-  powerControlAutoOff: "Turn off when idle",
-  powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
-  powerControlStayOn: "Stay on between activities",
-  powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
-  powerControlAlwaysOn: "Always stay on",
-  powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
-  powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
-  networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
-  hubNameNotSet: "(not set)",
-  ipChip: "ip",
-  ipv4Description: "IPv4 dotted-decimal address",
-  editIpAria: "Edit IP address",
-  ipAddress: "IP address",
-  commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
-  unsaved: "Unsaved",
-  unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
-  deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
-  deleteSimpleBody: "This removes it from the loaded backup.",
-  deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
-  commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
-  addCommand: "Add command",
-  noDeviceCommands: "This device does not currently have any commands.",
-  commandChip: "command",
-  newCommandChip: "new command",
-  commandId: "Command ID",
-  renameCommandAria: "Rename command",
-  renameCommand: "Rename command",
-  editPayloadAria: "Edit payload",
-  fetchEditCommandAria: "Fetch and edit this command's payload",
-  deleteCommandAria: "Delete command",
-  buttonBindingsTitle: "Button assignments",
-  buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
-  buttonBindingsEmpty: "No button assignments configured.",
-  addBinding: "Add assignment",
-  buttonChip: "button",
-  bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
-  editBindingAria: "Edit assignment",
-  deleteBindingAria: "Delete assignment",
-  bindingButton: "Button",
-  bindingCommand: "Command",
-  bindingEnableLongPress: "Enable long-press assignment",
-  bindingLongPressCommand: "Long-press command",
-  bindingIncomplete: "Choose a button and target first.",
-  bindingNoButtons: "Every button on this hub model is already assigned.",
-  bindingNoCommands: "This device has no commands to assign.",
-  bindingAdd: "Add",
-  bindingSave: "Save",
-  bindingCancel: "Cancel",
-  bindingDialogAddTitle: "Add button assignment",
-  bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
-  deleteBindingTitle: (name) => `Delete ${name} assignment?`,
-  deleteDeviceTitle: (name) => `Delete device "${name}"?`,
-  deleteCommandTitle: (name) => `Delete command "${name}"?`,
-  deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
-  deleteSimpleBodyLive: "This removes it.",
-  deleteImmediateNote: "This is applied to the hub immediately.",
-  deleteSyncNote: "This change is written to the hub on the next Sync.",
-  deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
-  deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
-  deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
-  deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-  deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
-  deleteCancel: "Cancel",
-  deleteConfirm: "Delete",
-  thisItem: "this item",
-  name: "Name",
-  enterName: "Enter a name to continue.",
-  ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
-  cancel: "Cancel",
-  save: "Save",
+var B3 = TOOLS_CARD_STRINGS.backup;
+var A3 = TOOLS_CARD_STRINGS.activities;
+var C4 = TOOLS_CARD_STRINGS.common;
+var S5 = {
+  crumbDevices: B3.crumbDevices,
+  renameDevice: B3.renameDevice,
+  deleteDeviceAria: B3.deleteDeviceAria,
+  syncToHub: A3.syncToHub,
+  syncUpToDate: A3.syncUpToDate,
+  detailPower: B3.detailPower,
+  detailNetwork: B3.detailNetwork,
+  detailCommands: B3.detailCommands,
+  detailButtons: B3.detailButtons,
+  detailSectionsAria: B3.detailSectionsAria,
+  powerSetupTitle: B3.powerSetupTitle,
+  powerSetupDeviceSub: B3.powerSetupDeviceSub,
+  powerOnLabel: B3.powerOnLabel,
+  powerOffLabel: B3.powerOffLabel,
+  macroStepsCount: B3.macroStepsCount,
+  powerControlTitle: B3.powerControlTitle,
+  powerControlUnset: B3.powerControlUnset,
+  powerControlUnsetSub: B3.powerControlUnsetSub,
+  powerControlDisabled: B3.powerControlDisabled,
+  powerControlDisabledSub: B3.powerControlDisabledSub,
+  powerControlAutoOff: B3.powerControlAutoOff,
+  powerControlAutoOffSub: B3.powerControlAutoOffSub,
+  powerControlStayOn: B3.powerControlStayOn,
+  powerControlStayOnSub: B3.powerControlStayOnSub,
+  powerControlAlwaysOn: B3.powerControlAlwaysOn,
+  powerControlAlwaysOnSub: B3.powerControlAlwaysOnSub,
+  powerSequencesDisabledNote: B3.powerSequencesDisabledNote,
+  networkDescription: B3.networkDescription,
+  hubNameNotSet: B3.hubNameNotSet,
+  ipChip: B3.ipChip,
+  ipv4Description: B3.ipv4Description,
+  editIpAria: B3.editIpAria,
+  ipAddress: B3.ipAddress,
+  commandsBackupHelp: B3.commandsBackupHelp,
+  unsaved: B3.unsaved,
+  unsavedTooltip: B3.unsavedTooltip,
+  deleteCascadeIntro: B3.deleteCascadeIntro,
+  deleteSimpleBody: B3.deleteSimpleBody,
+  deleteReplaceNote: B3.deleteReplaceNote,
+  commandsLiveHelp: B3.commandsLiveHelp,
+  addCommand: B3.addCommand,
+  noDeviceCommands: B3.noDeviceCommands,
+  commandChip: B3.commandChip,
+  newCommandChip: B3.newCommandChip,
+  commandId: B3.commandId,
+  renameCommandAria: B3.renameCommandAria,
+  renameCommand: B3.renameCommand,
+  editPayloadAria: B3.editPayloadAria,
+  fetchEditCommandAria: B3.fetchEditCommandAria,
+  deleteCommandAria: B3.deleteCommandAria,
+  buttonBindingsTitle: B3.buttonBindingsTitle,
+  buttonBindingsDeviceSub: B3.buttonBindingsDeviceSub,
+  buttonBindingsEmpty: B3.buttonBindingsEmpty,
+  addBinding: B3.addBinding,
+  buttonChip: B3.buttonChip,
+  bindingLongPressMeta: B3.bindingLongPressMeta,
+  editBindingAria: B3.editBindingAria,
+  deleteBindingAria: B3.deleteBindingAria,
+  bindingButton: B3.bindingButton,
+  bindingCommand: B3.bindingCommand,
+  bindingEnableLongPress: B3.bindingEnableLongPress,
+  bindingLongPressCommand: B3.bindingLongPressCommand,
+  bindingIncomplete: B3.bindingIncomplete,
+  bindingNoButtons: B3.bindingNoButtons,
+  bindingNoCommands: B3.bindingNoCommands,
+  bindingAdd: B3.bindingAdd,
+  bindingSave: B3.bindingSave,
+  bindingCancel: B3.bindingCancel,
+  bindingDialogAddTitle: B3.bindingDialogAddTitle,
+  bindingDialogEditTitle: B3.bindingDialogEditTitle,
+  deleteBindingTitle: B3.deleteBindingTitle,
+  deleteDeviceTitle: B3.deleteDeviceTitle,
+  deleteCommandTitle: B3.deleteCommandTitle,
+  deleteCascadeIntroLive: B3.deleteCascadeIntroLive,
+  deleteSimpleBodyLive: B3.deleteSimpleBodyLive,
+  deleteImmediateNote: B3.deleteImmediateNote,
+  deleteSyncNote: B3.deleteSyncNote,
+  deleteImpactActivities: B3.deleteImpactActivities,
+  deleteImpactFavorites: B3.deleteImpactFavorites,
+  deleteImpactMacroSteps: B3.deleteImpactMacroSteps,
+  deleteImpactPowerSteps: B3.deleteImpactPowerSteps,
+  deleteImpactBindings: B3.deleteImpactBindings,
+  deleteCancel: B3.deleteCancel,
+  deleteConfirm: B3.deleteConfirm,
+  thisItem: B3.thisItem,
+  name: B3.name,
+  enterName: B3.enterName,
+  ipv4Required: B3.ipv4Required,
+  cancel: C4.cancel,
+  save: C4.save,
   // The live host's screens.
-  loading: "Loading device from the hub cache\u2026",
+  loading: A3.capturingFromCache("device"),
   refreshEntity: "Refresh device",
   missingTitle: "Device not found",
   missingBody: "This device is not in the hub's snapshot.",
-  firmwareUnsupportedTitle: "Hub firmware update required",
-  firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
-  needsRefreshTitle: "Refresh the hub cache to edit",
-  needsRefreshBody: "This device isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.",
-  refreshDevice: "Refresh device",
-  back: "Back",
-  syncFailedTitle: "Sync didn't finish",
-  syncStaleTitle: "This device changed on the hub",
-  syncStaleBody: "The device was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
-  syncRetry: "Retry sync",
-  syncReload: "Reload from hub",
-  syncKeepEditing: "Keep editing",
-  exitUnsyncedTitle: "Unsynced changes",
-  exitUnsyncedBody: "This device has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
-  exitSyncNow: "Sync now",
-  exitWithoutSync: "Leave without syncing",
+  firmwareUnsupportedTitle: A3.firmwareUnsupportedTitle,
+  firmwareUnsupportedBody: A3.firmwareUnsupportedBody,
+  needsRefreshTitle: A3.needsRefreshTitle,
+  needsRefreshBody: A3.needsRefreshBody("device"),
+  back: A3.back,
+  syncFailedTitle: A3.syncFailedTitle,
+  syncStaleTitle: A3.syncStaleTitle("device"),
+  syncStaleBody: A3.syncStaleBody("device"),
+  syncRetry: A3.syncRetry,
+  syncReload: A3.syncReload,
+  syncKeepEditing: A3.syncKeepEditing,
+  exitUnsyncedTitle: A3.exitUnsyncedTitle,
+  exitUnsyncedBody: A3.exitUnsyncedBody("device"),
+  exitSyncNow: A3.exitSyncNow,
+  exitWithoutSync: A3.exitWithoutSync,
   // The step editor (the card's macro step editor, device scope).
-  steps: "Steps",
-  macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
-  noMacroSteps: "No steps yet.",
-  addStep: "Add step",
-  stepDialogAddTitle: "Add step",
-  stepDialogEditTitle: "Edit step",
-  stepCommand: "Command",
-  stepHoldSeconds: "Hold (seconds, 0 = short press)",
-  holdLabel: (seconds) => `Hold ${seconds}s`,
-  stepAdd: "Add",
-  stepSave: "Save",
-  stepCancel: "Cancel",
-  stepNoCommands: "This device has no commands.",
-  stepWaitAria: "Wait after this step (seconds)",
-  stepWaitLabel: "Delay",
-  stepWaitUnit: "s",
-  deleteStepAria: "Delete step",
-  editStepAria: "Edit step",
+  steps: B3.steps,
+  macroStepsSortableHelp: B3.macroStepsSortableHelp,
+  noMacroSteps: B3.noMacroSteps,
+  addStep: B3.addStep,
+  stepDialogAddTitle: B3.stepDialogAddTitle,
+  stepDialogEditTitle: B3.stepDialogEditTitle,
+  stepCommand: B3.stepCommand,
+  stepHoldSeconds: B3.stepHoldSeconds,
+  holdLabel: B3.holdLabel,
+  stepAdd: B3.stepAdd,
+  stepSave: B3.stepSave,
+  stepCancel: B3.stepCancel,
+  stepNoCommands: B3.stepNoCommands,
+  stepWaitAria: B3.stepWaitAria,
+  stepWaitLabel: B3.stepWaitLabel,
+  stepWaitUnit: B3.stepWaitUnit,
+  deleteStepAria: B3.deleteStepAria,
+  editStepAria: B3.editStepAria,
   dragStepAria: "Drag to reorder (arrow keys move the step)",
   stepChipCommand: "command",
   // The panel's own lines (plan decisions 11 and 12).
   managedWifiWarning: "This device is managed by Home Assistant's Wifi Commands. Changes made here are written to the hub, and that configuration will disagree with the hub after a sync.",
   callbackDeviceNote: "This is the server's callback device (its Wifi Events). Button assignments can be edited here; renaming it or its events lands with the next phase.",
-  deviceMissing: "This device is not in the hub's snapshot.",
-  noPayloadReturned: "The hub returned no payload for this command.",
-  noFreeCommandSlot: "This device has no free command slot left."
+  serverWifiDeviceNote: "This Wifi Device is edited in the Wifi Commands tab. Button assignments can be edited here; its commands are the Wifi Commands tab's slots.",
+  noPayloadReturned: B3.noPayloadReturned,
+  noFreeCommandSlot: B3.noFreeCommandSlot
 };
 var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   constructor() {
@@ -22061,10 +22163,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       if (!dialog || !editor || deviceId == null || !this._working) return;
       const commandId = Number(dialog.commandId);
       if (!commandId) {
-        this._stepDialog = { ...dialog, error: S6.stepNoCommands };
+        this._stepDialog = { ...dialog, error: S5.stepNoCommands };
         return;
       }
-      const hold = this._secondsToByte(dialog.hold);
+      const hold = secondsToByte(dialog.hold);
       const next = dialog.editIndex === null ? addDeviceMacroCommandStep(this._working, deviceId, editor.buttonId, commandId, hold) : updateDeviceMacroStep(this._working, deviceId, editor.buttonId, dialog.editIndex, { commandId, hold });
       this._commit(next);
       this._stepDialog = null;
@@ -22090,7 +22192,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       if (dialog.target.kind === "device_ip") {
         const draft = dialog.draft.trim();
         if (draft && !IPV4_PATTERN.test(draft)) {
-          this._rename = { ...dialog, error: S6.ipv4Required };
+          this._rename = { ...dialog, error: S5.ipv4Required };
           return;
         }
         this._commit(updateBundleDeviceIp(this._working, deviceId, draft));
@@ -22099,7 +22201,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       }
       const next = sanitizeName(this._hubVersion, dialog.draft);
       if (!next) {
-        this._rename = { ...dialog, error: S6.enterName };
+        this._rename = { ...dialog, error: S5.enterName };
         return;
       }
       if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
@@ -22140,7 +22242,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       const buttonId = Number(dialog.buttonId);
       const commandId = Number(dialog.commandId);
       if (!buttonId || !commandId) {
-        this._binding = { ...dialog, error: S6.bindingIncomplete };
+        this._binding = { ...dialog, error: S5.bindingIncomplete };
         return;
       }
       const longPressCommandId = dialog.longPress && dialog.longPressCommandId ? Number(dialog.longPressCommandId) : null;
@@ -22190,7 +22292,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return this._workingEntity;
   }
   get frameStrings() {
-    return S6;
+    return S5;
   }
   _startSync(hubId, deviceId, element) {
     return this.api.editDevice(hubId, deviceId, element, this._snapshot.snapshot_id);
@@ -22240,13 +22342,13 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     try {
       const response = await this.api.commandPayload(hubId, deviceId, commandId);
       if (!response.ok || !response.body) {
-        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S6.noPayloadReturned : problemText(response));
+        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S5.noPayloadReturned : problemText(response));
         return;
       }
       const payload = response.body;
       const hex = String(payload.hex ?? "").trim();
       if (!hex) {
-        this._dockError(S6.noPayloadReturned);
+        this._dockError(S5.noPayloadReturned);
         return;
       }
       const snapshot = this._snapshotFromPayload(payload);
@@ -22322,7 +22424,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     let data = restoreData;
     const newId = nextFreeDeviceCommandId(this._working, deviceId);
     if (newId == null) {
-      this._dockError(S6.noFreeCommandSlot);
+      this._dockError(S5.noFreeCommandSlot);
       this._payloadDialog = null;
       return;
     }
@@ -22340,22 +22442,13 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._stepDialog = null;
     window.scrollTo({ top: 0 });
   }
-  /** Macro time bytes are in 0.5 s units (a byte of 4 = 2.0 s); 0 = a click / no wait. */
-  _byteToSeconds(byteValue) {
-    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-  }
-  _secondsToByte(value) {
-    const seconds = parseFloat(String(value));
-    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-  }
   _stepItems() {
     const editor = this._stepEditor;
     if (!editor || !this._working || this.deviceId == null) return [];
     return deviceMacroStepItems(this._working, this.deviceId, editor.buttonId);
   }
   _openEditStep(item) {
-    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: this._byteToSeconds(item.hold), error: "" };
+    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: byteToSeconds(item.hold), error: "" };
   }
   _removeStep(index) {
     const editor = this._stepEditor;
@@ -22394,8 +22487,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const editor = this._stepEditor;
     if (!editor || this.deviceId == null || !this._working) return;
     const input = event.target;
-    const wait = this._secondsToByte(input.value);
-    input.value = this._byteToSeconds(wait);
+    const wait = secondsToByte(input.value);
+    input.value = byteToSeconds(wait);
     this._commit(setDeviceMacroStepWait(this._working, this.deviceId, editor.buttonId, item.index, wait));
   }
   // -- section nav -------------------------------------------------------------------------------------
@@ -22403,10 +22496,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const deviceClass = this.deviceId != null ? bundleDeviceClass(this._working, this.deviceId) ?? "" : "";
     const hasNetwork = IP_HEAD_DEVICE_CLASSES.has(deviceClass);
     return [
-      { id: "power", icon: mdiPowerPlugOutline, label: S6.detailPower },
-      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S6.detailNetwork }] : [],
-      { id: "commands", icon: mdiFormatListBulleted, label: S6.detailCommands },
-      { id: "bindings", icon: mdiGestureTapButton, label: S6.detailButtons }
+      { id: "power", icon: mdiPowerPlugOutline, label: S5.detailPower },
+      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S5.detailNetwork }] : [],
+      { id: "commands", icon: mdiFormatListBulleted, label: S5.detailCommands },
+      { id: "bindings", icon: mdiGestureTapButton, label: S5.detailButtons }
     ];
   }
   _scrollToSection(id) {
@@ -22455,9 +22548,18 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     if (this._offline) return false;
     return isManagedWifiBrand(this._brand) && !isWifiEventsBrand(this._brand);
   }
-  /** The server's callback device: its spec-owned parts wait for DE6 (plan decision 12). */
-  get _isCallbackDevice() {
+  /** A keyed server Wifi Device (brand `c0-<key>`, callbacks.py): its commands are the Wifi
+   *  Commands tab's slots, and editing them here would make its next Sync decline (CR-F5b-5). */
+  get _isServerWifiDevice() {
+    return !this._offline && this._brand.startsWith("c0-") && !this._isDefaultCallbackDevice;
+  }
+  get _isDefaultCallbackDevice() {
     return this._callbackDeviceId != null && this.deviceId === this._callbackDeviceId;
+  }
+  /** The server's callback devices (the default one and every keyed Wifi Device): their
+   *  spec-owned parts are not edited here (plan decision 12). */
+  get _isCallbackDevice() {
+    return this._isDefaultCallbackDevice || this._isServerWifiDevice;
   }
   /** The card's Wifi Events pairing applies to both the HA events device and the server's callback device. */
   get _pairedRecords() {
@@ -22481,14 +22583,14 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._deleteConfirm = { target, label };
   }
   _deleteTitle(target, label) {
-    const name = label || S6.thisItem;
+    const name = label || S5.thisItem;
     switch (target.kind) {
       case "device":
-        return S6.deleteDeviceTitle(name);
+        return S5.deleteDeviceTitle(name);
       case "command":
-        return S6.deleteCommandTitle(name);
+        return S5.deleteCommandTitle(name);
       case "device_binding":
-        return S6.deleteBindingTitle(name);
+        return S5.deleteBindingTitle(name);
       default:
         return name;
     }
@@ -22496,10 +22598,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   // -- power control ------------------------------------------------------------------------------------------
   _powerOptions() {
     return [
-      { mode: IDLE_BEHAVIOR_DISABLED, label: S6.powerControlDisabled, sub: S6.powerControlDisabledSub },
-      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S6.powerControlAutoOff, sub: S6.powerControlAutoOffSub },
-      { mode: IDLE_BEHAVIOR_STAY_ON, label: S6.powerControlStayOn, sub: S6.powerControlStayOnSub },
-      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S6.powerControlAlwaysOn, sub: S6.powerControlAlwaysOnSub }
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S5.powerControlDisabled, sub: S5.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S5.powerControlAutoOff, sub: S5.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S5.powerControlStayOn, sub: S5.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S5.powerControlAlwaysOn, sub: S5.powerControlAlwaysOnSub }
     ];
   }
   _selectPower(mode) {
@@ -22534,10 +22636,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="step-back" type="button" aria-label=${S6.back} @click=${this._closeStepEditor}>${icon4(mdiArrowLeft)}</button>
+                <button class="back-btn" id="step-back" type="button" aria-label=${S5.back} @click=${this._closeStepEditor}>${icon4(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S6.crumbDevices}</button>
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
                     <button class="detail-crumb" type="button" @click=${this._closeStepEditor}>${this._title}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
@@ -22550,10 +22652,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="detail-scroll">
             <div class="quick-access-section">
               <div class="quick-access-head">
-                <div class="quick-access-head-main"><div class="quick-access-title">${S6.steps}</div><div class="quick-access-sub">${S6.macroStepsSortableHelp}</div></div>
-                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon4(mdiPlus)}<span>${S6.addStep}</span></button></div>
+                <div class="quick-access-head-main"><div class="quick-access-title">${S5.steps}</div><div class="quick-access-sub">${S5.macroStepsSortableHelp}</div></div>
+                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon4(mdiPlus)}<span>${S5.addStep}</span></button></div>
               </div>
-              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S6.noMacroSteps}</div>`}
+              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S5.noMacroSteps}</div>`}
             </div>
           </div>
         </div>
@@ -22563,7 +22665,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     `;
   }
   _renderStepRow(item, position, count) {
-    const meta = item.kind === "command" && item.hold > 0 ? S6.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const meta = item.kind === "command" && item.hold > 0 ? S5.holdLabel(byteToSeconds(item.hold)) : "";
     const isLast = position === count - 1;
     const drag = this._drag;
     const dragging = drag?.from === position;
@@ -22571,7 +22673,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="quick-access-sortable-item ${dragging ? "is-dragging" : drag ? "is-shifting" : ""}" data-step-index=${item.index} style=${transform ? `transform: ${transform}` : ""}>
         <div class="quick-access-row quick-access-row--step">
-          <button class="quick-access-drag step-handle" type="button" aria-label=${S6.dragStepAria} title=${S6.dragStepAria}
+          <button class="quick-access-drag step-handle" type="button" aria-label=${S5.dragStepAria} title=${S5.dragStepAria}
             @mousedown=${(event) => event.preventDefault()}
             @pointerdown=${(event) => this._dragStart(event, position)}
             @pointermove=${(event) => this._dragMove(event)}
@@ -22588,19 +22690,19 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     }}
           >${icon4(mdiDragVerticalVariant)}</button>
           <div class="quick-access-main">
-            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S6.stepChipCommand}</div></div>
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S5.stepChipCommand}</div></div>
             ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
           </div>
           <div class="quick-access-actions">
-            <button class="icon-btn step-edit" type="button" aria-label=${S6.editStepAria} title=${S6.editStepAria} @click=${() => this._openEditStep(item)}>${icon4(mdiPencil)}</button>
-            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S6.deleteStepAria} title=${S6.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon4(mdiTrashCanOutline)}</button>
+            <button class="icon-btn step-edit" type="button" aria-label=${S5.editStepAria} title=${S5.editStepAria} @click=${() => this._openEditStep(item)}>${icon4(mdiPencil)}</button>
+            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S5.deleteStepAria} title=${S5.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon4(mdiTrashCanOutline)}</button>
           </div>
         </div>
-        ${isLast ? A : b2`<label class="step-wait" title=${S6.stepWaitAria}>
-              <span class="step-wait-caption">${S6.stepWaitLabel}</span>
+        ${isLast ? A : b2`<label class="step-wait" title=${S5.stepWaitAria}>
+              <span class="step-wait-caption">${S5.stepWaitLabel}</span>
               <span class="step-wait-field">
-                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S6.stepWaitAria} .value=${this._byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
-                <span class="step-wait-unit">${S6.stepWaitUnit}</span>
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S5.stepWaitAria} .value=${byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
+                <span class="step-wait-unit">${S5.stepWaitUnit}</span>
               </span>
             </label>`}
       </div>
@@ -22616,11 +22718,11 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="modal-backdrop" @click=${this._closeStepDialog}>
         <div class="dialog small" id="step-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${isEdit ? S6.stepDialogEditTitle : S6.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S6.stepCancel} @click=${this._closeStepDialog}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${isEdit ? S5.stepDialogEditTitle : S5.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S5.stepCancel} @click=${this._closeStepDialog}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-step-command">${S6.stepCommand}</label>
-              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S6.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
+              <label class="decoded-field-label" for="sb-step-command">${S5.stepCommand}</label>
+              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
       const raw = event.currentTarget.value;
       this._stepDialog = { ...dialog, commandId: raw === "" ? null : Number(raw), error: "" };
     }}>
@@ -22628,21 +22730,21 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                   </select>`}
             </div>
             <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-step-hold">${S6.stepHoldSeconds}</label>
+              <label class="decoded-field-label" for="sb-step-hold">${S5.stepHoldSeconds}</label>
               <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
                 @input=${(event) => {
       this._stepDialog = { ...dialog, hold: event.currentTarget.value };
     }}
                 @change=${(event) => {
-      this._stepDialog = { ...dialog, hold: this._byteToSeconds(this._secondsToByte(event.currentTarget.value)) };
+      this._stepDialog = { ...dialog, hold: byteToSeconds(secondsToByte(event.currentTarget.value)) };
     }} />
             </div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S6.stepCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S6.stepSave : S6.stepAdd}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S5.stepCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S5.stepSave : S5.stepAdd}</button>
             </div>
           </div>
         </div>
@@ -22660,30 +22762,30 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="editor-back" type="button" aria-label=${S6.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
+                <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S6.crumbDevices}</button>
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
-                ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S6.unsavedTooltip}>${S6.unsaved}</span>` : A}
+                ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
                 <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S6.renameDevice} title=${S6.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S6.deleteDeviceAria} title=${S6.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
-                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S6.syncToHub : S6.syncUpToDate}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S5.renameDevice} title=${S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
+                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S5.syncToHub : S5.syncUpToDate}</button>`}
                 </div>
               </div>
             </div>
-            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S6.detailSectionsAria}>
+            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S5.detailSectionsAria}>
                   ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon4(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
                 </div>` : A}
           </div>
           <div class="detail-scroll">
             ${this._renderDeleteErrorBanner()}
-            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S6.managedWifiWarning}</span></div>` : A}
-            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${S6.callbackDeviceNote}</span></div>` : A}
+            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S5.managedWifiWarning}</span></div>` : A}
+            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S5.serverWifiDeviceNote : S5.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
             ${this._renderNetworkSection(deviceId)}
             ${this._renderCommandsSection(deviceId)}
@@ -22710,25 +22812,25 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         <button class="edit-selection-row" type="button" data-sequence=${buttonId} aria-disabled=${disabled ? "true" : "false"} tabindex=${disabled ? "-1" : "0"} @click=${() => {
         if (!disabled) this._openStepEditor(buttonId, label);
       }}>
-          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S6.macroStepsCount(count)}</span></span>
+          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S5.macroStepsCount(count)}</span></span>
           <span class="selection-chevron">${icon4(mdiChevronRight)}</span>
         </button>
       </div>`;
     };
     return b2`
       <div class="quick-access-section" data-edit-section="power">
-        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S6.powerSetupTitle}</div><div class="quick-access-sub">${S6.powerSetupDeviceSub}</div></div></div>
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S5.powerSetupTitle}</div><div class="quick-access-sub">${S5.powerSetupDeviceSub}</div></div></div>
         ${this._isCallbackDevice ? A : b2`<div class="power-control" id="power-control" data-open=${open ? "true" : "false"}>
               <button class="power-control-trigger" type="button" aria-haspopup="listbox" aria-expanded=${String(open)} @click=${() => {
       this._powerMenuOpen = !open;
     }}>
-                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S6.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S6.powerControlUnsetSub}</span></span>
+                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S5.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S5.powerControlUnsetSub}</span></span>
                 <span class="selection-chevron">${icon4(mdiChevronDown)}</span>
               </button>
               ${open ? b2`<button class="power-control-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
       this._powerMenuOpen = false;
     }}></button>
-                    <div class="power-control-menu" role="listbox" aria-label=${S6.powerControlTitle}>
+                    <div class="power-control-menu" role="listbox" aria-label=${S5.powerControlTitle}>
                       ${options.map((opt) => b2`<button class="power-control-option" type="button" role="option" data-mode=${opt.mode} aria-selected=${String(opt.mode === mode)} aria-checked=${String(opt.mode === mode)} @click=${() => this._selectPower(opt.mode)}>
                         <span class="selection-main"><span class="selection-label">${opt.label}</span><span class="selection-sub">${opt.sub}</span></span>
                         <span class="selection-chevron">${opt.mode === mode ? icon4(mdiCheck) : A}</span>
@@ -22736,10 +22838,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                     </div>` : A}
             </div>`}
         <div class="quick-access-list">
-          ${disabled ? b2`<div class="power-sequences-note">${S6.powerSequencesDisabledNote}</div>` : A}
+          ${disabled ? b2`<div class="power-sequences-note">${S5.powerSequencesDisabledNote}</div>` : A}
           <div class="quick-access-sortable-container power-sequences" data-disabled=${disabled ? "true" : "false"}>
-            ${row(198, S6.powerOnLabel)}
-            ${row(199, S6.powerOffLabel)}
+            ${row(198, S5.powerOnLabel)}
+            ${row(199, S5.powerOffLabel)}
           </div>
         </div>
       </div>
@@ -22751,15 +22853,15 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const ip = deviceIpAddress(this._working, deviceId);
     return b2`
       <div class="quick-access-section" data-edit-section="network">
-        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S6.detailNetwork}</div><div class="quick-access-sub">${S6.networkDescription}</div></div></div>
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S5.detailNetwork}</div><div class="quick-access-sub">${S5.networkDescription}</div></div></div>
         <div class="quick-access-list"><div class="quick-access-sortable-container"><div class="quick-access-sortable-item">
           <div class="quick-access-row">
             <div class="quick-access-main">
-              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S6.hubNameNotSet}</div><div class="quick-access-chip">${S6.ipChip}</div></div>
-              <div class="quick-access-meta">${S6.ipv4Description}</div>
+              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S5.hubNameNotSet}</div><div class="quick-access-chip">${S5.ipChip}</div></div>
+              <div class="quick-access-meta">${S5.ipv4Description}</div>
             </div>
             <div class="quick-access-actions">
-              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S6.editIpAria} title=${S6.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon4(mdiPencil)}</button>
+              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S5.editIpAria} title=${S5.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon4(mdiPencil)}</button>
             </div>
           </div>
         </div></div></div>
@@ -22774,24 +22876,24 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S6.detailCommands}</div><div class="quick-access-sub">${this._offline ? S6.commandsBackupHelp : S6.commandsLiveHelp}</div></div>
-          ${callback || this._offline ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon4(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S6.addCommand}</span></button></div>`}
+          <div class="quick-access-head-main"><div class="quick-access-title">${S5.detailCommands}</div><div class="quick-access-sub">${this._offline ? S5.commandsBackupHelp : S5.commandsLiveHelp}</div></div>
+          ${callback || this._offline ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon4(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S5.addCommand}</span></button></div>`}
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
                 <div class="quick-access-row">
                   <div class="quick-access-main">
-                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S6.newCommandChip : S6.commandChip}</div></div>
-                    <div class="quick-access-meta">${S6.commandId} ${item.commandId}</div>
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S5.newCommandChip : S5.commandChip}</div></div>
+                    <div class="quick-access-meta">${S5.commandId} ${item.commandId}</div>
                   </div>
                   <div class="quick-access-actions">
-                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S6.renameCommandAria} title=${S6.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon4(mdiPencil)}</button>
-                          ${pendingAdd(item.commandId) || this._offline && !this._commandHasEditablePayload(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S6.editPayloadAria} title=${S6.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon4(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? this._baselineEntity : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S6.deleteCommandAria} title=${S6.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon4(mdiTrashCanOutline)}</button>`}`}
+                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S5.renameCommandAria} title=${S5.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon4(mdiPencil)}</button>
+                          ${pendingAdd(item.commandId) || this._offline && !this._commandHasEditablePayload(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S5.editPayloadAria} title=${S5.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon4(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
+                          ${isLongRecord(this._pairedRecords ? this._baselineEntity : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S5.deleteCommandAria} title=${S5.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon4(mdiTrashCanOutline)}</button>`}`}
                   </div>
                 </div>
               </div>`)}
-            </div></div>` : b2`<div class="quick-access-empty">${S6.noDeviceCommands}</div>`}
+            </div></div>` : b2`<div class="quick-access-empty">${S5.noDeviceCommands}</div>`}
       </div>
     `;
   }
@@ -22801,24 +22903,24 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S6.buttonBindingsTitle}</div><div class="quick-access-sub">${S6.buttonBindingsDeviceSub}</div></div>
-          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon4(mdiPlus)}<span>${S6.addBinding}</span></button>
+          <div class="quick-access-head-main"><div class="quick-access-title">${S5.buttonBindingsTitle}</div><div class="quick-access-sub">${S5.buttonBindingsDeviceSub}</div></div>
+          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon4(mdiPlus)}<span>${S5.addBinding}</span></button>
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
                 <div class="quick-access-row">
                   <div class="quick-access-main">
-                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S6.buttonChip}</div></div>
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S5.buttonChip}</div></div>
                     <div class="quick-access-meta">${item.shortPressLabel}</div>
-                    ${item.longPress ? b2`<div class="quick-access-meta">${S6.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+                    ${item.longPress ? b2`<div class="quick-access-meta">${S5.bindingLongPressMeta(item.longPress.label)}</div>` : A}
                   </div>
                   <div class="quick-access-actions">
-                    <button class="icon-btn binding-edit" type="button" aria-label=${S6.editBindingAria} title=${S6.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon4(mdiPencil)}</button>
-                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S6.deleteBindingAria} title=${S6.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon4(mdiTrashCanOutline)}</button>
+                    <button class="icon-btn binding-edit" type="button" aria-label=${S5.editBindingAria} title=${S5.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon4(mdiPencil)}</button>
+                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S5.deleteBindingAria} title=${S5.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon4(mdiTrashCanOutline)}</button>
                   </div>
                 </div>
               </div>`)}
-            </div></div>` : b2`<div class="quick-access-empty">${S6.buttonBindingsEmpty}</div>`}
+            </div></div>` : b2`<div class="quick-access-empty">${S5.buttonBindingsEmpty}</div>`}
       </div>
     `;
   }
@@ -22827,14 +22929,14 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const dialog = this._rename;
     if (!dialog) return A;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S6.renameDevice : isIp ? S6.editIpAria : S6.renameCommand;
+    const title = dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
     return b2`
       <div class="modal-backdrop" @click=${this._closeRename}>
         <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S6.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
             <label class="decoded-field">
-              <span class="decoded-field-label">${isIp ? S6.ipAddress : S6.name}</span>
+              <span class="decoded-field-label">${isIp ? S5.ipAddress : S5.name}</span>
               <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -22846,8 +22948,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S6.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S6.save}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S5.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S5.save}</button>
             </div>
           </div>
         </div>
@@ -22860,28 +22962,28 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const impact = bundleDeleteImpact(this._working, dialog.target);
     const hasCascade = backupDeleteHasCascade(impact);
     const immediate = dialog.target.kind === "device";
-    const intro = this._offline ? hasCascade ? S6.deleteCascadeIntro : S6.deleteSimpleBody : hasCascade ? S6.deleteCascadeIntroLive : S6.deleteSimpleBodyLive;
-    const note = this._offline ? S6.deleteReplaceNote : immediate ? S6.deleteImmediateNote : S6.deleteSyncNote;
+    const intro = this._offline ? hasCascade ? S5.deleteCascadeIntro : S5.deleteSimpleBody : hasCascade ? S5.deleteCascadeIntroLive : S5.deleteSimpleBodyLive;
+    const note = this._offline ? S5.deleteReplaceNote : immediate ? S5.deleteImmediateNote : S5.deleteSyncNote;
     return b2`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" id="delete-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S6.deleteCancel} @click=${this._closeDeleteConfirm}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S5.deleteCancel} @click=${this._closeDeleteConfirm}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">${intro}</div>
             ${hasCascade ? b2`<ul class="delete-impact-list" id="delete-impact">
-                  ${impact.activities > 0 ? b2`<li>${icon4(mdiLinkVariant)}<span>${S6.deleteImpactActivities(impact.activities)}</span></li>` : A}
-                  ${impact.favorites > 0 ? b2`<li>${icon4(mdiStarOutline)}<span>${S6.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
-                  ${impact.macroSteps > 0 ? b2`<li>${icon4(mdiFormatListNumbered)}<span>${S6.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
-                  ${impact.powerSteps > 0 ? b2`<li>${icon4(mdiPower)}<span>${S6.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
-                  ${impact.bindings > 0 ? b2`<li>${icon4(mdiGestureTapButton)}<span>${S6.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                  ${impact.activities > 0 ? b2`<li>${icon4(mdiLinkVariant)}<span>${S5.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                  ${impact.favorites > 0 ? b2`<li>${icon4(mdiStarOutline)}<span>${S5.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                  ${impact.macroSteps > 0 ? b2`<li>${icon4(mdiFormatListNumbered)}<span>${S5.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                  ${impact.powerSteps > 0 ? b2`<li>${icon4(mdiPower)}<span>${S5.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+                  ${impact.bindings > 0 ? b2`<li>${icon4(mdiGestureTapButton)}<span>${S5.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                 </ul>` : A}
             <div class="delete-replace-note">${icon4(mdiInformationOutline)}<span>${note}</span></div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note"></div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S6.deleteCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S6.deleteConfirm}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S5.deleteCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S5.deleteConfirm}</button>
             </div>
           </div>
         </div>
@@ -22896,7 +22998,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const unbound = unboundButtonsForDevice(this._working, deviceId);
     const commands = deviceCommandItems(this._working, deviceId);
     const canSave = dialog.buttonId != null && dialog.commandId != null;
-    const title = isEdit ? S6.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S6.bindingDialogAddTitle;
+    const title = isEdit ? S5.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S5.bindingDialogAddTitle;
     const select = (id, label, value, options, empty, onChange) => b2`
       <div class="decoded-field">
         <label class="decoded-field-label" for=${id}>${label}</label>
@@ -22907,29 +23009,29 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="modal-backdrop" @click=${this._closeBinding}>
         <div class="dialog small" id="binding-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S6.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
-            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S6.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S6.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S6.bindingNoButtons, (value) => {
+            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S5.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S5.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S5.bindingNoButtons, (value) => {
       this._binding = { ...dialog, buttonId: value, error: "" };
     })}
-            ${select("sb-binding-command", S6.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S6.bindingNoCommands, (value) => {
+            ${select("sb-binding-command", S5.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, commandId: value, error: "" };
     })}
             <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S6.bindingEnableLongPress}</span>
+              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
               <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => {
       this._binding = { ...dialog, longPress: event.currentTarget.checked };
     }} />
             </div>
-            ${dialog.longPress ? select("sb-binding-lp-command", S6.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S6.bindingNoCommands, (value) => {
+            ${dialog.longPress ? select("sb-binding-lp-command", S5.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, longPressCommandId: value };
     }) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S6.bindingCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S6.bindingSave : S6.bindingAdd}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S5.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S5.bindingSave : S5.bindingAdd}</button>
             </div>
           </div>
         </div>
@@ -22980,7 +23082,7 @@ function roundHalfEven(value) {
 function parseProntoHex(text) {
   const tokens = text.trim().split(/\s+/).filter((t5) => t5.length > 0);
   const words = tokens.map((token) => {
-    const value = /^[0-9a-fA-F]+$/.test(token) ? parseInt(token, 16) : NaN;
+    const value = /^(?:0[xX])?[0-9a-fA-F]+$/.test(token) ? parseInt(token.replace(/^0[xX]/, ""), 16) : NaN;
     if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
     return value;
   });
@@ -23174,37 +23276,39 @@ function formatHexForDisplay(hexText) {
 // server-panel/src/views/payload-dialog.ts
 var PAYLOAD_DIALOG_TAG = "sb-payload-dialog";
 var DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md";
-var S7 = {
-  addCommandTitle: "Add command",
-  editPayloadTitle: "Edit payload",
-  deviceClass: "Device class",
-  name: "Name",
-  nameHelper: "Shown on the remote and in every command picker.",
-  prontoHexTab: "Pronto Hex",
-  sofabatonHexTab: "Sofabaton Hex",
-  descriptorTab: "Descriptor",
-  prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+var B4 = TOOLS_CARD_STRINGS.backup;
+var C5 = TOOLS_CARD_STRINGS.common;
+var S6 = {
+  addCommandTitle: B4.addCommandTitle,
+  editPayloadTitle: B4.editPayloadTitle,
+  deviceClass: B4.deviceClass,
+  name: B4.name,
+  nameHelper: B4.nameHelper,
+  prontoHexTab: B4.prontoHexTab,
+  sofabatonHexTab: B4.sofabatonHexTab,
+  descriptorTab: B4.descriptorTab,
+  prontoUnavailable: B4.prontoUnavailable,
   prontoHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026". The editor converts it to Sofabaton bytes automatically.',
-  payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
-  invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
-  descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+  payloadHexHelper: B4.payloadHexHelper,
+  invalidProntoHex: B4.invalidProntoHex,
+  descriptorX2Only: B4.descriptorX2Only,
   ucHexUnsupported: "Unfolded Circle HEX codes are not supported here. Paste a Pronto Hex code or the Sofabaton bytes instead.",
-  rawPayload: "Raw payload",
-  rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
-  payloadHex: "Payload (hex bytes)",
-  verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
-  verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
-  sendingToHub: "Sending to the hub\u2026",
-  sentToHub: "Sent to the hub for one-shot playback.",
-  testFailed: "Test failed.",
-  nothingToTest: "Nothing to test yet.",
-  test: "Test",
-  cancel: "Cancel",
-  save: "Save",
+  rawPayload: B4.rawPayload,
+  rawPayloadDescription: B4.rawPayloadDescription,
+  payloadHex: B4.payloadHex,
+  verifyPayloadLive: B4.verifyPayloadLive,
+  verifyPayloadBackup: B4.verifyPayloadBackup,
+  sendingToHub: B4.sendingToHub,
+  sentToHub: B4.sentToHub,
+  testFailed: B4.testFailed,
+  nothingToTest: B4.nothingToTest,
+  test: B4.test,
+  cancel: C5.cancel,
+  save: C5.save,
   payloadDocs: "Payload documentation",
-  newCommandNameRequired: "Enter a name for the new command.",
-  descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
-  payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine)."
+  newCommandNameRequired: B4.newCommandNameRequired,
+  descriptiveIrRequired: B4.descriptiveIrRequired,
+  payloadHexRequired: B4.payloadHexRequired
 };
 function icon5(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
@@ -23225,7 +23329,7 @@ function draftToFieldValue(spec, draft) {
   return draft;
 }
 function irFormatMessage(err) {
-  return err instanceof IrFormatError ? `${S7.invalidProntoHex} (${err.code})` : S7.invalidProntoHex;
+  return err instanceof IrFormatError ? `${S6.invalidProntoHex} (${err.code})` : S6.invalidProntoHex;
 }
 var SbPayloadDialog = class extends i4 {
   constructor() {
@@ -23263,7 +23367,7 @@ var SbPayloadDialog = class extends i4 {
       const format = detectIrPayloadFormat(text);
       if (format === "descriptor") {
         if (this._isX2) this._morphToDescriptor(text);
-        else this._formatError = S7.descriptorX2Only;
+        else this._formatError = S6.descriptorX2Only;
         return;
       }
       if (format === "sofabaton") {
@@ -23296,7 +23400,7 @@ var SbPayloadDialog = class extends i4 {
         if (this._isX2) this._morphToDescriptor(text);
         else {
           this._raw = text;
-          this._formatError = S7.descriptorX2Only;
+          this._formatError = S6.descriptorX2Only;
         }
         return;
       }
@@ -23408,7 +23512,7 @@ var SbPayloadDialog = class extends i4 {
     const row = unwrapUcCodesetRow(text);
     const code = row && /^HEX$/i.test(row.format) ? row.code : text;
     if (!isUcHexCode(code)) return false;
-    this._formatError = S7.ucHexUnsupported;
+    this._formatError = S6.ucHexUnsupported;
     return true;
   }
   _onFieldInput(field, event) {
@@ -23453,7 +23557,7 @@ var SbPayloadDialog = class extends i4 {
     const value = descriptor || raw;
     if (!value) {
       this._testStatus = "error";
-      this._testError = S7.nothingToTest;
+      this._testError = S6.nothingToTest;
       return;
     }
     this._testStatus = "testing";
@@ -23502,7 +23606,7 @@ var SbPayloadDialog = class extends i4 {
     }
     const normalized = normalizeCommandPayloadHex(this._raw);
     if (!normalized) {
-      this._error = S7.payloadHexRequired;
+      this._error = S6.payloadHexRequired;
       return void 0;
     }
     if (normalized === (normalizeCommandPayloadHex(this._rawSnapshot) ?? "")) return null;
@@ -23512,7 +23616,7 @@ var SbPayloadDialog = class extends i4 {
   _addDetail() {
     const name = sanitizeName(this.hubVersion, this._name).trim();
     if (!name) {
-      this._error = S7.newCommandNameRequired;
+      this._error = S6.newCommandNameRequired;
       return void 0;
     }
     const block = this._decoded;
@@ -23521,14 +23625,14 @@ var SbPayloadDialog = class extends i4 {
       const fields = { ...block.fields };
       for (const field of spec?.fields ?? []) fields[field.key] = draftToFieldValue(field, this._drafts[field.key] ?? "");
       if (block.className === "ir" && !/^P:/i.test(String(fields.descriptor ?? "").trim())) {
-        this._error = S7.descriptiveIrRequired;
+        this._error = S6.descriptiveIrRequired;
         return void 0;
       }
       return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: block.trailerHex, fields, edited: true } } };
     }
     const normalized = normalizeCommandPayloadHex(this._raw);
     if (!normalized) {
-      this._error = S7.payloadHexRequired;
+      this._error = S6.payloadHexRequired;
       return void 0;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
@@ -23543,14 +23647,14 @@ var SbPayloadDialog = class extends i4 {
         <div class="dialog" id="payload-dialog" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">${isAdd ? S7.addCommandTitle : S7.editPayloadTitle}</div>
-              ${deviceClass ? b2`<span class="payload-class-badge" title=${S7.deviceClass}>${deviceClass}</span>` : A}
+              <div class="dialog-title">${isAdd ? S6.addCommandTitle : S6.editPayloadTitle}</div>
+              ${deviceClass ? b2`<span class="payload-class-badge" title=${S6.deviceClass}>${deviceClass}</span>` : A}
             </div>
-            <button class="dialog-close" type="button" aria-label=${S7.cancel} @click=${this._close}>${icon5(mdiClose)}</button>
+            <button class="dialog-close" type="button" aria-label=${S6.cancel} @click=${this._close}>${icon5(mdiClose)}</button>
           </div>
           <div class="dialog-body">
             ${isAdd ? b2`<label class="decoded-field">
-                  <span class="decoded-field-label">${S7.name}</span>
+                  <span class="decoded-field-label">${S6.name}</span>
                   <input class="decoded-field-input" id="payload-name" type="text" maxlength="20" .value=${this._name} @input=${(event) => {
       const input = event.currentTarget;
       const value = sanitizeName(this.hubVersion, input.value);
@@ -23558,24 +23662,24 @@ var SbPayloadDialog = class extends i4 {
       this._name = value;
       this._error = "";
     }} />
-                  <span class="decoded-field-helper">${S7.nameHelper}</span>
+                  <span class="decoded-field-helper">${S6.nameHelper}</span>
                 </label>` : A}
             ${body}
-            ${this._isIr ? b2`<div class="payload-test-note">${icon5(mdiFlashOutline)}<span>${this.offline ? S7.verifyPayloadBackup : S7.verifyPayloadLive}</span></div>` : A}
+            ${this._isIr ? b2`<div class="payload-test-note">${icon5(mdiFlashOutline)}<span>${this.offline ? S6.verifyPayloadBackup : S6.verifyPayloadLive}</span></div>` : A}
             ${this._testStatus === "idle" ? A : b2`<div class="section-status payload-test-status ${this._testStatus}" id="payload-test-status" role="status" aria-live="polite">
                   ${icon5(this._testStatus === "testing" ? mdiProgressClock : this._testStatus === "success" ? mdiCheckCircleOutline : mdiAlertCircleOutline)}
-                  <span>${this._testStatus === "testing" ? S7.sendingToHub : this._testStatus === "success" ? S7.sentToHub : this._testError || S7.testFailed}</span>
+                  <span>${this._testStatus === "testing" ? S6.sendingToHub : this._testStatus === "success" ? S6.sentToHub : this._testError || S6.testFailed}</span>
                 </div>`}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note payload-dialog-note">
-              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S7.payloadDocs}</a>
+              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S6.payloadDocs}</a>
               ${this._error ? b2`<span class="payload-dialog-error" id="payload-error">${this._error}</span>` : A}
             </div>
             <div class="dialog-footer-actions">
-              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon5(mdiFlashOutline)}<span>${S7.test}</span></button>` : A}
-              <button class="dialog-btn" type="button" @click=${this._close}>${S7.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S7.save}</button>
+              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon5(mdiFlashOutline)}<span>${S6.test}</span></button>` : A}
+              <button class="dialog-btn" type="button" @click=${this._close}>${S6.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S6.save}</button>
             </div>
           </div>
         </div>
@@ -23584,12 +23688,12 @@ var SbPayloadDialog = class extends i4 {
   }
   _renderIrHexForm() {
     const active = this._prontoAvailable ? this._hexTab : "sofabaton";
-    const helper = this._formatError || (active === "pronto" ? S7.prontoHelper : S7.payloadHexHelper);
+    const helper = this._formatError || (active === "pronto" ? S6.prontoHelper : S6.payloadHexHelper);
     return b2`
       <div class="decoded-form">
         <div class="payload-format-tabs" role="tablist">
-          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S7.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S7.prontoHexTab}</button>
-          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S7.sofabatonHexTab}</button>
+          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S6.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S6.prontoHexTab}</button>
+          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S6.sofabatonHexTab}</button>
         </div>
         <label class="decoded-field">
           ${active === "pronto" ? b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-pronto" rows="6" spellcheck="false" .value=${this._pronto} @input=${this._onProntoInput}></textarea>` : b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>`}
@@ -23601,18 +23705,18 @@ var SbPayloadDialog = class extends i4 {
   _renderRawForm() {
     return b2`
       <div class="decoded-form">
-        <div class="decoded-form-head"><div class="decoded-form-title">${S7.rawPayload}</div><div class="decoded-form-sub">${S7.rawPayloadDescription}</div></div>
+        <div class="decoded-form-head"><div class="decoded-form-title">${S6.rawPayload}</div><div class="decoded-form-sub">${S6.rawPayloadDescription}</div></div>
         <label class="decoded-field">
-          <span class="decoded-field-label">${S7.payloadHex}</span>
+          <span class="decoded-field-label">${S6.payloadHex}</span>
           <textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>
-          <span class="decoded-field-helper" id="payload-helper">${S7.payloadHexHelper}</span>
+          <span class="decoded-field-helper" id="payload-helper">${S6.payloadHexHelper}</span>
         </label>
       </div>
     `;
   }
   _renderDecodedForm(block) {
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
-    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S7.descriptorTab}</button></div>
+    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S6.descriptorTab}</button></div>
           ${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}` : b2`<div class="decoded-form-head"><div class="decoded-form-title">${spec?.title ?? block.className}</div>${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}</div>`;
     return b2`
       <div class="decoded-form" data-class=${block.className}>
@@ -23706,7 +23810,7 @@ SbPayloadDialog.styles = [
       .section-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
       .section-status .mdi { width: 18px; height: 18px; }
       .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
-      .section-status.success { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
+      .section-status.success { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
       @media (max-width: 640px) {
         .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
         .dialog { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: 22px 22px 0 0; }
@@ -23731,6 +23835,10 @@ var SbPanelEvents = class extends i4 {
     this._grep = "";
     this._expand = false;
     this._tick = 0;
+    /** hub_id filter; empty shows every hub. */
+    this._hubs = [];
+    /** While paused, the rows shown when the pause started. */
+    this._frozen = null;
     this._unsubscribe = [];
   }
   connectedCallback() {
@@ -23756,25 +23864,22 @@ var SbPanelEvents = class extends i4 {
   }
   _applyFilter() {
     const raw = this.renderRoot.querySelector("#ws-filter")?.value ?? "";
-    this.stream.hubFilter = raw.split(",").map((s7) => s7.trim()).filter(Boolean);
-    this.stream.restart();
-    this._bump();
+    this._hubs = raw.split(",").map((s7) => s7.trim()).filter(Boolean);
   }
-  _toggle() {
-    if (this.stream.wanted) this.stream.stop();
-    else this.stream.start();
-    this._bump();
+  _togglePause() {
+    this._frozen = this._frozen ? null : [...this.stream?.messages ?? []];
   }
   render() {
     const stream = this.stream;
     const grep = this._grep.trim().toLowerCase();
-    const rows = stream ? stream.messages : [];
-    const shown = rows.filter((row) => !grep || (summarizeMessage(row.data) + " " + row.text).toLowerCase().includes(grep));
+    const rows = this._frozen ?? (stream ? stream.messages : []);
+    const hubs = this._hubs;
+    const shown = rows.filter((row) => (!hubs.length || hubs.includes(String(row.data.hub_id ?? ""))) && (!grep || (summarizeMessage(row.data) + " " + row.text).toLowerCase().includes(grep)));
     return b2`
       <div class="panel">
         <h2>Event stream <span class="hint mono">/events</span><span class="spacer"></span>
           <input id="ws-filter" placeholder="hub_id filter (optional, comma separated)" @change=${this._applyFilter}>
-          <button class="small" id="ws-toggle" @click=${this._toggle}>${stream?.wanted ? "disconnect" : "connect"}</button>
+          <button class="small" id="ws-toggle" @click=${this._togglePause}>${this._frozen ? "resume" : "pause"}</button>
           <button class="small" id="ws-clear" @click=${() => {
       stream?.clear();
       this._bump();
@@ -23787,7 +23892,7 @@ var SbPanelEvents = class extends i4 {
       this._expand = e6.target.checked;
     }}> expand all</label>
         </div>
-        <div class="hint" id="ws-count">${shown.length} of ${rows.length} messages${stream?.connected ? "" : " \xB7 not connected"}</div>
+        <div class="hint" id="ws-count">${shown.length} of ${rows.length} messages${this._frozen ? " \xB7 paused" : ""}${stream?.connected ? "" : " \xB7 not connected"}</div>
         <div class="list" id="ws-list">
           ${shown.map((row) => b2`<details class="k-${String(row.data.type ?? "raw")}" ?open=${this._expand}>
             <summary><span class="t">${row.at}</span><span>${summarizeMessage(row.data)}</span></summary>
@@ -23802,7 +23907,9 @@ SbPanelEvents.properties = {
   stream: { attribute: false },
   _grep: { state: true },
   _expand: { state: true },
-  _tick: { state: true }
+  _tick: { state: true },
+  _hubs: { state: true },
+  _frozen: { state: true }
 };
 SbPanelEvents.styles = [
   PANEL_BASE_CSS,
@@ -24043,18 +24150,19 @@ function layoutHasCustomOverride(config, selection) {
   const override = layouts[key] ?? (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
   return Boolean(override && typeof override === "object");
 }
-function layoutSelectionNote(config, selection) {
+function layoutSelectionNote(config, selection, strings = str()) {
+  const e6 = strings.editor;
   if (selection === "default") {
-    return str().editor.noteDefaultLayout;
+    return e6.noteDefaultLayout;
   }
   if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
-    return str().editor.noteDeviceDefaultLayout;
+    return e6.noteDeviceDefaultLayout;
   }
   const isDevice = isDeviceLayoutKey(selection);
   if (layoutHasCustomOverride(config, selection)) {
-    return isDevice ? str().editor.noteCustomDeviceLayout : str().editor.noteCustomActivityLayout;
+    return isDevice ? e6.noteCustomDeviceLayout : e6.noteCustomActivityLayout;
   }
-  return isDevice ? str().editor.noteUsingDeviceDefault : str().editor.noteUsingActivityDefault;
+  return isDevice ? e6.noteUsingDeviceDefault : e6.noteUsingActivityDefault;
 }
 function editorActivitiesFromState(state) {
   const list = state?.attributes?.activities;
@@ -24218,8 +24326,8 @@ function resetEditorLayout(config, selection) {
   }
   return next;
 }
-function groupLabel(key) {
-  return str().groups[key] || key;
+function groupLabel(key, strings = str()) {
+  return strings.groups[key] || key;
 }
 function isGroupEnabled(config, selection, key) {
   const prop = GROUP_VISIBILITY_KEYS[key];
@@ -24328,14 +24436,15 @@ function moveVisibleGroup(order, isVisible, fromVisible, toVisible) {
 }
 
 // remote-card/src/editor-sections/general-options.ts
-function longPressGroupLabel(group) {
-  if (group === "volume") return str().editor.volume;
-  if (group === "channel") return str().editor.channel;
-  if (group === "dpad") return str().groups.dpad || group;
+function longPressGroupLabel(group, strings = str()) {
+  if (group === "volume") return strings.editor.volume;
+  if (group === "channel") return strings.editor.channel;
+  if (group === "dpad") return strings.groups.dpad || group;
   return group;
 }
 
 // server-panel/src/views/remote-editor.ts
+var str2 = () => REMOTE_CARD_STRINGS_EN;
 var ICON_NAMES = Object.keys(MDI_ICON_PATHS).sort();
 var SbPanelRemoteEditor = class extends i4 {
   constructor() {
@@ -24415,7 +24524,7 @@ var SbPanelRemoteEditor = class extends i4 {
     const next = moveVisibleGroup(order, (key) => this._visible(key), from, to);
     if (!next) return;
     const handle = this.renderRoot.activeElement;
-    this._announcement = `${groupLabel(visible[from])} moved to position ${to + 1} of ${visible.length}`;
+    this._announcement = `${groupLabel(visible[from], str2())} moved to position ${to + 1} of ${visible.length}`;
     this._patch({ group_order: next });
     if (handle?.classList.contains("handle")) void this.updateComplete.then(() => handle.focus());
   }
@@ -24431,7 +24540,7 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon7}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
   }
   _groups() {
-    const c7 = this.config, s7 = this.selection, e6 = str().editor;
+    const c7 = this.config, s7 = this.selection, e6 = str2().editor;
     const layout = layoutConfigForSelection(c7, s7);
     const device = isDeviceLayoutKey(s7);
     const rows = mfAsRowsForEditor(c7, s7);
@@ -24440,15 +24549,15 @@ var SbPanelRemoteEditor = class extends i4 {
     const slotDevice = parseDeviceLayoutKey(s7);
     const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d5) => Number(d5.id) === slotDevice);
     const cells = (key) => {
-      if (key === "shortcuts") return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
+      if (key === "shortcuts") return b2`${toggle(groupLabel(key, str2()), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return b2`${toggle(e6.commands, commandsEnabled(c7, s7), commandsTogglePatch)}${toggle(e6.power, powerEnabled(c7, s7), powerTogglePatch)}`;
       if (key === "macro_favorites") return b2`${toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
       if (key === "macros_row") return toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch);
       if (key === "favorites_row") return toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return b2`${toggle(e6.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e6.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
       if (key === "media") return b2`${toggle(e6.mediaControls, mediaGroupEnabled(layout), (v3) => groupEnabledPatch("media", v3))}${this._isX2() ? toggle(e6.dvr, dvrGroupEnabled(layout), dvrTogglePatch) : A}`;
-      if (key === "dpad" && this._isX2()) return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${toggle(e6.numpad, numpadEnabledForEditor(c7, s7), numpadTogglePatch)}`;
-      return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
+      if (key === "dpad" && this._isX2()) return b2`${toggle(groupLabel(key, str2()), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${toggle(e6.numpad, numpadEnabledForEditor(c7, s7), numpadTogglePatch)}`;
+      return b2`${toggle(groupLabel(key, str2()), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
         ${key === "activity" && deviceModeEnabledInConfig(c7) ? this._toggle(e6.modeToggle, isGroupEnabled(c7, s7, key) && deviceToggleEnabledForEditor(c7, s7), (v3) => this._patch(deviceTogglePatch(v3)), "", !isGroupEnabled(c7, s7, key)) : A}`;
     };
     const menuAvailable = !device && editorDevicesFromState(this.snapshot).length > 0;
@@ -24458,7 +24567,7 @@ var SbPanelRemoteEditor = class extends i4 {
     </div>`;
     const menuButton = (key) => {
       if (!hasMenu(key)) return menuAvailable ? b2`<span class="menu-spacer" aria-hidden="true"></span>` : A;
-      return b2`<button class="menu-btn" type="button" aria-label=${e6.rowOptions(groupLabel(key))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
+      return b2`<button class="menu-btn" type="button" aria-label=${e6.rowOptions(groupLabel(key, str2()))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
         @click=${() => {
         this._menu = this._menu === key ? null : key;
       }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDotsHorizontal}></path></svg></button>`;
@@ -24468,7 +24577,7 @@ var SbPanelRemoteEditor = class extends i4 {
         <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
           <div class="group-options">${cells(key)}</div>
           ${menuButton(key)}
-          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
+          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key, str2())}`} title="Drag to reorder (arrow keys move the group)"
             @pointerdown=${(ev) => this._sorter.start(ev, index)} @pointermove=${(ev) => this._sorter.move(ev)}
             @pointerup=${(ev) => this._sorter.end(ev)} @pointercancel=${(ev) => this._sorter.cancel(ev)}
             @lostpointercapture=${(ev) => this._sorter.cancel(ev)}
@@ -24564,7 +24673,7 @@ var SbPanelRemoteEditor = class extends i4 {
     this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
   }
   _slotStrip(id) {
-    const e6 = str().editor;
+    const e6 = str2().editor;
     const stored = deviceShortcutsFromConfig(this.config, id);
     const label = (slot) => slot === "left" ? e6.shortcutSlotLeft : slot === "middle" ? e6.shortcutSlotMiddle : e6.shortcutSlotRight;
     return b2`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
@@ -24575,11 +24684,11 @@ var SbPanelRemoteEditor = class extends i4 {
     })}</div>`;
   }
   _slotPanel(id) {
-    const e6 = str().editor;
+    const e6 = str2().editor;
     const keymap = this._keymaps.get(id);
     const status = keymap?.status ?? "loading";
     if (status !== "ready") {
-      const note = status === "loading" ? e6.shortcutsCommandsLoading : status === "cache_miss" ? "This device's commands are not cached yet. Refresh this device in the Hub tab, then retry." : "Could not load this device's commands. Retry when the hub is available.";
+      const note = status === "loading" ? e6.shortcutsCommandsLoading : status === "cache_miss" ? str2().card.deviceKeymapMissingServer : "Could not load this device's commands. Retry when the hub is available.";
       return b2`<div class="shortcut-panel"><div class="shortcut-note">${note}</div>
         ${status === "loading" ? A : b2`<div class="shortcut-panel-footer"><button type="button" @click=${() => {
         this._keymaps.delete(id);
@@ -24607,7 +24716,7 @@ var SbPanelRemoteEditor = class extends i4 {
    * other mdi name can still be typed.
    */
   _iconPicker() {
-    const e6 = str().editor;
+    const e6 = str2().editor;
     const icon7 = this._icon.trim();
     const query = icon7.toLowerCase().replace(/^mdi:/, "");
     const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
@@ -24662,7 +24771,7 @@ var SbPanelRemoteEditor = class extends i4 {
     </div>`;
   }
   render() {
-    const c7 = this.config, e6 = str().editor;
+    const c7 = this.config, e6 = str2().editor;
     const devices = editorDevicesFromState(this.snapshot);
     const activities = editorActivitiesFromState(this.snapshot);
     const enabled = deviceModeEnabledInConfig(c7);
@@ -24681,7 +24790,7 @@ var SbPanelRemoteEditor = class extends i4 {
         </div>
         <div class="feature">
           ${this._toggle(e6.longPress, longPress.enabled, (v3) => this._set({ hold_repeat: longPressEnabledPatch(v3) }), e6.longPressDescription)}
-          ${longPress.enabled ? b2`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group), selected.includes(group), (v3) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c7), v3 ? [...selected, group] : selected.filter((g2) => g2 !== group)) })))}</div>` : A}
+          ${longPress.enabled ? b2`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group, str2()), selected.includes(group), (v3) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c7), v3 ? [...selected, group] : selected.filter((g2) => g2 !== group)) })))}</div>` : A}
         </div>
       </div></details>
       <details name="remote-options">${this._heading(e6.stylingOptions, mdiPalette)}<div class="body">
@@ -24710,7 +24819,7 @@ var SbPanelRemoteEditor = class extends i4 {
           ${enabled ? b2`<mwc-list-item class="sb-option-default" .value=${"device:default"}>${e6.allDevicesOption}</mwc-list-item>
             ${devices.map((d5) => b2`<mwc-list-item .value=${`device:${d5.id}`}>${d5.name}</mwc-list-item>`)}` : A}
         </ha-select>
-        <p class="layout-note">${layoutSelectionNote(c7, this.selection)}</p>
+        <p class="layout-note">${layoutSelectionNote(c7, this.selection, str2())}</p>
         ${this._groups()}
       </div></div></details>`;
   }
@@ -24883,6 +24992,7 @@ var SbPanelRemote = class extends i4 {
     this._card = null;
     this._unsubscribe = null;
     this._mountedFor = null;
+    this._reportedDirty = false;
     this._document = null;
     /** The card subtab's scale: the whole remote fits between the docks. */
     this._scale = 1;
@@ -24983,6 +25093,7 @@ var SbPanelRemote = class extends i4 {
       }
     }
     if (changed.has("section")) this._updateCard();
+    this._reportDirty();
     const stage = this.renderRoot.querySelector("#stage");
     if (stage && this._card && this._card.parentElement !== stage) stage.appendChild(this._card);
     const frame = this.section === "card" ? this.renderRoot.querySelector("#remote-frame") : null;
@@ -25133,6 +25244,16 @@ var SbPanelRemote = class extends i4 {
       this._updateCard();
     }
     this._mode = mode;
+  }
+  /** The shell asks before a move that would drop the unsaved layout (CR-F5a-4). */
+  hasUnsyncedChanges() {
+    return this._isDirty();
+  }
+  _reportDirty() {
+    const dirty = this._isDirty();
+    if (dirty === this._reportedDirty) return;
+    this._reportedDirty = dirty;
+    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty } }));
   }
   /** Save has something to do: the draft (or the JSON text) differs from what the server holds. */
   _isDirty() {
@@ -25407,7 +25528,6 @@ var SbPanelServer = class extends i4 {
       const response = await this.api.serverSettings();
       if (response.ok && response.body) {
         this._ports = response.body;
-        this._portDraft = {};
       } else {
         this._setPortStatus(problemText(response), true);
       }
@@ -25690,7 +25810,7 @@ function defineServerView() {
 
 // server-panel/src/views/wifi-devices-state.ts
 var WIFI_SLOT_COUNT = 10;
-var WIFI_NAME_MAX = 20;
+var WIFI_NAME_MAX2 = 20;
 var PRESS_FLASH_MS = 720;
 function defaultSlotLabel(slot) {
   return `Button ${slot}`;
@@ -25773,13 +25893,7 @@ function isSlotConfigured(draft, index) {
 function configuredCount(draft) {
   return draft.slots.filter((_slot, index) => isSlotConfigured(draft, index)).length;
 }
-function supportsPowerInput(hubVersion) {
-  return supportsUnicodeNames(hubVersion);
-}
-function sanitizeWifiName(hubVersion, value) {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, WIFI_NAME_MAX);
-}
+var supportsPowerInput = hubSupportsPowerInput;
 function nameProblem(value, messages) {
   if (!value.trim()) return messages.required;
   if (value.startsWith(" ")) return messages.leadingSpace;
@@ -25956,8 +26070,8 @@ function pressMatchesSlot(press, device, index) {
 }
 
 // server-panel/src/views/wifi-devices-view.ts
-var S8 = TOOLS_CARD_STRINGS.wifiCommands;
-var A3 = TOOLS_CARD_STRINGS.activities;
+var S7 = TOOLS_CARD_STRINGS.wifiCommands;
+var A4 = TOOLS_CARD_STRINGS.activities;
 var T2 = {
   subtitle: "Use Wifi Commands to put buttons on your physical remote that call this server. Every press arrives as a press event on the event stream. Choose a Wifi Device to edit its command slots, or add a new one.",
   slotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and on every press event.",
@@ -26009,7 +26123,7 @@ var BUTTON_ICONS = {
   c: mdiAlphaCCircleOutline
 };
 var BUTTON_COLORS = { red: "#ef4444", green: "#22c55e", yellow: "#facc15", blue: "#3b82f6" };
-var BUTTON_GROUP_TITLES = { navigation: S8.navigationGroup, transport: S8.transportGroup, media: S8.mediaGroup, abc: S8.abcGroup, color: S8.colorGroup };
+var BUTTON_GROUP_TITLES = { navigation: S7.navigationGroup, transport: S7.transportGroup, media: S7.mediaGroup, abc: S7.abcGroup, color: S7.colorGroup };
 var WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
 function icon6(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
@@ -26053,6 +26167,9 @@ var SbPanelWifiDevices = class extends i4 {
     this._flashTimer = null;
     this._flashFor = null;
     this._reportedDirty = false;
+    /** The shell's stream; set by the shell, read for the server's device events. */
+    this.stream = null;
+    this._offStream = null;
     // -- create ------------------------------------------------------------------------------------------
     this._openCreate = () => {
       if (this._locked) return;
@@ -26067,15 +26184,15 @@ var SbPanelWifiDevices = class extends i4 {
       const hubId = this._hubId;
       if (!state || !hubId || state.busy) return;
       const name = sanitizeWifiName(this._hubVersion, state.name);
-      const problem = nameProblem(name, { required: S8.createDeviceNameRequired, leadingSpace: S8.commandNameLeadingSpace });
+      const problem = nameProblem(name, { required: S7.createDeviceNameRequired, leadingSpace: S7.commandNameLeadingSpace });
       if (problem) {
         this._create = { ...state, error: problem };
         return;
       }
       this._create = { ...state, busy: true, error: "" };
-      const { job, error } = await this._runJob(S8.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
+      const { job, error } = await this._runJob(S7.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
       if (error) {
-        this._create = { ...state, busy: false, error: `${S8.createDeviceFailed}: ${error}` };
+        this._create = { ...state, busy: false, error: `${S7.createDeviceFailed}: ${error}` };
         await this._load();
         return;
       }
@@ -26092,7 +26209,7 @@ var SbPanelWifiDevices = class extends i4 {
       const hubId = this._hubId;
       if (!state || !hubId || state.busy) return;
       this._delete = { ...state, busy: true, error: "" };
-      this._working = S8.deleteDeviceBusy;
+      this._working = S7.deleteDeviceBusy;
       let error = null;
       try {
         const started = await this.api.removeWifiDevice(hubId, state.key, state.referenced);
@@ -26114,7 +26231,7 @@ var SbPanelWifiDevices = class extends i4 {
         this._working = null;
       }
       if (error) {
-        this._delete = { ...state, busy: false, error: `${S8.deleteDeviceFailed}: ${error}` };
+        this._delete = { ...state, busy: false, error: `${S7.deleteDeviceFailed}: ${error}` };
         await this._load();
         return;
       }
@@ -26135,7 +26252,7 @@ var SbPanelWifiDevices = class extends i4 {
       const draft = this._draft;
       if (!state || !draft) return;
       const label = sanitizeWifiName(this._hubVersion, state.edit.label);
-      const problem = nameProblem(label, { required: S8.commandNameLeadingSpace, leadingSpace: S8.commandNameLeadingSpace });
+      const problem = nameProblem(label, { required: S7.commandNameLeadingSpace, leadingSpace: S7.commandNameLeadingSpace });
       if (problem) {
         this._slotEdit = { ...state, error: problem };
         return;
@@ -26152,7 +26269,7 @@ var SbPanelWifiDevices = class extends i4 {
       const state = this._rename;
       if (!state || !this._draft) return;
       const name = sanitizeWifiName(this._hubVersion, state.name);
-      const problem = nameProblem(name, { required: S8.createDeviceNameRequired, leadingSpace: S8.commandNameLeadingSpace });
+      const problem = nameProblem(name, { required: S7.createDeviceNameRequired, leadingSpace: S7.commandNameLeadingSpace });
       if (problem) {
         this._rename = { ...state, error: problem };
         return;
@@ -26160,15 +26277,14 @@ var SbPanelWifiDevices = class extends i4 {
       this._edit({ ...this._draft, name: name.trim() });
       this._rename = null;
     };
-    // -- sync, redeploy, leave ----------------------------------------------------------------------------------
     this._sync = async () => {
       const device = this._device;
       const draft = this._draft;
       const hubId = this._hubId;
-      if (!device || !draft || !hubId || this._locked) return false;
+      if (!this._canSync(device) || !draft || !hubId) return false;
       this._syncError = null;
       const cleanups = buttonCleanups(this._devices, device.key, draft);
-      const { error } = await this._runJob(S8.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
+      const { error } = await this._runJob(S7.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
       if (error) {
         this._syncError = error;
         await this._load();
@@ -26176,7 +26292,7 @@ var SbPanelWifiDevices = class extends i4 {
       }
       this._draftFor = null;
       for (const cleanup of cleanups) {
-        const result = await this._runJob(S8.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
+        const result = await this._runJob(S7.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
         if (result.error) this._say(T2.cleanupFailed(cleanup.device.spec.name, result.error), false);
       }
       await this._load();
@@ -26217,8 +26333,20 @@ var SbPanelWifiDevices = class extends i4 {
       }
     };
   }
+  connectedCallback() {
+    super.connectedCallback();
+    this._offStream = this.stream?.onMessage((message) => {
+      const data = message.data;
+      if (data.type !== "server_event" || data.hub_id !== this._hubId) return;
+      const kind = String(data.kind ?? "");
+      const relevant = kind === "callback_device_stale" || kind === "callback_device_restored" || kind.startsWith("callback_listener") || kind.startsWith("mqtt_");
+      if (relevant && !this._working && !this.hasUnsyncedChanges()) void this._load();
+    }) ?? null;
+  }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._offStream?.();
+    this._offStream = null;
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -26422,10 +26550,16 @@ var SbPanelWifiDevices = class extends i4 {
     this._powerPicker = null;
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
   }
+  // -- sync, redeploy, leave ----------------------------------------------------------------------------------
+  /** One rule for every Sync action (header, leave dialog, _sync): a stale device is
+   *  redeployed instead, and a pending create has no hub record to write (CR-F5b-12). */
+  _canSync(device) {
+    return Boolean(device) && !this._locked && !device.stale && device.device_id != null;
+  }
   // -- render: shared bits -----------------------------------------------------------------------------------------
   _renderTransportPill(device) {
     if (this._transports.length < 2 && device.transport === "http") return A;
-    return b2`<span class="transport-pill ${device.transport}" title=${S8.transportPillDeployedTitle}>${device.transport}</span>`;
+    return b2`<span class="transport-pill ${device.transport}" title=${S7.transportPillDeployedTitle}>${device.transport}</span>`;
   }
   _renderListenerNotice() {
     const listener = this._listener;
@@ -26444,7 +26578,7 @@ var SbPanelWifiDevices = class extends i4 {
         <div class="list-header">
           <div class="list-header-copy"><div class="section-subtitle">${T2.subtitle}</div></div>
           <div class="list-header-action">
-            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S8.addDeviceButton}</span></button>
+            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S7.addDeviceButton}</span></button>
           </div>
         </div>
         <div class="wifi-notices">${this._renderListenerNotice()}</div>
@@ -26470,19 +26604,19 @@ var SbPanelWifiDevices = class extends i4 {
                         <span class="device-card-lead">${icon6(mdiWifi)}</span>
                         <div class="device-card-copy">
                           <div class="device-card-name">${device.spec.name}</div>
-                          <div class="device-card-count">${S8.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
+                          <div class="device-card-count">${S7.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
                         </div>
                         <div class="device-card-meta">
                           ${this._renderTransportPill(device)}
                           <span class="status-pill device-status-pill ${status.tone}">${icon6(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
                         </div>
                       </div>
-                      <button class="device-delete-btn" type="button" title=${S8.deleteDeviceAria} aria-label=${S8.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
+                      <button class="device-delete-btn" type="button" title=${S7.deleteDeviceAria} aria-label=${S7.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
                       ${this._flash(Boolean(press && pressMatchesDevice(press, device)), press?.at ?? 0)}
                     </div>`;
     })}
-              </div>` : this._error ? A : b2`<div class="empty-state-card" id="wifi-empty">${S8.emptyDevices}</div>`}
-        ${!canAdd ? b2`<div class="wifi-max-devices-note">${S8.maximumDevices}</div>` : A}
+              </div>` : this._error ? A : b2`<div class="empty-state-card" id="wifi-empty">${S7.emptyDevices}</div>`}
+        ${!canAdd ? b2`<div class="wifi-max-devices-note">${S7.maximumDevices}</div>` : A}
       </div>
     `;
   }
@@ -26493,14 +26627,14 @@ var SbPanelWifiDevices = class extends i4 {
     }
     const dirty = this.hasUnsyncedChanges();
     if (this._working) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
-    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S8.actionButtonUpToDate}</button>`;
-    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${this._locked || device.device_id == null} @click=${() => void this._sync()}>${S8.actionButtonSyncToHub}</button>`;
+    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S7.actionButtonUpToDate}</button>`;
+    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S7.actionButtonSyncToHub}</button>`;
   }
   _renderPowerLines(draft) {
     if (!supportsPowerInput(this._hubVersion)) return A;
     const rows = [
-      { kind: "on", label: S8.devicePowerOnLabel, slot: draft.powerOn },
-      { kind: "off", label: S8.devicePowerOffLabel, slot: draft.powerOff }
+      { kind: "on", label: S7.devicePowerOnLabel, slot: draft.powerOn },
+      { kind: "off", label: S7.devicePowerOffLabel, slot: draft.powerOff }
     ];
     return b2`
       <ul class="device-power-lines" id="wifi-power-lines">
@@ -26510,7 +26644,7 @@ var SbPanelWifiDevices = class extends i4 {
             <span class="hub-event-text">${label},
               <button class="hub-event-action-link" type="button" data-power=${kind} ?disabled=${this._locked} @click=${() => {
       this._powerPicker = kind;
-    }}>${slot !== null ? S8.devicePowerPerform(draft.slots[slot - 1].label) : S8.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S8.hubEventClearTitle} aria-label=${S8.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
+    }}>${slot !== null ? S7.devicePowerPerform(draft.slots[slot - 1].label) : S7.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S7.hubEventClearTitle} aria-label=${S7.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
             </span>
           </li>`)}
       </ul>`;
@@ -26520,18 +26654,18 @@ var SbPanelWifiDevices = class extends i4 {
     if (this._confirmClear === index) {
       return b2`
         <div class="slot-btn slot-confirming" data-slot=${slot}>
-          <div class="slot-confirm-title">${S8.clearSlotTitle}</div>
+          <div class="slot-confirm-title">${S7.clearSlotTitle}</div>
           <div class="slot-confirm-actions">
             <button class="dialog-btn" type="button" @click=${() => {
         this._confirmClear = null;
-      }}>${S8.clearSlotNo}</button>
-            <button class="dialog-btn dialog-btn-primary" type="button" data-confirm-clear @click=${() => this._clearSlot(index)}>${S8.clearSlotYes}</button>
+      }}>${S7.clearSlotNo}</button>
+            <button class="dialog-btn dialog-btn-primary" type="button" data-confirm-clear @click=${() => this._clearSlot(index)}>${S7.clearSlotYes}</button>
           </div>
           ${flash}
         </div>`;
     }
     if (!isSlotConfigured(draft, index)) {
-      return b2`<button class="slot-btn slot-empty" type="button" data-slot=${slot} ?disabled=${this._locked} @click=${() => this._openSlot(index)}><span class="slot-index">${slot}</span><span class="slot-plus">+</span><span class="slot-name">${S8.makeCommand}</span>${flash}</button>`;
+      return b2`<button class="slot-btn slot-empty" type="button" data-slot=${slot} ?disabled=${this._locked} @click=${() => this._openSlot(index)}><span class="slot-index">${slot}</span><span class="slot-plus">+</span><span class="slot-name">${S7.makeCommand}</span>${flash}</button>`;
     }
     const row = draft.slots[index];
     const powerInput = this._powerInput;
@@ -26539,7 +26673,7 @@ var SbPanelWifiDevices = class extends i4 {
     const isOff = powerInput && draft.powerOff === slot;
     const isInput = powerInput && (row.inputActivityId !== null || draft.inputs.includes(slot));
     const meta = slotMeta(draft, index, { powerInput });
-    const metaLabel = meta.kind === "unconfigured" ? S8.unconfiguredCommand : meta.kind === "power" ? meta.on && meta.off ? S8.powerBothCommand : meta.on ? S8.powerOnCommand : S8.powerOffCommand : meta.kind === "input" ? meta.activityId !== null ? S8.inputFor(this._activityName(meta.activityId)) : S8.inputCommand : S8.inActivities(meta.count);
+    const metaLabel = meta.kind === "unconfigured" ? S7.unconfiguredCommand : meta.kind === "power" ? meta.on && meta.off ? S7.powerBothCommand : meta.on ? S7.powerOnCommand : S7.powerOffCommand : meta.kind === "input" ? meta.activityId !== null ? S7.inputFor(this._activityName(meta.activityId)) : S7.inputCommand : S7.inActivities(meta.count);
     const button = hardButtonByCode(row.button);
     const name = row.label !== defaultSlotLabel(slot) ? row.label : TOOLS_CARD_STRINGS.common.commandFallback(slot);
     const where = activitiesEnabled(row) ? row.activities.map((id) => this._activityName(id)).join(", ") : "";
@@ -26559,9 +26693,9 @@ var SbPanelWifiDevices = class extends i4 {
           </span>
         </button>
         <div class="slot-actions">
-          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S8.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S8.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S8.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
-          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S8.inputFor(this._activityName(row.inputActivityId)) : S8.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
-          <button class="slot-clear" type="button" aria-label=${S8.clearSlotTitle} title=${S8.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
+          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S7.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S7.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S7.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
+          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S7.inputFor(this._activityName(row.inputActivityId)) : S7.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
+          <button class="slot-clear" type="button" aria-label=${S7.clearSlotTitle} title=${S7.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
       this._confirmClear = index;
     }}>${icon6(mdiClose)}</button>
         </div>
@@ -26588,7 +26722,7 @@ var SbPanelWifiDevices = class extends i4 {
           </div>
           <div class="detail-scroll">
             <div class="wifi-notices">
-              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S8.syncMessageFailed} ${this._syncError}</span></div>` : A}
+              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S7.syncMessageFailed} ${this._syncError}</span></div>` : A}
               ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
               ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon6(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
               ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
@@ -26610,7 +26744,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <label class="wifi-field">
         <span class="wifi-field-label">${label}</span>
-        <input class="wifi-input" id=${id} type="text" autocomplete="off" maxlength=${WIFI_NAME_MAX} .value=${value} ?disabled=${disabled}
+        <input class="wifi-input" id=${id} type="text" autocomplete="off" maxlength=${WIFI_NAME_MAX2} .value=${value} ?disabled=${disabled}
           @input=${(event) => {
       const input = event.currentTarget;
       const clean = sanitizeWifiName(this._hubVersion, input.value);
@@ -26632,13 +26766,13 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeCreate}>
         <div class="dialog small" id="wifi-create-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.addDevice}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.addDevice}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
-            ${this._nameInput("wifi-new-name", state.name, S8.deviceName, state.busy, (name) => {
+            ${this._nameInput("wifi-new-name", state.name, S7.deviceName, state.busy, (name) => {
       this._create = { ...state, name, error: "" };
     }, () => void this._submitCreate())}
             ${transports.length > 1 ? b2`<div class="transport-choice">
-                  <div class="transport-choice-label">${S8.transportLabel}</div>
+                  <div class="transport-choice-label">${S7.transportLabel}</div>
                   ${transports.map((option) => b2`
                     <label class="transport-option ${state.transport === option ? "selected" : ""}">
                       <input type="radio" name="wifi-new-transport" .checked=${state.transport === option} ?disabled=${state.busy} @change=${() => {
@@ -26646,14 +26780,14 @@ var SbPanelWifiDevices = class extends i4 {
     }} />
                       <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T2.transportHttpHint : T2.transportMqttHint}</span></span>
                     </label>`)}
-                  <div class="transport-choice-note">${S8.transportLockedNote}</div>
+                  <div class="transport-choice-note">${S7.transportLockedNote}</div>
                 </div>` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-create-error">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeCreate}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-create-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitCreate()}>${state.busy ? S8.createDeviceBusy : S8.createModalCreate}</button>
+              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeCreate}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-create-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitCreate()}>${state.busy ? S7.createDeviceBusy : S7.createModalCreate}</button>
             </div>
           </div>
         </div>
@@ -26666,7 +26800,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeDelete}>
         <div class="dialog small" id="wifi-delete-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-text">${T2.deleteBody(device.spec.name)}</div>
             ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
@@ -26674,8 +26808,8 @@ var SbPanelWifiDevices = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-delete-error">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeDelete}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" id="wifi-delete-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitDelete()}>${state.busy ? S8.deleteDeviceBusy : state.referenced ? T2.deleteAnyway : S8.deleteModalDelete}</button>
+              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeDelete}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="wifi-delete-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitDelete()}>${state.busy ? S7.deleteDeviceBusy : state.referenced ? T2.deleteAnyway : S7.deleteModalDelete}</button>
             </div>
           </div>
         </div>
@@ -26696,33 +26830,33 @@ var SbPanelWifiDevices = class extends i4 {
       this._patchSlot({ inputActivityId: on ? edit.inputActivityId ?? activities[0].id : null });
     };
     const inputHolder = slotHoldingInput(draft, edit.inputActivityId, state.index);
-    const inputHint = !hasActivities ? S8.noActivitiesForHub : inputHolder >= 0 ? S8.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S8.activityInputHint;
+    const inputHint = !hasActivities ? S7.noActivitiesForHub : inputHolder >= 0 ? S7.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S7.activityInputHint;
     const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
     const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
-    const buttonHint = buttonHolder >= 0 ? S8.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S8.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
-    const keyLabels = S8.keyLabels;
+    const buttonHint = buttonHolder >= 0 ? S7.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S7.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
+    const keyLabels = S7.keyLabels;
     const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
     return b2`
       <div class="modal-backdrop" @click=${this._closeSlot}>
         <div class="dialog" id="wifi-slot-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-note">${T2.slotDescription}</div>
             <div class="config-block">
               <div class="config-group">
-                ${this._nameInput("wifi-slot-name", edit.label, S8.commandDisplayName, false, (label) => this._patchSlot({ label }), this._saveSlot)}
+                ${this._nameInput("wifi-slot-name", edit.label, S7.commandDisplayName, false, (label) => this._patchSlot({ label }), this._saveSlot)}
                 ${this._powerInput ? b2`
                       <button class="advanced-toggle ${state.advanced ? "expanded" : ""}" id="wifi-slot-advanced" type="button" aria-expanded=${String(state.advanced)} @click=${() => {
       this._slotEdit = { ...state, advanced: !state.advanced };
-    }}><span>${S8.advanced}</span>${icon6(mdiChevronDown)}</button>
+    }}><span>${S7.advanced}</span>${icon6(mdiChevronDown)}</button>
                       ${state.advanced ? b2`<div class="advanced-panel">
                             <label class="checkbox-row ${inputOn ? "active" : ""} ${hasActivities ? "" : "disabled"}">
                               <span class="checkbox-icon">${icon6(mdiVideoInputHdmi)}</span>
-                              <span class="checkbox-copy"><span>${S8.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
+                              <span class="checkbox-copy"><span>${S7.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
                               <input class="sb-switch" id="wifi-slot-input" type="checkbox" .checked=${inputOn} ?disabled=${!hasActivities} @change=${(event) => setInput(event.currentTarget.checked)} />
                             </label>
                             <label class="wifi-field nested-control">
-                              <span class="wifi-field-label">${S8.activityInputLabel}</span>
+                              <span class="wifi-field-label">${S7.activityInputLabel}</span>
                               <select class="wifi-input" id="wifi-slot-input-activity" ?disabled=${!inputOn || !hasActivities} @change=${(event) => this._patchSlot({ inputActivityId: Number(event.currentTarget.value) })}>
                                 ${activities.map((activity) => b2`<option value=${String(activity.id)} ?selected=${(edit.inputActivityId ?? activities[0]?.id) === activity.id}>${activity.name}</option>`)}
                               </select>
@@ -26732,30 +26866,30 @@ var SbPanelWifiDevices = class extends i4 {
               <div class="config-group">
                 <label class="checkbox-row ${edit.favorite ? "active" : ""}">
                   <span class="checkbox-icon plain">${icon6(mdiHeart)}</span>
-                  <span class="checkbox-copy"><span>${S8.favorite}</span></span>
+                  <span class="checkbox-copy"><span>${S7.favorite}</span></span>
                   <input class="sb-switch" id="wifi-slot-favorite" type="checkbox" .checked=${edit.favorite} @change=${(event) => this._patchSlot({ favorite: event.currentTarget.checked })} />
                 </label>
                 <label class="wifi-field">
-                  <span class="wifi-field-label">${S8.physicalButtonAssignment}</span>
+                  <span class="wifi-field-label">${S7.physicalButtonAssignment}</span>
                   <select class="wifi-input" id="wifi-slot-button" @change=${(event) => {
       const value = event.currentTarget.value;
       this._patchSlot({ button: value ? Number(value) : null });
     }}>
-                    <option value="" ?selected=${edit.button === null}>${S8.none}</option>
+                    <option value="" ?selected=${edit.button === null}>${S7.none}</option>
                     ${buttons.map((button) => b2`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
                   </select>
                 </label>
                 ${buttonHint ? b2`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : A}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
                   <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
-                  <span class="checkbox-copy"><span>${S8.enableLongPress}</span></span>
+                  <span class="checkbox-copy"><span>${S7.enableLongPress}</span></span>
                   <input class="sb-switch" id="wifi-slot-long-press" type="checkbox" .checked=${edit.button !== null && edit.longPress} ?disabled=${edit.button === null} @change=${(event) => this._patchSlot({ longPress: event.currentTarget.checked })} />
                 </label>
-                <div class="activities-label ${chipsEnabled ? "" : "disabled"}">${S8.applyToActivities}</div>
+                <div class="activities-label ${chipsEnabled ? "" : "disabled"}">${S7.applyToActivities}</div>
                 <div class="activity-chip-row" id="wifi-slot-activities">
                   ${hasActivities ? activities.map((activity) => b2`<button class="activity-chip ${chipsEnabled && edit.activities.includes(activity.id) ? "active" : ""}" type="button" data-activity=${activity.id} ?disabled=${!chipsEnabled} @click=${() => {
       if (this._slotEdit) this._slotEdit = { ...this._slotEdit, edit: withActivityToggled(this._slotEdit.edit, activity.id), error: "" };
-    }}>${activity.name}</button>`) : b2`<div class="empty-hint">${S8.noActivitiesForHub}</div>`}
+    }}>${activity.name}</button>`) : b2`<div class="empty-hint">${S7.noActivitiesForHub}</div>`}
                 </div>
               </div>
             </div>
@@ -26763,8 +26897,8 @@ var SbPanelWifiDevices = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-slot-error">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeSlot}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-slot-save" type="button" @click=${this._saveSlot}>${S8.save}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeSlot}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-slot-save" type="button" @click=${this._saveSlot}>${S7.save}</button>
             </div>
           </div>
         </div>
@@ -26779,15 +26913,15 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
-          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S8.deviceName, false, (name) => {
+          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S7.deviceName, false, (name) => {
       this._rename = { name, error: "" };
     }, this._saveRename)}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${close}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-rename-save" type="button" @click=${this._saveRename}>${S8.save}</button>
+              <button class="dialog-btn" type="button" @click=${close}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-rename-save" type="button" @click=${this._saveRename}>${S7.save}</button>
             </div>
           </div>
         </div>
@@ -26805,11 +26939,11 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-power-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S8.devicePowerOnLabel : S8.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S7.devicePowerOnLabel : S7.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
-            <div class="dialog-note">${S8.devicePowerHint}</div>
+            <div class="dialog-note">${S7.devicePowerHint}</div>
             <div class="device-power-options">
-              <button class="device-power-option ${current === null ? "active" : ""}" type="button" @click=${() => this._pickPower(kind, null)}>${S8.devicePowerNothing}</button>
+              <button class="device-power-option ${current === null ? "active" : ""}" type="button" @click=${() => this._pickPower(kind, null)}>${S7.devicePowerNothing}</button>
               ${options.map((option) => b2`<button class="device-power-option ${current === option.slot ? "active" : ""}" type="button" data-slot=${option.slot} @click=${() => this._pickPower(kind, option.slot)}>${option.label}</button>`)}
             </div>
           </div>
@@ -26825,13 +26959,13 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-leave-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${A3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A3.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${A4.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A4.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body"><div class="dialog-text">${T2.leaveBody}</div></div>
           <div class="dialog-footer">
-            <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A3.exitWithoutSync}</button>
+            <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A4.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${close}>${A3.syncKeepEditing}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${this._locked || !device || device.stale} @click=${() => void this._leaveAfterSync()}>${A3.exitSyncNow}</button>
+              <button class="dialog-btn" type="button" @click=${close}>${A4.syncKeepEditing}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._leaveAfterSync()}>${A4.exitSyncNow}</button>
             </div>
           </div>
         </div>
@@ -26868,6 +27002,7 @@ SbPanelWifiDevices.properties = {
   _confirmClear: { state: true },
   _leave: { state: true },
   _working: { state: true },
+  stream: { attribute: false },
   _syncError: { state: true },
   _flashTick: { state: true }
 };
@@ -26929,7 +27064,7 @@ SbPanelWifiDevices.styles = [
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
-      .hub-event-icon.power-on { color: #2e7d32; }
+      .hub-event-icon.power-on { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); }
       .hub-event-icon.power-off { color: #c62828; }
       .hub-event-text { min-width: 0; }
       .hub-event-action-link { display: inline; font: inherit; font-weight: 700; font-style: italic; color: var(--sbp-text); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; white-space: normal; }
@@ -26964,7 +27099,7 @@ SbPanelWifiDevices.styles = [
       .slot-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding-right: 8px; }
       .slot-flag, .slot-clear { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); color: var(--sbp-muted); display: inline-flex; align-items: center; justify-content: center; }
       .slot-flag .mdi { width: 14px; height: 14px; }
-      .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
+      .slot-flag.power-on { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
       .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--sbp-line)); }
       .slot-flag.power-both { color: #f59e0b; border-color: color-mix(in srgb, #f59e0b 35%, var(--sbp-line)); }
       .slot-flag.input { color: var(--sbp-accent); border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); }

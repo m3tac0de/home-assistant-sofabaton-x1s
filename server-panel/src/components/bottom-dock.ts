@@ -33,6 +33,11 @@ export function renderBottomDock(params: {
   onDiscard: (applyId: string) => void;
   onKeepDraft: () => void;
   onDiscardDraft: () => void;
+  /** A Discard that is waiting for its inline Yes/Keep (never a native
+   *  confirm(): it answers "cancel" wherever dialogs are suppressed, L-S5). */
+  confirming?: "apply" | "draft" | null;
+  onConfirmDiscard?: () => void;
+  onCancelDiscard?: () => void;
 }): TemplateResult {
   const { model, message } = params;
   let tone = "";
@@ -40,6 +45,9 @@ export function renderBottomDock(params: {
   let actions: TemplateResult | typeof nothing = nothing;
   // The one-line status, with the whole text in its title for when the row cuts it.
   const status = (text: string, id = "dock-status") => html`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const confirmActions = html`
+    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
+    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
   if (model.kind === "running") {
     tone = "dock--running";
     center = status(model.text);
@@ -61,6 +69,14 @@ export function renderBottomDock(params: {
             }
           }}>${body}</span>`
       : html`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
+  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
+    tone = "dock--warn";
+    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
+    actions = confirmActions;
+  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+    tone = "dock--warn";
+    center = status("Discard your unsaved changes? The hub is not changed.");
+    actions = confirmActions;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
     center = status(model.text);

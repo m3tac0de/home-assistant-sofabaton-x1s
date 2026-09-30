@@ -1,6 +1,7 @@
 import {
   hasToolsCardTranslation,
   registerToolsCardTranslation,
+  TOOLS_CARD_LOCALE_ALIASES,
   type ToolsCardTranslation,
 } from "./strings";
 
@@ -23,11 +24,7 @@ type LocaleImporter = (url: string, locale: ToolsCardLocale) => Promise<LocaleMo
 type LocaleUrlBuilder = (locale: ToolsCardLocale) => string;
 
 const SUPPORTED_LOCALES = new Set<string>(TOOLS_CARD_LOCALES);
-const LOCALE_ALIASES: Record<string, ToolsCardLocale> = {
-  "zh": "zh-hans",
-  "zh-cn": "zh-hans",
-  "zh-sg": "zh-hans",
-};
+const LOCALE_ALIASES = TOOLS_CARD_LOCALE_ALIASES as Readonly<Record<string, ToolsCardLocale>>;
 
 function normalizeLanguage(language: unknown): string {
   return String(language || "en").trim().toLowerCase().replaceAll("_", "-");

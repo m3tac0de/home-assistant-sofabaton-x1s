@@ -6,57 +6,22 @@
 // under the package path. E5 adds the second-origin cases.
 
 import { test, expect } from "@playwright/test";
+import { API, HUB, STATUS, hubRoutes } from "./fixtures/server-routes.js";
 
-const HUB = "E2:6A:44:86:1B:45";
 const PAGE = "/tests/playwright/fixtures/remote-embed-host.html";
-const API = "/api/v1";
 
-const STATUS = {
-  hub_id: HUB,
-  enabled: true,
-  config: { host: "192.168.1.50", name: "Living room" },
-  status: {
-    hub_connected: true,
-    app_connected: false,
-    controllable: true,
-    mode: "control",
-    hub_version: "x1s",
-    proxy_enabled: true,
-    running_activity: { activity_id: 101, name: "Watch TV" },
-    activities_cached: 2,
-    devices_cached: 2,
-    catalog_ready: true,
-  },
-  added_at: "2026-09-15T00:00:00Z",
-  last_seen: null,
-};
-
+// The embed runs on a leaner catalog (no DOWN key, no macros or favorites)
+// and also answers GET /server, which the npm build's version check reads.
 function makeRoutes(state) {
-  return {
+  return hubRoutes(state, {
     "GET /server": () => ({ name: "sofabaton-x-server", version: "0.2.2", api_version: "1", api_path: API, hubs: 1, uptime_seconds: 1 }),
-    "GET /hubs": () => [STATUS],
-    [`GET /hubs/${HUB}/ui/remote-card`]: () => ({ hub_id: HUB, document: state.document, updated_at: null }),
-    [`GET /hubs/${HUB}/status`]: () => STATUS,
-    [`GET /hubs/${HUB}/activities`]: () => [
-      { activity_id: 101, name: "Watch TV", active: true, needs_confirm: false },
-      { activity_id: 102, name: "Listen", active: false, needs_confirm: false },
-    ],
-    [`GET /hubs/${HUB}/devices`]: () => [
-      { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2 },
-      { device_id: 2, name: "Amp", brand: "Denon", device_class: "ir", device_class_code: 1, power_state: 1, idle_behavior: null },
-    ],
-    [`GET /hubs/${HUB}/activity`]: () => state.running,
     [`GET /hubs/${HUB}/entities/101/buttons`]: () => [
       { button_code: 151, name: "OK", device_id: 1, command_id: 9, long_press_device_id: null, long_press_command_id: null },
       { button_code: 174, name: "UP", device_id: 1, command_id: 17, long_press_device_id: null, long_press_command_id: null },
     ],
     [`GET /hubs/${HUB}/activities/101/macros`]: () => [],
     [`GET /hubs/${HUB}/activities/101/favorites`]: () => [],
-    [`GET /hubs/${HUB}/entities/102/buttons`]: () => [{ button_code: 151, name: "OK", device_id: 2, command_id: 3 }],
-    [`GET /hubs/${HUB}/activities/102/macros`]: () => [],
-    [`GET /hubs/${HUB}/activities/102/favorites`]: () => [],
-    [`POST /hubs/${HUB}/send`]: () => ({ accepted: true, mode: "control" }),
-  };
+  });
 }
 
 // The mock plays the server's CORS rule itself (E5): a listed origin is
@@ -210,6 +175,17 @@ test.describe("embeddable remote", () => {
     await element(page).evaluate((el) => el.removeAttribute("config"));
     await expect(card(page).locator(".dpad >> visible=true").first()).toBeVisible();
     expect(calls.some((c) => c.key === `GET /hubs/${HUB}/ui/remote-card`)).toBe(true);
+  });
+
+  test("an object assigned to config replaces a config attribute (CR-F4a-5)", async ({ page }) => {
+    const { calls } = await mockServer(page, { document: { show_dpad: true }, running: STATUS.status.running_activity });
+    const config = encodeURIComponent(JSON.stringify({ show_dpad: true }));
+    await page.goto(`${PAGE}?hub=${encodeURIComponent(HUB)}&config=${config}`);
+    await expect(card(page).locator(".dpad >> visible=true").first()).toBeVisible();
+    await element(page).evaluate((el) => { el.config = { show_dpad: false }; });
+    await expect(card(page).locator(".dpad >> visible=true")).toHaveCount(0);
+    expect(await element(page).evaluate((el) => el.hasAttribute("config"))).toBe(false);
+    expect(calls.some((c) => c.key === `GET /hubs/${HUB}/ui/remote-card`)).toBe(false);
   });
 
   test("an unknown hub shows a compact notice and fires the error event; fixing the attribute recovers", async ({ page }) => {

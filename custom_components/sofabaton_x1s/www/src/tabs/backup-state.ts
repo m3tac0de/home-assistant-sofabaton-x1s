@@ -1,7 +1,6 @@
 import type {
   BackupBundleActivityPayload,
   BackupBundleButtonBinding,
-  BackupBundleCommandRow,
   BackupBundleDeviceBlock,
   BackupBundleDevicePayload,
   BackupBundleFavoriteSlot,
@@ -13,7 +12,7 @@ import type {
   CacheHubState,
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
-import { hubActivities, hubDevices } from "../shared/utils/control-panel-selectors";
+import { hubDevices } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 export interface BackupSelectionOption {
@@ -429,17 +428,6 @@ const HUB_VERSION_RANK: Record<string, number> = {
 };
 const INTERNAL_POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
 
-export function backupActivityOptions(hub: CacheHubState | null): BackupSelectionOption[] {
-  return hubActivities(hub).map((activity) => ({
-    id: Number(activity.id),
-    label: String(activity.name || TOOLS_CARD_STRINGS.common.activityFallback(activity.id)),
-    meta: TOOLS_CARD_STRINGS.backup.activityMeta(
-      Number(activity.favorite_count || 0),
-      Number(activity.macro_count || 0),
-    ),
-  }));
-}
-
 export function backupDeviceOptions(hub: CacheHubState | null): BackupSelectionOption[] {
   return hubDevices(hub).map((device) => ({
     id: Number(device.id),
@@ -615,10 +603,6 @@ export function reconcileRestoreSelection(params: {
     selectedActivityIds,
     forcedActivityIds,
   };
-}
-
-export function backupUsesWholeHub(selectedActivityIds: number[]): boolean {
-  return (selectedActivityIds ?? []).length > 0;
 }
 
 export function pruneBackupBundle(params: {
@@ -1111,11 +1095,6 @@ export function renameBundleDeviceCommand(
 }
 
 /**
- * The next free command id on a Device (lowest unused id >= 1, capped at
- * 0xFF like the hub's one-byte command-id space). Returns `null` when the
- * device is absent or its id space is exhausted.
- */
-/**
  * Default decoded snapshot for the add-command dialog on a device that has
  * NO commands yet (a device created empty through the Hub tab's "Add
  * device"). With no template row to clone, the class's form opens with
@@ -1155,6 +1134,11 @@ export function defaultDecodedSnapshotForClass(
   return { className, fields, trailerHex: "", edited: false };
 }
 
+/**
+ * The next free command id on a Device (lowest unused id >= 1, capped at
+ * 0xFF like the hub's one-byte command-id space). Returns `null` when the
+ * device is absent or its id space is exhausted.
+ */
 export function nextFreeDeviceCommandId(
   bundle: BackupBundlePayload | null,
   deviceId: number,
@@ -1384,8 +1368,7 @@ export type BackupDeleteTarget =
 /**
  * Cascade impact of a delete, surfaced in the confirm dialog so the
  * user is never surprised by references that disappear elsewhere in the
- * bundle. All counts are zero for targets that have no downward
- * references (activities, and individual favorites / macros).
+ * bundle. All counts are zero for an activity delete.
  */
 export interface BackupDeleteImpact {
   /** favorite_slots that will be removed as a side effect. */
@@ -1398,6 +1381,9 @@ export interface BackupDeleteImpact {
   activities: number;
   /** button bindings removed, or whose long-press is cleared, as a side effect. */
   bindings: number;
+  /** devices that stop powering on and off with the activity because the
+   *  delete took their last use in it (their power rows go with it). */
+  members: number;
 }
 
 function stepMatchesDevice(step: BackupBundleMacroStep, deviceId: number): boolean {
@@ -1558,7 +1544,7 @@ export function bundleDeleteImpact(
   bundle: BackupBundlePayload | null,
   target: BackupDeleteTarget,
 ): BackupDeleteImpact {
-  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -1581,7 +1567,7 @@ export function bundleDeleteImpact(
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId),
       );
     }
-    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings, members: 0 };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -1618,18 +1604,50 @@ export function bundleDeleteImpact(
       if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
       else macroSteps += removed;
     }
-    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings, members: 0 };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
   }
+  if (target.kind === "favorite" || target.kind === "macro" || target.kind === "activity_binding") {
+    return activityEntryDeleteImpact(bundle, target);
+  }
   return empty;
+}
+
+/**
+ * A shortcut, macro or button-assignment delete: the bindings it drops or
+ * clears (a macro's buttons), and the devices that stop powering on/off
+ * with the activity because this was their last use in it (CR-F3-3).
+ * Measured on the delete itself, so the dialog can never disagree with it.
+ */
+function activityEntryDeleteImpact(
+  bundle: BackupBundlePayload,
+  target: Extract<BackupDeleteTarget, { kind: "favorite" | "macro" | "activity_binding" }>,
+): BackupDeleteImpact {
+  const activityId = Number(target.activityId);
+  const before = findBundleActivity(bundle, activityId);
+  const after = findBundleActivity(applyBundleDelete(bundle, target), activityId);
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
+  if (!before || !after) return empty;
+  const afterBindings = new Map(
+    (after.button_bindings ?? []).map((row) => [Number(row?.button_id ?? -1), JSON.stringify(row)]),
+  );
+  const deletedButton = target.kind === "activity_binding" ? Number(target.buttonId) : null;
+  const bindings = (before.button_bindings ?? []).filter((row) => {
+    const buttonId = Number(row?.button_id ?? -1);
+    if (buttonId === deletedButton) return false;
+    return afterBindings.get(buttonId) !== JSON.stringify(row);
+  }).length;
+  const remaining = new Set((after.referenced_source_device_ids ?? []).map(Number));
+  const members = (before.referenced_source_device_ids ?? []).filter((id) => !remaining.has(Number(id))).length;
+  return { ...empty, bindings, members };
 }
 
 /** True when at least one reference will be cleared as a side effect. */
 export function backupDeleteHasCascade(impact: BackupDeleteImpact): boolean {
   return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0
-    || impact.activities > 0 || impact.bindings > 0;
+    || impact.activities > 0 || impact.bindings > 0 || impact.members > 0;
 }
 
 /** Remove a top-level Activity. Activities are referenced by nothing else. */
@@ -1679,11 +1697,6 @@ export function deleteBundleDevice(bundle: BackupBundlePayload, deviceId: number
   return reconcileBundlePowerMacros(next);
 }
 
-/**
- * Remove a single command from a Device and clear the favorites / macro
- * steps that referenced exactly that command. Other commands on the
- * device, and references to them, are untouched.
- */
 /** Options for {@link applyBundleDelete} / {@link deleteBundleDeviceCommand}. */
 export interface BundleDeleteOptions {
   /**
@@ -1699,6 +1712,11 @@ export interface BundleDeleteOptions {
   reconcileMembership?: boolean;
 }
 
+/**
+ * Remove a single command from a Device and clear the favorites / macro
+ * steps that referenced exactly that command. Other commands on the
+ * device, and references to them, are untouched.
+ */
 export function deleteBundleDeviceCommand(
   bundle: BackupBundlePayload,
   deviceId: number,
@@ -2314,7 +2332,7 @@ export function activityMemberRemovalImpact(
   activityId: number,
   deviceId: number,
 ): BackupDeleteImpact {
-  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -2338,7 +2356,7 @@ export function activityMemberRemovalImpact(
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId),
   );
-  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings, members: 0 };
 }
 
 // ── Macro editing ───────────────────────────────────────────────────
@@ -2414,60 +2432,6 @@ function ensureDeviceInput(
     }),
   };
   return { bundle: nextBundle, ordinal: nextOrdinal };
-}
-
-export interface BackupActivityPowerDevice {
-  deviceId: number;
-  deviceName: string;
-  /** 1-based input ordinal the device's POWER_ON 0xC5 step points at; 0 = unset. */
-  inputOrdinal: number;
-  inputCommandId: number | null;
-  inputCommandName: string | null;
-}
-
-/**
- * Per-device view of an Activity's POWER_ON macro for the power editor.
- * The macro is a flat, interleaved step list, so a device's input is read
- * from its own `{device_id, command_id 0xC5}` step's `duration` ordinal
- * (not from any positional grouping). Device order follows first appearance.
- */
-export function activityPowerDevices(
-  bundle: BackupBundlePayload | null,
-  activityId: number,
-): BackupActivityPowerDevice[] {
-  if (!bundle) return [];
-  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  if (!activity) return [];
-  const powerOn = (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === POWER_ON_MACRO_BUTTON_ID);
-  const steps = powerOn?.steps ?? [];
-  const order: number[] = [];
-  const seen = new Set<number>();
-  for (const step of steps) {
-    if (isMacroDelayStep(step)) continue;
-    const command = Number(step?.command_id || 0);
-    if (command !== DEVICE_POWER_ON_REF_COMMAND && command !== DEVICE_INPUT_REF_COMMAND) continue;
-    const deviceId = Number(step?.device_id || 0);
-    if (deviceId > 0 && !seen.has(deviceId)) {
-      seen.add(deviceId);
-      order.push(deviceId);
-    }
-  }
-  return order.map((deviceId) => {
-    const inputStep = steps.find(
-      (step) => !isMacroDelayStep(step)
-        && Number(step?.device_id || 0) === deviceId
-        && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND,
-    );
-    const inputOrdinal = Number(inputStep?.duration || 0);
-    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
-    return {
-      deviceId,
-      deviceName: deviceNameFor(bundle, deviceId),
-      inputOrdinal,
-      inputCommandId: input?.commandId ?? null,
-      inputCommandName: input?.name || (inputOrdinal > 0 ? TOOLS_CARD_STRINGS.common.inputFallback(inputOrdinal) : null),
-    };
-  });
 }
 
 /**
@@ -2575,13 +2539,6 @@ function isPowerRefStep(step: BackupBundleMacroStep): boolean {
     || command === DEVICE_POWER_OFF_REF_COMMAND;
 }
 
-export interface BackupDeviceMacroSummary {
-  buttonId: number;
-  name: string;
-  isPower: boolean;
-  commandStepCount: number;
-}
-
 function defaultMacroName(buttonId: number): string {
   if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
   if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
@@ -2669,26 +2626,6 @@ function zeroTrailingGroupWait(
   if (!last || groupWait(last) === 0) return steps;
   applyGroupWait(last, 0, isActivity);
   return flattenMacroGroups(prefix, groups);
-}
-
-/** Summaries of a device's macros (its power-on/off plus any user macros). */
-export function deviceMacroSummaries(
-  bundle: BackupBundlePayload | null,
-  deviceId: number,
-): BackupDeviceMacroSummary[] {
-  const device = findDevice(bundle, deviceId);
-  return (device?.macros ?? [])
-    .map((macro) => {
-      const buttonId = Number(macro?.button_id || 0);
-      return {
-        buttonId,
-        name: String(macro?.name || defaultMacroName(buttonId)),
-        isPower: buttonId === POWER_ON_MACRO_BUTTON_ID || buttonId === POWER_OFF_MACRO_BUTTON_ID,
-        commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length,
-      };
-    })
-    .filter((macro) => macro.buttonId > 0)
-    .sort((left, right) => left.buttonId - right.buttonId);
 }
 
 /** Step list for one of a device's macros, in the shape the editor renders. */
@@ -3618,12 +3555,6 @@ export function setActivityRoleDevice(
   return reconcileActivityMembershipChange(bundle, next, aId);
 }
 
-
-/** Device options for the edit overview. */
-export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
-  return bundleDeviceOptions(bundle);
-}
-
 /**
  * Rewrite placeholder Wifi Events refs (device id 0, W7 full deferral)
  * to the real hub-assigned device id inside one activity's favorites,
@@ -3667,18 +3598,8 @@ export function rewriteWifiEventPlaceholderRefs(
   });
 }
 
-/**
- * Insert (or replace) one device entry in a bundle — used to graft the
- * Wifi Events device block (head + commands) into the live editor's
- * captured `_baseline` AND working bundles after `wifi_event/create`
- * deploys a device the captures predate. Both bundles must gain it:
- * the review diff would otherwise show phantom changes, and sync
- * validation grandfathers missing command refs FROM THE BASELINE
- * (`collect_missing_command_refs`) — a ref to a device absent from the
- * baseline would be flagged as a new dangling ref and rejected.
- */
-/** Drop one device entry (by id) from a bundle — the Sync flow uses this
- *  to retire the synthetic placeholder Wifi Events block (id 0) before
+/** Drop one device entry (by id) from a bundle: the Sync flow uses this
+ *  to retire the placeholder Wifi Events block (a free positive id) before
  *  grafting the real deployed block. */
 export function removeBundleDevice(
   bundle: BackupBundlePayload | null,
@@ -3692,6 +3613,15 @@ export function removeBundleDevice(
   return { ...bundle, devices };
 }
 
+/**
+ * Insert (or replace) one device entry in a bundle: grafts the Wifi Events
+ * device block (head + commands) into the live editor's captured
+ * `_baseline` AND working bundles once the device exists on the hub. Both
+ * bundles must gain it: sync validation grandfathers missing command refs
+ * FROM THE BASELINE (`collect_missing_command_refs`), so a ref to a device
+ * absent from the baseline would be flagged as a new dangling ref and
+ * rejected.
+ */
 export function graftDeviceIntoBundle(
   bundle: BackupBundlePayload | null,
   deviceEntry: BackupBundleDevicePayload | null | undefined,

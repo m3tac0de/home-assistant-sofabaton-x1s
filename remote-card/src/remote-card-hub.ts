@@ -2,10 +2,6 @@ export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function hasOwn(obj: any, key: any) {
-  return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
-}
-
 export function initHubRuntimeState(requestSeen: any, queue: any) {
   return {
     requestSeen: requestSeen || {},

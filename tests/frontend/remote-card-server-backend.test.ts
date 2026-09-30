@@ -129,15 +129,21 @@ function createRig(overrides: Record<string, Body> = {}, gates: Record<string, G
     requests.push({ url, method, body });
     const gateKey = Object.keys(gates).find((suffix) => url.endsWith(suffix));
     if (gateKey) await gates[gateKey].wait();
-    // Any hub id: the re-key test moves the target mid-run.
-    const match = url.match(/^http:\/\/server\.test\/api\/v1\/hubs\/[^/]+(\/.*)$/);
+    // Any hub id: the re-key test moves the target mid-run. `GET /hubs`
+    // (the hub list) is routed as "GET /hubs-list".
+    const match = url === `${BASE}${SERVER_API_PREFIX}/hubs`
+      ? [url, "/hubs-list"]
+      : url.match(/^http:\/\/server\.test\/api\/v1\/hubs\/[^/]+(\/.*)$/);
     assert.ok(match, `unexpected url ${url}`);
     const key = `${method} ${match![1]}`;
     const route = routes[key];
     if (route === undefined) {
       return { ok: false, status: 404, json: async () => ({ type: "not_found" }) } as Response;
     }
-    const payload = typeof route === "function" ? (route as (init?: RequestInit) => unknown)(init) : route;
+    const payload = typeof route === "function" ? (route as (init?: RequestInit, url?: string) => unknown)(init, url) : route;
+    if (payload === undefined) {
+      return { ok: false, status: 404, json: async () => ({ type: "not_found" }) } as Response;
+    }
     if (payload instanceof Error) {
       return { ok: false, status: 504, json: async () => ({ type: "timeout" }) } as Response;
     }
@@ -724,4 +730,69 @@ test("server adapter: bursts of status events coalesce to one refresh plus one p
   await flush(8);
   const statusReads = requests.filter((request) => request.url.endsWith("/status")).length;
   assert.ok(statusReads >= 1 && statusReads <= 2, `expected 1-2 status reads, got ${statusReads}`);
+});
+
+test("server adapter: a reload during an activity-page read starts its own read (CR-F4a-4)", async () => {
+  const gate = new Gate();
+  const { backend, sockets } = createRig({}, { "/entities/102/buttons": gate });
+  backend.setTarget(HUB);
+  backend.subscribe(() => undefined);
+  await flush();
+  sockets[0].open();
+  await flush();
+  gate.hold();
+  // The hub switches to an activity whose pages are not read yet...
+  sockets[0].push({
+    type: "hub_event",
+    hub_id: HUB,
+    event: { seq: 7, kind: "activity_changed", payload: { activity_id: 102, previous_activity_id: 101, name: "Listen" } },
+  });
+  await flush();
+  // ...and a reload lands while that read is still out.
+  sockets[0].push({ type: "hub_event", hub_id: HUB, event: { seq: 8, kind: "catalog_ready", payload: { ready: true } } });
+  await flush();
+  gate.release();
+  await flush(10);
+  assert.equal(backend.snapshot()?.attributes?.load_state, "ready");
+});
+
+test("server adapter: a re-key missed while the socket was down is found by host (CR-X3-2)", async () => {
+  const HOST = "192.168.1.50";
+  const NEW = "e26a44861b45";
+  const { backend, sockets, routes } = createRig();
+  routes["GET /status"] = (_init?: RequestInit, url?: string) =>
+    String(url).includes(`/hubs/${encodeURIComponent(HOST)}/`) ? undefined : STATUS;
+  routes["GET /hubs-list"] = [{ hub_id: NEW, enabled: true, config: { host: HOST } }];
+  let notified = 0;
+  backend.setTarget(HOST);
+  backend.subscribe(() => { notified += 1; });
+  await flush(10);
+  assert.equal(backend.target, NEW);
+  assert.ok(notified > 0);
+  assert.equal(backend.snapshot()?.state, "on");
+  // The socket follows the hub to its new id.
+  assert.ok(sockets.at(-1)!.url.endsWith(`hub_id=${NEW}`));
+});
+
+test("server adapter: a refused command is recorded for the host's banner (CR-F4a-7)", async () => {
+  const { backend, sockets, routes } = createRig();
+  backend.setTarget(HUB);
+  let notified = 0;
+  backend.subscribe(() => { notified += 1; });
+  await flush();
+  sockets[0].open();
+  await flush();
+  delete routes["POST /send"]; // the server answers 404
+  const before = notified;
+  await assert.rejects(backend.sendCommand(17, 101));
+  assert.equal(backend.controlRefused, true);
+  assert.ok(notified > before);
+});
+
+test("store: a refused activity switch ends the wait instead of holding the keys (CR-F4a-7)", () => {
+  const store = new RemoteCardStore(() => undefined, { fireEvent: () => undefined });
+  store.startActivityLoading("Listen");
+  assert.equal((store as unknown as { activityLoadActive: boolean }).activityLoadActive, true);
+  store.controlFailed();
+  assert.equal((store as unknown as { activityLoadActive: boolean }).activityLoadActive, false);
 });

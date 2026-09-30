@@ -85,7 +85,7 @@ from . import ir_uc_hex
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
-from .lib.bundle_validation import validate_hub_bundle_for_model
+from .lib.bundle_validation import validate_hub_bundle_for_model, validate_new_entity_name
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
@@ -546,6 +546,25 @@ def _validate_wifi_name_for_hub(hub: SofabatonHub, value: Any, *, field_name: st
             )
         raise ValueError(f"{field_name} must contain only letters, numbers, and spaces")
     return raw[:_WIFI_NAME_MAX_LEN].strip()
+
+
+def _new_entity_name_storable(hub: SofabatonHub, name: str) -> bool:
+    """A new activity/device name the hub stores as given (CR-X4-2)."""
+
+    try:
+        validate_new_entity_name(name, hub_version=_hub_model_for_names(hub))
+    except ValueError:
+        return False
+    return True
+
+
+def _hub_model_for_names(hub: SofabatonHub) -> str:
+    version = str(getattr(hub, "version", "") or "").upper()
+    if "X2" in version:
+        return "X2"
+    if "X1S" in version:
+        return "X1S"
+    return "X1"
 
 
 def _validate_ir_command_name(value: Any) -> str:
@@ -1053,13 +1072,14 @@ async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_config/get",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Optional("device_key"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1082,7 +1102,8 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_config/set",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("commands"): list,
         vol.Optional("device_key"): str,
         vol.Optional("power_on_command_id"): int,
@@ -1091,7 +1112,7 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
 )
 @websocket_api.async_response
 async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1152,12 +1173,13 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/hub_event_actions/get",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1175,14 +1197,15 @@ async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/hub_event_actions/set",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("actions"): dict,
         vol.Optional("activity_actions"): dict,
     }
 )
 @websocket_api.async_response
 async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1215,13 +1238,14 @@ async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_sync/progress",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Optional("device_key"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1264,12 +1288,13 @@ def _hub_mqtt_available(hass: HomeAssistant, hub: Any) -> bool:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_devices/list",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1303,14 +1328,15 @@ async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[st
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_device/create",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("device_name"): str,
         vol.Optional("transport"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1350,14 +1376,15 @@ async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[s
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_device/delete",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("device_key"): str,
     }
 )
 @websocket_api.async_response
 @_hub_write_ws()
 async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1469,12 +1496,13 @@ def _wifi_events_state_payload(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/list",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1485,13 +1513,14 @@ async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/create",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("name"): str,
     }
 )
 @websocket_api.async_response
 async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1536,14 +1565,15 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/delete",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("slot_index"): int,
     }
 )
 @websocket_api.async_response
 @_hub_write_ws(persist=False)
 async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1611,7 +1641,8 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/sync",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
@@ -1620,7 +1651,7 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
     """Retry the Wifi Events deploy without changing the store — the
     needs-sync affordance for a slot whose create/delete deploy failed."""
 
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1653,7 +1684,8 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/clear_all",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
@@ -1668,7 +1700,7 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
     the callback runtime reads).
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1692,7 +1724,8 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/set_action",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("slot_index"): int,
         vol.Required("press_type"): vol.In(["short", "long"]),
         vol.Required("action"): dict,
@@ -1700,7 +1733,7 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
 )
 @websocket_api.async_response
 async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1718,14 +1751,15 @@ async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[s
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/wifi_event/set_longpress",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("slot_index"): int,
         vol.Required("enabled"): bool,
     }
 )
 @websocket_api.async_response
 async def _ws_set_wifi_event_longpress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3592,6 +3626,13 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
     )
     if hub is None:
         return
+    if not _new_entity_name_storable(hub, name):
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            "The hub cannot store this activity name",
+        )
+        return
 
     result = await hub.async_create_activity(name)
     if not result or str(result.get("status")) != "success":
@@ -3631,6 +3672,13 @@ async def _ws_device_create(hass: HomeAssistant, connection, msg: dict[str, Any]
         hass, connection, msg, op_name="_ws_device_create"
     )
     if hub is None:
+        return
+    if not _new_entity_name_storable(hub, name):
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            "The hub cannot store this device name",
+        )
         return
 
     device_class = normalize_device_class(msg.get("device_class"))
@@ -5478,6 +5526,13 @@ async def _async_resolve_hub_from_data(hass: HomeAssistant, data: dict[str, Any]
         return hubs[0]
 
     return None
+
+
+def _ws_hub_selector(msg: dict[str, Any]) -> dict[str, Any]:
+    """The hub a WS message names: its config entry id (what the cards send)
+    or, for older clients, the hub's remote entity (CR-X2-2)."""
+
+    return {"entry_id": msg.get("entry_id"), "entity_id": msg.get("entity_id")}
 
 
 def _get_hubs(domain_data: dict[str, Any]) -> list[SofabatonHub]:

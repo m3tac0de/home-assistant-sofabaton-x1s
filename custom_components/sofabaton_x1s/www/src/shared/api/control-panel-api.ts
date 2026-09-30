@@ -3,13 +3,13 @@ import type {
   BackupOperationStateResponse,
   BackupOperationStartResponse,
   BackupProgressEvent,
-  BackupRestoreResult,
   CacheContentsResponse,
   ControlPanelStateResponse,
   BlobFetchResponse,
   BlobPlayResponse,
   HassLike,
   HubAction,
+  HubEventActionsResponse,
   HubClickAction,
   IrEmissionsEvent,
   IrEmitterConsumersResponse,
@@ -19,6 +19,9 @@ import type {
   LogsResponse,
   RefreshKind,
   SettingKey,
+  WifiCommandConfigResponse,
+  WifiCommandSyncState,
+  WifiDevicesListResponse,
   WifiEventCreateResponse,
   WifiEventsListResponse,
 } from "../ha-context";
@@ -277,65 +280,157 @@ export class ControlPanelApi {
     });
   }
 
-  getWifiCommandDevices(entityId: string) {
-    return this.hass.callWS<{ devices?: Array<Record<string, unknown>>; max_devices?: number }>({
+  // ── Wifi Commands devices (the Automation tab) ──────────────────────
+
+  getWifiCommandDevices(hubEntryId: string) {
+    return this.hass.callWS<WifiDevicesListResponse>({
       type: "sofabaton_x1s/command_devices/list",
-      entity_id: entityId,
+      entry_id: hubEntryId,
+    });
+  }
+
+  createWifiCommandDevice(hubEntryId: string, deviceName: string, transport?: string) {
+    return this.hass.callWS<{ device_key?: string }>({
+      type: "sofabaton_x1s/command_device/create",
+      entry_id: hubEntryId,
+      device_name: deviceName,
+      ...(transport ? { transport } : {}),
+    });
+  }
+
+  deleteWifiCommandDevice(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/command_device/delete",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  getWifiCommandConfig(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<WifiCommandConfigResponse>({
+      type: "sofabaton_x1s/command_config/get",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  setWifiCommandConfig(
+    hubEntryId: string,
+    deviceKey: string,
+    commands: unknown[],
+    powerOnCommandId: number | null,
+    powerOffCommandId: number | null,
+  ) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/command_config/set",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+      commands,
+      power_on_command_id: powerOnCommandId ?? undefined,
+      power_off_command_id: powerOffCommandId ?? undefined,
+    });
+  }
+
+  getWifiCommandSyncProgress(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<Partial<WifiCommandSyncState>>({
+      type: "sofabaton_x1s/command_sync/progress",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  /** Deploy one Wifi Device's staged config (the sync_command_config action). */
+  syncWifiCommandConfig(hubEntryId: string, deviceKey: string) {
+    if (!this.hass.callService) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable));
+    }
+    return this.hass.callService("sofabaton_x1s", "sync_command_config", {
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  getHubEventActions(hubEntryId: string) {
+    return this.hass.callWS<HubEventActionsResponse>({
+      type: "sofabaton_x1s/hub_event_actions/get",
+      entry_id: hubEntryId,
+    });
+  }
+
+  /** Both maps are stored wholesale; the backend normalizes them. */
+  setHubEventActions(
+    hubEntryId: string,
+    actions: Record<string, unknown>,
+    activityActions: Record<string, unknown>,
+  ) {
+    return this.hass.callWS<HubEventActionsResponse>({
+      type: "sofabaton_x1s/hub_event_actions/set",
+      entry_id: hubEntryId,
+      actions,
+      activity_actions: activityActions,
     });
   }
 
   // ── Wifi Events (reserved haevents record) ────────────────────────────
 
-  listWifiEvents(entityId: string) {
+  listWifiEvents(hubEntryId: string) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/list",
-      entity_id: entityId,
+      entry_id: hubEntryId,
     });
   }
 
-  createWifiEvent(entityId: string, name: string) {
+  createWifiEvent(hubEntryId: string, name: string) {
     return this.hass.callWS<WifiEventCreateResponse>({
       type: "sofabaton_x1s/wifi_event/create",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       name,
     });
   }
 
   /** W7 phase 1: deploy the events record without store changes. */
-  syncWifiEvents(entityId: string) {
+  syncWifiEvents(hubEntryId: string) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/sync",
-      entity_id: entityId,
+      entry_id: hubEntryId,
     });
   }
 
-  deleteWifiEvent(entityId: string, slotIndex: number) {
+  /** Drop every stored Wifi Event (the orphaned-config notice's remedy). */
+  clearWifiEvents(hubEntryId: string) {
+    return this.hass.callWS<WifiEventsListResponse>({
+      type: "sofabaton_x1s/wifi_event/clear_all",
+      entry_id: hubEntryId,
+    });
+  }
+
+  deleteWifiEvent(hubEntryId: string, slotIndex: number) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/delete",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       slot_index: slotIndex,
     });
   }
 
   setWifiEventAction(
-    entityId: string,
+    hubEntryId: string,
     slotIndex: number,
     pressType: "short" | "long",
     action: Record<string, unknown>,
   ) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/set_action",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       slot_index: slotIndex,
       press_type: pressType,
       action,
     });
   }
 
-  setWifiEventLongpress(entityId: string, slotIndex: number, enabled: boolean) {
+  setWifiEventLongpress(hubEntryId: string, slotIndex: number, enabled: boolean) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/set_longpress",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       slot_index: slotIndex,
       enabled,
     });

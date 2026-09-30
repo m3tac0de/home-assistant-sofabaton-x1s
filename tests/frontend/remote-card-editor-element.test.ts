@@ -7,6 +7,7 @@ import { renderStylingOptionsSection } from "../../remote-card/src/editor-sectio
 import { renderGroupOrderSection } from "../../remote-card/src/editor-sections/group-order";
 import { REMOTE_CARD_CSS } from "../../remote-card/src/remote-card-styles";
 import type { HassLike } from "../../remote-card/src/remote-card-types";
+import { str } from "../../remote-card/src/remote-card-strings";
 import type { RemoteCardConfig } from "../../remote-card/src/remote-card-types";
 
 // The editor dispatches window events for the preview-activity handshake;
@@ -142,6 +143,22 @@ test("entity change resets the layout selection to default", () => {
   assert.equal(editor._layoutSelection, "default");
   assert.equal(changes.length, 1);
   assert.equal(changes[0].entity, "remote.other");
+});
+
+test("an unavailable entity keeps the layout selection instead of jumping to default (CR-F4b-2)", () => {
+  const { editor, changes } = createEditor({ entity: "remote.living_room" });
+  editor.hass = {
+    states: { "remote.living_room": { entity_id: "remote.living_room", state: "unavailable", attributes: {} } },
+    locale: { language: "en" },
+    callWS: async () => ({}),
+  };
+  editor._layoutSelection = "device:8";
+
+  const text = templateText(editor.render());
+
+  assert.equal(editor._layoutSelection, "device:8");
+  assert.ok(text.includes("Device 8"), "the kept selection is listed");
+  assert.equal(changes.length, 0);
 });
 
 // ---------- shell: group order mutations ----------
@@ -471,6 +488,51 @@ test("group order section renders up/down buttons until ha-sortable is ready", (
   assert.equal(templateHasString(sortable, "sb-drag-handle"), true);
   assert.equal(templateHasString(sortable, "sb-move-wrap"), false);
 });
+
+test("with ha-sortable the drag handle still reorders from the keyboard (CR-F4b-6)", () => {
+  const moves: Array<[string, number]> = [];
+  const result = renderGroupOrderSection(groupOrderParams({
+    sortableReady: true,
+    onMoveGroupByKey: (key: string, delta: number) => { moves.push([key, delta]); },
+  }));
+  assert.equal(templateHasString(result, 'role="button"'), true);
+  const handlers = collectHandlers(result, "@keydown=");
+  // The rows render in visibleOrder: activity, macro_favorites, dpad.
+  const fake = (key: string) => ({
+    key,
+    preventDefault() {},
+    stopPropagation() {},
+    currentTarget: { getRootNode: () => ({ querySelector: () => null }) },
+  });
+  (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (fn: () => void) => fn();
+  handlers[1](fake("ArrowDown"));
+  handlers[0](fake("ArrowUp")); // first row cannot move up
+  assert.deepEqual(moves, [["macro_favorites", 1]]);
+});
+
+test("layout switches and the rows stepper carry names (CR-F4b-5)", () => {
+  const result = renderGroupOrderSection(groupOrderParams());
+  assert.equal(templateHasString(result, str().editor.fewerVisibleRows), true);
+  assert.equal(templateHasString(result, str().editor.moreVisibleRows), true);
+  assert.equal(templateHasString(result, str().editor.macrosFavoritesAsRows), true);
+});
+
+function collectHandlers(template: unknown, binding: string): Array<(event: unknown) => void> {
+  const found: Array<(event: unknown) => void> = [];
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    const { strings, values } = node as { strings?: string[]; values?: unknown[] };
+    if (strings && values) {
+      values.forEach((value, index) => {
+        if (strings[index].trimEnd().endsWith(binding) && typeof value === "function") found.push(value as (event: unknown) => void);
+        else visit(value);
+      });
+    }
+  };
+  visit(template);
+  return found;
+}
 
 test("device selections render Commands and Power switches on the mf rows", () => {
   const result = renderGroupOrderSection(

@@ -1,6 +1,8 @@
 // The Events view (docs/internal/server-panel-plan.md, decision 6): the
-// stream the shell keeps open, listed with a hub filter (applied on
-// reconnect), a text filter and expand-all; press messages highlighted.
+// stream the shell keeps open, listed with a hub filter, a text filter,
+// pause and expand-all; press messages highlighted. The stream is the
+// store's own, so nothing here filters or stops it: the hub filter and the
+// pause only change what this list shows (CR-F5a-2).
 
 import { LitElement, html, css, type TemplateResult } from "lit";
 
@@ -16,6 +18,8 @@ export class SbPanelEvents extends LitElement {
     _grep: { state: true },
     _expand: { state: true },
     _tick: { state: true },
+    _hubs: { state: true },
+    _frozen: { state: true },
   };
 
   static styles = [
@@ -40,6 +44,10 @@ export class SbPanelEvents extends LitElement {
   private _grep = "";
   private _expand = false;
   private _tick = 0;
+  /** hub_id filter; empty shows every hub. */
+  private _hubs: string[] = [];
+  /** While paused, the rows shown when the pause started. */
+  private _frozen: PanelStream["messages"] | null = null;
   private _unsubscribe: (() => void)[] = [];
 
   connectedCallback(): void {
@@ -70,33 +78,32 @@ export class SbPanelEvents extends LitElement {
 
   private _applyFilter(): void {
     const raw = this.renderRoot.querySelector<HTMLInputElement>("#ws-filter")?.value ?? "";
-    this.stream.hubFilter = raw.split(",").map((s) => s.trim()).filter(Boolean);
-    this.stream.restart();
-    this._bump();
+    this._hubs = raw.split(",").map((s) => s.trim()).filter(Boolean);
   }
 
-  private _toggle(): void {
-    if (this.stream.wanted) this.stream.stop();
-    else this.stream.start();
-    this._bump();
+  private _togglePause(): void {
+    this._frozen = this._frozen ? null : [...(this.stream?.messages ?? [])];
   }
 
   render(): TemplateResult {
     const stream = this.stream;
     const grep = this._grep.trim().toLowerCase();
-    const rows = stream ? stream.messages : [];
-    const shown = rows.filter((row) => !grep || (summarizeMessage(row.data) + " " + row.text).toLowerCase().includes(grep));
+    const rows = this._frozen ?? (stream ? stream.messages : []);
+    const hubs = this._hubs;
+    const shown = rows.filter((row) =>
+      (!hubs.length || hubs.includes(String(row.data.hub_id ?? "")))
+      && (!grep || (summarizeMessage(row.data) + " " + row.text).toLowerCase().includes(grep)));
     return html`
       <div class="panel">
         <h2>Event stream <span class="hint mono">/events</span><span class="spacer"></span>
           <input id="ws-filter" placeholder="hub_id filter (optional, comma separated)" @change=${this._applyFilter}>
-          <button class="small" id="ws-toggle" @click=${this._toggle}>${stream?.wanted ? "disconnect" : "connect"}</button>
+          <button class="small" id="ws-toggle" @click=${this._togglePause}>${this._frozen ? "resume" : "pause"}</button>
           <button class="small" id="ws-clear" @click=${() => { stream?.clear(); this._bump(); }}>clear</button></h2>
         <div class="row" style="margin-bottom: 8px; align-items: center">
           <input id="ws-grep" placeholder="show only messages containing… (type, kind, hub, label)" @input=${(e: Event) => { this._grep = (e.target as HTMLInputElement).value; }}>
           <label class="inline fixed"><input type="checkbox" id="ws-expand" .checked=${this._expand} @change=${(e: Event) => { this._expand = (e.target as HTMLInputElement).checked; }}> expand all</label>
         </div>
-        <div class="hint" id="ws-count">${shown.length} of ${rows.length} messages${stream?.connected ? "" : " · not connected"}</div>
+        <div class="hint" id="ws-count">${shown.length} of ${rows.length} messages${this._frozen ? " · paused" : ""}${stream?.connected ? "" : " · not connected"}</div>
         <div class="list" id="ws-list">
           ${shown.map((row) => html`<details class="k-${String(row.data.type ?? "raw")}" ?open=${this._expand}>
             <summary><span class="t">${row.at}</span><span>${summarizeMessage(row.data)}</span></summary>

@@ -15,7 +15,6 @@ registerRemoteCardTranslation("en-gb", {
     fieldLabels: {
       use_background_override: "Customise background colour",
       background_override: "Select background colour",
-      show_favorites_button: "Favourites button",
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows",

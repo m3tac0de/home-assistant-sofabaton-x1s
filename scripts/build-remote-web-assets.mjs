@@ -12,9 +12,12 @@
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as mdi from "@mdi/js";
 
-const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+// fileURLToPath, not URL.pathname: the pathname is percent-encoded, which
+// breaks checkouts whose path holds a space or non-ASCII characters.
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FIXTURE = join(ROOT, "tests/fixtures/ha-themes.js");
 const SRC = join(ROOT, "remote-card/src");
 const OUT_PALETTE = join(SRC, "shims/palette.ts");

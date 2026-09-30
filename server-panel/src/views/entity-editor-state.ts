@@ -75,12 +75,5 @@ export function withDraftData(bundle: BackupBundlePayload, kind: EntityKind, ent
 
 // -- macro time bytes (0.5 s units; a byte of 4 = 2.0 s; 0 = a click / no wait) -----------------
 
-export function byteToSeconds(byteValue: number): string {
-  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-}
-
-export function secondsToByte(value: string): number {
-  const seconds = parseFloat(String(value));
-  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-}
+/** The card's rule (shared/hub-rules.ts, CR-X6-3). */
+export { byteToSeconds, secondsToByte } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";

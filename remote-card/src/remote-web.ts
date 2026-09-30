@@ -152,7 +152,7 @@ export class SofabatonRemoteWeb extends HTMLElement {
   private _syncBanner(): void {
     const banner = this._shadow.getElementById("banner") as HTMLElement | null;
     if (!banner || !this._backend) return;
-    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError);
+    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError, this._backend.controlRefused);
     if (text === this._lastBanner) return;
     this._lastBanner = text;
     banner.hidden = !text;

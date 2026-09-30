@@ -46,7 +46,7 @@ import {
 
 import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
-import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/tabs/activity-editor";
+import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -62,7 +62,7 @@ import {
   applyBundleDelete,
   backupDeleteHasCascade,
   bundleDeleteImpact,
-  bundleEditableDeviceOptions,
+  bundleDeviceOptions,
   buttonName,
   clearActivityDeviceInput,
   deviceCommandItems,
@@ -331,7 +331,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   }
 
   private _deviceOptions(): Array<{ id: number; label: string }> {
-    return bundleEditableDeviceOptions(this._working).filter((option) => this._pickable(option));
+    return bundleDeviceOptions(this._working).filter((option) => this._pickable(option));
   }
 
   private _addableMembers(): Array<{ id: number; label: string }> {
@@ -1261,6 +1261,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             ${impact.macroSteps > 0 ? html`<li>${icon(mdiFormatListNumbered)}<span>${B.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : nothing}
             ${impact.powerSteps > 0 ? html`<li>${icon(mdiPower)}<span>${B.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : nothing}
             ${impact.bindings > 0 ? html`<li>${icon(mdiGestureTapButton)}<span>${B.deleteImpactBindings(impact.bindings)}</span></li>` : nothing}
+            ${impact.members > 0 ? html`<li>${icon(mdiPower)}<span>${B.deleteImpactMembers(impact.members)}</span></li>` : nothing}
           </ul>`
         : nothing}
       <div class="delete-replace-note">${icon(mdiInformationOutline)}<span>${this._offline ? B.deleteReplaceNote : immediate ? B.deleteImmediateNote : B.deleteSyncNote}</span></div>`, html`

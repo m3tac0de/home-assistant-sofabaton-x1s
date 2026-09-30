@@ -102,7 +102,7 @@ test("gates, in the order the panel checks them", () => {
   const r = runtime();
   assert.equal(gateFor(snapshot([r], { server: { info: null, reachable: false, error: null, instanceId: null } }), r), "server_unreachable");
   assert.equal(gateFor(snapshot([r]), runtime(hub({ enabled: false }))), "hub_disabled");
-  assert.equal(gateFor(snapshot([r]), runtime(hub({ status: null }))), "hub_disabled");
+  assert.equal(gateFor(snapshot([r]), runtime(hub({ status: null }))), "hub_not_running");
   assert.equal(gateFor(snapshot([r]), runtime(hub({ status: { hub_connected: false } }))), "hub_offline");
   assert.equal(gateFor(snapshot([r]), runtime(hub({ status: { mode: "disconnected" } }))), "hub_offline");
   assert.equal(gateFor(snapshot([r]), runtime(hub({ status: { mode: "observe", app_connected: true } }))), "app_holds_hub");

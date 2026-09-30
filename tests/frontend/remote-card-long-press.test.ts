@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LONG_PRESS_GROUPS,
-  hubLongPressAvailable,
   hubLongPressBinding,
   longPressEnabledForKey,
   longPressEnabledPatch,
@@ -296,10 +295,10 @@ test("hubLongPressBinding stays dark on absent or malformed data", () => {
   }
 });
 
-test("hubLongPressAvailable mirrors the binding lookup", () => {
-  assert.equal(hubLongPressAvailable(BINDING_ATTRS, 101, 13), true);
-  assert.equal(hubLongPressAvailable(BINDING_ATTRS, 101, 15), false);
-  assert.equal(hubLongPressAvailable(null, 101, 13), false);
+test("hubLongPressBinding answers null where there is no binding", () => {
+  assert.notEqual(hubLongPressBinding(BINDING_ATTRS, 101, 13), null);
+  assert.equal(hubLongPressBinding(BINDING_ATTRS, 101, 15), null);
+  assert.equal(hubLongPressBinding(null, 101, 13), null);
 });
 
 // ---------- hub long-press timer ----------

@@ -6,6 +6,8 @@ write decorators, the unload drain and the smaller fixes that ride on them.
 
 import asyncio
 import importlib
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -357,17 +359,17 @@ def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
 # -- CR-X4-1: one Wifi name rule ---------------------------------------------
 
 
+# tests/fixtures/wifi-name-vectors.json is shared with the card's sanitizer
+# test (tests/frontend/wifi-names.test.ts), so the two rules cannot drift.
+_WIFI_NAME_VECTORS = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "wifi-name-vectors.json").read_text(encoding="utf-8")
+)["vectors"]
+
+
 @pytest.mark.parametrize(
     ("version", "name", "ok"),
-    [
-        ("X1S", "สวัสดี", True),  # Thai vowel signs (category Mn)
-        ("X2", "नमस्ते", True),  # Devanagari virama
-        ("X1S", "Café Lights", True),
-        ("X1S", "Lights_2 (kitchen)!", True),
-        ("X1S", "Lights 💡", False),  # dropped before: now refused
-        ("X1", "Lights 2", True),
-        ("X1", "Café", False),
-    ],
+    [(v["version"], v["name"], v["ok"]) for v in _WIFI_NAME_VECTORS],
+    ids=[v["why"] for v in _WIFI_NAME_VECTORS],
 )
 def test_wifi_names_follow_the_card_rule(version, name, ok):
     hub = SimpleNamespace(version=version)

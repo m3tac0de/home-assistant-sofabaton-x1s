@@ -44,6 +44,11 @@ export const REMOTE_CARD_STRINGS_AR = {
     deviceKeymapMissing:
       `أوامر هذا الجهاز غير مخزّنة مؤقتًا بعد. حدِّث الجهاز من تبويب ${isolate("Hub")} في ${isolate("Sofabaton Control Panel")}، ثم أعد تحميل لوحة المعلومات.`,
     deviceKeymapError: "تعذّر تحميل أوامر هذا الجهاز.",
+    deviceKeymapMissingServer:
+      `هذا الجهاز غير موجود في كتالوج ${isolate("Hub")}. حدِّث ${isolate("Hub")} في لوحة تحكم ${SOFABATON}، ثم أعد تحميل هذه الصفحة.`,
+    hubUnreachable: (detail: string) =>
+      `لا يستطيع الخادم الوصول إلى ${isolate("Hub")} (${isolate(detail)}).`,
+    controlRefused: `لم يقبل ${isolate("Hub")} هذا الأمر.`,
     poweredOff: "مُطفأ",
     defaultLayout: "التخطيط الافتراضي للأنشطة",
     activityFallback: (id: number | string) => `النشاط ${isolate(id)}`,
@@ -53,7 +58,6 @@ export const REMOTE_CARD_STRINGS_AR = {
   },
   assist: {
     label: "التقاط الأزرار",
-    start: "بدء",
     waiting: "بانتظار ضغطة زر",
     exitEditMode: "غادر وضع التحرير للبدء",
     captured: (label: string) => `تم التقاط الأمر: ${isolate(label)}`,
@@ -112,18 +116,8 @@ export const REMOTE_CARD_STRINGS_AR = {
       theme: "تطبيق سمة على البطاقة",
       use_background_override: "تخصيص لون الخلفية",
       background_override: "اختيار لون الخلفية",
-      show_activity: "محدِّد النشاط/الجهاز",
-      show_dpad: "لوحة الاتجاهات",
-      show_nav: "أزرار الرجوع/الرئيسية/القائمة",
-      show_mid: "أزرار مستوى الصوت والقنوات",
-      show_media: "التشغيل",
-      show_colors: "أحمر، أخضر، أصفر، أزرق",
-      show_abc: `أزرار ${ABC}`,
-      show_macros_button: "زر وحدات الماكرو",
-      show_favorites_button: "زر المفضلات",
       max_width: "الحد الأقصى لعرض البطاقة (بكسل)",
       key_style: "نمط الأزرار",
-      group_order: "ترتيب المجموعات",
     },
     generalOptionsTitle: "الخيارات العامة",
     keyCapture: "التقاط الأزرار",
@@ -164,6 +158,9 @@ export const REMOTE_CARD_STRINGS_AR = {
       `نقل ${isolate(groupLabel)} إلى الأعلى`,
     moveGroupDown: (groupLabel: string) =>
       `نقل ${isolate(groupLabel)} إلى الأسفل`,
+    fewerVisibleRows: "صفوف مرئية أقل",
+    moreVisibleRows: "صفوف مرئية أكثر",
+    reorderGroupHandle: (groupLabel: string) => `إعادة ترتيب ${isolate(groupLabel)} (مفاتيح الأسهم)`,
     macros: "وحدات الماكرو",
     favorites: "المفضلات",
     volume: "مستوى الصوت",

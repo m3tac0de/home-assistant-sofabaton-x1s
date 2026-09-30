@@ -920,44 +920,6 @@ function numpadEnabled(layout) {
   return true;
 }
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var HARD_BUTTON_ID_MAP = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C
-};
-var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
 
 // remote-card/src/remote-card-strings.ts
 var REMOTE_CARD_STRINGS_EN = {
@@ -980,7 +942,10 @@ var REMOTE_CARD_STRINGS_EN = {
     switchToDeviceMode: "Switch to device mode",
     switchToActivityMode: "Switch to activity mode",
     deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapMissingServer: "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
+    hubUnreachable: (detail) => `The server cannot reach the hub (${detail}).`,
+    controlRefused: "The hub did not take that command.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
@@ -990,7 +955,6 @@ var REMOTE_CARD_STRINGS_EN = {
   },
   assist: {
     label: "Key capture",
-    start: "Start",
     waiting: "Waiting for keypress",
     exitEditMode: "Exit Edit mode to begin",
     captured: (label) => `Captured: ${label}`,
@@ -1039,18 +1003,8 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select background color",
-      show_activity: "Activity/device selector",
-      show_dpad: "Direction pad",
-      show_nav: "Back/Home/Menu keys",
-      show_mid: "Volume/Channel rockers",
-      show_media: "Playback",
-      show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C buttons",
-      show_macros_button: "Macros button",
-      show_favorites_button: "Favorites button",
       max_width: "Maximum card width (px)",
-      key_style: "Button style",
-      group_order: "Group order"
+      key_style: "Button style"
     },
     generalOptionsTitle: "General options",
     keyCapture: "Key capture",
@@ -1086,6 +1040,9 @@ var REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel2) => `Reorder ${groupLabel2} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -1193,8 +1150,14 @@ function deepMerge(base, overlay) {
   }
   return out;
 }
+var REMOTE_CARD_LOCALE_ALIASES = {
+  "zh": "zh-hans",
+  "zh-cn": "zh-hans",
+  "zh-sg": "zh-hans"
+};
 function resolveTranslation(language) {
-  const lang = String(language || "").toLowerCase();
+  const raw = String(language || "").toLowerCase().replaceAll("_", "-");
+  const lang = REMOTE_CARD_LOCALE_ALIASES[raw] ?? (raw.startsWith("zh-hans-") ? "zh-hans" : raw);
   if (!lang) return null;
   if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
   const base = lang.split(/[-_]/)[0];
@@ -1243,18 +1206,19 @@ function layoutHasCustomOverride(config, selection) {
   const override = layouts[key] ?? (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
   return Boolean(override && typeof override === "object");
 }
-function layoutSelectionNote(config, selection) {
+function layoutSelectionNote(config, selection, strings = str()) {
+  const e6 = strings.editor;
   if (selection === "default") {
-    return str().editor.noteDefaultLayout;
+    return e6.noteDefaultLayout;
   }
   if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
-    return str().editor.noteDeviceDefaultLayout;
+    return e6.noteDeviceDefaultLayout;
   }
   const isDevice = isDeviceLayoutKey(selection);
   if (layoutHasCustomOverride(config, selection)) {
-    return isDevice ? str().editor.noteCustomDeviceLayout : str().editor.noteCustomActivityLayout;
+    return isDevice ? e6.noteCustomDeviceLayout : e6.noteCustomActivityLayout;
   }
-  return isDevice ? str().editor.noteUsingDeviceDefault : str().editor.noteUsingActivityDefault;
+  return isDevice ? e6.noteUsingDeviceDefault : e6.noteUsingActivityDefault;
 }
 function editorActivitiesFromState(state) {
   const list = state?.attributes?.activities;
@@ -1418,8 +1382,8 @@ function resetEditorLayout(config, selection) {
   }
   return next;
 }
-function groupLabel(key) {
-  return str().groups[key] || key;
+function groupLabel(key, strings = str()) {
+  return strings.groups[key] || key;
 }
 function isGroupEnabled(config, selection, key) {
   const prop = GROUP_VISIBILITY_KEYS[key];
@@ -2838,15 +2802,6 @@ var REMOTE_CARD_CSS = `
       }
     `;
 var REMOTE_CARD_EDITOR_CSS = `
-          .sb-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); z-index: 9999; }
-          .sb-modal.open { display: flex; }
-          .sb-modal__dialog { width: min(560px, 92vw); max-height: 90vh; overflow: auto; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
-          .sb-modal__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-          .sb-modal__title { font-weight: 700; font-size: 18px; }
-          .sb-modal__close { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 22px; line-height: 1; }
-          .sb-modal__text { font-size: 15px; line-height: 1.5; opacity: 0.95; }
-          .sb-modal__optout { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-          .sb-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
           .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
           .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; transition: background-color 120ms ease; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
@@ -2855,7 +2810,6 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-exp-collapsed .sb-exp-body { display: none; }
           .sb-exp:not(.sb-exp-collapsed) > .sb-exp-hdr { background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
                     
-          .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
           .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -2904,10 +2858,10 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-row-menu-btn { color: var(--secondary-text-color); }
           .sb-row-menu-btn ha-icon { --mdc-icon-size: 20px; }
           .sb-row-menu-btn.is-open { border-color: var(--primary-color); color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
-          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
           /* These labels explain the switch next to them \u2014 translations can be long, so wrap instead of ellipsing. */
           .sb-row-menu-panel .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
-          .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+          .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
           /* This label explains the switch next to it \u2014 translations can be long, so wrap instead of ellipsing. */
           .sb-mf-rows-row .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
           .sb-mf-rows-row + .sb-layout-row { border-top: 0; }
@@ -2919,6 +2873,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
+          .sb-drag-handle:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; border-radius: 8px; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           /* Shortcuts slot editing on the group-order row: the three mini
              slot buttons fill the row's second cell; the open slot's panel
@@ -2934,7 +2889,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-shortcut-slot.is-configured { border-style: solid; }
           .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
           .sb-shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--primary-color); pointer-events: none; }
-          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
           .sb-shortcut-panel ha-form { display: block; }
           .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
           .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
@@ -2973,98 +2928,9 @@ var REMOTE_CARD_EDITOR_CSS = `
             --mdc-typography-body2-line-height: 1.3;
             --ha-font-size-m: 13px;
           }
-          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-          .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
-          .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
-          .sb-command-sync-row-ok { border-color: var(--success-color, #22c55e); border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: rgba(34, 197, 94, 0.12); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
-          .sb-command-sync-message-wrap { display:flex; align-items:center; gap: 8px; min-width: 0; }
-          .sb-command-sync-message-wrap ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
-          .sb-command-sync-row-ok .sb-command-sync-message-wrap ha-icon { color: var(--success-color, #22c55e); }
-          .sb-command-sync-row-error .sb-command-sync-message-wrap ha-icon { color: var(--error-color); }
-          .sb-command-sync-row-running .sb-command-sync-message-wrap ha-icon { color: var(--primary-color); }
-          .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
-          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-sync-btn:hover { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.28); background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
-          .sb-command-sync-btn:active { transform: translateY(1px); }
-          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(var(--rgb-primary-color, 3, 169, 244), 0.45); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
-          .sb-command-sync-btn[disabled],
-          .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
-          .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
-          .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: start; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
-          .sb-command-slot-btn:hover { border-color: var(--primary-color); }
-          .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
-                    .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
-          .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 20px; color: var(--state-icon-color); }
-          .sb-command-slot-name { font-weight: 700; font-size: 16px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary-text-color); }
-          .sb-command-slot-meta { margin-top: 3px; font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display:flex; align-items:center; gap: 4px; }
-          .sb-command-slot-favorite { color: var(--error-color); display:inline-flex; }
-          .sb-command-slot-favorite ha-icon { --mdc-icon-size: 14px; }
-          .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
-          .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
-          .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
-          .sb-command-slot-clear { position: absolute; top: 8px; inset-inline-end: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
-          .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
-          .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: start; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
-          .sb-command-slot-action-btn:active { transform: translateY(1px); }
-          .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
-          .sb-command-slot-confirm { padding: 14px 12px 10px; display:flex; flex-direction:column; }
-          .sb-command-slot-confirm-title { font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--primary-text-color); }
-          .sb-command-slot-confirm-sub { margin-top: 1px; font-size: 12px; color: var(--secondary-text-color); }
-          .sb-command-slot-confirm-actions { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 10px 10px; }
-          .sb-command-slot-confirm-actions .sb-command-slot-action-btn { margin: 0; text-align: center; justify-content: center; display:flex; align-items:center; }
-          .sb-command-slot-empty { border-color: var(--divider-color); background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); }
-          .sb-command-slot-empty .sb-command-slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; }
-          .sb-command-slot-empty .sb-command-slot-empty-text { font-size: 64px; line-height: 1; color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; opacity: 0.8; }
-          .sb-command-slot-empty .sb-command-slot-name { font-size: 18px; font-weight: 500; text-align: center; color: var(--secondary-text-color); }
-          .sb-command-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.52); display:none; align-items:center; justify-content:center; padding: 18px; }
-          .sb-command-modal.open { display:flex; }
-          .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); }
-          .sb-command-dialog-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--divider-color); }
-          .sb-command-dialog-title { font-size: 16px; font-weight: 700; }
-          .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
-          .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
-          .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
-          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: start; }
-          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-inline-start: auto; }
-          .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
-          .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
-          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-hub-version-warn-btn { all: unset; cursor: pointer; text-decoration: underline; display: block; }
-          .sb-hub-version-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
-          .sb-hub-version-chip { border: 1px solid var(--divider-color); border-radius: 20px; padding: 4px 14px; background: transparent; color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
-          .sb-hub-version-chip.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-note { border: 1px solid var(--divider-color); border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: var(--ha-card-background, var(--card-background-color)); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
-          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.22); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
-          .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
-          .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
-          .sb-command-input-label { font-size: 12px; opacity: 0.78; }
-          .sb-command-name-field { width: 100%; }
-          .sb-command-input-select { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, transparent); color: inherit; min-height: 40px; padding: 6px 12px; }
-          .sb-command-checkbox { width: 100%; border: 0; background: transparent; padding: 0; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; cursor: pointer; color: inherit; }
-          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: var(--ha-card-background, rgba(0, 0, 0, 0.12)); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
-          .sb-command-checkbox-icon ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-checkbox-left { display:flex; align-items:center; gap:10px; }
-          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
-          .sb-command-helper { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-          .sb-command-activity-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
-          .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
-          .sb-command-activity-chip.active { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
-          .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
-          .sb-command-action-tabs { display:flex; gap:8px; }
-          .sb-command-action-tab { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 8px 12px; cursor:pointer; font: inherit; }
-          .sb-command-action-tab.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-body ha-textfield,
-          .sb-command-dialog-body ha-selector { width: 100%; }
           @media (max-width: 760px) {
-            .sb-command-grid { grid-template-columns: 1fr; }
           }
           @media (max-width: 700px) {
-            .sb-command-modal { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-            .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
-            .sb-command-dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
           }
         `;
 
@@ -3282,10 +3148,10 @@ var computeSubFormLabel = (schema) => {
   return schema.name;
 };
 var computeSubFormHelper = (schema) => schema.name === INITIAL_VIEW_FIELD ? str().editor.initialViewHelper : void 0;
-function longPressGroupLabel(group) {
-  if (group === "volume") return str().editor.volume;
-  if (group === "channel") return str().editor.channel;
-  if (group === "dpad") return str().groups.dpad || group;
+function longPressGroupLabel(group, strings = str()) {
+  if (group === "volume") return strings.editor.volume;
+  if (group === "channel") return strings.editor.channel;
+  if (group === "dpad") return strings.groups.dpad || group;
   return group;
 }
 function renderGeneralOptionsSection(params) {
@@ -3820,7 +3686,7 @@ function renderSwitchItem(text, checked, onSet, disabled = false) {
   };
   return b2`
     <div class="sb-layout-switch-item${disabled ? " is-disabled" : ""}">
-      <ha-switch .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
+      <ha-switch aria-label=${text} .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
       <div class="sb-layout-switch-label">${text}</div>
     </div>
   `;
@@ -3877,12 +3743,13 @@ function renderGroupOrderSection(params) {
   )}
     </ha-select>
   `;
-  const stepButton = (icon, delta) => {
+  const stepButton = (icon, delta, label) => {
     const disabled = !params.asRows || delta < 0 && params.visibleRows <= MIN_ROW_VISIBLE_ROWS || delta > 0 && params.visibleRows >= MAX_ROW_VISIBLE_ROWS;
     return b2`
       <button
         type="button"
         class="sb-icon-btn"
+        aria-label=${label}
         .disabled=${disabled}
         @click=${(ev) => {
       stopEvent(ev);
@@ -3903,6 +3770,7 @@ function renderGroupOrderSection(params) {
     <div class="sb-layout-row sb-mf-rows-row">
       <div class="sb-layout-switch-item">
         <ha-switch
+          aria-label=${params.isDeviceSelection ? str().editor.commandsAsRows : str().editor.macrosFavoritesAsRows}
           .checked=${params.asRows}
           @change=${(ev) => {
     stopEvent(ev);
@@ -3919,9 +3787,9 @@ function renderGroupOrderSection(params) {
       >
         <div class="sb-layout-switch-label">${str().editor.visibleRows}</div>
         <div class="sb-rows-stepper">
-          ${stepButton("mdi:minus", -1)}
+          ${stepButton("mdi:minus", -1, str().editor.fewerVisibleRows)}
           <div class="sb-rows-value">${String(params.visibleRows)}</div>
-          ${stepButton("mdi:plus", 1)}
+          ${stepButton("mdi:plus", 1, str().editor.moreVisibleRows)}
         </div>
       </div>
     </div>
@@ -3965,8 +3833,27 @@ function renderGroupOrderSection(params) {
   `;
   const moveControl = (key, index) => {
     if (params.sortableReady) {
+      const last = params.visibleOrder.length - 1;
       return b2`
-        <div class="sb-drag-handle" aria-hidden="true">
+        <div
+          class="sb-drag-handle"
+          role="button"
+          tabindex="0"
+          data-group-key=${key}
+          aria-label=${str().editor.reorderGroupHandle(params.groupLabel(key))}
+          @keydown=${(ev) => {
+        const delta = ev.key === "ArrowUp" ? -1 : ev.key === "ArrowDown" ? 1 : 0;
+        if (!delta) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (delta < 0 && index === 0 || delta > 0 && index === last) return;
+        const root = ev.currentTarget.getRootNode();
+        params.onMoveGroupByKey(key, delta);
+        requestAnimationFrame(() => {
+          root.querySelector(`.sb-drag-handle[data-group-key="${key}"]`)?.focus();
+        });
+      }}
+        >
           <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
         </div>
       `;
@@ -4623,7 +4510,11 @@ var SofabatonRemoteCardEditor = class extends i4 {
       ] : []
     ];
     if (!selectionOptions.some((option) => option.value === selection)) {
-      this._layoutSelection = "default";
+      const deviceId = parseDeviceLayoutKey(selection);
+      selectionOptions.push({
+        value: selection,
+        label: selection === "device:default" ? str().editor.allDevicesOption : deviceId != null ? str().card.deviceFallback(deviceId) : str().card.activityFallback(selection)
+      });
     }
     const isEditorX2 = this._isEditorX2();
     const layoutCfg = layoutConfigForSelection(this._config, this._layoutSelectionKey());
@@ -5011,8 +4902,8 @@ function attachPrimaryAction(els, fn, options = {}) {
     (el) => Boolean(el)
   );
   const gate = createPrimaryActionGate();
-  const wrapped = (ev) => {
-    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+  const wrapped = (ev, gateType = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: ev.pointerId }, Date.now())) return;
     if (typeof ev.preventDefault === "function") ev.preventDefault();
     if (typeof ev.stopPropagation === "function") ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === "function")
@@ -5023,21 +4914,34 @@ function attachPrimaryAction(els, fn, options = {}) {
     } catch (e6) {
     }
   };
+  const keyboardClick = (ev) => {
+    if (ev.detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev) => {
+    const key = ev.key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 var DRAWER_MAX_HEIGHT = 350;
@@ -5901,6 +5805,9 @@ var RemoteCardStore = class {
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
+      // A binding-only edit changes only this; the keys' long-press arming
+      // is computed at render time from it (CR-F4a-3).
+      stableJsonSignature(attrs?.long_press_keys),
       stableJsonSignature(this._config?.background_override),
       themeName,
       themeMode,
@@ -6376,6 +6283,17 @@ var RemoteCardStore = class {
       }
     }, 6e4);
   }
+  /**
+   * A control request was refused (the server answers 409/404, HA raises).
+   * The card must not keep waiting for an activity switch that will not
+   * happen; the rejection itself stops here (CR-F4a-7). The server backend
+   * shows it on the host's banner.
+   */
+  controlFailed() {
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.stopActivityLoading();
+  }
   stopActivityLoading(notify = true) {
     if (!this.activityLoadActive) return;
     this.activityLoadActive = false;
@@ -6769,7 +6687,7 @@ var RemoteCardStore = class {
     const deviceModeAvailable = this.deviceModeAvailable() && deviceToggleEnabled(layoutConfig);
     const layoutKey = mode === "device" ? deviceLayoutKey(deviceId) : activityId;
     const commands = keymapEntry?.status === "ready" ? this.filterAndSortCommands(keymapEntry.commands) : [];
-    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
+    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? this._backend?.kind === "server" ? str().card.deviceKeymapMissingServer : str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
     return {
       remote,
       isUnavailable,
@@ -6814,6 +6732,11 @@ var RemoteCardStore = class {
 };
 
 // remote-card/src/remote-card-assist-yaml.ts
+function yamlScalar(value) {
+  const text = String(value ?? "");
+  const plain = text !== "" && text === text.trim() && !/^[-?:,[\]{}#&*!|>'"%@`]/.test(text) && !/: |:$| #/.test(text) && !/^(?:y|yes|n|no|true|false|on|off|null|~)$/i.test(text) && !/^[-+]?(?:\d|\.\d)/.test(text) && !/[\u0000-\u001f]/.test(text);
+  return plain ? text : JSON.stringify(text);
+}
 function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
@@ -6835,7 +6758,7 @@ function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
       "target:",
       `  entity_id: ${entityId}`,
       "data:",
-      `  activity: ${capture.activityName}`
+      `  activity: ${yamlScalar(capture.activityName)}`
     ].join("\n");
   }
   if (kind === "power") {
@@ -6888,7 +6811,7 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
-    `name: ${label}`,
+    `name: ${yamlScalar(label)}`,
     `icon: ${icon}`,
     "tap_action:",
     "  action: perform-action",
@@ -6968,6 +6891,11 @@ var AutomationAssistController = class {
     this.hubMacDetecting = false;
     this.mqttUnsub = null;
     this.mqttTopic = null;
+    // The current subscription, set BEFORE subscribeMessage resolves (HA acks
+    // it a round trip later). A render in that window must not subscribe
+    // again, and a subscription that resolves after being superseded is
+    // cancelled on arrival and never delivers (CR-F4a-2).
+    this.mqttToken = null;
     this.mqttLookupId = 0;
     this.mqttDeviceNames = /* @__PURE__ */ new Map();
     this.mqttDeviceCommands = /* @__PURE__ */ new Map();
@@ -6977,7 +6905,6 @@ var AutomationAssistController = class {
     // Activity-change baseline (drives capture of activity switches)
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
     this.host = host;
   }
   // ---------- session (per-tab, shared across card instances) ----------
@@ -7009,12 +6936,10 @@ var AutomationAssistController = class {
     const currentId = this.host.currentActivityId();
     this.lastActivityLabel = currentLabel;
     this.lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
   resetActivityBaseline() {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
   setActive(active) {
     const next = !!active;
@@ -7137,7 +7062,6 @@ var AutomationAssistController = class {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
   // ---------- notification ----------
@@ -7295,21 +7219,29 @@ var AutomationAssistController = class {
     const mac = this.hubMac;
     if (!mac) return;
     const topic = `${mac}/up`;
-    if (this.mqttTopic === topic && this.mqttUnsub) return;
+    if (this.mqttTopic === topic && this.mqttToken) return;
     this.unsubscribeMqtt();
     const hass = this.host.getHass();
     if (!hass?.connection?.subscribeMessage) return;
     this.mqttTopic = topic;
-    hass.connection.subscribeMessage((msg) => this.handleMqtt(msg), {
+    const token = /* @__PURE__ */ Symbol("mqtt-subscription");
+    this.mqttToken = token;
+    hass.connection.subscribeMessage((msg) => {
+      if (this.mqttToken === token) this.handleMqtt(msg);
+    }, {
       type: "mqtt/subscribe",
       topic
     }).then((unsub) => {
-      this.mqttUnsub = unsub;
+      if (this.mqttToken === token) this.mqttUnsub = unsub;
+      else this.safeUnsubscribe(unsub);
     }).catch(() => {
-      this.mqttUnsub = null;
+      if (this.mqttToken !== token) return;
+      this.mqttToken = null;
+      this.mqttTopic = null;
     });
   }
   unsubscribeMqtt() {
+    this.mqttToken = null;
     if (this.mqttUnsub) {
       const unsubscribe = this.mqttUnsub;
       this.mqttUnsub = null;
@@ -8057,7 +7989,9 @@ var SbKeyButton = class extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button"
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback
     );
   }
   connectedCallback() {
@@ -8094,11 +8028,6 @@ var SbKeyButton = class extends BaseElement {
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
-    });
   }
   disconnectedCallback() {
     this._hold.stop();
@@ -8110,6 +8039,13 @@ if (!customElements.get("sb-key-button")) {
 }
 
 // remote-card/src/sections/key-groups.ts
+function keyFaceLabel(spec) {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+function keyAccessibleLabel(spec) {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
+}
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.C,
   ID.B,
@@ -8141,7 +8077,7 @@ var NUMPAD_KEYS = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -8166,7 +8102,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -8186,14 +8122,11 @@ function renderKey(params, spec) {
   if (!shouldShow) return A;
   const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
   const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
   return b2`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -8223,8 +8156,25 @@ function renderDpad(params, visible, numpad = null) {
     ready ? "dpad--numpad-ready" : "",
     open ? "dpad--numpad-open" : ""
   ].filter(Boolean).join(" ");
+  const onKeydown = (ev) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || ev.currentTarget.contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return b2`
-    <div class=${className} ${numpad?.hostRef ? n6(numpad.hostRef) : A}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n6(numpad.hostRef) : A}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
       </div>
@@ -9075,9 +9025,12 @@ var SofabatonRemoteCard = class extends i4 {
     this._lastSelectedActivityValue = String(value);
     this._lastSelectedActivityAt = now;
     this._fireEvent("haptic", "light");
-    Promise.resolve(this._store.setActivity(value)).catch((err) => {
-      console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
-    });
+    this._control(this._store.setActivity(value));
+  }
+  /** Run a control request: a refusal ends any activity wait instead of
+   *  escaping as an unhandled rejection (CR-F4a-7). */
+  _control(request) {
+    request.catch(() => this._store.controlFailed());
   }
   /**
    * Single stable entry point for the activity/device dropdown. The select's
@@ -9113,6 +9066,20 @@ var SofabatonRemoteCard = class extends i4 {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+  _closeNumpad(restoreFocus) {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  _focusDpadControl(selector) {
+    const target = this._dpadRef.value?.querySelector(selector);
+    const control = target?.shadowRoot?.querySelector(".sb-key-control") ?? target;
+    control?.focus();
   }
   _handleModeToggle() {
     if (this._editMode) return;
@@ -9431,7 +9398,7 @@ var SofabatonRemoteCard = class extends i4 {
           icon: model.icon
         });
         store.triggerCommandPulse();
-        void store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem);
+        this._control(store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem));
       },
       onCustomFavorite: ({ model, rawFavorite }) => {
         if (this._assist.active) {
@@ -9445,7 +9412,7 @@ var SofabatonRemoteCard = class extends i4 {
           return;
         }
         store.triggerCommandPulse();
-        void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
+        this._control(store.sendCustomFavoriteCommand(model.commandId, model.deviceId));
       }
     };
     const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && (this._editMode || store.devicePowerConfigured());
@@ -9454,7 +9421,7 @@ var SofabatonRemoteCard = class extends i4 {
       disabled: disableAll,
       label: str().card.powerButton,
       onToggle: () => {
-        void store.toggleDevicePower();
+        this._control(store.toggleDevicePower());
       }
     };
     const shortcutConfigs = deviceMode ? deviceShortcutsFromConfig(store.config, derived.deviceId) : {};
@@ -9574,7 +9541,8 @@ var SofabatonRemoteCard = class extends i4 {
         available: numpadAvailable,
         open: this._numpadOpen,
         hostRef: this._dpadRef,
-        onOpen: () => this._openNumpad()
+        onOpen: () => this._openNumpad(),
+        onClose: (restoreFocus) => this._closeNumpad(restoreFocus)
       }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -9642,12 +9610,12 @@ var SofabatonRemoteCard = class extends i4 {
         this._assist.setStatus(str().assist.notCaptured);
       }
       this._store.triggerCommandPulse();
-      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      this._control(this._store.sendLongPress(spec.cmd, targetDeviceId));
       return;
     }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",
@@ -9657,7 +9625,7 @@ var SofabatonRemoteCard = class extends i4 {
       });
     }
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(spec.cmd, targetDeviceId);
+    this._control(this._store.sendCommand(spec.cmd, targetDeviceId));
   }
   _onShortcutPress(slot) {
     if (slot.commandId == null) return;
@@ -9673,7 +9641,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(slot.commandId, deviceId);
+    this._control(this._store.sendCommand(slot.commandId, deviceId));
   }
   _onCommandItem(command) {
     const deviceId = this._store.currentDeviceId();
@@ -9688,7 +9656,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(command.command_id, deviceId);
+    this._control(this._store.sendCommand(command.command_id, deviceId));
   }
   updated(_changed) {
     const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
@@ -9748,6 +9716,9 @@ var REMOTE_CARD_STRINGS_AR = {
     switchToActivityMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
     deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
+    deviceKeymapMissingServer: `\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0643\u062A\u0627\u0644\u0648\u062C ${isolate("Hub")}. \u062D\u062F\u0650\u0651\u062B ${isolate("Hub")} \u0641\u064A \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 ${SOFABATON}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062D\u0629.`,
+    hubUnreachable: (detail) => `\u0644\u0627 \u064A\u0633\u062A\u0637\u064A\u0639 \u0627\u0644\u062E\u0627\u062F\u0645 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 ${isolate("Hub")} (${isolate(detail)}).`,
+    controlRefused: `\u0644\u0645 \u064A\u0642\u0628\u0644 ${isolate("Hub")} \u0647\u0630\u0627 \u0627\u0644\u0623\u0645\u0631.`,
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`,
@@ -9757,7 +9728,6 @@ var REMOTE_CARD_STRINGS_AR = {
   },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    start: "\u0628\u062F\u0621",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
     exitEditMode: "\u063A\u0627\u062F\u0631 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
     captured: (label) => `\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
@@ -9806,18 +9776,8 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
-      show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
-      show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
-      show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
-      show_media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
-      show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
-      show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
-      show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
-      show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
-      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-      group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -9853,6 +9813,9 @@ var REMOTE_CARD_STRINGS_AR = {
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    fewerVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0642\u0644",
+    moreVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0643\u062B\u0631",
+    reorderGroupHandle: (groupLabel2) => `\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 ${isolate(groupLabel2)} (\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u0623\u0633\u0647\u0645)`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -9944,8 +9907,7 @@ registerRemoteCardTranslation("en-gb", {
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select background colour",
-      show_favorites_button: "Favourites button"
+      background_override: "Select background colour"
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows"
@@ -9979,6 +9941,9 @@ var REMOTE_CARD_STRINGS_DE = {
     switchToActivityMode: "In den Aktivit\xE4tsmodus wechseln",
     deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
+    deviceKeymapMissingServer: "Dieses Ger\xE4t ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
+    hubUnreachable: (detail) => `Der Server erreicht den Hub nicht (${detail}).`,
+    controlRefused: "Der Hub hat diesen Befehl nicht angenommen.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivit\xE4tslayout",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
@@ -9988,7 +9953,6 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   assist: {
     label: "Tastendr\xFCcke erfassen",
-    start: "Starten",
     waiting: "Warten auf Tastendruck",
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label) => `Erfasst: ${label}`,
@@ -10037,18 +10001,8 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
-      show_dpad: "Steuerkreuz",
-      show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
-      show_mid: "Lautst\xE4rke- und Kanalwippen",
-      show_media: "Wiedergabe",
-      show_colors: "Rot/Gr\xFCn/Gelb/Blau",
-      show_abc: "A/B/C-Tasten",
-      show_macros_button: "Makrotaste",
-      show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
-      key_style: "Tastenstil",
-      group_order: "Gruppenreihenfolge"
+      key_style: "Tastenstil"
     },
     generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
@@ -10084,6 +10038,9 @@ var REMOTE_CARD_STRINGS_DE = {
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -10189,6 +10146,9 @@ var REMOTE_CARD_STRINGS_ES = {
     switchToActivityMode: "Cambiar al modo de actividad",
     deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
+    deviceKeymapMissingServer: "Este dispositivo no est\xE1 en el cat\xE1logo del hub. Actualiza el hub en el panel de control de Sofabaton y vuelve a cargar esta p\xE1gina.",
+    hubUnreachable: (detail) => `El servidor no puede comunicarse con el hub (${detail}).`,
+    controlRefused: "El hub no acept\xF3 ese comando.",
     poweredOff: "Apagado",
     defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
@@ -10198,7 +10158,6 @@ var REMOTE_CARD_STRINGS_ES = {
   },
   assist: {
     label: "Captura de botones",
-    start: "Iniciar",
     waiting: "Esperando a que se pulse un bot\xF3n",
     exitEditMode: "Sal del modo de edici\xF3n para comenzar",
     captured: (label) => `Capturado: ${label}`,
@@ -10247,18 +10206,8 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad/dispositivo",
-      show_dpad: "Control direccional",
-      show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
-      show_mid: "Controles de volumen y canal",
-      show_media: "Reproducci\xF3n",
-      show_colors: "Rojo/Verde/Amarillo/Azul",
-      show_abc: "Botones A/B/C",
-      show_macros_button: "Bot\xF3n de macros",
-      show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
-      key_style: "Estilo de los botones",
-      group_order: "Orden de los grupos"
+      key_style: "Estilo de los botones"
     },
     generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
@@ -10294,6 +10243,9 @@ var REMOTE_CARD_STRINGS_ES = {
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
+    fewerVisibleRows: "Menos filas visibles",
+    moreVisibleRows: "M\xE1s filas visibles",
+    reorderGroupHandle: (groupLabel2) => `Reordenar ${groupLabel2} (teclas de flecha)`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -10399,6 +10351,9 @@ var REMOTE_CARD_STRINGS_FR = {
     switchToActivityMode: "Passer en mode activit\xE9",
     deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
+    deviceKeymapMissingServer: "Cet appareil ne figure pas dans le catalogue du hub. Actualisez le hub dans le panneau de contr\xF4le Sofabaton, puis rechargez cette page.",
+    hubUnreachable: (detail) => `Le serveur ne parvient pas \xE0 joindre le hub (${detail}).`,
+    controlRefused: "Le hub n\u2019a pas accept\xE9 cette commande.",
     poweredOff: "\xC9teinte",
     defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
     activityFallback: (id) => `Activit\xE9 ${id}`,
@@ -10408,7 +10363,6 @@ var REMOTE_CARD_STRINGS_FR = {
   },
   assist: {
     label: "Capture de touches",
-    start: "D\xE9marrer",
     waiting: "En attente d\u2019une pression sur une touche",
     exitEditMode: "Quittez le mode d\u2019\xE9dition pour commencer",
     captured: (label) => `Capture\xA0: ${label}`,
@@ -10457,18 +10411,8 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
-      show_dpad: "Pav\xE9 directionnel",
-      show_nav: "Touches Retour/Accueil/Menu",
-      show_mid: "Touches de volume et de cha\xEEne",
-      show_media: "Lecture",
-      show_colors: "Rouge/Vert/Jaune/Bleu",
-      show_abc: "Touches A/B/C",
-      show_macros_button: "Bouton des macros",
-      show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
-      key_style: "Style des touches",
-      group_order: "Ordre des groupes"
+      key_style: "Style des touches"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
@@ -10504,6 +10448,9 @@ var REMOTE_CARD_STRINGS_FR = {
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel2) => `R\xE9ordonner ${groupLabel2} (touches fl\xE9ch\xE9es)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -10608,6 +10555,9 @@ var REMOTE_CARD_STRINGS_NL = {
     switchToActivityMode: "Naar activiteitsmodus schakelen",
     deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
+    deviceKeymapMissingServer: "Dit apparaat staat niet in de catalogus van de hub. Vernieuw de hub in het Sofabaton-bedieningspaneel en laad deze pagina daarna opnieuw.",
+    hubUnreachable: (detail) => `De server kan de hub niet bereiken (${detail}).`,
+    controlRefused: "De hub heeft dat commando niet aangenomen.",
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
@@ -10617,7 +10567,6 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   assist: {
     label: "Knopdrukken registreren",
-    start: "Starten",
     waiting: "Wachten op een knopdruk",
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label) => `Vastgelegd: ${label}`,
@@ -10666,18 +10615,8 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteits-/apparaatkiezer",
-      show_dpad: "Richtingsknoppen",
-      show_nav: "Terug/Home/Menu-knoppen",
-      show_mid: "Volume-/kanaalknoppen",
-      show_media: "Afspelen",
-      show_colors: "Rood/groen/geel/blauw",
-      show_abc: "A/B/C-knoppen",
-      show_macros_button: "Macroknop",
-      show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
-      key_style: "Knopstijl",
-      group_order: "Groepsvolgorde"
+      key_style: "Knopstijl"
     },
     generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
@@ -10713,6 +10652,9 @@ var REMOTE_CARD_STRINGS_NL = {
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
+    fewerVisibleRows: "Minder zichtbare rijen",
+    moreVisibleRows: "Meer zichtbare rijen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verplaatsen (pijltjestoetsen)`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -10817,6 +10759,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     switchToActivityMode: "\u5207\u6362\u5230\u6D3B\u52A8\u6A21\u5F0F",
     deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
     deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
+    deviceKeymapMissingServer: "\u6B64\u8BBE\u5907\u4E0D\u5728 Hub \u7684\u76EE\u5F55\u4E2D\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u4E2D\u5237\u65B0 Hub\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u6B64\u9875\u9762\u3002",
+    hubUnreachable: (detail) => `\u670D\u52A1\u5668\u65E0\u6CD5\u8FDE\u63A5\u5230 Hub\uFF08${detail}\uFF09\u3002`,
+    controlRefused: "Hub \u672A\u63A5\u53D7\u8BE5\u547D\u4EE4\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
     defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
@@ -10826,7 +10771,6 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",
-    start: "\u5F00\u59CB",
     waiting: "\u7B49\u5F85\u6309\u952E",
     exitEditMode: "\u9000\u51FA\u7F16\u8F91\u6A21\u5F0F\u540E\u5373\u53EF\u5F00\u59CB",
     captured: (label) => `\u5DF2\u6355\u83B7\uFF1A${label}`,
@@ -10875,18 +10819,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
-      show_dpad: "\u65B9\u5411\u952E",
-      show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
-      show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
-      show_media: "\u64AD\u653E",
-      show_colors: "\u7EA2/\u7EFF/\u9EC4/\u84DD",
-      show_abc: "A/B/C \u6309\u952E",
-      show_macros_button: "\u5B8F\u6309\u94AE",
-      show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
-      key_style: "\u6309\u952E\u6837\u5F0F",
-      group_order: "\u5206\u7EC4\u987A\u5E8F"
+      key_style: "\u6309\u952E\u6837\u5F0F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",
@@ -10922,6 +10856,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
+    fewerVisibleRows: "\u51CF\u5C11\u53EF\u89C1\u884C\u6570",
+    moreVisibleRows: "\u589E\u52A0\u53EF\u89C1\u884C\u6570",
+    reorderGroupHandle: (groupLabel2) => `\u8C03\u6574${groupLabel2}\u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",
@@ -11014,8 +10951,14 @@ win.customCards = win.customCards || [];
 if (!win.customCards.some((c7) => c7.type === TYPE)) {
   win.customCards.push({
     type: TYPE,
-    name: str().card.pickerName,
-    description: str().card.pickerDescription,
+    // Getters, so the picker shows the active language rather than the
+    // English the module saw at load time (CR-X7-2).
+    get name() {
+      return str().card.pickerName;
+    },
+    get description() {
+      return str().card.pickerDescription;
+    },
     // Card picker (HA 2026.6+): recommend this card for Sofabaton remote
     // entities, which is exactly what it binds to.
     getEntitySuggestion: (hass, entityId) => {

@@ -18,11 +18,13 @@ import {
   numpadEnabledForEditor,
   numpadTogglePatch,
 } from "../../remote-card/src/remote-card-editor-layout";
-import { NUMPAD_KEYS, X2_ONLY_KEY_IDS } from "../../remote-card/src/sections/key-groups";
+import { NUMPAD_KEYS, X2_ONLY_KEY_IDS, keyAccessibleLabel, keyFaceLabel } from "../../remote-card/src/sections/key-groups";
 import { renderGroupOrderSection } from "../../remote-card/src/editor-sections/group-order";
 import { RemoteCardStore } from "../../remote-card/src/state/remote-card-store";
-import { automationAssistLabelForKey } from "../../remote-card/src/remote-card-ui-helpers";
+import { setRemoteCardLanguage, str } from "../../remote-card/src/remote-card-strings";
+import "../../remote-card/src/remote-card-translations";
 import type { HassLike, RemoteCardConfig } from "../../remote-card/src/remote-card-types";
+import { createRemoteCardHass } from "./helpers/remote-card-hass";
 
 const ENTITY = "remote.living_room";
 
@@ -83,26 +85,8 @@ function x2State(assigned: number[], overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createHass(options: {
-  state: Record<string, unknown>;
-  keymapResponse?: unknown;
-}): HassLike {
-  return {
-    states: { [ENTITY]: options.state as never },
-    async callWS<T>(message: Record<string, unknown>) {
-      if (String(message.type) === "config/entity_registry/get") {
-        return { platform: "sofabaton_x1s" } as T;
-      }
-      if (String(message.type) === "sofabaton_x1s/device/keymap") {
-        return (options.keymapResponse ?? { keymap: null, reason: "cache_miss" }) as T;
-      }
-      return { ok: true } as T;
-    },
-    async callService() {
-      return undefined;
-    },
-  };
-}
+// The shared fake (tests/frontend/helpers/remote-card-hass.ts).
+const createHass = createRemoteCardHass;
 
 function createStore(hass: HassLike, config: Partial<RemoteCardConfig> = {}) {
   const store = new RemoteCardStore(() => undefined, { fireEvent: () => undefined });
@@ -132,10 +116,21 @@ test("the keypad is twelve X2-only keys in phone order", () => {
   assert.equal(ID.NUM_1, 169);
 });
 
-test("Key capture labels: digits stay themselves, E resolves to Enter", () => {
-  assert.equal(automationAssistLabelForKey("num7", "7"), "7");
-  assert.equal(automationAssistLabelForKey("numenter", ""), "Enter");
-  assert.equal(automationAssistLabelForKey("numdash", "-"), "-");
+test("Key capture labels: digits stay themselves, E resolves to Enter (as rendered, CR-F4b-3)", () => {
+  const spec = (key: string) => NUMPAD_KEYS.find((candidate) => candidate.key === key)!;
+  assert.equal(keyAccessibleLabel(spec("num7")), "7");
+  assert.equal(keyAccessibleLabel(spec("numenter")), "Enter");
+  assert.equal(keyAccessibleLabel(spec("numdash")), "-");
+  assert.equal(keyFaceLabel(spec("numenter")), "E");
+});
+
+test("the Exit key's face and name follow the language (CR-F4b-3)", () => {
+  const exit = { key: "exit", id: 1, cmd: 1, label: "Exit", icon: "", localizedFace: true };
+  setRemoteCardLanguage("de");
+  assert.equal(keyFaceLabel(exit), str().keys.exit);
+  assert.notEqual(keyFaceLabel(exit), "Exit");
+  assert.equal(keyAccessibleLabel(exit), str().keys.exit);
+  setRemoteCardLanguage("en");
 });
 
 // ---------- layout switch ----------

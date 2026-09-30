@@ -8,7 +8,8 @@
 
 import type { WifiDeviceSpec, WifiDeviceView, WifiSlot } from "../panel-api";
 import type { PressEvent } from "../panel-store";
-import { supportsUnicodeNames } from "./device-editor-state";
+import { sanitizeWifiName } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-names";
+import { hubSupportsPowerInput } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 
 /** The library's `WIFI_SLOT_COUNT`: shorts are commands 1..10, longs 11..20. */
 export const WIFI_SLOT_COUNT = 10;
@@ -139,16 +140,12 @@ export function configuredCount(draft: WifiDraft): number {
   return draft.slots.filter((_slot, index) => isSlotConfigured(draft, index)).length;
 }
 
-/** The power lines and the input switch exist on X1S and X2; the X1 firmware ignores them. */
-export function supportsPowerInput(hubVersion: string | null | undefined): boolean {
-  return supportsUnicodeNames(hubVersion);
-}
+/** The card's rule (shared/hub-rules.ts): hidden on the X1 only; an unknown
+ *  version keeps the full UI, as on the card (CR-X6-3). */
+export const supportsPowerInput = hubSupportsPowerInput;
 
-/** The card's `_sanitizeCommandName`: what the hub can store, 20 wide. */
-export function sanitizeWifiName(hubVersion: string | null | undefined, value: unknown): string {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, WIFI_NAME_MAX);
-}
+/** The card's rule (shared/hub-names.ts): what the hub can store, 20 wide. */
+export { sanitizeWifiName };
 
 /** Why a name cannot be saved, or null. `leadingSpace` is the card's message. */
 export function nameProblem(value: string, messages: { required: string; leadingSpace: string }): string | null {
@@ -286,7 +283,7 @@ export function withSlotCleared(draft: WifiDraft, index: number): WifiDraft {
   };
 }
 
-// -- hard buttons (the card's HARD_BUTTON_ID_MAP and its groups) -------------------------------------
+// -- hard buttons (the tools card's HARD_BUTTON_ID_MAP and its groups) -------------------------------
 
 export interface HardButton {
   /** The card's key name; also the key of its `keyLabels` string. */
