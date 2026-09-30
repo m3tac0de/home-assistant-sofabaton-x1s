@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PanelApi, type JobView, type SnapshotDocument } from "../../server-panel/src/panel-api";
+import { PanelApi, jobOutcomeText, type JobView, type SnapshotDocument } from "../../server-panel/src/panel-api";
 import { boundButtons, buildCatalog, countLine, countsFromSnapshot, entryKey, jobPhrase, movedIds, workingOrder } from "../../server-panel/src/views/catalog-view";
 
 const DEVICES = [
@@ -149,4 +149,25 @@ test("the catalog routes and refresh scopes hit the documented paths; followJob 
   polls = -1000;
   const stuck = await api.followJob("h", "j1", { maxPolls: 2, sleep: async () => {} });
   assert.equal(stuck?.status, "running");
+});
+
+test("followJob rides out a failed poll and reports a still-running job as running (CR-F5a-5)", async () => {
+  let polls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    polls++;
+    if (polls === 1) throw new TypeError("network blip");
+    if (polls === 2) return new Response("{}", { status: 503, headers: { "content-type": "application/json" } });
+    const status = polls < 4 ? "running" : "done";
+    return new Response(JSON.stringify({ job_id: "j1", hub_id: "h", kind: "sync_device", status }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const api = new PanelApi("http://host", fetchImpl);
+  const job = await api.followJob("h", "j1", { sleep: async () => {} });
+  assert.equal(job?.status, "done");
+
+  // A 404 (the job is gone) ends the follow.
+  const gone = new PanelApi("http://host", async () => new Response("{}", { status: 404, headers: { "content-type": "application/json" } }));
+  assert.equal(await gone.followJob("h", "j1", { sleep: async () => {} }), null);
+
+  // After the cap the job may still finish: the text says so instead of "failed".
+  assert.match(String(jobOutcomeText({ job_id: "j1", hub_id: "h", kind: "sync_device", status: "running" } as never)), /Still running/);
 });

@@ -136,7 +136,9 @@ export class SbPanelServer extends LitElement {
       const response = await this.api.serverSettings();
       if (response.ok && response.body) {
         this._ports = response.body;
-        this._portDraft = {};
+        // The draft is left alone: a re-attach from the view cache re-reads
+        // the ports but keeps what the user typed (CR-F5a-12); a save
+        // clears the draft itself.
       } else {
         this._setPortStatus(problemText(response), true);
       }
@@ -359,7 +361,7 @@ export class SbPanelServer extends LitElement {
     const info = this.info;
     const listener = this._listener ?? info?.callback_listener ?? null;
     const listenerText = !listener ? "unknown" : listener.bound ? `bound on :${listener.bound_port}` : listener.wanted ? "wanted, not bound" : "idle (no callback devices)";
-    // Set on the server's command line or in its environment only; the panel shows it, never edits it.
+    // Edited on the MQTT broker page (mqtt.json), or set read-only by flags or the environment.
     const mqtt = (info?.mqtt ?? null) as { configured?: boolean; connected?: boolean; wanted?: boolean; host?: string | null; port?: number | null; tls?: boolean; last_error?: string | null } | null;
     const mqttAt = mqtt ? `${mqtt.host}:${mqtt.port}${mqtt.tls ? " (TLS)" : ""}` : "";
     const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (see MQTT broker)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;

@@ -121,7 +121,8 @@ export class SbPanelMqtt extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    void this._load(true);
+    // A re-attach from the view cache keeps a draft the user typed (CR-F5a-12).
+    void this._load(!this._config || !this._dirty());
     this._offStream = this.stream?.onMessage((message: StreamMessage) => {
       const kind = String(message.data.kind ?? "");
       if (message.data.type === "server_event" && (kind === "mqtt_config" || kind.startsWith("mqtt_"))) void this._load(kind === "mqtt_config" && !this._dirty());

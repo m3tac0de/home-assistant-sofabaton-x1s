@@ -27,13 +27,15 @@ export function selectedHub(snapshot: PanelSnapshot): HubView | null {
 // -- gates ----------------------------------------------------------------------------
 
 /** Why a hub cannot be worked on right now, or "pass". */
-export type Gate = "server_unreachable" | "hub_disabled" | "hub_offline" | "app_holds_hub" | "first_sync" | "pass";
+export type Gate = "server_unreachable" | "hub_disabled" | "hub_not_running" | "hub_offline" | "app_holds_hub" | "first_sync" | "pass";
 
 export function gateFor(snapshot: PanelSnapshot, runtime: HubRuntime | null): Gate {
   if (!snapshot.server.reachable) return "server_unreachable";
   if (!runtime) return "pass";
   const hub = runtime.hub;
-  if (!hub.enabled || !hub.status) return "hub_disabled";
+  if (!hub.enabled) return "hub_disabled";
+  // Enabled but no status: the proxy did not start (the picker offers Retry start).
+  if (!hub.status) return "hub_not_running";
   if (!hub.status.hub_connected || hub.status.mode === "disconnected") return "hub_offline";
   if (hub.status.mode === "observe") return "app_holds_hub";
   if (!hub.status.catalog_ready) return "first_sync";
@@ -43,6 +45,7 @@ export function gateFor(snapshot: PanelSnapshot, runtime: HubRuntime | null): Ga
 export const GATE_LABELS: Record<Exclude<Gate, "pass">, string> = {
   server_unreachable: "The server is not answering",
   hub_disabled: "This hub is disabled",
+  hub_not_running: "The hub's proxy did not start",
   hub_offline: "Waiting for the hub to connect",
   app_holds_hub: "The Sofabaton app holds the hub",
   first_sync: "First sync running",
@@ -253,7 +256,7 @@ export function draftBannerText(scope: string): string {
 /** What the bottom dock narrates for a hub, by the card's precedence: a
  *  running job, then a notice, then a stopped apply, then a gate, then idle.
  *  An unreachable server is said even with no hub selected. */
-export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean; unsyncedWifi?: boolean } = {}): DockModel {
+export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean; unsyncedWifi?: boolean; unsavedLayout?: boolean } = {}): DockModel {
   const job = activeJob(runtime?.hub);
   if (job) {
     const cancelling = runtime?.cancelRequestedJobId === job.job_id;
@@ -269,6 +272,8 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, v
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" };
   // The Wifi Device's draft lives in its view (wifi commands plan, section 3); Sync to Hub is up in the view's header.
   if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes — sync to the hub to apply them" };
+  // The Remote > Layout document lives in its view; Save is in the view (CR-F5a-4).
+  if (view.unsavedLayout) return { kind: "unsynced_view", text: "Unsaved layout changes — Save keeps them" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || (gate !== "pass" && runtime)) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };

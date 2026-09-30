@@ -1,5 +1,5 @@
 import { html, nothing, type TemplateResult } from "lit";
-import { str } from "../remote-card-strings";
+import { str, type RemoteCardStrings } from "../remote-card-strings";
 import { KEY_CAPTURE_HELP_URL } from "../remote-card-shared";
 import { LONG_PRESS_GROUPS } from "../remote-card-long-press";
 import type { HassLike } from "../remote-card-types";
@@ -60,10 +60,10 @@ const computeSubFormHelper = (schema: { name: string }): string | undefined =>
   schema.name === INITIAL_VIEW_FIELD ? str().editor.initialViewHelper : undefined;
 
 /** Localized label for one long-press group (reuses the layout wording). */
-export function longPressGroupLabel(group: string): string {
-  if (group === "volume") return str().editor.volume;
-  if (group === "channel") return str().editor.channel;
-  if (group === "dpad") return str().groups.dpad || group;
+export function longPressGroupLabel(group: string, strings: RemoteCardStrings = str()): string {
+  if (group === "volume") return strings.editor.volume;
+  if (group === "channel") return strings.editor.channel;
+  if (group === "dpad") return strings.groups.dpad || group;
   return group;
 }
 

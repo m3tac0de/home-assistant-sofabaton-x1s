@@ -11060,7 +11060,9 @@ function jobOutcomeText(job) {
   if (!job) return "The job could not be followed";
   if (job.status === "done") return null;
   if (job.error) return problemSummary(job.error) || "Failed";
-  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
+  if (job.status === "cancelled") return "Cancelled";
+  if (job.status === "failed") return "Failed";
+  return "Still running on the server; the dock shows when it ends";
 }
 var PanelApi = class {
   constructor(baseUrl, fetchImpl) {
@@ -11180,9 +11182,6 @@ var PanelApi = class {
   /** Saves to server.json; the ports apply on the next server start. */
   updateServerSettings(changes) {
     return this.request("PUT", "server/settings", { body: changes });
-  }
-  updateStatus() {
-    return this.request("GET", "server/updates");
   }
   /** One check against PyPI now; enables nothing, downloads nothing. */
   checkForUpdates() {
@@ -11378,21 +11377,37 @@ var PanelApi = class {
     return this.request("DELETE", `${this._hub(hubId)}/applies/${encodeURIComponent(applyId)}`);
   }
   /**
-   * Poll a job until it reaches a terminal state (or the poll count runs
-   * out); `onUpdate` sees every answer. Resolves with the last view.
+   * Poll a job until it reaches a terminal state; `onUpdate` sees every
+   * answer. Jobs are server-authoritative, so a poll that fails in transit
+   * (a network blip, a 5xx) backs off and polls again instead of reporting
+   * the job as failed; only a terminal state, a 4xx answer (the job is
+   * gone) or the long cap ends it (CR-F5a-5). Resolves with the last view,
+   * which after the cap can still be running.
    */
   async followJob(hubId, jobId, options = {}) {
     const interval = options.intervalMs ?? 500;
-    const maxPolls = options.maxPolls ?? 600;
+    const maxPolls = options.maxPolls ?? 3600;
     const sleep2 = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     let last = null;
+    let failures = 0;
     for (let i8 = 0; i8 < maxPolls; i8++) {
-      const response = await this.job(hubId, jobId);
-      if (!response.ok || !response.body) return last;
-      last = response.body;
-      options.onUpdate?.(last);
-      if (TERMINAL_JOB_STATES.has(last.status)) return last;
-      await sleep2(interval);
+      let response = null;
+      try {
+        response = await this.job(hubId, jobId);
+      } catch {
+        response = null;
+      }
+      if (response && response.ok && response.body) {
+        failures = 0;
+        last = response.body;
+        options.onUpdate?.(last);
+        if (TERMINAL_JOB_STATES.has(last.status)) return last;
+        await sleep2(interval);
+        continue;
+      }
+      if (response && response.status >= 400 && response.status < 500) return last;
+      failures += 1;
+      await sleep2(Math.min(interval * 2 ** Math.min(failures, 5), 1e4));
     }
     return last;
   }
@@ -11690,6 +11705,9 @@ function renderBottomDock(params) {
   let center;
   let actions = A;
   const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const confirmActions = b2`
+    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
+    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
   if (model.kind === "running") {
     tone = "dock--running";
     center = status(model.text);
@@ -11709,6 +11727,14 @@ function renderBottomDock(params) {
         params.onDismiss();
       }
     }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
+  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
+    tone = "dock--warn";
+    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
+    actions = confirmActions;
+  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+    tone = "dock--warn";
+    center = status("Discard your unsaved changes? The hub is not changed.");
+    actions = confirmActions;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
     center = status(model.text);
@@ -12147,7 +12173,8 @@ function gateFor(snapshot, runtime) {
   if (!snapshot.server.reachable) return "server_unreachable";
   if (!runtime) return "pass";
   const hub = runtime.hub;
-  if (!hub.enabled || !hub.status) return "hub_disabled";
+  if (!hub.enabled) return "hub_disabled";
+  if (!hub.status) return "hub_not_running";
   if (!hub.status.hub_connected || hub.status.mode === "disconnected") return "hub_offline";
   if (hub.status.mode === "observe") return "app_holds_hub";
   if (!hub.status.catalog_ready) return "first_sync";
@@ -12156,6 +12183,7 @@ function gateFor(snapshot, runtime) {
 var GATE_LABELS = {
   server_unreachable: "The server is not answering",
   hub_disabled: "This hub is disabled",
+  hub_not_running: "The hub's proxy did not start",
   hub_offline: "Waiting for the hub to connect",
   app_holds_hub: "The Sofabaton app holds the hub",
   first_sync: "First sync running"
@@ -12301,6 +12329,7 @@ function dockModel(snapshot, runtime, view = {}) {
   if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes \u2014 download the edited backup" };
   if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes \u2014 sync to the hub to apply them" };
+  if (view.unsavedLayout) return { kind: "unsynced_view", text: "Unsaved layout changes \u2014 Save keeps them" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || gate !== "pass" && runtime) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };
@@ -12452,6 +12481,7 @@ function isHubRefreshTrigger(data) {
 // server-panel/src/panel-store.ts
 var ACKS_KEY = "sofabaton-panel-acks";
 var DRAFT_PREFIX = "sofabaton-panel-draft:";
+var APPLY_JOB_KINDS = /* @__PURE__ */ new Set(["sync_hub", "resume_apply"]);
 var STOPPED_APPLY_STATES = /* @__PURE__ */ new Set(["stopped", "cancelled"]);
 var CONFLICT_TYPE = "hub_job_running";
 var PanelStore = class {
@@ -12673,6 +12703,20 @@ var PanelStore = class {
     } catch {
     }
   }
+  /** Carry a re-keyed hub's persisted draft and acknowledgement to its new id. */
+  _moveHubKeys(fromId, toId) {
+    const draft = loadDraft(this._storage, fromId);
+    if (draft && !loadDraft(this._storage, toId)) {
+      saveDraft(this._storage, toId, draft);
+      this._patchRuntime(toId, { draft, draftCheck: draft.acceptedStale ? "kept" : "unchecked" });
+    }
+    saveDraft(this._storage, fromId, null);
+    if (fromId in this._acks) {
+      const { [fromId]: ack, ...rest } = this._acks;
+      this._acks = { ...rest, [toId]: ack };
+      saveAcks(this._storage, this._acks);
+    }
+  }
   async _loadApplies(hubId) {
     try {
       const response = await this._api.listApplies(hubId);
@@ -12723,7 +12767,12 @@ var PanelStore = class {
       this._set({ listLoaded: true });
     }
     const selected = this._snapshot.selectedHubId;
-    if (hubs.length && !hubs.some((h7) => h7.hub_id === selected)) this.selectHub(hubs[0].hub_id);
+    if (hubs.length && !hubs.some((h7) => h7.hub_id === selected)) {
+      const oldHost = selected ? previous.get(selected)?.hub.config?.host : void 0;
+      const moved = oldHost ? hubs.find((h7) => h7.config?.host === oldHost) : void 0;
+      if (moved && selected) this._moveHubKeys(selected, moved.hub_id);
+      this.selectHub((moved ?? hubs[0]).hub_id);
+    }
     if (!hubs.length) {
       if (selected !== null) this.selectHub(null);
       if (this._snapshot.route.kind === "hub") this.navigate(toolRoute("setup"), { replace: true });
@@ -12748,6 +12797,9 @@ var PanelStore = class {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "dropped":
+        void this.refreshAll();
         return;
       case "server_event":
         if (data.kind === "update_check") void this._loadServer();
@@ -12785,6 +12837,7 @@ var PanelStore = class {
       const again = previous !== null && previous.job_id === job.job_id;
       this._patchRuntime(hubId, { hub: { ...hub, active_job: active, last_job: older ? previous : job }, cancelRequestedJobId });
       if (!older && !again) this._noteFinished(hubId, job, { onLoad: false });
+      if (APPLY_JOB_KINDS.has(job.kind)) void this._loadApplies(hubId);
       this.refreshSoon();
     } else {
       this._patchRuntime(hubId, { hub: { ...hub, active_job: job } });
@@ -12893,11 +12946,15 @@ var PanelStore = class {
       const response = await this._api.resumeApply(hubId, applyId);
       if (response.status === 202 && response.body) {
         const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-        if (runtime) this._patchRuntime(hubId, { hub: { ...runtime.hub, active_job: response.body } });
-        await this._loadApplies(hubId);
+        if (runtime) {
+          this._patchRuntime(hubId, {
+            hub: { ...runtime.hub, active_job: response.body },
+            stoppedApplies: runtime.stoppedApplies.filter((a4) => a4.apply_id !== applyId)
+          });
+        }
         return true;
       }
-      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemLine(response)}`, false);
+      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemText(response)}`, false);
       return false;
     } catch (err) {
       this.say(`Resume failed: ${String(err)}`, false);
@@ -12914,7 +12971,7 @@ var PanelStore = class {
         await this._loadApplies(hubId);
         return true;
       }
-      this.say(`Discard refused: ${problemLine(response)}`, false);
+      this.say(`Discard refused: ${problemText(response)}`, false);
       return false;
     } catch (err) {
       this.say(`Discard failed: ${String(err)}`, false);
@@ -12953,9 +13010,6 @@ var PanelStore = class {
     }
   }
 };
-function problemLine(response) {
-  return problemText(response);
-}
 function loadAcks(storage) {
   if (!storage) return {};
   try {
@@ -13030,8 +13084,14 @@ var SofabatonServerPanel = class extends i4 {
     this._cogOpen = false;
     /** The Backup tab's Edit section holds edits only a download keeps (its sb-backup-dirty). */
     this._backupDirty = false;
+    /** The dock Discard waiting for its inline Yes/Keep (CR-R1-2). */
+    this._dockConfirm = null;
+    /** A move that waits on the panel's own leave dialog (CR-R1-2). */
+    this._leaveAsk = null;
     /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
     this._wifiDirty = false;
+    /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
+    this._layoutDirty = false;
     this._pickerManual = false;
     this._pickerActionsHubId = null;
     this._pickerConfirmRemove = null;
@@ -13252,6 +13312,14 @@ var SofabatonServerPanel = class extends i4 {
         return false;
       }
     }
+    if (this._layoutDirty && this._snapshot.route.kind === "hub" && this._snapshot.route.tab === "remote") {
+      const staying = target.route?.kind === "hub" && target.route.tab === "remote" && target.hubId === void 0;
+      const view = this.renderRoot.querySelector("sb-panel-remote");
+      if (!staying && view && view.hasUnsyncedChanges()) {
+        this._leaveAsk = { ...target, kept: false };
+        return false;
+      }
+    }
     const runtime = selectedRuntime(this._snapshot);
     if (!runtime || !hasDirtyDraft(runtime)) return true;
     const scope = runtime.draft.scope;
@@ -13270,7 +13338,36 @@ var SofabatonServerPanel = class extends i4 {
       });
       return false;
     }
-    return confirm("You have unsaved changes here. They are kept for when you come back.\n\nLeave anyway?");
+    this._leaveAsk = target;
+    return false;
+  }
+  _renderLeaveDialog() {
+    const target = this._leaveAsk;
+    if (!target) return A;
+    const stay = () => {
+      this._leaveAsk = null;
+    };
+    const leave = () => {
+      this._leaveAsk = null;
+      if (target.kept === false) this._layoutDirty = false;
+      if (target.route) this.store.navigate(target.route);
+      else if (target.hubId !== void 0) this.store.selectHub(target.hubId);
+    };
+    return b2`
+      <div class="leave-backdrop" @click=${stay}>
+        <div class="leave-dialog" id="leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-title"
+          @click=${(event) => event.stopPropagation()}
+          @keydown=${(event) => {
+      if (event.key === "Escape") stay();
+    }}>
+          <div class="leave-title" id="leave-title">You have unsaved changes here</div>
+          <div class="hint">${target.kept === false ? "Leaving discards your layout changes." : "They are kept for when you come back."}</div>
+          <div class="leave-actions">
+            <button class="small" id="leave-stay" type="button" @click=${stay}>Stay</button>
+            <button class="small primary" id="leave-go" type="button" @click=${leave}>Leave anyway</button>
+          </div>
+        </div>
+      </div>`;
   }
   _go(route) {
     this._pickerOpen = false;
@@ -13423,10 +13520,6 @@ var SofabatonServerPanel = class extends i4 {
   _onHubsChanged() {
     void this.store.refreshAll();
   }
-  _onSelectHub(event) {
-    this.store.selectHub(event.detail.hubId);
-    void this.store.refreshHubs();
-  }
   _onNavigate(event) {
     const d5 = event.detail;
     if (d5.page) this._go(toolRoute(d5.page));
@@ -13466,11 +13559,13 @@ var SofabatonServerPanel = class extends i4 {
           this._backupDirty = Boolean(event.detail?.dirty);
         }}></sb-panel-backup>`;
       case "wifi":
-        return b2`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event) => {
+        return b2`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .stream=${this.stream} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event) => {
           this._wifiDirty = Boolean(event.detail?.dirty);
         }}></sb-panel-wifi-devices>`;
       case "remote":
-        return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub}></sb-panel-remote>`;
+        return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub} @sb-view-dirty=${(event) => {
+          this._layoutDirty = Boolean(event.detail?.dirty);
+        }}></sb-panel-remote>`;
       default:
         if (route.entity !== void 0 && route.sub === "devices") {
           return b2`<sb-panel-device-editor .api=${this.api} .ctx=${ctx} .store=${this.store} .deviceId=${route.entity}></sb-panel-device-editor>`;
@@ -13480,6 +13575,13 @@ var SofabatonServerPanel = class extends i4 {
         }
         return b2`<sb-panel-catalog .api=${this.api} .ctx=${ctx} .kind=${route.sub === "activities" ? "activity" : "device"}></sb-panel-catalog>`;
     }
+  }
+  willUpdate() {
+    if (!this._dockConfirm) return;
+    const runtime = selectedRuntime(this._snapshot);
+    const kind = dockModel(this._snapshot, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false }).kind;
+    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty" || kind === "draft_stale";
+    if (!matches) this._dockConfirm = null;
   }
   render() {
     if (this._authPhase === "checking") return b2`<div class="booting" id="auth-checking">Connecting…</div>`;
@@ -13554,13 +13656,17 @@ var SofabatonServerPanel = class extends i4 {
       onSignOut: () => void this._signOut()
     })}
         </header>
-        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-select-hub=${this._onSelectHub} @sb-navigate=${this._onNavigate}>
+        <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
           <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${h6(this._renderView(ctx))}</div>
           ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
         ${renderBottomDock({
-      model: dockModel(s7, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi" }),
+      model: dockModel(s7, runtime, {
+        unsavedBackup: this._backupDirty,
+        unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
+        unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote"
+      }),
       message: s7.message,
       connectivity: connectivityFor(runtime),
       hasHub: ctx.hub !== null,
@@ -13572,17 +13678,30 @@ var SofabatonServerPanel = class extends i4 {
       onResume: (applyId) => {
         if (s7.selectedHubId) void this.store.resumeApply(s7.selectedHubId, applyId);
       },
-      onDiscard: (applyId) => {
-        if (s7.selectedHubId && confirm("Discard this stopped apply? Its record is forgotten; the hub is not changed.")) void this.store.discardApply(s7.selectedHubId, applyId);
+      onDiscard: () => {
+        this._dockConfirm = "apply";
       },
       onKeepDraft: () => {
         if (s7.selectedHubId) this.store.keepStaleDraft(s7.selectedHubId);
       },
       onDiscardDraft: () => {
-        if (s7.selectedHubId && confirm("Discard your unsaved changes? The hub is not changed.")) this.store.discardDraft(s7.selectedHubId);
+        this._dockConfirm = "draft";
+      },
+      confirming: this._dockConfirm,
+      onConfirmDiscard: () => {
+        const kind = this._dockConfirm;
+        this._dockConfirm = null;
+        if (!s7.selectedHubId) return;
+        const model = dockModel(s7, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false });
+        if (kind === "apply" && model.kind === "apply_stopped") void this.store.discardApply(s7.selectedHubId, model.applyId);
+        if (kind === "draft") this.store.discardDraft(s7.selectedHubId);
+      },
+      onCancelDiscard: () => {
+        this._dockConfirm = null;
       }
     })}
         ${this._renderAuthDialog()}
+        ${this._renderLeaveDialog()}
       </div></div>
     `;
   }
@@ -13593,6 +13712,9 @@ SofabatonServerPanel.properties = {
   _cogOpen: { state: true },
   _backupDirty: { state: true },
   _wifiDirty: { state: true },
+  _layoutDirty: { state: true },
+  _dockConfirm: { state: true },
+  _leaveAsk: { state: true },
   _pickerManual: { state: true },
   _pickerActionsHubId: { state: true },
   _pickerConfirmRemove: { state: true },
@@ -13663,6 +13785,10 @@ SofabatonServerPanel.styles = [
       .tab-btn--menu.is-open { color: var(--sbp-accent); }
       .cog-icon { width: 20px; height: 20px; }
       .cog-wrap { position: relative; display: inline-flex; }
+      .leave-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
+      .leave-dialog { width: min(420px, 100%); display: grid; gap: 10px; padding: 16px; border: 1px solid var(--sbp-line); border-radius: 14px; background: var(--sbp-panel); color: var(--sbp-text); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3); }
+      .leave-title { font-weight: 700; }
+      .leave-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .update-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--sbp-accent); box-shadow: 0 0 0 2px var(--sbp-panel); }
       .badge-update { background: rgba(var(--sbp-accent-rgb), 0.16); color: var(--sbp-accent); }
       .page { --connected-inline: 16px; --connected-radius: 21px; }
@@ -13895,7 +14021,10 @@ var SbPanelAccess = class extends i4 {
       if (next) change.new_password = next;
       if (!change.username && !change.new_password) return this._say("account", "Nothing to change.", false);
       const response = await this.api.updateAdmin(change);
-      if (!response.ok || !response.body) return this._say("account", response.status === 403 ? "The current password is not right." : problemText(response), false);
+      if (!response.ok || !response.body) {
+        const wrongPassword = response.body?.type === "wrong_password";
+        return this._say("account", wrongPassword ? "The current password is not right." : problemText(response), false);
+      }
       for (const id of ["account-current", "account-new", "account-again"]) {
         const field = this._field(id);
         if (field) field.value = "";
@@ -14238,7 +14367,7 @@ var SbPanelMqtt = class extends i4 {
   }
   connectedCallback() {
     super.connectedCallback();
-    void this._load(true);
+    void this._load(!this._config || !this._dirty());
     this._offStream = this.stream?.onMessage((message) => {
       const kind = String(message.data.kind ?? "");
       if (message.data.type === "server_event" && (kind === "mqtt_config" || kind.startsWith("mqtt_"))) void this._load(kind === "mqtt_config" && !this._dirty());
@@ -14494,9 +14623,15 @@ var SbPanelApi = class extends i4 {
     this._sending = false;
     this._lastJob = null;
     this._storage = null;
+    /** Bumped by a new follow or leaving the page; a loop from an older one stops. */
+    this._followGeneration = 0;
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._followGeneration += 1;
   }
   connectedCallback() {
     super.connectedCallback();
@@ -14573,11 +14708,24 @@ var SbPanelApi = class extends i4 {
       this._response = { ok: false, status: 0, statusText: "no 202 job to follow yet", headers: [], text: "", body: null };
       return;
     }
+    const generation = ++this._followGeneration;
+    const path = `/hubs/${job.hub_id}/jobs/${job.job_id}`;
     for (let i8 = 0; i8 < 600; i8++) {
-      await this._send({ method: "GET", path: `/hubs/${job.hub_id}/jobs/${job.job_id}`, query: "", body: "", headers: {} });
-      const status = this._response?.body?.status;
-      if (!status || TERMINAL_JOB.has(status)) break;
+      let response;
+      try {
+        response = await this.api.request("GET", path);
+      } catch (err) {
+        if (generation === this._followGeneration) {
+          this._response = { ok: false, status: 0, statusText: `request failed: ${String(err)}`, headers: [], text: "", body: null };
+        }
+        return;
+      }
+      if (generation !== this._followGeneration) return;
+      this._response = response;
+      const status = response.body?.status;
+      if (!status || TERMINAL_JOB.has(status)) return;
       await new Promise((resolve) => setTimeout(resolve, 500));
+      if (generation !== this._followGeneration) return;
     }
   }
   _recall(entry) {
@@ -19322,6 +19470,7 @@ var SbPanelCatalog = class extends i4 {
       } catch (err) {
         error = String(err);
       }
+      if (this._loadedFor !== hubId) return;
       if (error) {
         this._reorder = { ...reorder, syncing: false, error };
         return;
@@ -19341,7 +19490,7 @@ var SbPanelCatalog = class extends i4 {
       if (!name || dialog.kind === "device" && !dialog.deviceClass) return;
       this._add = { ...dialog, busy: true, error: null };
       const fail = (error) => {
-        this._add = { ...dialog, busy: false, error };
+        if (this._loadedFor === hubId) this._add = { ...dialog, busy: false, error };
       };
       try {
         const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
@@ -19360,6 +19509,7 @@ var SbPanelCatalog = class extends i4 {
             if (read) this._lastJobId = read.job_id;
           }
         }
+        if (this._loadedFor !== hubId) return;
         this._add = null;
         this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: dialog.kind === "device" ? "devices" : "activities", entity: id } }));
       } catch (err) {
@@ -19395,6 +19545,7 @@ var SbPanelCatalog = class extends i4 {
         this._notice = null;
         this._reorder = null;
         this._add = null;
+        this._refresh = null;
         this._sorter.cancel();
         if (id) void this._load();
       } else {
@@ -19531,26 +19682,28 @@ var SbPanelCatalog = class extends i4 {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
     this._refresh = { key, text: "Starting\u2026" };
+    const here = () => this._loadedFor === hubId;
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
+        if (here()) this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
         onUpdate: (j3) => {
-          this._refresh = { key, text: jobPhrase(j3) };
+          if (here()) this._refresh = { key, text: jobPhrase(j3) };
         }
       });
+      if (!here()) return;
       if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `Refreshing ${label} failed: ${String(err)}`;
+      if (here()) this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
-      this._refresh = null;
+      if (here()) this._refresh = null;
     }
-    await this._reloadAll();
+    if (here()) await this._reloadAll();
   }
   _refreshAll() {
     if (this._locked) return;
@@ -19637,7 +19790,13 @@ var SbPanelCatalog = class extends i4 {
     const count = countLine(e6.kind, e6.counts) ?? (e6.kind === "device" ? e6.device?.device_class ?? "device" : "activity");
     const fetched = e6.fetched_at ? `read from the hub ${formatWhen(e6.fetched_at)}${e6.complete ? "" : ", incomplete"}` : "not read from the hub in full yet";
     return b2`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e6.id}>
-      <div class="entity-summary" @click=${() => this._toggle(e6)}>
+      <div class="entity-summary" role="button" tabindex="0" aria-expanded=${isOpen ? "true" : "false"}
+        @click=${() => this._toggle(e6)}
+        @keydown=${(event) => {
+      if (event.target !== event.currentTarget || event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      this._toggle(e6);
+    }}>
         <span class="entity-name">
           <span class="entity-name-icon">${icon3(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
           <span class="entity-name-copy">
@@ -19828,6 +19987,7 @@ SbPanelCatalog.styles = [
       .entity-block:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
       .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: 12px; transition: background-color 120ms ease; }
       .entity-summary:hover { background: color-mix(in srgb, var(--sbp-accent) 5%, var(--sbp-panel-2)); }
+      .entity-summary[role="button"]:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -2px; }
       /* The card pins the open drawer's header at the top of its scroll body;
          here the page scrolls under the shell's sticky top dock, so the
          header pins just under it (the shell measures the dock's height). */
@@ -23746,6 +23906,10 @@ var SbPanelEvents = class extends i4 {
     this._grep = "";
     this._expand = false;
     this._tick = 0;
+    /** hub_id filter; empty shows every hub. */
+    this._hubs = [];
+    /** While paused, the rows shown when the pause started. */
+    this._frozen = null;
     this._unsubscribe = [];
   }
   connectedCallback() {
@@ -23771,25 +23935,22 @@ var SbPanelEvents = class extends i4 {
   }
   _applyFilter() {
     const raw = this.renderRoot.querySelector("#ws-filter")?.value ?? "";
-    this.stream.hubFilter = raw.split(",").map((s7) => s7.trim()).filter(Boolean);
-    this.stream.restart();
-    this._bump();
+    this._hubs = raw.split(",").map((s7) => s7.trim()).filter(Boolean);
   }
-  _toggle() {
-    if (this.stream.wanted) this.stream.stop();
-    else this.stream.start();
-    this._bump();
+  _togglePause() {
+    this._frozen = this._frozen ? null : [...this.stream?.messages ?? []];
   }
   render() {
     const stream = this.stream;
     const grep = this._grep.trim().toLowerCase();
-    const rows = stream ? stream.messages : [];
-    const shown = rows.filter((row) => !grep || (summarizeMessage(row.data) + " " + row.text).toLowerCase().includes(grep));
+    const rows = this._frozen ?? (stream ? stream.messages : []);
+    const hubs = this._hubs;
+    const shown = rows.filter((row) => (!hubs.length || hubs.includes(String(row.data.hub_id ?? ""))) && (!grep || (summarizeMessage(row.data) + " " + row.text).toLowerCase().includes(grep)));
     return b2`
       <div class="panel">
         <h2>Event stream <span class="hint mono">/events</span><span class="spacer"></span>
           <input id="ws-filter" placeholder="hub_id filter (optional, comma separated)" @change=${this._applyFilter}>
-          <button class="small" id="ws-toggle" @click=${this._toggle}>${stream?.wanted ? "disconnect" : "connect"}</button>
+          <button class="small" id="ws-toggle" @click=${this._togglePause}>${this._frozen ? "resume" : "pause"}</button>
           <button class="small" id="ws-clear" @click=${() => {
       stream?.clear();
       this._bump();
@@ -23802,7 +23963,7 @@ var SbPanelEvents = class extends i4 {
       this._expand = e6.target.checked;
     }}> expand all</label>
         </div>
-        <div class="hint" id="ws-count">${shown.length} of ${rows.length} messages${stream?.connected ? "" : " \xB7 not connected"}</div>
+        <div class="hint" id="ws-count">${shown.length} of ${rows.length} messages${this._frozen ? " \xB7 paused" : ""}${stream?.connected ? "" : " \xB7 not connected"}</div>
         <div class="list" id="ws-list">
           ${shown.map((row) => b2`<details class="k-${String(row.data.type ?? "raw")}" ?open=${this._expand}>
             <summary><span class="t">${row.at}</span><span>${summarizeMessage(row.data)}</span></summary>
@@ -23817,7 +23978,9 @@ SbPanelEvents.properties = {
   stream: { attribute: false },
   _grep: { state: true },
   _expand: { state: true },
-  _tick: { state: true }
+  _tick: { state: true },
+  _hubs: { state: true },
+  _frozen: { state: true }
 };
 SbPanelEvents.styles = [
   PANEL_BASE_CSS,
@@ -24058,18 +24221,19 @@ function layoutHasCustomOverride(config, selection) {
   const override = layouts[key] ?? (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
   return Boolean(override && typeof override === "object");
 }
-function layoutSelectionNote(config, selection) {
+function layoutSelectionNote(config, selection, strings = str()) {
+  const e6 = strings.editor;
   if (selection === "default") {
-    return str().editor.noteDefaultLayout;
+    return e6.noteDefaultLayout;
   }
   if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
-    return str().editor.noteDeviceDefaultLayout;
+    return e6.noteDeviceDefaultLayout;
   }
   const isDevice = isDeviceLayoutKey(selection);
   if (layoutHasCustomOverride(config, selection)) {
-    return isDevice ? str().editor.noteCustomDeviceLayout : str().editor.noteCustomActivityLayout;
+    return isDevice ? e6.noteCustomDeviceLayout : e6.noteCustomActivityLayout;
   }
-  return isDevice ? str().editor.noteUsingDeviceDefault : str().editor.noteUsingActivityDefault;
+  return isDevice ? e6.noteUsingDeviceDefault : e6.noteUsingActivityDefault;
 }
 function editorActivitiesFromState(state) {
   const list = state?.attributes?.activities;
@@ -24233,8 +24397,8 @@ function resetEditorLayout(config, selection) {
   }
   return next;
 }
-function groupLabel(key) {
-  return str().groups[key] || key;
+function groupLabel(key, strings = str()) {
+  return strings.groups[key] || key;
 }
 function isGroupEnabled(config, selection, key) {
   const prop = GROUP_VISIBILITY_KEYS[key];
@@ -24343,14 +24507,15 @@ function moveVisibleGroup(order, isVisible, fromVisible, toVisible) {
 }
 
 // remote-card/src/editor-sections/general-options.ts
-function longPressGroupLabel(group) {
-  if (group === "volume") return str().editor.volume;
-  if (group === "channel") return str().editor.channel;
-  if (group === "dpad") return str().groups.dpad || group;
+function longPressGroupLabel(group, strings = str()) {
+  if (group === "volume") return strings.editor.volume;
+  if (group === "channel") return strings.editor.channel;
+  if (group === "dpad") return strings.groups.dpad || group;
   return group;
 }
 
 // server-panel/src/views/remote-editor.ts
+var str2 = () => REMOTE_CARD_STRINGS_EN;
 var ICON_NAMES = Object.keys(MDI_ICON_PATHS).sort();
 var SbPanelRemoteEditor = class extends i4 {
   constructor() {
@@ -24430,7 +24595,7 @@ var SbPanelRemoteEditor = class extends i4 {
     const next = moveVisibleGroup(order, (key) => this._visible(key), from, to);
     if (!next) return;
     const handle = this.renderRoot.activeElement;
-    this._announcement = `${groupLabel(visible[from])} moved to position ${to + 1} of ${visible.length}`;
+    this._announcement = `${groupLabel(visible[from], str2())} moved to position ${to + 1} of ${visible.length}`;
     this._patch({ group_order: next });
     if (handle?.classList.contains("handle")) void this.updateComplete.then(() => handle.focus());
   }
@@ -24446,7 +24611,7 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon7}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
   }
   _groups() {
-    const c7 = this.config, s7 = this.selection, e6 = str().editor;
+    const c7 = this.config, s7 = this.selection, e6 = str2().editor;
     const layout = layoutConfigForSelection(c7, s7);
     const device = isDeviceLayoutKey(s7);
     const rows = mfAsRowsForEditor(c7, s7);
@@ -24455,15 +24620,15 @@ var SbPanelRemoteEditor = class extends i4 {
     const slotDevice = parseDeviceLayoutKey(s7);
     const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d5) => Number(d5.id) === slotDevice);
     const cells = (key) => {
-      if (key === "shortcuts") return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
+      if (key === "shortcuts") return b2`${toggle(groupLabel(key, str2()), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${slotsOn ? this._slotStrip(slotDevice) : A}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return b2`${toggle(e6.commands, commandsEnabled(c7, s7), commandsTogglePatch)}${toggle(e6.power, powerEnabled(c7, s7), powerTogglePatch)}`;
       if (key === "macro_favorites") return b2`${toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
       if (key === "macros_row") return toggle(e6.macros, macrosButtonEnabled(layout), macroTogglePatch);
       if (key === "favorites_row") return toggle(e6.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch);
       if (key === "mid") return b2`${toggle(e6.volume, volumeGroupEnabled(layout), volumeTogglePatch)}${toggle(e6.channel, channelGroupEnabled(layout), channelTogglePatch)}`;
       if (key === "media") return b2`${toggle(e6.mediaControls, mediaGroupEnabled(layout), (v3) => groupEnabledPatch("media", v3))}${this._isX2() ? toggle(e6.dvr, dvrGroupEnabled(layout), dvrTogglePatch) : A}`;
-      if (key === "dpad" && this._isX2()) return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${toggle(e6.numpad, numpadEnabledForEditor(c7, s7), numpadTogglePatch)}`;
-      return b2`${toggle(groupLabel(key), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
+      if (key === "dpad" && this._isX2()) return b2`${toggle(groupLabel(key, str2()), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}${toggle(e6.numpad, numpadEnabledForEditor(c7, s7), numpadTogglePatch)}`;
+      return b2`${toggle(groupLabel(key, str2()), isGroupEnabled(c7, s7, key), (v3) => groupEnabledPatch(key, v3))}
         ${key === "activity" && deviceModeEnabledInConfig(c7) ? this._toggle(e6.modeToggle, isGroupEnabled(c7, s7, key) && deviceToggleEnabledForEditor(c7, s7), (v3) => this._patch(deviceTogglePatch(v3)), "", !isGroupEnabled(c7, s7, key)) : A}`;
     };
     const menuAvailable = !device && editorDevicesFromState(this.snapshot).length > 0;
@@ -24473,7 +24638,7 @@ var SbPanelRemoteEditor = class extends i4 {
     </div>`;
     const menuButton = (key) => {
       if (!hasMenu(key)) return menuAvailable ? b2`<span class="menu-spacer" aria-hidden="true"></span>` : A;
-      return b2`<button class="menu-btn" type="button" aria-label=${e6.rowOptions(groupLabel(key))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
+      return b2`<button class="menu-btn" type="button" aria-label=${e6.rowOptions(groupLabel(key, str2()))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
         @click=${() => {
         this._menu = this._menu === key ? null : key;
       }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDotsHorizontal}></path></svg></button>`;
@@ -24483,7 +24648,7 @@ var SbPanelRemoteEditor = class extends i4 {
         <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
           <div class="group-options">${cells(key)}</div>
           ${menuButton(key)}
-          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
+          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key, str2())}`} title="Drag to reorder (arrow keys move the group)"
             @pointerdown=${(ev) => this._sorter.start(ev, index)} @pointermove=${(ev) => this._sorter.move(ev)}
             @pointerup=${(ev) => this._sorter.end(ev)} @pointercancel=${(ev) => this._sorter.cancel(ev)}
             @lostpointercapture=${(ev) => this._sorter.cancel(ev)}
@@ -24579,7 +24744,7 @@ var SbPanelRemoteEditor = class extends i4 {
     this._emit(applyShortcutSlotPatch(this.config, id, this._slot, null).nextConfig);
   }
   _slotStrip(id) {
-    const e6 = str().editor;
+    const e6 = str2().editor;
     const stored = deviceShortcutsFromConfig(this.config, id);
     const label = (slot) => slot === "left" ? e6.shortcutSlotLeft : slot === "middle" ? e6.shortcutSlotMiddle : e6.shortcutSlotRight;
     return b2`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
@@ -24590,11 +24755,11 @@ var SbPanelRemoteEditor = class extends i4 {
     })}</div>`;
   }
   _slotPanel(id) {
-    const e6 = str().editor;
+    const e6 = str2().editor;
     const keymap = this._keymaps.get(id);
     const status = keymap?.status ?? "loading";
     if (status !== "ready") {
-      const note = status === "loading" ? e6.shortcutsCommandsLoading : status === "cache_miss" ? str().card.deviceKeymapMissingServer : "Could not load this device's commands. Retry when the hub is available.";
+      const note = status === "loading" ? e6.shortcutsCommandsLoading : status === "cache_miss" ? str2().card.deviceKeymapMissingServer : "Could not load this device's commands. Retry when the hub is available.";
       return b2`<div class="shortcut-panel"><div class="shortcut-note">${note}</div>
         ${status === "loading" ? A : b2`<div class="shortcut-panel-footer"><button type="button" @click=${() => {
         this._keymaps.delete(id);
@@ -24622,7 +24787,7 @@ var SbPanelRemoteEditor = class extends i4 {
    * other mdi name can still be typed.
    */
   _iconPicker() {
-    const e6 = str().editor;
+    const e6 = str2().editor;
     const icon7 = this._icon.trim();
     const query = icon7.toLowerCase().replace(/^mdi:/, "");
     const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
@@ -24677,7 +24842,7 @@ var SbPanelRemoteEditor = class extends i4 {
     </div>`;
   }
   render() {
-    const c7 = this.config, e6 = str().editor;
+    const c7 = this.config, e6 = str2().editor;
     const devices = editorDevicesFromState(this.snapshot);
     const activities = editorActivitiesFromState(this.snapshot);
     const enabled = deviceModeEnabledInConfig(c7);
@@ -24696,7 +24861,7 @@ var SbPanelRemoteEditor = class extends i4 {
         </div>
         <div class="feature">
           ${this._toggle(e6.longPress, longPress.enabled, (v3) => this._set({ hold_repeat: longPressEnabledPatch(v3) }), e6.longPressDescription)}
-          ${longPress.enabled ? b2`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group), selected.includes(group), (v3) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c7), v3 ? [...selected, group] : selected.filter((g2) => g2 !== group)) })))}</div>` : A}
+          ${longPress.enabled ? b2`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group, str2()), selected.includes(group), (v3) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c7), v3 ? [...selected, group] : selected.filter((g2) => g2 !== group)) })))}</div>` : A}
         </div>
       </div></details>
       <details name="remote-options">${this._heading(e6.stylingOptions, mdiPalette)}<div class="body">
@@ -24725,7 +24890,7 @@ var SbPanelRemoteEditor = class extends i4 {
           ${enabled ? b2`<mwc-list-item class="sb-option-default" .value=${"device:default"}>${e6.allDevicesOption}</mwc-list-item>
             ${devices.map((d5) => b2`<mwc-list-item .value=${`device:${d5.id}`}>${d5.name}</mwc-list-item>`)}` : A}
         </ha-select>
-        <p class="layout-note">${layoutSelectionNote(c7, this.selection)}</p>
+        <p class="layout-note">${layoutSelectionNote(c7, this.selection, str2())}</p>
         ${this._groups()}
       </div></div></details>`;
   }
@@ -24898,6 +25063,7 @@ var SbPanelRemote = class extends i4 {
     this._card = null;
     this._unsubscribe = null;
     this._mountedFor = null;
+    this._reportedDirty = false;
     this._document = null;
     /** The card subtab's scale: the whole remote fits between the docks. */
     this._scale = 1;
@@ -24998,6 +25164,7 @@ var SbPanelRemote = class extends i4 {
       }
     }
     if (changed.has("section")) this._updateCard();
+    this._reportDirty();
     const stage = this.renderRoot.querySelector("#stage");
     if (stage && this._card && this._card.parentElement !== stage) stage.appendChild(this._card);
     const frame = this.section === "card" ? this.renderRoot.querySelector("#remote-frame") : null;
@@ -25148,6 +25315,16 @@ var SbPanelRemote = class extends i4 {
       this._updateCard();
     }
     this._mode = mode;
+  }
+  /** The shell asks before a move that would drop the unsaved layout (CR-F5a-4). */
+  hasUnsyncedChanges() {
+    return this._isDirty();
+  }
+  _reportDirty() {
+    const dirty = this._isDirty();
+    if (dirty === this._reportedDirty) return;
+    this._reportedDirty = dirty;
+    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty } }));
   }
   /** Save has something to do: the draft (or the JSON text) differs from what the server holds. */
   _isDirty() {
@@ -25422,7 +25599,6 @@ var SbPanelServer = class extends i4 {
       const response = await this.api.serverSettings();
       if (response.ok && response.body) {
         this._ports = response.body;
-        this._portDraft = {};
       } else {
         this._setPortStatus(problemText(response), true);
       }
@@ -26064,6 +26240,9 @@ var SbPanelWifiDevices = class extends i4 {
     this._flashTimer = null;
     this._flashFor = null;
     this._reportedDirty = false;
+    /** The shell's stream; set by the shell, read for the server's device events. */
+    this.stream = null;
+    this._offStream = null;
     // -- create ------------------------------------------------------------------------------------------
     this._openCreate = () => {
       if (this._locked) return;
@@ -26228,8 +26407,20 @@ var SbPanelWifiDevices = class extends i4 {
       }
     };
   }
+  connectedCallback() {
+    super.connectedCallback();
+    this._offStream = this.stream?.onMessage((message) => {
+      const data = message.data;
+      if (data.type !== "server_event" || data.hub_id !== this._hubId) return;
+      const kind = String(data.kind ?? "");
+      const relevant = kind === "callback_device_stale" || kind === "callback_device_restored" || kind.startsWith("callback_listener") || kind.startsWith("mqtt_");
+      if (relevant && !this._working && !this.hasUnsyncedChanges()) void this._load();
+    }) ?? null;
+  }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._offStream?.();
+    this._offStream = null;
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -26879,6 +27070,7 @@ SbPanelWifiDevices.properties = {
   _confirmClear: { state: true },
   _leave: { state: true },
   _working: { state: true },
+  stream: { attribute: false },
   _syncError: { state: true },
   _flashTick: { state: true }
 };

@@ -25,7 +25,12 @@ import {
   longPressSelectedGroups, longPressSettings,
 } from "../../../remote-card/src/remote-card-long-press";
 import { longPressGroupLabel } from "../../../remote-card/src/editor-sections/general-options";
-import { str } from "../../../remote-card/src/remote-card-strings";
+import { REMOTE_CARD_STRINGS_EN, type RemoteCardStrings } from "../../../remote-card/src/remote-card-strings";
+
+// The panel is English-only (L-A20). The card this editor previews follows
+// the browser language through the remote card's shared string state, so
+// the editor reads the English table directly (CR-X6-2).
+const str = (): RemoteCardStrings => REMOTE_CARD_STRINGS_EN;
 import { MDI_ICON_PATHS } from "../../../remote-card/src/shims/mdi-icons";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { PointerReorder } from "../pointer-reorder";
@@ -209,7 +214,7 @@ export class SbPanelRemoteEditor extends LitElement {
     const next = moveVisibleGroup(order, (key) => this._visible(key), from, to);
     if (!next) return;
     const handle = (this.renderRoot as ShadowRoot).activeElement as HTMLElement | null;
-    this._announcement = `${groupLabel(visible[from])} moved to position ${to + 1} of ${visible.length}`;
+    this._announcement = `${groupLabel(visible[from], str())} moved to position ${to + 1} of ${visible.length}`;
     this._patch({ group_order: next });
     // Moving a keyed DOM node still drops focus in some browsers.
     if (handle?.classList.contains("handle")) void this.updateComplete.then(() => handle.focus());
@@ -240,7 +245,7 @@ export class SbPanelRemoteEditor extends LitElement {
     const slotDevice = parseDeviceLayoutKey(s);
     const slotsOn = slotDevice != null && editorDevicesFromState(this.snapshot).some((d) => Number(d.id) === slotDevice);
     const cells = (key: string) => {
-      if (key === "shortcuts") return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${slotsOn ? this._slotStrip(slotDevice!) : nothing}`;
+      if (key === "shortcuts") return html`${toggle(groupLabel(key, str()), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${slotsOn ? this._slotStrip(slotDevice!) : nothing}`;
       if (device && (key === "macro_favorites" || key === "macros_row")) return html`${toggle(e.commands, commandsEnabled(c, s), commandsTogglePatch)}${toggle(e.power, powerEnabled(c, s), powerTogglePatch)}`;
       if (key === "macro_favorites") return html`${toggle(e.macros, macrosButtonEnabled(layout), macroTogglePatch)}${toggle(e.favorites, favoritesButtonEnabled(layout), favoritesTogglePatch)}`;
       if (key === "macros_row") return toggle(e.macros, macrosButtonEnabled(layout), macroTogglePatch);
@@ -251,8 +256,8 @@ export class SbPanelRemoteEditor extends LitElement {
       // X2 only: the number pad behind the D-pad (numpad-plan.md), the same
       // second switch the HA editor carries; the server is never the
       // official integration, so the model is the whole gate.
-      if (key === "dpad" && this._isX2()) return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${toggle(e.numpad, numpadEnabledForEditor(c, s), numpadTogglePatch)}`;
-      return html`${toggle(groupLabel(key), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}
+      if (key === "dpad" && this._isX2()) return html`${toggle(groupLabel(key, str()), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}${toggle(e.numpad, numpadEnabledForEditor(c, s), numpadTogglePatch)}`;
+      return html`${toggle(groupLabel(key, str()), isGroupEnabled(c, s, key), (v) => groupEnabledPatch(key, v))}
         ${key === "activity" && deviceModeEnabledInConfig(c) ? this._toggle(e.modeToggle, isGroupEnabled(c, s, key) && deviceToggleEnabledForEditor(c, s), (v) => this._patch(deviceTogglePatch(v)), "", !isGroupEnabled(c, s, key)) : nothing}`;
     };
     // The "..." options on a favorites row (combined or split): device names
@@ -265,7 +270,7 @@ export class SbPanelRemoteEditor extends LitElement {
     </div>`;
     const menuButton = (key: string) => {
       if (!hasMenu(key)) return menuAvailable ? html`<span class="menu-spacer" aria-hidden="true"></span>` : nothing;
-      return html`<button class="menu-btn" type="button" aria-label=${e.rowOptions(groupLabel(key))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
+      return html`<button class="menu-btn" type="button" aria-label=${e.rowOptions(groupLabel(key, str()))} aria-expanded=${this._menu === key ? "true" : "false"} aria-controls=${`row-menu-${key}`}
         @click=${() => { this._menu = this._menu === key ? null : key; }}><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiDotsHorizontal}></path></svg></button>`;
     };
     return html`
@@ -273,7 +278,7 @@ export class SbPanelRemoteEditor extends LitElement {
         <div data-group=${key} class="group ${this._sorter.state?.from === index ? "dragging" : this._sorter.state ? "shifting" : ""}" style=${`transform: ${this._sorter.transform(index) || "none"}`}>
           <div class="group-options">${cells(key)}</div>
           ${menuButton(key)}
-          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key)}`} title="Drag to reorder (arrow keys move the group)"
+          <button class="handle" type="button" aria-label=${`Move ${groupLabel(key, str())}`} title="Drag to reorder (arrow keys move the group)"
             @pointerdown=${(ev: PointerEvent) => this._sorter.start(ev, index)} @pointermove=${(ev: PointerEvent) => this._sorter.move(ev)}
             @pointerup=${(ev: PointerEvent) => this._sorter.end(ev)} @pointercancel=${(ev: PointerEvent) => this._sorter.cancel(ev)}
             @lostpointercapture=${(ev: PointerEvent) => this._sorter.cancel(ev)}
@@ -460,7 +465,7 @@ export class SbPanelRemoteEditor extends LitElement {
         </div>
         <div class="feature">
           ${this._toggle(e.longPress, longPress.enabled, (v) => this._set({ hold_repeat: longPressEnabledPatch(v) }), e.longPressDescription)}
-          ${longPress.enabled ? html`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group), selected.includes(group), (v) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c), v ? [...selected, group] : selected.filter((g) => g !== group)) })))}</div>` : nothing}
+          ${longPress.enabled ? html`<div class="sub">${LONG_PRESS_GROUPS.map((group) => this._toggle(longPressGroupLabel(group, str()), selected.includes(group), (v) => this._set({ hold_repeat: longPressGroupsPatch(longPressBlock(c), v ? [...selected, group] : selected.filter((g) => g !== group)) })))}</div>` : nothing}
         </div>
       </div></details>
       <details name="remote-options">${this._heading(e.stylingOptions, mdiPalette)}<div class="body">
@@ -480,7 +485,7 @@ export class SbPanelRemoteEditor extends LitElement {
           ${enabled ? html`<mwc-list-item class="sb-option-default" .value=${"device:default"}>${e.allDevicesOption}</mwc-list-item>
             ${devices.map((d) => html`<mwc-list-item .value=${`device:${d.id}`}>${d.name}</mwc-list-item>`)}` : nothing}
         </ha-select>
-        <p class="layout-note">${layoutSelectionNote(c, this.selection)}</p>
+        <p class="layout-note">${layoutSelectionNote(c, this.selection, str())}</p>
         ${this._groups()}
       </div></div></details>`;
   }

@@ -223,8 +223,9 @@ export interface WifiDeviceList {
   effective_destination?: { host: string; port: number } | null;
 }
 
-/** `GET /server/mqtt` (openapi `MqttView`): the server's broker connection. The broker is set on the
- *  server's command line or in its environment only; the password is in no answer. */
+/** `GET /server/mqtt` (openapi `MqttView`): the server's broker connection. The broker comes from the
+ *  panel's MQTT broker page (mqtt.json) or, read-only, from the command line or environment; the
+ *  password is in no answer. */
 export interface MqttState {
   configured: boolean;
   /** A device uses the transport; the connection exists only then. */
@@ -496,7 +497,10 @@ export function jobOutcomeText(job: JobView | null): string | null {
   if (!job) return "The job could not be followed";
   if (job.status === "done") return null;
   if (job.error) return problemSummary(job.error) || "Failed";
-  return job.status === "cancelled" ? "Cancelled" : job.status === "failed" ? "Failed" : "Did not finish";
+  if (job.status === "cancelled") return "Cancelled";
+  if (job.status === "failed") return "Failed";
+  // The follow gave up waiting, not the job: it may still finish (CR-F5a-5).
+  return "Still running on the server; the dock shows when it ends";
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -650,10 +654,6 @@ export class PanelApi {
   /** Saves to server.json; the ports apply on the next server start. */
   updateServerSettings(changes: ServerSettingsUpdate): Promise<ApiResponse<ServerSettings>> {
     return this.request<ServerSettings>("PUT", "server/settings", { body: changes });
-  }
-
-  updateStatus(): Promise<ApiResponse<UpdateStatus>> {
-    return this.request<UpdateStatus>("GET", "server/updates");
   }
 
   /** One check against PyPI now; enables nothing, downloads nothing. */
@@ -907,21 +907,40 @@ export class PanelApi {
   }
 
   /**
-   * Poll a job until it reaches a terminal state (or the poll count runs
-   * out); `onUpdate` sees every answer. Resolves with the last view.
+   * Poll a job until it reaches a terminal state; `onUpdate` sees every
+   * answer. Jobs are server-authoritative, so a poll that fails in transit
+   * (a network blip, a 5xx) backs off and polls again instead of reporting
+   * the job as failed; only a terminal state, a 4xx answer (the job is
+   * gone) or the long cap ends it (CR-F5a-5). Resolves with the last view,
+   * which after the cap can still be running.
    */
   async followJob(hubId: string, jobId: string, options: { intervalMs?: number; maxPolls?: number; onUpdate?: (job: JobView) => void; sleep?: (ms: number) => Promise<void> } = {}): Promise<JobView | null> {
     const interval = options.intervalMs ?? 500;
-    const maxPolls = options.maxPolls ?? 600;
+    // About half an hour at the default interval: long X1 command deletes
+    // (L-P9) run for minutes.
+    const maxPolls = options.maxPolls ?? 3600;
     const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let last: JobView | null = null;
+    let failures = 0;
     for (let i = 0; i < maxPolls; i++) {
-      const response = await this.job(hubId, jobId);
-      if (!response.ok || !response.body) return last;
-      last = response.body;
-      options.onUpdate?.(last);
-      if (TERMINAL_JOB_STATES.has(last.status)) return last;
-      await sleep(interval);
+      let response: ApiResponse<JobView> | null = null;
+      try {
+        response = await this.job(hubId, jobId);
+      } catch {
+        response = null;
+      }
+      if (response && response.ok && response.body) {
+        failures = 0;
+        last = response.body;
+        options.onUpdate?.(last);
+        if (TERMINAL_JOB_STATES.has(last.status)) return last;
+        await sleep(interval);
+        continue;
+      }
+      // A 4xx answer is final (job_not_found, hub gone); anything else is in transit.
+      if (response && response.status >= 400 && response.status < 500) return last;
+      failures += 1;
+      await sleep(Math.min(interval * 2 ** Math.min(failures, 5), 10_000));
     }
     return last;
   }

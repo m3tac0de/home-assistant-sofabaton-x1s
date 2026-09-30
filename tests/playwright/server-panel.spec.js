@@ -834,9 +834,10 @@ test.describe("control panel, shell", () => {
     await page.goto(PAGE);
     await expect(page.locator("#dock-status")).toHaveText("An apply stopped partway; resume or discard it");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--warn/);
-    // Discard asks first; a dismissed dialog sends nothing.
+    // Discard asks first, inline (CR-R1-2); Keep sends nothing.
     await page.click("#dock-discard");
-    await page.waitForTimeout(200);
+    await expect(page.locator("#dock-status")).toContainText("Discard this stopped apply?");
+    await page.click("#dock-discard-cancel");
     expect(calls.some((c) => c.key === `DELETE /hubs/${LIVING.hub_id}/applies/ap1`)).toBe(false);
     await page.click("#dock-resume");
     await expect.poll(() => calls.some((c) => c.key === `POST /hubs/${LIVING.hub_id}/applies/ap1/resume`)).toBe(true);
@@ -880,15 +881,15 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--dirty/);
 
-    // Leaving the draft's screen asks; a dismissed dialog stays put, an accepted one goes.
+    // Leaving the draft's screen asks in the panel's own dialog (never a
+    // native confirm, CR-R1-2): Stay stays put, Leave anyway goes.
     await page.click('#subtabs button[data-sub="activities"]');
-    await page.waitForTimeout(200);
+    await expect(page.locator("#leave-dialog")).toContainText("unsaved changes");
+    await page.click("#leave-stay");
+    await expect(page.locator("#leave-dialog")).toHaveCount(0);
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
-    page.once("dialog", (dialog) => {
-      expect(dialog.message()).toContain("unsaved changes");
-      dialog.accept();
-    });
     await page.click('#subtabs button[data-sub="activities"]');
+    await page.click("#leave-go");
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
     // Off the draft's screen the banner still shows, but moving on is free.
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
@@ -914,10 +915,16 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
     await chip(page).click();
     await page.locator('#hub-picker-menu .hub-option[data-hub="192.168.1.60"]').click();
-    await page.waitForTimeout(200);
+    await expect(page.locator("#leave-dialog")).toBeVisible();
+    await page.click("#leave-stay");
     await expect(chip(page)).toContainText("Living room");
-    page.once("dialog", (dialog) => dialog.accept());
+    // Discard asks inline; Keep backs out, Discard clears.
     await page.click("#dock-discard-draft");
+    await expect(page.locator("#dock-status")).toContainText("Discard your unsaved changes?");
+    await page.click("#dock-discard-cancel");
+    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
+    await page.click("#dock-discard-draft");
+    await page.click("#dock-discard-confirm");
     await expect(page.locator("#dock-link")).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
   });
@@ -1043,6 +1050,12 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-status")).toHaveText("");
     // Saving a document applies it to the mounted card at once.
     await page.fill("#remote-doc", '{"show_dpad": true}');
+    // Unsaved, the dock says so and leaving asks first (CR-F5a-4).
+    await expect(page.locator("#dock-status")).toHaveText("Unsaved layout changes — Save keeps them");
+    await page.click('#tabs button[data-tab="backup"]');
+    await expect(page.locator("#leave-dialog")).toContainText("Leaving discards your layout changes.");
+    await page.click("#leave-stay");
+    await expect(page).toHaveURL(/#\/e26a44861b45\/remote\/layout$/);
     await page.click("#remote-save");
     await expect.poll(() => calls.filter((c) => c.key === "PUT /hubs/e26a44861b45/ui/remote-card").map((c) => c.body)).toEqual([
       { document: { show_dpad: true } },
@@ -1470,6 +1483,8 @@ test.describe("control panel, views", () => {
     await page.click("#remote-save");
     await pending;
     await pickHub(page, OFFICE.hub_id);
+    // The save has not landed, so the layout is still unsaved: leaving asks (CR-F5a-4).
+    await page.click("#leave-go");
     await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
     finish();
     await expect(page.locator("#remote-status")).toHaveText("");
@@ -2480,14 +2495,9 @@ test.describe("control panel, integrated picker", () => {
     await expect(chip(page)).toContainText("Living room");
     await page.evaluate(() => document.querySelector("sofabaton-server-panel").store.setDraft("e26a44861b45", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } }));
     await chip(page).click();
-    let asked = false;
-    page.once("dialog", (dialog) => {
-      asked = true;
-      expect(dialog.message()).toContain("unsaved changes");
-      dialog.dismiss();
-    });
     await page.getByRole("button", { name: "Add Bedroom", exact: true }).click();
-    await expect.poll(() => asked).toBe(true);
+    await expect(page.locator("#leave-dialog")).toContainText("unsaved changes");
+    await page.click("#leave-stay");
     await expect(chip(page)).toContainText("Living room");
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices$/);
     await chip(page).click();

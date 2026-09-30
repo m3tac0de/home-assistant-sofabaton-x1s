@@ -680,3 +680,44 @@ test("a restored draft is checked against the hub's snapshot: fresh restores sil
   assert.equal(rt(junk.store).draft, null);
   junk.store.disconnect();
 });
+
+test("a selected hub that re-keys to its MAC stays selected, with its draft (CR-F5a-3)", async () => {
+  const storage = new MemoryStorage();
+  const api = new FakeApi();
+  const living = hub({ hub_id: "aabbccddee01", config: { host: "192.168.1.50", name: "Living room" } });
+  const bedroom = hub({ hub_id: "192.168.1.60", config: { host: "192.168.1.60", name: "Bedroom" } });
+  api.hubs = [living, bedroom];
+  const { store, clock } = rig({ storage, api });
+  store.connect();
+  await flush();
+  store.selectHub("192.168.1.60");
+  await flush();
+  store.setDraft("192.168.1.60", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } });
+  // Its first sync re-keys it; the re-keyed record lands at the end of the list.
+  api.hubs = [living, { ...bedroom, hub_id: "aabbccddee02" }];
+  await clock.advance(5000);
+  assert.equal(store.snapshot.selectedHubId, "aabbccddee02");
+  assert.equal(rt(store, "aabbccddee02").draft?.scope, "hub/devices");
+  assert.equal(storage.getItem("sofabaton-panel-draft:192.168.1.60"), null);
+  store.disconnect();
+});
+
+test("an apply job's end re-reads the stopped applies, and a dropped frame resyncs (CR-X3-1)", async () => {
+  const api = new FakeApi();
+  const { store, socket } = rig({ api });
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  assert.deepEqual(rt(store).stoppedApplies, []);
+  // An external PUT /snapshot stopped partway: the job ends failed, the record says stopped.
+  api.applies = [{ apply_id: "y", hub_id: "a", status: "stopped", resumable: true, job_id: null, created_at: "", updated_at: "" }];
+  socket().push({ type: "job_event", hub_id: "a", job: job({ kind: "sync_hub", status: "failed", finished_at: "2026-09-17T10:00:09Z" }) });
+  await flush();
+  assert.deepEqual(rt(store).stoppedApplies.map((a) => a.apply_id), ["y"]);
+  const before = api.count("server");
+  socket().push({ type: "dropped", count: 3 });
+  await flush();
+  assert.ok(api.count("server") > before, "a dropped frame reloads everything");
+  store.disconnect();
+});

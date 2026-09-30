@@ -63,6 +63,14 @@ export class SbPanelApi extends LitElement {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
   }
 
+  /** Bumped by a new follow or leaving the page; a loop from an older one stops. */
+  private _followGeneration = 0;
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._followGeneration += 1;
+  }
+
   connectedCallback(): void {
     super.connectedCallback();
     try {
@@ -145,11 +153,26 @@ export class SbPanelApi extends LitElement {
       this._response = { ok: false, status: 0, statusText: "no 202 job to follow yet", headers: [], text: "", body: null };
       return;
     }
+    // Poll the job itself: no history row and no store resync per poll, one
+    // follow at a time, and it stops when the page is left (CR-F5a-13).
+    const generation = ++this._followGeneration;
+    const path = `/hubs/${job.hub_id}/jobs/${job.job_id}`;
     for (let i = 0; i < 600; i++) {
-      await this._send({ method: "GET", path: `/hubs/${job.hub_id}/jobs/${job.job_id}`, query: "", body: "", headers: {} });
-      const status = (this._response?.body as { status?: string } | null)?.status;
-      if (!status || TERMINAL_JOB.has(status)) break;
+      let response: ApiResponse;
+      try {
+        response = await this.api.request("GET", path);
+      } catch (err) {
+        if (generation === this._followGeneration) {
+          this._response = { ok: false, status: 0, statusText: `request failed: ${String(err)}`, headers: [], text: "", body: null };
+        }
+        return;
+      }
+      if (generation !== this._followGeneration) return;
+      this._response = response;
+      const status = (response.body as { status?: string } | null)?.status;
+      if (!status || TERMINAL_JOB.has(status)) return;
       await new Promise((resolve) => setTimeout(resolve, 500));
+      if (generation !== this._followGeneration) return;
     }
   }
 

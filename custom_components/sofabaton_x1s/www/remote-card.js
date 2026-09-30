@@ -1206,18 +1206,19 @@ function layoutHasCustomOverride(config, selection) {
   const override = layouts[key] ?? (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
   return Boolean(override && typeof override === "object");
 }
-function layoutSelectionNote(config, selection) {
+function layoutSelectionNote(config, selection, strings = str()) {
+  const e6 = strings.editor;
   if (selection === "default") {
-    return str().editor.noteDefaultLayout;
+    return e6.noteDefaultLayout;
   }
   if (selection === DEVICE_DEFAULT_LAYOUT_KEY) {
-    return str().editor.noteDeviceDefaultLayout;
+    return e6.noteDeviceDefaultLayout;
   }
   const isDevice = isDeviceLayoutKey(selection);
   if (layoutHasCustomOverride(config, selection)) {
-    return isDevice ? str().editor.noteCustomDeviceLayout : str().editor.noteCustomActivityLayout;
+    return isDevice ? e6.noteCustomDeviceLayout : e6.noteCustomActivityLayout;
   }
-  return isDevice ? str().editor.noteUsingDeviceDefault : str().editor.noteUsingActivityDefault;
+  return isDevice ? e6.noteUsingDeviceDefault : e6.noteUsingActivityDefault;
 }
 function editorActivitiesFromState(state) {
   const list = state?.attributes?.activities;
@@ -1381,8 +1382,8 @@ function resetEditorLayout(config, selection) {
   }
   return next;
 }
-function groupLabel(key) {
-  return str().groups[key] || key;
+function groupLabel(key, strings = str()) {
+  return strings.groups[key] || key;
 }
 function isGroupEnabled(config, selection, key) {
   const prop = GROUP_VISIBILITY_KEYS[key];
@@ -3147,10 +3148,10 @@ var computeSubFormLabel = (schema) => {
   return schema.name;
 };
 var computeSubFormHelper = (schema) => schema.name === INITIAL_VIEW_FIELD ? str().editor.initialViewHelper : void 0;
-function longPressGroupLabel(group) {
-  if (group === "volume") return str().editor.volume;
-  if (group === "channel") return str().editor.channel;
-  if (group === "dpad") return str().groups.dpad || group;
+function longPressGroupLabel(group, strings = str()) {
+  if (group === "volume") return strings.editor.volume;
+  if (group === "channel") return strings.editor.channel;
+  if (group === "dpad") return strings.groups.dpad || group;
   return group;
 }
 function renderGeneralOptionsSection(params) {

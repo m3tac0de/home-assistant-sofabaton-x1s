@@ -57,6 +57,7 @@ import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import type { HubContext } from "../panel-context";
+import type { PanelStream, StreamMessage } from "../panel-stream";
 import { firmwareFloor, type Gate } from "../panel-selectors";
 import { FIRMWARE_BLOCK_CSS, renderFirmwareBlock } from "../components/firmware-block";
 import { PANEL_BASE_CSS } from "../panel-styles";
@@ -169,6 +170,7 @@ export class SbPanelWifiDevices extends LitElement {
     _confirmClear: { state: true },
     _leave: { state: true },
     _working: { state: true },
+    stream: { attribute: false },
     _syncError: { state: true },
     _flashTick: { state: true },
   };
@@ -369,9 +371,29 @@ export class SbPanelWifiDevices extends LitElement {
   private _flashTimer: ReturnType<typeof setTimeout> | null = null;
   private _flashFor: number | null = null;
   private _reportedDirty = false;
+  /** The shell's stream; set by the shell, read for the server's device events. */
+  stream: PanelStream | null = null;
+  private _offStream: (() => void) | null = null;
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    // The server's stale check runs outside jobs (callbacks.py) and says so
+    // with its own events: re-read the list on them, unless an edit is open
+    // (CR-X3-4).
+    this._offStream = this.stream?.onMessage((message: StreamMessage) => {
+      const data = message.data as { type?: unknown; kind?: unknown; hub_id?: unknown };
+      if (data.type !== "server_event" || data.hub_id !== this._hubId) return;
+      const kind = String(data.kind ?? "");
+      const relevant = kind === "callback_device_stale" || kind === "callback_device_restored"
+        || kind.startsWith("callback_listener") || kind.startsWith("mqtt_");
+      if (relevant && !this._working && !this.hasUnsyncedChanges()) void this._load();
+    }) ?? null;
+  }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._offStream?.();
+    this._offStream = null;
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
