@@ -1205,7 +1205,9 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
         "device_class": "IR",
         "device_class_code": 0x07,
         "raw_body": device_raw_body,
-        "idle_behavior": 1,
+        # Never set up: idle mode 0 as well as the tail byte 0. (Idle 1-3
+        # would mean power is set up, whatever the tail byte says.)
+        "idle_behavior": 0,
     }
     hub._proxy.state.commands[2] = {}
     hub._proxy.state.buttons[2] = set()

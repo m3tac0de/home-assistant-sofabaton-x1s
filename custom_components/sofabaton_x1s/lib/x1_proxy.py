@@ -27,6 +27,7 @@ from .hub_versions import (
     classify_hub_version,
     mdns_service_type_for_props,
 )
+from .ack import AckOutcome
 from .hub_logging import LogTag, get_hub_logger
 from .commands import (
     DeviceButtonAssembler,
@@ -855,13 +856,22 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         dev_lo = device_id & 0xFF
         normalized_mode = int(mode) & 0xFF
-        ok = self.enqueue_cmd(
-            OP_SET_IDLE_BEHAVIOR,
-            bytes([dev_lo, normalized_mode]),
+        if not self.can_issue_commands():
+            return False
+        # Ack-gated: a fire-and-forget write returned before the hub had
+        # answered, and the next step's frame then landed in that answer
+        # and was dropped (bench 2026-09-30: an idle write followed by a
+        # power-macro page, as a device sync runs them).
+        outcome = self._status_exchange(
+            "idle_behavior", OP_SET_IDLE_BEHAVIOR, bytes([dev_lo, normalized_mode])
         )
-        if ok:
-            self.record_idle_behavior_value(dev_lo, normalized_mode, source="local_set")
-        return ok
+        if outcome is not AckOutcome.acked:
+            self._log.warning(
+                "%s idle behaviour dev=0x%02X mode=%d %s", LogTag.REMOTE, dev_lo, normalized_mode, outcome.value
+            )
+            return False
+        self.record_idle_behavior_value(dev_lo, normalized_mode, source="local_set")
+        return True
 
     def get_idle_behavior(
         self,

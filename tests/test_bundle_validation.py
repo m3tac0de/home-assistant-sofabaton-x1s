@@ -644,3 +644,35 @@ def test_an_edit_may_not_favorite_the_same_command_twice():
 
     # A duplicate the hub already holds is hub truth and passes.
     validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=edited)
+
+
+def test_a_long_press_only_binding_row_is_valid_hub_truth():
+    # The hub keeps a row whose short press is empty (command 0) and whose
+    # long press is bound (bench 2026-09-30); an edit may keep or add one.
+    bundle = valid_bundle("X1S")
+    bundle["devices"][0]["button_bindings"] = [
+        {"button_id": 0xB6, "command_id": 0, "long_press_command_id": 10},
+    ]
+    validate_hub_bundle_for_model(bundle, hub_version="X1S", grandfather_baseline=valid_bundle("X1S"))
+
+    # An empty short press with no long press is still no binding at all.
+    empty = valid_bundle("X1S")
+    empty["devices"][0]["button_bindings"] = [
+        {"button_id": 0xB6, "command_id": 0, "long_press_command_id": None},
+    ]
+    with pytest.raises(ValueError, match="missing command 0"):
+        validate_hub_bundle_for_model(empty, hub_version="X1S", grandfather_baseline=valid_bundle("X1S"))
+
+
+def test_the_activity_export_keeps_a_long_press_only_row_and_skips_placeholders():
+    from custom_components.sofabaton_x1s.lib.backup_export import build_activity_button_rows
+
+    rows, referenced = build_activity_button_rows(
+        button_codes=[0xB7, 0xB8],
+        button_details={
+            0xB7: {"device_id": 5, "command_id": 0, "long_press_device_id": 5, "long_press_command_id": 2},
+            0xB8: {"device_id": 5, "command_id": 0},  # a role placeholder: no binding
+        },
+    )
+    assert [(r["button_id"], r["command_id"], r["long_press_command_id"]) for r in rows] == [(0xB7, 0, 2)]
+    assert referenced == {5}

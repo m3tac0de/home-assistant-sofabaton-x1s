@@ -374,7 +374,17 @@ def _validate_bindings(
         # reference check below still rejects it unless the baseline scan
         # grandfathered it (a command list can never contain id 0).
         command_id = _integer(binding.get("command_id"), f"{binding_path}.command_id", minimum=0, maximum=0xFE)
-        if owner_kind == "activity" and device_id == owner_id:
+        # A long-press-only row: the short press is empty (command 0) and
+        # the long press is bound. The hub keeps such rows (bench
+        # 2026-09-30), so the empty short leg is not a dangling reference.
+        long_press_only = (
+            command_id == 0
+            and isinstance(binding.get("long_press_command_id"), int)
+            and binding.get("long_press_command_id") != 0
+        )
+        if long_press_only:
+            pass
+        elif owner_kind == "activity" and device_id == owner_id:
             if (command_id not in macros or command_id in _POWER_MACRO_IDS) and command_id not in tolerated.get(
                 owner_id, ()
             ):

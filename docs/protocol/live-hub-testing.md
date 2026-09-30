@@ -2520,3 +2520,32 @@ its four devices, three activities and name `X1S HUB test`).
   refused map counted as success. A control favorite on the real "Watch
   TV" activity was accepted and removed again. The X1 path (fixed code
   `0x4E24`) was not probed.
+
+## ◇ Validated: restore and backup, code review bench BP2 (X1S + X1, 2026-09-30)
+
+Bench program BP2 of the code review (`bench_286` to `bench_288`).
+
+- **Long-press-only rows (CR-R1-10, CR-L5-7), X1S.** A binding row with an
+  empty short press (command 0, code 0) and a bound long press is kept by
+  the hub on a device page and on an activity page, and reads back as
+  written. Restore now writes such rows, the activity export keeps them
+  (a role placeholder, command 0 without a long press, is still no
+  binding), and validation accepts them.
+- **Power byte (CR-L2-5), X1S.** A device created from the Add-device
+  payload has the record-tail power byte 0, and it stays 0 after its power
+  is set up (idle byte 1 plus POWER_ON/POWER_OFF macros). The tail byte is
+  not a power flag: the backup macro read now also counts the idle byte
+  (modes 1-3), so such a device's power macros are captured.
+- **Idle write race (CR-BP2-1), X1S.** `SET_IDLE_BEHAVIOR` was sent
+  fire-and-forget; a power-macro page sent right after it landed in the
+  hub's `STATUS_ACK` and was dropped (ack timeout). The write is now
+  ack-gated; the same sequence then landed.
+- **Erase and replacing restore (CR-L4a-7, CR-L4a-9, CR-L4a-10, CR-X1-4),
+  X1, through the facade.** A full backup (12 devices, 6 activities, IR
+  blobs) read each catalog once. The erase answered `STATUS_ACK 0x0103`
+  status `0x00`. The replacing restore rebuilt all 12 devices and 6
+  activities in 392 s with two catalog reads per kind (the bundle's one
+  refresh and the read-back), left no new burst listeners, and applied the
+  bundle's hub name. A second full backup matched the first entity by
+  entity (names, classes, command, binding, macro, favorite and input
+  counts). The X1's HA entry was disabled for the run and re-enabled.

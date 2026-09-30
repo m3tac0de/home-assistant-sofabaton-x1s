@@ -52,10 +52,11 @@ entity content-equal to the pre-erase capture.
 Observed behaviour after the frame is sent:
 
 - The hub eventually emits a single response frame on the same
-  channel. The response contents are not consumed beyond "did
-  anything arrive after the send?" -- the operation is treated as
-  fire-and-forget once an ack of any kind comes back. Treat any
-  first response frame after the send as success.
+  channel: `STATUS_ACK 0x0103` with status `0x00` (bench 2026-09-30,
+  X1, a 12-device / 6-activity hub). The library treats a
+  `STATUS_ACK` with a non-zero status as a rejection (nothing is
+  wiped locally, a replacing restore stops) and any other first
+  response as success.
 - **No firm wire-level timeout is documented in the upstream client.**
   The clear-and-restore flow (the one bundle restore mirrors) waits
   indefinitely until either an ack, a disconnect, or a transport
@@ -130,9 +131,9 @@ It should:
   opcode `0x001D` and an empty payload.
 - Use a generous ack window (suggested: 2 minutes; the upstream
   client uses no enforced wire-level timeout at all for this
-  operation). Any first response from the hub on the same channel
-  within the window is success; a hub-initiated disconnect *before*
-  any ack is failure. Bump the window if a real run times out
+  operation). A first response within the window is success unless
+  it is a `STATUS_ACK` with a non-zero status; a hub-initiated
+  disconnect *before* any ack is failure. Bump the window if a real run times out
   with the hub still working.
 - On success, clear the proxy's catalog/cache mirrors (see
   `proxy_backup.py`'s `clear_*_catalog` and

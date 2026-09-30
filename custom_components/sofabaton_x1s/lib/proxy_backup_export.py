@@ -135,6 +135,23 @@ class BackupExportMixin:
             if event.wait(min(remaining, 0.2)) or ready_check():
                 return True
 
+    def _device_power_set_up(self, dev_lo: int, device_config: Any) -> bool:
+        """Whether the device's power macros are real, so worth reading.
+
+        For a device whose power was never set up the hub fabricates
+        placeholder power macros, which must not be captured. Two signals
+        say it was set up: the record-tail power byte (1 on every existing
+        hub device) or the idle-behavior byte in modes 1-3 (L-P25). A
+        device created through Add device keeps the tail byte at 0 even
+        after its power is set up (bench 2026-09-30, CR-L2-5), so the tail
+        byte alone would drop that device's power macros from every backup.
+        """
+
+        if device_config is None or device_config.is_power_configured:
+            return True
+        mode, _known = self.get_idle_behavior(dev_lo, fetch_if_missing=False)
+        return mode is not None and (int(mode) & 0xFF) in (1, 2, 3)
+
     def _refresh_catalog(self, kind: str, *, timeout: float) -> None:
         """Request a fresh devices/activities burst and wait for it.
 
@@ -220,7 +237,6 @@ class BackupExportMixin:
         device_config = self._parse_config(
             device_meta.get("raw_body"), hub_version=self.hub_version
         )
-        skip_macros = device_config is not None and not device_config.is_power_configured
         skip_inputs = device_config is not None and not device_config.is_input_configured
 
         reuse_commands = bool(reuse_commands) and dev_lo in self._commands_complete
@@ -241,6 +257,10 @@ class BackupExportMixin:
             lambda: dev_lo in self.state.buttons,
             timeout=wait_timeout,
         )
+        # The idle byte is one of the two power signals the macro read
+        # depends on (see _device_power_set_up): read it first.
+        self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
+        skip_macros = not self._device_power_set_up(dev_lo, device_config)
         if not skip_macros:
             self._fetch_and_wait(
                 f"macros:{dev_lo}",
@@ -292,11 +312,9 @@ class BackupExportMixin:
             self.state.device_key_sorts[dev_lo] = dict(key_sort_row)
 
         # Idle / automatic-power behavior lives in its own hub query
-        # (OP_IDLE_BEHAVIOR, 0x0242), not the device record, so it must be
-        # fetched explicitly. The reply handler stores it on the device's
-        # catalog entry, which is where the assembler reads it back.
-        self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
-
+        # (OP_IDLE_BEHAVIOR, 0x0242), not the device record; it was fetched
+        # above (before the macro read). The reply handler stores it on the
+        # device's catalog entry, which is where the assembler reads it back.
         self._note_detail_fetched("device", dev_lo)
 
         return self.assemble_device_backup_from_state(
@@ -329,7 +347,7 @@ class BackupExportMixin:
         device_config = self._parse_config(
             device_meta.get("raw_body"), hub_version=self.hub_version
         )
-        skip_macros = device_config is not None and not device_config.is_power_configured
+        skip_macros = not self._device_power_set_up(dev_lo, device_config)
         skip_inputs = device_config is not None and not device_config.is_input_configured
 
         command_labels, _ = self.get_commands_for_entity(dev_lo, fetch_if_missing=False)

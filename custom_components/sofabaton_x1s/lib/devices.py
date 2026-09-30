@@ -221,9 +221,10 @@ class DeviceConfig:
         configured, 4 means no power key, 0 means never set up. Kept
         because a zero here still matters to the hub (see
         :attr:`power_mode`): callers use it to detect a tail that must be
-        carried through head rewrites. Whether it changes once power is
-        set up on a freshly created device is open (bench program BP2,
-        CR-L2-5), which matters for backup_device's macro gate.
+        carried through head rewrites. It does not follow power setup: a
+        device created through Add device keeps ``0`` after its idle byte
+        and power macros are written (bench 2026-09-30, CR-L2-5), so
+        nothing may gate on it as "has power macros".
         """
 
         return self.power_mode != 0

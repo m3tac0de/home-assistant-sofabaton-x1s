@@ -1394,7 +1394,7 @@ class ActivityOpsMixin:
             device_id=act_lo,
             button_id=btn_lo,
             short_press_device_id=dev_lo,
-            short_press_button_code=synthesize_command_code(cmd_lo),
+            short_press_button_code=synthesize_command_code(cmd_lo) if cmd_lo else 0,
             short_press_button_id=cmd_lo,
             **long_press_kwargs,
         )

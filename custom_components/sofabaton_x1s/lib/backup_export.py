@@ -412,12 +412,18 @@ def build_activity_button_rows(
         details = button_details.get(button_id, {})
         target_device_id = int(details.get("device_id", 0)) & 0xFF
         command_id = int(details.get("command_id", 0)) & 0xFF
-        if target_device_id == 0 or command_id == 0:
+        long_press_only = (
+            command_id == 0
+            and int(details.get("long_press_device_id") or 0) & 0xFF != 0
+            and int(details.get("long_press_command_id") or 0) & 0xFF != 0
+        )
+        if target_device_id == 0 or (command_id == 0 and not long_press_only):
             # Slot exists but isn't bound: no target device, or a keymap
             # page placeholder carrying a role-assigned device with no
             # command (command byte 0) — e.g. a playback-role device that
             # has no mapping for this button. Neither is an actionable
-            # binding, and bundle validation rejects command_id 0.
+            # binding. A row whose short press is empty but whose long
+            # press is bound is one (the hub keeps it, bench 2026-09-30).
             continue
         if target_device_id < ACTIVITY_ID_BASE:
             referenced.add(target_device_id)
