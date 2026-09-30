@@ -208,13 +208,13 @@ def test_activity_macro_rows_exclude_cross_activity_chain_refs() -> None:
         label="POWER_OFF",
         key_sequence=[
             _Step(device_id=11, key_id=0xC7, fid=0, duration=0, delay=0),
-            # Chain step: power-off hands over to another activity.
+            # A step naming another activity (an old experiment, L-B25).
             _Step(device_id=102, key_id=0xC6, fid=0, duration=0, delay=0),
         ],
     )
     rows, referenced = bx.build_activity_macro_rows([macro])
     assert referenced == {11}
-    # The chain step itself survives in the exported rows.
+    # Exported verbatim, so a restore refuses the file visibly.
     assert rows[0]["steps"][1]["device_id"] == 102
 
 

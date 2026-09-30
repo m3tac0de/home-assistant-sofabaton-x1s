@@ -803,9 +803,10 @@ test("adding a favorite appends only the new device's power steps", () => {
   assert.deepEqual([...new Set(on.steps!.filter((s) => s.command_id === 0xC6).map((s) => s.device_id))], [1, 2]);
 });
 
-test("chain steps to another activity stay in the macro but never become members", () => {
-  // Vendor-app construct (#263): a POWER_OFF that hands over to another
-  // activity carries that activity's id in a power-ref step.
+test("a step naming another activity stays in the macro but never becomes a member", () => {
+  // Only a file from an old experiment carries one (the vendor app cannot
+  // link activities, L-B25): the editor keeps the row so the restore
+  // refuses the file visibly, and never promotes the id to a member.
   const withChain = realPowerActivity();
   withChain.activities[0].macros![1].steps!.push(
     { device_id: 102, command_id: 198, button_code: 0, duration: 0, delay: 255 },
