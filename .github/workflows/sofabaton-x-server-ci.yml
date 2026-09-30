@@ -98,8 +98,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "20"
-      - name: Generate types from the committed document
-        run: npx -y openapi-typescript@7 sofabaton-x-server/openapi.json -o sofabaton-x-server/codegen-smoke/schema.d.ts
+      - name: The committed client types match the document (CR-X3-5)
+        run: |
+          node scripts/gen-server-types.mjs
+          git diff --exit-code -- sofabaton-x-server/openapi.d.ts
       - name: The generated types type-check against a small client
         run: |
           npm install --no-save typescript@5

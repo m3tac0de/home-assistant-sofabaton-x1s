@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": []
   },
-  "files": ["schema.d.ts", "smoke.ts"]
+  "files": ["../openapi.d.ts", "smoke.ts"]
 }

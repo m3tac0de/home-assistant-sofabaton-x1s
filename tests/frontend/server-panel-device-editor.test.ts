@@ -103,7 +103,7 @@ test("editDevice sends the element with the quoted snapshot id as If-Match; remo
     return new Response(JSON.stringify({ job_id: "j1", hub_id: "h", kind: "sync_device", status: "queued" }), { status: 202, headers: { "content-type": "application/json" } });
   };
   const api = new PanelApi("http://host", fetchImpl);
-  const element = SNAPSHOT.devices[0];
+  const element = SNAPSHOT.devices![0];
   const started = await api.editDevice("h", 1, element, "snap-1");
   assert.equal(started.status, 202);
   assert.equal(calls[0].method, "PUT");

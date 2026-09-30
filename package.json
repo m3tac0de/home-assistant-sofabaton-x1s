@@ -9,6 +9,7 @@
     "build:remote-embed": "node ./scripts/build-remote-embed.mjs",
     "build:remote-web-assets": "node ./scripts/build-remote-web-assets.mjs",
     "build:server-panel": "node ./scripts/build-server-panel.mjs",
+    "gen:server-types": "node ./scripts/gen-server-types.mjs",
     "build:frontend": "npm run build:remote-web-assets && npm run build:tools-card && npm run build:remote-card && npm run build:remote-web && npm run build:remote-embed && npm run build:server-panel",
     "build:tools-card-harness-site": "node ./scripts/build-tools-card-harness-site.mjs",
     "build:readme-remote-shot": "node ./scripts/build-readme-remote-shot.mjs",

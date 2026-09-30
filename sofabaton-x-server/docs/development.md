@@ -35,13 +35,18 @@ is generated with; CI installs the same set before the drift test, so a
 framework's own wording (the 422 description changed between FastAPI
 releases, for instance) never shows up as API drift.
 
-The codegen smoke (also in CI) checks generation and type-checks the sample
-client:
+Then regenerate the TypeScript types the control panel and the web remote
+use. The file is committed next to the document, and CI regenerates and
+diffs it. The codegen smoke type-checks a sample client against it:
 
 ```
-npx -y openapi-typescript@7 sofabaton-x-server/openapi.json -o sofabaton-x-server/codegen-smoke/schema.d.ts
+npm run gen:server-types
 npx tsc --noEmit -p sofabaton-x-server/codegen-smoke/tsconfig.json
 ```
+
+`tests/frontend/server-contract.test.ts` fails when `openapi.d.ts` is older
+than the document, or when the panel or the web remote calls a route the
+document does not list.
 
 Unit tests and schema checks do not establish live hub compatibility.
 The [live-hub testing notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/live-hub-testing.md) record

@@ -259,7 +259,7 @@ test("job frames mutate the hub record; a finished job leaves a notice that expi
   await flush();
   socket().push({ type: "job_event", hub_id: "a", job: job({ status: "queued" }) });
   assert.equal(rt(store).hub.active_job?.status, "queued");
-  socket().push({ type: "job_event", hub_id: "a", job: job({ progress: { completed_steps: 1, total_steps: 3 } }) });
+  socket().push({ type: "job_event", hub_id: "a", job: job({ progress: { phase: "item", message: "", completed_steps: 1, total_steps: 3 } }) });
   assert.equal(rt(store).hub.active_job?.progress?.completed_steps, 1);
   const hubsBefore = api.count("hubs");
   socket().push({ type: "job_event", hub_id: "a", job: job({ status: "done", finished_at: "2026-09-17T10:00:09Z" }) });
