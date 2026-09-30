@@ -48,20 +48,25 @@ class ExchangeMixin:
         claim are one step, so a burst started in between cannot be
         overwritten. On timeout the exchange takes the wire anyway and
         the per-step ack timeout governs.
+
+        While it waits, reads queued behind the in-flight burst stay
+        queued: the exchange takes the wire next (CR-BP3-1), so a stream
+        of catalog reads can delay it by one burst, never starve it.
         """
 
         deadline = time.monotonic() + timeout
-        while not self._burst.try_claim(kind):
-            if time.monotonic() >= deadline:
-                self._log.warning(
-                    "%s read burst (%s) still active after %.1fs quiesce wait",
-                    LogTag.CMD,
-                    self._burst.kind,
-                    timeout,
-                )
-                self._burst.start(kind)
-                return
-            time.sleep(0.05)
+        with self._burst.claimant():
+            while not self._burst.try_claim(kind):
+                if time.monotonic() >= deadline:
+                    self._log.warning(
+                        "%s read burst (%s) still active after %.1fs quiesce wait",
+                        LogTag.CMD,
+                        self._burst.kind,
+                        timeout,
+                    )
+                    self._burst.start(kind)
+                    return
+                time.sleep(0.05)
 
     @contextlib.contextmanager
     def exchange(self, name: str):

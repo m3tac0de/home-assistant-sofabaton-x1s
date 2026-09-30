@@ -1111,8 +1111,8 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
                 "long_press_device_id": None,
                 "long_press_command_id": None,
             },
-            # Long press only: counted, not restored (hub acceptance of a
-            # short-0 row is bench program BP2).
+            # Long press only: written with an empty short press (the hub
+            # keeps such rows, bench 2026-09-30).
             {
                 "button_id": 0x59,
                 "device_id": 11,
@@ -1145,12 +1145,12 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
         "status": "success",
         "device_id": 0x22,
         "restored_commands": 2,
-        "restored_button_bindings": 1,
+        "restored_button_bindings": 2,
         "restored_macros": 1,
         "restored_inputs": 1,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
-        "skipped_button_bindings": 1,
+        "skipped_button_bindings": 0,
         "command_id_map": {"18": 18, "19": 19},
     }
     assert len(sequence_calls) == 2
@@ -1172,6 +1172,12 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
     assert 0x08 in post_families
     assert 0x64 not in post_families
     assert post_families.index(0x0E) < post_families.index(0x3E) < post_families.index(0x41) < post_families.index(0x12) < post_families.index(0x46) < post_families.index(0x08)
+
+    binding_steps = {step.payload[7]: step.payload for step in post_steps if step.family == 0x3E}
+    long_press_only = binding_steps[0x59]
+    # body[5..12] = short device, 6-byte code, id (empty); body[13..20] long.
+    assert long_press_only[3 + 6:3 + 12] == bytes(6) and long_press_only[3 + 12] == 0
+    assert long_press_only[3 + 20] == 19
 
     command_steps = [step for step in post_steps if step.family == 0x0E]
     assert len(command_steps) == 2

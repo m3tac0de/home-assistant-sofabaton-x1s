@@ -1276,19 +1276,24 @@ class RestoreMixin:
             key=lambda item: int(item.get("button_id", 0)),
         ):
             new_command_id = _map_command_id(row.get("command_id"))
+            long_press_command_id = _map_command_id(row.get("long_press_command_id"))
             button_id = int(row.get("button_id", 0)) & 0xFF
-            if button_id == 0 or new_command_id is None:
-                # Includes a long-press-only row (short command 0): whether
-                # the hub takes one back is still open (bench program BP2).
+            # A long-press-only row (short command 0) is written as such:
+            # the hub keeps it (bench 2026-09-30, device and activity pages).
+            long_press_only = (
+                new_command_id is None
+                and int(row.get("command_id") or 0) == 0
+                and long_press_command_id is not None
+            )
+            if button_id == 0 or (new_command_id is None and not long_press_only):
                 parts.skipped_button_bindings += 1
                 continue
-            long_press_command_id = _map_command_id(row.get("long_press_command_id"))
             kwargs: dict[str, Any] = {
                 "device_id": new_device_id,
                 "button_id": button_id,
                 "short_press_device_id": new_device_id,
-                "short_press_button_code": _button_code_for(new_command_id),
-                "short_press_button_id": new_command_id,
+                "short_press_button_code": 0 if long_press_only else _button_code_for(new_command_id),
+                "short_press_button_id": 0 if long_press_only else new_command_id,
             }
             if long_press_command_id is not None:
                 kwargs["long_press_device_id"] = new_device_id

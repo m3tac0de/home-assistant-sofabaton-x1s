@@ -56,9 +56,10 @@ def test_a_wide_hub_never_gets_the_x1_activity_row() -> None:
 def test_favoriting_a_high_command_id_is_refused_clearly_on_a_wide_hub() -> None:
     proxy = _proxy(HUB_VERSION_X1S)
 
-    with pytest.raises(ValueError, match="not supported yet"):
-        proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xE0, slot_id=1)
-    proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xDF, slot_id=1)
+    # Bench 2026-09-30 (X1S): ids up to 199 are accepted, 200 and above refused.
+    with pytest.raises(ValueError, match="up to 199"):
+        proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xC8, slot_id=1)
+    proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xC7, slot_id=1)
 
 
 def test_x1_favorite_add_refuses_when_the_order_cannot_be_read(monkeypatch) -> None:
@@ -141,3 +142,24 @@ def test_a_stopped_walk_reports_the_plan_size_and_what_landed(monkeypatch) -> No
     result = SyncResult.from_engine(failure, snapshot_id=None)
     assert (result.completed_steps, result.total_steps) == (2, 5)
     assert result.counters == {"favorite_add": 2}
+
+
+def test_the_idle_behaviour_write_waits_for_the_hub_and_honours_a_rejection() -> None:
+    # Bench 2026-09-30 (CR-BP2-1): a fire-and-forget idle write let the next
+    # step's frame land in the hub's answer, where it was dropped.
+    proxy = _proxy(HUB_VERSION_X1S)
+    waited = []
+    proxy._send_cmd_frame = lambda *a: None  # type: ignore[assignment]
+
+    def _ack(candidates, **kw):
+        waited.append(candidates)
+        return (0x0103, bytes([status[0]]))
+
+    proxy.wait_for_ack_any = _ack  # type: ignore[assignment]
+    status = [0x00]
+    assert proxy.set_idle_behavior(5, 1) is True and waited  # it waited for the answer
+    assert proxy.get_idle_behavior(5, fetch_if_missing=False) == (1, True)
+
+    status[0] = 0x04
+    assert proxy.set_idle_behavior(5, 3) is False
+    assert proxy.get_idle_behavior(5, fetch_if_missing=False) == (1, True)  # unchanged

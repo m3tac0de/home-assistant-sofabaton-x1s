@@ -583,6 +583,61 @@ def test_try_claim_never_overwrites_a_burst_another_thread_started() -> None:
     assert scheduler.kind == "exchange:create"
 
 
+def test_a_waiting_exchange_goes_ahead_of_queued_reads() -> None:
+    """CR-BP3-1 (bench): a stream of catalog reads starved every exchange."""
+
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    _read(scheduler, sent, "devices")
+    _read(scheduler, sent, "activities")  # queued behind devices
+    with scheduler.claimant():
+        assert scheduler.try_claim("exchange:inputs") is False
+        scheduler.finish("devices", can_issue=lambda: True, sender=send)
+        assert sent == ["devices"]  # activities waits for the exchange
+        _read(scheduler, sent, "commands")  # queues, even on a quiet wire
+        assert sent == ["devices"]
+        assert scheduler.try_claim("exchange:inputs") is True
+
+    scheduler.end_exchange(can_issue=lambda: True, sender=send)
+    assert sent == ["devices", "activities"]
+    scheduler.finish("activities", can_issue=lambda: True, sender=send)
+    assert sent == ["devices", "activities", "commands"]
+
+
+def test_a_claimant_that_gives_up_never_strands_the_queue() -> None:
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    with scheduler.claimant():
+        _read(scheduler, sent, "devices")
+        assert sent == []
+    scheduler.tick(0.0, can_issue=lambda: True, sender=send)
+    assert sent == ["devices"]
+
+
+def test_an_identical_queued_read_absorbs_a_repeat_request() -> None:
+    sent: list[str] = []
+    scheduler = BurstScheduler(idle_s=0, response_grace=0)
+    send = lambda op, payload: sent.append(payload.decode())  # noqa: E731
+
+    _read(scheduler, sent, "devices")
+    for _ in range(50):
+        _read(scheduler, sent, "activities")
+        _read(scheduler, sent, "devices")
+    assert len(scheduler.queue) == 2
+
+    # Non-burst sends are never merged.
+    for _ in range(2):
+        scheduler.queue_or_send(
+            opcode=1, payload=b"press", expects_burst=False, burst_kind=None,
+            can_issue=lambda: True, sender=send,
+        )
+    assert len(scheduler.queue) == 4
+
+
 def test_a_whole_cache_read_disturbed_by_ingest_is_retried() -> None:
     import pytest
 

@@ -164,7 +164,7 @@ The reply format is mostly shared across hub versions:
                (does not count the fixed leading 0xC2 or the trailing checksum)
     3     7   Device ID: 0xC2 + 6-byte device-id tail
    10     9   Version block
-   19     N   Hub name (UTF-8, observed max 30 bytes)
+   19     N   Hub name (the bytes set_hub_name wrote: GB2312 above ASCII, bench 2026-09-30; observed max 30 bytes)
   19+N    1   Checksum (sum8 of all preceding bytes)
 ```
 

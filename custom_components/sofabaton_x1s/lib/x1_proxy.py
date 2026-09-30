@@ -27,6 +27,7 @@ from .hub_versions import (
     classify_hub_version,
     mdns_service_type_for_props,
 )
+from .ack import AckOutcome
 from .hub_logging import LogTag, get_hub_logger
 from .commands import (
     DeviceButtonAssembler,
@@ -219,11 +220,26 @@ def _encode_hub_name_wire(value: str) -> bytes:
     return _to_dbc(value).encode("gb2312", errors="ignore")
 
 
+def _decode_hub_name_bytes(raw: bytes) -> str:
+    """A hub name as the hub stores it: the GB2312 bytes set_hub_name
+    writes (bench 2026-09-30, X1S: the banner carries them back verbatim).
+    Valid UTF-8 is taken as UTF-8 first; GB2312 bytes outside ASCII never
+    are, so an ASCII or UTF-8 name reads the same either way."""
+
+    data = bytes(raw).split(b"\x00", 1)[0]
+    for codec in ("utf-8", "gb2312"):
+        try:
+            return data.decode(codec).strip()
+        except UnicodeDecodeError:
+            continue
+    return data.decode("gb2312", errors="ignore").strip()
+
+
 def _decode_hub_name_wire(payload: bytes, *, hub_version: str | None) -> str:
     raw = payload
     if hub_version == HUB_VERSION_X2 and len(raw) >= 2:
         raw = raw[2:]
-    return raw.decode("gb2312", errors="ignore").strip("\x00").strip()
+    return _decode_hub_name_bytes(raw)
 
 
 def _normalize_mdns_instance(name: str) -> str:
@@ -840,13 +856,22 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         dev_lo = device_id & 0xFF
         normalized_mode = int(mode) & 0xFF
-        ok = self.enqueue_cmd(
-            OP_SET_IDLE_BEHAVIOR,
-            bytes([dev_lo, normalized_mode]),
+        if not self.can_issue_commands():
+            return False
+        # Ack-gated: a fire-and-forget write returned before the hub had
+        # answered, and the next step's frame then landed in that answer
+        # and was dropped (bench 2026-09-30: an idle write followed by a
+        # power-macro page, as a device sync runs them).
+        outcome = self._status_exchange(
+            "idle_behavior", OP_SET_IDLE_BEHAVIOR, bytes([dev_lo, normalized_mode])
         )
-        if ok:
-            self.record_idle_behavior_value(dev_lo, normalized_mode, source="local_set")
-        return ok
+        if outcome is not AckOutcome.acked:
+            self._log.warning(
+                "%s idle behaviour dev=0x%02X mode=%d %s", LogTag.REMOTE, dev_lo, normalized_mode, outcome.value
+            )
+            return False
+        self.record_idle_behavior_value(dev_lo, normalized_mode, source="local_set")
+        return True
 
     def get_idle_behavior(
         self,
@@ -992,7 +1017,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         batch = payload[8:12].hex()
         firmware_version = payload[12] & 0xFF
-        banner_name = payload[15:].decode("utf-8", errors="ignore").strip("\x00").strip()
+        banner_name = _decode_hub_name_bytes(payload[15:])
         # payload[0:6] is the hub's OWN MAC address (bench-verified on
         # X1, X1S and X2). This is authoritative device ground truth:
         # real Sofabaton MACs can carry the locally-administered or even

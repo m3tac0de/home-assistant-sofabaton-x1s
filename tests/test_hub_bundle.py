@@ -1620,3 +1620,21 @@ def test_a_full_backup_drops_steps_into_devices_the_hub_no_longer_has() -> None:
     )
     assert len(structural["activities"][0]["macros"][0]["steps"]) == 3
     assert "skipped_macro_steps" not in structural
+
+
+def test_a_device_whose_power_is_set_up_by_idle_behaviour_keeps_its_macros() -> None:
+    # Bench 2026-09-30 (CR-L2-5): a device created through Add device keeps
+    # the record-tail power byte 0 after its power is set up; the idle byte
+    # (modes 1-3) is what says so.
+    from custom_components.sofabaton_x1s.lib.devices import DeviceConfig
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False,
+                    hub_version=HUB_VERSION_X1S)
+    tail_zero = DeviceConfig(name="Lamp", brand="", device_id=5, power_mode=0)
+    tail_one = DeviceConfig(name="TV", brand="", device_id=6, power_mode=1)
+
+    proxy._idle_behavior_values[5] = 1
+    assert proxy._device_power_set_up(5, tail_zero) is True     # set up via the idle byte
+    proxy._idle_behavior_values[5] = 0
+    assert proxy._device_power_set_up(5, tail_zero) is False    # never set up: placeholders
+    assert proxy._device_power_set_up(6, tail_one) is True      # existing hub devices, as before

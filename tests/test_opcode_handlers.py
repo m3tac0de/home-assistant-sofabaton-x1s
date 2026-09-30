@@ -2194,3 +2194,14 @@ def test_a_devices_commit_drops_captures_of_devices_the_hub_no_longer_lists() ->
 
     assert proxy.get_known_device_ids() == {0x01}
     assert 9 not in proxy.state.ip_buttons
+
+
+def test_record_banner_payload_reads_the_gb2312_name_the_hub_stores() -> None:
+    # Bench 2026-09-30 (X1S, bench_281): set_hub_name writes GB2312 and the
+    # banner carries those bytes back verbatim; a UTF-8 read dropped them.
+    header = bytes.fromhex("e26a44861b45000220221120050100")
+    for name_hex, want in (("bfcdccfc20487562", "客厅 Hub"), ("4ba8b963686520487562", "Küche Hub")):
+        payload = header + bytes.fromhex(name_hex)
+        proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+        info = proxy.record_banner_payload((len(payload) << 8) | 0x02, payload)
+        assert info["name"] == want
