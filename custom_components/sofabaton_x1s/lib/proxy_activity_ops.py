@@ -70,6 +70,12 @@ _ACTIVITY_ROW_NAME_ASCII_LEN = 60
 
 
 
+# The highest command id the X1S accepts as a favorite: 199 is taken, 200
+# and above get STATUS_ACK 0x09 (bench_285, 2026-09-30). The X2 shares the
+# wide layout; the X1 path writes a fixed code and was not probed.
+MAX_FAVORITE_COMMAND_ID = 0xC7
+
+
 class ActivityOpsMixin:
     """Mixin providing activity-edit orchestration."""
 
@@ -844,14 +850,12 @@ class ActivityOpsMixin:
         )
         cmd_lo = command_id & 0xFF
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
-            if 0x20 + cmd_lo > 0xFF:
-                # The code would carry into its high byte (0x4E20 + id, as
-                # bindings write it); whether the hub expects that carry
-                # here is unverified (bench program BP1). Refuse clearly
-                # rather than write a guess.
+            if cmd_lo > MAX_FAVORITE_COMMAND_ID:
+                # The hub refuses the map for these (STATUS_ACK 0x09); say
+                # so before any write instead of reporting a rejection.
                 raise ValueError(
-                    f"favoriting command id {cmd_lo} (0xE0 or above) is not "
-                    "supported yet on this hub"
+                    f"command id {cmd_lo} cannot be a favorite: the hub accepts "
+                    f"favorites for command ids up to {MAX_FAVORITE_COMMAND_ID}"
                 )
             payload.extend([0x4E, 0x20 + cmd_lo])
         else:

@@ -56,9 +56,10 @@ def test_a_wide_hub_never_gets_the_x1_activity_row() -> None:
 def test_favoriting_a_high_command_id_is_refused_clearly_on_a_wide_hub() -> None:
     proxy = _proxy(HUB_VERSION_X1S)
 
-    with pytest.raises(ValueError, match="not supported yet"):
-        proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xE0, slot_id=1)
-    proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xDF, slot_id=1)
+    # Bench 2026-09-30 (X1S): ids up to 199 are accepted, 200 and above refused.
+    with pytest.raises(ValueError, match="up to 199"):
+        proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xC8, slot_id=1)
+    proxy._build_favorite_map_payload(activity_id=0x65, device_id=5, command_id=0xC7, slot_id=1)
 
 
 def test_x1_favorite_add_refuses_when_the_order_cannot_be_read(monkeypatch) -> None:

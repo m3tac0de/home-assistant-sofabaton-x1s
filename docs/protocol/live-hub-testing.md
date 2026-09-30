@@ -2492,3 +2492,31 @@ project as `[1]` / none; one Wifi cycle shrank the raw tables to
 `POST` / `DELETE /activities/{id}/favorites` left `fav1` / empty. Both
 activities clean at the end of the session. The X2's table was not
 checked.
+
+## ◇ Validated: labels, hub name and favorite ids, code review bench BP1 (X1S, 2026-09-30)
+
+Bench program BP1 of the code review (scripts `bench_281` to `bench_285`,
+throwaway devices and activities, all removed again; the X1S ended with
+its four devices, three activities and name `X1S HUB test`).
+
+- **Hub name encoding (CR-L3a-8).** `set_hub_name` writes GB2312, and the
+  hub keeps those bytes: after a reconnect the banner carried `4b a8 b9
+  63 68 65 20 48 75 62` for `Küche Hub` and `bf cd cc fc 20 48 75 62` for
+  `客厅 Hub`. The banner reader decoded them as UTF-8 and showed `Kche Hub`
+  and `Hub`; it now reads GB2312 (UTF-8 first, which GB2312 bytes above
+  ASCII never are).
+- **Label writers (CR-L2-1, CR-L2-14).** A Wifi device (device and command
+  labels) and an IR device restore (command labels) with `Küche`,
+  `灯光控制`, 29 letters plus an emoji (31 UTF-16 units) and 28 letters plus
+  an emoji (30 units) read back exactly as the one slot encoder predicts:
+  the 31-unit name loses the whole emoji, never half of it; the 30-unit
+  name keeps it.
+- **Favorite command ids (CR-L4b-7).** The favorite map (family `0x3E`) is
+  accepted for command ids up to **199** (`0xC7`, answer `0x013E`) and
+  refused for **200 and above** with `STATUS_ACK 0x09`, on a throwaway
+  device and activity where ids 1, 2, 64 ... 199 were all accepted. The
+  code-byte carry past `0xFF` is therefore never reached. Before the
+  wave 1 fix that made a non-zero `STATUS_ACK` a rejection (CR-L4b-5), a
+  refused map counted as success. A control favorite on the real "Watch
+  TV" activity was accepted and removed again. The X1 path (fixed code
+  `0x4E24`) was not probed.
