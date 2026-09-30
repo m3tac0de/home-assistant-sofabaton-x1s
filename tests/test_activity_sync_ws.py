@@ -858,7 +858,7 @@ def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypat
     # pass (which mirrors the brand hash back into the store) agrees too.
     synced_brand = hub.synced_edited["devices"][0]["device"]["brand"]
     assert synced_brand == f"m3-{device_key}-{new_hash}"
-    assert integration.signal_command_sync("entry-1") in dispatched
+    assert entity_sync_module.signal_command_sync("entry-1") in dispatched
 
 
 def test_device_sync_rename_of_out_of_sync_record_updates_name_only(monkeypatch):
