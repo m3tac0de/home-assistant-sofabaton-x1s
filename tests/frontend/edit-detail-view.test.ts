@@ -1429,7 +1429,7 @@ test("a new Wifi Event shortcut is created through the host and added as a favor
     enableLongPress: async () => {},
   });
   const changes = collectBundleChanges(element);
-  element._wifiEventPrimary = { mode: "new", slot: null, name: "  Movie time " };
+  element._events.primary = { mode: "new", slot: null, name: "  Movie time " };
 
   await element._applyAddShortcutWifiEvent();
 
@@ -1447,9 +1447,9 @@ test("an existing Wifi Event shortcut grafts the events device instead of creati
     ensureGrafted: async () => { grafts += 1; return withEventsDevice(element.bundle); },
     enableLongPress: async () => {},
   });
-  element._wifiEventsList = [wifiEvent(2, "Lights off")];
+  element._events.list = [wifiEvent(2, "Lights off")];
   const changes = collectBundleChanges(element);
-  element._wifiEventPrimary = { mode: "existing", slot: 2, name: "" };
+  element._events.primary = { mode: "existing", slot: 2, name: "" };
 
   await element._applyAddShortcutWifiEvent();
 
@@ -1466,19 +1466,19 @@ test("a refused Wifi Event create keeps the dialog open with localized copy", as
     enableLongPress: async () => {},
   });
   const changes = collectBundleChanges(element);
-  element._wifiEventPrimary = { mode: "new", slot: null, name: "Movie time" };
+  element._events.primary = { mode: "new", slot: null, name: "Movie time" };
 
   await element._applyAddShortcutWifiEvent();
 
   assert.equal(element._addFavoriteError, TOOLS_CARD_STRINGS.errors.wifiEventNameTaken);
   assert.equal(changes.length, 0);
-  assert.equal(element._wifiEventBusy, false);
+  assert.equal(element._events.busy, false);
 });
 
 test("the new Wifi Event name input keeps only what the hub can store (CR-X4-1)", () => {
   const element = liveActivityEditorWithEvents({});
   let sel: { mode: string; slot: number | null; name: string } | null = null;
-  const markup = element._renderWifiEventTargetFields({
+  const markup = element._events.renderTargetFields({
     idPrefix: "t",
     sel: { mode: "new", slot: null, name: "" },
     onSelChange: (next: typeof sel) => { sel = next; },

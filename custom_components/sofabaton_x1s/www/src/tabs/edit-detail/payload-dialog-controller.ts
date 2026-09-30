@@ -5,12 +5,7 @@
 // and its rendering. Edits still commit through the element, and the
 // learn mode stays in IrLearnController.
 
-import {
-  html,
-  nothing,
-  type ReactiveController,
-  type ReactiveControllerHost,
-} from "lit";
+import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import { DOC_URLS } from "../../shared/doc-links";
 import { TOOLS_CARD_STRINGS } from "../../strings";
 import {
