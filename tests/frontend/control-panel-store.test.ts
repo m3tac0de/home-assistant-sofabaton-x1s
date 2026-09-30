@@ -982,3 +982,20 @@ test("the Hub tab's send reports in the dock, never as Home Assistant's error to
   assert.equal(calls[0][4], false, "notifyOnError must be false");
   assert.equal(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]?.tone, "error");
 });
+
+test("dock errors stay 8 seconds, successes 6", () => {
+  const delays: number[] = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    delays.push(Number(ms));
+    return realSetTimeout(() => undefined, 0);
+  }) as typeof setTimeout;
+  try {
+    const { store } = createStore();
+    store.showRuntimeCompletion({ tone: "error", label: "The hub did not answer. Sync again." }, "hub-1");
+    store.showRuntimeCompletion({ tone: "success", label: "Done" }, "hub-2");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  assert.deepEqual(delays, [8000, 6000]);
+});

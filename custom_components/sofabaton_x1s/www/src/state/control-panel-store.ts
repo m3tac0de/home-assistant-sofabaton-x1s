@@ -512,7 +512,13 @@ export class ControlPanelStore {
     this.emit();
   }
 
-  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, entryId?: string | null, ttlMs = 6000) {
+  /** A dock notice: a success clears after 6 s, an error after 8 s (it
+   *  often says what to do next). */
+  showRuntimeCompletion(
+    notice: RuntimeCompletionNotice | null,
+    entryId?: string | null,
+    ttlMs = notice?.tone === "error" ? 8000 : 6000,
+  ) {
     const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
     if (!key) return;
     this._clearRuntimeCompletionTimers(key);
