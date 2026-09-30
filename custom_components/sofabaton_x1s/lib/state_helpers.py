@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import threading
 import time
@@ -563,6 +564,13 @@ class BurstScheduler:
     # it (an exchange that sends REQ_MACRO_LABELS, say) nests under the hold:
     # its own listeners fire when it ends, but the wire stays held and the
     # queue waits for :meth:`end_exchange`.
+    #
+    # Claimants: an exchange waiting for the wire (see :meth:`claimant`)
+    # goes ahead of queued reads. While one waits, a burst's end leaves the
+    # wire quiet instead of starting the next queued read, so a steady
+    # stream of catalog reads can never starve an exchange; the queue
+    # drains when the exchange ends. A read burst already queued and not
+    # yet sent absorbs an identical request.
     def __init__(self, *, idle_s: float = 0.15, response_grace: float = 5.0) -> None:
         self.idle_s = idle_s
         self.response_grace = response_grace
@@ -579,6 +587,8 @@ class BurstScheduler:
         self.dropped_listeners: list[Callable[[str], None]] = []
         # The exchange kind a nested read burst is holding the wire for.
         self._held_by: str | None = None
+        # Exchanges currently waiting for the wire.
+        self._claimants = 0
         self._lock = threading.RLock()
 
     def on_burst_end(self, key: str, cb: Callable[[str], None]) -> None:
@@ -616,6 +626,18 @@ class BurstScheduler:
             self.start(kind, now=now)
             return True
 
+    @contextlib.contextmanager
+    def claimant(self):
+        """Scope in which the caller waits for the wire ahead of the queue."""
+
+        with self._lock:
+            self._claimants += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._claimants -= 1
+
     def queue_or_send(
         self,
         *,
@@ -634,8 +656,10 @@ class BurstScheduler:
             return False
 
         with self._lock:
-            if self.active or self.queue:
-                self.queue.append((opcode, payload, is_burst, burst_kind))
+            if self.active or self.queue or self._claimants:
+                entry = (opcode, payload, is_burst, burst_kind)
+                if not (is_burst and entry in self.queue):
+                    self.queue.append(entry)
                 return True
             if is_burst:
                 self.start(burst_kind or "generic", now=current_time)
@@ -749,7 +773,7 @@ class BurstScheduler:
         with self._lock:
             # Another thread may have started a burst since the lock was
             # released; the queue then waits for that burst to end.
-            while self.queue and not self.active:
+            while self.queue and not self.active and not self._claimants:
                 op, payload, is_burst, next_kind = self.queue.pop(0)
                 if not can_issue():
                     if next_kind:

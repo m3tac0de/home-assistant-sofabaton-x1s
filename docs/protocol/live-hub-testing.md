@@ -2549,3 +2549,27 @@ Bench program BP2 of the code review (`bench_286` to `bench_288`).
   bundle's hub name. A second full backup matched the first entity by
   entity (names, classes, command, binding, macro, favorite and input
   counts). The X1's HA entry was disabled for the run and re-enabled.
+
+## ◇ Validated: engine timing under load, code review bench BP3 (X1S + X1, 2026-09-30)
+
+Bench program BP3 of the code review (`bench_289`, read-only).
+
+- **Inputs pages come back whole (CR-L3b-8).** Every device's inputs record
+  (family `0x46`) on both hubs parsed to its full entry count, multi-frame
+  records included (an X1 device with 5 inputs answers a full 255-byte
+  page plus a short tail frame). A device without an inputs page answers a
+  non-success `STATUS_ACK` and reads as empty.
+- **Exchanges under a stream of catalog reads (CR-L3b-2, new CR-BP3-1).**
+  A second thread requested the devices and activities catalogs every
+  50 ms while the inputs reads repeated. Before the fix every read timed
+  out (X1S, 20 of 20): each catalog burst's end started the next queued
+  read, so the exchange never saw a quiet wire, and after its 8 s wait it
+  forced its request into a live burst, where the hub dropped it. An
+  exchange waiting for the wire now goes ahead of queued reads, and a
+  queued, unsent catalog read absorbs identical repeats. After the fix:
+  X1S 20 of 20 in 11 s, X1 36 of 36 in 48 s, no mismatches, no forced
+  claims. The X1's HA entry was disabled for the run and re-enabled.
+- Not run live: the `CALL_ME` busy gate during a facade job (CR-L3b-5)
+  needs the vendor app, the OTA pause (CR-X5-6) a firmware announcement,
+  and the NOTIFY_ME subnet broadcast (CR-L3b-7) a LAN that is not a /24;
+  all three stay covered by unit tests.
