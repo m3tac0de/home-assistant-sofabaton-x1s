@@ -46,7 +46,7 @@ import {
 
 import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
-import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/tabs/activity-editor";
+import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
   activityButtonBindingItems,

@@ -15937,77 +15937,77 @@ function hubIcon(kind, classes = "") {
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
 function decodedClassFormSpecs() {
-  const S9 = TOOLS_CARD_STRINGS.decodedPayload;
+  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
   return {
     wifi_ip: {
-      title: S9.httpTitle,
-      subtitle: S9.httpSubtitle,
+      title: S8.httpTitle,
+      subtitle: S8.httpSubtitle,
       fields: [
-        { key: "host", label: S9.hostIpv4, helper: S9.hostExample },
-        { key: "port", label: S9.port, numeric: true },
-        { key: "method", label: S9.httpMethod, helper: S9.httpMethodExample },
-        { key: "path", label: S9.path },
+        { key: "host", label: S8.hostIpv4, helper: S8.hostExample },
+        { key: "port", label: S8.port, numeric: true },
+        { key: "method", label: S8.httpMethod, helper: S8.httpMethodExample },
+        { key: "path", label: S8.path },
         {
           key: "header",
-          label: S9.extraHeaders,
+          label: S8.extraHeaders,
           multiline: true,
           crlfOnWire: true,
-          helper: S9.extraHeadersHelper
+          helper: S8.extraHeadersHelper
         },
-        { key: "content_type", label: S9.contentType },
-        { key: "body", label: S9.body, multiline: true }
+        { key: "content_type", label: S8.contentType },
+        { key: "body", label: S8.body, multiline: true }
       ]
     },
     wifi_roku: {
-      title: S9.rokuTitle,
+      title: S8.rokuTitle,
       fields: [
-        { key: "path", label: S9.ecpPath, helper: S9.ecpPathExample }
+        { key: "path", label: S8.ecpPath, helper: S8.ecpPathExample }
       ]
     },
     wifi_hue: {
-      title: S9.hueTitle,
-      subtitle: S9.bodyBlockSubtitle,
+      title: S8.hueTitle,
+      subtitle: S8.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S9.urlPath },
+        { key: "path", label: S8.urlPath },
         {
           key: "body_block",
-          label: S9.bodyBlock,
+          label: S8.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S9.bodyBlockHelper
+          helper: S8.bodyBlockHelper
         }
       ]
     },
     wifi_sonos: {
-      title: S9.sonosTitle,
-      subtitle: S9.bodyBlockSubtitle,
+      title: S8.sonosTitle,
+      subtitle: S8.bodyBlockSubtitle,
       fields: [
-        { key: "path", label: S9.urlPath },
+        { key: "path", label: S8.urlPath },
         {
           key: "body_block",
-          label: S9.bodyBlock,
+          label: S8.bodyBlock,
           multiline: true,
           escapedDisplay: true,
-          helper: S9.bodyBlockHelper
+          helper: S8.bodyBlockHelper
         }
       ]
     },
     wifi_mqtt: {
-      title: S9.mqttTitle,
-      subtitle: S9.mqttSubtitle,
+      title: S8.mqttTitle,
+      subtitle: S8.mqttSubtitle,
       fields: [
-        { key: "device_id", label: S9.mqttDeviceId, numeric: true, readonly: true },
-        { key: "command_id", label: S9.mqttCommandId, numeric: true, readonly: true }
+        { key: "device_id", label: S8.mqttDeviceId, numeric: true, readonly: true },
+        { key: "command_id", label: S8.mqttCommandId, numeric: true, readonly: true }
       ]
     },
     ir: {
-      title: S9.irTitle,
-      subtitle: S9.irSubtitle,
+      title: S8.irTitle,
+      subtitle: S8.irSubtitle,
       fields: [
         {
           key: "descriptor",
-          label: S9.descriptor,
-          helper: S9.descriptorExample
+          label: S8.descriptor,
+          helper: S8.descriptorExample
         }
       ]
     }
@@ -17712,57 +17712,57 @@ function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices)
   });
 }
 function sharedButtonCatalog() {
-  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 174, name: S9.up, group: S9.navigation },
-    { code: 178, name: S9.down, group: S9.navigation },
-    { code: 175, name: S9.left, group: S9.navigation },
-    { code: 177, name: S9.right, group: S9.navigation },
-    { code: 176, name: S9.ok, group: S9.navigation },
-    { code: 180, name: S9.home, group: S9.navigation },
-    { code: 179, name: S9.back, group: S9.navigation },
-    { code: 181, name: S9.menu, group: S9.navigation },
-    { code: 182, name: S9.volumeUp, group: S9.volumeChannel },
-    { code: 185, name: S9.volumeDown, group: S9.volumeChannel },
-    { code: 184, name: S9.mute, group: S9.volumeChannel },
-    { code: 183, name: S9.channelUp, group: S9.volumeChannel },
-    { code: 186, name: S9.channelDown, group: S9.volumeChannel },
-    { code: 187, name: S9.rewind, group: S9.transport },
-    { code: 188, name: S9.pause, group: S9.transport },
-    { code: 189, name: S9.forward, group: S9.transport },
-    { code: 190, name: S9.red, group: S9.colour },
-    { code: 191, name: S9.green, group: S9.colour },
-    { code: 192, name: S9.yellow, group: S9.colour },
-    { code: 193, name: S9.blue, group: S9.colour }
+    { code: 174, name: S8.up, group: S8.navigation },
+    { code: 178, name: S8.down, group: S8.navigation },
+    { code: 175, name: S8.left, group: S8.navigation },
+    { code: 177, name: S8.right, group: S8.navigation },
+    { code: 176, name: S8.ok, group: S8.navigation },
+    { code: 180, name: S8.home, group: S8.navigation },
+    { code: 179, name: S8.back, group: S8.navigation },
+    { code: 181, name: S8.menu, group: S8.navigation },
+    { code: 182, name: S8.volumeUp, group: S8.volumeChannel },
+    { code: 185, name: S8.volumeDown, group: S8.volumeChannel },
+    { code: 184, name: S8.mute, group: S8.volumeChannel },
+    { code: 183, name: S8.channelUp, group: S8.volumeChannel },
+    { code: 186, name: S8.channelDown, group: S8.volumeChannel },
+    { code: 187, name: S8.rewind, group: S8.transport },
+    { code: 188, name: S8.pause, group: S8.transport },
+    { code: 189, name: S8.forward, group: S8.transport },
+    { code: 190, name: S8.red, group: S8.colour },
+    { code: 191, name: S8.green, group: S8.colour },
+    { code: 192, name: S8.yellow, group: S8.colour },
+    { code: 193, name: S8.blue, group: S8.colour }
   ];
 }
 function x2ExtraButtonCatalog() {
-  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 153, name: "A", group: S9.extra },
-    { code: 152, name: "B", group: S9.extra },
-    { code: 151, name: "C", group: S9.extra },
-    { code: 154, name: S9.exit, group: S9.extra },
-    { code: 155, name: S9.dvr, group: S9.extra },
-    { code: 156, name: S9.play, group: S9.extra },
-    { code: 157, name: S9.guide, group: S9.extra }
+    { code: 153, name: "A", group: S8.extra },
+    { code: 152, name: "B", group: S8.extra },
+    { code: 151, name: "C", group: S8.extra },
+    { code: 154, name: S8.exit, group: S8.extra },
+    { code: 155, name: S8.dvr, group: S8.extra },
+    { code: 156, name: S8.play, group: S8.extra },
+    { code: 157, name: S8.guide, group: S8.extra }
   ];
 }
 function x2NumpadButtonCatalog() {
-  const S9 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
+  const S8 = TOOLS_CARD_STRINGS.backup.buttonCatalog;
   return [
-    { code: 169, name: S9.num1, group: S9.numpad },
-    { code: 168, name: S9.num2, group: S9.numpad },
-    { code: 167, name: S9.num3, group: S9.numpad },
-    { code: 166, name: S9.num4, group: S9.numpad },
-    { code: 165, name: S9.num5, group: S9.numpad },
-    { code: 164, name: S9.num6, group: S9.numpad },
-    { code: 163, name: S9.num7, group: S9.numpad },
-    { code: 162, name: S9.num8, group: S9.numpad },
-    { code: 161, name: S9.num9, group: S9.numpad },
-    { code: 159, name: S9.num0, group: S9.numpad },
-    { code: 160, name: S9.numDash, group: S9.numpad },
-    { code: 158, name: S9.numEnter, group: S9.numpad }
+    { code: 169, name: S8.num1, group: S8.numpad },
+    { code: 168, name: S8.num2, group: S8.numpad },
+    { code: 167, name: S8.num3, group: S8.numpad },
+    { code: 166, name: S8.num4, group: S8.numpad },
+    { code: 165, name: S8.num5, group: S8.numpad },
+    { code: 164, name: S8.num6, group: S8.numpad },
+    { code: 163, name: S8.num7, group: S8.numpad },
+    { code: 162, name: S8.num8, group: S8.numpad },
+    { code: 161, name: S8.num9, group: S8.numpad },
+    { code: 159, name: S8.num0, group: S8.numpad },
+    { code: 160, name: S8.numDash, group: S8.numpad },
+    { code: 158, name: S8.numEnter, group: S8.numpad }
   ];
 }
 function bundleButtonCatalog(bundle) {
@@ -20071,8 +20071,7 @@ function defineCatalogView() {
   if (!customElements.get(CATALOG_VIEW_TAG)) customElements.define(CATALOG_VIEW_TAG, SbPanelCatalog);
 }
 
-// custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
-var S5 = TOOLS_CARD_STRINGS.backup;
+// custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
 function overlayMenuPosition(anchor, align) {
   if (!anchor) return "";
@@ -20087,130 +20086,6 @@ function menuAnchorRect(event) {
   const target = event.currentTarget;
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
 }
-var activityEditorStyles = i`
-  .member-add {
-    position: relative;
-    display: inline-flex;
-  }
-  .member-add-backdrop {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin: 0;
-    cursor: default;
-    z-index: 4;
-  }
-  .member-add-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 5;
-    min-width: 180px;
-    max-height: 240px;
-    overflow-y: auto;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color);
-    border-radius: var(--backup-radius-md);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-    display: flex;
-    flex-direction: column;
-    padding: 4px;
-  }
-  .member-add-option {
-    border: none;
-    background: none;
-    text-align: left;
-    padding: 8px 10px;
-    font-size: 0.9rem;
-    color: var(--primary-text-color);
-    border-radius: var(--backup-radius-sm);
-    cursor: pointer;
-  }
-  .member-add-option:hover {
-    background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
-  }
-  .role-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-  }
-  /* Advanced-mode footer: the last row of a quick-access list that drills
-     into the deeper editor for the rows above it. Tinted and separated by
-     a solid divider so it reads as attached to — but different from — the
-     list items. The extra class in the selector outranks the plain
-     sortable-item border rule that follows in the host tab's styles. */
-  .quick-access-sortable-item.quick-access-footer-item {
-    border-top: 1px solid var(--divider-color);
-    background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 55%, transparent);
-    border-radius: 0 0 calc(var(--backup-radius-lg) - 1px) calc(var(--backup-radius-lg) - 1px);
-    overflow: hidden;
-  }
-  .edit-selection-row--footer .selection-label {
-    color: var(--secondary-text-color);
-    font-size: 12.5px;
-    font-weight: 600;
-  }
-  .footer-row-icon {
-    flex: 0 0 auto;
-    color: var(--secondary-text-color);
-    --mdc-icon-size: 16px;
-  }
-  .role-icon {
-    color: var(--secondary-text-color);
-    --mdc-icon-size: 18px;
-    flex: none;
-  }
-  .role-main {
-    flex: 1;
-    min-width: 0;
-  }
-  .role-label {
-    font-size: 0.92rem;
-  }
-  .role-note {
-    font-size: 0.75rem;
-    color: var(--secondary-text-color);
-  }
-  .role-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 1px solid var(--divider-color);
-    border-radius: var(--backup-radius-sm);
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color);
-    padding: 5px 8px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    max-width: 190px;
-    --mdc-icon-size: 15px;
-  }
-  .role-trigger > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .role-trigger[data-state="unused"] > span {
-    color: var(--secondary-text-color);
-  }
-  .role-trigger[data-state="custom"] > span,
-  .role-trigger[data-state="customized"] > span {
-    font-style: italic;
-  }
-  .role-menu {
-    right: 0;
-    left: auto;
-    min-width: 200px;
-  }
-  .member-add-option:disabled {
-    color: var(--disabled-text-color, var(--secondary-text-color));
-    cursor: default;
-    opacity: 0.7;
-  }
-`;
 
 // server-panel/src/views/activity-editor-state.ts
 var WIFI_EVENTS_ENABLED = false;
@@ -20835,31 +20710,31 @@ var SbPanelEntityEditor = class extends i4 {
   }
   // -- render ---------------------------------------------------------------------------------------------------
   render() {
-    const S9 = this.frameStrings;
+    const S8 = this.frameStrings;
     if (!this._hub && !this._offline || this.entityId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
     const C6 = TOOLS_CARD_STRINGS.activities;
     if (this._deleting) return this._renderProgress("editor-deleting", C6.deletingTitle(this.entityKind), C6.deletingMessage(this.entityKind));
     if (this._syncing) return this._renderProgress("editor-syncing", C6.syncingTitle, jobStepMessage(activeJob(this._hub)) || C6.syncingMessage);
     switch (this._stage) {
       case "loading":
-        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
+        return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S8.loading}</div></div></div>`;
       case "guard_firmware": {
         const floor = firmwareFloor(this._hub);
-        return this._renderGuard(mdiChip, S9.firmwareUnsupportedTitle, S9.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-firmware");
+        return this._renderGuard(mdiChip, S8.firmwareUnsupportedTitle, S8.firmwareUnsupportedBody(floor?.installed ?? "?", floor?.required ?? "?"), b2`<button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-firmware");
       }
       case "needs_refresh":
-        return this._renderGuard(mdiDatabaseRefreshOutline, S9.needsRefreshTitle, S9.needsRefreshBody, b2`
-          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S9.refreshEntity}</button>
-          <button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-refresh");
+        return this._renderGuard(mdiDatabaseRefreshOutline, S8.needsRefreshTitle, S8.needsRefreshBody, b2`
+          <button class="btn btn-primary" id="editor-refresh" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Refreshing\u2026" : S8.refreshEntity}</button>
+          <button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-refresh");
       case "missing":
-        return this._renderGuard(mdiAlertCircleOutline, S9.missingTitle, this._notice ?? S9.missingBody, b2`<button class="btn" @click=${this._goToList}>${S9.back}</button>`, "guard-missing");
+        return this._renderGuard(mdiAlertCircleOutline, S8.missingTitle, this._notice ?? S8.missingBody, b2`<button class="btn" @click=${this._goToList}>${S8.back}</button>`, "guard-missing");
       case "sync_failed": {
         const failed = this._syncFailed;
         const stale = Boolean(failed?.stale);
-        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S9.syncStaleTitle : S9.syncFailedTitle, stale ? S9.syncStaleBody : failed?.message ?? "", b2`
-          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S9.syncRetry}</button>`}
-          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S9.syncReload}</button>
-          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S9.syncKeepEditing}</button>`, "sync-failed");
+        return this._renderGuard(stale ? mdiSyncAlert : mdiAlertCircleOutline, stale ? S8.syncStaleTitle : S8.syncFailedTitle, stale ? S8.syncStaleBody : failed?.message ?? "", b2`
+          ${stale ? A : b2`<button class="btn btn-primary" id="editor-retry" @click=${this._retrySync}>${S8.syncRetry}</button>`}
+          <button class="btn" id="editor-reload" ?disabled=${this._refreshing} @click=${() => void this._reloadFromHub()}>${this._refreshing ? "Reloading\u2026" : S8.syncReload}</button>
+          <button class="btn" id="editor-keep-editing" @click=${this._keepEditing}>${S8.syncKeepEditing}</button>`, "sync-failed");
       }
       default:
         return this._renderEditing();
@@ -20891,20 +20766,20 @@ var SbPanelEntityEditor = class extends i4 {
   }
   _renderExitConfirmDialog() {
     if (!this._exitConfirm) return A;
-    const S9 = this.frameStrings;
+    const S8 = this.frameStrings;
     const close = () => {
       this._exitConfirm = null;
     };
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="exit-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S9.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S9.syncKeepEditing} @click=${close}>${icon4(mdiClose)}</button></div>
-          <div class="dialog-body"><div class="dialog-text">${S9.exitUnsyncedBody}</div></div>
+          <div class="dialog-header"><div class="dialog-title">${S8.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${S8.syncKeepEditing} @click=${close}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-body"><div class="dialog-text">${S8.exitUnsyncedBody}</div></div>
           <div class="dialog-footer">
-            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S9.exitWithoutSync}</button>
+            <button class="btn btn-danger" id="exit-leave" type="button" @click=${this._leaveWithoutSync}>${S8.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
-              <button class="btn" id="exit-keep" type="button" @click=${close}>${S9.syncKeepEditing}</button>
-              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S9.exitSyncNow}</button>
+              <button class="btn" id="exit-keep" type="button" @click=${close}>${S8.syncKeepEditing}</button>
+              <button class="btn btn-primary" id="exit-sync" type="button" @click=${this._syncAndLeave}>${S8.exitSyncNow}</button>
             </div>
           </div>
         </div>
@@ -22086,7 +21961,7 @@ var DEVICE_EDITOR_TAG = "sb-panel-device-editor";
 var B3 = TOOLS_CARD_STRINGS.backup;
 var A3 = TOOLS_CARD_STRINGS.activities;
 var C4 = TOOLS_CARD_STRINGS.common;
-var S6 = {
+var S5 = {
   crumbDevices: B3.crumbDevices,
   renameDevice: B3.renameDevice,
   deleteDeviceAria: B3.deleteDeviceAria,
@@ -22288,7 +22163,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       if (!dialog || !editor || deviceId == null || !this._working) return;
       const commandId = Number(dialog.commandId);
       if (!commandId) {
-        this._stepDialog = { ...dialog, error: S6.stepNoCommands };
+        this._stepDialog = { ...dialog, error: S5.stepNoCommands };
         return;
       }
       const hold = secondsToByte(dialog.hold);
@@ -22317,7 +22192,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       if (dialog.target.kind === "device_ip") {
         const draft = dialog.draft.trim();
         if (draft && !IPV4_PATTERN.test(draft)) {
-          this._rename = { ...dialog, error: S6.ipv4Required };
+          this._rename = { ...dialog, error: S5.ipv4Required };
           return;
         }
         this._commit(updateBundleDeviceIp(this._working, deviceId, draft));
@@ -22326,7 +22201,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       }
       const next = sanitizeName(this._hubVersion, dialog.draft);
       if (!next) {
-        this._rename = { ...dialog, error: S6.enterName };
+        this._rename = { ...dialog, error: S5.enterName };
         return;
       }
       if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
@@ -22367,7 +22242,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       const buttonId = Number(dialog.buttonId);
       const commandId = Number(dialog.commandId);
       if (!buttonId || !commandId) {
-        this._binding = { ...dialog, error: S6.bindingIncomplete };
+        this._binding = { ...dialog, error: S5.bindingIncomplete };
         return;
       }
       const longPressCommandId = dialog.longPress && dialog.longPressCommandId ? Number(dialog.longPressCommandId) : null;
@@ -22417,7 +22292,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return this._workingEntity;
   }
   get frameStrings() {
-    return S6;
+    return S5;
   }
   _startSync(hubId, deviceId, element) {
     return this.api.editDevice(hubId, deviceId, element, this._snapshot.snapshot_id);
@@ -22467,13 +22342,13 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     try {
       const response = await this.api.commandPayload(hubId, deviceId, commandId);
       if (!response.ok || !response.body) {
-        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S6.noPayloadReturned : problemText(response));
+        this._dockError(response.status === 404 && response.body?.type === "payload_not_found" ? S5.noPayloadReturned : problemText(response));
         return;
       }
       const payload = response.body;
       const hex = String(payload.hex ?? "").trim();
       if (!hex) {
-        this._dockError(S6.noPayloadReturned);
+        this._dockError(S5.noPayloadReturned);
         return;
       }
       const snapshot = this._snapshotFromPayload(payload);
@@ -22549,7 +22424,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     let data = restoreData;
     const newId = nextFreeDeviceCommandId(this._working, deviceId);
     if (newId == null) {
-      this._dockError(S6.noFreeCommandSlot);
+      this._dockError(S5.noFreeCommandSlot);
       this._payloadDialog = null;
       return;
     }
@@ -22621,10 +22496,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const deviceClass = this.deviceId != null ? bundleDeviceClass(this._working, this.deviceId) ?? "" : "";
     const hasNetwork = IP_HEAD_DEVICE_CLASSES.has(deviceClass);
     return [
-      { id: "power", icon: mdiPowerPlugOutline, label: S6.detailPower },
-      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S6.detailNetwork }] : [],
-      { id: "commands", icon: mdiFormatListBulleted, label: S6.detailCommands },
-      { id: "bindings", icon: mdiGestureTapButton, label: S6.detailButtons }
+      { id: "power", icon: mdiPowerPlugOutline, label: S5.detailPower },
+      ...hasNetwork ? [{ id: "network", icon: mdiLanConnect, label: S5.detailNetwork }] : [],
+      { id: "commands", icon: mdiFormatListBulleted, label: S5.detailCommands },
+      { id: "bindings", icon: mdiGestureTapButton, label: S5.detailButtons }
     ];
   }
   _scrollToSection(id) {
@@ -22708,14 +22583,14 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._deleteConfirm = { target, label };
   }
   _deleteTitle(target, label) {
-    const name = label || S6.thisItem;
+    const name = label || S5.thisItem;
     switch (target.kind) {
       case "device":
-        return S6.deleteDeviceTitle(name);
+        return S5.deleteDeviceTitle(name);
       case "command":
-        return S6.deleteCommandTitle(name);
+        return S5.deleteCommandTitle(name);
       case "device_binding":
-        return S6.deleteBindingTitle(name);
+        return S5.deleteBindingTitle(name);
       default:
         return name;
     }
@@ -22723,10 +22598,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   // -- power control ------------------------------------------------------------------------------------------
   _powerOptions() {
     return [
-      { mode: IDLE_BEHAVIOR_DISABLED, label: S6.powerControlDisabled, sub: S6.powerControlDisabledSub },
-      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S6.powerControlAutoOff, sub: S6.powerControlAutoOffSub },
-      { mode: IDLE_BEHAVIOR_STAY_ON, label: S6.powerControlStayOn, sub: S6.powerControlStayOnSub },
-      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S6.powerControlAlwaysOn, sub: S6.powerControlAlwaysOnSub }
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S5.powerControlDisabled, sub: S5.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S5.powerControlAutoOff, sub: S5.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S5.powerControlStayOn, sub: S5.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S5.powerControlAlwaysOn, sub: S5.powerControlAlwaysOnSub }
     ];
   }
   _selectPower(mode) {
@@ -22761,10 +22636,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="step-back" type="button" aria-label=${S6.back} @click=${this._closeStepEditor}>${icon4(mdiArrowLeft)}</button>
+                <button class="back-btn" id="step-back" type="button" aria-label=${S5.back} @click=${this._closeStepEditor}>${icon4(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S6.crumbDevices}</button>
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
                     <button class="detail-crumb" type="button" @click=${this._closeStepEditor}>${this._title}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
@@ -22777,10 +22652,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="detail-scroll">
             <div class="quick-access-section">
               <div class="quick-access-head">
-                <div class="quick-access-head-main"><div class="quick-access-title">${S6.steps}</div><div class="quick-access-sub">${S6.macroStepsSortableHelp}</div></div>
-                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon4(mdiPlus)}<span>${S6.addStep}</span></button></div>
+                <div class="quick-access-head-main"><div class="quick-access-title">${S5.steps}</div><div class="quick-access-sub">${S5.macroStepsSortableHelp}</div></div>
+                <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="step-add" type="button" @click=${this._openAddStep}>${icon4(mdiPlus)}<span>${S5.addStep}</span></button></div>
               </div>
-              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S6.noMacroSteps}</div>`}
+              ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderStepRow(item, position, items.length))}</div></div>` : b2`<div class="quick-access-empty">${S5.noMacroSteps}</div>`}
             </div>
           </div>
         </div>
@@ -22790,7 +22665,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     `;
   }
   _renderStepRow(item, position, count) {
-    const meta = item.kind === "command" && item.hold > 0 ? S6.holdLabel(byteToSeconds(item.hold)) : "";
+    const meta = item.kind === "command" && item.hold > 0 ? S5.holdLabel(byteToSeconds(item.hold)) : "";
     const isLast = position === count - 1;
     const drag = this._drag;
     const dragging = drag?.from === position;
@@ -22798,7 +22673,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="quick-access-sortable-item ${dragging ? "is-dragging" : drag ? "is-shifting" : ""}" data-step-index=${item.index} style=${transform ? `transform: ${transform}` : ""}>
         <div class="quick-access-row quick-access-row--step">
-          <button class="quick-access-drag step-handle" type="button" aria-label=${S6.dragStepAria} title=${S6.dragStepAria}
+          <button class="quick-access-drag step-handle" type="button" aria-label=${S5.dragStepAria} title=${S5.dragStepAria}
             @mousedown=${(event) => event.preventDefault()}
             @pointerdown=${(event) => this._dragStart(event, position)}
             @pointermove=${(event) => this._dragMove(event)}
@@ -22815,19 +22690,19 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     }}
           >${icon4(mdiDragVerticalVariant)}</button>
           <div class="quick-access-main">
-            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S6.stepChipCommand}</div></div>
+            <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${S5.stepChipCommand}</div></div>
             ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
           </div>
           <div class="quick-access-actions">
-            <button class="icon-btn step-edit" type="button" aria-label=${S6.editStepAria} title=${S6.editStepAria} @click=${() => this._openEditStep(item)}>${icon4(mdiPencil)}</button>
-            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S6.deleteStepAria} title=${S6.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon4(mdiTrashCanOutline)}</button>
+            <button class="icon-btn step-edit" type="button" aria-label=${S5.editStepAria} title=${S5.editStepAria} @click=${() => this._openEditStep(item)}>${icon4(mdiPencil)}</button>
+            <button class="icon-btn icon-btn--danger step-delete" type="button" aria-label=${S5.deleteStepAria} title=${S5.deleteStepAria} @click=${() => this._removeStep(item.index)}>${icon4(mdiTrashCanOutline)}</button>
           </div>
         </div>
-        ${isLast ? A : b2`<label class="step-wait" title=${S6.stepWaitAria}>
-              <span class="step-wait-caption">${S6.stepWaitLabel}</span>
+        ${isLast ? A : b2`<label class="step-wait" title=${S5.stepWaitAria}>
+              <span class="step-wait-caption">${S5.stepWaitLabel}</span>
               <span class="step-wait-field">
-                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S6.stepWaitAria} .value=${byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
-                <span class="step-wait-unit">${S6.stepWaitUnit}</span>
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S5.stepWaitAria} .value=${byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
+                <span class="step-wait-unit">${S5.stepWaitUnit}</span>
               </span>
             </label>`}
       </div>
@@ -22843,11 +22718,11 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="modal-backdrop" @click=${this._closeStepDialog}>
         <div class="dialog small" id="step-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${isEdit ? S6.stepDialogEditTitle : S6.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S6.stepCancel} @click=${this._closeStepDialog}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${isEdit ? S5.stepDialogEditTitle : S5.stepDialogAddTitle}</div><button class="dialog-close" type="button" aria-label=${S5.stepCancel} @click=${this._closeStepDialog}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-step-command">${S6.stepCommand}</label>
-              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S6.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
+              <label class="decoded-field-label" for="sb-step-command">${S5.stepCommand}</label>
+              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.stepNoCommands}</div>` : b2`<select id="sb-step-command" class="decoded-field-input" @change=${(event) => {
       const raw = event.currentTarget.value;
       this._stepDialog = { ...dialog, commandId: raw === "" ? null : Number(raw), error: "" };
     }}>
@@ -22855,7 +22730,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                   </select>`}
             </div>
             <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-step-hold">${S6.stepHoldSeconds}</label>
+              <label class="decoded-field-label" for="sb-step-hold">${S5.stepHoldSeconds}</label>
               <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
                 @input=${(event) => {
       this._stepDialog = { ...dialog, hold: event.currentTarget.value };
@@ -22868,8 +22743,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S6.stepCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S6.stepSave : S6.stepAdd}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${S5.stepCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? S5.stepSave : S5.stepAdd}</button>
             </div>
           </div>
         </div>
@@ -22887,30 +22762,30 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="editor-back" type="button" aria-label=${S6.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
+                <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S6.crumbDevices}</button>
+                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
                     <span class="detail-crumb-sep" aria-hidden="true">›</span>
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
-                ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S6.unsavedTooltip}>${S6.unsaved}</span>` : A}
+                ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
                 <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S6.renameDevice} title=${S6.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S6.deleteDeviceAria} title=${S6.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
-                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S6.syncToHub : S6.syncUpToDate}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S5.renameDevice} title=${S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
+                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S5.syncToHub : S5.syncUpToDate}</button>`}
                 </div>
               </div>
             </div>
-            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S6.detailSectionsAria}>
+            ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S5.detailSectionsAria}>
                   ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon4(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
                 </div>` : A}
           </div>
           <div class="detail-scroll">
             ${this._renderDeleteErrorBanner()}
-            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S6.managedWifiWarning}</span></div>` : A}
-            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S6.serverWifiDeviceNote : S6.callbackDeviceNote}</span></div>` : A}
+            ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S5.managedWifiWarning}</span></div>` : A}
+            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S5.serverWifiDeviceNote : S5.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
             ${this._renderNetworkSection(deviceId)}
             ${this._renderCommandsSection(deviceId)}
@@ -22937,25 +22812,25 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         <button class="edit-selection-row" type="button" data-sequence=${buttonId} aria-disabled=${disabled ? "true" : "false"} tabindex=${disabled ? "-1" : "0"} @click=${() => {
         if (!disabled) this._openStepEditor(buttonId, label);
       }}>
-          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S6.macroStepsCount(count)}</span></span>
+          <span class="selection-main"><span class="selection-label">${label}</span><span class="selection-sub">${S5.macroStepsCount(count)}</span></span>
           <span class="selection-chevron">${icon4(mdiChevronRight)}</span>
         </button>
       </div>`;
     };
     return b2`
       <div class="quick-access-section" data-edit-section="power">
-        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S6.powerSetupTitle}</div><div class="quick-access-sub">${S6.powerSetupDeviceSub}</div></div></div>
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S5.powerSetupTitle}</div><div class="quick-access-sub">${S5.powerSetupDeviceSub}</div></div></div>
         ${this._isCallbackDevice ? A : b2`<div class="power-control" id="power-control" data-open=${open ? "true" : "false"}>
               <button class="power-control-trigger" type="button" aria-haspopup="listbox" aria-expanded=${String(open)} @click=${() => {
       this._powerMenuOpen = !open;
     }}>
-                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S6.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S6.powerControlUnsetSub}</span></span>
+                <span class="selection-main"><span class="selection-label">${selected ? selected.label : S5.powerControlUnset}</span><span class="selection-sub">${selected ? selected.sub : S5.powerControlUnsetSub}</span></span>
                 <span class="selection-chevron">${icon4(mdiChevronDown)}</span>
               </button>
               ${open ? b2`<button class="power-control-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
       this._powerMenuOpen = false;
     }}></button>
-                    <div class="power-control-menu" role="listbox" aria-label=${S6.powerControlTitle}>
+                    <div class="power-control-menu" role="listbox" aria-label=${S5.powerControlTitle}>
                       ${options.map((opt) => b2`<button class="power-control-option" type="button" role="option" data-mode=${opt.mode} aria-selected=${String(opt.mode === mode)} aria-checked=${String(opt.mode === mode)} @click=${() => this._selectPower(opt.mode)}>
                         <span class="selection-main"><span class="selection-label">${opt.label}</span><span class="selection-sub">${opt.sub}</span></span>
                         <span class="selection-chevron">${opt.mode === mode ? icon4(mdiCheck) : A}</span>
@@ -22963,10 +22838,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                     </div>` : A}
             </div>`}
         <div class="quick-access-list">
-          ${disabled ? b2`<div class="power-sequences-note">${S6.powerSequencesDisabledNote}</div>` : A}
+          ${disabled ? b2`<div class="power-sequences-note">${S5.powerSequencesDisabledNote}</div>` : A}
           <div class="quick-access-sortable-container power-sequences" data-disabled=${disabled ? "true" : "false"}>
-            ${row(198, S6.powerOnLabel)}
-            ${row(199, S6.powerOffLabel)}
+            ${row(198, S5.powerOnLabel)}
+            ${row(199, S5.powerOffLabel)}
           </div>
         </div>
       </div>
@@ -22978,15 +22853,15 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const ip = deviceIpAddress(this._working, deviceId);
     return b2`
       <div class="quick-access-section" data-edit-section="network">
-        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S6.detailNetwork}</div><div class="quick-access-sub">${S6.networkDescription}</div></div></div>
+        <div class="quick-access-head"><div class="quick-access-head-main"><div class="quick-access-title">${S5.detailNetwork}</div><div class="quick-access-sub">${S5.networkDescription}</div></div></div>
         <div class="quick-access-list"><div class="quick-access-sortable-container"><div class="quick-access-sortable-item">
           <div class="quick-access-row">
             <div class="quick-access-main">
-              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S6.hubNameNotSet}</div><div class="quick-access-chip">${S6.ipChip}</div></div>
-              <div class="quick-access-meta">${S6.ipv4Description}</div>
+              <div class="quick-access-label-row"><div class="quick-access-label" id="editor-ip">${ip || S5.hubNameNotSet}</div><div class="quick-access-chip">${S5.ipChip}</div></div>
+              <div class="quick-access-meta">${S5.ipv4Description}</div>
             </div>
             <div class="quick-access-actions">
-              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S6.editIpAria} title=${S6.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon4(mdiPencil)}</button>
+              <button class="icon-btn" id="editor-edit-ip" type="button" aria-label=${S5.editIpAria} title=${S5.editIpAria} @click=${() => this._openRename({ kind: "device_ip" })}>${icon4(mdiPencil)}</button>
             </div>
           </div>
         </div></div></div>
@@ -23001,24 +22876,24 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S6.detailCommands}</div><div class="quick-access-sub">${this._offline ? S6.commandsBackupHelp : S6.commandsLiveHelp}</div></div>
-          ${callback || this._offline ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon4(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S6.addCommand}</span></button></div>`}
+          <div class="quick-access-head-main"><div class="quick-access-title">${S5.detailCommands}</div><div class="quick-access-sub">${this._offline ? S5.commandsBackupHelp : S5.commandsLiveHelp}</div></div>
+          ${callback || this._offline ? A : b2`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon4(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S5.addCommand}</span></button></div>`}
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
                 <div class="quick-access-row">
                   <div class="quick-access-main">
-                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S6.newCommandChip : S6.commandChip}</div></div>
-                    <div class="quick-access-meta">${S6.commandId} ${item.commandId}</div>
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.label}</div><div class="quick-access-chip">${pendingAdd(item.commandId) ? S5.newCommandChip : S5.commandChip}</div></div>
+                    <div class="quick-access-meta">${S5.commandId} ${item.commandId}</div>
                   </div>
                   <div class="quick-access-actions">
-                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S6.renameCommandAria} title=${S6.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon4(mdiPencil)}</button>
-                          ${pendingAdd(item.commandId) || this._offline && !this._commandHasEditablePayload(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S6.editPayloadAria} title=${S6.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon4(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? this._baselineEntity : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S6.deleteCommandAria} title=${S6.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon4(mdiTrashCanOutline)}</button>`}`}
+                    ${callback ? A : b2`<button class="icon-btn command-rename" type="button" aria-label=${S5.renameCommandAria} title=${S5.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon4(mdiPencil)}</button>
+                          ${pendingAdd(item.commandId) || this._offline && !this._commandHasEditablePayload(item.commandId) ? A : b2`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S5.editPayloadAria} title=${S5.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon4(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
+                          ${isLongRecord(this._pairedRecords ? this._baselineEntity : null, item.commandId) ? A : b2`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S5.deleteCommandAria} title=${S5.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon4(mdiTrashCanOutline)}</button>`}`}
                   </div>
                 </div>
               </div>`)}
-            </div></div>` : b2`<div class="quick-access-empty">${S6.noDeviceCommands}</div>`}
+            </div></div>` : b2`<div class="quick-access-empty">${S5.noDeviceCommands}</div>`}
       </div>
     `;
   }
@@ -23028,24 +22903,24 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S6.buttonBindingsTitle}</div><div class="quick-access-sub">${S6.buttonBindingsDeviceSub}</div></div>
-          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon4(mdiPlus)}<span>${S6.addBinding}</span></button>
+          <div class="quick-access-head-main"><div class="quick-access-title">${S5.buttonBindingsTitle}</div><div class="quick-access-sub">${S5.buttonBindingsDeviceSub}</div></div>
+          <button class="quick-access-add-btn" id="editor-add-binding" type="button" ?disabled=${unbound.length === 0} @click=${() => this._openAddBinding()}>${icon4(mdiPlus)}<span>${S5.addBinding}</span></button>
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">
               ${items.map((item) => b2`<div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
                 <div class="quick-access-row">
                   <div class="quick-access-main">
-                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S6.buttonChip}</div></div>
+                    <div class="quick-access-label-row"><div class="quick-access-label">${item.buttonName}</div><div class="quick-access-chip">${S5.buttonChip}</div></div>
                     <div class="quick-access-meta">${item.shortPressLabel}</div>
-                    ${item.longPress ? b2`<div class="quick-access-meta">${S6.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+                    ${item.longPress ? b2`<div class="quick-access-meta">${S5.bindingLongPressMeta(item.longPress.label)}</div>` : A}
                   </div>
                   <div class="quick-access-actions">
-                    <button class="icon-btn binding-edit" type="button" aria-label=${S6.editBindingAria} title=${S6.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon4(mdiPencil)}</button>
-                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S6.deleteBindingAria} title=${S6.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon4(mdiTrashCanOutline)}</button>
+                    <button class="icon-btn binding-edit" type="button" aria-label=${S5.editBindingAria} title=${S5.editBindingAria} @click=${() => this._openEditBinding(item.buttonId)}>${icon4(mdiPencil)}</button>
+                    <button class="icon-btn icon-btn--danger binding-delete" type="button" aria-label=${S5.deleteBindingAria} title=${S5.deleteBindingAria} @click=${() => this._openDeleteConfirm({ kind: "device_binding", deviceId, buttonId: item.buttonId }, item.buttonName)}>${icon4(mdiTrashCanOutline)}</button>
                   </div>
                 </div>
               </div>`)}
-            </div></div>` : b2`<div class="quick-access-empty">${S6.buttonBindingsEmpty}</div>`}
+            </div></div>` : b2`<div class="quick-access-empty">${S5.buttonBindingsEmpty}</div>`}
       </div>
     `;
   }
@@ -23054,14 +22929,14 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const dialog = this._rename;
     if (!dialog) return A;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S6.renameDevice : isIp ? S6.editIpAria : S6.renameCommand;
+    const title = dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
     return b2`
       <div class="modal-backdrop" @click=${this._closeRename}>
         <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S6.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
             <label class="decoded-field">
-              <span class="decoded-field-label">${isIp ? S6.ipAddress : S6.name}</span>
+              <span class="decoded-field-label">${isIp ? S5.ipAddress : S5.name}</span>
               <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -23073,8 +22948,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S6.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S6.save}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeRename}>${S5.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${S5.save}</button>
             </div>
           </div>
         </div>
@@ -23087,28 +22962,28 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const impact = bundleDeleteImpact(this._working, dialog.target);
     const hasCascade = backupDeleteHasCascade(impact);
     const immediate = dialog.target.kind === "device";
-    const intro = this._offline ? hasCascade ? S6.deleteCascadeIntro : S6.deleteSimpleBody : hasCascade ? S6.deleteCascadeIntroLive : S6.deleteSimpleBodyLive;
-    const note = this._offline ? S6.deleteReplaceNote : immediate ? S6.deleteImmediateNote : S6.deleteSyncNote;
+    const intro = this._offline ? hasCascade ? S5.deleteCascadeIntro : S5.deleteSimpleBody : hasCascade ? S5.deleteCascadeIntroLive : S5.deleteSimpleBodyLive;
+    const note = this._offline ? S5.deleteReplaceNote : immediate ? S5.deleteImmediateNote : S5.deleteSyncNote;
     return b2`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" id="delete-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S6.deleteCancel} @click=${this._closeDeleteConfirm}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${this._deleteTitle(dialog.target, dialog.label)}</div><button class="dialog-close" type="button" aria-label=${S5.deleteCancel} @click=${this._closeDeleteConfirm}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">${intro}</div>
             ${hasCascade ? b2`<ul class="delete-impact-list" id="delete-impact">
-                  ${impact.activities > 0 ? b2`<li>${icon4(mdiLinkVariant)}<span>${S6.deleteImpactActivities(impact.activities)}</span></li>` : A}
-                  ${impact.favorites > 0 ? b2`<li>${icon4(mdiStarOutline)}<span>${S6.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
-                  ${impact.macroSteps > 0 ? b2`<li>${icon4(mdiFormatListNumbered)}<span>${S6.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
-                  ${impact.powerSteps > 0 ? b2`<li>${icon4(mdiPower)}<span>${S6.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
-                  ${impact.bindings > 0 ? b2`<li>${icon4(mdiGestureTapButton)}<span>${S6.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                  ${impact.activities > 0 ? b2`<li>${icon4(mdiLinkVariant)}<span>${S5.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                  ${impact.favorites > 0 ? b2`<li>${icon4(mdiStarOutline)}<span>${S5.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                  ${impact.macroSteps > 0 ? b2`<li>${icon4(mdiFormatListNumbered)}<span>${S5.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                  ${impact.powerSteps > 0 ? b2`<li>${icon4(mdiPower)}<span>${S5.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+                  ${impact.bindings > 0 ? b2`<li>${icon4(mdiGestureTapButton)}<span>${S5.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                 </ul>` : A}
             <div class="delete-replace-note">${icon4(mdiInformationOutline)}<span>${note}</span></div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note"></div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S6.deleteCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S6.deleteConfirm}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${S5.deleteCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="delete-confirm" type="button" @click=${this._confirmDelete}>${S5.deleteConfirm}</button>
             </div>
           </div>
         </div>
@@ -23123,7 +22998,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const unbound = unboundButtonsForDevice(this._working, deviceId);
     const commands = deviceCommandItems(this._working, deviceId);
     const canSave = dialog.buttonId != null && dialog.commandId != null;
-    const title = isEdit ? S6.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S6.bindingDialogAddTitle;
+    const title = isEdit ? S5.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : S5.bindingDialogAddTitle;
     const select = (id, label, value, options, empty, onChange) => b2`
       <div class="decoded-field">
         <label class="decoded-field-label" for=${id}>${label}</label>
@@ -23134,29 +23009,29 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="modal-backdrop" @click=${this._closeBinding}>
         <div class="dialog small" id="binding-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S6.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">
-            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S6.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S6.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S6.bindingNoButtons, (value) => {
+            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S5.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S5.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S5.bindingNoButtons, (value) => {
       this._binding = { ...dialog, buttonId: value, error: "" };
     })}
-            ${select("sb-binding-command", S6.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S6.bindingNoCommands, (value) => {
+            ${select("sb-binding-command", S5.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, commandId: value, error: "" };
     })}
             <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S6.bindingEnableLongPress}</span>
+              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
               <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => {
       this._binding = { ...dialog, longPress: event.currentTarget.checked };
     }} />
             </div>
-            ${dialog.longPress ? select("sb-binding-lp-command", S6.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S6.bindingNoCommands, (value) => {
+            ${dialog.longPress ? select("sb-binding-lp-command", S5.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, longPressCommandId: value };
     }) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S6.bindingCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S6.bindingSave : S6.bindingAdd}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeBinding}>${S5.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? S5.bindingSave : S5.bindingAdd}</button>
             </div>
           </div>
         </div>
@@ -23403,7 +23278,7 @@ var PAYLOAD_DIALOG_TAG = "sb-payload-dialog";
 var DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md";
 var B4 = TOOLS_CARD_STRINGS.backup;
 var C5 = TOOLS_CARD_STRINGS.common;
-var S7 = {
+var S6 = {
   addCommandTitle: B4.addCommandTitle,
   editPayloadTitle: B4.editPayloadTitle,
   deviceClass: B4.deviceClass,
@@ -23454,7 +23329,7 @@ function draftToFieldValue(spec, draft) {
   return draft;
 }
 function irFormatMessage(err) {
-  return err instanceof IrFormatError ? `${S7.invalidProntoHex} (${err.code})` : S7.invalidProntoHex;
+  return err instanceof IrFormatError ? `${S6.invalidProntoHex} (${err.code})` : S6.invalidProntoHex;
 }
 var SbPayloadDialog = class extends i4 {
   constructor() {
@@ -23492,7 +23367,7 @@ var SbPayloadDialog = class extends i4 {
       const format = detectIrPayloadFormat(text);
       if (format === "descriptor") {
         if (this._isX2) this._morphToDescriptor(text);
-        else this._formatError = S7.descriptorX2Only;
+        else this._formatError = S6.descriptorX2Only;
         return;
       }
       if (format === "sofabaton") {
@@ -23525,7 +23400,7 @@ var SbPayloadDialog = class extends i4 {
         if (this._isX2) this._morphToDescriptor(text);
         else {
           this._raw = text;
-          this._formatError = S7.descriptorX2Only;
+          this._formatError = S6.descriptorX2Only;
         }
         return;
       }
@@ -23637,7 +23512,7 @@ var SbPayloadDialog = class extends i4 {
     const row = unwrapUcCodesetRow(text);
     const code = row && /^HEX$/i.test(row.format) ? row.code : text;
     if (!isUcHexCode(code)) return false;
-    this._formatError = S7.ucHexUnsupported;
+    this._formatError = S6.ucHexUnsupported;
     return true;
   }
   _onFieldInput(field, event) {
@@ -23682,7 +23557,7 @@ var SbPayloadDialog = class extends i4 {
     const value = descriptor || raw;
     if (!value) {
       this._testStatus = "error";
-      this._testError = S7.nothingToTest;
+      this._testError = S6.nothingToTest;
       return;
     }
     this._testStatus = "testing";
@@ -23731,7 +23606,7 @@ var SbPayloadDialog = class extends i4 {
     }
     const normalized = normalizeCommandPayloadHex(this._raw);
     if (!normalized) {
-      this._error = S7.payloadHexRequired;
+      this._error = S6.payloadHexRequired;
       return void 0;
     }
     if (normalized === (normalizeCommandPayloadHex(this._rawSnapshot) ?? "")) return null;
@@ -23741,7 +23616,7 @@ var SbPayloadDialog = class extends i4 {
   _addDetail() {
     const name = sanitizeName(this.hubVersion, this._name).trim();
     if (!name) {
-      this._error = S7.newCommandNameRequired;
+      this._error = S6.newCommandNameRequired;
       return void 0;
     }
     const block = this._decoded;
@@ -23750,14 +23625,14 @@ var SbPayloadDialog = class extends i4 {
       const fields = { ...block.fields };
       for (const field of spec?.fields ?? []) fields[field.key] = draftToFieldValue(field, this._drafts[field.key] ?? "");
       if (block.className === "ir" && !/^P:/i.test(String(fields.descriptor ?? "").trim())) {
-        this._error = S7.descriptiveIrRequired;
+        this._error = S6.descriptiveIrRequired;
         return void 0;
       }
       return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: block.trailerHex, fields, edited: true } } };
     }
     const normalized = normalizeCommandPayloadHex(this._raw);
     if (!normalized) {
-      this._error = S7.payloadHexRequired;
+      this._error = S6.payloadHexRequired;
       return void 0;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
@@ -23772,14 +23647,14 @@ var SbPayloadDialog = class extends i4 {
         <div class="dialog" id="payload-dialog" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">${isAdd ? S7.addCommandTitle : S7.editPayloadTitle}</div>
-              ${deviceClass ? b2`<span class="payload-class-badge" title=${S7.deviceClass}>${deviceClass}</span>` : A}
+              <div class="dialog-title">${isAdd ? S6.addCommandTitle : S6.editPayloadTitle}</div>
+              ${deviceClass ? b2`<span class="payload-class-badge" title=${S6.deviceClass}>${deviceClass}</span>` : A}
             </div>
-            <button class="dialog-close" type="button" aria-label=${S7.cancel} @click=${this._close}>${icon5(mdiClose)}</button>
+            <button class="dialog-close" type="button" aria-label=${S6.cancel} @click=${this._close}>${icon5(mdiClose)}</button>
           </div>
           <div class="dialog-body">
             ${isAdd ? b2`<label class="decoded-field">
-                  <span class="decoded-field-label">${S7.name}</span>
+                  <span class="decoded-field-label">${S6.name}</span>
                   <input class="decoded-field-input" id="payload-name" type="text" maxlength="20" .value=${this._name} @input=${(event) => {
       const input = event.currentTarget;
       const value = sanitizeName(this.hubVersion, input.value);
@@ -23787,24 +23662,24 @@ var SbPayloadDialog = class extends i4 {
       this._name = value;
       this._error = "";
     }} />
-                  <span class="decoded-field-helper">${S7.nameHelper}</span>
+                  <span class="decoded-field-helper">${S6.nameHelper}</span>
                 </label>` : A}
             ${body}
-            ${this._isIr ? b2`<div class="payload-test-note">${icon5(mdiFlashOutline)}<span>${this.offline ? S7.verifyPayloadBackup : S7.verifyPayloadLive}</span></div>` : A}
+            ${this._isIr ? b2`<div class="payload-test-note">${icon5(mdiFlashOutline)}<span>${this.offline ? S6.verifyPayloadBackup : S6.verifyPayloadLive}</span></div>` : A}
             ${this._testStatus === "idle" ? A : b2`<div class="section-status payload-test-status ${this._testStatus}" id="payload-test-status" role="status" aria-live="polite">
                   ${icon5(this._testStatus === "testing" ? mdiProgressClock : this._testStatus === "success" ? mdiCheckCircleOutline : mdiAlertCircleOutline)}
-                  <span>${this._testStatus === "testing" ? S7.sendingToHub : this._testStatus === "success" ? S7.sentToHub : this._testError || S7.testFailed}</span>
+                  <span>${this._testStatus === "testing" ? S6.sendingToHub : this._testStatus === "success" ? S6.sentToHub : this._testError || S6.testFailed}</span>
                 </div>`}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note payload-dialog-note">
-              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S7.payloadDocs}</a>
+              <a class="payload-doc-link" href=${DOCS_URL} target="_blank" rel="noreferrer noopener">${S6.payloadDocs}</a>
               ${this._error ? b2`<span class="payload-dialog-error" id="payload-error">${this._error}</span>` : A}
             </div>
             <div class="dialog-footer-actions">
-              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon5(mdiFlashOutline)}<span>${S7.test}</span></button>` : A}
-              <button class="dialog-btn" type="button" @click=${this._close}>${S7.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S7.save}</button>
+              ${this._isIr ? b2`<button class="dialog-btn payload-test-btn" id="payload-test" type="button" ?disabled=${this._testStatus === "testing"} @click=${() => void this._test()}>${icon5(mdiFlashOutline)}<span>${S6.test}</span></button>` : A}
+              <button class="dialog-btn" type="button" @click=${this._close}>${S6.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="payload-save" type="button" @click=${this._save}>${S6.save}</button>
             </div>
           </div>
         </div>
@@ -23813,12 +23688,12 @@ var SbPayloadDialog = class extends i4 {
   }
   _renderIrHexForm() {
     const active = this._prontoAvailable ? this._hexTab : "sofabaton";
-    const helper = this._formatError || (active === "pronto" ? S7.prontoHelper : S7.payloadHexHelper);
+    const helper = this._formatError || (active === "pronto" ? S6.prontoHelper : S6.payloadHexHelper);
     return b2`
       <div class="decoded-form">
         <div class="payload-format-tabs" role="tablist">
-          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S7.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S7.prontoHexTab}</button>
-          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S7.sofabatonHexTab}</button>
+          <button class="payload-format-tab ${active === "pronto" ? "active" : ""}" type="button" role="tab" data-tab="pronto" aria-selected=${String(active === "pronto")} ?disabled=${!this._prontoAvailable} title=${this._prontoAvailable ? "" : S6.prontoUnavailable} @click=${() => this._selectHexTab("pronto")}>${S6.prontoHexTab}</button>
+          <button class="payload-format-tab ${active === "sofabaton" ? "active" : ""}" type="button" role="tab" data-tab="sofabaton" aria-selected=${String(active === "sofabaton")} @click=${() => this._selectHexTab("sofabaton")}>${S6.sofabatonHexTab}</button>
         </div>
         <label class="decoded-field">
           ${active === "pronto" ? b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-pronto" rows="6" spellcheck="false" .value=${this._pronto} @input=${this._onProntoInput}></textarea>` : b2`<textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>`}
@@ -23830,18 +23705,18 @@ var SbPayloadDialog = class extends i4 {
   _renderRawForm() {
     return b2`
       <div class="decoded-form">
-        <div class="decoded-form-head"><div class="decoded-form-title">${S7.rawPayload}</div><div class="decoded-form-sub">${S7.rawPayloadDescription}</div></div>
+        <div class="decoded-form-head"><div class="decoded-form-title">${S6.rawPayload}</div><div class="decoded-form-sub">${S6.rawPayloadDescription}</div></div>
         <label class="decoded-field">
-          <span class="decoded-field-label">${S7.payloadHex}</span>
+          <span class="decoded-field-label">${S6.payloadHex}</span>
           <textarea class="decoded-field-input decoded-field-input--multiline" id="payload-raw" rows="6" spellcheck="false" .value=${this._raw} @input=${this._onRawInput}></textarea>
-          <span class="decoded-field-helper" id="payload-helper">${S7.payloadHexHelper}</span>
+          <span class="decoded-field-helper" id="payload-helper">${S6.payloadHexHelper}</span>
         </label>
       </div>
     `;
   }
   _renderDecodedForm(block) {
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
-    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S7.descriptorTab}</button></div>
+    const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S6.descriptorTab}</button></div>
           ${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}` : b2`<div class="decoded-form-head"><div class="decoded-form-title">${spec?.title ?? block.className}</div>${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}</div>`;
     return b2`
       <div class="decoded-form" data-class=${block.className}>
@@ -26195,7 +26070,7 @@ function pressMatchesSlot(press, device, index) {
 }
 
 // server-panel/src/views/wifi-devices-view.ts
-var S8 = TOOLS_CARD_STRINGS.wifiCommands;
+var S7 = TOOLS_CARD_STRINGS.wifiCommands;
 var A4 = TOOLS_CARD_STRINGS.activities;
 var T2 = {
   subtitle: "Use Wifi Commands to put buttons on your physical remote that call this server. Every press arrives as a press event on the event stream. Choose a Wifi Device to edit its command slots, or add a new one.",
@@ -26248,7 +26123,7 @@ var BUTTON_ICONS = {
   c: mdiAlphaCCircleOutline
 };
 var BUTTON_COLORS = { red: "#ef4444", green: "#22c55e", yellow: "#facc15", blue: "#3b82f6" };
-var BUTTON_GROUP_TITLES = { navigation: S8.navigationGroup, transport: S8.transportGroup, media: S8.mediaGroup, abc: S8.abcGroup, color: S8.colorGroup };
+var BUTTON_GROUP_TITLES = { navigation: S7.navigationGroup, transport: S7.transportGroup, media: S7.mediaGroup, abc: S7.abcGroup, color: S7.colorGroup };
 var WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
 function icon6(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
@@ -26309,15 +26184,15 @@ var SbPanelWifiDevices = class extends i4 {
       const hubId = this._hubId;
       if (!state || !hubId || state.busy) return;
       const name = sanitizeWifiName(this._hubVersion, state.name);
-      const problem = nameProblem(name, { required: S8.createDeviceNameRequired, leadingSpace: S8.commandNameLeadingSpace });
+      const problem = nameProblem(name, { required: S7.createDeviceNameRequired, leadingSpace: S7.commandNameLeadingSpace });
       if (problem) {
         this._create = { ...state, error: problem };
         return;
       }
       this._create = { ...state, busy: true, error: "" };
-      const { job, error } = await this._runJob(S8.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
+      const { job, error } = await this._runJob(S7.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
       if (error) {
-        this._create = { ...state, busy: false, error: `${S8.createDeviceFailed}: ${error}` };
+        this._create = { ...state, busy: false, error: `${S7.createDeviceFailed}: ${error}` };
         await this._load();
         return;
       }
@@ -26334,7 +26209,7 @@ var SbPanelWifiDevices = class extends i4 {
       const hubId = this._hubId;
       if (!state || !hubId || state.busy) return;
       this._delete = { ...state, busy: true, error: "" };
-      this._working = S8.deleteDeviceBusy;
+      this._working = S7.deleteDeviceBusy;
       let error = null;
       try {
         const started = await this.api.removeWifiDevice(hubId, state.key, state.referenced);
@@ -26356,7 +26231,7 @@ var SbPanelWifiDevices = class extends i4 {
         this._working = null;
       }
       if (error) {
-        this._delete = { ...state, busy: false, error: `${S8.deleteDeviceFailed}: ${error}` };
+        this._delete = { ...state, busy: false, error: `${S7.deleteDeviceFailed}: ${error}` };
         await this._load();
         return;
       }
@@ -26377,7 +26252,7 @@ var SbPanelWifiDevices = class extends i4 {
       const draft = this._draft;
       if (!state || !draft) return;
       const label = sanitizeWifiName(this._hubVersion, state.edit.label);
-      const problem = nameProblem(label, { required: S8.commandNameLeadingSpace, leadingSpace: S8.commandNameLeadingSpace });
+      const problem = nameProblem(label, { required: S7.commandNameLeadingSpace, leadingSpace: S7.commandNameLeadingSpace });
       if (problem) {
         this._slotEdit = { ...state, error: problem };
         return;
@@ -26394,7 +26269,7 @@ var SbPanelWifiDevices = class extends i4 {
       const state = this._rename;
       if (!state || !this._draft) return;
       const name = sanitizeWifiName(this._hubVersion, state.name);
-      const problem = nameProblem(name, { required: S8.createDeviceNameRequired, leadingSpace: S8.commandNameLeadingSpace });
+      const problem = nameProblem(name, { required: S7.createDeviceNameRequired, leadingSpace: S7.commandNameLeadingSpace });
       if (problem) {
         this._rename = { ...state, error: problem };
         return;
@@ -26409,7 +26284,7 @@ var SbPanelWifiDevices = class extends i4 {
       if (!this._canSync(device) || !draft || !hubId) return false;
       this._syncError = null;
       const cleanups = buttonCleanups(this._devices, device.key, draft);
-      const { error } = await this._runJob(S8.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
+      const { error } = await this._runJob(S7.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
       if (error) {
         this._syncError = error;
         await this._load();
@@ -26417,7 +26292,7 @@ var SbPanelWifiDevices = class extends i4 {
       }
       this._draftFor = null;
       for (const cleanup of cleanups) {
-        const result = await this._runJob(S8.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
+        const result = await this._runJob(S7.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
         if (result.error) this._say(T2.cleanupFailed(cleanup.device.spec.name, result.error), false);
       }
       await this._load();
@@ -26684,7 +26559,7 @@ var SbPanelWifiDevices = class extends i4 {
   // -- render: shared bits -----------------------------------------------------------------------------------------
   _renderTransportPill(device) {
     if (this._transports.length < 2 && device.transport === "http") return A;
-    return b2`<span class="transport-pill ${device.transport}" title=${S8.transportPillDeployedTitle}>${device.transport}</span>`;
+    return b2`<span class="transport-pill ${device.transport}" title=${S7.transportPillDeployedTitle}>${device.transport}</span>`;
   }
   _renderListenerNotice() {
     const listener = this._listener;
@@ -26703,7 +26578,7 @@ var SbPanelWifiDevices = class extends i4 {
         <div class="list-header">
           <div class="list-header-copy"><div class="section-subtitle">${T2.subtitle}</div></div>
           <div class="list-header-action">
-            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S8.addDeviceButton}</span></button>
+            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S7.addDeviceButton}</span></button>
           </div>
         </div>
         <div class="wifi-notices">${this._renderListenerNotice()}</div>
@@ -26729,19 +26604,19 @@ var SbPanelWifiDevices = class extends i4 {
                         <span class="device-card-lead">${icon6(mdiWifi)}</span>
                         <div class="device-card-copy">
                           <div class="device-card-name">${device.spec.name}</div>
-                          <div class="device-card-count">${S8.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
+                          <div class="device-card-count">${S7.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
                         </div>
                         <div class="device-card-meta">
                           ${this._renderTransportPill(device)}
                           <span class="status-pill device-status-pill ${status.tone}">${icon6(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
                         </div>
                       </div>
-                      <button class="device-delete-btn" type="button" title=${S8.deleteDeviceAria} aria-label=${S8.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
+                      <button class="device-delete-btn" type="button" title=${S7.deleteDeviceAria} aria-label=${S7.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
                       ${this._flash(Boolean(press && pressMatchesDevice(press, device)), press?.at ?? 0)}
                     </div>`;
     })}
-              </div>` : this._error ? A : b2`<div class="empty-state-card" id="wifi-empty">${S8.emptyDevices}</div>`}
-        ${!canAdd ? b2`<div class="wifi-max-devices-note">${S8.maximumDevices}</div>` : A}
+              </div>` : this._error ? A : b2`<div class="empty-state-card" id="wifi-empty">${S7.emptyDevices}</div>`}
+        ${!canAdd ? b2`<div class="wifi-max-devices-note">${S7.maximumDevices}</div>` : A}
       </div>
     `;
   }
@@ -26752,14 +26627,14 @@ var SbPanelWifiDevices = class extends i4 {
     }
     const dirty = this.hasUnsyncedChanges();
     if (this._working) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
-    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S8.actionButtonUpToDate}</button>`;
-    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S8.actionButtonSyncToHub}</button>`;
+    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S7.actionButtonUpToDate}</button>`;
+    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S7.actionButtonSyncToHub}</button>`;
   }
   _renderPowerLines(draft) {
     if (!supportsPowerInput(this._hubVersion)) return A;
     const rows = [
-      { kind: "on", label: S8.devicePowerOnLabel, slot: draft.powerOn },
-      { kind: "off", label: S8.devicePowerOffLabel, slot: draft.powerOff }
+      { kind: "on", label: S7.devicePowerOnLabel, slot: draft.powerOn },
+      { kind: "off", label: S7.devicePowerOffLabel, slot: draft.powerOff }
     ];
     return b2`
       <ul class="device-power-lines" id="wifi-power-lines">
@@ -26769,7 +26644,7 @@ var SbPanelWifiDevices = class extends i4 {
             <span class="hub-event-text">${label},
               <button class="hub-event-action-link" type="button" data-power=${kind} ?disabled=${this._locked} @click=${() => {
       this._powerPicker = kind;
-    }}>${slot !== null ? S8.devicePowerPerform(draft.slots[slot - 1].label) : S8.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S8.hubEventClearTitle} aria-label=${S8.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
+    }}>${slot !== null ? S7.devicePowerPerform(draft.slots[slot - 1].label) : S7.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S7.hubEventClearTitle} aria-label=${S7.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
             </span>
           </li>`)}
       </ul>`;
@@ -26779,18 +26654,18 @@ var SbPanelWifiDevices = class extends i4 {
     if (this._confirmClear === index) {
       return b2`
         <div class="slot-btn slot-confirming" data-slot=${slot}>
-          <div class="slot-confirm-title">${S8.clearSlotTitle}</div>
+          <div class="slot-confirm-title">${S7.clearSlotTitle}</div>
           <div class="slot-confirm-actions">
             <button class="dialog-btn" type="button" @click=${() => {
         this._confirmClear = null;
-      }}>${S8.clearSlotNo}</button>
-            <button class="dialog-btn dialog-btn-primary" type="button" data-confirm-clear @click=${() => this._clearSlot(index)}>${S8.clearSlotYes}</button>
+      }}>${S7.clearSlotNo}</button>
+            <button class="dialog-btn dialog-btn-primary" type="button" data-confirm-clear @click=${() => this._clearSlot(index)}>${S7.clearSlotYes}</button>
           </div>
           ${flash}
         </div>`;
     }
     if (!isSlotConfigured(draft, index)) {
-      return b2`<button class="slot-btn slot-empty" type="button" data-slot=${slot} ?disabled=${this._locked} @click=${() => this._openSlot(index)}><span class="slot-index">${slot}</span><span class="slot-plus">+</span><span class="slot-name">${S8.makeCommand}</span>${flash}</button>`;
+      return b2`<button class="slot-btn slot-empty" type="button" data-slot=${slot} ?disabled=${this._locked} @click=${() => this._openSlot(index)}><span class="slot-index">${slot}</span><span class="slot-plus">+</span><span class="slot-name">${S7.makeCommand}</span>${flash}</button>`;
     }
     const row = draft.slots[index];
     const powerInput = this._powerInput;
@@ -26798,7 +26673,7 @@ var SbPanelWifiDevices = class extends i4 {
     const isOff = powerInput && draft.powerOff === slot;
     const isInput = powerInput && (row.inputActivityId !== null || draft.inputs.includes(slot));
     const meta = slotMeta(draft, index, { powerInput });
-    const metaLabel = meta.kind === "unconfigured" ? S8.unconfiguredCommand : meta.kind === "power" ? meta.on && meta.off ? S8.powerBothCommand : meta.on ? S8.powerOnCommand : S8.powerOffCommand : meta.kind === "input" ? meta.activityId !== null ? S8.inputFor(this._activityName(meta.activityId)) : S8.inputCommand : S8.inActivities(meta.count);
+    const metaLabel = meta.kind === "unconfigured" ? S7.unconfiguredCommand : meta.kind === "power" ? meta.on && meta.off ? S7.powerBothCommand : meta.on ? S7.powerOnCommand : S7.powerOffCommand : meta.kind === "input" ? meta.activityId !== null ? S7.inputFor(this._activityName(meta.activityId)) : S7.inputCommand : S7.inActivities(meta.count);
     const button = hardButtonByCode(row.button);
     const name = row.label !== defaultSlotLabel(slot) ? row.label : TOOLS_CARD_STRINGS.common.commandFallback(slot);
     const where = activitiesEnabled(row) ? row.activities.map((id) => this._activityName(id)).join(", ") : "";
@@ -26818,9 +26693,9 @@ var SbPanelWifiDevices = class extends i4 {
           </span>
         </button>
         <div class="slot-actions">
-          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S8.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S8.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S8.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
-          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S8.inputFor(this._activityName(row.inputActivityId)) : S8.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
-          <button class="slot-clear" type="button" aria-label=${S8.clearSlotTitle} title=${S8.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
+          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S7.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S7.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S7.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
+          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S7.inputFor(this._activityName(row.inputActivityId)) : S7.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
+          <button class="slot-clear" type="button" aria-label=${S7.clearSlotTitle} title=${S7.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
       this._confirmClear = index;
     }}>${icon6(mdiClose)}</button>
         </div>
@@ -26847,7 +26722,7 @@ var SbPanelWifiDevices = class extends i4 {
           </div>
           <div class="detail-scroll">
             <div class="wifi-notices">
-              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S8.syncMessageFailed} ${this._syncError}</span></div>` : A}
+              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S7.syncMessageFailed} ${this._syncError}</span></div>` : A}
               ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
               ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon6(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
               ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
@@ -26891,13 +26766,13 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeCreate}>
         <div class="dialog small" id="wifi-create-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.addDevice}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.addDevice}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
-            ${this._nameInput("wifi-new-name", state.name, S8.deviceName, state.busy, (name) => {
+            ${this._nameInput("wifi-new-name", state.name, S7.deviceName, state.busy, (name) => {
       this._create = { ...state, name, error: "" };
     }, () => void this._submitCreate())}
             ${transports.length > 1 ? b2`<div class="transport-choice">
-                  <div class="transport-choice-label">${S8.transportLabel}</div>
+                  <div class="transport-choice-label">${S7.transportLabel}</div>
                   ${transports.map((option) => b2`
                     <label class="transport-option ${state.transport === option ? "selected" : ""}">
                       <input type="radio" name="wifi-new-transport" .checked=${state.transport === option} ?disabled=${state.busy} @change=${() => {
@@ -26905,14 +26780,14 @@ var SbPanelWifiDevices = class extends i4 {
     }} />
                       <span class="transport-option-copy"><span class="transport-option-name">${option.toUpperCase()}</span><span class="transport-option-hint">${option === "http" ? T2.transportHttpHint : T2.transportMqttHint}</span></span>
                     </label>`)}
-                  <div class="transport-choice-note">${S8.transportLockedNote}</div>
+                  <div class="transport-choice-note">${S7.transportLockedNote}</div>
                 </div>` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-create-error">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeCreate}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-create-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitCreate()}>${state.busy ? S8.createDeviceBusy : S8.createModalCreate}</button>
+              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeCreate}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-create-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitCreate()}>${state.busy ? S7.createDeviceBusy : S7.createModalCreate}</button>
             </div>
           </div>
         </div>
@@ -26925,7 +26800,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeDelete}>
         <div class="dialog small" id="wifi-delete-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-text">${T2.deleteBody(device.spec.name)}</div>
             ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
@@ -26933,8 +26808,8 @@ var SbPanelWifiDevices = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-delete-error">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeDelete}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" id="wifi-delete-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitDelete()}>${state.busy ? S8.deleteDeviceBusy : state.referenced ? T2.deleteAnyway : S8.deleteModalDelete}</button>
+              <button class="dialog-btn" type="button" ?disabled=${state.busy} @click=${this._closeDelete}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" id="wifi-delete-submit" type="button" ?disabled=${state.busy} @click=${() => void this._submitDelete()}>${state.busy ? S7.deleteDeviceBusy : state.referenced ? T2.deleteAnyway : S7.deleteModalDelete}</button>
             </div>
           </div>
         </div>
@@ -26955,33 +26830,33 @@ var SbPanelWifiDevices = class extends i4 {
       this._patchSlot({ inputActivityId: on ? edit.inputActivityId ?? activities[0].id : null });
     };
     const inputHolder = slotHoldingInput(draft, edit.inputActivityId, state.index);
-    const inputHint = !hasActivities ? S8.noActivitiesForHub : inputHolder >= 0 ? S8.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S8.activityInputHint;
+    const inputHint = !hasActivities ? S7.noActivitiesForHub : inputHolder >= 0 ? S7.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S7.activityInputHint;
     const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
     const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
-    const buttonHint = buttonHolder >= 0 ? S8.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S8.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
-    const keyLabels = S8.keyLabels;
+    const buttonHint = buttonHolder >= 0 ? S7.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S7.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
+    const keyLabels = S7.keyLabels;
     const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
     return b2`
       <div class="modal-backdrop" @click=${this._closeSlot}>
         <div class="dialog" id="wifi-slot-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S8.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-note">${T2.slotDescription}</div>
             <div class="config-block">
               <div class="config-group">
-                ${this._nameInput("wifi-slot-name", edit.label, S8.commandDisplayName, false, (label) => this._patchSlot({ label }), this._saveSlot)}
+                ${this._nameInput("wifi-slot-name", edit.label, S7.commandDisplayName, false, (label) => this._patchSlot({ label }), this._saveSlot)}
                 ${this._powerInput ? b2`
                       <button class="advanced-toggle ${state.advanced ? "expanded" : ""}" id="wifi-slot-advanced" type="button" aria-expanded=${String(state.advanced)} @click=${() => {
       this._slotEdit = { ...state, advanced: !state.advanced };
-    }}><span>${S8.advanced}</span>${icon6(mdiChevronDown)}</button>
+    }}><span>${S7.advanced}</span>${icon6(mdiChevronDown)}</button>
                       ${state.advanced ? b2`<div class="advanced-panel">
                             <label class="checkbox-row ${inputOn ? "active" : ""} ${hasActivities ? "" : "disabled"}">
                               <span class="checkbox-icon">${icon6(mdiVideoInputHdmi)}</span>
-                              <span class="checkbox-copy"><span>${S8.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
+                              <span class="checkbox-copy"><span>${S7.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
                               <input class="sb-switch" id="wifi-slot-input" type="checkbox" .checked=${inputOn} ?disabled=${!hasActivities} @change=${(event) => setInput(event.currentTarget.checked)} />
                             </label>
                             <label class="wifi-field nested-control">
-                              <span class="wifi-field-label">${S8.activityInputLabel}</span>
+                              <span class="wifi-field-label">${S7.activityInputLabel}</span>
                               <select class="wifi-input" id="wifi-slot-input-activity" ?disabled=${!inputOn || !hasActivities} @change=${(event) => this._patchSlot({ inputActivityId: Number(event.currentTarget.value) })}>
                                 ${activities.map((activity) => b2`<option value=${String(activity.id)} ?selected=${(edit.inputActivityId ?? activities[0]?.id) === activity.id}>${activity.name}</option>`)}
                               </select>
@@ -26991,30 +26866,30 @@ var SbPanelWifiDevices = class extends i4 {
               <div class="config-group">
                 <label class="checkbox-row ${edit.favorite ? "active" : ""}">
                   <span class="checkbox-icon plain">${icon6(mdiHeart)}</span>
-                  <span class="checkbox-copy"><span>${S8.favorite}</span></span>
+                  <span class="checkbox-copy"><span>${S7.favorite}</span></span>
                   <input class="sb-switch" id="wifi-slot-favorite" type="checkbox" .checked=${edit.favorite} @change=${(event) => this._patchSlot({ favorite: event.currentTarget.checked })} />
                 </label>
                 <label class="wifi-field">
-                  <span class="wifi-field-label">${S8.physicalButtonAssignment}</span>
+                  <span class="wifi-field-label">${S7.physicalButtonAssignment}</span>
                   <select class="wifi-input" id="wifi-slot-button" @change=${(event) => {
       const value = event.currentTarget.value;
       this._patchSlot({ button: value ? Number(value) : null });
     }}>
-                    <option value="" ?selected=${edit.button === null}>${S8.none}</option>
+                    <option value="" ?selected=${edit.button === null}>${S7.none}</option>
                     ${buttons.map((button) => b2`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
                   </select>
                 </label>
                 ${buttonHint ? b2`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : A}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
                   <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
-                  <span class="checkbox-copy"><span>${S8.enableLongPress}</span></span>
+                  <span class="checkbox-copy"><span>${S7.enableLongPress}</span></span>
                   <input class="sb-switch" id="wifi-slot-long-press" type="checkbox" .checked=${edit.button !== null && edit.longPress} ?disabled=${edit.button === null} @change=${(event) => this._patchSlot({ longPress: event.currentTarget.checked })} />
                 </label>
-                <div class="activities-label ${chipsEnabled ? "" : "disabled"}">${S8.applyToActivities}</div>
+                <div class="activities-label ${chipsEnabled ? "" : "disabled"}">${S7.applyToActivities}</div>
                 <div class="activity-chip-row" id="wifi-slot-activities">
                   ${hasActivities ? activities.map((activity) => b2`<button class="activity-chip ${chipsEnabled && edit.activities.includes(activity.id) ? "active" : ""}" type="button" data-activity=${activity.id} ?disabled=${!chipsEnabled} @click=${() => {
       if (this._slotEdit) this._slotEdit = { ...this._slotEdit, edit: withActivityToggled(this._slotEdit.edit, activity.id), error: "" };
-    }}>${activity.name}</button>`) : b2`<div class="empty-hint">${S8.noActivitiesForHub}</div>`}
+    }}>${activity.name}</button>`) : b2`<div class="empty-hint">${S7.noActivitiesForHub}</div>`}
                 </div>
               </div>
             </div>
@@ -27022,8 +26897,8 @@ var SbPanelWifiDevices = class extends i4 {
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-slot-error">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${this._closeSlot}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-slot-save" type="button" @click=${this._saveSlot}>${S8.save}</button>
+              <button class="dialog-btn" type="button" @click=${this._closeSlot}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-slot-save" type="button" @click=${this._saveSlot}>${S7.save}</button>
             </div>
           </div>
         </div>
@@ -27038,15 +26913,15 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
-          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S8.deviceName, false, (name) => {
+          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S7.deviceName, false, (name) => {
       this._rename = { name, error: "" };
     }, this._saveRename)}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${state.error}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${close}>${S8.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-rename-save" type="button" @click=${this._saveRename}>${S8.save}</button>
+              <button class="dialog-btn" type="button" @click=${close}>${S7.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-rename-save" type="button" @click=${this._saveRename}>${S7.save}</button>
             </div>
           </div>
         </div>
@@ -27064,11 +26939,11 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-power-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S8.devicePowerOnLabel : S8.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S8.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S7.devicePowerOnLabel : S7.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body">
-            <div class="dialog-note">${S8.devicePowerHint}</div>
+            <div class="dialog-note">${S7.devicePowerHint}</div>
             <div class="device-power-options">
-              <button class="device-power-option ${current === null ? "active" : ""}" type="button" @click=${() => this._pickPower(kind, null)}>${S8.devicePowerNothing}</button>
+              <button class="device-power-option ${current === null ? "active" : ""}" type="button" @click=${() => this._pickPower(kind, null)}>${S7.devicePowerNothing}</button>
               ${options.map((option) => b2`<button class="device-power-option ${current === option.slot ? "active" : ""}" type="button" data-slot=${option.slot} @click=${() => this._pickPower(kind, option.slot)}>${option.label}</button>`)}
             </div>
           </div>

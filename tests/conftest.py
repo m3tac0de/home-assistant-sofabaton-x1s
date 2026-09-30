@@ -14,9 +14,19 @@ def _install_homeassistant_stubs() -> None:
         def __call__(self, *args, **kwargs):
             return self
 
+    class _Marker(str):  # pragma: no cover - only used as stub
+        """A schema key that still compares and hashes as the plain key,
+        but remembers whether it was Required (the WS schema guard,
+        tests/test_ws_frontend_schema.py, reads it)."""
+
+        required = False
+
+    class _Required(_Marker):  # pragma: no cover - only used as stub
+        required = True
+
     vol.Schema = _Schema
-    vol.Required = lambda key, default=None: key  # type: ignore[assignment]
-    vol.Optional = lambda key, default=None: key  # type: ignore[assignment]
+    vol.Required = lambda key, default=None: _Required(key) if isinstance(key, str) else key  # type: ignore[assignment]
+    vol.Optional = lambda key, default=None: _Marker(key) if isinstance(key, str) else key  # type: ignore[assignment]
     vol.All = lambda *args, **kwargs: args  # type: ignore[assignment]
     vol.Range = lambda **kwargs: kwargs  # type: ignore[assignment]
     vol.In = lambda *args, **kwargs: args  # type: ignore[assignment]
@@ -339,7 +349,16 @@ def _install_homeassistant_stubs() -> None:
 
     websocket_api = types.ModuleType("homeassistant.components.websocket_api")
     websocket_api.async_register_command = lambda *args, **kwargs: None
-    websocket_api.websocket_command = lambda schema: (lambda func: func)
+    def _websocket_command(schema):
+        # Keep the schema on the handler, as HA does, so a guard test can
+        # compare it with the frontend's message fields (CR-X2-7).
+        def decorate(func):
+            func._ws_schema = schema
+            return func
+
+        return decorate
+
+    websocket_api.websocket_command = _websocket_command
     websocket_api.async_response = lambda func: func
     sys.modules.setdefault("homeassistant.components.websocket_api", websocket_api)
 

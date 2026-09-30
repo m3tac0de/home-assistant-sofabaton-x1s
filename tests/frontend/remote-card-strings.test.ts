@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { literalUiOffenders } from "./helpers/literal-ui-guard";
 import {
   REMOTE_CARD_LOCALE_ALIASES,
   REMOTE_CARD_STRINGS_EN,
@@ -432,4 +433,31 @@ test("zh-CN and friends resolve to the Simplified Chinese catalogue (CR-X7-3)", 
 
 test("the remote card and the tools card alias the same locales", () => {
   assert.deepEqual({ ...REMOTE_CARD_LOCALE_ALIASES }, { ...TOOLS_CARD_LOCALE_ALIASES });
+});
+
+test("remote-card UI source does not introduce literal user-facing strings", () => {
+  // The same guard as the tools card's (CR-X7-7). Skipped: the string
+  // tables, the shims (HA's own components and the generated icon table)
+  // and the Automation Assist YAML builder (its output is YAML, not UI copy).
+  const offenders = literalUiOffenders({
+    root: "remote-card/src",
+    skip: (relative) => relative === "remote-card-strings.ts"
+      || relative.startsWith("remote-card-translations/")
+      || relative.startsWith("shims/")
+      || relative === "remote-card-assist-yaml.ts"
+      || relative.endsWith("-styles.ts"),
+    allowedValues: new Set([
+      // Key faces: DVR is the printed button name; Exit is localized at
+      // render time (localizedFace, keyFaceLabel).
+      "DVR",
+      "Exit",
+      // Host setup notices stay English by decision (L-T7).
+      "No such hub.",
+      "No hub id given: set hub to the hub's MAC (any spelling).",
+      // probeIntegration's errors are swallowed by the store, never shown.
+      "hass.callWS unavailable",
+      "no hub selected",
+    ]),
+  });
+  assert.deepEqual(offenders, [], offenders.join("\n"));
 });

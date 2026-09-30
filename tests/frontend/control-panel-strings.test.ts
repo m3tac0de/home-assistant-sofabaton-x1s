@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import ts from "typescript";
+import { literalUiOffenders } from "./helpers/literal-ui-guard";
 import {
   TOOLS_CARD_STRINGS,
   TOOLS_CARD_STRINGS_EN,
@@ -687,61 +689,8 @@ test("control-panel count copy uses real singular and plural forms", () => {
   setToolsCardLanguage("en");
 });
 
-function sourceFiles(root: string): string[] {
-  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
-    const target = path.join(root, entry.name);
-    return entry.isDirectory() ? sourceFiles(target) : [target];
-  });
-}
-
 function lineOf(source: ts.SourceFile, node: ts.Node): number {
   return source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-}
-
-function tagName(node: ts.TaggedTemplateExpression): string {
-  return node.tag.getText();
-}
-
-function templateText(node: ts.TaggedTemplateExpression): string {
-  const template = node.template;
-  if (ts.isNoSubstitutionTemplateLiteral(template)) return template.text;
-  return template.head.text
-    + template.templateSpans.map((span) => `__EXPR__${span.literal.text}`).join("");
-}
-
-function normalizeVisibleText(value: string): string {
-  return value
-    .replace(/__EXPR__/g, " ")
-    .replace(/&(?:amp|nbsp|mdash|hellip);/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function looksUserVisible(value: string): boolean {
-  const text = normalizeVisibleText(value);
-  return /[A-Za-z]{2}/.test(text);
-}
-
-function isInsideHtmlExpression(node: ts.Node): boolean {
-  for (let parent = node.parent; parent; parent = parent.parent) {
-    if (ts.isTaggedTemplateExpression(parent) && tagName(parent) === "html") return true;
-  }
-  return false;
-}
-
-function isTechnicalHtmlExpressionLiteral(node: ts.StringLiteralLike): boolean {
-  const value = node.text.trim();
-  if (value.includes("<") || value.includes(">")) return true;
-  if (/^[a-z-]+\s*:\s*[^;]+;?$/i.test(value)) return true;
-
-  for (let parent: ts.Node | undefined = node.parent; parent; parent = parent.parent) {
-    if (ts.isPropertyAssignment(parent)) {
-      const propertyName = parent.name.getText().replace(/["']/g, "");
-      if (propertyName === "class" || propertyName.endsWith("ClassName")) return true;
-    }
-    if (ts.isTaggedTemplateExpression(parent)) break;
-  }
-  return false;
 }
 
 test("western locale source uses compact ellipses and French non-breaking punctuation", () => {
@@ -789,76 +738,37 @@ test("western locale source uses compact ellipses and French non-breaking punctu
 });
 
 test("control-panel UI source does not introduce literal user-facing strings", () => {
-  const root = path.resolve("custom_components/sofabaton_x1s/www/src");
-  const files = sourceFiles(root).filter((file) => {
-    const relative = path.relative(root, file).replaceAll("\\", "/");
-    return file.endsWith(".ts")
-      && relative !== "strings.ts"
-      && !relative.startsWith("control-panel-translations/")
-      && !relative.startsWith("remote-card")
-      && !relative.startsWith("remote-card-translations/")
-      && !relative.startsWith("editor-sections/")
-      && !relative.startsWith("sections/")
-      && relative !== "state/remote-card-store.ts"
-      && !relative.endsWith("-styles.ts");
+  const offenders = literalUiOffenders({
+    root: "custom_components/sofabaton_x1s/www/src",
+    skip: (relative) => relative === "strings.ts"
+      || relative.startsWith("control-panel-translations/")
+      || relative.endsWith("-styles.ts"),
+    // Transport names, shown as the protocol spells them in every locale.
+    allowedValues: new Set(["MQTT", "HTTP"]),
   });
-
-  const offenders: string[] = [];
-  const uiProperties = new Set(["label", "title", "subtitle", "helper", "message", "placeholder"]);
-
-  for (const file of files) {
-    const source = ts.createSourceFile(
-      file,
-      readFileSync(file, "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
-    const relative = path.relative(root, file).replaceAll("\\", "/");
-
-    const report = (node: ts.Node, kind: string, value: string) => {
-      offenders.push(`${relative}:${lineOf(source, node)} ${kind}: ${normalizeVisibleText(value)}`);
-    };
-
-    const visit = (node: ts.Node) => {
-      if (ts.isTaggedTemplateExpression(node) && tagName(node) === "html") {
-        const raw = templateText(node);
-        for (const match of raw.matchAll(/(?:aria-label|title|placeholder)\s*=\s*["']([^"']+)["']/gi)) {
-          if (looksUserVisible(match[1])) report(node, "attribute", match[1]);
-        }
-        for (const match of raw.matchAll(/>([^<>]+)</g)) {
-          if (looksUserVisible(match[1])) report(node, "text", match[1]);
-        }
-      }
-
-      if (ts.isNewExpression(node)
-        && node.expression.getText(source) === "Error"
-        && node.arguments?.length
-        && ts.isStringLiteralLike(node.arguments[0])
-        && looksUserVisible(node.arguments[0].text)) {
-        report(node.arguments[0], "error", node.arguments[0].text);
-      }
-
-      if (ts.isPropertyAssignment(node)
-        && ts.isIdentifier(node.name)
-        && uiProperties.has(node.name.text)
-        && ts.isStringLiteralLike(node.initializer)
-        && looksUserVisible(node.initializer.text)) {
-        report(node.initializer, `property ${node.name.text}`, node.initializer.text);
-      }
-
-      if (ts.isStringLiteralLike(node)
-        && isInsideHtmlExpression(node)
-        && !isTechnicalHtmlExpressionLiteral(node)
-        && normalizeVisibleText(node.text).includes(" ")
-        && looksUserVisible(node.text)) {
-        report(node, "template expression", node.text);
-      }
-
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-  }
-
   assert.deepEqual(offenders, [], offenders.join("\n"));
+});
+
+test("the literal guard catches the single-word escapes that shipped (CR-X7-7)", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sb-literal-guard-"));
+  try {
+    writeFileSync(path.join(root, "sample.ts"), [
+      "const chip = ready ? \"required\" : \"command\";",
+      "const a = html`<x-field .label=${\"Name\"}></x-field>`;",
+      "const b = html`<span>${open ? \"Close\" : \"Open\"}</span>`;",
+      "const c = html`<div class=${open ? \"open\" : \"closed\"} data-kind=${\"device\"}>${icon(\"mdi:close\")}</div>`;",
+      "const d = html`<button aria-label=${busy ? \"Busy\" : S.ready}></button>`;",
+    ].join("\n"));
+    const offenders = literalUiOffenders({ root, skip: () => false }).map((line) => line.replace(/^sample\.ts:/, ""));
+    assert.deepEqual(offenders, [
+      "1 declaration chip: required",
+      "1 declaration chip: command",
+      "2 binding .label: Name",
+      "3 text binding: Close",
+      "3 text binding: Open",
+      "5 binding aria-label: Busy",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

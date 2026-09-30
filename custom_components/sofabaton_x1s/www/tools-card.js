@@ -7560,8 +7560,7 @@ function hubSupportsPowerInput(hubVersion) {
   return !(version.includes("X1") && !version.includes("X1S"));
 }
 
-// custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
-var S3 = TOOLS_CARD_STRINGS.backup;
+// custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
 function overlayMenuPosition(anchor, align) {
   if (!anchor) return "";
@@ -7576,6 +7575,9 @@ function menuAnchorRect(event) {
   const target = event.currentTarget;
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
 }
+
+// custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
+var S3 = TOOLS_CARD_STRINGS.backup;
 function renderDrillInRow(params) {
   return b2`
     <div class="quick-access-sortable-item quick-access-footer-item">
