@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import custom_components.sofabaton_x1s.hub as hub_module
 import custom_components.sofabaton_x1s.hub_identity as hub_identity_module
 import custom_components.sofabaton_x1s.wifi_ingress as wifi_ingress_module
+import custom_components.sofabaton_x1s.wifi_deploy as wifi_deploy_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
@@ -3712,7 +3713,7 @@ def test_sync_command_config_replace_path_fails_on_a_refused_binding(monkeypatch
     async def _fake_get_store(_hass):
         return _Store()
 
-    monkeypatch.setattr(hub_module, "async_get_command_config_store", _fake_get_store)
+    monkeypatch.setattr(wifi_deploy_module, "async_get_command_config_store", _fake_get_store)
 
     with pytest.raises(Exception, match=r"Failed applying 2 hub write\(s\)"):
         loop.run_until_complete(

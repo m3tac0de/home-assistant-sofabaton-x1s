@@ -519,7 +519,8 @@ test("every Wifi deploy phase the hub emits has frontend copy", () => {
   // Guards the seam that caused this regression in the first place: the hub
   // names a stage, the card translates it. A stage added on one side and not
   // the other degrades to English (or a step counter) silently, so pin it.
-  const source = readFileSync(path.resolve("custom_components/sofabaton_x1s/hub.py"), "utf8");
+  // The deploy lives in wifi_deploy.py since the hub.py split (R6, CR-H1-13).
+  const source = readFileSync(path.resolve("custom_components/sofabaton_x1s/wifi_deploy.py"), "utf8");
 
   const emitted = new Set<string>();
   let cursor = source.indexOf("_set_command_sync_progress(");
