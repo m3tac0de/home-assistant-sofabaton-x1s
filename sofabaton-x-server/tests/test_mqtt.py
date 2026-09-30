@@ -387,3 +387,43 @@ def test_a_redeploy_without_a_broker_keeps_the_stale_record(tmp_path: Path) -> N
             with pytest.raises(MqttUnavailable):
                 client.portal.call(functools.partial(service.redeploy, HUB_ID, proxy, key=key))
             assert service.record(HUB_ID, key) is not None
+
+
+def test_a_broker_change_never_leaves_the_old_subscriber_running(tmp_path: Path) -> None:
+    """CR-S2-5: an ensure_listener that lands while the old subscriber is
+    being stopped must not start it again."""
+    from sofabaton_server.mqtt_config import MqttConfig
+
+    client, factory = _rig(tmp_path)
+    with client:
+        service = client.app.state.callbacks
+
+        async def main():
+            old = service.mqtt
+            old.host = LOOPBACK        # configured, so a subscription would connect
+            old.port = 1
+            gate = asyncio.Event()
+
+            async def slow_stop():
+                # As the real stop(): the task is cleared first, then the
+                # cancel and the broker goodbye are awaited (up to 2 s).
+                task, old._task = old._task, None
+                await gate.wait()
+                if task is not None:
+                    task.cancel()
+
+            old.stop = slow_stop
+            service._mqtt_topics = lambda: {TOPIC: HUB_ID}
+            apply = asyncio.ensure_future(service.apply_mqtt_config(MqttConfig(host=LOOPBACK, port=1)))
+            await asyncio.sleep(0.01)
+            listener = asyncio.ensure_future(service.ensure_listener())
+            await asyncio.sleep(0.01)
+            gate.set()
+            await apply
+            await listener
+            restarted = old._task is not None
+            await service.mqtt.close()
+            return restarted, service.mqtt is not old
+
+        restarted, swapped = client.portal.call(main)
+        assert swapped and not restarted

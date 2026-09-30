@@ -644,6 +644,9 @@ class CallbackService:
             self.mqtt_source = "panel" if stored is not None and stored.configured else "none"
             self.mqtt_config = stored if stored is not None and stored.configured else MqttConfig()
         self.mqtt = self._subscriber(self.mqtt_config)
+        # apply_mqtt_config and ensure_listener change the subscriber one at a
+        # time: a subscription set across a swap restarted the old one (CR-S2-5).
+        self._mqtt_lock = asyncio.Lock()
         manager.on_hub_event(self._on_hub_event)
         manager.on_server_event(self._on_server_event)
 
@@ -671,9 +674,11 @@ class CallbackService:
         else:
             self.mqtt_store.save(config)
             self.mqtt_config, self.mqtt_source = config, "panel"
-        await self.mqtt.stop()
-        self.mqtt = self._subscriber(self.mqtt_config)
-        await self.mqtt.set_topics(set(self._mqtt_topics()))
+        async with self._mqtt_lock:
+            # Swap first, then close the old one: nothing can reach it after.
+            old, self.mqtt = self.mqtt, self._subscriber(self.mqtt_config)
+            await old.close()
+            await self.mqtt.set_topics(set(self._mqtt_topics()))
 
     def mqtt_device_count(self) -> int:
         return sum(1 for hub_id in self._manager.ids() for record in self.records(hub_id)
@@ -705,7 +710,7 @@ class CallbackService:
         for task in [*self._verify_tasks.values(), *self._reconcile_tasks.values()]:
             task.cancel()
         await self.listener.stop()
-        await self.mqtt.stop()
+        await self.mqtt.close()
 
     def on_press(self, listener: Callable[[Press], Any]) -> None:
         self._press_listeners.append(listener)
@@ -769,7 +774,8 @@ class CallbackService:
         """Bring both ingresses in line with the records: the listener, and the broker subscriptions."""
 
         await self.listener.set_wanted(self.wanted())
-        await self.mqtt.set_topics(set(self._mqtt_topics()))
+        async with self._mqtt_lock:
+            await self.mqtt.set_topics(set(self._mqtt_topics()))
 
     # -- mqtt ---------------------------------------------------------------------
 
