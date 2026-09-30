@@ -27,14 +27,18 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
+from typing import TYPE_CHECKING
 
 from .ack import AckOutcome, SendStepResult
 from .device_create import ACK_OPCODE_STATUS, ACK_STATUS_BYTE_OK
 from .write_batch import REMOTE_SYNC_FAMILY
 from .hub_logging import LogTag
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
-class ExchangeMixin:
+
+class ExchangeMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing the exchange guard and the one-step executor."""
 
     def _claim_wire(self, kind: str, timeout: float = 8.0) -> None:

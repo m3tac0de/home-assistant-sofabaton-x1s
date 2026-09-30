@@ -73,11 +73,13 @@ orchestrator (init, identity, frame send/receive, lifecycle).
 | `lib/proxy_activity_ops.py` | `delete_device`, `add_device_to_activity`, favorites operations, `command_to_button`. |
 | `lib/proxy_ack_waiters.py` | `notify_ack`, `wait_for_ack` / `wait_for_ack_any`, macro-record cache, activity-inputs burst buffer. |
 | `lib/proxy_ir_blob.py` | `play_ir_blob`, `persist_ir_blob`, `persist_command_record`, persist driver, playback diagnostics. |
+| `lib/proxy_host.py` | `_ProxyHost`, the Protocol that declares what the mixins borrow from each other and from `X1Proxy`. Each mixin names it as a base for the type checker only (`class CatalogMixin(_ProxyHost if TYPE_CHECKING else object)`), so nothing changes at runtime. |
 
 Guards:
 
 - `tests/test_module_boundaries.py::test_x1_proxy_under_2000_lines` keeps the orchestrator file from growing back.
 - `tests/test_module_boundaries.py::test_proxy_mixin_imports_form_a_dag` forbids module-load-time imports between mixins. Use function-level imports (or move the helper to the orchestrator) when a mixin needs another mixin's symbol.
+- `tests/lib/test_proxy_host.py` fails when a member `_ProxyHost` declares is missing on a real `X1Proxy`; pyright's override checks (on in `pyproject.toml`) flag a member whose type drifted. A mixin that starts using another class's attribute or method adds it to `_ProxyHost`.
 - `tests/test_cache_version_bump.py` pins the persistent-cache version constant; any change to `export_cache_state` that reshapes the on-disk schema must bump `CACHE_STORE_VERSION` in `cache_store.py`.
 
 ---

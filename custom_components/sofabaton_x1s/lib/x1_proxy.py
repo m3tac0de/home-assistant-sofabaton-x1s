@@ -16,7 +16,7 @@ import socket
 import threading
 import time
 from collections import defaultdict, deque
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from .hub_versions import (
     HUB_VERSION_X1,
@@ -1903,6 +1903,14 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._stop_discovery()
         self.transport.stop()
         self._log.info("%s proxy stopped", LogTag.PROXY)
+
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
+    # The proxy satisfies the contract its mixins are written against
+    # (CR-L3a-17); tests/lib/test_proxy_host.py checks it at runtime.
+    _host_contract: type[_ProxyHost] = X1Proxy
 
 
 from . import opcode_handlers  # noqa: F401  # register frame handlers

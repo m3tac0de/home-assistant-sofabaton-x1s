@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import replace
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, TYPE_CHECKING
 
 from .ack import AckOutcome
 from .activity_sync import ACTIVITY_ID_BASE, SyncStep, build_activity_sync_plan, build_device_sync_plan
@@ -55,6 +55,9 @@ from .protocol_const import (
     ButtonName,
     normalize_device_class,
 )
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
 # A 0x0210 key delete runs a hub-side consistency sweep before it acks, and
@@ -344,7 +347,7 @@ def _channel_for_head_ip(ip_address: str | None, previous: int) -> int:
     return int(parts[3]) & 0xFF
 
 
-class ActivitySyncMixin:
+class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
     """`sync_activity` + per-step dispatch. Mixed into X1Proxy."""
 
     # ── Per-run allocation state (BUG #5) ──────────────────────────────

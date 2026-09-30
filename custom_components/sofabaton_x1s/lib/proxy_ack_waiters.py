@@ -19,6 +19,7 @@ live here because they are pure consumers of the inputs burst.
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING, Sequence
 
 from .ack import AckOutcome, InputsBurstResult
 from .inputs import inputs_burst_complete, parse_inputs_burst
@@ -30,8 +31,11 @@ from .protocol_const import (
     OPNAMES,
 )
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
-class AckWaitersMixin:
+
+class AckWaitersMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing ack-queue management and burst waits."""
 
     def reset_ack_queues(self) -> None:
@@ -164,7 +168,7 @@ class AckWaitersMixin:
 
     def _wait_for_ack_any_impl(
         self,
-        candidates: list[tuple[int, int | None]],
+        candidates: Sequence[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,
@@ -199,7 +203,7 @@ class AckWaitersMixin:
 
     def wait_for_ack_any(
         self,
-        candidates: list[tuple[int, int | None]],
+        candidates: Sequence[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,

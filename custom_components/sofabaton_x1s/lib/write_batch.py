@@ -24,11 +24,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import threading
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .hub_logging import LogTag
 from .hub_versions import HUB_VERSION_X2, classify_hub_version
 from .protocol_const import OP_REMOTE_SYNC, OP_X2_REMOTE_SYNC_ALL
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 #: The family / opcode byte of the physical remote-sync trigger.
 REMOTE_SYNC_FAMILY = 0x64
@@ -50,16 +53,12 @@ class EngineWriteBatch:
         return self.remote_sync_requests > 0
 
 
-class WriteBatchMixin:
+class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
     """Physical remote-sync trigger and the write batch that coalesces it.
 
-    Expects the host class to provide ``_log``, ``hub_version``, ``mdns_txt``
-    and ``enqueue_cmd`` (:class:`X1Proxy` does).
+    Uses the host's ``_log``, ``hub_version``, ``mdns_txt`` and
+    ``enqueue_cmd`` (declared by ``_ProxyHost``).
     """
-
-    _log: Any
-    hub_version: Any
-    mdns_txt: Any
 
     def _init_write_batch(self) -> None:
         # While set, physical remote-sync triggers are recorded instead of

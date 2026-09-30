@@ -17,7 +17,7 @@ ingest path.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .hub_versions import HUB_VERSION_X2
 from .commands import extract_ir_dump_blob, extract_ir_dump_label_field
@@ -30,6 +30,9 @@ from .protocol_const import (
 )
 from .state_helpers import normalize_device_entry
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
 
 ACTIVITY_INCOMPLETE_RETRY_DELAY_S = 0.75
 
@@ -40,7 +43,7 @@ def _to_export_view():
     return to_export_view
 
 
-class CatalogMixin:
+class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing catalog request, snapshot ingest, and cache reads."""
 
     def request_activity_mapping(self, act_id: int) -> bool:
@@ -1127,7 +1130,6 @@ class CatalogMixin:
 
         for pair in to_delete:
             self._favorite_label_requests.pop(pair, None)
-
 
 
 __all__ = ["CatalogMixin"]

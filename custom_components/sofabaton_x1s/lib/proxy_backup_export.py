@@ -16,12 +16,15 @@ from __future__ import annotations
 import threading
 import time
 from copy import deepcopy
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from . import backup_export as _bx
 from .devices import DeviceConfig, parse_device_record
 from .protocol_const import DEVICE_CLASS_IR, normalize_device_class
 from .state_helpers import reads_live_state
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 
 def _key_sort_row_or_fallback(
@@ -86,7 +89,7 @@ class _SyncBurstWaiter:
             event.set()
 
 
-class BackupExportMixin:
+class BackupExportMixin(_ProxyHost if TYPE_CHECKING else object):
     """Synchronous backup-export operations on :class:`X1Proxy`."""
 
     # ------------------------------------------------------------------

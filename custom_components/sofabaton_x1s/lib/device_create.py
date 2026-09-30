@@ -33,7 +33,7 @@ from __future__ import annotations
 import contextlib
 import time
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal, Protocol
+from typing import Any, Iterable, Literal, Protocol, Sequence
 
 from .devices import DeviceConfig, build_device_create_payload
 from .wire_schema import PAGED_WRITE_WRAPPER_LEN, encode_label_slot, page_family_body, schema_for
@@ -152,13 +152,13 @@ class _ProxyLike(Protocol):
 
     def wait_for_ack_any(
         self,
-        candidates: list[tuple[int, int | None]],
+        candidates: Sequence[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,
     ) -> tuple[int, bytes] | None: ...
 
-    def exchange(self, name: str): ...
+    def exchange(self, name: str) -> contextlib.AbstractContextManager[None]: ...
 
 
 @dataclass(frozen=True, slots=True)

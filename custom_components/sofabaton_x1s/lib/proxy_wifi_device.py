@@ -25,7 +25,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .ack import AckOutcome
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
@@ -43,6 +43,9 @@ from .protocol_const import (
     OP_REQ_BLOB,
 )
 from .state_helpers import normalize_device_entry
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 
 def _hex_to_bytes(raw_hex: str) -> bytes:
@@ -122,7 +125,6 @@ _ROKU_X1S_INPUT_FINALIZE_TAIL = _hex_to_bytes(
 )
 
 
-
 def utf16be_label_slot(text: str, size: int) -> bytes:
     """Encode ``text`` as a fixed-width X1S/X2 label slot: UTF-16BE, cut to
     whole code units (never half a surrogate pair), zero-padded.
@@ -137,7 +139,7 @@ def utf16be_label_slot(text: str, size: int) -> bytes:
     return encode_label_slot(text, size, "utf-16-be")
 
 
-class WifiDeviceMixin:
+class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing the wifi-command and IP-button create flows."""
 
     def _build_wifi_device_payload(
