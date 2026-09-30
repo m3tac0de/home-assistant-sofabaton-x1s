@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import custom_components.sofabaton_x1s.hub as hub_module
 import custom_components.sofabaton_x1s.hub_identity as hub_identity_module
+import custom_components.sofabaton_x1s.wifi_ingress as wifi_ingress_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
@@ -4303,7 +4304,7 @@ def test_roku_http_post_new_format_lazy_loads_command_store(monkeypatch):
     async def _fake_get_store(_hass):
         return _Store()
 
-    monkeypatch.setattr(hub_module, "async_get_command_config_store", _fake_get_store)
+    monkeypatch.setattr(wifi_ingress_module, "async_get_command_config_store", _fake_get_store)
 
     hub = SofabatonHub(
         hass,
@@ -6228,7 +6229,7 @@ def test_mqtt_ingress_handler_guards_and_dispatch(monkeypatch):
     async def fake_get_store(hass):
         return _FakeMqttStore()
 
-    monkeypatch.setattr(hub_module, "async_get_command_config_store", fake_get_store)
+    monkeypatch.setattr(wifi_ingress_module, "async_get_command_config_store", fake_get_store)
     handler = SofabatonHub._async_handle_wifi_mqtt_message
 
     loop = asyncio.new_event_loop()
