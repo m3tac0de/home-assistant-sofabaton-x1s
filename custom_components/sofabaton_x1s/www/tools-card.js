@@ -12195,6 +12195,735 @@ var WifiEventTargets = class {
   }
 };
 
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/binding-dialog-controller.ts
+var BindingDialogController = class {
+  constructor(host) {
+    this.host = host;
+    this._open = false;
+    this._scope = "activity";
+    this._editButtonId = null;
+    this._buttonId = null;
+    this._deviceId = null;
+    this._commandId = null;
+    this._longPressEnabled = false;
+    this._lpDeviceId = null;
+    this._lpCommandId = null;
+    this._targetKind = "command";
+    this._actionName = "";
+    this._macroMode = "new";
+    this._macroId = null;
+    this._lpTargetKind = "command";
+    this._lpMacroMode = "new";
+    this._lpMacroId = null;
+    this._lpActionName = "";
+    this._error = "";
+    this.close = () => {
+      this.open = false;
+      this.editButtonId = null;
+      this.buttonId = null;
+      this.deviceId = null;
+      this.commandId = null;
+      this.longPressEnabled = false;
+      this.lpDeviceId = null;
+      this.lpCommandId = null;
+      this.targetKind = "command";
+      this.actionName = "";
+      this.macroMode = "new";
+      this.macroId = null;
+      this.lpTargetKind = "command";
+      this.lpMacroMode = "new";
+      this.lpMacroId = null;
+      this.lpActionName = "";
+      this.error = "";
+    };
+    this.handleButtonChange = (event) => {
+      const value = Number(event.target.value);
+      this.buttonId = Number.isFinite(value) ? value : null;
+    };
+    this.handleDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this.deviceId = Number.isFinite(value) ? value : null;
+      this.commandId = this.commandOptions(this.deviceId)[0]?.value ?? null;
+    };
+    this.handleCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this.commandId = Number.isFinite(value) ? value : null;
+    };
+    this.handleTargetKindChange = (event) => {
+      const kind = event.target.value;
+      this.targetKind = kind;
+      this.error = "";
+      if (kind === "command") {
+        const devices = this.commandDeviceOptions();
+        if (!devices.some((device) => device.value === this.deviceId)) {
+          this.deviceId = devices[0]?.value ?? null;
+        }
+        this.commandId = this.commandOptions(this.deviceId)[0]?.value ?? null;
+        return;
+      }
+      if (kind === "wifi_event") {
+        this.host._events.primary = this.host._events.defaultSel();
+        return;
+      }
+      this.host._resetMacroTarget("binding");
+      this.actionName || (this.actionName = this.host._macroName(this.commandId));
+    };
+    this.handleActionNameInput = (event) => {
+      this.actionName = event.target.value;
+      this.error = "";
+    };
+    this.handleMacroTargetChange = (event) => {
+      const value = event.target.value;
+      if (value === "__new__") {
+        this.macroMode = "new";
+        this.macroId = null;
+      } else {
+        this.macroMode = "existing";
+        this.macroId = Number(value);
+      }
+      this.error = "";
+    };
+    this.handleLpTargetKindChange = (event) => {
+      const kind = event.target.value;
+      this.lpTargetKind = kind;
+      this.error = "";
+      if (kind === "command") {
+        const devices = this.commandDeviceOptions();
+        if (!devices.some((device) => device.value === this.lpDeviceId)) {
+          this.lpDeviceId = devices[0]?.value ?? null;
+        }
+        this.lpCommandId = this.commandOptions(this.lpDeviceId)[0]?.value ?? null;
+        return;
+      }
+      this.host._resetMacroTarget("bindingLp");
+      this.lpActionName || (this.lpActionName = this.host._macroName(this.lpCommandId));
+    };
+    this.handleLpActionNameInput = (event) => {
+      this.lpActionName = event.target.value;
+      this.error = "";
+    };
+    this.handleLpMacroTargetChange = (event) => {
+      const value = event.target.value;
+      if (value === "__new__") {
+        this.lpMacroMode = "new";
+        this.lpMacroId = null;
+      } else {
+        this.lpMacroMode = "existing";
+        this.lpMacroId = Number(value);
+      }
+      this.error = "";
+    };
+    this.handleLongPressToggle = (event) => {
+      const enabled = Boolean(event.target.checked);
+      this.longPressEnabled = enabled;
+      if (!enabled || !this.host.bundle) return;
+      this.lpTargetKind = "command";
+      if (this.scope === "activity") {
+        const devices = this.commandDeviceOptions();
+        if (!devices.some((device) => device.value === this.lpDeviceId)) {
+          this.lpDeviceId = devices[0]?.value ?? null;
+        }
+      } else if (this.lpDeviceId == null) {
+        this.lpDeviceId = Number(this.host.entityId);
+      }
+      const commands = this.commandOptions(this.lpDeviceId);
+      if (!commands.some((command) => command.value === this.lpCommandId)) {
+        this.lpCommandId = commands[0]?.value ?? null;
+      }
+    };
+    this.handleLpDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this.lpDeviceId = Number.isFinite(value) ? value : null;
+      this.lpCommandId = this.commandOptions(this.lpDeviceId)[0]?.value ?? null;
+    };
+    this.handleLpCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this.lpCommandId = Number.isFinite(value) ? value : null;
+    };
+    /**
+     * Async binding apply when the button targets a Wifi Event. The event
+     * is atomic: the short press fires its short record, and — when the
+     * long-press toggle is on — the *same* event's long record is wired to
+     * the button's long press (and the event's long-press action is enabled
+     * for configuration in the Events tab). There is no independent
+     * long-press target here; that would collide with the Wifi Events model
+     * where short/long are two actions of one event.
+     */
+    this.applyActivityWithWifiEvents = async () => {
+      const S5 = TOOLS_CARD_STRINGS.backup;
+      if (!this.host.bundle || this.host.entityId == null) return;
+      const activityId = Number(this.host.entityId);
+      const buttonId = Number(this.buttonId);
+      if (!buttonId) {
+        this.error = S5.bindingIncomplete;
+        return;
+      }
+      try {
+        const ref = await this.host._events.resolveRef(this.host._events.primary);
+        let longPress = null;
+        if (this.longPressEnabled) {
+          await this.host.wifiEvents.enableLongPress(ref.slotIndex);
+          this.host._events.list = null;
+          longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
+        }
+        this.host._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
+          buttonId,
+          deviceId: ref.deviceId,
+          commandId: ref.shortCommandId,
+          longPress
+        }));
+        this.close();
+      } catch (err) {
+        this.error = editorErrorMessage(err, "wifi_event");
+      }
+    };
+    this.apply = () => {
+      if (!this.host.bundle || this.host.entityId == null) return;
+      const buttonId = Number(this.buttonId);
+      const entityId = Number(this.host.entityId);
+      if (!buttonId) {
+        this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+        return;
+      }
+      if (this.scope === "activity" && this.targetKind === "wifi_event") {
+        void this.applyActivityWithWifiEvents();
+        return;
+      }
+      if (this.scope === "activity") {
+        const activityId = entityId;
+        let next = this.host.bundle;
+        let macroToOpen = null;
+        const longPressTarget = this.resolveActivityLongPressTarget(next, activityId);
+        if (!longPressTarget) return;
+        next = longPressTarget.bundle;
+        macroToOpen = longPressTarget.createdMacro;
+        const longPress = longPressTarget.longPress;
+        if (this.targetKind === "command") {
+          const commandId = Number(this.commandId);
+          if (!commandId || !this.deviceId) {
+            this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+            return;
+          }
+          this.host._commitEditBundleEdit(upsertActivityButtonBinding(next, activityId, {
+            buttonId,
+            deviceId: Number(this.deviceId),
+            commandId,
+            longPress
+          }));
+          this.close();
+          if (macroToOpen) this.host._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+          return;
+        }
+        const resolved = this.resolveMacroTarget(
+          next,
+          activityId,
+          this.macroMode,
+          this.macroId,
+          this.actionName
+        );
+        if (!resolved) {
+          this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+          return;
+        }
+        next = upsertActivityButtonBinding(resolved.bundle, activityId, {
+          buttonId,
+          deviceId: activityId,
+          commandId: resolved.macroId,
+          longPress
+        });
+        this.host._commitEditBundleEdit(next);
+        this.close();
+        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
+        if (macroToOpen) this.host._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+      } else {
+        const commandId = Number(this.commandId);
+        if (!commandId) {
+          this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+          return;
+        }
+        const longPressCommandId = this.longPressEnabled && this.lpCommandId ? Number(this.lpCommandId) : null;
+        this.host._commitEditBundleEdit(upsertDeviceButtonBinding(this.host.bundle, entityId, {
+          buttonId,
+          commandId,
+          longPressCommandId
+        }));
+        this.close();
+      }
+    };
+    host.addController(this);
+  }
+  get open() {
+    return this._open;
+  }
+  set open(value) {
+    if (value === this._open) return;
+    this._open = value;
+    this.host.requestUpdate();
+  }
+  get scope() {
+    return this._scope;
+  }
+  set scope(value) {
+    if (value === this._scope) return;
+    this._scope = value;
+    this.host.requestUpdate();
+  }
+  get editButtonId() {
+    return this._editButtonId;
+  }
+  set editButtonId(value) {
+    if (value === this._editButtonId) return;
+    this._editButtonId = value;
+    this.host.requestUpdate();
+  }
+  get buttonId() {
+    return this._buttonId;
+  }
+  set buttonId(value) {
+    if (value === this._buttonId) return;
+    this._buttonId = value;
+    this.host.requestUpdate();
+  }
+  get deviceId() {
+    return this._deviceId;
+  }
+  set deviceId(value) {
+    if (value === this._deviceId) return;
+    this._deviceId = value;
+    this.host.requestUpdate();
+  }
+  get commandId() {
+    return this._commandId;
+  }
+  set commandId(value) {
+    if (value === this._commandId) return;
+    this._commandId = value;
+    this.host.requestUpdate();
+  }
+  get longPressEnabled() {
+    return this._longPressEnabled;
+  }
+  set longPressEnabled(value) {
+    if (value === this._longPressEnabled) return;
+    this._longPressEnabled = value;
+    this.host.requestUpdate();
+  }
+  get lpDeviceId() {
+    return this._lpDeviceId;
+  }
+  set lpDeviceId(value) {
+    if (value === this._lpDeviceId) return;
+    this._lpDeviceId = value;
+    this.host.requestUpdate();
+  }
+  get lpCommandId() {
+    return this._lpCommandId;
+  }
+  set lpCommandId(value) {
+    if (value === this._lpCommandId) return;
+    this._lpCommandId = value;
+    this.host.requestUpdate();
+  }
+  get targetKind() {
+    return this._targetKind;
+  }
+  set targetKind(value) {
+    if (value === this._targetKind) return;
+    this._targetKind = value;
+    this.host.requestUpdate();
+  }
+  get actionName() {
+    return this._actionName;
+  }
+  set actionName(value) {
+    if (value === this._actionName) return;
+    this._actionName = value;
+    this.host.requestUpdate();
+  }
+  get macroMode() {
+    return this._macroMode;
+  }
+  set macroMode(value) {
+    if (value === this._macroMode) return;
+    this._macroMode = value;
+    this.host.requestUpdate();
+  }
+  get macroId() {
+    return this._macroId;
+  }
+  set macroId(value) {
+    if (value === this._macroId) return;
+    this._macroId = value;
+    this.host.requestUpdate();
+  }
+  get lpTargetKind() {
+    return this._lpTargetKind;
+  }
+  set lpTargetKind(value) {
+    if (value === this._lpTargetKind) return;
+    this._lpTargetKind = value;
+    this.host.requestUpdate();
+  }
+  get lpMacroMode() {
+    return this._lpMacroMode;
+  }
+  set lpMacroMode(value) {
+    if (value === this._lpMacroMode) return;
+    this._lpMacroMode = value;
+    this.host.requestUpdate();
+  }
+  get lpMacroId() {
+    return this._lpMacroId;
+  }
+  set lpMacroId(value) {
+    if (value === this._lpMacroId) return;
+    this._lpMacroId = value;
+    this.host.requestUpdate();
+  }
+  get lpActionName() {
+    return this._lpActionName;
+  }
+  set lpActionName(value) {
+    if (value === this._lpActionName) return;
+    this._lpActionName = value;
+    this.host.requestUpdate();
+  }
+  get error() {
+    return this._error;
+  }
+  set error(value) {
+    if (value === this._error) return;
+    this._error = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  // ── Button bindings (add / edit picker) ─────────────────────────────
+  commandDeviceOptions() {
+    if (!this.host.bundle) return [];
+    return this.host._editableDeviceOptions().map((device) => ({ value: device.id, label: device.label }));
+  }
+  targetKindFor(deviceId) {
+    if (!this.host.bundle || this.host.entityId == null) return "command";
+    const dId = Number(deviceId || 0);
+    if (dId === Number(this.host.entityId)) return "action";
+    if (this.host._events.available() && isWifiEventsBrand(bundleDeviceBrand(this.host.bundle, dId))) {
+      return "wifi_event";
+    }
+    return "command";
+  }
+  // Command options for a chosen target: the activity's own macros when the
+  // target is the activity itself, otherwise the target device's commands.
+  commandOptions(targetDeviceId) {
+    if (targetDeviceId == null || !this.host.bundle) return [];
+    if (this.scope === "activity" && this.host.entityId != null && targetDeviceId === Number(this.host.entityId)) {
+      return activityUserMacroSummaries(this.host.bundle, Number(this.host.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+    }
+    return deviceCommandItems(this.host.bundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+  openAdd(kind) {
+    if (this.host.entityId == null || !this.host.bundle) return;
+    const entityId = Number(this.host.entityId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this.host.bundle, entityId) : unboundButtonsForDevice(this.host.bundle, entityId);
+    if (!unbound.length) return;
+    this.scope = kind;
+    this.editButtonId = null;
+    this.buttonId = unbound[0].code;
+    this.targetKind = "command";
+    this.actionName = "";
+    this.host._resetMacroTarget("binding");
+    this.lpTargetKind = "command";
+    this.lpActionName = "";
+    this.host._resetMacroTarget("bindingLp");
+    if (kind === "activity") {
+      const devices = this.commandDeviceOptions();
+      this.deviceId = devices[0]?.value ?? null;
+    } else {
+      this.deviceId = entityId;
+    }
+    const commandDeviceId = kind === "activity" ? this.deviceId : entityId;
+    const commands = commandDeviceId != null ? deviceCommandItems(this.host.bundle, commandDeviceId) : [];
+    this.commandId = commands[0]?.commandId ?? null;
+    this.longPressEnabled = false;
+    this.lpDeviceId = this.deviceId;
+    this.lpCommandId = this.commandId;
+    this.error = "";
+    this.host._events.load();
+    this.open = true;
+  }
+  openEdit(kind, buttonId) {
+    if (this.host.entityId == null || !this.host.bundle) return;
+    const entityId = Number(this.host.entityId);
+    const items = kind === "activity" ? activityButtonBindingItems(this.host.bundle, entityId) : deviceButtonBindingItems(this.host.bundle, entityId);
+    const item = items.find((entry) => entry.buttonId === Number(buttonId));
+    if (!item) return;
+    this.scope = kind;
+    this.editButtonId = item.buttonId;
+    this.buttonId = item.buttonId;
+    this.deviceId = kind === "activity" ? item.deviceId ?? null : entityId;
+    this.commandId = item.commandId;
+    this.targetKind = kind === "activity" ? this.targetKindFor(item.deviceId) : "command";
+    if (this.targetKind === "wifi_event") {
+      this.host._events.primary = {
+        mode: "existing",
+        slot: Number(item.commandId) - 1,
+        name: ""
+      };
+      this.longPressEnabled = Boolean(item.longPress);
+      this.error = "";
+      this.host._events.load();
+      this.open = true;
+      return;
+    }
+    this.actionName = this.targetKind === "action" ? this.host._macroName(item.commandId) : "";
+    this.macroMode = this.targetKind === "action" ? "existing" : "new";
+    this.macroId = this.targetKind === "action" ? item.commandId : null;
+    this.longPressEnabled = Boolean(item.longPress);
+    this.lpDeviceId = kind === "activity" ? item.longPress?.deviceId ?? item.deviceId ?? null : entityId;
+    this.lpCommandId = item.longPress?.commandId ?? null;
+    this.lpTargetKind = kind === "activity" ? this.targetKindFor(this.lpDeviceId) : "command";
+    this.lpActionName = this.lpTargetKind === "action" ? this.host._macroName(this.lpCommandId) : "";
+    this.lpMacroMode = this.lpTargetKind === "action" ? "existing" : "new";
+    this.lpMacroId = this.lpTargetKind === "action" ? this.lpCommandId : null;
+    this.error = "";
+    this.host._events.load();
+    this.open = true;
+  }
+  resolveMacroTarget(bundle, activityId, mode, macroId, rawName) {
+    if (mode === "existing") {
+      const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(macroId));
+      return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
+    }
+    const name = sanitizeBundleName(bundle, rawName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
+    const next = addActivityUserMacro(bundle, activityId, name);
+    const summaries = activityUserMacroSummaries(next, activityId);
+    const created = summaries[summaries.length - 1];
+    return created ? { bundle: next, macroId: created.buttonId, name: created.name, created: true } : null;
+  }
+  resolveActivityLongPressTarget(bundle, activityId) {
+    if (!this.longPressEnabled) {
+      return { bundle, longPress: null, createdMacro: null };
+    }
+    if (this.lpTargetKind === "command") {
+      if (!this.lpDeviceId || !this.lpCommandId) {
+        this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+        return null;
+      }
+      return {
+        bundle,
+        longPress: {
+          deviceId: Number(this.lpDeviceId),
+          commandId: Number(this.lpCommandId)
+        },
+        createdMacro: null
+      };
+    }
+    const resolved = this.resolveMacroTarget(
+      bundle,
+      activityId,
+      this.lpMacroMode,
+      this.lpMacroId,
+      this.lpActionName
+    );
+    if (!resolved) {
+      this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+      return null;
+    }
+    return {
+      bundle: resolved.bundle,
+      longPress: { deviceId: activityId, commandId: resolved.macroId },
+      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null
+    };
+  }
+  renderMacroTargetFields(params) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const macros = this.host._macroOptions();
+    return b2`
+      ${macros.length ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S5.macroTargetLabel}</label>
+              <select
+                id=${`${params.idPrefix}-macro-target`}
+                class="decoded-field-input"
+                @change=${params.onMacroChange}
+              >
+                ${macros.map((macro) => b2`
+                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
+                `)}
+                <option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>
+              </select>
+            </div>
+          ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
+      ${params.mode === "new" ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-name`}>${S5.addShortcutActionName}</label>
+              <input
+                id=${`${params.idPrefix}-macro-name`}
+                class="decoded-field-input"
+                maxlength="20"
+                .value=${params.name}
+                @input=${params.onNameInput}
+              />
+              <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
+            </div>
+          ` : A}
+    `;
+  }
+  render() {
+    if (!this.open || !this.host.bundle || this.host.entityId == null) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const scope = this.scope;
+    const entityId = Number(this.host.entityId);
+    const isEdit = this.editButtonId != null;
+    const isActivity = scope === "activity";
+    const targetKind = isActivity ? this.targetKind : "command";
+    const lpTargetKind = isActivity ? this.lpTargetKind : "command";
+    const unbound = scope === "activity" ? unboundButtonsForActivity(this.host.bundle, entityId) : unboundButtonsForDevice(this.host.bundle, entityId);
+    const commandDeviceOptions = this.commandDeviceOptions();
+    const commandDeviceId = scope === "activity" && targetKind === "command" ? this.deviceId : entityId;
+    const commandOptions = this.commandOptions(commandDeviceId);
+    const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this.lpDeviceId : entityId;
+    const lpCommandOptions = this.commandOptions(lpDeviceId);
+    const wifiSelReady = (sel) => !this.host._events.busy && (sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0);
+    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
+    const canSave = this.buttonId != null && (scope === "device" ? this.commandId != null : targetKind === "command" ? this.deviceId != null && this.commandId != null : targetKind === "wifi_event" ? wifiSelReady(this.host._events.primary) : true);
+    const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this.buttonId))) : S5.bindingDialogAddTitle;
+    const commandFields = b2`
+      ${scope === "activity" ? this.host._renderBindingSelect({
+      id: "sb-binding-device",
+      label: S5.bindingTargetDevice,
+      value: this.deviceId,
+      options: commandDeviceOptions,
+      onChange: this.handleDeviceChange,
+      emptyText: S5.bindingNoDevices
+    }) : A}
+      ${this.host._renderBindingSelect({
+      id: "sb-binding-command",
+      label: S5.bindingCommand,
+      value: this.commandId,
+      options: commandOptions,
+      onChange: this.handleCommandChange,
+      emptyText: S5.bindingNoCommands
+    })}
+    `;
+    const actionFields = this.renderMacroTargetFields({
+      idPrefix: "sb-binding",
+      mode: this.macroMode,
+      macroId: this.macroId,
+      name: this.actionName,
+      onMacroChange: this.handleMacroTargetChange,
+      onNameInput: this.handleActionNameInput
+    });
+    const lpCommandFields = b2`
+      ${scope === "activity" ? this.host._renderBindingSelect({
+      id: "sb-binding-lp-device",
+      label: S5.bindingLongPressDevice,
+      value: this.lpDeviceId,
+      options: commandDeviceOptions,
+      onChange: this.handleLpDeviceChange,
+      emptyText: S5.bindingNoDevices
+    }) : A}
+      ${this.host._renderBindingSelect({
+      id: "sb-binding-lp-command",
+      label: S5.bindingLongPressCommand,
+      value: this.lpCommandId,
+      options: lpCommandOptions,
+      onChange: this.handleLpCommandChange,
+      emptyText: S5.bindingNoCommands
+    })}
+    `;
+    const lpActionFields = this.renderMacroTargetFields({
+      idPrefix: "sb-binding-lp",
+      mode: this.lpMacroMode,
+      macroId: this.lpMacroId,
+      name: this.lpActionName,
+      onMacroChange: this.handleLpMacroTargetChange,
+      onNameInput: this.handleLpActionNameInput
+    });
+    return b2`
+      <div class="modal-backdrop" @click=${this.close}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${title}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${isEdit ? b2`
+                  <div class="decoded-field">
+                    <span class="decoded-field-label">${S5.bindingButton}</span>
+                    <div class="binding-static-field">${buttonName2(Number(this.buttonId))}</div>
+                  </div>
+                ` : this.host._renderBindingSelect({
+      id: "sb-binding-button",
+      label: S5.bindingButton,
+      value: this.buttonId,
+      options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
+      onChange: this.handleButtonChange,
+      emptyText: S5.bindingNoButtons
+    })}
+            ${isActivity ? b2`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-binding-kind">${S5.addShortcutKindLabel}</label>
+                    <select
+                      id="sb-binding-kind"
+                      class="decoded-field-input"
+                      @change=${this.handleTargetKindChange}
+                    >
+                      <option value="command" ?selected=${targetKind === "command"}>${S5.shortcutKindCommand}</option>
+                      <option value="action" ?selected=${targetKind === "action"}>${S5.shortcutKindAction}</option>
+                      ${this.host._events.available() ? b2`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
+                    </select>
+                  </div>
+                ` : A}
+            ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this.host._events.renderTargetFields({
+      idPrefix: "sb-binding",
+      sel: this.host._events.primary,
+      onSelChange: (sel) => {
+        this.host._events.primary = sel;
+        this.error = "";
+      }
+    }) : actionFields}
+            <div class="binding-toggle-row">
+              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
+              <ha-switch
+                .checked=${this.longPressEnabled}
+                @change=${this.handleLongPressToggle}
+              ></ha-switch>
+            </div>
+            ${this.longPressEnabled ? primaryIsWifiEvent ? b2`
+                    <div class="decoded-field-helper">${S5.wifiEventBindingLongPressNote}</div>
+                  ` : b2`
+                    ${isActivity ? b2`
+                          <div class="decoded-field">
+                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
+                            <select
+                              id="sb-binding-lp-kind"
+                              class="decoded-field-input"
+                              @change=${this.handleLpTargetKindChange}
+                            >
+                              <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
+                              <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
+                            </select>
+                          </div>
+                        ` : A}
+                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
+                  ` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this.close}>${S5.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this.apply} ?disabled=${!canSave}>
+                ${isEdit ? S5.bindingSave : S5.bindingAdd}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+};
+
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
 var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var SofabatonEditDetailView = class extends i4 {
@@ -12254,6 +12983,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._learn = new IrLearnController(this);
     this._payload = new PayloadDialogController(this);
     this._events = new WifiEventTargets(this);
+    this._binding = new BindingDialogController(this);
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -12262,24 +12992,6 @@ var SofabatonEditDetailView = class extends i4 {
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
     this._addFavoriteError = "";
-    this._bindingDialogOpen = false;
-    this._bindingScope = "activity";
-    this._bindingEditButtonId = null;
-    this._bindingButtonId = null;
-    this._bindingDeviceId = null;
-    this._bindingCommandId = null;
-    this._bindingLongPressEnabled = false;
-    this._bindingLpDeviceId = null;
-    this._bindingLpCommandId = null;
-    this._bindingTargetKind = "command";
-    this._bindingActionName = "";
-    this._bindingMacroMode = "new";
-    this._bindingMacroId = null;
-    this._bindingLpTargetKind = "command";
-    this._bindingLpMacroMode = "new";
-    this._bindingLpMacroId = null;
-    this._bindingLpActionName = "";
-    this._bindingError = "";
     this._detailScrollTop = 0;
     this._bindingsScrollTop = 0;
     this._macroEditor = null;
@@ -12334,7 +13046,7 @@ var SofabatonEditDetailView = class extends i4 {
     };
     this._closeBindingsView = () => {
       this._bindingsView = false;
-      this._closeBindingDialog();
+      this._binding.close();
       this._closeDeleteConfirm();
       this._restoreMainScroll();
     };
@@ -12613,239 +13325,6 @@ var SofabatonEditDetailView = class extends i4 {
         nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
       ));
     };
-    this._closeBindingDialog = () => {
-      this._bindingDialogOpen = false;
-      this._bindingEditButtonId = null;
-      this._bindingButtonId = null;
-      this._bindingDeviceId = null;
-      this._bindingCommandId = null;
-      this._bindingLongPressEnabled = false;
-      this._bindingLpDeviceId = null;
-      this._bindingLpCommandId = null;
-      this._bindingTargetKind = "command";
-      this._bindingActionName = "";
-      this._bindingMacroMode = "new";
-      this._bindingMacroId = null;
-      this._bindingLpTargetKind = "command";
-      this._bindingLpMacroMode = "new";
-      this._bindingLpMacroId = null;
-      this._bindingLpActionName = "";
-      this._bindingError = "";
-    };
-    this._handleBindingButtonChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingButtonId = Number.isFinite(value) ? value : null;
-    };
-    this._handleBindingDeviceChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingDeviceId = Number.isFinite(value) ? value : null;
-      this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
-    };
-    this._handleBindingCommandChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingCommandId = Number.isFinite(value) ? value : null;
-    };
-    this._handleBindingTargetKindChange = (event) => {
-      const kind = event.target.value;
-      this._bindingTargetKind = kind;
-      this._bindingError = "";
-      if (kind === "command") {
-        const devices = this._bindingCommandDeviceOptions();
-        if (!devices.some((device) => device.value === this._bindingDeviceId)) {
-          this._bindingDeviceId = devices[0]?.value ?? null;
-        }
-        this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
-        return;
-      }
-      if (kind === "wifi_event") {
-        this._events.primary = this._events.defaultSel();
-        return;
-      }
-      this._resetMacroTarget("binding");
-      this._bindingActionName || (this._bindingActionName = this._macroName(this._bindingCommandId));
-    };
-    this._handleBindingActionNameInput = (event) => {
-      this._bindingActionName = event.target.value;
-      this._bindingError = "";
-    };
-    this._handleBindingMacroTargetChange = (event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this._bindingMacroMode = "new";
-        this._bindingMacroId = null;
-      } else {
-        this._bindingMacroMode = "existing";
-        this._bindingMacroId = Number(value);
-      }
-      this._bindingError = "";
-    };
-    this._handleBindingLpTargetKindChange = (event) => {
-      const kind = event.target.value;
-      this._bindingLpTargetKind = kind;
-      this._bindingError = "";
-      if (kind === "command") {
-        const devices = this._bindingCommandDeviceOptions();
-        if (!devices.some((device) => device.value === this._bindingLpDeviceId)) {
-          this._bindingLpDeviceId = devices[0]?.value ?? null;
-        }
-        this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
-        return;
-      }
-      this._resetMacroTarget("bindingLp");
-      this._bindingLpActionName || (this._bindingLpActionName = this._macroName(this._bindingLpCommandId));
-    };
-    this._handleBindingLpActionNameInput = (event) => {
-      this._bindingLpActionName = event.target.value;
-      this._bindingError = "";
-    };
-    this._handleBindingLpMacroTargetChange = (event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this._bindingLpMacroMode = "new";
-        this._bindingLpMacroId = null;
-      } else {
-        this._bindingLpMacroMode = "existing";
-        this._bindingLpMacroId = Number(value);
-      }
-      this._bindingError = "";
-    };
-    this._handleBindingLongPressToggle = (event) => {
-      const enabled = Boolean(event.target.checked);
-      this._bindingLongPressEnabled = enabled;
-      if (!enabled || !this.bundle) return;
-      this._bindingLpTargetKind = "command";
-      if (this._bindingScope === "activity") {
-        const devices = this._bindingCommandDeviceOptions();
-        if (!devices.some((device) => device.value === this._bindingLpDeviceId)) {
-          this._bindingLpDeviceId = devices[0]?.value ?? null;
-        }
-      } else if (this._bindingLpDeviceId == null) {
-        this._bindingLpDeviceId = Number(this.entityId);
-      }
-      const commands = this._bindingCommandOptions(this._bindingLpDeviceId);
-      if (!commands.some((command) => command.value === this._bindingLpCommandId)) {
-        this._bindingLpCommandId = commands[0]?.value ?? null;
-      }
-    };
-    this._handleBindingLpDeviceChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingLpDeviceId = Number.isFinite(value) ? value : null;
-      this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
-    };
-    this._handleBindingLpCommandChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingLpCommandId = Number.isFinite(value) ? value : null;
-    };
-    /**
-     * Async binding apply when the button targets a Wifi Event. The event
-     * is atomic: the short press fires its short record, and — when the
-     * long-press toggle is on — the *same* event's long record is wired to
-     * the button's long press (and the event's long-press action is enabled
-     * for configuration in the Events tab). There is no independent
-     * long-press target here; that would collide with the Wifi Events model
-     * where short/long are two actions of one event.
-     */
-    this._applyActivityBindingWithWifiEvents = async () => {
-      const S5 = TOOLS_CARD_STRINGS.backup;
-      if (!this.bundle || this.entityId == null) return;
-      const activityId = Number(this.entityId);
-      const buttonId = Number(this._bindingButtonId);
-      if (!buttonId) {
-        this._bindingError = S5.bindingIncomplete;
-        return;
-      }
-      try {
-        const ref = await this._events.resolveRef(this._events.primary);
-        let longPress = null;
-        if (this._bindingLongPressEnabled) {
-          await this.wifiEvents.enableLongPress(ref.slotIndex);
-          this._events.list = null;
-          longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
-        }
-        this._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
-          buttonId,
-          deviceId: ref.deviceId,
-          commandId: ref.shortCommandId,
-          longPress
-        }));
-        this._closeBindingDialog();
-      } catch (err) {
-        this._bindingError = editorErrorMessage(err, "wifi_event");
-      }
-    };
-    this._applyBinding = () => {
-      if (!this.bundle || this.entityId == null) return;
-      const buttonId = Number(this._bindingButtonId);
-      const entityId = Number(this.entityId);
-      if (!buttonId) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return;
-      }
-      if (this._bindingScope === "activity" && this._bindingTargetKind === "wifi_event") {
-        void this._applyActivityBindingWithWifiEvents();
-        return;
-      }
-      if (this._bindingScope === "activity") {
-        const activityId = entityId;
-        let next = this.bundle;
-        let macroToOpen = null;
-        const longPressTarget = this._resolveActivityLongPressTarget(next, activityId);
-        if (!longPressTarget) return;
-        next = longPressTarget.bundle;
-        macroToOpen = longPressTarget.createdMacro;
-        const longPress = longPressTarget.longPress;
-        if (this._bindingTargetKind === "command") {
-          const commandId = Number(this._bindingCommandId);
-          if (!commandId || !this._bindingDeviceId) {
-            this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-            return;
-          }
-          this._commitEditBundleEdit(upsertActivityButtonBinding(next, activityId, {
-            buttonId,
-            deviceId: Number(this._bindingDeviceId),
-            commandId,
-            longPress
-          }));
-          this._closeBindingDialog();
-          if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
-          return;
-        }
-        const resolved = this._resolveMacroTarget(
-          next,
-          activityId,
-          this._bindingMacroMode,
-          this._bindingMacroId,
-          this._bindingActionName
-        );
-        if (!resolved) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        next = upsertActivityButtonBinding(resolved.bundle, activityId, {
-          buttonId,
-          deviceId: activityId,
-          commandId: resolved.macroId,
-          longPress
-        });
-        this._commitEditBundleEdit(next);
-        this._closeBindingDialog();
-        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-        if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
-      } else {
-        const commandId = Number(this._bindingCommandId);
-        if (!commandId) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        const longPressCommandId = this._bindingLongPressEnabled && this._bindingLpCommandId ? Number(this._bindingLpCommandId) : null;
-        this._commitEditBundleEdit(upsertDeviceButtonBinding(this.bundle, entityId, {
-          buttonId,
-          commandId,
-          longPressCommandId
-        }));
-        this._closeBindingDialog();
-      }
-    };
     this._closeMacroEditor = () => {
       this._macroEditor = null;
       this._closeStepDialog();
@@ -13015,7 +13494,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeAddMemberDialog();
-    this._closeBindingDialog();
+    this._binding.close();
     this._macroEditor = null;
     this._closeStepDialog();
   }
@@ -13137,7 +13616,7 @@ var SofabatonEditDetailView = class extends i4 {
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
         ${this._renderAddMemberDialog()}
-        ${this._renderBindingDialog()}
+        ${this._binding.render()}
         ${this._renderRoleConfirmDialog()}
       </div>
     `;
@@ -13261,7 +13740,7 @@ var SofabatonEditDetailView = class extends i4 {
     return b2`
       <button
         class="quick-access-add-btn"
-        @click=${() => this._openAddBindingDialog(kind)}
+        @click=${() => this._binding.openAdd(kind)}
         ?disabled=${unbound.length === 0}
       >
         <ha-icon icon="mdi:plus"></ha-icon>
@@ -13327,7 +13806,7 @@ var SofabatonEditDetailView = class extends i4 {
             </div>
           </div>
         </div>
-        ${this._renderBindingDialog()}
+        ${this._binding.render()}
         ${this._renderDeleteConfirmDialog()}
       </div>
     `;
@@ -13411,7 +13890,7 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="quick-access-actions">
             <button
               class="icon-btn"
-              @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
+              @click=${() => this._binding.openEdit(kind, item.buttonId)}
               aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
@@ -14161,20 +14640,6 @@ var SofabatonEditDetailView = class extends i4 {
     if (index === -1) return;
     this._moveActivityQuickAccessItem(index, delta);
   }
-  // ── Button bindings (add / edit picker) ─────────────────────────────
-  _bindingCommandDeviceOptions() {
-    if (!this.bundle) return [];
-    return this._editableDeviceOptions().map((device) => ({ value: device.id, label: device.label }));
-  }
-  _bindingTargetKindFor(deviceId) {
-    if (!this.bundle || this.entityId == null) return "command";
-    const dId = Number(deviceId || 0);
-    if (dId === Number(this.entityId)) return "action";
-    if (this._events.available() && isWifiEventsBrand(bundleDeviceBrand(this.bundle, dId))) {
-      return "wifi_event";
-    }
-    return "command";
-  }
   _macroName(buttonId) {
     if (!this.bundle || this.entityId == null) return "";
     const bId = Number(buttonId || 0);
@@ -14193,12 +14658,12 @@ var SofabatonEditDetailView = class extends i4 {
       return;
     }
     if (prefix === "binding") {
-      this._bindingMacroMode = mode;
-      this._bindingMacroId = firstMacro?.value ?? null;
+      this._binding.macroMode = mode;
+      this._binding.macroId = firstMacro?.value ?? null;
       return;
     }
-    this._bindingLpMacroMode = mode;
-    this._bindingLpMacroId = firstMacro?.value ?? null;
+    this._binding.lpMacroMode = mode;
+    this._binding.lpMacroId = firstMacro?.value ?? null;
   }
   _captureCurrentScrollPosition() {
     const root = this.renderRoot;
@@ -14221,129 +14686,6 @@ var SofabatonEditDetailView = class extends i4 {
       if (scrollEl) scrollEl.scrollTop = this._bindingsScrollTop;
     });
   }
-  // Command options for a chosen target: the activity's own macros when the
-  // target is the activity itself, otherwise the target device's commands.
-  _bindingCommandOptions(targetDeviceId) {
-    if (targetDeviceId == null || !this.bundle) return [];
-    if (this._bindingScope === "activity" && this.entityId != null && targetDeviceId === Number(this.entityId)) {
-      return activityUserMacroSummaries(this.bundle, Number(this.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
-    }
-    return deviceCommandItems(this.bundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
-  }
-  _openAddBindingDialog(kind) {
-    if (this.entityId == null || !this.bundle) return;
-    const entityId = Number(this.entityId);
-    const unbound = kind === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
-    if (!unbound.length) return;
-    this._bindingScope = kind;
-    this._bindingEditButtonId = null;
-    this._bindingButtonId = unbound[0].code;
-    this._bindingTargetKind = "command";
-    this._bindingActionName = "";
-    this._resetMacroTarget("binding");
-    this._bindingLpTargetKind = "command";
-    this._bindingLpActionName = "";
-    this._resetMacroTarget("bindingLp");
-    if (kind === "activity") {
-      const devices = this._bindingCommandDeviceOptions();
-      this._bindingDeviceId = devices[0]?.value ?? null;
-    } else {
-      this._bindingDeviceId = entityId;
-    }
-    const commandDeviceId = kind === "activity" ? this._bindingDeviceId : entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    this._bindingCommandId = commands[0]?.commandId ?? null;
-    this._bindingLongPressEnabled = false;
-    this._bindingLpDeviceId = this._bindingDeviceId;
-    this._bindingLpCommandId = this._bindingCommandId;
-    this._bindingError = "";
-    this._events.load();
-    this._bindingDialogOpen = true;
-  }
-  _openEditBindingDialog(kind, buttonId) {
-    if (this.entityId == null || !this.bundle) return;
-    const entityId = Number(this.entityId);
-    const items = kind === "activity" ? activityButtonBindingItems(this.bundle, entityId) : deviceButtonBindingItems(this.bundle, entityId);
-    const item = items.find((entry) => entry.buttonId === Number(buttonId));
-    if (!item) return;
-    this._bindingScope = kind;
-    this._bindingEditButtonId = item.buttonId;
-    this._bindingButtonId = item.buttonId;
-    this._bindingDeviceId = kind === "activity" ? item.deviceId ?? null : entityId;
-    this._bindingCommandId = item.commandId;
-    this._bindingTargetKind = kind === "activity" ? this._bindingTargetKindFor(item.deviceId) : "command";
-    if (this._bindingTargetKind === "wifi_event") {
-      this._events.primary = {
-        mode: "existing",
-        slot: Number(item.commandId) - 1,
-        name: ""
-      };
-      this._bindingLongPressEnabled = Boolean(item.longPress);
-      this._bindingError = "";
-      this._events.load();
-      this._bindingDialogOpen = true;
-      return;
-    }
-    this._bindingActionName = this._bindingTargetKind === "action" ? this._macroName(item.commandId) : "";
-    this._bindingMacroMode = this._bindingTargetKind === "action" ? "existing" : "new";
-    this._bindingMacroId = this._bindingTargetKind === "action" ? item.commandId : null;
-    this._bindingLongPressEnabled = Boolean(item.longPress);
-    this._bindingLpDeviceId = kind === "activity" ? item.longPress?.deviceId ?? item.deviceId ?? null : entityId;
-    this._bindingLpCommandId = item.longPress?.commandId ?? null;
-    this._bindingLpTargetKind = kind === "activity" ? this._bindingTargetKindFor(this._bindingLpDeviceId) : "command";
-    this._bindingLpActionName = this._bindingLpTargetKind === "action" ? this._macroName(this._bindingLpCommandId) : "";
-    this._bindingLpMacroMode = this._bindingLpTargetKind === "action" ? "existing" : "new";
-    this._bindingLpMacroId = this._bindingLpTargetKind === "action" ? this._bindingLpCommandId : null;
-    this._bindingError = "";
-    this._events.load();
-    this._bindingDialogOpen = true;
-  }
-  _resolveMacroTarget(bundle, activityId, mode, macroId, rawName) {
-    if (mode === "existing") {
-      const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(macroId));
-      return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
-    }
-    const name = sanitizeBundleName(bundle, rawName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
-    const next = addActivityUserMacro(bundle, activityId, name);
-    const summaries = activityUserMacroSummaries(next, activityId);
-    const created = summaries[summaries.length - 1];
-    return created ? { bundle: next, macroId: created.buttonId, name: created.name, created: true } : null;
-  }
-  _resolveActivityLongPressTarget(bundle, activityId) {
-    if (!this._bindingLongPressEnabled) {
-      return { bundle, longPress: null, createdMacro: null };
-    }
-    if (this._bindingLpTargetKind === "command") {
-      if (!this._bindingLpDeviceId || !this._bindingLpCommandId) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return null;
-      }
-      return {
-        bundle,
-        longPress: {
-          deviceId: Number(this._bindingLpDeviceId),
-          commandId: Number(this._bindingLpCommandId)
-        },
-        createdMacro: null
-      };
-    }
-    const resolved = this._resolveMacroTarget(
-      bundle,
-      activityId,
-      this._bindingLpMacroMode,
-      this._bindingLpMacroId,
-      this._bindingLpActionName
-    );
-    if (!resolved) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-      return null;
-    }
-    return {
-      bundle: resolved.bundle,
-      longPress: { deviceId: activityId, commandId: resolved.macroId },
-      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null
-    };
-  }
   _renderBindingSelect(params) {
     return b2`
       <div class="decoded-field">
@@ -14355,193 +14697,6 @@ var SofabatonEditDetailView = class extends i4 {
                 `)}
               </select>
             `}
-      </div>
-    `;
-  }
-  _renderMacroTargetFields(params) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const macros = this._macroOptions();
-    return b2`
-      ${macros.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S5.macroTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-macro-target`}
-                class="decoded-field-input"
-                @change=${params.onMacroChange}
-              >
-                ${macros.map((macro) => b2`
-                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
-                `)}
-                <option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>
-              </select>
-            </div>
-          ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
-      ${params.mode === "new" ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-name`}>${S5.addShortcutActionName}</label>
-              <input
-                id=${`${params.idPrefix}-macro-name`}
-                class="decoded-field-input"
-                maxlength="20"
-                .value=${params.name}
-                @input=${params.onNameInput}
-              />
-              <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
-            </div>
-          ` : A}
-    `;
-  }
-  _renderBindingDialog() {
-    if (!this._bindingDialogOpen || !this.bundle || this.entityId == null) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const scope = this._bindingScope;
-    const entityId = Number(this.entityId);
-    const isEdit = this._bindingEditButtonId != null;
-    const isActivity = scope === "activity";
-    const targetKind = isActivity ? this._bindingTargetKind : "command";
-    const lpTargetKind = isActivity ? this._bindingLpTargetKind : "command";
-    const unbound = scope === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
-    const commandDeviceOptions = this._bindingCommandDeviceOptions();
-    const commandDeviceId = scope === "activity" && targetKind === "command" ? this._bindingDeviceId : entityId;
-    const commandOptions = this._bindingCommandOptions(commandDeviceId);
-    const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this._bindingLpDeviceId : entityId;
-    const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
-    const wifiSelReady = (sel) => !this._events.busy && (sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0);
-    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
-    const canSave = this._bindingButtonId != null && (scope === "device" ? this._bindingCommandId != null : targetKind === "command" ? this._bindingDeviceId != null && this._bindingCommandId != null : targetKind === "wifi_event" ? wifiSelReady(this._events.primary) : true);
-    const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this._bindingButtonId))) : S5.bindingDialogAddTitle;
-    const commandFields = b2`
-      ${scope === "activity" ? this._renderBindingSelect({
-      id: "sb-binding-device",
-      label: S5.bindingTargetDevice,
-      value: this._bindingDeviceId,
-      options: commandDeviceOptions,
-      onChange: this._handleBindingDeviceChange,
-      emptyText: S5.bindingNoDevices
-    }) : A}
-      ${this._renderBindingSelect({
-      id: "sb-binding-command",
-      label: S5.bindingCommand,
-      value: this._bindingCommandId,
-      options: commandOptions,
-      onChange: this._handleBindingCommandChange,
-      emptyText: S5.bindingNoCommands
-    })}
-    `;
-    const actionFields = this._renderMacroTargetFields({
-      idPrefix: "sb-binding",
-      mode: this._bindingMacroMode,
-      macroId: this._bindingMacroId,
-      name: this._bindingActionName,
-      onMacroChange: this._handleBindingMacroTargetChange,
-      onNameInput: this._handleBindingActionNameInput
-    });
-    const lpCommandFields = b2`
-      ${scope === "activity" ? this._renderBindingSelect({
-      id: "sb-binding-lp-device",
-      label: S5.bindingLongPressDevice,
-      value: this._bindingLpDeviceId,
-      options: commandDeviceOptions,
-      onChange: this._handleBindingLpDeviceChange,
-      emptyText: S5.bindingNoDevices
-    }) : A}
-      ${this._renderBindingSelect({
-      id: "sb-binding-lp-command",
-      label: S5.bindingLongPressCommand,
-      value: this._bindingLpCommandId,
-      options: lpCommandOptions,
-      onChange: this._handleBindingLpCommandChange,
-      emptyText: S5.bindingNoCommands
-    })}
-    `;
-    const lpActionFields = this._renderMacroTargetFields({
-      idPrefix: "sb-binding-lp",
-      mode: this._bindingLpMacroMode,
-      macroId: this._bindingLpMacroId,
-      name: this._bindingLpActionName,
-      onMacroChange: this._handleBindingLpMacroTargetChange,
-      onNameInput: this._handleBindingLpActionNameInput
-    });
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeBindingDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeBindingDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isEdit ? b2`
-                  <div class="decoded-field">
-                    <span class="decoded-field-label">${S5.bindingButton}</span>
-                    <div class="binding-static-field">${buttonName2(Number(this._bindingButtonId))}</div>
-                  </div>
-                ` : this._renderBindingSelect({
-      id: "sb-binding-button",
-      label: S5.bindingButton,
-      value: this._bindingButtonId,
-      options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
-      onChange: this._handleBindingButtonChange,
-      emptyText: S5.bindingNoButtons
-    })}
-            ${isActivity ? b2`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-binding-kind">${S5.addShortcutKindLabel}</label>
-                    <select
-                      id="sb-binding-kind"
-                      class="decoded-field-input"
-                      @change=${this._handleBindingTargetKindChange}
-                    >
-                      <option value="command" ?selected=${targetKind === "command"}>${S5.shortcutKindCommand}</option>
-                      <option value="action" ?selected=${targetKind === "action"}>${S5.shortcutKindAction}</option>
-                      ${this._events.available() ? b2`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
-                    </select>
-                  </div>
-                ` : A}
-            ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this._events.renderTargetFields({
-      idPrefix: "sb-binding",
-      sel: this._events.primary,
-      onSelChange: (sel) => {
-        this._events.primary = sel;
-        this._bindingError = "";
-      }
-    }) : actionFields}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
-              <ha-switch
-                .checked=${this._bindingLongPressEnabled}
-                @change=${this._handleBindingLongPressToggle}
-              ></ha-switch>
-            </div>
-            ${this._bindingLongPressEnabled ? primaryIsWifiEvent ? b2`
-                    <div class="decoded-field-helper">${S5.wifiEventBindingLongPressNote}</div>
-                  ` : b2`
-                    ${isActivity ? b2`
-                          <div class="decoded-field">
-                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
-                            <select
-                              id="sb-binding-lp-kind"
-                              class="decoded-field-input"
-                              @change=${this._handleBindingLpTargetKindChange}
-                            >
-                              <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
-                              <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
-                            </select>
-                          </div>
-                        ` : A}
-                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
-                  ` : A}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._bindingError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeBindingDialog}>${S5.bindingCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyBinding} ?disabled=${!canSave}>
-                ${isEdit ? S5.bindingSave : S5.bindingAdd}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -15070,24 +15225,6 @@ SofabatonEditDetailView.properties = {
   _addFavoriteDeviceId: { state: true },
   _addFavoriteCommandId: { state: true },
   _addFavoriteError: { state: true },
-  _bindingDialogOpen: { state: true },
-  _bindingScope: { state: true },
-  _bindingEditButtonId: { state: true },
-  _bindingButtonId: { state: true },
-  _bindingDeviceId: { state: true },
-  _bindingCommandId: { state: true },
-  _bindingLongPressEnabled: { state: true },
-  _bindingLpDeviceId: { state: true },
-  _bindingLpCommandId: { state: true },
-  _bindingTargetKind: { state: true },
-  _bindingActionName: { state: true },
-  _bindingMacroMode: { state: true },
-  _bindingMacroId: { state: true },
-  _bindingLpTargetKind: { state: true },
-  _bindingLpMacroMode: { state: true },
-  _bindingLpMacroId: { state: true },
-  _bindingLpActionName: { state: true },
-  _bindingError: { state: true },
   _macroEditor: { state: true },
   _stepDialogOpen: { state: true },
   _stepDialogEditIndex: { state: true },

@@ -415,28 +415,28 @@ test("favorite Save blocks an incomplete selection and commits the command's lab
 test("binding Save blocks incomplete input and links a valid command target", () => {
   const element = createEditor();
   const changes = collectBundleChanges(element);
-  element._bindingDialogOpen = true;
-  element._bindingScope = "activity";
-  element._bindingButtonId = 0xB0;
-  element._bindingTargetKind = "command";
-  element._bindingLongPressEnabled = false;
-  element._bindingDeviceId = 3;
-  element._bindingCommandId = null;
+  element._binding.open = true;
+  element._binding.scope = "activity";
+  element._binding.buttonId = 0xB0;
+  element._binding.targetKind = "command";
+  element._binding.longPressEnabled = false;
+  element._binding.deviceId = 3;
+  element._binding.commandId = null;
 
-  element._applyBinding();
+  element._binding.apply();
   assert.equal(changes.length, 0);
-  assert.notEqual(element._bindingError, "");
-  assert.equal(element._bindingDialogOpen, true);
+  assert.notEqual(element._binding.error, "");
+  assert.equal(element._binding.open, true);
 
-  element._bindingCommandId = 30;
-  element._applyBinding();
+  element._binding.commandId = 30;
+  element._binding.apply();
   assert.equal(changes.length, 1);
   const activity = changes[0].activities[0];
   assert.deepEqual(activity.button_bindings, [
     { button_id: 0xB0, button_name: "OK", device_id: 3, command_id: 30 },
   ]);
   assert.deepEqual(activity.referenced_source_device_ids, [1, 3]);
-  assert.equal(element._bindingDialogOpen, false);
+  assert.equal(element._binding.open, false);
 });
 
 // Start a live device editor with a blob-free command 10 (the structural

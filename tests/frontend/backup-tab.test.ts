@@ -573,8 +573,8 @@ test("activity add binding dialog offers shortcut target types and all devices",
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const result = element._renderBindingDialog();
+  element._binding.openAdd("activity");
+  const result = element._binding.render();
 
   assert.equal(templateHasValue(result, "Device command"), true);
   assert.equal(templateHasValue(result, "Macro"), true);
@@ -607,11 +607,11 @@ test("activity button binding can create a macro target", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "action";
-  element._bindingActionName = "Scene Prep";
-  element._applyBinding();
+  element._binding.openAdd("activity");
+  const buttonId = element._binding.buttonId;
+  element._binding.targetKind = "action";
+  element._binding.actionName = "Scene Prep";
+  element._binding.apply();
 
   const activity = element.bundle.activities[0];
   const macro = activity.macros.find((entry: any) => entry.name === "Scene Prep");
@@ -654,12 +654,12 @@ test("activity button binding can reuse an existing macro target", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "action";
-  element._bindingMacroMode = "existing";
-  element._bindingMacroId = 5;
-  element._applyBinding();
+  element._binding.openAdd("activity");
+  const buttonId = element._binding.buttonId;
+  element._binding.targetKind = "action";
+  element._binding.macroMode = "existing";
+  element._binding.macroId = 5;
+  element._binding.apply();
 
   const activity = element.bundle.activities[0];
   const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
@@ -696,16 +696,16 @@ test("activity long-press binding can reuse an existing macro target", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "command";
-  element._bindingDeviceId = 7;
-  element._bindingCommandId = 3;
-  element._bindingLongPressEnabled = true;
-  element._bindingLpTargetKind = "action";
-  element._bindingLpMacroMode = "existing";
-  element._bindingLpMacroId = 5;
-  element._applyBinding();
+  element._binding.openAdd("activity");
+  const buttonId = element._binding.buttonId;
+  element._binding.targetKind = "command";
+  element._binding.deviceId = 7;
+  element._binding.commandId = 3;
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "action";
+  element._binding.lpMacroMode = "existing";
+  element._binding.lpMacroId = 5;
+  element._binding.apply();
 
   const activity = element.bundle.activities[0];
   const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
@@ -744,9 +744,9 @@ test("activity binding dialog gives long-press the same target types", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  element._bindingLongPressEnabled = true;
-  const result = element._renderBindingDialog();
+  element._binding.openAdd("activity");
+  element._binding.longPressEnabled = true;
+  const result = element._binding.render();
 
   assert.equal(templateHasString(result, "sb-binding-lp-kind"), true);
   assert.equal(templateHasValue(result, "Device command"), true);
@@ -779,14 +779,14 @@ test("activity long-press enable defaults command target to a real device", () =
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openEditBindingDialog("activity", 0xB0);
-  assert.equal(element._bindingTargetKind, "action");
+  element._binding.openEdit("activity", 0xB0);
+  assert.equal(element._binding.targetKind, "action");
 
-  element._handleBindingLongPressToggle({ target: { checked: true } });
+  element._binding.handleLongPressToggle({ target: { checked: true } });
 
-  assert.equal(element._bindingLpTargetKind, "command");
-  assert.equal(element._bindingLpDeviceId, 7);
-  assert.equal(element._bindingLpCommandId, 3);
+  assert.equal(element._binding.lpTargetKind, "command");
+  assert.equal(element._binding.lpDeviceId, 7);
+  assert.equal(element._binding.lpCommandId, 3);
 });
 
 test("activity shortcut macro flow can reuse an existing activity macro", () => {
