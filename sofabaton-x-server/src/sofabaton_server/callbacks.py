@@ -1079,7 +1079,10 @@ class CallbackService:
         updated = CallbackRecord.from_deployment(deployment, key=key, transport=record.transport)
         updated.deployed_at = record.deployed_at
         updated.adopted = record.adopted
-        updated.last_press = record.last_press
+        # Presses kept arriving during the write: the record as it is now,
+        # not the copy read at the start (CR-S2-10).
+        latest = self.record(hub_id, key)
+        updated.last_press = (latest or record).last_press
         self.save(hub_id, updated)
         return updated
 

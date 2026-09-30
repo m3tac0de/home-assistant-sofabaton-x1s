@@ -267,3 +267,25 @@ def test_delete_asks_about_activities_the_server_never_read(tmp_path: Path) -> N
         assert "not read yet" in r.json()["detail"]
         r = client.delete(f"{HUBS}/{hub_id}/wifi-devices/{a['key']}?force=true")
         assert r.status_code == 202 and _wait(client, hub_id, r.json()["job_id"])["status"] == "done"
+
+
+def test_an_update_keeps_the_presses_that_arrived_during_it(tmp_path: Path) -> None:
+    """CR-S2-10: last_press is the latest press, not the one read at the
+    start of the update job."""
+    client, factory = _rig(tmp_path)
+    with client:
+        hub_id, proxy = _hub(client, factory)
+        a = _create(client, hub_id, {"name": "Lights", "slots": [{"label": "On"}]})
+        service = client.app.state.callbacks
+        original = proxy.update_wifi_device
+
+        async def update_with_a_press(*args, **kwargs):
+            record = service.record(hub_id, a["key"])
+            record.last_press = {"seq": 42, "received_at": "2026-09-30T12:00:00+00:00"}
+            service._store(hub_id, record, a["key"])      # what a press does, in memory only
+            return await original(*args, **kwargs)
+
+        proxy.update_wifi_device = update_with_a_press
+        r = client.put(f"{HUBS}/{hub_id}/wifi-devices/{a['key']}", json={"name": "Lamps", "slots": [{"label": "On"}]})
+        assert _wait(client, hub_id, r.json()["job_id"])["status"] == "done"
+        assert service.record(hub_id, a["key"]).last_press["seq"] == 42
