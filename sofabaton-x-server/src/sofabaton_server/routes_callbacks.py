@@ -31,6 +31,7 @@ from .callbacks import (
     CallbackDeviceExists,
     CallbackDeviceMissing,
     CallbackDeviceNotStale,
+    CallbackDeviceUnverifiable,
     CallbackDeviceStale,
     CallbackPortRefused,
     CallbackService,
@@ -392,7 +393,12 @@ async def _remove(request: Request, hub_id: str, *, key: str, force: bool, kind:
     await _require_control(proxy, hub_id)
 
     async def run(progress) -> dict[str, Any]:
-        return await service.remove(hub_id, proxy, key=key)
+        try:
+            return await service.remove(hub_id, proxy, key=key)
+        except CallbackDeviceUnverifiable as err:
+            raise ApiProblem(409, "callback_device_unverifiable",
+                             "The hub could not confirm whether the pending device landed",
+                             detail=f"{err}; try again when the hub is connected", hub_id=hub_id) from err
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 

@@ -608,6 +608,11 @@ class WifiDeviceLimit(RuntimeError):
     """The hub already holds ``MAX_WIFI_DEVICES`` records."""
 
 
+class CallbackDeviceUnverifiable(RuntimeError):
+    """A pending create cannot be settled: the hub could not be asked
+    whether the device landed."""
+
+
 class MqttUnavailable(RuntimeError):
     """The mqtt transport was asked for where it cannot work; the message says why."""
 
@@ -1135,6 +1140,20 @@ class CallbackService:
         record = self.record(hub_id, key)
         if record is None:
             raise CallbackDeviceMissing(hub_id)
+        if record.device_id is None and (record.pending or {}).get("op") == "create":
+            # The create may have landed although the deploy failed: settle it
+            # first, so a device the hub took is deleted with the record
+            # instead of left behind as an orphan nothing adopts (CR-S2-4).
+            try:
+                settled = await self.reconcile(hub_id, proxy, key=key)
+            except _UNVERIFIABLE as err:
+                raise CallbackDeviceUnverifiable(str(err)) from err
+            if settled is None:
+                if not self.records(hub_id):
+                    self.ring.forget(hub_id)
+                await self.ensure_listener()
+                return {"key": key, "device_id": None, "hub_device_removed": False}
+            record = settled
         device_id = record.device_id
         removed: dict[str, Any] = {"key": key, "device_id": device_id, "hub_device_removed": False}
         if device_id is not None and record.stale:

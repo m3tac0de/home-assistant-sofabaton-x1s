@@ -567,3 +567,52 @@ def test_listener_backoff_binds_on_its_own(tmp_path: Path, monkeypatch) -> None:
             blocker.close()
         except OSError:
             pass
+
+
+def _stage_pending_create(client, factory, *, landed: bool):
+    """A deploy that failed after (or before) the hub took the device."""
+    import functools
+
+    from sofabaton import WifiDeviceSpec
+    from sofabaton_server.callbacks import CallbackRecord
+
+    _, proxy = _hub(client, factory)
+    service = client.app.state.callbacks
+    if landed:
+        proxy.place_wifi_device(7, WifiDeviceSpec.from_dict(_spec_dict()), host="192.168.1.10", port=8060)
+    record = CallbackRecord(device_id=None, spec=_spec_dict(),
+                            target={"host": "192.168.1.10", "port": 8060, "action_id": HUB_ID},
+                            pending={"op": "create", "started_at": "2026-09-11T00:00:00+00:00"})
+    client.portal.call(functools.partial(service.save, HUB_ID, record))
+    return proxy, service
+
+
+def test_deleting_a_pending_create_that_landed_deletes_the_device(tmp_path: Path) -> None:
+    """CR-S2-4: the device the hub took goes with the record."""
+    client, factory = _rig(tmp_path)
+    with client:
+        proxy, service = _stage_pending_create(client, factory, landed=True)
+        r = client.delete(f"{HUBS}/{HUB_ID}/callback-device")
+        job = _wait(client, HUB_ID, r.json()["job_id"])
+        assert job["status"] == "done" and job["result"]["hub_device_removed"] is True
+        assert ("remove_device", (7,)) in proxy.intents
+        assert service.record(HUB_ID) is None
+
+
+def test_deleting_a_pending_create_the_hub_cannot_confirm_is_refused(tmp_path: Path) -> None:
+    """CR-S2-4: not verifiable is not 'never landed'; the record stays."""
+    from sofabaton import HubNotConnectedError
+
+    client, factory = _rig(tmp_path)
+    with client:
+        proxy, service = _stage_pending_create(client, factory, landed=True)
+
+        async def offline(*_args, **_kwargs):
+            raise HubNotConnectedError("the hub dropped")
+
+        proxy.read_payload = offline
+        r = client.delete(f"{HUBS}/{HUB_ID}/callback-device")
+        job = _wait(client, HUB_ID, r.json()["job_id"])
+        assert job["status"] == "failed" and job["error"]["type"] == "callback_device_unverifiable"
+        assert service.record(HUB_ID) is not None
+        assert ("remove_device", (7,)) not in proxy.intents
