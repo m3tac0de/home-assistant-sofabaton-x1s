@@ -6,7 +6,6 @@ import {
   activityQuickAccessItems,
   activityChainDependencyIds,
   activityRoleAssignments,
-  bundleDeviceOptions,
   roleMappableButtonCount,
   setActivityRoleDevice,
   activityMacroStepItems,

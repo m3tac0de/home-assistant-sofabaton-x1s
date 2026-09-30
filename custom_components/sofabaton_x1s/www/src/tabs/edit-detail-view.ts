@@ -21,6 +21,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { DOC_URLS } from "../shared/doc-links";
 import { hubSupportsUnicodeNames, sanitizeEntityName, sanitizeWifiName } from "../shared/hub-names";
+import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN, byteToSeconds, secondsToByte } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../strings";
 import {
   activityEditorStyles,
@@ -221,14 +222,6 @@ type BackupRenameDialogTarget =
   | { kind: "favorite"; activityId: number; buttonId: number }
   | { kind: "command"; deviceId: number; commandId: number }
   | { kind: "device_ip"; deviceId: number };
-
-// Device classes whose `ip_address` lives in the device head and is
-// the source of truth for the device's network address. wifi_ip is
-// deliberately excluded: it ships its IP inside each command blob,
-// editable via the per-command structured-payload form.
-const IP_HEAD_DEVICE_CLASSES = new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-
-const IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 
 // ── Name rules shared with the host ─────────────────────────────────
 // The hub-rename dialog stays in backup-tab (it opens from the edit
@@ -4877,21 +4870,9 @@ export class SofabatonEditDetailView extends LitElement {
     this._editRenameDialogOpen = true;
   };
 
-  // Macro time bytes are in 0.5-second units (a hold byte of 4 = 2.0s),
-  // matching the Sofabaton app. 0 = a single click / no wait.
-  private _byteToSeconds(byteValue: number): string {
-    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-  }
-
-  private _secondsToByte(value: string): number {
-    const seconds = parseFloat(String(value));
-    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-  }
-
   /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
   private _snapHalfSeconds(value: string): string {
-    return this._byteToSeconds(this._secondsToByte(value));
+    return byteToSeconds(secondsToByte(value));
   }
 
   private _currentMacroStepItems(): BackupMacroStepItem[] {
@@ -4944,7 +4925,7 @@ export class SofabatonEditDetailView extends LitElement {
       this._stepKind = "wifi_event";
       this._stepDeviceId = item.deviceId;
       this._stepCommandId = item.commandId ?? null;
-      this._stepHoldSeconds = this._byteToSeconds(item.hold);
+      this._stepHoldSeconds = byteToSeconds(item.hold);
       this._wifiEventPrimary = {
         mode: "existing",
         slot: item.commandId != null ? Number(item.commandId) - 1 : null,
@@ -4956,7 +4937,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._stepKind = "command";
     this._stepDeviceId = editor.scope === "activity" ? (item.deviceId ?? null) : editor.entityId;
     this._stepCommandId = item.commandId ?? null;
-    this._stepHoldSeconds = this._byteToSeconds(item.hold);
+    this._stepHoldSeconds = byteToSeconds(item.hold);
   }
 
   private _closeStepDialog = () => {
@@ -4998,11 +4979,11 @@ export class SofabatonEditDetailView extends LitElement {
     const editor = this._macroEditor;
     if (!editor || !this.bundle) return;
     const input = event.target as HTMLInputElement;
-    const waitByte = this._secondsToByte(input.value);
+    const waitByte = secondsToByte(input.value);
     // Reflect the snapped 0.5s value in the field immediately. A re-render
     // alone can't fix it when the typed value rounds to the current byte:
     // the bound value is unchanged, so Lit leaves the stray text in place.
-    input.value = this._byteToSeconds(waitByte);
+    input.value = byteToSeconds(waitByte);
     const next = editor.scope === "device"
       ? setDeviceMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte)
       : setActivityMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
@@ -5012,7 +4993,7 @@ export class SofabatonEditDetailView extends LitElement {
   private _applyStepWifiEvent = async () => {
     const editor = this._macroEditor;
     if (!editor || !this.bundle) return;
-    const timeByte = this._secondsToByte(this._stepHoldSeconds);
+    const timeByte = secondsToByte(this._stepHoldSeconds);
     const editIndex = this._stepDialogEditIndex;
     try {
       const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
@@ -5033,7 +5014,7 @@ export class SofabatonEditDetailView extends LitElement {
   private _applyStep = () => {
     const editor = this._macroEditor;
     if (!editor || !this.bundle) return;
-    const timeByte = this._secondsToByte(this._stepHoldSeconds);
+    const timeByte = secondsToByte(this._stepHoldSeconds);
     const editIndex = this._stepDialogEditIndex;
     const isDevice = editor.scope === "device";
     if (this._stepKind === "wifi_event") {
@@ -5235,7 +5216,7 @@ export class SofabatonEditDetailView extends LitElement {
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0
-      ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold))
+      ? TOOLS_CARD_STRINGS.backup.holdLabel(byteToSeconds(item.hold))
       : "";
     const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
     // An activity power-ref row is the device's membership token, so its
@@ -5310,7 +5291,7 @@ export class SofabatonEditDetailView extends LitElement {
                     max="120"
                     step="0.5"
                     aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                    .value=${this._byteToSeconds(item.wait)}
+                    .value=${byteToSeconds(item.wait)}
                     @change=${(event: Event) => this._handleStepWaitChange(item, event)}
                   />
                   <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>

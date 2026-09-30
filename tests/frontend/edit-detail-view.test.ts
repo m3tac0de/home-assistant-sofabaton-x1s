@@ -7,6 +7,7 @@ import {
   useLegacyTextField,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { secondsToByte } from "../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
@@ -317,7 +318,8 @@ test("macro timing conversion covers invalid, boundary, rounding, and saturation
     ["NaN", 0],
     ["Infinity", 0],
   ];
-  for (const [raw, expected] of cases) assert.equal(element._secondsToByte(raw), expected, raw);
+  // The conversion is the shared rule (shared/hub-rules.ts, CR-X6-3) the panel uses too.
+  for (const [raw, expected] of cases) assert.equal(secondsToByte(raw), expected, raw);
   assert.equal(element._snapHalfSeconds("0.3"), "0.5");
   assert.equal(element._snapHalfSeconds("-2"), "0");
   assert.equal(element._snapHalfSeconds("999"), "127.5");

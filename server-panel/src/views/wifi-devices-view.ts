@@ -233,7 +233,7 @@ export class SbPanelWifiDevices extends LitElement {
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
-      .hub-event-icon.power-on { color: #2e7d32; }
+      .hub-event-icon.power-on { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); }
       .hub-event-icon.power-off { color: #c62828; }
       .hub-event-text { min-width: 0; }
       .hub-event-action-link { display: inline; font: inherit; font-weight: 700; font-style: italic; color: var(--sbp-text); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; white-space: normal; }
@@ -268,7 +268,7 @@ export class SbPanelWifiDevices extends LitElement {
       .slot-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding-right: 8px; }
       .slot-flag, .slot-clear { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); color: var(--sbp-muted); display: inline-flex; align-items: center; justify-content: center; }
       .slot-flag .mdi { width: 14px; height: 14px; }
-      .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
+      .slot-flag.power-on { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
       .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--sbp-line)); }
       .slot-flag.power-both { color: #f59e0b; border-color: color-mix(in srgb, #f59e0b 35%, var(--sbp-line)); }
       .slot-flag.input { color: var(--sbp-accent); border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); }
@@ -756,11 +756,17 @@ export class SbPanelWifiDevices extends LitElement {
 
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
 
+  /** One rule for every Sync action (header, leave dialog, _sync): a stale device is
+   *  redeployed instead, and a pending create has no hub record to write (CR-F5b-12). */
+  private _canSync(device: WifiDeviceView | null): device is WifiDeviceView {
+    return Boolean(device) && !this._locked && !device!.stale && device!.device_id != null;
+  }
+
   private _sync = async (): Promise<boolean> => {
     const device = this._device;
     const draft = this._draft;
     const hubId = this._hubId;
-    if (!device || !draft || !hubId || this._locked) return false;
+    if (!this._canSync(device) || !draft || !hubId) return false;
     this._syncError = null;
     // A button this draft took from another Wifi Device is cleared from that device's spec too (the
     // card does the same on save); left there, that device's next sync would take the button back.
@@ -898,7 +904,7 @@ export class SbPanelWifiDevices extends LitElement {
     const dirty = this.hasUnsyncedChanges();
     if (this._working) return html`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
     if (!dirty) return html`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S.actionButtonUpToDate}</button>`;
-    return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${this._locked || device.device_id == null} @click=${() => void this._sync()}>${S.actionButtonSyncToHub}</button>`;
+    return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S.actionButtonSyncToHub}</button>`;
   }
 
   private _renderPowerLines(draft: WifiDraft): TemplateResult | typeof nothing {
@@ -1240,7 +1246,7 @@ export class SbPanelWifiDevices extends LitElement {
             <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" type="button" @click=${close}>${A.syncKeepEditing}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${this._locked || !device || device.stale} @click=${() => void this._leaveAfterSync()}>${A.exitSyncNow}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._leaveAfterSync()}>${A.exitSyncNow}</button>
             </div>
           </div>
         </div>

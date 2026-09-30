@@ -1883,6 +1883,86 @@ test.describe("control panel, views", () => {
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
   });
 
+  test("the device editor's lifecycle: a failed read comes back, a stale draft waits for Keep editing, leaving waits for a running sync", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    const snapshot = {
+      snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural",
+      hub: { name: "Living room", version: "X1S" },
+      devices: [{
+        kind: "device_backup", complete: true, editable: true, fetched_at: "t",
+        device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1 },
+        commands: [{ command_id: 1, name: "Power" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+      }],
+      activities: [],
+    };
+    let failSnapshot = true;
+    let jobDone = false;
+    const puts = [];
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => {
+      if (failSnapshot) return route.abort("connectionreset");
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X1S", name: "Living room", mac: "E2:6A:44:86:1B:45", firmware_version: 5, production_batch: null }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/devices/1`, (route) => {
+      puts.push(route.request().postDataJSON());
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j9", kind: "sync_device", status: "queued" })) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/jobs/j9`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "j9", kind: "sync_device", status: jobDone ? "done" : "running" })) }));
+    const press = (seq) => sockets[0].send(JSON.stringify({ type: "press", seq, hub_id: LIVING.hub_id, device_id: 61, command_id: 3, slot: 2, label: "Lights", press_type: "short", resolution: "deployed", transport: "http", source: "hub", received_at: "t" }));
+
+    // A read that fails in transit says so, and the next state update reads again (CR-F5b-2).
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/1`);
+    const editor = page.locator("sb-panel-device-editor");
+    await expect(editor.locator("#guard-missing")).toBeVisible();
+    failSnapshot = false;
+    await expect.poll(() => sockets.length).toBeGreaterThan(0);
+    press(1);
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+
+    // A draft from an older snapshot is not thrown away by the editor: the dock
+    // asks, and Keep editing brings it into the working copy (CR-F5b-4).
+    await editor.locator("#editor-rename").click();
+    await editor.locator("#rename-input").fill("Draft TV");
+    await editor.locator("#rename-save").click();
+    await expect(editor.locator("#editor-title")).toHaveText("Draft TV");
+    snapshot.snapshot_id = "snap-2";
+    await page.reload();
+    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes from an older snapshot: the hub moved on");
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+    expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).not.toBeNull();
+    await page.click("#dock-keep-draft");
+    await expect(editor.locator("#editor-title")).toHaveText("Draft TV");
+    await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
+
+    // Leaving while the sync runs says why and stays; the dialog does not pop
+    // up after the job (CR-F5b-3).
+    await editor.locator("#editor-sync").click();
+    await expect.poll(() => puts.length).toBe(1);
+    await page.click('#subtabs button[data-sub="activities"]');
+    await expect(page.locator("#bottom-dock")).toContainText("Wait for the sync to finish before leaving.");
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/1$/);
+    snapshot.devices[0] = { ...snapshot.devices[0], device: { ...snapshot.devices[0].device, name: "Draft TV" } };
+    snapshot.snapshot_id = "snap-3";
+    jobDone = true;
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(editor.locator("#exit-dialog")).toHaveCount(0);
+    await page.click('#subtabs button[data-sub="activities"]');
+    await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/activities$/);
+
+    // A keyed Wifi Device of the server's (a c0- brand, not the default
+    // callback device) says where it is edited (CR-F5b-5).
+    snapshot.devices.push({
+      kind: "device_backup", complete: true, editable: true, fetched_at: "t",
+      device: { device_id: 3, name: "Blinds", brand: "c0-0badf00d", device_class: "ir", idle_behavior: 1 },
+      commands: [{ command_id: 1, name: "Up" }, { command_id: 2, name: "Up Long" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+    });
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/3`);
+    await expect(editor.locator("#editor-title")).toHaveText("Blinds");
+    await expect(editor.locator("#editor-callback-note")).toContainText("This Wifi Device is edited in the Wifi Commands tab.");
+  });
+
   test("the activity editor recreates the card's Edit activity screen: shortcuts, macros, the power sequence with members and inputs, roles, individual buttons, one Sync carrying the touched device", async ({ page }, testInfo) => {
     const state = { hubs: [LIVING], seen: [] };
     await mockServer(page, state);
@@ -3005,6 +3085,49 @@ test.describe("control panel, backup", () => {
     await expect(page.locator("sb-panel-backup #edit-list")).toHaveCount(0);
     expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBeNull();
   });
+
+  test("a hub switch outside Edit keeps the other hub's edit session, and the Make list follows jobs that add or delete devices", async ({ page }) => {
+    const SECOND = { ...LIVING, hub_id: "aabbccddeeff", config: { ...LIVING.config, host: "192.168.1.51", name: "Den", mac: "AA:BB:CC:DD:EE:FF" } };
+    const state = { hubs: [LIVING, SECOND], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    const doc = bundle();
+    await page.route(`${HUB}/snapshot`, (route) => json(route, 200, { snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, payload_profile: "structural", ...doc, complete: true }));
+    await page.route(`${HUB}/jobs`, (route) => json(route, 200, []));
+    const denKey = "sofabaton-panel-backup-edit:aabbccddeeff";
+
+    await page.goto(`${PAGE}#/e26a44861b45/backup/make`);
+    const view = page.locator("sb-panel-backup");
+    await view.locator(".compat-radio-option", { hasText: "Selected devices" }).click();
+    await expect(view.locator("#backup-device-list .selection-row")).toHaveCount(2);
+    await expect(view.locator("#backup-selected-count")).toHaveText("2 selected");
+
+    // A sync job deleted device 2: the list is read again, and the id is no
+    // longer offered or sent (CR-F5b-8).
+    doc.devices = doc.devices.filter((device) => device.device.device_id !== 2);
+    await expect.poll(() => sockets.length).toBeGreaterThan(0);
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: job({ job_id: "jd1", kind: "delete_device", status: "done", finished_at: "t" }) }));
+    await expect(view.locator("#backup-device-list .selection-row")).toHaveCount(1);
+    await expect(view.locator("#backup-selected-count")).toHaveText("1 selected");
+
+    // The Den hub has an edit session in progress, and this hub has a file
+    // loaded in Edit. Switching to Den from Make does not delete Den's session
+    // (CR-F5b-7), and its Edit section restores it.
+    await page.click('#subtabs .subtab-btn:has-text("Edit")');
+    await view.locator("#edit-file-input").setInputFiles(asFile("living.json", bundle()));
+    await expect(view).toContainText("living.json");
+    await page.click('#subtabs .subtab-btn:has-text("Make")');
+    await page.evaluate(({ key, session }) => localStorage.setItem(key, JSON.stringify(session)), {
+      key: denKey,
+      session: { savedAt: Date.now(), filename: "den.json", bundle: bundle(), dirty: true, detail: null },
+    });
+    await pickHub(page, "aabbccddeeff");
+    await expect(chip(page)).toContainText("Den");
+    await expect(page).toHaveURL(/#\/aabbccddeeff\/backup\/make$/);
+    expect(await page.evaluate((key) => localStorage.getItem(key), denKey)).not.toBeNull();
+    await page.click('#subtabs .subtab-btn:has-text("Edit")');
+    await expect(view).toContainText("den.json");
+    expect(await page.evaluate((key) => localStorage.getItem(key), denKey)).not.toBeNull();
+  });
 });
 
 // The Wifi Commands tab (docs/internal/server-panel-wifi-commands-plan.md):
@@ -3356,6 +3479,25 @@ test.describe("control panel, wifi commands", () => {
     await dialog.locator("#wifi-delete-submit").click();
     await expect(view(page).locator(".device-card")).toHaveCount(1);
     expect(calls.filter((c) => c.key === "delete").map((c) => c.force)).toEqual([false, true]);
+  });
+
+  test("a pending create offers no Sync: neither in the header nor in the leave dialog", async ({ page }) => {
+    const pending = wifiDevice({ key: "0badf00d", device_id: null, deployed: false, pending: { op: "create", started_at: "t" }, spec: { name: "Blinds", slots: slots({ 1: "Up" }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
+    const { calls } = await wifiServer(page, [pending]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    await view(page).locator('.device-card[data-key="0badf00d"]').click();
+    const detail = view(page).locator("#wifi-device-detail");
+    await expect(detail.locator("#wifi-pending")).toBeVisible();
+    await detail.locator('.slot-btn[data-slot="2"]').click();
+    await view(page).locator("#wifi-slot-name").fill("Down");
+    await view(page).locator("#wifi-slot-name").press("Enter");
+    await expect(detail.locator("#wifi-sync")).toBeDisabled();
+    // The leave dialog follows the same rule (CR-F5b-12).
+    await detail.locator("#wifi-back").click();
+    await expect(view(page).locator("#wifi-leave-sync")).toBeDisabled();
+    await view(page).locator("#wifi-leave-discard").click();
+    await expect(page).toHaveURL(/wifi\/devices$/);
+    expect(calls.filter((c) => c.key === "update")).toHaveLength(0);
   });
 
   test("an X2 with a broker: MQTT is the preselected delivery method, the device names its topic, a broker that is down is said", async ({ page }, testInfo) => {

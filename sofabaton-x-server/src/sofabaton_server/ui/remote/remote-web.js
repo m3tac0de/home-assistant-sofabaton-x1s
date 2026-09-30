@@ -5636,7 +5636,6 @@ var AutomationAssistController = class {
     // Activity-change baseline (drives capture of activity switches)
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
     this.host = host;
   }
   // ---------- session (per-tab, shared across card instances) ----------
@@ -5668,12 +5667,10 @@ var AutomationAssistController = class {
     const currentId = this.host.currentActivityId();
     this.lastActivityLabel = currentLabel;
     this.lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
   resetActivityBaseline() {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
   setActive(active) {
     const next = !!active;
@@ -5796,7 +5793,6 @@ var AutomationAssistController = class {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
   // ---------- notification ----------

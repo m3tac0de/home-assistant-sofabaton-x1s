@@ -29,7 +29,7 @@ import { jobStepMessage, renderOperationProgress } from "../components/operation
 import { jobOutcomeText, problemText, type ApiResponse, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
 import { activeJob, firmwareFloor, type Gate } from "../panel-selectors";
-import type { PanelStore } from "../panel-store";
+import type { Draft, PanelStore } from "../panel-store";
 import { elementsEqual, snapshotAsBundle } from "./device-editor-state";
 import {
   entityDraftData,
@@ -112,6 +112,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
   protected _deleting = false;
   protected _deleteError: string | null = null;
   protected _notice: string | null = null;
+  /** The kept draft last spliced in (CR-F5b-4): never reload for the same one twice. */
+  private _splicedDraft: Draft | null = null;
   private _loadedKey: string | null = null;
   private _loadSeq = 0;
   /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
@@ -166,7 +168,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
       this._reset();
       if (this.ctx?.hub && this.entityId != null) void this._load();
     } else if (changed.has("ctx") && this._stage === "missing" && this.ctx?.gate === "pass" && this._loadedGate !== "pass") {
-      // The snapshot was asked for while the hub could not answer (disabled: a 409); it can now.
+      // The snapshot was asked for while the hub could not answer (disabled: a 409), or the read
+      // failed in transit (_loadedGate reset to null, CR-F5b-2): read again.
       this._stage = "loading";
       this._notice = null;
       void this._load();
@@ -177,7 +180,20 @@ export abstract class SbPanelEntityEditor extends LitElement {
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       // The dock's Discard dropped the draft: the working copy follows.
       this._working = this._baseline ? structuredClone(this._baseline) : null;
+    } else if (changed.has("ctx") && this._stage === "editing" && !this._dirty && this._keptDraftWaiting()) {
+      // The dock's Keep editing answered the stale prompt: splice the draft in (CR-F5b-4).
+      this._splicedDraft = this.ctx?.runtime?.draft ?? null;
+      void this._load();
     }
+  }
+
+  /** A draft for this entity the user chose to keep past the stale prompt, not yet in the working copy. */
+  private _keptDraftWaiting(): boolean {
+    const runtime = this.ctx?.runtime ?? null;
+    const draft = runtime?.draft ?? null;
+    // Once per draft: one equal to the hub's copy stays clean after the splice.
+    return Boolean(draft && draft !== this._splicedDraft && runtime?.draftCheck === "kept" && this.entityId != null
+      && draft.scope === entityDraftScope(this.entityKind, this.entityId));
   }
 
   private _reset(): void {
@@ -187,10 +203,19 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._working = null;
     this._exitConfirm = null;
     this._syncing = false;
+    this._refreshing = false;
+    this._deleting = false;
     this._syncFailed = null;
     this._deleteError = null;
     this._notice = null;
     this._resetView();
+  }
+
+  /** True while the element still shows the entity a job started on: the
+   *  cached element is reused for every entity, and a job's continuation
+   *  must not act on the next one (CR-F5b-1). */
+  private _stillOn(key: string | null): boolean {
+    return this._loadedKey === key;
   }
 
   /** A job this editor did not start holds the hub (the card's `hubCommandBusy`): Sync and Delete wait for it. */
@@ -217,10 +242,22 @@ export abstract class SbPanelEntityEditor extends LitElement {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
-    const [snapshot, callback] = await Promise.all([
-      this.api.snapshot(hubId),
-      this.api.request<{ device_id: number | null }>("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null),
-    ]);
+    let snapshot: ApiResponse<SnapshotDocument>;
+    let callback: ApiResponse<{ device_id: number | null }> | null;
+    try {
+      [snapshot, callback] = await Promise.all([
+        this.api.snapshot(hubId),
+        this.api.request<{ device_id: number | null }>("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null),
+      ]);
+    } catch (err) {
+      // A failure in transit (the server restarting, a Wi-Fi blip): say so,
+      // and read again on the next state update (CR-F5b-2).
+      if (seq !== this._loadSeq) return;
+      this._notice = String(err);
+      this._stage = "missing";
+      this._loadedGate = null;
+      return;
+    }
     if (seq !== this._loadSeq) return;
     this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
     if (!snapshot.ok || !snapshot.body) {
@@ -253,7 +290,9 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
     const data = restorable ? entityDraftData(draft, kind, entityId) : null;
     this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
-    if (!data && draft?.scope === entityDraftScope(kind, entityId)) this.store.discardDraft(hubId);
+    // A draft from an older snapshot stays in the store: the dock asks Keep
+    // editing or Discard, and Keep splices it in (updated). Discarding it
+    // here threw the edits away before the question was answered (CR-F5b-4).
     this._stage = "editing";
     this._syncFailed = null;
   }
@@ -313,6 +352,12 @@ export abstract class SbPanelEntityEditor extends LitElement {
   askToLeave(then: () => void): void {
     if (!this.hasUnsyncedChanges()) {
       then();
+      return;
+    }
+    if (this._syncing || this._deleting) {
+      // The progress view has no room for the dialog; the move would be
+      // swallowed and the dialog pop up after the job (CR-F5b-3).
+      this._dockError("Wait for the sync to finish before leaving.");
       return;
     }
     this._exitConfirm = { then };
@@ -385,25 +430,32 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || !this._workingEntity || !this._snapshot || this._syncing) return false;
+    // Nothing to write (a leave dialog's Sync now after a sync already ran): done (CR-F5b-3).
+    if (!this._dirty) return true;
+    const key = this._loadedKey;
     this._syncing = true;
     this._syncFailed = null;
     this._deleteError = null;
     try {
       if (!(await this._beforeSync(hubId))) return false;
+      if (!this._stillOn(key)) return false;
       // _beforeSync may have moved the snapshot and the working copy: read them after it.
       const element = this._workingEntity;
       const snapshot = this._snapshot;
       if (!element || !snapshot) return false;
       const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      // The user moved to another entity meanwhile: its draft and stage are its own (CR-F5b-1).
+      if (!this._stillOn(key)) return !failed;
       if (failed) return this._failSync(failed.stale, failed.message);
       // Success: rebase from the hub's new snapshot; the draft is spent.
+      this._exitConfirm = null;
       this.store.discardDraft(hubId);
       await this._load({ keepDraft: false });
       return true;
     } catch (err) {
-      return this._failSync(false, String(err));
+      return this._stillOn(key) ? this._failSync(false, String(err)) : false;
     } finally {
-      this._syncing = false;
+      if (this._stillOn(key)) this._syncing = false;
     }
   }
 
@@ -427,6 +479,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._refreshing) return;
+    const key = this._loadedKey;
     this._refreshing = true;
     try {
       this.store.discardDraft(hubId);
@@ -435,9 +488,9 @@ export abstract class SbPanelEntityEditor extends LitElement {
       if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
       else this.store.noteResponse(hubId, started);
     } finally {
-      this._refreshing = false;
+      if (this._stillOn(key)) this._refreshing = false;
     }
-    await this._load({ keepDraft: false });
+    if (this._stillOn(key)) await this._load({ keepDraft: false });
   }
 
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
@@ -454,16 +507,19 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._deleting) return;
+    const key = this._loadedKey;
     this._deleting = true;
     this._deleteError = null;
     try {
       const started = await this._startDelete(hubId, entityId);
+      if (!this._stillOn(key)) return;
       if (started.status !== 202 || !started.body) {
         this.store.noteResponse(hubId, started);
         this._deleteError = `Delete refused: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
+      if (!this._stillOn(key)) return;
       if (!job || job.status !== "done") {
         this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
@@ -471,9 +527,9 @@ export abstract class SbPanelEntityEditor extends LitElement {
       this.store.discardDraft(hubId);
       this._goToList();
     } catch (err) {
-      this._deleteError = `Delete failed: ${String(err)}`;
+      if (this._stillOn(key)) this._deleteError = `Delete failed: ${String(err)}`;
     } finally {
-      this._deleting = false;
+      if (this._stillOn(key)) this._deleting = false;
     }
   }
 

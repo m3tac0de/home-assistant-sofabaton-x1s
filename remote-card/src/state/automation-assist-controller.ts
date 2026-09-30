@@ -135,7 +135,6 @@ export class AutomationAssistController {
   // Activity-change baseline (drives capture of activity switches)
   private lastActivityLabel: string | null = null;
   private lastActivityId: number | null = null;
-  private lastPoweredOff: boolean | null = null;
 
   constructor(host: AutomationAssistHost) {
     this.host = host;
@@ -177,13 +176,11 @@ export class AutomationAssistController {
     this.lastActivityId = Number.isFinite(Number(currentId))
       ? Number(currentId)
       : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
 
   resetActivityBaseline(): void {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
 
   setActive(active: boolean): void {
@@ -359,7 +356,6 @@ export class AutomationAssistController {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
 

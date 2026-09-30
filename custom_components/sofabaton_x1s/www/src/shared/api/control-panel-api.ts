@@ -3,7 +3,6 @@ import type {
   BackupOperationStateResponse,
   BackupOperationStartResponse,
   BackupProgressEvent,
-  BackupRestoreResult,
   CacheContentsResponse,
   ControlPanelStateResponse,
   BlobFetchResponse,

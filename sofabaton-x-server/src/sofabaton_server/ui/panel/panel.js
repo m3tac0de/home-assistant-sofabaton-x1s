@@ -4991,7 +4991,6 @@ var AutomationAssistController = class {
     // Activity-change baseline (drives capture of activity switches)
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
     this.host = host;
   }
   // ---------- session (per-tab, shared across card instances) ----------
@@ -5023,12 +5022,10 @@ var AutomationAssistController = class {
     const currentId = this.host.currentActivityId();
     this.lastActivityLabel = currentLabel;
     this.lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
   resetActivityBaseline() {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
   setActive(active) {
     const next = !!active;
@@ -5151,7 +5148,6 @@ var AutomationAssistController = class {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
   // ---------- notification ----------
@@ -18358,6 +18354,22 @@ function sanitizeEntityName(hubVersion, value) {
   return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
 }
 
+// custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function byteToSeconds(byteValue) {
+  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+}
+function secondsToByte(value) {
+  const seconds = parseFloat(String(value));
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function hubSupportsPowerInput(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return !(version.includes("X1") && !version.includes("X1S"));
+}
+
 // server-panel/src/views/entity-editor-state.ts
 function rowsOf(bundle, kind) {
   return (kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
@@ -18396,14 +18408,6 @@ function withDraftData(bundle, kind, entityId, data) {
   for (const device of data.devices ?? []) next = withEntityElement(next, "device", idOf(device), device);
   return next;
 }
-function byteToSeconds(byteValue) {
-  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-}
-function secondsToByte(value) {
-  const seconds = parseFloat(String(value));
-  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-}
 
 // server-panel/src/views/device-editor-state.ts
 function snapshotAsBundle(snapshot) {
@@ -18419,10 +18423,7 @@ function snapshotAsBundle(snapshot) {
 function elementsEqual(a4, b3) {
   return JSON.stringify(a4) === JSON.stringify(b3);
 }
-var supportsUnicodeNames = hubSupportsUnicodeNames;
 var sanitizeName = sanitizeEntityName;
-var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function wifiEventsSlotCount2(openedElement) {
   return wifiEventsSlotCount(openedElement);
 }
@@ -18627,6 +18628,7 @@ var SbPanelBackup = class extends i4 {
       if (key !== this._jobsKey) {
         this._jobsKey = key;
         void this._loadJobs();
+        if (hubId && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
       }
       if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
     }
@@ -18713,8 +18715,7 @@ var SbPanelBackup = class extends i4 {
     this._expiryTimer = null;
   }
   _acknowledge(jobId) {
-    const live = new Set(this._jobs.map((job) => job.job_id));
-    this._acks = new Set([...this._acks].filter((id) => live.has(id) || id === jobId));
+    this._acks = new Set([...this._acks].filter((id) => id !== jobId));
     this._acks.add(jobId);
     saveResultAcks(this.storage, this._acks);
   }
@@ -18730,8 +18731,16 @@ var SbPanelBackup = class extends i4 {
     try {
       const response = await api.snapshot(hubId);
       if (hubId !== this._hubId || !response.ok || !response.body) return;
+      const previous = this._deviceOptions;
+      const hadAll = previous.length > 0 && this._deviceIds.length === previous.length;
       this._deviceOptions = bundleDeviceOptions(snapshotAsBundle(response.body));
-      if (!this._deviceIds.length) this._deviceIds = this._deviceOptions.map((device) => device.id);
+      const all = this._deviceOptions.map((device) => device.id);
+      if (!previous.length || hadAll) {
+        this._deviceIds = all;
+      } else {
+        const known = new Set(all);
+        this._deviceIds = this._deviceIds.filter((id) => known.has(id));
+      }
     } catch {
     }
   }
@@ -18852,7 +18861,7 @@ var SbPanelBackup = class extends i4 {
   }
   // -- Edit --------------------------------------------------------------------------------------------------------
   _persistEditSession() {
-    if (!this._hubId || this._editSessionEnded) return;
+    if (!this._hubId || this._editSessionEnded || !this._editSessionTried) return;
     saveEditSession(this.storage, this._hubId, this._editBundle ? { filename: this._editFilename, bundle: this._editBundle, dirty: this._editDirty, detail: this._detail } : null, this.now());
   }
   _discardEditSession() {
@@ -20259,7 +20268,7 @@ var EDITOR_CSS = i`
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
     .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
-    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
+    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); opacity: 1; }
     .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
     .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
     .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
@@ -20476,6 +20485,8 @@ var SbPanelEntityEditor = class extends i4 {
     this._deleting = false;
     this._deleteError = null;
     this._notice = null;
+    /** The kept draft last spliced in (CR-F5b-4): never reload for the same one twice. */
+    this._splicedDraft = null;
     this._loadedKey = null;
     this._loadSeq = 0;
     /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
@@ -20555,7 +20566,16 @@ var SbPanelEntityEditor = class extends i4 {
       void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
+    } else if (changed.has("ctx") && this._stage === "editing" && !this._dirty && this._keptDraftWaiting()) {
+      this._splicedDraft = this.ctx?.runtime?.draft ?? null;
+      void this._load();
     }
+  }
+  /** A draft for this entity the user chose to keep past the stale prompt, not yet in the working copy. */
+  _keptDraftWaiting() {
+    const runtime = this.ctx?.runtime ?? null;
+    const draft = runtime?.draft ?? null;
+    return Boolean(draft && draft !== this._splicedDraft && runtime?.draftCheck === "kept" && this.entityId != null && draft.scope === entityDraftScope(this.entityKind, this.entityId));
   }
   _reset() {
     this._stage = "loading";
@@ -20564,10 +20584,18 @@ var SbPanelEntityEditor = class extends i4 {
     this._working = null;
     this._exitConfirm = null;
     this._syncing = false;
+    this._refreshing = false;
+    this._deleting = false;
     this._syncFailed = null;
     this._deleteError = null;
     this._notice = null;
     this._resetView();
+  }
+  /** True while the element still shows the entity a job started on: the
+   *  cached element is reused for every entity, and a job's continuation
+   *  must not act on the next one (CR-F5b-1). */
+  _stillOn(key) {
+    return this._loadedKey === key;
   }
   /** A job this editor did not start holds the hub (the card's `hubCommandBusy`): Sync and Delete wait for it. */
   get _hubBusy() {
@@ -20588,10 +20616,20 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
-    const [snapshot, callback] = await Promise.all([
-      this.api.snapshot(hubId),
-      this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
-    ]);
+    let snapshot;
+    let callback;
+    try {
+      [snapshot, callback] = await Promise.all([
+        this.api.snapshot(hubId),
+        this.api.request("GET", `hubs/${encodeURIComponent(hubId)}/callback-device`).catch(() => null)
+      ]);
+    } catch (err) {
+      if (seq !== this._loadSeq) return;
+      this._notice = String(err);
+      this._stage = "missing";
+      this._loadedGate = null;
+      return;
+    }
     if (seq !== this._loadSeq) return;
     this._callbackDeviceId = callback?.ok && callback.body && typeof callback.body.device_id === "number" ? callback.body.device_id : null;
     if (!snapshot.ok || !snapshot.body) {
@@ -20622,7 +20660,6 @@ var SbPanelEntityEditor = class extends i4 {
     const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
     const data = restorable ? entityDraftData(draft, kind, entityId) : null;
     this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
-    if (!data && draft?.scope === entityDraftScope(kind, entityId)) this.store.discardDraft(hubId);
     this._stage = "editing";
     this._syncFailed = null;
   }
@@ -20675,6 +20712,10 @@ var SbPanelEntityEditor = class extends i4 {
       then();
       return;
     }
+    if (this._syncing || this._deleting) {
+      this._dockError("Wait for the sync to finish before leaving.");
+      return;
+    }
     this._exitConfirm = { then };
   }
   /** A failure shown in the bottom dock (the shell's sb-message) where it is always in view. */
@@ -20710,23 +20751,28 @@ var SbPanelEntityEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || !this._workingEntity || !this._snapshot || this._syncing) return false;
+    if (!this._dirty) return true;
+    const key = this._loadedKey;
     this._syncing = true;
     this._syncFailed = null;
     this._deleteError = null;
     try {
       if (!await this._beforeSync(hubId)) return false;
+      if (!this._stillOn(key)) return false;
       const element = this._workingEntity;
       const snapshot = this._snapshot;
       if (!element || !snapshot) return false;
       const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      if (!this._stillOn(key)) return !failed;
       if (failed) return this._failSync(failed.stale, failed.message);
+      this._exitConfirm = null;
       this.store.discardDraft(hubId);
       await this._load({ keepDraft: false });
       return true;
     } catch (err) {
-      return this._failSync(false, String(err));
+      return this._stillOn(key) ? this._failSync(false, String(err)) : false;
     } finally {
-      this._syncing = false;
+      if (this._stillOn(key)) this._syncing = false;
     }
   }
   _failBeforeSync(stale, message) {
@@ -20737,6 +20783,7 @@ var SbPanelEntityEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._refreshing) return;
+    const key = this._loadedKey;
     this._refreshing = true;
     try {
       this.store.discardDraft(hubId);
@@ -20745,9 +20792,9 @@ var SbPanelEntityEditor = class extends i4 {
       if (started.status === 202 && started.body) await this.api.followJob(hubId, started.body.job_id);
       else this.store.noteResponse(hubId, started);
     } finally {
-      this._refreshing = false;
+      if (this._stillOn(key)) this._refreshing = false;
     }
-    await this._load({ keepDraft: false });
+    if (this._stillOn(key)) await this._load({ keepDraft: false });
   }
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
   async _deleteEntity() {
@@ -20761,16 +20808,19 @@ var SbPanelEntityEditor = class extends i4 {
     const hubId = this._hub?.hub_id;
     const entityId = this.entityId;
     if (!hubId || entityId == null || this._deleting) return;
+    const key = this._loadedKey;
     this._deleting = true;
     this._deleteError = null;
     try {
       const started = await this._startDelete(hubId, entityId);
+      if (!this._stillOn(key)) return;
       if (started.status !== 202 || !started.body) {
         this.store.noteResponse(hubId, started);
         this._deleteError = `Delete refused: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id);
+      if (!this._stillOn(key)) return;
       if (!job || job.status !== "done") {
         this._deleteError = `Delete failed: ${job?.error?.detail || jobOutcomeText(job)}`;
         return;
@@ -20778,18 +20828,18 @@ var SbPanelEntityEditor = class extends i4 {
       this.store.discardDraft(hubId);
       this._goToList();
     } catch (err) {
-      this._deleteError = `Delete failed: ${String(err)}`;
+      if (this._stillOn(key)) this._deleteError = `Delete failed: ${String(err)}`;
     } finally {
-      this._deleting = false;
+      if (this._stillOn(key)) this._deleting = false;
     }
   }
   // -- render ---------------------------------------------------------------------------------------------------
   render() {
     const S9 = this.frameStrings;
     if (!this._hub && !this._offline || this.entityId == null) return b2`<div class="panel"><div class="hint">Pick a hub above.</div></div>`;
-    const C4 = TOOLS_CARD_STRINGS.activities;
-    if (this._deleting) return this._renderProgress("editor-deleting", C4.deletingTitle(this.entityKind), C4.deletingMessage(this.entityKind));
-    if (this._syncing) return this._renderProgress("editor-syncing", C4.syncingTitle, jobStepMessage(activeJob(this._hub)) || C4.syncingMessage);
+    const C6 = TOOLS_CARD_STRINGS.activities;
+    if (this._deleting) return this._renderProgress("editor-deleting", C6.deletingTitle(this.entityKind), C6.deletingMessage(this.entityKind));
+    if (this._syncing) return this._renderProgress("editor-syncing", C6.syncingTitle, jobStepMessage(activeJob(this._hub)) || C6.syncingMessage);
     switch (this._stage) {
       case "loading":
         return b2`<div class="panel"><div class="capture-error"><div class="guard-sub">${S9.loading}</div></div></div>`;
@@ -22033,145 +22083,147 @@ function defineActivityEditor() {
 
 // server-panel/src/views/device-editor.ts
 var DEVICE_EDITOR_TAG = "sb-panel-device-editor";
+var B3 = TOOLS_CARD_STRINGS.backup;
+var A3 = TOOLS_CARD_STRINGS.activities;
+var C4 = TOOLS_CARD_STRINGS.common;
 var S6 = {
-  crumbDevices: "Devices",
-  renameDevice: "Rename device",
-  deleteDeviceAria: "Delete device",
-  syncToHub: "Sync to Hub",
-  syncUpToDate: "Up to date",
-  detailPower: "On/Off",
-  detailNetwork: "Network",
-  detailCommands: "Commands",
-  detailButtons: "Buttons",
-  detailSectionsAria: "Detail sections",
-  powerSetupTitle: "Power control",
-  powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
-  powerOnLabel: "Power-on sequence",
-  powerOffLabel: "Power-off sequence",
-  macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
-  powerControlTitle: "Automatic power control",
-  powerControlUnset: "Not captured",
-  powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
-  powerControlDisabled: "Don't control power",
-  powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
-  powerControlAutoOff: "Turn off when idle",
-  powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
-  powerControlStayOn: "Stay on between activities",
-  powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
-  powerControlAlwaysOn: "Always stay on",
-  powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
-  powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
-  networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
-  hubNameNotSet: "(not set)",
-  ipChip: "ip",
-  ipv4Description: "IPv4 dotted-decimal address",
-  editIpAria: "Edit IP address",
-  ipAddress: "IP address",
-  commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
-  unsaved: "Unsaved",
-  unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
-  deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
-  deleteSimpleBody: "This removes it from the loaded backup.",
-  deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
-  commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
-  addCommand: "Add command",
-  noDeviceCommands: "This device does not currently have any commands.",
-  commandChip: "command",
-  newCommandChip: "new command",
-  commandId: "Command ID",
-  renameCommandAria: "Rename command",
-  renameCommand: "Rename command",
-  editPayloadAria: "Edit payload",
-  fetchEditCommandAria: "Fetch and edit this command's payload",
-  deleteCommandAria: "Delete command",
-  buttonBindingsTitle: "Button assignments",
-  buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
-  buttonBindingsEmpty: "No button assignments configured.",
-  addBinding: "Add assignment",
-  buttonChip: "button",
-  bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
-  editBindingAria: "Edit assignment",
-  deleteBindingAria: "Delete assignment",
-  bindingButton: "Button",
-  bindingCommand: "Command",
-  bindingEnableLongPress: "Enable long-press assignment",
-  bindingLongPressCommand: "Long-press command",
-  bindingIncomplete: "Choose a button and target first.",
-  bindingNoButtons: "Every button on this hub model is already assigned.",
-  bindingNoCommands: "This device has no commands to assign.",
-  bindingAdd: "Add",
-  bindingSave: "Save",
-  bindingCancel: "Cancel",
-  bindingDialogAddTitle: "Add button assignment",
-  bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
-  deleteBindingTitle: (name) => `Delete ${name} assignment?`,
-  deleteDeviceTitle: (name) => `Delete device "${name}"?`,
-  deleteCommandTitle: (name) => `Delete command "${name}"?`,
-  deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
-  deleteSimpleBodyLive: "This removes it.",
-  deleteImmediateNote: "This is applied to the hub immediately.",
-  deleteSyncNote: "This change is written to the hub on the next Sync.",
-  deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
-  deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
-  deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
-  deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-  deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
-  deleteCancel: "Cancel",
-  deleteConfirm: "Delete",
-  thisItem: "this item",
-  name: "Name",
-  enterName: "Enter a name to continue.",
-  ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
-  cancel: "Cancel",
-  save: "Save",
+  crumbDevices: B3.crumbDevices,
+  renameDevice: B3.renameDevice,
+  deleteDeviceAria: B3.deleteDeviceAria,
+  syncToHub: A3.syncToHub,
+  syncUpToDate: A3.syncUpToDate,
+  detailPower: B3.detailPower,
+  detailNetwork: B3.detailNetwork,
+  detailCommands: B3.detailCommands,
+  detailButtons: B3.detailButtons,
+  detailSectionsAria: B3.detailSectionsAria,
+  powerSetupTitle: B3.powerSetupTitle,
+  powerSetupDeviceSub: B3.powerSetupDeviceSub,
+  powerOnLabel: B3.powerOnLabel,
+  powerOffLabel: B3.powerOffLabel,
+  macroStepsCount: B3.macroStepsCount,
+  powerControlTitle: B3.powerControlTitle,
+  powerControlUnset: B3.powerControlUnset,
+  powerControlUnsetSub: B3.powerControlUnsetSub,
+  powerControlDisabled: B3.powerControlDisabled,
+  powerControlDisabledSub: B3.powerControlDisabledSub,
+  powerControlAutoOff: B3.powerControlAutoOff,
+  powerControlAutoOffSub: B3.powerControlAutoOffSub,
+  powerControlStayOn: B3.powerControlStayOn,
+  powerControlStayOnSub: B3.powerControlStayOnSub,
+  powerControlAlwaysOn: B3.powerControlAlwaysOn,
+  powerControlAlwaysOnSub: B3.powerControlAlwaysOnSub,
+  powerSequencesDisabledNote: B3.powerSequencesDisabledNote,
+  networkDescription: B3.networkDescription,
+  hubNameNotSet: B3.hubNameNotSet,
+  ipChip: B3.ipChip,
+  ipv4Description: B3.ipv4Description,
+  editIpAria: B3.editIpAria,
+  ipAddress: B3.ipAddress,
+  commandsBackupHelp: B3.commandsBackupHelp,
+  unsaved: B3.unsaved,
+  unsavedTooltip: B3.unsavedTooltip,
+  deleteCascadeIntro: B3.deleteCascadeIntro,
+  deleteSimpleBody: B3.deleteSimpleBody,
+  deleteReplaceNote: B3.deleteReplaceNote,
+  commandsLiveHelp: B3.commandsLiveHelp,
+  addCommand: B3.addCommand,
+  noDeviceCommands: B3.noDeviceCommands,
+  commandChip: B3.commandChip,
+  newCommandChip: B3.newCommandChip,
+  commandId: B3.commandId,
+  renameCommandAria: B3.renameCommandAria,
+  renameCommand: B3.renameCommand,
+  editPayloadAria: B3.editPayloadAria,
+  fetchEditCommandAria: B3.fetchEditCommandAria,
+  deleteCommandAria: B3.deleteCommandAria,
+  buttonBindingsTitle: B3.buttonBindingsTitle,
+  buttonBindingsDeviceSub: B3.buttonBindingsDeviceSub,
+  buttonBindingsEmpty: B3.buttonBindingsEmpty,
+  addBinding: B3.addBinding,
+  buttonChip: B3.buttonChip,
+  bindingLongPressMeta: B3.bindingLongPressMeta,
+  editBindingAria: B3.editBindingAria,
+  deleteBindingAria: B3.deleteBindingAria,
+  bindingButton: B3.bindingButton,
+  bindingCommand: B3.bindingCommand,
+  bindingEnableLongPress: B3.bindingEnableLongPress,
+  bindingLongPressCommand: B3.bindingLongPressCommand,
+  bindingIncomplete: B3.bindingIncomplete,
+  bindingNoButtons: B3.bindingNoButtons,
+  bindingNoCommands: B3.bindingNoCommands,
+  bindingAdd: B3.bindingAdd,
+  bindingSave: B3.bindingSave,
+  bindingCancel: B3.bindingCancel,
+  bindingDialogAddTitle: B3.bindingDialogAddTitle,
+  bindingDialogEditTitle: B3.bindingDialogEditTitle,
+  deleteBindingTitle: B3.deleteBindingTitle,
+  deleteDeviceTitle: B3.deleteDeviceTitle,
+  deleteCommandTitle: B3.deleteCommandTitle,
+  deleteCascadeIntroLive: B3.deleteCascadeIntroLive,
+  deleteSimpleBodyLive: B3.deleteSimpleBodyLive,
+  deleteImmediateNote: B3.deleteImmediateNote,
+  deleteSyncNote: B3.deleteSyncNote,
+  deleteImpactActivities: B3.deleteImpactActivities,
+  deleteImpactFavorites: B3.deleteImpactFavorites,
+  deleteImpactMacroSteps: B3.deleteImpactMacroSteps,
+  deleteImpactPowerSteps: B3.deleteImpactPowerSteps,
+  deleteImpactBindings: B3.deleteImpactBindings,
+  deleteCancel: B3.deleteCancel,
+  deleteConfirm: B3.deleteConfirm,
+  thisItem: B3.thisItem,
+  name: B3.name,
+  enterName: B3.enterName,
+  ipv4Required: B3.ipv4Required,
+  cancel: C4.cancel,
+  save: C4.save,
   // The live host's screens.
-  loading: "Loading device from the hub cache\u2026",
+  loading: A3.capturingFromCache("device"),
   refreshEntity: "Refresh device",
   missingTitle: "Device not found",
   missingBody: "This device is not in the hub's snapshot.",
-  firmwareUnsupportedTitle: "Hub firmware update required",
-  firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
-  needsRefreshTitle: "Refresh the hub cache to edit",
-  needsRefreshBody: "This device isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.",
-  refreshDevice: "Refresh device",
-  back: "Back",
-  syncFailedTitle: "Sync didn't finish",
-  syncStaleTitle: "This device changed on the hub",
-  syncStaleBody: "The device was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
-  syncRetry: "Retry sync",
-  syncReload: "Reload from hub",
-  syncKeepEditing: "Keep editing",
-  exitUnsyncedTitle: "Unsynced changes",
-  exitUnsyncedBody: "This device has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
-  exitSyncNow: "Sync now",
-  exitWithoutSync: "Leave without syncing",
+  firmwareUnsupportedTitle: A3.firmwareUnsupportedTitle,
+  firmwareUnsupportedBody: A3.firmwareUnsupportedBody,
+  needsRefreshTitle: A3.needsRefreshTitle,
+  needsRefreshBody: A3.needsRefreshBody("device"),
+  back: A3.back,
+  syncFailedTitle: A3.syncFailedTitle,
+  syncStaleTitle: A3.syncStaleTitle("device"),
+  syncStaleBody: A3.syncStaleBody("device"),
+  syncRetry: A3.syncRetry,
+  syncReload: A3.syncReload,
+  syncKeepEditing: A3.syncKeepEditing,
+  exitUnsyncedTitle: A3.exitUnsyncedTitle,
+  exitUnsyncedBody: A3.exitUnsyncedBody("device"),
+  exitSyncNow: A3.exitSyncNow,
+  exitWithoutSync: A3.exitWithoutSync,
   // The step editor (the card's macro step editor, device scope).
-  steps: "Steps",
-  macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
-  noMacroSteps: "No steps yet.",
-  addStep: "Add step",
-  stepDialogAddTitle: "Add step",
-  stepDialogEditTitle: "Edit step",
-  stepCommand: "Command",
-  stepHoldSeconds: "Hold (seconds, 0 = short press)",
-  holdLabel: (seconds) => `Hold ${seconds}s`,
-  stepAdd: "Add",
-  stepSave: "Save",
-  stepCancel: "Cancel",
-  stepNoCommands: "This device has no commands.",
-  stepWaitAria: "Wait after this step (seconds)",
-  stepWaitLabel: "Delay",
-  stepWaitUnit: "s",
-  deleteStepAria: "Delete step",
-  editStepAria: "Edit step",
+  steps: B3.steps,
+  macroStepsSortableHelp: B3.macroStepsSortableHelp,
+  noMacroSteps: B3.noMacroSteps,
+  addStep: B3.addStep,
+  stepDialogAddTitle: B3.stepDialogAddTitle,
+  stepDialogEditTitle: B3.stepDialogEditTitle,
+  stepCommand: B3.stepCommand,
+  stepHoldSeconds: B3.stepHoldSeconds,
+  holdLabel: B3.holdLabel,
+  stepAdd: B3.stepAdd,
+  stepSave: B3.stepSave,
+  stepCancel: B3.stepCancel,
+  stepNoCommands: B3.stepNoCommands,
+  stepWaitAria: B3.stepWaitAria,
+  stepWaitLabel: B3.stepWaitLabel,
+  stepWaitUnit: B3.stepWaitUnit,
+  deleteStepAria: B3.deleteStepAria,
+  editStepAria: B3.editStepAria,
   dragStepAria: "Drag to reorder (arrow keys move the step)",
   stepChipCommand: "command",
   // The panel's own lines (plan decisions 11 and 12).
   managedWifiWarning: "This device is managed by Home Assistant's Wifi Commands. Changes made here are written to the hub, and that configuration will disagree with the hub after a sync.",
   callbackDeviceNote: "This is the server's callback device (its Wifi Events). Button assignments can be edited here; renaming it or its events lands with the next phase.",
-  deviceMissing: "This device is not in the hub's snapshot.",
-  noPayloadReturned: "The hub returned no payload for this command.",
-  noFreeCommandSlot: "This device has no free command slot left."
+  serverWifiDeviceNote: "This Wifi Device is edited in the Wifi Commands tab. Button assignments can be edited here; its commands are the Wifi Commands tab's slots.",
+  noPayloadReturned: B3.noPayloadReturned,
+  noFreeCommandSlot: B3.noFreeCommandSlot
 };
 var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   constructor() {
@@ -22239,7 +22291,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._stepDialog = { ...dialog, error: S6.stepNoCommands };
         return;
       }
-      const hold = this._secondsToByte(dialog.hold);
+      const hold = secondsToByte(dialog.hold);
       const next = dialog.editIndex === null ? addDeviceMacroCommandStep(this._working, deviceId, editor.buttonId, commandId, hold) : updateDeviceMacroStep(this._working, deviceId, editor.buttonId, dialog.editIndex, { commandId, hold });
       this._commit(next);
       this._stepDialog = null;
@@ -22515,22 +22567,13 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._stepDialog = null;
     window.scrollTo({ top: 0 });
   }
-  /** Macro time bytes are in 0.5 s units (a byte of 4 = 2.0 s); 0 = a click / no wait. */
-  _byteToSeconds(byteValue) {
-    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-  }
-  _secondsToByte(value) {
-    const seconds = parseFloat(String(value));
-    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-  }
   _stepItems() {
     const editor = this._stepEditor;
     if (!editor || !this._working || this.deviceId == null) return [];
     return deviceMacroStepItems(this._working, this.deviceId, editor.buttonId);
   }
   _openEditStep(item) {
-    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: this._byteToSeconds(item.hold), error: "" };
+    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: byteToSeconds(item.hold), error: "" };
   }
   _removeStep(index) {
     const editor = this._stepEditor;
@@ -22569,8 +22612,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const editor = this._stepEditor;
     if (!editor || this.deviceId == null || !this._working) return;
     const input = event.target;
-    const wait = this._secondsToByte(input.value);
-    input.value = this._byteToSeconds(wait);
+    const wait = secondsToByte(input.value);
+    input.value = byteToSeconds(wait);
     this._commit(setDeviceMacroStepWait(this._working, this.deviceId, editor.buttonId, item.index, wait));
   }
   // -- section nav -------------------------------------------------------------------------------------
@@ -22630,9 +22673,18 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     if (this._offline) return false;
     return isManagedWifiBrand(this._brand) && !isWifiEventsBrand(this._brand);
   }
-  /** The server's callback device: its spec-owned parts wait for DE6 (plan decision 12). */
-  get _isCallbackDevice() {
+  /** A keyed server Wifi Device (brand `c0-<key>`, callbacks.py): its commands are the Wifi
+   *  Commands tab's slots, and editing them here would make its next Sync decline (CR-F5b-5). */
+  get _isServerWifiDevice() {
+    return !this._offline && this._brand.startsWith("c0-") && !this._isDefaultCallbackDevice;
+  }
+  get _isDefaultCallbackDevice() {
     return this._callbackDeviceId != null && this.deviceId === this._callbackDeviceId;
+  }
+  /** The server's callback devices (the default one and every keyed Wifi Device): their
+   *  spec-owned parts are not edited here (plan decision 12). */
+  get _isCallbackDevice() {
+    return this._isDefaultCallbackDevice || this._isServerWifiDevice;
   }
   /** The card's Wifi Events pairing applies to both the HA events device and the server's callback device. */
   get _pairedRecords() {
@@ -22738,7 +22790,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     `;
   }
   _renderStepRow(item, position, count) {
-    const meta = item.kind === "command" && item.hold > 0 ? S6.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const meta = item.kind === "command" && item.hold > 0 ? S6.holdLabel(byteToSeconds(item.hold)) : "";
     const isLast = position === count - 1;
     const drag = this._drag;
     const dragging = drag?.from === position;
@@ -22774,7 +22826,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         ${isLast ? A : b2`<label class="step-wait" title=${S6.stepWaitAria}>
               <span class="step-wait-caption">${S6.stepWaitLabel}</span>
               <span class="step-wait-field">
-                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S6.stepWaitAria} .value=${this._byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S6.stepWaitAria} .value=${byteToSeconds(item.wait)} @change=${(event) => this._setStepWait(item, event)} />
                 <span class="step-wait-unit">${S6.stepWaitUnit}</span>
               </span>
             </label>`}
@@ -22809,7 +22861,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
       this._stepDialog = { ...dialog, hold: event.currentTarget.value };
     }}
                 @change=${(event) => {
-      this._stepDialog = { ...dialog, hold: this._byteToSeconds(this._secondsToByte(event.currentTarget.value)) };
+      this._stepDialog = { ...dialog, hold: byteToSeconds(secondsToByte(event.currentTarget.value)) };
     }} />
             </div>
           </div>
@@ -22858,7 +22910,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
           <div class="detail-scroll">
             ${this._renderDeleteErrorBanner()}
             ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S6.managedWifiWarning}</span></div>` : A}
-            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${S6.callbackDeviceNote}</span></div>` : A}
+            ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S6.serverWifiDeviceNote : S6.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
             ${this._renderNetworkSection(deviceId)}
             ${this._renderCommandsSection(deviceId)}
@@ -23349,37 +23401,39 @@ function formatHexForDisplay(hexText) {
 // server-panel/src/views/payload-dialog.ts
 var PAYLOAD_DIALOG_TAG = "sb-payload-dialog";
 var DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md";
+var B4 = TOOLS_CARD_STRINGS.backup;
+var C5 = TOOLS_CARD_STRINGS.common;
 var S7 = {
-  addCommandTitle: "Add command",
-  editPayloadTitle: "Edit payload",
-  deviceClass: "Device class",
-  name: "Name",
-  nameHelper: "Shown on the remote and in every command picker.",
-  prontoHexTab: "Pronto Hex",
-  sofabatonHexTab: "Sofabaton Hex",
-  descriptorTab: "Descriptor",
-  prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+  addCommandTitle: B4.addCommandTitle,
+  editPayloadTitle: B4.editPayloadTitle,
+  deviceClass: B4.deviceClass,
+  name: B4.name,
+  nameHelper: B4.nameHelper,
+  prontoHexTab: B4.prontoHexTab,
+  sofabatonHexTab: B4.sofabatonHexTab,
+  descriptorTab: B4.descriptorTab,
+  prontoUnavailable: B4.prontoUnavailable,
   prontoHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026". The editor converts it to Sofabaton bytes automatically.',
-  payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
-  invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
-  descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+  payloadHexHelper: B4.payloadHexHelper,
+  invalidProntoHex: B4.invalidProntoHex,
+  descriptorX2Only: B4.descriptorX2Only,
   ucHexUnsupported: "Unfolded Circle HEX codes are not supported here. Paste a Pronto Hex code or the Sofabaton bytes instead.",
-  rawPayload: "Raw payload",
-  rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
-  payloadHex: "Payload (hex bytes)",
-  verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
-  verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
-  sendingToHub: "Sending to the hub\u2026",
-  sentToHub: "Sent to the hub for one-shot playback.",
-  testFailed: "Test failed.",
-  nothingToTest: "Nothing to test yet.",
-  test: "Test",
-  cancel: "Cancel",
-  save: "Save",
+  rawPayload: B4.rawPayload,
+  rawPayloadDescription: B4.rawPayloadDescription,
+  payloadHex: B4.payloadHex,
+  verifyPayloadLive: B4.verifyPayloadLive,
+  verifyPayloadBackup: B4.verifyPayloadBackup,
+  sendingToHub: B4.sendingToHub,
+  sentToHub: B4.sentToHub,
+  testFailed: B4.testFailed,
+  nothingToTest: B4.nothingToTest,
+  test: B4.test,
+  cancel: C5.cancel,
+  save: C5.save,
   payloadDocs: "Payload documentation",
-  newCommandNameRequired: "Enter a name for the new command.",
-  descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
-  payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine)."
+  newCommandNameRequired: B4.newCommandNameRequired,
+  descriptiveIrRequired: B4.descriptiveIrRequired,
+  payloadHexRequired: B4.payloadHexRequired
 };
 function icon5(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
@@ -23881,7 +23935,7 @@ SbPayloadDialog.styles = [
       .section-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
       .section-status .mdi { width: 18px; height: 18px; }
       .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
-      .section-status.success { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
+      .section-status.success { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
       @media (max-width: 640px) {
         .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
         .dialog { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: 22px 22px 0 0; }
@@ -25964,9 +26018,7 @@ function isSlotConfigured(draft, index) {
 function configuredCount(draft) {
   return draft.slots.filter((_slot, index) => isSlotConfigured(draft, index)).length;
 }
-function supportsPowerInput(hubVersion) {
-  return supportsUnicodeNames(hubVersion);
-}
+var supportsPowerInput = hubSupportsPowerInput;
 function nameProblem(value, messages) {
   if (!value.trim()) return messages.required;
   if (value.startsWith(" ")) return messages.leadingSpace;
@@ -26144,7 +26196,7 @@ function pressMatchesSlot(press, device, index) {
 
 // server-panel/src/views/wifi-devices-view.ts
 var S8 = TOOLS_CARD_STRINGS.wifiCommands;
-var A3 = TOOLS_CARD_STRINGS.activities;
+var A4 = TOOLS_CARD_STRINGS.activities;
 var T2 = {
   subtitle: "Use Wifi Commands to put buttons on your physical remote that call this server. Every press arrives as a press event on the event stream. Choose a Wifi Device to edit its command slots, or add a new one.",
   slotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and on every press event.",
@@ -26350,12 +26402,11 @@ var SbPanelWifiDevices = class extends i4 {
       this._edit({ ...this._draft, name: name.trim() });
       this._rename = null;
     };
-    // -- sync, redeploy, leave ----------------------------------------------------------------------------------
     this._sync = async () => {
       const device = this._device;
       const draft = this._draft;
       const hubId = this._hubId;
-      if (!device || !draft || !hubId || this._locked) return false;
+      if (!this._canSync(device) || !draft || !hubId) return false;
       this._syncError = null;
       const cleanups = buttonCleanups(this._devices, device.key, draft);
       const { error } = await this._runJob(S8.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
@@ -26624,6 +26675,12 @@ var SbPanelWifiDevices = class extends i4 {
     this._powerPicker = null;
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
   }
+  // -- sync, redeploy, leave ----------------------------------------------------------------------------------
+  /** One rule for every Sync action (header, leave dialog, _sync): a stale device is
+   *  redeployed instead, and a pending create has no hub record to write (CR-F5b-12). */
+  _canSync(device) {
+    return Boolean(device) && !this._locked && !device.stale && device.device_id != null;
+  }
   // -- render: shared bits -----------------------------------------------------------------------------------------
   _renderTransportPill(device) {
     if (this._transports.length < 2 && device.transport === "http") return A;
@@ -26696,7 +26753,7 @@ var SbPanelWifiDevices = class extends i4 {
     const dirty = this.hasUnsyncedChanges();
     if (this._working) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
     if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S8.actionButtonUpToDate}</button>`;
-    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${this._locked || device.device_id == null} @click=${() => void this._sync()}>${S8.actionButtonSyncToHub}</button>`;
+    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S8.actionButtonSyncToHub}</button>`;
   }
   _renderPowerLines(draft) {
     if (!supportsPowerInput(this._hubVersion)) return A;
@@ -27027,13 +27084,13 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-leave-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${A3.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A3.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${A4.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A4.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
           <div class="dialog-body"><div class="dialog-text">${T2.leaveBody}</div></div>
           <div class="dialog-footer">
-            <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A3.exitWithoutSync}</button>
+            <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A4.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" type="button" @click=${close}>${A3.syncKeepEditing}</button>
-              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${this._locked || !device || device.stale} @click=${() => void this._leaveAfterSync()}>${A3.exitSyncNow}</button>
+              <button class="dialog-btn" type="button" @click=${close}>${A4.syncKeepEditing}</button>
+              <button class="dialog-btn dialog-btn-primary" id="wifi-leave-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._leaveAfterSync()}>${A4.exitSyncNow}</button>
             </div>
           </div>
         </div>
@@ -27132,7 +27189,7 @@ SbPanelWifiDevices.styles = [
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
-      .hub-event-icon.power-on { color: #2e7d32; }
+      .hub-event-icon.power-on { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); }
       .hub-event-icon.power-off { color: #c62828; }
       .hub-event-text { min-width: 0; }
       .hub-event-action-link { display: inline; font: inherit; font-weight: 700; font-style: italic; color: var(--sbp-text); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; white-space: normal; }
@@ -27167,7 +27224,7 @@ SbPanelWifiDevices.styles = [
       .slot-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding-right: 8px; }
       .slot-flag, .slot-clear { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--sbp-line); background: var(--sbp-panel); color: var(--sbp-muted); display: inline-flex; align-items: center; justify-content: center; }
       .slot-flag .mdi { width: 14px; height: 14px; }
-      .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
+      .slot-flag.power-on { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); border-color: color-mix(in srgb, #2e7d32 35%, var(--sbp-line)); }
       .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--sbp-line)); }
       .slot-flag.power-both { color: #f59e0b; border-color: color-mix(in srgb, #f59e0b 35%, var(--sbp-line)); }
       .slot-flag.input { color: var(--sbp-accent); border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); }

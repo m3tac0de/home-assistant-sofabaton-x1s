@@ -1,10 +1,10 @@
 // The device editor's own pure helpers (docs/internal/server-panel-device-editor-plan.md,
 // section 6). The HA card's bundle helpers are imported from the card's
 // tree by the editor itself; this module holds what the panel adds: the
-// snapshot-to-bundle view, the draft scope, the name sanitiser copied from
-// the card's edit-detail-view (the card keeps it inside its Lit element)
-// and the Wifi Events pairing arithmetic. The firmware floor is the
-// server's verdict (`firmwareFloor` in panel-selectors), not a mirrored table.
+// snapshot-to-bundle view and the draft scope. The hub rules (names, IP,
+// Wifi Events pairing) are the card's own shared modules, re-exported
+// under the panel's names. The firmware floor is the server's verdict
+// (`firmwareFloor` in panel-selectors), not a mirrored table.
 
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import type { Draft } from "../panel-store";
@@ -64,10 +64,8 @@ export const supportsUnicodeNames = hubSupportsUnicodeNames;
 /** The card's `sanitizeBundleName`: strip what the hub cannot store, cap at the 30-code-unit slot. */
 export const sanitizeName = sanitizeEntityName;
 
-/** Device classes whose IP lives in the device head (the card's Network section); wifi_ip keeps it per command. */
-export const IP_HEAD_DEVICE_CLASSES = new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-
-export const IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+/** Device classes whose IP lives in the device head, and the IPv4 rule: the card's (CR-X6-3). */
+export { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 
 // -- Wifi Events pairing (the card's rules for the events device) ------------------------------
 

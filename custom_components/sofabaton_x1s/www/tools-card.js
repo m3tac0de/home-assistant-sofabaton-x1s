@@ -7544,6 +7544,22 @@ var backupTabStyles = i`
     }
 `;
 
+// custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function byteToSeconds(byteValue) {
+  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+}
+function secondsToByte(value) {
+  const seconds = parseFloat(String(value));
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function hubSupportsPowerInput(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return !(version.includes("X1") && !version.includes("X1S"));
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
 var S3 = TOOLS_CARD_STRINGS.backup;
 var OVERLAY_MENU_MAX_HEIGHT = 240;
@@ -10262,8 +10278,6 @@ function formatCarrierKhz(carrierHz) {
     return (carrierHz / 1e3).toFixed(1);
   }
 }
-var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function bundleIsX2(bundle) {
   return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
 }
@@ -11204,15 +11218,15 @@ var SofabatonEditDetailView = class extends i4 {
       const editor = this._macroEditor;
       if (!editor || !this.bundle) return;
       const input = event.target;
-      const waitByte = this._secondsToByte(input.value);
-      input.value = this._byteToSeconds(waitByte);
+      const waitByte = secondsToByte(input.value);
+      input.value = byteToSeconds(waitByte);
       const next = editor.scope === "device" ? setDeviceMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
       this._commitEditBundleEdit(next);
     };
     this._applyStepWifiEvent = async () => {
       const editor = this._macroEditor;
       if (!editor || !this.bundle) return;
-      const timeByte = this._secondsToByte(this._stepHoldSeconds);
+      const timeByte = secondsToByte(this._stepHoldSeconds);
       const editIndex = this._stepDialogEditIndex;
       try {
         const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
@@ -11230,7 +11244,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._applyStep = () => {
       const editor = this._macroEditor;
       if (!editor || !this.bundle) return;
-      const timeByte = this._secondsToByte(this._stepHoldSeconds);
+      const timeByte = secondsToByte(this._stepHoldSeconds);
       const editIndex = this._stepDialogEditIndex;
       const isDevice = editor.scope === "device";
       if (this._stepKind === "wifi_event") {
@@ -14067,19 +14081,9 @@ var SofabatonEditDetailView = class extends i4 {
     this._captureCurrentScrollPosition();
     this._macroEditor = { scope, entityId: Number(entityId), buttonId: Number(buttonId), name };
   }
-  // Macro time bytes are in 0.5-second units (a hold byte of 4 = 2.0s),
-  // matching the Sofabaton app. 0 = a single click / no wait.
-  _byteToSeconds(byteValue) {
-    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-  }
-  _secondsToByte(value) {
-    const seconds = parseFloat(String(value));
-    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-  }
   /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
   _snapHalfSeconds(value) {
-    return this._byteToSeconds(this._secondsToByte(value));
+    return byteToSeconds(secondsToByte(value));
   }
   _currentMacroStepItems() {
     const editor = this._macroEditor;
@@ -14102,7 +14106,7 @@ var SofabatonEditDetailView = class extends i4 {
       this._stepKind = "wifi_event";
       this._stepDeviceId = item.deviceId;
       this._stepCommandId = item.commandId ?? null;
-      this._stepHoldSeconds = this._byteToSeconds(item.hold);
+      this._stepHoldSeconds = byteToSeconds(item.hold);
       this._wifiEventPrimary = {
         mode: "existing",
         slot: item.commandId != null ? Number(item.commandId) - 1 : null,
@@ -14114,7 +14118,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._stepKind = "command";
     this._stepDeviceId = editor.scope === "activity" ? item.deviceId ?? null : editor.entityId;
     this._stepCommandId = item.commandId ?? null;
-    this._stepHoldSeconds = this._byteToSeconds(item.hold);
+    this._stepHoldSeconds = byteToSeconds(item.hold);
   }
   _removeStep(index) {
     const editor = this._macroEditor;
@@ -14247,7 +14251,7 @@ var SofabatonEditDetailView = class extends i4 {
     const isLast = position === count - 1;
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
-    const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(byteToSeconds(item.hold)) : "";
     const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
     const editor = this._macroEditor;
     const memberDeviceId = isPower && editor?.scope === "activity" ? Number(item.deviceId ?? 0) : 0;
@@ -14298,7 +14302,7 @@ var SofabatonEditDetailView = class extends i4 {
                     max="120"
                     step="0.5"
                     aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                    .value=${this._byteToSeconds(item.wait)}
+                    .value=${byteToSeconds(item.wait)}
                     @change=${(event) => this._handleStepWaitChange(item, event)}
                   />
                   <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
@@ -17967,8 +17971,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
   }
   _supportsPowerInputConfig() {
-    const version = this._hubVersion();
-    return !(version.includes("X1") && !version.includes("X1S"));
+    return hubSupportsPowerInput(this._hubVersion());
   }
   _sanitizeCommandName(value) {
     return sanitizeWifiName(this._hubVersion(), value);

@@ -22,6 +22,7 @@ import {
   shouldFinalizeWifiHubLoad,
 } from "./wifi-commands-state";
 import { sanitizeWifiName } from "../shared/hub-names";
+import { hubSupportsPowerInput } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const SLOT_COUNT = 10;
@@ -2444,12 +2445,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _supportsPowerInputConfig() {
-    // The X1 hub collapses activity-transition wifi callbacks to a single
-    // power-on + input callback regardless of how many callback devices the
-    // activity holds (live-hub-testing.md, 2026-07-17), so the power/input
-    // configuration is hidden for X1 hubs. Unknown versions keep the full UI.
-    const version = this._hubVersion();
-    return !(version.includes("X1") && !version.includes("X1S"));
+    return hubSupportsPowerInput(this._hubVersion());
   }
 
   private _sanitizeCommandName(value: unknown) {
