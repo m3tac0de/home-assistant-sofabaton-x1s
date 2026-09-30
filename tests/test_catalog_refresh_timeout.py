@@ -259,7 +259,7 @@ def hub():
 
 
 def _silence_dispatcher(monkeypatch) -> None:
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub_proxy_events.async_dispatcher_send", lambda *_: None)
 
 
 def test_uncommitted_activities_burst_keeps_catalog_and_generation(hub, monkeypatch):

@@ -12,11 +12,11 @@ import asyncio
 
 import pytest
 
-import custom_components.sofabaton_x1s.hub as hub_module
+import custom_components.sofabaton_x1s.wifi_deploy as wifi_deploy_module
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 from custom_components.sofabaton_x1s.lib.commands import hub_command_label
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 OLD_HASH = "oldhash"
 NEW_HASH = "newhash"
@@ -120,7 +120,7 @@ def _make_hub(
         return dict(snapshot)
 
     monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _snapshot)
-    monkeypatch.setattr(hub_module, "async_get_command_config_store", _async_return(store))
+    monkeypatch.setattr(wifi_deploy_module, "async_get_command_config_store", _async_return(store))
 
     # in-place plumbing on the proxy
     monkeypatch.setattr(hub._proxy, "backup_device", lambda *_a, **_k: device_entry)
@@ -342,7 +342,7 @@ def test_rejected_inplace_write_raises_without_replace(monkeypatch):
         call_order=calls,
     )
 
-    with pytest.raises(hub_module.HomeAssistantError):
+    with pytest.raises(wifi_deploy_module.HomeAssistantError):
         _run_sync(loop, hub, _payload())
 
     assert "inplace_run" in calls

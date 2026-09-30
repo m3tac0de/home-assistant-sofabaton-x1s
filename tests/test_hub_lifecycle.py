@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 from custom_components.sofabaton_x1s.const import DOMAIN
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 
 def _hub(loop):
@@ -130,7 +130,7 @@ def test_a_client_disconnect_reprimes_the_current_activitys_buttons(monkeypatch)
 def test_an_ota_announcement_pauses_reconnects_once_and_notifies(monkeypatch):
     """CR-H1-7: the hub's OTA push arms the transport pause and one notice."""
 
-    import custom_components.sofabaton_x1s.hub as hub_module
+    import custom_components.sofabaton_x1s.hub_proxy_events as hub_proxy_events_module
 
     loop = asyncio.new_event_loop()
     try:
@@ -139,7 +139,7 @@ def test_an_ota_announcement_pauses_reconnects_once_and_notifies(monkeypatch):
         notices: list = []
         monkeypatch.setattr(hub._proxy.transport, "pause_for_ota", lambda seconds: pauses.append(seconds))
         monkeypatch.setattr(
-            hub_module.persistent_notification,
+            hub_proxy_events_module.persistent_notification,
             "async_create",
             lambda _hass, message, *, title, notification_id: notices.append(notification_id),
         )

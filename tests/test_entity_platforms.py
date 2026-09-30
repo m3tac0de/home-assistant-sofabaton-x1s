@@ -23,7 +23,7 @@ from custom_components.sofabaton_x1s.const import (
 from custom_components.sofabaton_x1s.hub import SofabatonHub, hub_device_info
 from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
 
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 ENTRY = SimpleNamespace(entry_id="entry-id", data={CONF_MAC: "aa:bb:cc:dd:ee:ff", "mdns_txt": {"HVER": "2"}}, title="Hub")
 
