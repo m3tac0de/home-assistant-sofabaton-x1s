@@ -4416,7 +4416,7 @@ def test_sync_command_config_with_missing_metadata_matches_unique_hash_only_bran
 
     hass.data = {"sofabaton_x1s": {"command_config_store": _Store()}}
     monkeypatch.setattr(
-        hub_module,
+        wifi_deploy_module,
         "async_get_command_config_store",
         lambda _hass: asyncio.sleep(0, result=hass.data["sofabaton_x1s"]["command_config_store"]),
     )
@@ -4501,7 +4501,7 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
             return None
 
     monkeypatch.setattr(
-        hub_module,
+        wifi_deploy_module,
         "async_get_command_config_store",
         lambda _hass: asyncio.sleep(0, result=_Store()),
     )
@@ -4695,7 +4695,7 @@ def test_on_devices_burst_reconciles_legacy_managed_wifi_device_id(monkeypatch) 
     store = _Store()
     hass.data = {"sofabaton_x1s": {"command_config_store": store}}
     monkeypatch.setattr(
-        hub_module,
+        wifi_deploy_module,
         "async_get_command_config_store",
         lambda _hass: asyncio.sleep(0, result=store),
     )
@@ -4765,12 +4765,12 @@ def test_on_devices_burst_reconciles_hash_only_wifi_devices_by_unique_hash(monke
     store = _Store()
     hass.data = {"sofabaton_x1s": {"command_config_store": store}}
     monkeypatch.setattr(
-        hub_module,
+        wifi_deploy_module,
         "async_get_command_config_store",
         lambda _hass: asyncio.sleep(0, result=store),
     )
     monkeypatch.setattr(
-        hub_module,
+        wifi_deploy_module,
         "async_get_command_config_store",
         lambda _hass: asyncio.sleep(0, result=store),
     )
@@ -4854,7 +4854,7 @@ def test_on_devices_burst_repairs_duplicate_deployed_device_claims_by_unique_has
     store = _Store()
     hass.data = {"sofabaton_x1s": {"command_config_store": store}}
     monkeypatch.setattr(
-        hub_module,
+        wifi_deploy_module,
         "async_get_command_config_store",
         lambda _hass: asyncio.sleep(0, result=store),
     )
@@ -5559,7 +5559,7 @@ def _make_event_hook_hub(monkeypatch, activity_actions=None):
     )
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+        "custom_components.sofabaton_x1s.hub_proxy_events.async_dispatcher_send", lambda *_: None
     )
 
     async def _noop_prime(_activity_id):
@@ -5590,7 +5590,7 @@ def _make_event_hook_hub(monkeypatch, activity_actions=None):
         return _EventStore()
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.hub.async_get_command_config_store", _fake_store
+        "custom_components.sofabaton_x1s.hub_proxy_events.async_get_command_config_store", _fake_store
     )
 
     def _drain():
@@ -5786,7 +5786,7 @@ def test_activities_burst_prunes_stale_activity_event_actions(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+        "custom_components.sofabaton_x1s.hub_proxy_events.async_dispatcher_send", lambda *_: None
     )
 
     prune_calls: list[tuple[str, list[int]]] = []
@@ -5800,7 +5800,7 @@ def test_activities_burst_prunes_stale_activity_event_actions(monkeypatch):
         return _PruneStore()
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.hub.async_get_command_config_store", _fake_store
+        "custom_components.sofabaton_x1s.hub_proxy_events.async_get_command_config_store", _fake_store
     )
 
     hub.activities = {101: {"name": "Movie", "active": False, "needs_confirm": False}}
@@ -5844,7 +5844,7 @@ def _make_delete_device_hub(monkeypatch, *, proxy_result):
     )
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+        "custom_components.sofabaton_x1s.hub_proxy_events.async_dispatcher_send", lambda *_: None
     )
     monkeypatch.setattr(hub._proxy, "delete_device", lambda _dev_id: proxy_result)
 
