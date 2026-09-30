@@ -2569,8 +2569,23 @@ var TOOLS_CARD_STRINGS_EN = {
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
     // Status line while the sync spins up — not the Sync button label.
     startSync: "Starting sync",
-    syncFailedToStart: "Sync failed to start",
     syncMessageFailed: "Last sync failed.",
+    // Why a sync stopped, shown in the dock (one per backend failure code).
+    syncFailedAnotherSync: "Another Wifi Commands sync is already running.",
+    syncFailedHubBusy: "The hub is busy with another operation. Try again when it finishes.",
+    syncFailedPortInUse: "The Wifi Device could not be enabled: its port is in use.",
+    syncFailedActivitiesChanged: "Activities on the hub changed. Re-select this Wifi Device's activities, save, and sync again.",
+    syncFailedHubNoAnswer: "The hub did not answer. Sync again.",
+    syncFailedDeviceAmbiguous: "More than one Wifi Device on the hub matches this one.",
+    syncFailedPowerCommand: "The power on or off command is not one of this device's commands.",
+    syncFailedDelete: "The hub did not delete the previous Wifi Device.",
+    syncFailedCreate: "The hub did not create the Wifi Device.",
+    syncFailedReadback: "The hub did not store the commands as sent; the previous Wifi Device was kept.",
+    syncFailedAttach: "The Wifi Device could not be added to every activity.",
+    syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
+    syncFailedRejected: "The hub refused a change. Sync again.",
+    syncFailedGeneric: "The sync stopped. Sync again.",
+    syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",
@@ -3061,12 +3076,12 @@ var ControlPanelApi = class {
       device_key: deviceKey
     });
   }
-  /** Deploy one Wifi Device's staged config (the sync_command_config action). */
+  /** Deploy one Wifi Device's staged config. A WS command rather than the
+   *  sync_command_config action: a failure comes back as a code the card
+   *  shows in its dock, never as Home Assistant's error toast. */
   syncWifiCommandConfig(hubEntryId, deviceKey) {
-    if (!this.hass.callService) {
-      return Promise.reject(new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable));
-    }
-    return this.hass.callService("sofabaton_x1s", "sync_command_config", {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/command_sync/run",
       entry_id: hubEntryId,
       device_key: deviceKey
     });
@@ -3226,6 +3241,42 @@ function backendErrorCode(value) {
   const direct = normalizedErrorCode(error.error_code) ?? normalizedErrorCode(error.code);
   if (direct) return direct;
   return error.error && error.error !== value ? backendErrorCode(error.error) : null;
+}
+function localizeWifiSyncFailure(value) {
+  const S5 = TOOLS_CARD_STRINGS.wifiCommands;
+  const code = typeof value === "string" ? value : backendErrorCode(value);
+  switch (code) {
+    case "sync_in_progress":
+      return S5.syncFailedAnotherSync;
+    case "busy":
+      return S5.syncFailedHubBusy;
+    case "port_in_use":
+      return S5.syncFailedPortInUse;
+    case "activities_changed":
+      return S5.syncFailedActivitiesChanged;
+    case "hub_no_answer":
+      return S5.syncFailedHubNoAnswer;
+    case "device_ambiguous":
+      return S5.syncFailedDeviceAmbiguous;
+    case "invalid_power_command":
+      return S5.syncFailedPowerCommand;
+    case "delete_failed":
+      return S5.syncFailedDelete;
+    case "create_failed":
+      return S5.syncFailedCreate;
+    case "readback_failed":
+      return S5.syncFailedReadback;
+    case "attach_failed":
+      return S5.syncFailedAttach;
+    case "writes_refused":
+      return S5.syncFailedWritesRefused;
+    case "inplace_failed":
+      return S5.syncFailedRejected;
+    case "not_found":
+      return S5.syncFailedNotFound;
+    default:
+      return S5.syncFailedGeneric;
+  }
 }
 function localizeBackendError(value, surface) {
   if (surface === "hub_request" || surface === "wifi_event") {
@@ -4437,7 +4488,7 @@ var ControlPanelStore = class {
         entity_id: entityId,
         command: item.commandId,
         device: item.targetId
-      });
+      }, void 0, false);
       this._snapshot = {
         ...this._snapshot,
         lastCommandSend: {
@@ -4471,7 +4522,9 @@ var ControlPanelStore = class {
       await hass.callService(
         "persistent_notification",
         "create",
-        buildHubClickNotification(entityId, item)
+        buildHubClickNotification(entityId, item),
+        void 0,
+        false
       );
       this.showRuntimeCompletion(
         { tone: "success", label: TOOLS_CARD_STRINGS.hubClick.copied(item.label) },
@@ -4857,7 +4910,8 @@ var ControlPanelStore = class {
         const successLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreCompletedSuccessfully : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupCompletedSuccessfully : operation === "entity_sync" ? TOOLS_CARD_STRINGS.activities.syncSuccess : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
         this.showRuntimeCompletion({ tone: "success", label: successLabel }, entryId);
       } else if (outcome === "failed") {
-        const failureLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreFailed : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupFailed : TOOLS_CARD_STRINGS.errors.syncFailed;
+        const deployError = operation === "wifi_deploy" ? nextRuntime?.last_wifi_deploy_errors?.[String(previousRuntime.device_key ?? "")] : null;
+        const failureLabel = operation === "backup_restore" ? TOOLS_CARD_STRINGS.backup.restoreFailed : operation === "backup_export" ? TOOLS_CARD_STRINGS.backup.backupFailed : deployError ? localizeWifiSyncFailure(deployError) : TOOLS_CARD_STRINGS.errors.syncFailed;
         this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
       }
     }
@@ -19164,12 +19218,17 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
       await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
+      this.showCompletion?.(
+        { tone: "success", label: TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully },
+        hubEntryId
+      );
       await this._refreshControlPanelState();
     } catch (error) {
+      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
       this._syncState = {
         ...this._syncState,
         status: "failed",
-        message: String(error?.message || TOOLS_CARD_STRINGS.wifiCommands.syncFailedToStart)
+        message: TOOLS_CARD_STRINGS.wifiCommands.syncShortFailed
       };
       this._wifiDevices = this._wifiDevices.map(
         (device) => device.device_key === deviceKey ? {
@@ -19292,6 +19351,7 @@ _SofabatonWifiCommandsTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
   setHubCommandBusy: { attribute: false },
+  showCompletion: { attribute: false },
   refreshControlPanelState: { attribute: false },
   lastWifiPress: { attribute: false },
   hubCommandBusy: { type: Boolean },
@@ -21653,6 +21713,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .lastHubEvent=${this._snapshot.lastHubEvent}
           .selectedSection=${this._snapshot.selectedWifiSection}
           .setSelectedSection=${(section) => this._store.setSelectedWifiSection(section)}
+          .showCompletion=${(notice, entryId) => this._store.showRuntimeCompletion(notice, entryId)}
           .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
           @editor-dirty-changed=${this._handleEditorDirtyChanged}

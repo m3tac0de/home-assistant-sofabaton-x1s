@@ -96,18 +96,22 @@ async def _async_build_control_panel_runtime_payload(
             "device_name": None,
             "last_operation": _control_panel_last_operation(registry, hub.entry_id),
             "last_wifi_deploys": {},
+            "last_wifi_deploy_errors": {},
         }
 
     store = await runtime._async_get_command_config_store(hass)
     roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
     last_wifi_deploys: dict[str, str] = {}
+    last_wifi_deploy_errors: dict[str, str] = {}
     for device in devices:
         device_key = str(device.get("device_key") or "")
         sync_payload = _build_wifi_device_sync_payload(hub, device, device_key=device_key)
         status = str(sync_payload.get("status") or "").strip().lower()
         if status in {"success", "failed"}:
             last_wifi_deploys[device_key] = status
+        if status == "failed" and sync_payload.get("error_code"):
+            last_wifi_deploy_errors[device_key] = str(sync_payload["error_code"])
         if status != "running":
             continue
         return {
@@ -142,6 +146,8 @@ async def _async_build_control_panel_runtime_payload(
         # success for one that failed.
         "last_operation": _control_panel_last_operation(registry, hub.entry_id),
         "last_wifi_deploys": last_wifi_deploys,
+        # Why each failed deploy stopped (a code the panel localizes).
+        "last_wifi_deploy_errors": last_wifi_deploy_errors,
     }
 
 

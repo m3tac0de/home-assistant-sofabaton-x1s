@@ -348,6 +348,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "device_name": None,
                         "last_operation": None,
                         "last_wifi_deploys": {},
+                        "last_wifi_deploy_errors": {},
                     },
                 }
             ],

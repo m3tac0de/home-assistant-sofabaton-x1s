@@ -54,6 +54,33 @@ export function backendErrorCode(value: unknown): string | null {
 }
 
 /**
+ * Why a Wifi Commands sync stopped, for the dock. Takes the deploy's failure
+ * code (a command_sync/run rejection, or the code stored with the sync's
+ * progress), never its English prose.
+ */
+export function localizeWifiSyncFailure(value: unknown): string {
+  const S = TOOLS_CARD_STRINGS.wifiCommands;
+  const code = typeof value === "string" ? value : backendErrorCode(value);
+  switch (code) {
+    case "sync_in_progress": return S.syncFailedAnotherSync;
+    case "busy": return S.syncFailedHubBusy;
+    case "port_in_use": return S.syncFailedPortInUse;
+    case "activities_changed": return S.syncFailedActivitiesChanged;
+    case "hub_no_answer": return S.syncFailedHubNoAnswer;
+    case "device_ambiguous": return S.syncFailedDeviceAmbiguous;
+    case "invalid_power_command": return S.syncFailedPowerCommand;
+    case "delete_failed": return S.syncFailedDelete;
+    case "create_failed": return S.syncFailedCreate;
+    case "readback_failed": return S.syncFailedReadback;
+    case "attach_failed": return S.syncFailedAttach;
+    case "writes_refused": return S.syncFailedWritesRefused;
+    case "inplace_failed": return S.syncFailedRejected;
+    case "not_found": return S.syncFailedNotFound;
+    default: return S.syncFailedGeneric;
+  }
+}
+
+/**
  * Translate structured backend failures at the UI boundary. Unknown codes
  * use localized generic copy rather than leaking their English `message`.
  */

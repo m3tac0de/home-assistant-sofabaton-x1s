@@ -56,6 +56,45 @@ _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.
 _WIFI_COMMAND_SLOT_COUNT = 10
 
 
+# Why a Wifi Commands sync stopped: one code the control panel localizes for
+# the dock, and one concise sentence stored with the sync's progress. The
+# exception's own message keeps the full English detail for the log and for
+# automations calling the action; it never reaches the control panel.
+WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {
+    "sync_in_progress": "Another Wifi Commands sync is already running.",
+    "port_in_use": "The Wifi Device could not be enabled: its port is in use.",
+    "activities_changed": (
+        "Activities on the hub changed. Re-select this Wifi Device's activities, save, and sync again."
+    ),
+    "hub_no_answer": "The hub did not answer. Sync again.",
+    "device_ambiguous": "More than one Wifi Device on the hub matches this one.",
+    "invalid_power_command": "The power on or off command is not one of this device's commands.",
+    "delete_failed": "The hub did not delete the previous Wifi Device.",
+    "create_failed": "The hub did not create the Wifi Device.",
+    "readback_failed": "The hub did not store the commands as sent; the previous Wifi Device was kept.",
+    "attach_failed": "The Wifi Device could not be added to every activity.",
+    "writes_refused": "The hub refused some changes. Sync again to repair the Wifi Device.",
+    "inplace_failed": "The hub refused a change. Sync again.",
+    "sync_failed": "The sync stopped. Sync again.",
+}
+
+
+class WifiSyncError(HomeAssistantError):
+    """A Wifi Commands sync that stopped, with a code from
+    :data:`WIFI_SYNC_FAILURE_MESSAGES`."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code if code in WIFI_SYNC_FAILURE_MESSAGES else "sync_failed"
+
+
+def wifi_sync_failure(err: BaseException) -> tuple[str, str]:
+    """The (code, concise message) the control panel gets for a failed sync."""
+
+    code = err.code if isinstance(err, WifiSyncError) else "sync_failed"
+    return code, WIFI_SYNC_FAILURE_MESSAGES[code]
+
+
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
     text = str(brand or "").strip()
     suffix = ""
@@ -141,24 +180,6 @@ class WifiDeployMixin:
         next_payload.update(payload)
         self._command_sync_progress[normalized_key] = next_payload
         async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
-
-    def _command_sync_failure_message(
-        self,
-        *,
-        request_port: int,
-        reason: str = "Sync failed",
-        detail: str | None = None,
-    ) -> str:
-        detail_text = str(detail or "").strip()
-        if detail_text == "sync_in_progress":
-            return "Another Wifi Command sync is already running."
-        if detail_text and "port" in detail_text.lower() and "in use" in detail_text.lower():
-            return f"Wifi Device could not be enabled on port {request_port}."
-        if detail_text.startswith("Failed "):
-            return detail_text
-        if detail_text.startswith("power_"):
-            return detail_text
-        return reason
 
     def _managed_wifi_devices(
         self, devices: dict[int, dict[str, Any]] | None = None
@@ -649,7 +670,7 @@ class WifiDeployMixin:
                         self.entry_id,
                         exc_info=True,
                     )
-                raise HomeAssistantError(f"In-place sync failed: {message}")
+                raise WifiSyncError("inplace_failed", f"In-place sync failed: {message}")
 
         # X1: heal order tables that leave a live favorite or macro out
         # (see _async_repair_x1_quick_access), before the re-warm reads them.
@@ -723,7 +744,7 @@ class WifiDeployMixin:
         device_name: str = "Home Assistant",
     ) -> dict[str, Any]:
         if self._command_sync_lock.locked():
-            raise HomeAssistantError("sync_in_progress")
+            raise WifiSyncError("sync_in_progress", "sync_in_progress")
 
         async with self._command_sync_lock:
             commands = list(command_payload.get("commands") or [])
@@ -756,6 +777,7 @@ class WifiDeployMixin:
                 total_steps=total_steps,
                 phase="starting",
                 message="Starting sync",
+                error_code=None,
             )
             run = _DeployRun(
                 commands=commands,
@@ -806,13 +828,19 @@ class WifiDeployMixin:
                 await self._deploy_attach(run)
                 return await self._deploy_epilogue(run)
             except Exception as err:
+                code, message = wifi_sync_failure(err)
+                self._log.warning(
+                    "[%s] Wifi Commands sync of %s stopped (%s): %s",
+                    self.entry_id,
+                    normalized_device_key,
+                    code,
+                    err,
+                )
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     status="failed",
-                    message=self._command_sync_failure_message(
-                        request_port=request_port,
-                        detail=str(err),
-                    ),
+                    error_code=code,
+                    message=message,
                 )
                 raise
 
@@ -849,7 +877,8 @@ class WifiDeployMixin:
             listener = await async_get_roku_listener(self.hass)
             listener_error = listener.get_last_start_error()
             if listener_error:
-                raise HomeAssistantError(
+                raise WifiSyncError(
+                    "port_in_use",
                     "Unable to enable Wifi Device (Roku/HTTP Listener): "
                     f"port {request_port} may already be in use"
                 )
@@ -905,7 +934,8 @@ class WifiDeployMixin:
             try:
                 activity_snapshot = await self.async_request_catalog("activities")
             except TimeoutError as err:
-                raise HomeAssistantError(
+                raise WifiSyncError(
+                    "hub_no_answer",
                     "Failed to refresh the Activity list from the hub; "
                     "sync aborted rather than deploying against a stale catalog"
                 ) from err
@@ -935,7 +965,8 @@ class WifiDeployMixin:
                             f'Wifi Device was configured but is now "{hub_label}"'
                         )
                 if label_mismatches:
-                    raise HomeAssistantError(
+                    raise WifiSyncError(
+                        "activities_changed",
                         "Failed Activity validation: "
                         + "; ".join(label_mismatches)
                         + ". Activities on the hub changed since this Wifi Device "
@@ -947,7 +978,8 @@ class WifiDeployMixin:
         try:
             device_snapshot = await self._async_refresh_devices_snapshot()
         except TimeoutError as err:
-            raise HomeAssistantError(
+            raise WifiSyncError(
+                "hub_no_answer",
                 "Failed to refresh the Device list from the hub; "
                 "sync aborted rather than deploying against a stale catalog"
             ) from err
@@ -962,7 +994,8 @@ class WifiDeployMixin:
             commands_hash=commands_hash,
         )
         if ambiguous:
-            raise HomeAssistantError(
+            raise WifiSyncError(
+                "device_ambiguous",
                 "Unable to safely identify existing managed Wifi Device; multiple matches found"
             )
 
@@ -988,8 +1021,8 @@ class WifiDeployMixin:
         for dev_id, _managed_key, _managed_hash, _brand in managed:
             result = await self.async_delete_device(dev_id)
             if not result:
-                raise HomeAssistantError(
-                    f"Failed deleting managed device {dev_id}"
+                raise WifiSyncError(
+                    "delete_failed", f"Failed deleting managed device {dev_id}"
                 )
 
         if store is not None:
@@ -1059,11 +1092,13 @@ class WifiDeployMixin:
             max_command_id=max_power_command_id,
         )
         if raw_power_on_command_id is not None and power_on_command_id is None:
-            raise HomeAssistantError(
+            raise WifiSyncError(
+                "invalid_power_command",
                 f"power_on_command_id must be between 1 and {max_power_command_id}"
             )
         if raw_power_off_command_id is not None and power_off_command_id is None:
-            raise HomeAssistantError(
+            raise WifiSyncError(
+                "invalid_power_command",
                 f"power_off_command_id must be between 1 and {max_power_command_id}"
             )
         for idx, slot in enumerate(commands[:slot_count]):
@@ -1129,7 +1164,7 @@ class WifiDeployMixin:
                 send_remote_sync=False,
             )
         if not created or not created.get("device_id"):
-            raise HomeAssistantError("Failed creating Wifi Device")
+            raise WifiSyncError("create_failed", "Failed creating Wifi Device")
 
         wifi_device_id = int(created["device_id"])
         # An ACK only proves the hub accepted each frame. Verify that
@@ -1180,7 +1215,8 @@ class WifiDeployMixin:
                     or "none",
                 )
                 await self.async_delete_device(wifi_device_id)
-                raise HomeAssistantError(
+                raise WifiSyncError(
+                    "readback_failed",
                     "The replacement Wifi Device did not pass command "
                     "readback; the existing device was kept unchanged"
                 )
@@ -1248,7 +1284,7 @@ class WifiDeployMixin:
 
         if activity_ids and not all(add_results.values()):
             await self.async_delete_device(wifi_device_id)
-            raise HomeAssistantError("Failed adding Wifi Device to all activities")
+            raise WifiSyncError("attach_failed", "Failed adding Wifi Device to all activities")
 
         # Delete the previous managed device only now, after the
         # replacement has joined its activities. The hub's delete
@@ -1276,8 +1312,8 @@ class WifiDeployMixin:
                 # points at the old device id, so leaving the new
                 # device behind would orphan it on the next sync.
                 await self.async_delete_device(wifi_device_id)
-                raise HomeAssistantError(
-                    f"Failed deleting managed device {dev_id}"
+                raise WifiSyncError(
+                    "delete_failed", f"Failed deleting managed device {dev_id}"
                 )
             delete_confirmed_acts.update(
                 int(act) & 0xFF
@@ -1581,7 +1617,8 @@ class WifiDeployMixin:
                 len(failed_writes),
                 ", ".join(failed_writes),
             )
-            raise HomeAssistantError(
+            raise WifiSyncError(
+                "writes_refused",
                 f"Failed applying {len(failed_writes)} hub write(s) "
                 f"({', '.join(failed_writes)}); the Wifi Device is deployed, "
                 "sync again to repair it"

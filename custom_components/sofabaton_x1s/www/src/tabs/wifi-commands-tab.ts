@@ -15,7 +15,7 @@ import type {
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
-import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
+import { localizeBackendProgress, localizeWifiSyncFailure } from "../shared/utils/backend-state-localization";
 import {
   findRunningWifiDevice,
   selectedDeviceOwnsPendingSync,
@@ -222,6 +222,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     hass: { attribute: false },
     hub: { attribute: false },
     setHubCommandBusy: { attribute: false },
+    showCompletion: { attribute: false },
     refreshControlPanelState: { attribute: false },
     lastWifiPress: { attribute: false },
     hubCommandBusy: { type: Boolean },
@@ -807,6 +808,8 @@ class SofabatonWifiCommandsTab extends LitElement {
   declare hass: HassLike | null;
   declare hub: ControlPanelHubState | null;
   setHubCommandBusy?: ((busy: boolean, label?: string | null, entryId?: string) => void) | null;
+  /** The dock's completion notice: how a sync this tab started ended. */
+  showCompletion?: ((notice: { tone: "success" | "error"; label: string }, entryId: string) => void) | null;
   refreshControlPanelState?: (() => Promise<void> | void) | null;
   hubCommandBusy = false;
   declare loading: boolean;
@@ -3530,12 +3533,19 @@ class SofabatonWifiCommandsTab extends LitElement {
     this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
       await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
+      this.showCompletion?.(
+        { tone: "success", label: TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully },
+        hubEntryId,
+      );
       await this._refreshControlPanelState();
     } catch (error) {
+      // The reason goes to the dock, in the user's language; the backend's
+      // English detail stays in Home Assistant's log.
+      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
       this._syncState = {
         ...this._syncState,
         status: "failed",
-        message: String((error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.syncFailedToStart),
+        message: TOOLS_CARD_STRINGS.wifiCommands.syncShortFailed,
       };
       this._wifiDevices = this._wifiDevices.map((device) =>
         device.device_key === deviceKey

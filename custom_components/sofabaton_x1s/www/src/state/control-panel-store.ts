@@ -32,7 +32,7 @@ import {
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
 import { buildHubClickNotification } from "../shared/utils/hub-click-notification";
-import { backendErrorCode, localizeBackendError } from "../shared/utils/backend-state-localization";
+import { backendErrorCode, localizeBackendError, localizeWifiSyncFailure } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BACKEND_RETRY_MIN_MS = 2000;
@@ -707,11 +707,12 @@ export class ControlPanelStore {
       return;
     }
     try {
+      // notifyOnError=false: the dock reports a failure, not HA's toast.
       await hass.callService("remote", "send_command", {
         entity_id: entityId,
         command: item.commandId,
         device: item.targetId,
-      });
+      }, undefined, false);
       this._snapshot = {
         ...this._snapshot,
         lastCommandSend: {
@@ -747,6 +748,8 @@ export class ControlPanelStore {
         "persistent_notification",
         "create",
         buildHubClickNotification(entityId, item),
+        undefined,
+        false,
       );
       this.showRuntimeCompletion(
         { tone: "success", label: TOOLS_CARD_STRINGS.hubClick.copied(item.label) },
@@ -1186,11 +1189,16 @@ export class ControlPanelStore {
               : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully;
         this.showRuntimeCompletion({ tone: "success", label: successLabel }, entryId);
       } else if (outcome === "failed") {
+        const deployError = operation === "wifi_deploy"
+          ? nextRuntime?.last_wifi_deploy_errors?.[String(previousRuntime.device_key ?? "")]
+          : null;
         const failureLabel = operation === "backup_restore"
           ? TOOLS_CARD_STRINGS.backup.restoreFailed
           : operation === "backup_export"
             ? TOOLS_CARD_STRINGS.backup.backupFailed
-            : TOOLS_CARD_STRINGS.errors.syncFailed;
+            : deployError
+              ? localizeWifiSyncFailure(deployError)
+              : TOOLS_CARD_STRINGS.errors.syncFailed;
         this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
       }
     }

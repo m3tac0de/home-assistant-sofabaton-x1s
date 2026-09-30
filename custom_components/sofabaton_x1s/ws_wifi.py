@@ -37,6 +37,7 @@ from .command_config import (
     wifi_device_requires_listener,
 )
 from . import runtime
+from .wifi_deploy import wifi_sync_failure
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -324,6 +325,64 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
         msg["id"],
         _build_wifi_device_sync_payload(hub, payload, device_key=str(payload.get("device_key") or device_key or "")),
     )
+
+
+def _send_sync_failure(connection, msg_id: int, err: BaseException) -> None:
+    """Answer a failed Wifi sync with its code and one concise sentence; the
+    detail is in the log (the deploy logs it when it stops)."""
+
+    code, message = wifi_sync_failure(err)
+    connection.send_error(msg_id, code, message)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_sync/run",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws(persist=False)
+async def _ws_run_command_sync(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Deploy one Wifi Device's staged config: the control panel's Sync.
+
+    The sync_command_config action does the same for automations. This
+    answers a failure with a code the panel shows in its dock, so a failed
+    sync never surfaces as Home Assistant's own error toast; a busy hub
+    answers ``busy`` before this runs.
+    """
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
+    device_key = str(msg.get("device_key") or "").strip()
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id,
+            device_key=device_key,
+            roku_listen_port=roku_listen_port,
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+    try:
+        result = await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=str(payload.get("device_key") or device_key),
+            device_name=str(payload.get("device_name") or "").strip() or "Home Assistant",
+        )
+    except Exception as err:  # noqa: BLE001 - every failure answers with a code
+        if not isinstance(err, HomeAssistantError):
+            _LOGGER.exception("[%s] Wifi Commands sync raised", hub.entry_id)
+        _send_sync_failure(connection, msg["id"], err)
+        return
+    connection.send_result(msg["id"], result if isinstance(result, dict) else {})
 
 
 def _hub_mqtt_available(hass: HomeAssistant, hub: Any) -> bool:
@@ -662,9 +721,7 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
             device_name=str(payload.get("device_name") or ""),
         )
     except HomeAssistantError as err:
-        message = str(err)
-        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
-        connection.send_error(msg["id"], code, message)
+        _send_sync_failure(connection, msg["id"], err)
         return
 
     # Last event gone and the hub device removed -> drop the store record
@@ -732,9 +789,7 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
             device_name=str(payload.get("device_name") or ""),
         )
     except HomeAssistantError as err:
-        message = str(err)
-        code = "sync_in_progress" if "sync_in_progress" in message else "sync_failed"
-        connection.send_error(msg["id"], code, message)
+        _send_sync_failure(connection, msg["id"], err)
         return
     connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 

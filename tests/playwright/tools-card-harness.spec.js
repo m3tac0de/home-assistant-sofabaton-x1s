@@ -485,4 +485,28 @@ test.describe("tools-card browser harness", () => {
       };
     })).toEqual({ selectedDeviceKey: null, createModalOpen: true });
   });
+
+  test("a refused Wifi sync names its reason in the dock, never as backend text", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-sync-refused"));
+    await page.waitForFunction(() => {
+      const tab = window.__toolsCardHarness.getCard().shadowRoot?.querySelector("sofabaton-wifi-commands-tab");
+      return Boolean(tab?.shadowRoot?.querySelector(".detail-sync-btn:not([disabled])"));
+    });
+    await page.evaluate(() => {
+      const tab = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab");
+      tab.shadowRoot.querySelector(".detail-sync-btn").click();
+    });
+    const dock = () => page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".card-bottom-dock-status")?.textContent?.trim() ?? "");
+    await expect.poll(dock).toBe("Activities on the hub changed. Re-select this Wifi Device's activities, save, and sync again.");
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    expect(calls.some((call) => call.channel === "service")).toBe(false);
+    const allText = await page.evaluate(() => {
+      const collect = (root) => [...root.querySelectorAll("*")].map((el) =>
+        (el.shadowRoot ? collect(el.shadowRoot) : "") + (el.childElementCount ? "" : el.textContent)).join(" ");
+      return collect(window.__toolsCardHarness.getCard().shadowRoot);
+    });
+    expect(allText).not.toContain("Failed Activity validation");
+  });
 });
