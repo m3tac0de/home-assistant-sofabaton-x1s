@@ -15,6 +15,7 @@ from custom_components.sofabaton_x1s.command_config import (
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
 entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+ws_wifi_module = importlib.import_module("custom_components.sofabaton_x1s.ws_wifi")
 
 
 class _Conn:
@@ -274,7 +275,7 @@ def test_ws_command_devices_list_hides_reserved_record(monkeypatch):
 
     monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     monkeypatch.setattr(
-        integration, "_build_wifi_device_sync_payload", lambda _hub, _dev, device_key: {}
+        ws_wifi_module, "_build_wifi_device_sync_payload", lambda _hub, _dev, device_key: {}
     )
     conn = _Conn()
     _run(integration._ws_list_command_devices(None, conn, _msg()))
