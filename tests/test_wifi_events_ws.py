@@ -13,6 +13,9 @@ from custom_components.sofabaton_x1s.command_config import (
 )
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+ws_wifi_module = importlib.import_module("custom_components.sofabaton_x1s.ws_wifi")
 
 
 class _Conn:
@@ -92,9 +95,9 @@ def _setup(monkeypatch, *, hub_version: str = "X1S"):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     return store, hub
 
 
@@ -270,9 +273,9 @@ def test_ws_command_devices_list_hides_reserved_record(monkeypatch):
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
     _run(store.async_create_hub_device("entry-1", "User Device"))
 
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     monkeypatch.setattr(
-        integration, "_build_wifi_device_sync_payload", lambda _hub, _dev, device_key: {}
+        ws_wifi_module, "_build_wifi_device_sync_payload", lambda _hub, _dev, device_key: {}
     )
     conn = _Conn()
     _run(integration._ws_list_command_devices(None, conn, _msg()))
@@ -344,9 +347,9 @@ def _listener_setup(monkeypatch, devices):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     return hub, store
 
 
@@ -444,16 +447,16 @@ def _events_bundle(entity_id: int, names: dict[int, str], *, brand: str = "m3-ha
 
 def test_bundle_device_is_wifi_events():
     bundle = _events_bundle(10, {1: "Movie Night"})
-    assert integration._bundle_device_is_wifi_events(bundle, 10) is True
+    assert entity_sync_module._bundle_device_is_wifi_events(bundle, 10) is True
     user = _events_bundle(10, {1: "Cmd"}, brand="m3-a1b2c3d4-xyz")
-    assert integration._bundle_device_is_wifi_events(user, 10) is False
-    assert integration._bundle_device_is_wifi_events({"devices": []}, 10) is False
+    assert entity_sync_module._bundle_device_is_wifi_events(user, 10) is False
+    assert entity_sync_module._bundle_device_is_wifi_events({"devices": []}, 10) is False
 
 
 def test_collect_short_command_renames():
     baseline = _events_bundle(10, {1: "Movie Night", 2: "Lights", 51: "Movie Night Long Press"})
     edited = _events_bundle(10, {1: "Film Night", 2: "Lights", 51: "Renamed Long"})
-    renames = integration._collect_short_command_renames(baseline, edited, 10)
+    renames = entity_sync_module._collect_short_command_renames(baseline, edited, 10)
     assert renames == {1: "Film Night", 51: "Renamed Long"}
 
 

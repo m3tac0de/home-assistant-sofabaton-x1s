@@ -16,6 +16,9 @@ from homeassistant.exceptions import HomeAssistantError
 from tests.hub_fakes import FakeHass
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 from custom_components.sofabaton_x1s.hub import SofabatonHub  # noqa: E402
 
 
@@ -46,7 +49,7 @@ def _no_persist(monkeypatch):
         persisted.append(hub.entry_id)
         return True
 
-    monkeypatch.setattr(integration, "_async_persist_hub_cache", _persist)
+    monkeypatch.setattr(runtime_module, "_async_persist_hub_cache", _persist)
     return persisted
 
 
@@ -57,7 +60,7 @@ def test_the_single_hub_fallback_needs_a_call_that_named_no_hub():
     loop = asyncio.new_event_loop()
     try:
         hass, hub = _real_hub(loop)
-        resolve = integration._async_resolve_hub_from_data
+        resolve = runtime_module._async_resolve_hub_from_data
         assert loop.run_until_complete(resolve(hass, {"entry_id": "entry-1"})) is hub
         assert loop.run_until_complete(resolve(hass, {})) is hub
         # A disabled or reloading hub named by the caller: never another hub.
@@ -145,8 +148,8 @@ def test_a_registry_operation_counts_as_hub_work(monkeypatch):
             return {}
 
         monkeypatch.setattr(hub, "async_refresh_hub_cache", _refresh)
-        monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
-        registry = integration._backup_operation_registry(hass)
+        monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
+        registry = operations_module._backup_operation_registry(hass)
         op = registry.create(kind="cache_refresh", entry_id="entry-1", initial_state={"status": "pending"})
         loop.run_until_complete(integration._run_cache_refresh_operation(hass, op, hub=hub))
         assert seen == [True]
@@ -234,8 +237,8 @@ def test_unload_marks_work_that_outlives_the_bound_failed(monkeypatch):
     try:
         hass, hub = _real_hub(loop)
         monkeypatch.setattr(integration, "_UNLOAD_DRAIN_TIMEOUT_S", 0.05)
-        monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
-        registry = integration._backup_operation_registry(hass)
+        monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
+        registry = operations_module._backup_operation_registry(hass)
         op = registry.create(kind="backup_restore", entry_id="entry-1", initial_state={"status": "running"})
 
         loop.run_until_complete(integration._async_drain_hub_work(hass, hub))
@@ -278,8 +281,8 @@ def test_a_wifi_device_delete_the_hub_refused_keeps_the_record(monkeypatch):
         async def _snapshot():
             return {9: {"brand": "m3-k1-abc", "name": "Lights"}}
 
-        monkeypatch.setattr(integration, "_async_get_command_config_store", _store)
-        monkeypatch.setattr(integration, "_async_resolve_hub_from_data", lambda *_a, **_k: asyncio.sleep(0, result=hub))
+        monkeypatch.setattr(runtime_module, "_async_get_command_config_store", _store)
+        monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", lambda *_a, **_k: asyncio.sleep(0, result=hub))
         monkeypatch.setattr(hub, "async_delete_device", _refused_delete)
         monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _snapshot)
         monkeypatch.setattr(hub, "_match_managed_wifi_devices", lambda **_k: ([(9, "k1", "abc", "m3-k1-abc")], False))
@@ -303,8 +306,8 @@ def test_backup_state_sends_counts_instead_of_the_bundle(monkeypatch):
     loop = asyncio.new_event_loop()
     try:
         hass, _hub = _real_hub(loop)
-        monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
-        registry = integration._backup_operation_registry(hass)
+        monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
+        registry = operations_module._backup_operation_registry(hass)
         op = registry.create(kind="backup_export", entry_id="entry-1", initial_state={"status": "running"})
         bundle = {"devices": [{}, {}, {}], "activities": [{}]}
         registry.update(op, status="success", backup=bundle)
@@ -329,7 +332,7 @@ def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
     try:
         hass, hub = _real_hub(loop)
         persisted = _no_persist(monkeypatch)
-        monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+        monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
         reads: list = []
 
         async def _sync_activity(**_kwargs):
@@ -340,11 +343,11 @@ def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
 
         monkeypatch.setattr(hub, "async_sync_activity", _sync_activity)
         monkeypatch.setattr(hub, "async_refresh_entity_structure", _refresh)
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         op = registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
 
         result = loop.run_until_complete(
-            integration._run_entity_sync_operation(
+            entity_sync_module._run_entity_sync_operation(
                 hass, op, hub=hub, baseline={}, edited={}, entity_kind="activity", entity_id=101
             )
         )

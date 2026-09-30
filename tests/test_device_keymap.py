@@ -19,6 +19,7 @@ from custom_components.sofabaton_x1s.lib.hub_versions import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 FETCHED_DEVICE = "2026-08-17T08:00:00+00:00"
 
@@ -283,8 +284,8 @@ def _patch(monkeypatch, *, hub, store):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
 
 def test_ws_device_keymap_requires_persistent_cache(monkeypatch):
@@ -518,7 +519,7 @@ def test_ws_device_keymap_unknown_hub(monkeypatch):
     async def fake_resolve(_hass, _data):
         return None
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
 
     _run(

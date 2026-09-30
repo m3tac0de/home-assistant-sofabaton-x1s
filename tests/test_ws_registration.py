@@ -14,14 +14,19 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INIT = ROOT / "custom_components" / "sofabaton_x1s" / "__init__.py"
+PKG = ROOT / "custom_components" / "sofabaton_x1s"
+INIT = PKG / "__init__.py"
+# Handlers live in __init__.py and, since the __init__.py split (R6,
+# CR-H2-13), in the ws_*.py modules; registration stays in __init__.py.
+HANDLER_SOURCES = [INIT, *sorted(PKG.glob("ws_*.py"))]
 
 
 def test_every_ws_handler_is_registered() -> None:
-    source = INIT.read_text(encoding="utf-8")
-    handlers = set(re.findall(r"^async def (_ws_[a-z0-9_]+)\(", source, re.M))
+    handlers: set[str] = set()
+    for path in HANDLER_SOURCES:
+        handlers |= set(re.findall(r"^async def (_ws_[a-z0-9_]+)\(", path.read_text(encoding="utf-8"), re.M))
     registered = set(
-        re.findall(r"async_register_command\(hass, (_ws_[a-z0-9_]+)\)", source)
+        re.findall(r"async_register_command\(hass, (_ws_[a-z0-9_]+)\)", INIT.read_text(encoding="utf-8"))
     )
     assert handlers, "no WS handlers found; scan pattern is stale"
     missing = sorted(handlers - registered)

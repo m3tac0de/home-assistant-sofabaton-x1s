@@ -4,6 +4,9 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+ws_panel_module = importlib.import_module("custom_components.sofabaton_x1s.ws_panel")
+frontend_module = importlib.import_module("custom_components.sofabaton_x1s.frontend_resources")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Conn:
@@ -122,8 +125,8 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
 
     store.async_set_hub_cache = fake_set_hub_cache
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -157,7 +160,7 @@ def test_ws_get_persistent_cache_contents_disabled(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -179,8 +182,8 @@ def test_ws_get_persistent_cache_contents_returns_derived_activity_data(monkeypa
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
 
     loop = asyncio.new_event_loop()
     try:
@@ -230,8 +233,8 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
 
     store.async_set_hub_cache = fake_set_hub_cache
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -281,11 +284,11 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
         ),
     )
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
-    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
-    monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(frontend_module, "_async_get_integration_version", fake_version)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(ws_panel_module, "get_hub_model", lambda _entry: "X1S")
 
     loop = asyncio.new_event_loop()
     try:
@@ -377,11 +380,11 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
         ),
     )
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
-    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
-    monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(frontend_module, "_async_get_integration_version", fake_version)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(ws_panel_module, "get_hub_model", lambda _entry: "X1S")
 
     loop = asyncio.new_event_loop()
     try:
@@ -406,7 +409,7 @@ def test_ws_control_panel_set_setting_updates_hub_setting(monkeypatch):
         assert data["entry_id"] == "entry-1"
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -437,7 +440,7 @@ def test_ws_control_panel_set_setting_updates_hub_click_action(monkeypatch):
     async def fake_ui_settings(_hass):
         return ui_settings
 
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
 
     loop = asyncio.new_event_loop()
     try:
@@ -468,7 +471,7 @@ def test_ws_control_panel_set_setting_hub_click_action_requires_value(monkeypatc
     async def fake_ui_settings(_hass):
         return ui_settings
 
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
 
     loop = asyncio.new_event_loop()
     try:
@@ -498,7 +501,7 @@ def test_ws_control_panel_set_setting_boolean_requires_enabled(monkeypatch):
     async def fake_resolve(_hass, data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -533,7 +536,7 @@ def test_ws_control_panel_run_action_triggers_hub_action(monkeypatch):
         assert data["entry_id"] == "entry-1"
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:

@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
+from .shared_stores import async_shared_store
 
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 3
@@ -1449,12 +1450,4 @@ class CommandConfigStore:
 async def async_get_command_config_store(hass: HomeAssistant) -> CommandConfigStore:
     """Return the shared command-config store, loading it on demand."""
 
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    store = domain_data.get("command_config_store")
-    if store is not None:
-        return store
-
-    store = CommandConfigStore(hass)
-    await store.async_load()
-    domain_data["command_config_store"] = store
-    return store
+    return await async_shared_store(hass, "command_config_store", CommandConfigStore)
