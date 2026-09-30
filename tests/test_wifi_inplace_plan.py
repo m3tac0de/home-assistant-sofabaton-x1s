@@ -6,7 +6,6 @@ managed wifi device (scripts/hub-bench shape dump, X1S "Lights", 2026-07-17).
 
 from __future__ import annotations
 
-import pytest
 
 from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (
     ManagedWifiSnapshot,

@@ -73,7 +73,6 @@ def test_an_uncommitted_devices_burst_never_requests_the_catalog_again(monkeypat
 def test_the_busy_gate_covers_a_wifi_sync_and_a_running_backup(monkeypatch):
     """CR-H1-7: the CALL_ME gate (is_long_running_task_active)."""
 
-    import custom_components.sofabaton_x1s as integration
     import custom_components.sofabaton_x1s.operations as operations_module
 
     loop = asyncio.new_event_loop()

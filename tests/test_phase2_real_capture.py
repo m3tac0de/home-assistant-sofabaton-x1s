@@ -65,10 +65,10 @@ def test_real_x1_capture_against_schema() -> None:
     print(f"\nassembled concat length: {len(concat)} bytes")
     print(f"concat[0..10]: {concat[:10].hex()}")
     print(f"concat[3] (count?): {concat[3]} = 0x{concat[3]:02x}")
-    print(f"Expected count: 22")
+    print("Expected count: 22")
 
     # Walk records at strict 40-byte stride (X1 layout)
-    print(f"\n--- strict 40-byte stride walk ---")
+    print("\n--- strict 40-byte stride walk ---")
     count = concat[3] & 0xFF
     print(f"count from concat[3] = {count}")
     sch_records = []
@@ -93,7 +93,7 @@ def test_real_x1_capture_against_schema() -> None:
 
     # Now try an alternative interpretation: stride = 42 (40 record + 1 ff + ???)
     # Actually first let's measure stride empirically by finding `ff 07` separators.
-    print(f"\n--- Empirical: positions where `ff 07` (separator + dev_id) appears ---")
+    print("\n--- Empirical: positions where `ff 07` (separator + dev_id) appears ---")
     positions = []
     for i in range(len(concat) - 1):
         if concat[i] == 0xFF and i + 1 < len(concat) and concat[i + 1] == 0x07:

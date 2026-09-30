@@ -16,7 +16,6 @@ opcode-handler integration is exercised in ``tests/test_opcode_handlers.py``.
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 from tests._stub_packages import ensure_stub_package
 

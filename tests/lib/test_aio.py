@@ -560,7 +560,7 @@ def test_unknown_attribute_raises_with_hint() -> None:
     async def main():
         proxy = _wrap(FakeProxy())
         try:
-            proxy.definitely_not_a_method
+            _ = proxy.definitely_not_a_method
         except AttributeError as err:
             assert ".sync" in str(err)
         else:
@@ -1027,7 +1027,7 @@ def test_async_discover_hubs_delegates(monkeypatch) -> None:
 
 
 def test_async_hub_browser_marshals_callbacks() -> None:
-    discovery = importlib.import_module(f"{_pkg.__name__}.discovery")
+    importlib.import_module(f"{_pkg.__name__}.discovery")
     hub_versions = importlib.import_module(f"{_pkg.__name__}.hub_versions")
 
     class FakeServiceInfo:
@@ -1417,7 +1417,7 @@ def test_events_bounded_queue_drops_oldest_and_counts() -> None:
         # before consuming.
         first_task = asyncio.ensure_future(agen.__anext__())
         await asyncio.sleep(0.01)
-        for i in range(5):
+        for _i in range(5):
             fake.fire_simple("ota")
         await asyncio.sleep(0.01)
         first = await first_task
@@ -1563,7 +1563,7 @@ def test_initial_sync_waits_for_control_mode() -> None:
     async def main():
         fake = FakeProxy()
         fake.set_connected(hub=False)
-        proxy = aio.AsyncXProxy.wrap(fake, initial_sync=True)
+        _proxy = aio.AsyncXProxy.wrap(fake, initial_sync=True)
         fake.set_connected(hub=True, client=True)   # observe: app holds the hub
         await asyncio.sleep(0.02)
         assert fake.banner_fetches == 0 and fake.fetch_calls == []

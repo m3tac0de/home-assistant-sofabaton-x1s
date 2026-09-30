@@ -16,8 +16,6 @@ from custom_components.sofabaton_x1s.const import (
     HUB_VERSION_X2,
 )
 from custom_components.sofabaton_x1s.lib.macros import (
-    MACRO_KEY_ENTRY_SIZE,
-    MACRO_KEY_ENTRY_START,
     MACRO_LABEL_LEN_X1,
     MACRO_LABEL_LEN_X1S_X2,
     MACRO_WRITE_PAGE_BODY_CHUNK,

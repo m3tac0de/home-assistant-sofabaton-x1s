@@ -626,7 +626,7 @@ def test_replacing_hub_socket_under_a_running_bridge_keeps_the_new_socket():
 
             # B is really served: bytes from the hub still arrive.
             got = threading.Event()
-            bridge.on_hub_frame(lambda _data, _cid: got.set())
+            bridge.on_hub_frame(lambda _data, _cid, got=got: got.set())
             b_peer.sendall(b"still-here")
             assert got.wait(5.0)
         finally:

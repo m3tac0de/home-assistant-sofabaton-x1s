@@ -19,7 +19,6 @@ Two layers under test:
 from __future__ import annotations
 
 import sys
-import types
 from dataclasses import dataclass, field
 from pathlib import Path
 

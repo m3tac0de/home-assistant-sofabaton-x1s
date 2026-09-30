@@ -48,7 +48,8 @@ def _run(coro):
         loop.close()
 
 
-def _patch(monkeypatch, *, hub=_Hub(), locked=False, store=None):
+def _patch(monkeypatch, *, hub=None, locked=False, store=None):
+    hub = hub if hub is not None else _Hub()
     async def fake_resolve(_hass, _data):
         return hub
 

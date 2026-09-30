@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import re
 import sys
-import types
 from pathlib import Path
 from tests._stub_packages import ensure_stub_package
 
@@ -115,7 +114,7 @@ def test_all_family_46_sends_source_from_build_inputs_write() -> None:
 
     assert family_46_sites, "expected at least one family-0x46 send site"
 
-    for path, lineno, line in family_46_sites:
+    for path, lineno, _line in family_46_sites:
         # Read the surrounding 10 lines to confirm payload provenance.
         context = path.read_text(encoding="utf-8").splitlines()
         window_lo = max(0, lineno - 6)

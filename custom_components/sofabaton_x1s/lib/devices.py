@@ -21,7 +21,7 @@ existing CatalogDeviceHandler decode path).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final, Mapping
 
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2

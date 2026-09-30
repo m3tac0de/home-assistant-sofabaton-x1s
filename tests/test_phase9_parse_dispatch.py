@@ -14,7 +14,6 @@ Each test exercises one slice of Phase 9's contract:
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest

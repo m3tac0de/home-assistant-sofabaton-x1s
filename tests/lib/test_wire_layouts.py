@@ -19,7 +19,6 @@ layout instead.
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -75,7 +74,6 @@ from custom_components.sofabaton_x1s.lib.devices import (
     parse_device_record,
 )
 from custom_components.sofabaton_x1s.lib.inputs import (
-    INPUTS_BODY_HEADER_LEN,
     INPUTS_OUTER_WRAPPER_LEN,
     ControlKeyBlock,
     FavoriteSlot,

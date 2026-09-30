@@ -835,7 +835,7 @@ def test_ir_format_vector_pronto_round_trip(vector):
     # tolerance: one carrier cycle (~26 us at 38 kHz) or 0.5%, whichever
     # is larger - both are inherent pronto quantization, not converter bugs
     cycle_us = 1_000_000 / vector["carrier_hz"]
-    for ours, reference in zip(vector["timings_us"], timings):
+    for ours, reference in zip(vector["timings_us"], timings, strict=True):
         assert abs(ours - reference) <= max(cycle_us + 1, reference * 0.005)
 
 

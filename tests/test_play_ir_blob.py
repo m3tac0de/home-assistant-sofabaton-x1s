@@ -480,7 +480,7 @@ def test_play_ir_blob_matches_capture(name: str, monkeypatch) -> None:
 
     assert ok is True
     assert len(sent) == len(expected), f"{name}: expected {len(expected)} frames, sent {len(sent)}"
-    for i, ((gen_op, gen_payload), (cap_op, cap_payload)) in enumerate(zip(sent, expected)):
+    for i, ((gen_op, gen_payload), (cap_op, cap_payload)) in enumerate(zip(sent, expected, strict=True)):
         assert gen_op == cap_op, f"{name} frame {i+1}: opcode 0x{gen_op:04X} != 0x{cap_op:04X}"
         assert gen_payload == cap_payload, f"{name} frame {i+1}: payload mismatch"
 
@@ -535,7 +535,7 @@ def test_chunk_sequence_and_family(name: str, monkeypatch) -> None:
         assert payload[:3] == bytes([0x01, 0x00, seq])
 
     # All non-final frames must use the max-size payload (0xFA = 250 bytes).
-    for opcode, payload in sent[:-1]:
+    for _opcode, payload in sent[:-1]:
         assert len(payload) == 0xFA
 
 
@@ -686,7 +686,7 @@ def test_finalize_play_blob_body_keeps_descriptor_rule() -> None:
 
 
 def test_descriptor_shape_detection_is_not_tied_to_checksum_field() -> None:
-    proxy = _new_proxy()
+    _new_proxy()
 
     assert looks_like_descriptive_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)) is True
     assert looks_like_descriptive_play_blob(SONY12_DESCRIPTOR_BLOB) is True
