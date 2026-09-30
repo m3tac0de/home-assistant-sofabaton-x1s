@@ -29,6 +29,7 @@ from .command_config import (
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import UiSettingsStore
 from . import operations
+from .shared_stores import async_shared_store
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -148,27 +149,13 @@ async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigS
 
 
 async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCacheStore:
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    store = domain_data.get("persistent_cache_store")
-    if isinstance(store, PersistentCacheStore):
-        return store
-
-    store = PersistentCacheStore(hass)
-    await store.async_load()
-    domain_data["persistent_cache_store"] = store
-    return store
+    return await async_shared_store(
+        hass, "persistent_cache_store", PersistentCacheStore, store_type=PersistentCacheStore
+    )
 
 
 async def _async_get_ui_settings_store(hass: HomeAssistant) -> UiSettingsStore:
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    store = domain_data.get("ui_settings_store")
-    if isinstance(store, UiSettingsStore):
-        return store
-
-    store = UiSettingsStore(hass)
-    await store.async_load()
-    domain_data["ui_settings_store"] = store
-    return store
+    return await async_shared_store(hass, "ui_settings_store", UiSettingsStore, store_type=UiSettingsStore)
 
 
 async def _async_persist_hub_cache(hass: HomeAssistant, hub: SofabatonHub) -> bool:

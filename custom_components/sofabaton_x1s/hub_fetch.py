@@ -14,7 +14,6 @@ from typing import Any
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
-    DOMAIN,
     signal_activity,
     signal_buttons,
     signal_commands,
@@ -23,6 +22,7 @@ from .const import (
 )
 from .cache_store import PersistentCacheStore
 from .lib.devices import parse_device_record
+from .shared_stores import async_shared_store
 
 
 # How long a fetch or prime waits for an activity's buttons burst. Longer
@@ -35,15 +35,10 @@ class HubFetchMixin:
     """Cache fetches for SofabatonHub (R6, CR-H1-13)."""
 
     async def _async_get_persistent_cache_store(self) -> PersistentCacheStore:
-        domain_data = self.hass.data.setdefault(DOMAIN, {})
-        store = domain_data.get("persistent_cache_store")
-        if isinstance(store, PersistentCacheStore):
-            return store
-
-        store = PersistentCacheStore(self.hass)
-        await store.async_load()
-        domain_data["persistent_cache_store"] = store
-        return store
+        # The same store and loader as the WS handlers (runtime).
+        return await async_shared_store(
+            self.hass, "persistent_cache_store", PersistentCacheStore, store_type=PersistentCacheStore
+        )
 
     async def _async_persist_cache_if_enabled(self) -> bool:
         """Persist the cache when enabled. Best effort: a failure is logged

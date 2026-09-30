@@ -63,3 +63,35 @@ def test_async_persist_all_hub_cache_saves_each_hub(monkeypatch):
 
     assert persisted == 2
     assert set(store.saved) == {"entry-a", "entry-b"}
+
+
+def test_shared_stores_load_once_under_concurrent_setup() -> None:
+    """Two hubs setting up at once used to each build and load a store; the
+    loader now builds one per key (CR-H2-13)."""
+
+    import asyncio as _asyncio
+    from types import SimpleNamespace as _NS
+
+    from custom_components.sofabaton_x1s.shared_stores import async_shared_store
+
+    built: list[object] = []
+
+    class _Store:
+        def __init__(self, _hass) -> None:
+            built.append(self)
+
+        async def async_load(self) -> None:
+            await _asyncio.sleep(0.01)  # the window the old getters raced in
+
+    hass = _NS(data={})
+
+    async def main():
+        return await _asyncio.gather(*(async_shared_store(hass, "k", _Store, store_type=_Store) for _ in range(5)))
+
+    stores = _asyncio.run(main())
+    assert len(built) == 1
+    assert all(store is built[0] for store in stores)
+    # A value of another type under the key is replaced; with no store_type, any value counts.
+    hass.data["sofabaton_x1s"]["k"] = object()
+    assert _asyncio.run(async_shared_store(hass, "k", _Store, store_type=_Store)) is not built[0] and len(built) == 2
+    assert _asyncio.run(async_shared_store(hass, "k", _Store)) is built[1]
