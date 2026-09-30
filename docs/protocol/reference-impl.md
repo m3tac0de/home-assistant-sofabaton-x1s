@@ -80,6 +80,7 @@ Guards:
 - `tests/test_module_boundaries.py::test_x1_proxy_under_2000_lines` keeps the orchestrator file from growing back.
 - `tests/test_module_boundaries.py::test_proxy_mixin_imports_form_a_dag` forbids module-load-time imports between mixins. Use function-level imports (or move the helper to the orchestrator) when a mixin needs another mixin's symbol.
 - `tests/lib/test_proxy_host.py` fails when a member `_ProxyHost` declares is missing on a real `X1Proxy`; pyright's override checks (on in `pyproject.toml`) flag a member whose type drifted. A mixin that starts using another class's attribute or method adds it to `_ProxyHost`.
+- `lib/entity_tables.py` registers every per-device and per-activity cache table once; `clear_cached_entity_detail`, `wipe_all_cached_state` and `clear_entity_cache` derive from it. `tests/lib/test_entity_tables.py` fails when a table is unregistered, a clear path leaves an entity behind, or a persisted table does not survive `export_cache_state` / `import_cache_state`.
 - `tests/test_cache_version_bump.py` pins the persistent-cache version constant; any change to `export_cache_state` that reshapes the on-disk schema must bump `CACHE_STORE_VERSION` in `cache_store.py`.
 
 ---

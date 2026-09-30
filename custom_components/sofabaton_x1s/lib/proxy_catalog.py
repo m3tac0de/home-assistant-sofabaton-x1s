@@ -28,6 +28,7 @@ from .protocol_const import (
     OP_REQ_DEVICES,
     OP_REQ_MACRO_LABELS,
 )
+from .entity_tables import WRITE_GROUPS, forget_entity
 from .state_helpers import normalize_device_entry
 
 if TYPE_CHECKING:
@@ -1033,38 +1034,18 @@ class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
         point.
         """
 
-        ent_lo = ent_id & 0xFF
-
-        if clear_commands:
-            self.state.commands.pop(ent_lo, None)
-            # command_metadata is captured by the same REQ_COMMANDS parse
-            # that fills state.commands; clearing one without the other
-            # leaves record metadata (library_type/button_code) describing
-            # commands that no longer exist in the label map.
-            self.state.command_metadata.pop(ent_lo, None)
-            self.state.device_key_sorts.pop(ent_lo, None)
-            self._commands_complete.discard(ent_lo)
-            self._pending_command_requests.pop(ent_lo, None)
-
-        if clear_buttons:
-            self.state.buttons.pop(ent_lo, None)
-            self.state.button_details.pop(ent_lo, None)
-            self._pending_button_requests.discard(ent_lo)
-
-        if clear_favorites:
-            self.state.activity_command_refs.pop(ent_lo, None)
-            self.state.activity_favorite_slots.pop(ent_lo, None)
-            self.state.activity_members.pop(ent_lo, None)
-            self.state.activity_favorite_labels.pop(ent_lo, None)
-            self._clear_favorite_label_requests_for_activity(ent_lo)
-            self._pending_activity_map_requests.discard(ent_lo)
-            self._activity_map_complete.discard(ent_lo)
-
-        if clear_macros:
-            self.state.activity_macros.pop(ent_lo, None)
-            self._macros_complete.discard(ent_lo)
-            self._pending_macro_requests.discard(ent_lo)
-            self.drop_cached_macro_records(ent_lo)
+        # Each flag names a group of entity_tables. The commands group keeps
+        # the label map, record metadata and key-sort together: clearing
+        # one without the others would describe commands that are gone.
+        flags = {
+            "commands": clear_commands,
+            "buttons": clear_buttons,
+            "favorites": clear_favorites,
+            "macros": clear_macros,
+        }
+        groups = [group for group in WRITE_GROUPS if flags[group]]
+        if groups:
+            forget_entity(self, ent_id, groups=groups)
 
     def activities_referencing_device(self, device_id: int) -> list[int]:
         """Return catalog activity ids whose cached structures reference *device_id*.

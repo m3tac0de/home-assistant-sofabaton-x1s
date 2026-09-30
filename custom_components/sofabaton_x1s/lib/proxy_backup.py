@@ -18,6 +18,7 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from .backup_export import now_iso
+from .entity_tables import cached_detail_ids, clear_entity_tables, forget_entity
 from .macros import MacroKeyEntry, MacroRecord
 from .protocol_const import OP_ERASE_CONFIGURATION, OP_STATUS_ACK
 from .state_helpers import normalize_device_entry, one_slot_per_fav_id, reads_live_state
@@ -501,29 +502,14 @@ class CacheBackupMixin(_ProxyHost if TYPE_CHECKING else object):
         self._pending_activity_map_requests.clear()
 
     def clear_cached_entity_detail(self, ent_id: int, *, kind: str) -> None:
-        ent_lo = ent_id & 0xFF
-        if kind == "device":
-            self.state.devices.pop(ent_lo, None)
-            self.state.buttons.pop(ent_lo, None)
-            self.state.commands.pop(ent_lo, None)
-            self.state.device_key_sorts.pop(ent_lo, None)
-            self.state.device_input_records.pop(ent_lo, None)
-            self._forget_detail("device", ent_lo)
-            self.state.ip_devices.pop(ent_lo, None)
-            self.state.ip_buttons.pop(ent_lo, None)
-            self._commands_complete.discard(ent_lo)
-            self.forget_idle_behavior(ent_lo)
-            return
+        """Forget one id in every table of its kind (see entity_tables).
 
-        if kind == "activity":
-            self.state.activity_macros.pop(ent_lo, None)
-            self.state.activity_members.pop(ent_lo, None)
-            self.state.activity_favorite_slots.pop(ent_lo, None)
-            self.state.activity_favorite_labels.pop(ent_lo, None)
-            self.state.activity_command_refs.pop(ent_lo, None)
-            self._forget_detail("activity", ent_lo)
-            self._macros_complete.discard(ent_lo)
-            self.drop_cached_macro_records(ent_lo)
+        The catalog prune calls this for ids a successful read no longer
+        returns. The hub reuses freed ids, so nothing cached for the old
+        entity may survive to describe the new one (CR-L4a-12).
+        """
+
+        forget_entity(self, ent_id, kind=kind)
         self.bump_cache_generation()
 
     def get_known_device_ids(self) -> set[int]:
@@ -537,13 +523,7 @@ class CacheBackupMixin(_ProxyHost if TYPE_CHECKING else object):
     def get_cached_activity_detail_ids(self) -> set[int]:
         """Return activity IDs referenced by per-activity cached detail tables."""
 
-        return (
-            set(self.state.activity_macros.keys())
-            | set(self.state.activity_members.keys())
-            | set(self.state.activity_favorite_slots.keys())
-            | set(self.state.activity_favorite_labels.keys())
-            | set(self.state.activity_command_refs.keys())
-        )
+        return cached_detail_ids(self, "activity")
 
     def clear_devices_catalog(self) -> None:
         """Clear only the device name catalog (erase wipes it this way).
@@ -582,46 +562,13 @@ class CacheBackupMixin(_ProxyHost if TYPE_CHECKING else object):
         and listener wiring.
         """
 
-        # Top-level name catalogs (parallel to clear_devices_catalog +
-        # clear_activities_catalog).
+        # The name catalogs first, for their ready flags and the hint.
         self.clear_devices_catalog()
         self.clear_activities_catalog()
-
-        # Per-device detail surfaces.
-        self.state.commands.clear()
-        self.state.device_key_sorts.clear()
-        self.state.device_input_records.clear()
-        self.state.detail_fetched_at["device"].clear()
-        self.state.detail_fetched_at["activity"].clear()
-        self.state.buttons.clear()
-        if hasattr(self.state, "button_details"):
-            self.state.button_details.clear()
-        if hasattr(self.state, "command_metadata"):
-            self.state.command_metadata.clear()
-        self.state.ip_buttons.clear()
-        self.state.ip_devices.clear()
-
-        # Per-activity detail surfaces. The hub reuses ids after an erase,
-        # so a macro record or favorites order left here would project onto
-        # the next activity that gets the id.
-        self.state.activity_macros.clear()
-        self.state.activity_members.clear()
-        self.state.activity_favorite_slots.clear()
-        self.state.activity_favorite_labels.clear()
-        self.state.activity_command_refs.clear()
-        self.state.activity_favorites_order.clear()
-        with self._macro_payload_lock:
-            self._macro_records_cache.clear()
-
-        # Completion / pending sets.
-        self._commands_complete.clear()
-        self._macros_complete.clear()
-        self._activity_map_complete.clear()
-        self._pending_button_requests.clear()
-        self._pending_command_requests.clear()
-        self._pending_macro_requests.clear()
-        self._pending_activity_map_requests.clear()
-        self.forget_idle_behavior()
+        # Then every per-entity table: the hub reuses ids after an erase,
+        # so anything left here would project onto the next entity that
+        # gets the id.
+        clear_entity_tables(self)
 
     def erase_configuration(
         self,
