@@ -13,6 +13,7 @@ from custom_components.sofabaton_x1s.command_config import (
 )
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Conn:
@@ -92,9 +93,9 @@ def _setup(monkeypatch, *, hub_version: str = "X1S"):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     return store, hub
 
 
@@ -270,7 +271,7 @@ def test_ws_command_devices_list_hides_reserved_record(monkeypatch):
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
     _run(store.async_create_hub_device("entry-1", "User Device"))
 
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     monkeypatch.setattr(
         integration, "_build_wifi_device_sync_payload", lambda _hub, _dev, device_key: {}
     )
@@ -344,9 +345,9 @@ def _listener_setup(monkeypatch, devices):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda _hass, _entry: 8060)
     return hub, store
 
 

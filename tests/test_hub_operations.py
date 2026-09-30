@@ -16,6 +16,7 @@ from homeassistant.exceptions import HomeAssistantError
 from tests.hub_fakes import FakeHass
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 from custom_components.sofabaton_x1s.hub import SofabatonHub  # noqa: E402
 
@@ -47,7 +48,7 @@ def _no_persist(monkeypatch):
         persisted.append(hub.entry_id)
         return True
 
-    monkeypatch.setattr(integration, "_async_persist_hub_cache", _persist)
+    monkeypatch.setattr(runtime_module, "_async_persist_hub_cache", _persist)
     return persisted
 
 
@@ -58,7 +59,7 @@ def test_the_single_hub_fallback_needs_a_call_that_named_no_hub():
     loop = asyncio.new_event_loop()
     try:
         hass, hub = _real_hub(loop)
-        resolve = integration._async_resolve_hub_from_data
+        resolve = runtime_module._async_resolve_hub_from_data
         assert loop.run_until_complete(resolve(hass, {"entry_id": "entry-1"})) is hub
         assert loop.run_until_complete(resolve(hass, {})) is hub
         # A disabled or reloading hub named by the caller: never another hub.
@@ -279,8 +280,8 @@ def test_a_wifi_device_delete_the_hub_refused_keeps_the_record(monkeypatch):
         async def _snapshot():
             return {9: {"brand": "m3-k1-abc", "name": "Lights"}}
 
-        monkeypatch.setattr(integration, "_async_get_command_config_store", _store)
-        monkeypatch.setattr(integration, "_async_resolve_hub_from_data", lambda *_a, **_k: asyncio.sleep(0, result=hub))
+        monkeypatch.setattr(runtime_module, "_async_get_command_config_store", _store)
+        monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", lambda *_a, **_k: asyncio.sleep(0, result=hub))
         monkeypatch.setattr(hub, "async_delete_device", _refused_delete)
         monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _snapshot)
         monkeypatch.setattr(hub, "_match_managed_wifi_devices", lambda **_k: ([(9, "k1", "abc", "m3-k1-abc")], False))

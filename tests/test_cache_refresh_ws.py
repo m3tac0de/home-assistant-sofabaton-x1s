@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
@@ -54,14 +55,14 @@ def _patch(monkeypatch, *, hub=_Hub(), locked=False, store=None):
     async def fake_store(_hass):
         return store if store is not None else _Store()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
     def fake_lock(*_a, **_k):
         if locked:
             raise HomeAssistantError("The Sofabaton app is connected")
 
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", fake_lock)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", fake_lock)
 
 
 def test_ws_refresh_all_cache_starts_operation(monkeypatch):
@@ -214,8 +215,8 @@ def test_runtime_payload_reports_how_the_last_operation_ended(monkeypatch):
         get_command_sync_progress=lambda key: dict(progress.get(key, {"status": "idle"})),
         get_managed_command_hashes=lambda: {},
     )
-    monkeypatch.setattr(integration, "_async_get_command_config_store", _store)
-    monkeypatch.setattr(integration, "_resolve_roku_listen_port", lambda *_a: 8060)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", _store)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda *_a: 8060)
 
     running = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
     assert running["kind"] == "operation_running" and running["operation_id"] == operation_id

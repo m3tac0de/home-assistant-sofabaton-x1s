@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Conn:
@@ -82,8 +83,8 @@ def test_ws_command_sync_progress_reports_sync_needed(monkeypatch):
     async def fake_store(_hass):
         return _Store()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -109,7 +110,7 @@ def test_ws_command_sync_progress_reports_not_found(monkeypatch):
     async def fake_resolve(_hass, _data):
         return None
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -155,8 +156,8 @@ def test_ws_command_sync_progress_uses_success_hash_to_clear_sync_needed(monkeyp
     async def fake_store(_hass):
         return _DeployedStore()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -191,8 +192,8 @@ def test_ws_command_sync_progress_uses_deployed_hash_to_clear_sync_needed(monkey
     async def fake_store(_hass):
         return _DeployedStore()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -224,8 +225,8 @@ def test_ws_get_command_config_returns_power_assignments(monkeypatch):
     async def fake_store(_hass):
         return _Store()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -258,8 +259,8 @@ def test_ws_command_sync_progress_zero_config_and_no_managed_not_needed(monkeypa
     async def fake_store(_hass):
         return _EmptyStore()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -297,8 +298,8 @@ def test_ws_command_sync_progress_zero_config_with_managed_is_sync_needed(monkey
     async def fake_store(_hass):
         return _DeployedStore()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -349,8 +350,8 @@ def test_ws_delete_command_device_disables_listener_when_last_deployed_device_is
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -407,8 +408,8 @@ def test_ws_delete_command_device_keeps_listener_when_another_deployed_device_re
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -469,8 +470,8 @@ def test_ws_hub_event_actions_roundtrip(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -526,8 +527,8 @@ def test_ws_set_activity_event_actions_prunes_unknown_ids(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:

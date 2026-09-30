@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import functools
 import json
 import logging
 from pathlib import Path
@@ -22,7 +21,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
 from .const import (
@@ -64,7 +63,6 @@ from .command_config import (
     CommandConfigStore,
     MAX_WIFI_DEVICES,
     WIFI_EVENTS_DEVICE_KEY,
-    async_get_command_config_store,
     compute_commands_hash,
     count_configured_command_slots,
     is_wifi_events_device_key,
@@ -79,8 +77,7 @@ from .command_config import (
 )
 from . import ir_library
 from . import ir_uc_hex
-from .cache_store import PersistentCacheStore
-from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
+from .ui_settings_store import HUB_CLICK_ACTIONS
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
 from .lib.bundle_validation import validate_hub_bundle_for_model, validate_new_entity_name
 from .lib.commands import build_descriptive_ir_blob_body
@@ -92,6 +89,8 @@ from .lib.wifi_inplace_plan import REFERENCED_RECORD_STEP_KINDS
 from .roku_listener import async_get_roku_listener
 
 from . import operations
+
+from . import runtime
 
 _LOGGER = logging.getLogger(__name__)
 # The characters a Wifi Device, command or event name may hold: the card's
@@ -107,105 +106,6 @@ _CARD_LOADER_FILENAME = "card-loader.js"
 _COMMUNITY_REMOTE_CARD_DIRNAME = "sofabaton-virtual-remote"
 _LOVELACE_STORAGE_MODE = "storage"
 _UNLOAD_DRAIN_TIMEOUT_S = 600.0
-
-
-_HUB_BUSY_MESSAGE = "Another backup, restore, sync or hub write is already running for this hub"
-
-
-def _hub_work(hub: SofabatonHub):
-    """The hub's work scope (see SofabatonHub.async_hub_work)."""
-
-    work = getattr(hub, "async_hub_work", None)
-    return work() if callable(work) else contextlib.nullcontext()
-
-
-def _hub_is_busy(hass: HomeAssistant, hub: SofabatonHub) -> bool:
-    """One operation per hub: a registry operation, hub work (an immediate
-    write, a write service) or a Wifi Command sync."""
-
-    if isinstance(getattr(hass, "data", None), dict) and operations._backup_operation_registry(
-        hass
-    ).has_running_for_entry(hub.entry_id):
-        return True
-    return bool(
-        getattr(hub, "hub_work_active", False) or getattr(hub, "is_sync_in_progress", False)
-    )
-
-
-def _raise_if_hub_operation_locked(
-    hass: HomeAssistant, hub: SofabatonHub, operation: str
-) -> None:
-    if _hub_is_busy(hass, hub):
-        raise HomeAssistantError(f"hub_busy: {operation}: {_HUB_BUSY_MESSAGE}")
-
-
-async def _async_persist_after_write(hass: HomeAssistant, hub: SofabatonHub) -> None:
-    """Best-effort persist after a one-shot write (CR-R1-8)."""
-
-    try:
-        await _async_persist_hub_cache(hass, hub)
-    except Exception:  # noqa: BLE001 - the write itself succeeded
-        _LOGGER.debug("[%s] cache persist after a write failed", hub.entry_id, exc_info=True)
-
-
-def _hub_operation(fn):
-    """A registry-operation runner: the whole run counts as hub work, so
-    the busy guard, the CALL_ME gate and unload see it."""
-
-    @functools.wraps(fn)
-    async def wrapper(hass, operation_id, *args, hub, **kwargs):
-        async with _hub_work(hub):
-            return await fn(hass, operation_id, *args, hub=hub, **kwargs)
-
-    return wrapper
-
-
-def _hub_write_service(*, persist: bool = True):
-    """A service that talks to the hub: refused while the hub is busy, run
-    as hub work, and followed by a cache persist when it writes."""
-
-    def decorate(fn):
-        @functools.wraps(fn)
-        async def wrapper(call: ServiceCall):
-            hub = await _async_resolve_hub_from_call(call.hass, call)
-            if hub is None:
-                return await fn(call)
-            _raise_if_hub_operation_locked(call.hass, hub, fn.__name__)
-            async with _hub_work(hub):
-                result = await fn(call)
-            if persist:
-                await _async_persist_after_write(call.hass, hub)
-            return result
-
-        return wrapper
-
-    return decorate
-
-
-def _hub_write_ws(*, persist: bool = True):
-    """The WS counterpart of :func:`_hub_write_service`: a busy hub answers
-    ``busy`` before the handler runs."""
-
-    def decorate(fn):
-        @functools.wraps(fn)
-        async def wrapper(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-            hub = await _async_resolve_hub_from_data(
-                hass, {"entry_id": msg.get("entry_id"), "entity_id": msg.get("entity_id")}
-            )
-            if hub is None:
-                await fn(hass, connection, msg)
-                return
-            if _hub_is_busy(hass, hub):
-                connection.send_error(msg["id"], "busy", _HUB_BUSY_MESSAGE)
-                return
-            async with _hub_work(hub):
-                await fn(hass, connection, msg)
-            if persist:
-                await _async_persist_after_write(hass, hub)
-
-        return wrapper
-
-    return decorate
 
 
 def _hub_supports_unicode_wifi_names(hub: SofabatonHub) -> bool:
@@ -478,44 +378,6 @@ async def _async_unregister_lovelace_resources(hass: HomeAssistant) -> None:
         await resources.async_delete_item(resource.get("id"))
 
 
-def _resolve_roku_listen_port(hass: HomeAssistant, entry_id: str) -> int:
-    config_entries = getattr(hass, "config_entries", None)
-    if config_entries is None:
-        return DEFAULT_ROKU_LISTEN_PORT
-
-    entry = config_entries.async_get_entry(entry_id)
-    options = entry.options if entry is not None else {}
-    return int(options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT))
-
-
-async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigStore:
-    return await async_get_command_config_store(hass)
-
-
-async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCacheStore:
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    store = domain_data.get("persistent_cache_store")
-    if isinstance(store, PersistentCacheStore):
-        return store
-
-    store = PersistentCacheStore(hass)
-    await store.async_load()
-    domain_data["persistent_cache_store"] = store
-    return store
-
-
-async def _async_get_ui_settings_store(hass: HomeAssistant) -> UiSettingsStore:
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    store = domain_data.get("ui_settings_store")
-    if isinstance(store, UiSettingsStore):
-        return store
-
-    store = UiSettingsStore(hass)
-    await store.async_load()
-    domain_data["ui_settings_store"] = store
-    return store
-
-
 def _build_wifi_device_sync_payload(
     hub: SofabatonHub,
     config_payload: dict[str, Any],
@@ -554,8 +416,8 @@ def _build_wifi_device_sync_payload(
 
 
 async def _async_wifi_listener_needed(hass: HomeAssistant, entry_id: str) -> bool:
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, entry_id)
     devices = await store.async_list_hub_devices(entry_id, roku_listen_port=roku_listen_port)
     return any(wifi_device_requires_listener(device) for device in devices)
 
@@ -623,8 +485,8 @@ async def _async_build_control_panel_runtime_payload(
             "last_wifi_deploys": {},
         }
 
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
     last_wifi_deploys: dict[str, str] = {}
     for device in devices:
@@ -735,31 +597,6 @@ async def _async_build_control_panel_hub_payload(
     }
 
 
-async def _async_persist_hub_cache(hass: HomeAssistant, hub: SofabatonHub) -> bool:
-    store = await _async_get_persistent_cache_store(hass)
-    if not store.enabled:
-        return False
-
-    await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
-    return True
-
-
-async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
-    persisted = 0
-    store = await _async_get_persistent_cache_store(hass)
-    if not store.enabled:
-        return persisted
-
-    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
-        try:
-            await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
-            persisted += 1
-        except Exception:
-            _LOGGER.exception("[%s] Failed to persist cache for hub %s during shutdown", DOMAIN, hub.entry_id)
-
-    return persisted
-
-
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_config/get",
@@ -770,13 +607,13 @@ async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
 )
 @websocket_api.async_response
 async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     try:
         payload = await store.async_get_hub_config(
             hub.entry_id,
@@ -803,7 +640,7 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
 )
 @websocket_api.async_response
 async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -814,8 +651,8 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
         connection.send_error(msg["id"], "reserved_device", "Use the wifi_event endpoints for the Wifi Events device")
         return
 
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
 
     # Snapshot the names of every referenced activity as the user saw them.
     # Deploy-time validation compares this snapshot against a fresh hub read
@@ -870,12 +707,12 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
 )
 @websocket_api.async_response
 async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     connection.send_result(
         msg["id"],
         {
@@ -896,12 +733,12 @@ async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
 )
 @websocket_api.async_response
 async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     actions = await store.async_set_hub_event_actions(
         hub.entry_id, normalize_hub_event_actions(msg["actions"])
     )
@@ -936,13 +773,13 @@ async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
 )
 @websocket_api.async_response
 async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     device_key = str(msg.get("device_key") or "").strip()
     try:
         payload = await store.async_get_hub_config(
@@ -985,13 +822,13 @@ def _hub_mqtt_available(hass: HomeAssistant, hub: Any) -> bool:
 )
 @websocket_api.async_response
 async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
     payload = []
     for device in devices:
@@ -1027,7 +864,7 @@ async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[st
 )
 @websocket_api.async_response
 async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1044,8 +881,8 @@ async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[s
             "MQTT transport needs an X2 hub and the MQTT integration",
         )
         return
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     try:
         payload = await store.async_create_hub_device(
             hub.entry_id,
@@ -1073,9 +910,9 @@ async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[s
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1084,8 +921,8 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
         # event is deleted (zero-slot sync) — never through this endpoint.
         connection.send_error(msg["id"], "reserved_device", "The Wifi Events device cannot be deleted here")
         return
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     try:
         payload = await store.async_get_hub_config(
             hub.entry_id,
@@ -1175,7 +1012,7 @@ def _wifi_events_state_payload(
     """
 
     record_state = store.wifi_events_record_state(
-        entry_id, roku_listen_port=_resolve_roku_listen_port(hass, entry_id)
+        entry_id, roku_listen_port=runtime._resolve_roku_listen_port(hass, entry_id)
     )
     return {
         "events": store.list_wifi_events(entry_id),
@@ -1193,11 +1030,11 @@ def _wifi_events_state_payload(
 )
 @websocket_api.async_response
 async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
 
 
@@ -1211,7 +1048,7 @@ async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
 )
 @websocket_api.async_response
 async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1220,7 +1057,7 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     try:
         allocated = await store.async_allocate_wifi_event(hub.entry_id, name)
     except ValueError as err:
@@ -1262,13 +1099,13 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     # Reset-in-place — never compacts (callback URLs embed slot indices).
     deleted = await store.async_reset_wifi_event_slot(hub.entry_id, msg["slot_index"])
     if not deleted:
@@ -1281,7 +1118,7 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     # branch removes the hub device + disables the listener only when
     # nothing else needs it. On failure the reset stays staged (sync
     # re-offers).
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     payload = await store.async_get_hub_config(
         hub.entry_id,
         device_key=WIFI_EVENTS_DEVICE_KEY,
@@ -1337,17 +1174,17 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Retry the Wifi Events deploy without changing the store — the
     needs-sync affordance for a slot whose create/delete deploy failed."""
 
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     try:
         payload = await store.async_get_hub_config(
             hub.entry_id,
@@ -1391,13 +1228,13 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
     the callback runtime reads).
     """
 
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     record_state = store.wifi_events_record_state(
-        hub.entry_id, roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id)
+        hub.entry_id, roku_listen_port=runtime._resolve_roku_listen_port(hass, hub.entry_id)
     )
     if record_state.get("device_id") is not None:
         connection.send_error(
@@ -1424,11 +1261,11 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
 )
 @websocket_api.async_response
 async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     # No re-deploy: the callback runtime reads the staged slot.
     updated = await store.async_set_wifi_event_action(
         hub.entry_id, msg["slot_index"], msg["press_type"], msg["action"]
@@ -1450,11 +1287,11 @@ async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[s
 )
 @websocket_api.async_response
 async def _ws_set_wifi_event_longpress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, _ws_hub_selector(msg))
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     # Pure store-flag edit: the long record is always deployed (plan §11
     # discovery 1) — zero hub writes, the flag gates HA-side execution.
     updated = await store.async_set_wifi_event_longpress(
@@ -1475,8 +1312,8 @@ async def _ws_set_wifi_event_longpress(hass: HomeAssistant, connection, msg: dic
 async def _ws_get_control_panel_state(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
-    store = await _async_get_persistent_cache_store(hass)
-    ui_settings = await _async_get_ui_settings_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
+    ui_settings = await runtime._async_get_ui_settings_store(hass)
     tools_frontend_version = await _async_get_integration_version(hass)
     hubs = await asyncio.gather(
         *[
@@ -1485,7 +1322,7 @@ async def _ws_get_control_panel_state(
                 hub,
                 persistent_cache_enabled=store.enabled,
             )
-            for hub in _get_hubs(hass.data.get(DOMAIN, {}))
+            for hub in runtime._get_hubs(hass.data.get(DOMAIN, {}))
         ]
     )
     payload = {
@@ -1528,7 +1365,7 @@ async def _ws_control_panel_set_setting(
                 msg["id"], "invalid_format", "hub_click_action requires a value"
             )
             return
-        ui_settings = await _async_get_ui_settings_store(hass)
+        ui_settings = await runtime._async_get_ui_settings_store(hass)
         await ui_settings.async_set_hub_click_action(str(value))
         connection.send_result(msg["id"], {"ok": True, "value": value})
         return
@@ -1541,14 +1378,14 @@ async def _ws_control_panel_set_setting(
     enabled = bool(msg["enabled"])
 
     if setting == "persistent_cache":
-        store = await _async_get_persistent_cache_store(hass)
+        store = await runtime._async_get_persistent_cache_store(hass)
         await store.async_set_enabled(enabled)
         if not enabled:
             await store.async_clear_all_hub_cache()
         connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
         return
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1571,11 +1408,11 @@ async def _ws_control_panel_set_setting(
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_control_panel_run_action(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1700,7 +1537,7 @@ def _backup_result_filename(bundle: Mapping[str, Any], hub: SofabatonHub) -> str
     return f"{timestamp_text}_{safe_name}.json"
 
 
-@_hub_operation
+@runtime._hub_operation
 async def _run_backup_export_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -1753,7 +1590,7 @@ async def _run_backup_export_operation(
         )
 
 
-@_hub_operation
+@runtime._hub_operation
 async def _run_backup_restore_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -1788,7 +1625,7 @@ async def _run_backup_restore_operation(
         result = await hub.async_restore_backup(
             payload,
             replace_mode=(mode == "replace"),
-            wifi_commands_request_port=_resolve_roku_listen_port(hass, hub.entry_id),
+            wifi_commands_request_port=runtime._resolve_roku_listen_port(hass, hub.entry_id),
             progress_callback=_progress,
         )
         if isinstance(result, dict) and str(result.get("status") or "") == "failed":
@@ -1852,9 +1689,9 @@ async def _run_backup_restore_operation(
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_fetch_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1900,9 +1737,9 @@ async def _ws_fetch_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -1960,7 +1797,7 @@ _IR_LEARN_ERROR_REFUSED = "ir_learn_refused"
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Run one hub learn window and push its outcome as a subscription event.
 
@@ -1975,7 +1812,7 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
     and would log an "unknown subscription" warning for it.
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -2033,7 +1870,7 @@ async def _ws_ir_emissions_subscribe(hass: HomeAssistant, connection, msg: dict[
     IR intercept sensor reads, fanned out via ``signal_ir_intercept``.
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -2135,7 +1972,7 @@ def build_ir_emitter_consumers(hass: HomeAssistant, hub: SofabatonHub) -> dict[s
 )
 @websocket_api.async_response
 async def _ws_ir_emitter_consumers(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -2249,18 +2086,18 @@ async def _ws_ir_payload_convert(
 )
 @websocket_api.async_response
 async def _ws_backup_export(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
     registry = operations._backup_operation_registry(hass)
-    if _hub_is_busy(hass, hub):
+    if runtime._hub_is_busy(hass, hub):
         connection.send_error(msg["id"], "busy", "Another backup or restore operation is already running for this hub")
         return
 
     try:
-        _raise_if_hub_operation_locked(hass, hub, "_ws_backup_export")
+        runtime._raise_if_hub_operation_locked(hass, hub, "_ws_backup_export")
         device_ids = _validate_backup_device_ids(msg.get("device_ids"))
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "unavailable", str(err))
@@ -2301,18 +2138,18 @@ async def _ws_backup_export(hass: HomeAssistant, connection, msg: dict[str, Any]
 )
 @websocket_api.async_response
 async def _ws_backup_restore(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
     registry = operations._backup_operation_registry(hass)
-    if _hub_is_busy(hass, hub):
+    if runtime._hub_is_busy(hass, hub):
         connection.send_error(msg["id"], "busy", "Another backup or restore operation is already running for this hub")
         return
 
     try:
-        _raise_if_hub_operation_locked(hass, hub, "_ws_backup_restore")
+        runtime._raise_if_hub_operation_locked(hass, hub, "_ws_backup_restore")
         mode = _validate_restore_mode(msg.get("mode"))
         payload = msg.get("backup")
         if not isinstance(payload, dict):
@@ -2427,7 +2264,7 @@ async def _ws_backup_progress_subscribe(hass: HomeAssistant, connection, msg: di
 async def _ws_backup_state(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     # Polled on every card hydration: the bundle itself stays with the
     # download view and the terminal progress event (CR-X2-5).
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -2627,8 +2464,8 @@ async def _async_prepare_managed_wifi_rename(
 
     device_key, _brand_hash = _parse_managed_wifi_brand(str(base_block.get("brand") or ""))
 
-    store = await _async_get_command_config_store(hass)
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     stored_devices = await store.async_list_hub_devices(
         hub.entry_id, roku_listen_port=roku_listen_port
     )
@@ -2737,7 +2574,7 @@ def _collect_short_command_renames(
     return renames
 
 
-@_hub_operation
+@runtime._hub_operation
 async def _run_entity_sync_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -2890,7 +2727,7 @@ async def _run_entity_sync_operation(
                 await hub.async_refresh_activities_referencing_device(
                     entity_id, also=referencing_before
                 )
-            await _async_persist_hub_cache(hass, hub)
+            await runtime._async_persist_hub_cache(hass, hub)
         except Exception:  # pragma: no cover - the read-back is best-effort
             _LOGGER.exception("[%s_sync] read-back after a failed sync failed", entity_kind)
         registry.update(
@@ -2921,7 +2758,7 @@ async def _run_entity_sync_operation(
         # follow so the Wifi Commands tab shows the new name and the next
         # deploy doesn't revert it. Best-effort: the sync itself succeeded.
         try:
-            store = await _async_get_command_config_store(hass)
+            store = await runtime._async_get_command_config_store(hass)
             await store.async_rename_hub_device(
                 hub.entry_id,
                 pending_wifi_rename["device_key"],
@@ -2938,11 +2775,11 @@ async def _run_entity_sync_operation(
         # record never reads out-of-step from its own editor. Attached
         # actions stay with the slot. Best-effort like the rename above.
         try:
-            store = await _async_get_command_config_store(hass)
+            store = await runtime._async_get_command_config_store(hass)
             await store.async_reconcile_wifi_events_command_renames(
                 hub.entry_id,
                 events_command_renames,
-                roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id),
+                roku_listen_port=runtime._resolve_roku_listen_port(hass, hub.entry_id),
             )
             async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
         except Exception:  # pragma: no cover - propagation must never fail the sync
@@ -2954,11 +2791,11 @@ async def _run_entity_sync_operation(
         # the record follows — short id -> default slot, long id -> flag
         # off — and the deployed snapshot/hash stay coherent.
         try:
-            store = await _async_get_command_config_store(hass)
+            store = await runtime._async_get_command_config_store(hass)
             await store.async_reconcile_wifi_events_command_removals(
                 hub.entry_id,
                 events_command_removals,
-                roku_listen_port=_resolve_roku_listen_port(hass, hub.entry_id),
+                roku_listen_port=runtime._resolve_roku_listen_port(hass, hub.entry_id),
             )
             async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
         except Exception:  # pragma: no cover - propagation must never fail the sync
@@ -2983,7 +2820,7 @@ async def _run_entity_sync_operation(
             counters = (result or {}).get("counters") or {}
             if any(counters.get(kind) for kind in REFERENCED_RECORD_STEP_KINDS):
                 await hub.async_refresh_activities_referencing_device(entity_id)
-        store = await _async_get_persistent_cache_store(hass)
+        store = await runtime._async_get_persistent_cache_store(hass)
         if store.enabled:
             payload = await hub.async_export_cache_state()
             await store.async_set_hub_cache(hub.entry_id, payload)
@@ -3035,7 +2872,7 @@ async def _async_prepare_entity_sync(
     """
 
     registry = operations._backup_operation_registry(hass)
-    if _hub_is_busy(hass, hub):
+    if runtime._hub_is_busy(hass, hub):
         raise _EntitySyncRejected(
             "busy",
             "Another backup, restore, or sync operation is already running for this hub",
@@ -3059,7 +2896,7 @@ async def _async_prepare_entity_sync(
             )
 
     try:
-        _raise_if_hub_operation_locked(hass, hub, operation_label)
+        runtime._raise_if_hub_operation_locked(hass, hub, operation_label)
         baseline, edited, entity_id = _validate_entity_sync_inputs(
             sync_input,
             entity_kind=entity_kind,
@@ -3094,7 +2931,7 @@ async def _handle_entity_sync_ws(
     *,
     entity_kind: str,
 ) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3163,7 +3000,7 @@ async def _handle_entity_delete_ws(
     # Immediate live delete of a whole activity/device. The hub's delete
     # primitive keys purely by id (device and activity id ranges share one
     # table), so both kinds go through async_delete_device with the target id.
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3183,7 +3020,7 @@ async def _handle_entity_delete_ws(
     # alive). The hub-side delete already cascaded its refs.
     if entity_kind == "device":
         try:
-            store = await _async_get_command_config_store(hass)
+            store = await runtime._async_get_command_config_store(hass)
             events_state = store.wifi_events_record_state(hub.entry_id)
             if events_state.get("device_id") == entity_id:
                 await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
@@ -3203,7 +3040,7 @@ async def _handle_entity_delete_ws(
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_activity_delete(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     await _handle_entity_delete_ws(hass, connection, msg, entity_kind="activity")
 
@@ -3216,7 +3053,7 @@ async def _ws_activity_delete(hass: HomeAssistant, connection, msg: dict[str, An
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_device_delete(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     await _handle_entity_delete_ws(hass, connection, msg, entity_kind="device")
 
@@ -3228,7 +3065,7 @@ async def _resolve_hub_for_activity_write(
     create, device reorder / create). The busy refusal runs in the
     handlers' ``_hub_write_ws`` decorator."""
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return None
@@ -3243,7 +3080,7 @@ async def _resolve_hub_for_activity_write(
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_activity_reorder(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     # Immediate live write of the hub's stored activity display order.
     hub = await _resolve_hub_for_activity_write(
@@ -3271,7 +3108,7 @@ async def _ws_activity_reorder(hass: HomeAssistant, connection, msg: dict[str, A
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_device_reorder(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     # Immediate live write of the hub's stored device display order.
     hub = await _resolve_hub_for_activity_write(
@@ -3299,7 +3136,7 @@ async def _ws_device_reorder(hass: HomeAssistant, connection, msg: dict[str, Any
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     # Create a fresh, empty activity; the frontend then opens the live
     # editor on the assigned id.
@@ -3345,7 +3182,7 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
     }
 )
 @websocket_api.async_response
-@_hub_write_ws()
+@runtime._hub_write_ws()
 async def _ws_device_create(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     # Hub tab "Add device": create an EMPTY device of the chosen class;
     # the frontend then opens the live editor on the assigned id and the
@@ -3403,7 +3240,7 @@ async def _handle_entity_sync_plan_ws(
     # Bench and debug API (L-K6): compute the write plan without executing
     # it. No card calls it since the review dialog went; bench_240 uses it to
     # check a plan the live editor would send.
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3488,7 +3325,7 @@ def _cache_refresh_progress_message(message: str) -> str:
     return message
 
 
-@_hub_operation
+@runtime._hub_operation
 async def _run_cache_refresh_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -3505,7 +3342,7 @@ async def _run_cache_refresh_operation(
 
     try:
         await hub.async_refresh_hub_cache(progress_callback=_progress)
-        store = await _async_get_persistent_cache_store(hass)
+        store = await runtime._async_get_persistent_cache_store(hass)
         if store.enabled:
             # The canonical cache now carries everything structural; the
             # editor's bundle is assembled from it on demand.
@@ -3536,18 +3373,18 @@ async def _run_cache_refresh_operation(
 )
 @websocket_api.async_response
 async def _ws_refresh_all_cache(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
     registry = operations._backup_operation_registry(hass)
-    if _hub_is_busy(hass, hub):
+    if runtime._hub_is_busy(hass, hub):
         connection.send_error(msg["id"], "busy", "Another operation is already running for this hub")
         return
 
     try:
-        _raise_if_hub_operation_locked(hass, hub, "_ws_refresh_all_cache")
+        runtime._raise_if_hub_operation_locked(hass, hub, "_ws_refresh_all_cache")
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "unavailable", str(err))
         return
@@ -3575,14 +3412,14 @@ async def _ws_refresh_all_cache(hass: HomeAssistant, connection, msg: dict[str, 
 )
 @websocket_api.async_response
 async def _ws_get_structural_bundle(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
     # Assembled on demand from the canonical cache (proxy state); nothing is
     # read from storage here. The persistent-cache gate stays so the editor
     # remains an opt-in feature tied to caching being enabled.
-    store = await _async_get_persistent_cache_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
     bundle = await hub.async_get_structural_bundle() if store.enabled else None
     if not bundle:
         connection.send_result(msg["id"], {"bundle": None, "generation": None})
@@ -3610,12 +3447,12 @@ async def _ws_get_device_keymap(hass: HomeAssistant, connection, msg: dict[str, 
     (docs/internal/device-mode-plan.md).
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_persistent_cache_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
     if not store.enabled:
         connection.send_result(msg["id"], {"keymap": None, "reason": "cache_disabled"})
         return
@@ -3650,12 +3487,12 @@ async def _ws_get_device_power_state(
     (docs/internal/device-mode-plan.md section 8).
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    if _hub_is_busy(hass, hub):
+    if runtime._hub_is_busy(hass, hub):
         # Its REQ_DEVICES burst would land between an operation's page
         # writes; an unknown state makes the card fall back safely.
         connection.send_result(msg["id"], {"power_state": None})
@@ -3673,7 +3510,7 @@ async def _ws_get_device_power_state(
 )
 @websocket_api.async_response
 async def _ws_get_hub_logs(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3697,7 +3534,7 @@ async def _ws_get_hub_logs(hass: HomeAssistant, connection, msg: dict[str, Any])
 async def _ws_subscribe_hub_logs(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3765,7 +3602,7 @@ async def _ws_subscribe_wifi_presses(
     automation-facing sensor is still the source of truth for state.
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3830,7 +3667,7 @@ async def _ws_subscribe_hub_events(
     configured for the event.
     """
 
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -3858,9 +3695,9 @@ async def _ws_subscribe_hub_events(
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(
+    hub = await runtime._async_resolve_hub_from_data(
         hass,
         {
             "entity_id": msg.get("entity_id"),
@@ -3871,7 +3708,7 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    store = await _async_get_persistent_cache_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
     if not store.enabled:
         connection.send_error(msg["id"], "disabled", "Persistent cache is disabled")
         return
@@ -3897,13 +3734,13 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
 )
 @websocket_api.async_response
 async def _ws_get_persistent_cache_contents(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    store = await _async_get_persistent_cache_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
     if not store.enabled:
         connection.send_result(msg["id"], {"enabled": False, "hubs": []})
         return
 
     hub_payloads = []
-    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
+    for hub in runtime._get_hubs(hass.data.get(DOMAIN, {})):
         hub_payloads.append(await hub.async_get_cache_contents())
 
     connection.send_result(msg["id"], {"enabled": True, "hubs": hub_payloads})
@@ -3917,9 +3754,9 @@ async def _ws_get_persistent_cache_contents(hass: HomeAssistant, connection, msg
     }
 )
 @websocket_api.async_response
-@_hub_write_ws(persist=False)
+@runtime._hub_write_ws(persist=False)
 async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(
+    hub = await runtime._async_resolve_hub_from_data(
         hass,
         {"entry_id": msg.get("entry_id")},
     )
@@ -3934,7 +3771,7 @@ async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, An
         # failed instead of reporting success over stale data.
         connection.send_error(msg["id"], "timeout", str(err))
         return
-    store = await _async_get_persistent_cache_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
     if store.enabled:
         payload = await hub.async_export_cache_state()
         await store.async_set_hub_cache(hub.entry_id, payload)
@@ -4033,7 +3870,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     if not hass.data[DOMAIN].get("stop_listener_registered"):
         async def _async_handle_hass_stop(_event: Any) -> None:
-            persisted = await _async_persist_all_hub_cache(hass)
+            persisted = await runtime._async_persist_all_hub_cache(hass)
             if persisted:
                 _LOGGER.info("[%s] Persisted cache for %s hub(s) on Home Assistant stop", DOMAIN, persisted)
 
@@ -4195,7 +4032,7 @@ async def _async_ensure_storage_mode_frontend_resources(hass: HomeAssistant) -> 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_setup_diagnostics(hass)
-    await _async_get_command_config_store(hass)
+    await runtime._async_get_command_config_store(hass)
 
     data = entry.data
     opts = entry.options
@@ -4236,7 +4073,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         version=version,
     )
 
-    cache_store = await _async_get_persistent_cache_store(hass)
+    cache_store = await runtime._async_get_persistent_cache_store(hass)
     if cache_store.enabled:
         cache_payload = await cache_store.async_get_hub_cache(entry.entry_id)
         if cache_payload:
@@ -4400,12 +4237,12 @@ async def _async_drain_hub_work(hass: HomeAssistant, hub: SofabatonHub) -> None:
 
     with contextlib.suppress(Exception):
         hub.cancel_ir_learn()
-    if not _hub_is_busy(hass, hub):
+    if not runtime._hub_is_busy(hass, hub):
         return
     _LOGGER.info("[%s] Waiting for running hub work before unloading", hub.entry_id)
     loop = asyncio.get_running_loop()
     deadline = loop.time() + _UNLOAD_DRAIN_TIMEOUT_S
-    while _hub_is_busy(hass, hub):
+    while runtime._hub_is_busy(hass, hub):
         remaining = deadline - loop.time()
         if remaining <= 0:
             failed = operations._backup_operation_registry(hass).fail_running_for_entry(
@@ -4429,7 +4266,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
-        if not _get_hubs(hass.data[DOMAIN]):
+        if not runtime._get_hubs(hass.data[DOMAIN]):
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
             hass.services.async_remove(DOMAIN, "dump_ir_commands")
             hass.services.async_remove(DOMAIN, "fetch_blob")
@@ -4458,7 +4295,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             try:
-                await _async_persist_hub_cache(hass, hub)
+                await runtime._async_persist_hub_cache(hass, hub)
             except Exception:
                 # Best effort: the hub must still stop, or the old proxy
                 # keeps its threads, sockets and listener registration.
@@ -4496,9 +4333,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     # Its persisted cache and Wifi Command records have no owner any more.
     try:
-        cache_store = await _async_get_persistent_cache_store(hass)
+        cache_store = await runtime._async_get_persistent_cache_store(hass)
         await cache_store.async_clear_hub_cache(entry.entry_id)
-        command_store = await _async_get_command_config_store(hass)
+        command_store = await runtime._async_get_command_config_store(hass)
         await command_store.async_remove_hub(entry.entry_id)
     except Exception:  # noqa: BLE001 - removal must still release the hub
         _LOGGER.exception("[%s] Failed to clear stored data of removed hub %s", DOMAIN, entry.entry_id)
@@ -4506,10 +4343,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.async_add_executor_job(bounce_hub_listener)
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_fetch_device_commands(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4517,10 +4354,10 @@ async def _async_handle_fetch_device_commands(call: ServiceCall):
     await hub.async_fetch_device_commands(ent_id)
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_dump_ir_commands(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4546,10 +4383,10 @@ async def _async_handle_dump_ir_commands(call: ServiceCall):
     return result
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_fetch_blob(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4575,7 +4412,7 @@ async def _async_handle_fetch_blob(call: ServiceCall):
     return result
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_backup_bundle(call: ServiceCall):
     """Service handler for ``sofabaton_x1s.backup_bundle``.
 
@@ -4586,7 +4423,7 @@ async def _async_handle_backup_bundle(call: ServiceCall):
     """
 
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4594,7 +4431,7 @@ async def _async_handle_backup_bundle(call: ServiceCall):
     return await hub.async_backup_hub(device_ids=device_ids)
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_restore_backup(call: ServiceCall):
     """Service handler for ``sofabaton_x1s.restore_backup``.
 
@@ -4605,7 +4442,7 @@ async def _async_handle_restore_backup(call: ServiceCall):
     """
 
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4616,7 +4453,7 @@ async def _async_handle_restore_backup(call: ServiceCall):
             "backup must be an object payload returned by backup_bundle"
         )
 
-    wifi_commands_request_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    wifi_commands_request_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
 
     try:
         result = await hub.async_restore_backup(
@@ -4632,10 +4469,10 @@ async def _async_handle_restore_backup(call: ServiceCall):
     return result
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_play_ir_blob(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4647,10 +4484,10 @@ async def _async_handle_play_ir_blob(call: ServiceCall):
         raise HomeAssistantError("Hub is not ready to play IR blob (proxy client connected?)")
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_set_ir_learn_mode(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4666,10 +4503,10 @@ async def _async_handle_set_ir_learn_mode(call: ServiceCall):
         )
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_ir_learn_command(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4690,10 +4527,10 @@ async def _async_handle_ir_learn_command(call: ServiceCall):
     return result
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_persist_ir_blob(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4715,10 +4552,10 @@ async def _async_handle_persist_ir_blob(call: ServiceCall):
     return result
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_create_wifi_device(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4763,7 +4600,7 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
     if raw_input_command_ids is not None and input_command_ids is None:
         raise ValueError(f"input_command_ids entries must each be between 1 and {max_command_id}")
 
-    request_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    request_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
 
     return await hub.async_create_wifi_device(
         device_name=device_name,
@@ -4775,10 +4612,10 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
     )
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_device_to_activity(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4801,10 +4638,10 @@ async def _async_handle_device_to_activity(call: ServiceCall):
     )
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_delete_device(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4816,10 +4653,10 @@ async def _async_handle_delete_device(call: ServiceCall):
     return await hub.async_delete_device(device_id=device_id)
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_command_to_favorite(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4851,10 +4688,10 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
     )
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_get_favorites(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4869,10 +4706,10 @@ async def _async_handle_get_favorites(call: ServiceCall):
     return {"favorites": hub.describe_favorites_order(activity_id, order)}
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_reorder_favorites(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4894,10 +4731,10 @@ async def _async_handle_reorder_favorites(call: ServiceCall):
     )
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_delete_favorite(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4919,10 +4756,10 @@ async def _async_handle_delete_favorite(call: ServiceCall):
     )
 
 
-@_hub_write_service()
+@runtime._hub_write_service()
 async def _async_handle_command_to_button(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -4997,16 +4834,16 @@ async def _async_pick_wifi_device_key(
     return None
 
 
-@_hub_write_service(persist=False)
+@runtime._hub_write_service(persist=False)
 async def _async_handle_sync_command_config(call: ServiceCall):
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
-    store = await _async_get_command_config_store(hass)
+    store = await runtime._async_get_command_config_store(hass)
     device_key = str(call.data.get("device_key") or "").strip() or None
-    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
     if device_key is None:
         device_key = await _async_pick_wifi_device_key(
             store,
@@ -5056,11 +4893,11 @@ async def _async_handle_export_snapshot(call: ServiceCall):
     """
 
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
-    store = await _async_get_persistent_cache_store(hass)
+    store = await runtime._async_get_persistent_cache_store(hass)
     if not store.enabled:
         raise HomeAssistantError(
             "export_snapshot requires the persistent cache to be enabled "
@@ -5102,7 +4939,7 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
     """
 
     hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
@@ -5155,74 +4992,3 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
     return result
 
 
-async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
-    return await _async_resolve_hub_from_data(hass, call.data)
-
-
-async def _async_resolve_hub_from_data(hass: HomeAssistant, data: dict[str, Any]):
-    """Try device → hub text → entity → fallback to single hub."""
-    domain_data = hass.data.get(DOMAIN, {})
-    hubs = _get_hubs(domain_data)
-
-    device_id = data.get("device")
-    if device_id:
-        dev_reg = dr.async_get(hass)
-        device = dev_reg.async_get(device_id) if dev_reg else None
-        if device:
-            for ident_domain, ident in device.identifiers:
-                if ident_domain == DOMAIN:
-                    for hub in hubs:
-                        if getattr(hub, "mac", None) == ident:
-                            return hub
-
-    hub_key = data.get("hub")
-    if hub_key:
-        if hub_key in domain_data and domain_data[hub_key] in hubs:
-            return domain_data[hub_key]
-        for hub in hubs:
-            if getattr(hub, "mac", None) == hub_key:
-                return hub
-
-    entry_id = data.get("entry_id")
-    if entry_id:
-        for hub in hubs:
-            if getattr(hub, "entry_id", None) == entry_id:
-                return hub
-
-    entity_id = data.get("entity_id")
-    if entity_id:
-        ent_reg = er.async_get(hass)
-        ent = ent_reg.async_get(entity_id) if ent_reg else None
-        if ent and ent.device_id:
-            dev_reg = dr.async_get(hass)
-            device = dev_reg.async_get(ent.device_id) if dev_reg else None
-            if device:
-                for ident_domain, ident in device.identifiers:
-                    if ident_domain == DOMAIN:
-                        for hub in hubs:
-                            if getattr(hub, "mac", None) == ident:
-                                return hub
-
-    # Only a call that named no hub at all may fall back to the only one:
-    # a selector that matched nothing (a disabled or reloading hub) must
-    # never land on another hub (CR-H2-1).
-    named = any(data.get(key) for key in ("device", "hub", "entry_id", "entity_id"))
-    if not named and len(hubs) == 1:
-        return hubs[0]
-
-    return None
-
-
-def _ws_hub_selector(msg: dict[str, Any]) -> dict[str, Any]:
-    """The hub a WS message names: its config entry id (what the cards send)
-    or, for older clients, the hub's remote entity (CR-X2-2)."""
-
-    return {"entry_id": msg.get("entry_id"), "entity_id": msg.get("entity_id")}
-
-
-def _get_hubs(domain_data: dict[str, Any]) -> list[SofabatonHub]:
-    return [
-        hub
-        for hub in domain_data.values()
-        if isinstance(hub, SofabatonHub)
-    ]

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
@@ -76,8 +77,8 @@ def test_ws_backup_export_starts_operation(monkeypatch):
         return SimpleNamespace()
 
     hass = SimpleNamespace(async_create_task=fake_create_task, data={integration.DOMAIN: {}})
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -147,8 +148,8 @@ def test_ws_backup_restore_starts_merge_operation(monkeypatch):
         return SimpleNamespace()
 
     hass = SimpleNamespace(async_create_task=fake_create_task, data={integration.DOMAIN: {}})
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:

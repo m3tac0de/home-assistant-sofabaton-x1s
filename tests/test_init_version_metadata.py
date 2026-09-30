@@ -324,11 +324,11 @@ def _patch_setup_entry_runtime(monkeypatch, *, cache_enabled=False):
         lambda hass: None,
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_command_config_store",
+        "custom_components.sofabaton_x1s.runtime._async_get_command_config_store",
         lambda hass: asyncio.sleep(0, result=object()),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_persistent_cache_store",
+        "custom_components.sofabaton_x1s.runtime._async_get_persistent_cache_store",
         lambda hass: asyncio.sleep(0, result=cache_store),
     )
     monkeypatch.setattr(
@@ -583,7 +583,7 @@ def test_async_setup_entry_reregisters_storage_resources_after_last_hub_reenable
     listener = _patch_setup_entry_runtime(monkeypatch)
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._get_hubs",
+        "custom_components.sofabaton_x1s.runtime._get_hubs",
         lambda domain_data: [],
     )
     monkeypatch.setattr(
@@ -595,7 +595,7 @@ def test_async_setup_entry_reregisters_storage_resources_after_last_hub_reenable
         lambda hass, entry_id: None,
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_persist_hub_cache",
+        "custom_components.sofabaton_x1s.runtime._async_persist_hub_cache",
         _async_true,
     )
     monkeypatch.setattr(
@@ -699,7 +699,7 @@ def test_async_unload_entry_unregisters_frontend_resources_when_last_hub_is_remo
     listener = SimpleNamespace(async_remove_hub=_async_noop)
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._get_hubs",
+        "custom_components.sofabaton_x1s.runtime._get_hubs",
         lambda domain_data: [],
     )
     monkeypatch.setattr(
@@ -711,7 +711,7 @@ def test_async_unload_entry_unregisters_frontend_resources_when_last_hub_is_remo
         lambda hass, entry_id: None,
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_persist_hub_cache",
+        "custom_components.sofabaton_x1s.runtime._async_persist_hub_cache",
         _async_true,
     )
     monkeypatch.setattr(

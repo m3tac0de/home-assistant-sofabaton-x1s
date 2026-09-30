@@ -7,6 +7,7 @@ import importlib
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _FakeConfigEntries:
@@ -236,7 +237,7 @@ def test_create_wifi_device_requires_commands(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="commands requires between 1 and 10 entries"):
         asyncio.run(
@@ -253,7 +254,7 @@ def test_create_wifi_device_validates_device_name(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="device_name must contain only letters"):
         asyncio.run(
@@ -270,7 +271,7 @@ def test_create_wifi_device_validates_command_names(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="commands entries must contain only letters"):
         asyncio.run(
@@ -287,7 +288,7 @@ def test_create_wifi_device_accepts_valid_input(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_create_wifi_device(
@@ -311,7 +312,7 @@ def test_create_wifi_device_accepts_plus_on_x1s(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_create_wifi_device(
@@ -335,7 +336,7 @@ def test_create_wifi_device_uses_configured_roku_listener_port(monkeypatch) -> N
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_create_wifi_device(
@@ -354,7 +355,7 @@ def test_create_wifi_device_accepts_input_command_ids(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_create_wifi_device(
@@ -380,7 +381,7 @@ def test_create_wifi_device_rejects_out_of_range_input_command_ids(monkeypatch) 
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="input_command_ids entries must each be between 1 and 2"):
         asyncio.run(
@@ -403,7 +404,7 @@ def test_device_to_activity_validates_activity_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="activity_id must be between 1 and 255"):
         asyncio.run(
@@ -419,7 +420,7 @@ def test_device_to_activity_accepts_valid_input(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_device_to_activity(
@@ -438,7 +439,7 @@ def test_command_to_favorite_validates_command_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="command_id must be between 1 and 255"):
         asyncio.run(
@@ -454,7 +455,7 @@ def test_command_to_favorite_accepts_valid_input(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_command_to_favorite(
@@ -474,7 +475,7 @@ def test_command_to_favorite_omits_slot_when_not_provided(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_command_to_favorite(
@@ -491,7 +492,7 @@ def test_command_to_button_validates_button_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="button_id must be between 1 and 255"):
         asyncio.run(
@@ -507,7 +508,7 @@ def test_command_to_button_accepts_valid_input(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_command_to_button(
@@ -525,7 +526,7 @@ def test_delete_device_validates_device_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="device_id must be between 1 and 255"):
         asyncio.run(
@@ -541,7 +542,7 @@ def test_delete_device_accepts_valid_input(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_delete_device(
@@ -559,7 +560,7 @@ def test_dump_ir_commands_validates_device_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="device_id must be between 1 and 255"):
         asyncio.run(
@@ -575,7 +576,7 @@ def test_dump_ir_commands_validates_command_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="command_id must be between 1 and 255"):
         asyncio.run(
@@ -591,7 +592,7 @@ def test_dump_ir_commands_returns_action_payload(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_dump_ir_commands(
@@ -615,7 +616,7 @@ def test_dump_ir_commands_accepts_single_command_probe(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_dump_ir_commands(
@@ -639,7 +640,7 @@ def test_fetch_blob_validates_device_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="device_id must be between 1 and 255"):
         asyncio.run(
@@ -655,7 +656,7 @@ def test_fetch_blob_validates_command_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="command_id must be between 1 and 255"):
         asyncio.run(
@@ -671,7 +672,7 @@ def test_fetch_blob_returns_action_payload(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_fetch_blob(
@@ -695,7 +696,7 @@ def test_backup_bundle_rejects_invalid_device_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="device_ids entries must be in 1..255"):
         asyncio.run(
@@ -711,7 +712,7 @@ def test_backup_bundle_rejects_non_list_device_ids(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="device_ids must be a list"):
         asyncio.run(
@@ -729,7 +730,7 @@ def test_backup_bundle_returns_action_payload_for_device_subset(
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_backup_bundle(
@@ -749,7 +750,7 @@ def test_backup_bundle_returns_action_payload_for_whole_hub(monkeypatch) -> None
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_backup_bundle(_FakeCall({}))
@@ -765,7 +766,7 @@ def test_restore_backup_requires_bundle_object(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(
         Exception,
@@ -784,7 +785,7 @@ def test_restore_backup_returns_action_payload(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     backup = {
         "kind": "hub_bundle",
@@ -809,8 +810,8 @@ def test_play_ir_blob_accepts_hex_blob_body(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_play_ir_blob(
@@ -830,8 +831,8 @@ def test_play_ir_blob_accepts_descriptor_string(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     descriptor = "P:Sony12 R:40000 D:1 F:18 MUL:2"
     result = asyncio.run(
@@ -871,7 +872,7 @@ def test_get_favorites_returns_explicit_fav_ids(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_get_favorites(
@@ -939,7 +940,7 @@ def test_get_favorites_can_include_cached_entries_missing_from_hub_order(monkeyp
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
         integration._async_handle_get_favorites(
@@ -966,8 +967,8 @@ def test_reorder_favorites_requires_explicit_fav_ids(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_reorder_favorites(
@@ -985,8 +986,8 @@ def test_reorder_favorites_accepts_legacy_order_alias(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_reorder_favorites(
@@ -1004,8 +1005,8 @@ def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_delete_favorite(
@@ -1023,8 +1024,8 @@ def test_delete_favorite_accepts_legacy_button_id_alias(monkeypatch) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_delete_favorite(

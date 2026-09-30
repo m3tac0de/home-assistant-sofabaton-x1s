@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Conn:
@@ -61,8 +62,8 @@ def test_ws_fetch_blob_returns_normalized_payload(monkeypatch):
         assert data["entry_id"] == "entry-1"
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -88,8 +89,8 @@ def test_ws_play_ir_blob_accepts_hex_blob(monkeypatch):
     async def fake_resolve(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -121,8 +122,8 @@ def test_ws_play_ir_blob_accepts_descriptor(monkeypatch):
     async def fake_resolve(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -155,8 +156,8 @@ def test_ws_play_ir_blob_reports_invalid_blob(monkeypatch):
     async def fake_resolve(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -183,8 +184,8 @@ def test_ws_play_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
     async def fake_resolve(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:

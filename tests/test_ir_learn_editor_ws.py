@@ -25,6 +25,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 _ACK_OK = (OP_STATUS_ACK, b"\x00")
 
@@ -142,9 +143,9 @@ def _wire(monkeypatch, hub):
         assert data["entry_id"] == "entry-1"
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
     monkeypatch.setattr(
-        integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None
+        runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
         integration.websocket_api,
@@ -258,7 +259,7 @@ def test_learn_subscribe_refuses_while_the_hub_is_busy(monkeypatch) -> None:
     conn = _Conn()
     _wire(monkeypatch, hub)
 
-    monkeypatch.setattr(integration, "_hub_is_busy", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(runtime_module, "_hub_is_busy", lambda *_args, **_kwargs: True)
 
     _run(
         integration._ws_ir_learn_subscribe(
@@ -266,7 +267,7 @@ def test_learn_subscribe_refuses_while_the_hub_is_busy(monkeypatch) -> None:
         )
     )
 
-    assert conn.error == (1, "busy", integration._HUB_BUSY_MESSAGE)
+    assert conn.error == (1, "busy", runtime_module._HUB_BUSY_MESSAGE)
     assert hub.learn_calls == []
     assert conn.messages == []
 

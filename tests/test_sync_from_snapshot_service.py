@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 from tests.test_activity_sync_ws import _bundle, _Conn, _device_bundle
@@ -72,7 +73,7 @@ def _wire_hub(monkeypatch, hub: _FakeHub | None = None) -> _FakeHub:
     async def _resolve(_hass, _call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
     return hub
 
 
@@ -80,7 +81,7 @@ def _wire_cache_store(monkeypatch, *, enabled: bool) -> None:
     async def fake_store(_hass):
         return SimpleNamespace(enabled=enabled)
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +93,7 @@ def test_export_snapshot_requires_a_resolvable_hub(monkeypatch) -> None:
     async def _resolve(_hass, _call):
         return None
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="Could not resolve Sofabaton hub"):
         asyncio.run(integration._async_handle_export_snapshot(_FakeCall({})))
@@ -136,7 +137,7 @@ def test_sync_from_snapshot_requires_a_resolvable_hub(monkeypatch) -> None:
     async def _resolve(_hass, _call):
         return None
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="Could not resolve Sofabaton hub"):
         asyncio.run(
@@ -431,7 +432,7 @@ def test_ws_and_service_share_the_prepare_entity_sync_helper(monkeypatch) -> Non
     async def fake_resolve_data(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve_data)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve_data)
 
     # WS transport
     conn = _Conn()

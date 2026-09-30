@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Store:
@@ -30,11 +31,11 @@ def test_async_persist_hub_cache_disabled(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
-        saved = loop.run_until_complete(integration._async_persist_hub_cache(SimpleNamespace(), hub))
+        saved = loop.run_until_complete(runtime_module._async_persist_hub_cache(SimpleNamespace(), hub))
     finally:
         loop.close()
 
@@ -51,12 +52,12 @@ def test_async_persist_all_hub_cache_saves_each_hub(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _domain_data: [hub_a, hub_b])
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _domain_data: [hub_a, hub_b])
 
     loop = asyncio.new_event_loop()
     try:
-        persisted = loop.run_until_complete(integration._async_persist_all_hub_cache(hass))
+        persisted = loop.run_until_complete(runtime_module._async_persist_all_hub_cache(hass))
     finally:
         loop.close()
 

@@ -9,6 +9,7 @@ import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
@@ -71,13 +72,13 @@ def _patch(monkeypatch, *, hub=_Hub(), locked=False):
     async def fake_resolve(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     def fake_lock(*_a, **_k):
         if locked:
             raise HomeAssistantError("The Sofabaton app is connected")
 
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", fake_lock)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", fake_lock)
 
 
 def test_ws_activity_sync_starts_operation(monkeypatch):
@@ -581,7 +582,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     class _DisabledStore:
         enabled = False
@@ -589,7 +590,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     async def fake_cache_store(_hass):
         return _DisabledStore()
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_cache_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_cache_store)
 
     class _SyncingHub(_Hub):
         sync_kwargs = None
@@ -736,7 +737,7 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
     async def fake_store(_hass):
         return _DisabledStore()
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
     _run(integration._run_entity_sync_operation(
         hass, operation_id, hub=_SyncingHub(),
@@ -781,7 +782,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     class _DisabledStore:
         enabled = False
@@ -789,7 +790,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     async def fake_cache_store(_hass):
         return _DisabledStore()
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_cache_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_cache_store)
 
     dispatched = []
     monkeypatch.setattr(
