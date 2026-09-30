@@ -3754,15 +3754,6 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
     family_sends: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: family_sends.append((family, payload)))
 
-    macro_payload = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "02 c6 00 00 00 00 00 00 01 ff "
-        "01 c5 00 00 00 00 00 00 1a ff "
-        "02 c5 00 00 00 00 00 00 00 ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "02 00 00 00 00 00 2d 76 00"
-    )
 
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: MacroRecord(activity_id=_act & 0xFF, key_id=_button & 0xFF, label='', key_sequence=()))
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
@@ -3829,13 +3820,6 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     family_sends: list[int] = []
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: family_sends.append(family))
 
-    macro_payload = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "01 ff ff ff ff ff ff ff ff ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
 
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: MacroRecord(activity_id=_act & 0xFF, key_id=_button & 0xFF, label='', key_sequence=()))
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
@@ -5468,21 +5452,9 @@ def test_add_device_to_activity_with_input_cmd_id_sets_c5_byte(monkeypatch) -> N
         hub_version=HUB_VERSION_X1,
     )
 
-    sent_cmd = _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+    _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
 
     # Header must be exactly 9 bytes; byte[8] = row count.
-    power_on_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 01 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "01 00 00 00 00 00 2d 76 00"
-    )
-    power_off_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 01 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -5521,18 +5493,6 @@ def test_add_device_to_activity_x1s_with_input_cmd_id_sets_input_index(monkeypat
 
     _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
 
-    power_on_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 01 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "01 00 00 00 00 00 2d 76 00"
-    )
-    power_off_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 01 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -5572,19 +5532,6 @@ def test_add_device_to_activity_input_cmd_id_updates_existing_c5_record(monkeypa
     _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
 
     # POWER_ON source already contains a 0xC5 record for device 1 with old input_index=0x1A (26)
-    power_on_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 02 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "01 c5 00 00 00 00 00 00 1a ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "02 00 00 00 00 00 2d 76 00"
-    )
-    power_off_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 01 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",

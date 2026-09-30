@@ -20,7 +20,6 @@ import pytest
 
 from sofabaton import WIFI_SLOT_COUNT as N
 
-from sofabaton_server import mqtt_client
 from sofabaton_server.cli import build_parser, settings_from_args
 from sofabaton_server.config import Settings, load_settings
 from sofabaton_server.mqtt_client import MqttSubscriber, encode_str, packet, read_packet

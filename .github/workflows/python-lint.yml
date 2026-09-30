@@ -1,0 +1,67 @@
+# Python lint gates (code review R7). Runs on every change that can move a
+# finding, across the library, the integration, the server and the tests:
+#
+# - ruff, the bug rules configured in pyproject.toml (zero findings);
+# - pyright, no errors beyond pyright-baseline.json (scripts/pyright-baseline.mjs).
+#
+# The TypeScript side of R7 (noUnusedLocals) rides frontend CI's typecheck.
+name: python lint
+
+on:
+  pull_request:
+    paths:
+      - "**/*.py"
+      - "pyproject.toml"
+      - "pyright-baseline.json"
+      - "scripts/pyright-baseline.mjs"
+      - "scripts/pyright-requirements.txt"
+      - "sofabaton-x-server/pyproject.toml"
+      - "sofabaton-x-server/openapi-toolchain.txt"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/python-lint.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "**/*.py"
+      - "pyproject.toml"
+      - "pyright-baseline.json"
+      - "scripts/pyright-baseline.mjs"
+      - "scripts/pyright-requirements.txt"
+      - "sofabaton-x-server/pyproject.toml"
+      - "sofabaton-x-server/openapi-toolchain.txt"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/python-lint.yml"
+
+jobs:
+  ruff:
+    name: ruff (bug rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install ruff==0.16.9
+      - run: ruff check .
+
+  pyright:
+    name: pyright (no new errors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: The environment pyproject.toml points pyright at (.venv-py313)
+        run: |
+          python -m venv .venv-py313
+          .venv-py313/bin/pip install -r scripts/pyright-requirements.txt
+          # The server imports `sofabaton`: check it against this tree.
+          .venv-py313/bin/pip install --no-deps . ./sofabaton-x-server
+      - run: npm ci
+      - run: node scripts/pyright-baseline.mjs

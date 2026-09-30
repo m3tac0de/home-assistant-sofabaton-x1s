@@ -69,7 +69,8 @@ def _run(coro):
         loop.close()
 
 
-def _patch(monkeypatch, *, hub=_Hub(), locked=False):
+def _patch(monkeypatch, *, hub=None, locked=False):
+    hub = hub if hub is not None else _Hub()
     async def fake_resolve(_hass, _data):
         return hub
 
@@ -761,7 +762,6 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     device_key, baseline, edited, dispatched, hub)."""
     from custom_components.sofabaton_x1s.command_config import (
         CommandConfigStore,
-        compute_commands_hash,
     )
 
     monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
@@ -831,7 +831,6 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
 
 
 def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypatch):
-    from custom_components.sofabaton_x1s.command_config import compute_commands_hash
 
     hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
         monkeypatch, in_sync=True

@@ -36,7 +36,7 @@ def _make_hub() -> SofabatonHub:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     return SofabatonHub(
-        FakeHass := _FakeHass(loop),  # noqa: N806
+        _FakeHass(loop),
         "entry-id",
         "hub-name",
         "127.0.0.1",

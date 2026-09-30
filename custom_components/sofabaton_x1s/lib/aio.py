@@ -3049,7 +3049,7 @@ class AsyncXProxy:
             try:
                 await asyncio.wait_for(future, timeout)
             except TimeoutError:
-                raise FetchTimeoutError(f"timed out after {timeout}s fetching {key!r}")
+                raise FetchTimeoutError(f"timed out after {timeout}s fetching {key!r}") from None
         except BaseException:
             self._drop_burst_waiter(key, future)
             raise

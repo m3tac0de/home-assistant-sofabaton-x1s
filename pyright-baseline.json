@@ -1,0 +1,486 @@
+{
+  "pyright": "1.1.414",
+  "errors": 215,
+  "entries": [
+    {
+      "file": "custom_components/sofabaton_x1s/lib/activity_sync.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Mapping[str, Any] | None\" cannot be assigned to parameter \"device\" of type \"Mapping[str, Any]\" in function \"_input_entries\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/aio.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Any | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 4
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/aio.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"int | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/aio.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str\" cannot be assigned to parameter \"kind\" of type \"EventKind\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/aio.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str\" cannot be assigned to parameter \"mode\" of type \"HubMode\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/aio.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str\" cannot be assigned to parameter \"previous_mode\" of type \"HubMode\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/aio.py",
+      "rule": "reportOptionalMemberAccess",
+      "message": "\"set\" is not a known attribute of \"None\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/backup_export.py",
+      "rule": "reportAssignmentType",
+      "message": "Type \"dict[str, Any] | None\" is not assignable to declared type \"dict[str, Any]\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/cli.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"int\" cannot be assigned to parameter \"allow_command_removal\" of type \"bool\" in function \"sync_device\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/cli.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"int\" cannot be assigned to parameter \"strict\" of type \"bool\" in function \"sync_activity\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/cli.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"int\" cannot be assigned to parameter \"strict\" of type \"bool\" in function \"sync_device\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/cli.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str | None\" cannot be assigned to parameter \"file\" of type \"str\" in function \"_load\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/device_create.py",
+      "rule": "reportGeneralTypeIssues",
+      "message": "Object of type \"object\" cannot be used with \"with\" because it does not correctly implement __enter__",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/device_create.py",
+      "rule": "reportGeneralTypeIssues",
+      "message": "Object of type \"object\" cannot be used with \"with\" because it does not correctly implement __exit__",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/devices.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"object\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/discovery.py",
+      "rule": "reportGeneralTypeIssues",
+      "message": "\"object\" is not iterable",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/entity_refs.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 4
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/frame_handlers.py",
+      "rule": "reportReturnType",
+      "message": "Function with declared return type \"bool\" must return value on all code paths",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"activity_id\" for class \"CommandBurstFrame\"",
+      "count": 3
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"device_id\" for class \"ButtonBurstFrame\"",
+      "count": 3
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"first_command_id\" for class \"ButtonBurstFrame\"",
+      "count": 4
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"format_marker\" for class \"ButtonBurstFrame\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"has_row_data\" for class \"CommandBurstFrame\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"is_single\" for class \"ButtonBurstFrame\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"total_commands\" for class \"ButtonBurstFrame\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"total_rows\" for class \"CommandBurstFrame\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportCallIssue",
+      "message": "Expected 0 positional arguments",
+      "count": 32
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
+      "rule": "reportCallIssue",
+      "message": "Object of type \"FrameHandler\" is not callable",
+      "count": 32
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[bytes, bytes]\" cannot be assigned to parameter \"value\" of type \"dict[str, Any]\" in function \"__setitem__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[str, object] | None\" cannot be assigned to parameter \"iterable\" of type \"Iterable[list[bytes]]\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",
+      "rule": "reportCallIssue",
+      "message": "No overloads for \"__init__\" match the provided arguments",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",
+      "rule": "reportGeneralTypeIssues",
+      "message": "\"object\" is not iterable",
+      "count": 5
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",
+      "rule": "reportOptionalMemberAccess",
+      "message": "\"get\" is not a known attribute of \"None\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_backup.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[str, int | str]\" cannot be assigned to parameter \"object\" of type \"dict[str, int]\" in function \"append\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_catalog.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"None\" in function \"__setitem__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_frame_decode.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Self@FrameDecodeMixin\" cannot be assigned to parameter \"proxy\" of type \"X1Proxy\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_frame_decode.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str | None\" cannot be assigned to parameter \"name\" of type \"str\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Any | None\" cannot be assigned to parameter \"iterable\" of type \"Iterable[list[bytes]]\" in function \"__init__\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[bytes, bytes] | None\" cannot be assigned to parameter \"input_record\" of type \"dict[str, Any] | None\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[bytes, bytes] | None\" cannot be assigned to parameter \"key_sort\" of type \"dict[str, Any] | None\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"int | None\" cannot be assigned to parameter \"command_id\" of type \"int\" in function \"_button_code_for\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str | None\" cannot be assigned to parameter \"device_class\" of type \"str\" in function \"_preflight_device_content\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_restore.py",
+      "rule": "reportCallIssue",
+      "message": "No overloads for \"__init__\" match the provided arguments",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/proxy_wifi_device.py",
+      "rule": "reportAttributeAccessIssue",
+      "message": "Cannot access attribute \"get\" for class \"object\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/state_helpers.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Any | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/state_helpers.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[str, int | str]\" cannot be assigned to parameter \"object\" of type \"dict[str, int]\" in function \"append\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/state_helpers.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[str, int | str]\" cannot be assigned to parameter \"value\" of type \"dict[str, int]\" in function \"__setitem__\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/state_helpers.py",
+      "rule": "reportCallIssue",
+      "message": "No overloads for \"__setitem__\" match the provided arguments",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/wifi_inplace_plan.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 4
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/x1_proxy.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"(_key: str) -> int\" cannot be assigned to parameter \"cb\" of type \"(str) -> None\" in function \"on_any_burst_end\"",
+      "count": 1
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/x1_proxy.py",
+      "rule": "reportGeneralTypeIssues",
+      "message": "Expected class but received \"(obj: object, /) -> TypeIs[(...) -> object]\"",
+      "count": 5
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/x1_proxy.py",
+      "rule": "reportReturnType",
+      "message": "Type \"Literal[False]\" is not assignable to return type \"None\"",
+      "count": 2
+    },
+    {
+      "file": "custom_components/sofabaton_x1s/lib/x1_proxy.py",
+      "rule": "reportReturnType",
+      "message": "Type \"Literal[True]\" is not assignable to return type \"None\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/callbacks.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 2
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/discovery.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str | int\" cannot be assigned to parameter \"object\" of type \"str\" in function \"append\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/mqtt_config.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"tls_insecure\" of type \"bool\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/mqtt_config.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"tls\" of type \"bool\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_apply.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
+      "count": 2
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_apply.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"put\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"delete\"",
+      "count": 2
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
+      "count": 4
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"put\"",
+      "count": 2
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[str, Any] | None\" cannot be assigned to parameter \"effective_destination\" of type \"EffectiveDestination | None\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_edit.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"delete\"",
+      "count": 4
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_edit.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
+      "count": 6
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_edit.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"put\"",
+      "count": 8
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_edit.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"Unknown | Any | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
+      "count": 2
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_hub_data.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"get\"",
+      "count": 8
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_hub_data.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
+      "count": 5
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_mqtt.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"str\" cannot be assigned to parameter \"source\" of type \"Literal['none', 'panel', 'startup']\" in function \"__init__\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_payload.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"get\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_payload.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
+      "count": 6
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_payload.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"put\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_payload.py",
+      "rule": "reportCallIssue",
+      "message": "Argument missing for parameter \"timeout\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_payload.py",
+      "rule": "reportCallIssue",
+      "message": "Arguments missing for parameters \"include_blobs\", \"device_ids\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_snapshot.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_snapshot.py",
+      "rule": "reportCallIssue",
+      "message": "Arguments missing for parameters \"device_id\", \"activity_id\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/routes_snapshot.py",
+      "rule": "reportReturnType",
+      "message": "Type \"list[JobView | None]\" is not assignable to return type \"list[JobView]\"",
+      "count": 1
+    },
+    {
+      "file": "sofabaton-x-server/src/sofabaton_server/ws.py",
+      "rule": "reportArgumentType",
+      "message": "Argument of type \"JobView | None\" cannot be assigned to parameter \"job\" of type \"JobView\" in function \"__init__\"",
+      "count": 1
+    }
+  ]
+}

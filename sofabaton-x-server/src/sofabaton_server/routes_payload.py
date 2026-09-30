@@ -24,10 +24,10 @@ import json
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, Request, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from sofabaton import AsyncXProxy, CommandPayload, IrPayload, NetworkCommand
+from sofabaton import CommandPayload, IrPayload, NetworkCommand
 from sofabaton.blob_decoders import try_decode_blob
 
 from . import API_PREFIX

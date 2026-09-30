@@ -1,7 +1,6 @@
 import logging
 import re
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -47,12 +46,8 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_PAGE_ALT7,
     OP_DEVBTN_TAIL,
     OP_DEVBTN_SINGLE,
-    OP_KEYMAP_CONT,
     OP_KEYMAP_FINAL_X1S,
     OP_KEYMAP_OVERLAY_X1,
-    OP_KEYMAP_PAGE_X1_AE3D,
-    OP_KEYMAP_PAGE_X2_C03D,
-    OP_KEYMAP_TBL_B,
     OP_MARKER,
     SYNC0,
     SYNC1,

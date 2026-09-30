@@ -1672,7 +1672,8 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
             engine, runs = _update_engine(monkeypatch, dep, hub_version=hub_version)
             repairs: list[int] = []
 
-            def repair(act_id):
+            # Runs within this iteration: bind its list and engine.
+            def repair(act_id, repairs=repairs, engine=engine):
                 repairs.append(act_id)
                 engine.trace.append(("repair", act_id))
                 return True

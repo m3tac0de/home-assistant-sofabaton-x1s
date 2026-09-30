@@ -8,7 +8,6 @@ sanity check intended to underpin local backup/restore.
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 from tests._stub_packages import ensure_stub_package
 

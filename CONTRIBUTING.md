@@ -81,7 +81,7 @@ modules (a frontend test fails when an icon is missing from the table).
 
 ## ◇ Running the tests
 
-There are three suites:
+There are three test suites, plus the lint gates in section 5:
 
 ### 1. Python (pytest)
 
@@ -166,6 +166,29 @@ you what the opened dropdown will look like without opening it. The
 Add step dialog with its native selects) and are part of the default set.
 A test in `tests/frontend/tools-card-harness.test.ts` keeps the audit's
 default scenario list and the harness in sync.
+
+### 5. Lint gates
+
+CI turns a push red when one of these finds something new
+(`.github/workflows/python-lint.yml`, and frontend CI's typecheck):
+
+```powershell
+.venv-py313\Scripts\ruff check .   # bug rules from pyproject.toml; must be clean
+npm run pyright:check              # library + server: no errors beyond pyright-baseline.json
+npm run typecheck                  # tsc strict, unused locals included
+```
+
+- ruff checks only rules that flag code that is almost always wrong
+  (unused names, closures over loop variables, dangling asyncio tasks, ...).
+  The wider style and complexity report never gates:
+  `ruff check --extend-select BLE,S110,C901,PLR0912,PLR0915,SIM --exit-zero .`
+- pyright's existing errors are type-level only and recorded in
+  `pyright-baseline.json`; the check fails on a new one and names it. After
+  fixing some, `npm run pyright:baseline` lowers the recorded set (commit the
+  file). Pyright reads the installed `sofabaton` for the server, so install
+  the library from this tree first:
+  `.venv-py313\Scripts\python -m pip install --no-deps --force-reinstall .`
+  CI builds the same environment from `scripts/pyright-requirements.txt`.
 
 ## ◇ Documentation
 

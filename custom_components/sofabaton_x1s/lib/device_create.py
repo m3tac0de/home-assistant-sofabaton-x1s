@@ -307,7 +307,12 @@ def run_create_sequence(
         for reject_byte in step.ack_reject_first_bytes:
             candidates.append((step.ack_opcode, reject_byte & 0xFF))
 
-        def _is_rejection(ack_payload: bytes) -> bool:
+        # Called only within this step's attempts: bind the step's values.
+        def _is_rejection(
+            ack_payload: bytes,
+            step: CreateStep = step,
+            wildcard_status_reject: bool = wildcard_status_reject,
+        ) -> bool:
             first_byte = ack_payload[0] if ack_payload else None
             if first_byte is None:
                 return False

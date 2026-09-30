@@ -3,7 +3,6 @@
 from importlib import import_module
 from pathlib import Path
 import sys
-import types
 from tests._stub_packages import ensure_stub_package
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -19,9 +19,7 @@ existing pipeline tests on :mod:`tests.test_x1_proxy`.
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
-from typing import Any
 
 import pytest
 from tests._stub_packages import ensure_stub_package

@@ -15,7 +15,6 @@ import importlib
 import threading
 from types import SimpleNamespace
 
-from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_IR_LEARN_ENTER,

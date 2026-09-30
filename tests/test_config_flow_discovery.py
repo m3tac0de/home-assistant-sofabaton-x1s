@@ -6,8 +6,6 @@ from custom_components.sofabaton_x1s.config_flow import _prepare_discovered_hub
 from custom_components.sofabaton_x1s.config_flow import ConfigFlow
 from custom_components.sofabaton_x1s.const import (
     CONF_ENABLE_X2_DISCOVERY,
-    HUB_VERSION_X1,
-    HUB_VERSION_X2,
     DOMAIN,
     MDNS_SERVICE_TYPES,
     format_hub_entry_title,
