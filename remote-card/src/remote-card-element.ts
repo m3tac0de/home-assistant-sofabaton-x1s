@@ -1,9 +1,8 @@
-// Lit card element for the Sofabaton Virtual Remote — the ported replacement
-// for the legacy SofabatonRemoteCard. State and actions live in
-// RemoteCardStore, the assist/MQTT subsystem in AutomationAssistController;
-// sections render the tree while this element keeps the imperative edges the
-// legacy card had: per-card theming vars, group radius probing, drawer
-// direction measuring, layering z-indexes, and the layout-change crossfade.
+// Lit card element for the Sofabaton Virtual Remote. State and actions live
+// in RemoteCardStore, the assist/MQTT subsystem in AutomationAssistController;
+// sections render the tree while this element keeps the imperative edges:
+// per-card theming vars, group radius probing, drawer direction measuring,
+// layering z-indexes, and the layout-change crossfade.
 
 import { LitElement, html, nothing, css, unsafeCSS, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
@@ -32,7 +31,7 @@ import {
   str,
 } from "./remote-card-strings";
 import { REMOTE_CARD_CSS } from "./remote-card-styles";
-import { rgbToCss, automationAssistLabelForKey } from "./remote-card-ui-helpers";
+import { rgbToCss } from "./remote-card-ui-helpers";
 import { runtimeButtonVisibility } from "./remote-card-runtime-display";
 import { drawerVisibilityState } from "./remote-card-drawer-display";
 import { longPressEnabledForKey } from "./remote-card-long-press";
@@ -59,6 +58,7 @@ import {
   renderMid,
   renderNavRow,
   renderShortcutsRow,
+  keyAccessibleLabel,
   type KeyGroupsParams,
   type KeySpec,
   type ShortcutsRowSlot,
@@ -564,6 +564,24 @@ export class SofabatonRemoteCard extends LitElement {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    // The toggle goes inert with the pad up; hand focus to the first key
+    // so a keyboard user is not dropped on the page (CR-F4b-7).
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+
+  private _closeNumpad(restoreFocus: boolean): void {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  private _focusDpadControl(selector: string): void {
+    const target = this._dpadRef.value?.querySelector<HTMLElement>(selector);
+    const control = target?.shadowRoot?.querySelector<HTMLElement>(".sb-key-control") ?? target;
+    control?.focus();
   }
 
   private _handleModeToggle(): void {
@@ -1213,6 +1231,7 @@ export class SofabatonRemoteCard extends LitElement {
           open: this._numpadOpen,
           hostRef: this._dpadRef,
           onOpen: () => this._openNumpad(),
+          onClose: (restoreFocus: boolean) => this._closeNumpad(restoreFocus),
         }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -1317,7 +1336,7 @@ export class SofabatonRemoteCard extends LitElement {
     // persistent notification.
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",

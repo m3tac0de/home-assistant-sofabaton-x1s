@@ -1,7 +1,7 @@
-// Activity selector row for the Lit card (legacy buildActivityRow + the
-// select-sync half of _update). In device mode the same row hosts the device
-// dropdown; the optional mode-toggle button renders fused to the select's
-// left edge (docs/internal/device-mode-plan.md §3).
+// Activity selector row for the Lit card, including keeping the select in
+// sync with the running activity. In device mode the same row hosts the
+// device dropdown; the optional mode-toggle button renders fused to the
+// select's left edge (docs/internal/device-mode-plan.md §3).
 
 import { html, nothing, type TemplateResult } from "lit";
 import { html as staticHtml, unsafeStatic } from "lit/static-html.js";

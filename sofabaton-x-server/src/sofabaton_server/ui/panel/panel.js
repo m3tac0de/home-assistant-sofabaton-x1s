@@ -1120,44 +1120,6 @@ function numpadEnabled(layout) {
   return true;
 }
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var HARD_BUTTON_ID_MAP = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C
-};
-var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
 
 // remote-card/src/remote-card-compat.ts
 function hubVersionFromState(remoteState) {
@@ -1318,6 +1280,9 @@ var REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel2) => `Reorder ${groupLabel2} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -2968,8 +2933,8 @@ function attachPrimaryAction(els, fn, options = {}) {
     (el) => Boolean(el)
   );
   const gate = createPrimaryActionGate();
-  const wrapped = (ev) => {
-    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+  const wrapped = (ev, gateType = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: ev.pointerId }, Date.now())) return;
     if (typeof ev.preventDefault === "function") ev.preventDefault();
     if (typeof ev.stopPropagation === "function") ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === "function")
@@ -2980,21 +2945,34 @@ function attachPrimaryAction(els, fn, options = {}) {
     } catch (e6) {
     }
   };
+  const keyboardClick = (ev) => {
+    if (ev.detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev) => {
+    const key = ev.key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 var DRAWER_MAX_HEIGHT = 350;
@@ -6127,7 +6105,9 @@ var SbKeyButton = class extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button"
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback
     );
   }
   connectedCallback() {
@@ -6164,11 +6144,6 @@ var SbKeyButton = class extends BaseElement {
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
-    });
   }
   disconnectedCallback() {
     this._hold.stop();
@@ -6180,6 +6155,13 @@ if (!customElements.get("sb-key-button")) {
 }
 
 // remote-card/src/sections/key-groups.ts
+function keyFaceLabel(spec) {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+function keyAccessibleLabel(spec) {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
+}
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.C,
   ID.B,
@@ -6211,7 +6193,7 @@ var NUMPAD_KEYS = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -6236,7 +6218,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -6256,14 +6238,11 @@ function renderKey(params, spec) {
   if (!shouldShow) return A;
   const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
   const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
   return b2`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -6293,8 +6272,25 @@ function renderDpad(params, visible, numpad = null) {
     ready ? "dpad--numpad-ready" : "",
     open ? "dpad--numpad-open" : ""
   ].filter(Boolean).join(" ");
+  const onKeydown = (ev) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || ev.currentTarget.contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return b2`
-    <div class=${className} ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n5(numpad.hostRef) : A}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
       </div>
@@ -7186,6 +7182,20 @@ var SofabatonRemoteCard = class extends i4 {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+  _closeNumpad(restoreFocus) {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  _focusDpadControl(selector) {
+    const target = this._dpadRef.value?.querySelector(selector);
+    const control = target?.shadowRoot?.querySelector(".sb-key-control") ?? target;
+    control?.focus();
   }
   _handleModeToggle() {
     if (this._editMode) return;
@@ -7647,7 +7657,8 @@ var SofabatonRemoteCard = class extends i4 {
         available: numpadAvailable,
         open: this._numpadOpen,
         hostRef: this._dpadRef,
-        onOpen: () => this._openNumpad()
+        onOpen: () => this._openNumpad(),
+        onClose: (restoreFocus) => this._closeNumpad(restoreFocus)
       }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -7720,7 +7731,7 @@ var SofabatonRemoteCard = class extends i4 {
     }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",
@@ -8192,9 +8203,6 @@ var MDI_ICON_PATHS = {
   "alert-circle": mdiAlertCircle,
   "alert-circle-outline": mdiAlertCircleOutline,
   "alert-outline": mdiAlertOutline,
-  "alpha-a-circle-outline": mdiAlphaACircleOutline,
-  "alpha-b-circle-outline": mdiAlphaBCircleOutline,
-  "alpha-c-circle-outline": mdiAlphaCCircleOutline,
   "amplifier": mdiAmplifier,
   "apple": mdiApple,
   "arrow-down": mdiArrowDown,
@@ -8250,11 +8258,9 @@ var MDI_ICON_PATHS = {
   "chevron-double-right": mdiChevronDoubleRight,
   "chevron-double-up": mdiChevronDoubleUp,
   "chevron-down": mdiChevronDown,
-  "chevron-down-circle-outline": mdiChevronDownCircleOutline,
   "chevron-left": mdiChevronLeft,
   "chevron-right": mdiChevronRight,
   "chevron-up": mdiChevronUp,
-  "chevron-up-circle-outline": mdiChevronUpCircleOutline,
   "circle": mdiCircle,
   "circle-outline": mdiCircleOutline,
   "clock": mdiClock,
@@ -8722,10 +8728,11 @@ var SbHaSelect = class extends HTMLElement {
         if (this.disabled) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          if (!this.hasAttribute("open")) this._openMenu();
+          const wasOpen = this.hasAttribute("open");
+          if (!wasOpen) this._openMenu();
           const buttons = Array.from(this._menu?.querySelectorAll(".option") ?? []);
-          const index = Math.max(0, this._options.findIndex((option) => option.value === this._value));
-          const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : Math.max(0, index - 1);
+          const selected = this._options.findIndex((option) => option.value === this._value);
+          const next = !wasOpen ? Math.max(0, selected) : event.key === "ArrowDown" ? Math.min(buttons.length - 1, selected + 1) : Math.max(0, selected - 1);
           buttons[next]?.focus();
         } else if (event.key === "Escape" && this.hasAttribute("open")) {
           event.preventDefault();
@@ -9155,6 +9162,9 @@ var REMOTE_CARD_STRINGS_AR = {
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    fewerVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0642\u0644",
+    moreVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0643\u062B\u0631",
+    reorderGroupHandle: (groupLabel2) => `\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 ${isolate(groupLabel2)} (\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u0623\u0633\u0647\u0645)`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -9377,6 +9387,9 @@ var REMOTE_CARD_STRINGS_DE = {
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -9579,6 +9592,9 @@ var REMOTE_CARD_STRINGS_ES = {
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
+    fewerVisibleRows: "Menos filas visibles",
+    moreVisibleRows: "M\xE1s filas visibles",
+    reorderGroupHandle: (groupLabel2) => `Reordenar ${groupLabel2} (teclas de flecha)`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -9781,6 +9797,9 @@ var REMOTE_CARD_STRINGS_FR = {
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel2) => `R\xE9ordonner ${groupLabel2} (touches fl\xE9ch\xE9es)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -9982,6 +10001,9 @@ var REMOTE_CARD_STRINGS_NL = {
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
+    fewerVisibleRows: "Minder zichtbare rijen",
+    moreVisibleRows: "Meer zichtbare rijen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verplaatsen (pijltjestoetsen)`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -10183,6 +10205,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
+    fewerVisibleRows: "\u51CF\u5C11\u53EF\u89C1\u884C\u6570",
+    moreVisibleRows: "\u589E\u52A0\u53EF\u89C1\u884C\u6570",
+    reorderGroupHandle: (groupLabel2) => `\u8C03\u6574${groupLabel2}\u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",

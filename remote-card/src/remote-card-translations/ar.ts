@@ -158,6 +158,9 @@ export const REMOTE_CARD_STRINGS_AR = {
       `نقل ${isolate(groupLabel)} إلى الأعلى`,
     moveGroupDown: (groupLabel: string) =>
       `نقل ${isolate(groupLabel)} إلى الأسفل`,
+    fewerVisibleRows: "صفوف مرئية أقل",
+    moreVisibleRows: "صفوف مرئية أكثر",
+    reorderGroupHandle: (groupLabel: string) => `إعادة ترتيب ${isolate(groupLabel)} (مفاتيح الأسهم)`,
     macros: "وحدات الماكرو",
     favorites: "المفضلات",
     volume: "مستوى الصوت",

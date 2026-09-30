@@ -131,7 +131,7 @@ function renderSwitchItem(
   };
   return html`
     <div class="sb-layout-switch-item${disabled ? " is-disabled" : ""}">
-      <ha-switch .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
+      <ha-switch aria-label=${text} .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
       <div class="sb-layout-switch-label">${text}</div>
     </div>
   `;
@@ -200,7 +200,7 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
     </ha-select>
   `;
 
-  const stepButton = (icon: string, delta: number) => {
+  const stepButton = (icon: string, delta: number, label: string) => {
     const disabled =
       !params.asRows ||
       (delta < 0 && params.visibleRows <= MIN_ROW_VISIBLE_ROWS) ||
@@ -209,6 +209,7 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       <button
         type="button"
         class="sb-icon-btn"
+        aria-label=${label}
         .disabled=${disabled}
         @click=${(ev: Event) => {
           stopEvent(ev);
@@ -230,6 +231,9 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
     <div class="sb-layout-row sb-mf-rows-row">
       <div class="sb-layout-switch-item">
         <ha-switch
+          aria-label=${params.isDeviceSelection
+            ? str().editor.commandsAsRows
+            : str().editor.macrosFavoritesAsRows}
           .checked=${params.asRows}
           @change=${(ev: Event) => {
             stopEvent(ev);
@@ -248,9 +252,9 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
       >
         <div class="sb-layout-switch-label">${str().editor.visibleRows}</div>
         <div class="sb-rows-stepper">
-          ${stepButton("mdi:minus", -1)}
+          ${stepButton("mdi:minus", -1, str().editor.fewerVisibleRows)}
           <div class="sb-rows-value">${String(params.visibleRows)}</div>
-          ${stepButton("mdi:plus", +1)}
+          ${stepButton("mdi:plus", +1, str().editor.moreVisibleRows)}
         </div>
       </div>
     </div>
@@ -305,8 +309,29 @@ export function renderGroupOrderSection(params: GroupOrderSectionParams): Templa
 
   const moveControl = (key: string, index: number): TemplateResult => {
     if (params.sortableReady) {
+      // Drag for pointers; for the keyboard the handle is a button that
+      // moves the row with the up/down arrows, and keeps focus (CR-F4b-6).
+      const last = params.visibleOrder.length - 1;
       return html`
-        <div class="sb-drag-handle" aria-hidden="true">
+        <div
+          class="sb-drag-handle"
+          role="button"
+          tabindex="0"
+          data-group-key=${key}
+          aria-label=${str().editor.reorderGroupHandle(params.groupLabel(key))}
+          @keydown=${(ev: KeyboardEvent) => {
+            const delta = ev.key === "ArrowUp" ? -1 : ev.key === "ArrowDown" ? 1 : 0;
+            if (!delta) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            if ((delta < 0 && index === 0) || (delta > 0 && index === last)) return;
+            const root = (ev.currentTarget as HTMLElement).getRootNode() as ParentNode;
+            params.onMoveGroupByKey(key, delta);
+            requestAnimationFrame(() => {
+              root.querySelector<HTMLElement>(`.sb-drag-handle[data-group-key="${key}"]`)?.focus();
+            });
+          }}
+        >
           <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
         </div>
       `;

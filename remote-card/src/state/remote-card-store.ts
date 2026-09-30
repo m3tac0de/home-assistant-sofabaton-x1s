@@ -1,5 +1,5 @@
-// State store for the remote card, extracted from the legacy card class for
-// the Lit port (docs/internal/remote-card-refactor-plan.md, Phase 3). Owns
+// State store for the remote card (docs/internal/remote-card-refactor-plan.md,
+// Phase 3). Owns
 // hass/config, the integration probe, the hub command queue, activity/preview
 // state, the enabled-buttons cache, and the load indicator; all pure
 // derivations keep delegating to the existing remote-card-* satellites.

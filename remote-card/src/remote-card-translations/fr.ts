@@ -151,6 +151,9 @@ export const REMOTE_CARD_STRINGS_FR = {
       `Déplacer ${groupLabel} vers le haut`,
     moveGroupDown: (groupLabel: string) =>
       `Déplacer ${groupLabel} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel: string) => `Réordonner ${groupLabel} (touches fléchées)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",

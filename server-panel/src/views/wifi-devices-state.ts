@@ -284,7 +284,7 @@ export function withSlotCleared(draft: WifiDraft, index: number): WifiDraft {
   };
 }
 
-// -- hard buttons (the card's HARD_BUTTON_ID_MAP and its groups) -------------------------------------
+// -- hard buttons (the tools card's HARD_BUTTON_ID_MAP and its groups) -------------------------------
 
 export interface HardButton {
   /** The card's key name; also the key of its `keyLabels` string. */

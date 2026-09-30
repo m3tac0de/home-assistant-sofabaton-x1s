@@ -1,5 +1,5 @@
-// Gesture plumbing for the remote card, extracted from the legacy class so the
-// Lit port reuses the exact same dedupe behavior. The gate logic is pure and
+// Gesture plumbing for the remote card: one dedupe gate per action, so a
+// gesture that raises several events sends once. The gate logic is pure and
 // unit-tested; attachPrimaryAction is the thin DOM wiring around it.
 
 /** Shared dedupe gate for one action group (wrapper + hui-button-card). */
@@ -71,8 +71,10 @@ export function attachPrimaryAction(
 
   const gate = createPrimaryActionGate();
 
-  const wrapped = (ev: Event) => {
-    if (!primaryActionGateAllows(gate, ev as GateEventLike, Date.now())) return;
+  // `gateType` lets a keyboard activation through the ghost-click rule: it
+  // is a deliberate press, not the click that trails a touch.
+  const wrapped = (ev: Event, gateType: string = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: (ev as PointerEvent).pointerId }, Date.now())) return;
 
     // Prevent Home Assistant / inner elements from swallowing the action.
     if (typeof ev.preventDefault === "function") ev.preventDefault();
@@ -88,22 +90,40 @@ export function attachPrimaryAction(
     }
   };
 
+  // Keyboard (CR-F4b-1). A native <button> turns Enter/Space into a click
+  // with detail 0 (a pointer click carries detail >= 1 and is handled by
+  // pointerup); a role="button" host such as <ha-card> gets no click at all,
+  // so its own Enter/Space keydown activates it.
+  const keyboardClick = (ev: Event) => {
+    if ((ev as MouseEvent).detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev: Event) => {
+    const key = (ev as KeyboardEvent).key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget as Element | null;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
+
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false,
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false,
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
     // Home Assistant sometimes dispatches custom click events (keep as fallback)
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 

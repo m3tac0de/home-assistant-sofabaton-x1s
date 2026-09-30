@@ -1,11 +1,8 @@
 // Automation Assist controller: the key-capture + MQTT trigger-discovery
-// subsystem extracted from the legacy card class (~980 lines of card methods,
-// now DOM-free). The host interface supplies hass/config/hub-queue context;
-// onChange() replaces the legacy _updateAutomationAssistUI/_updateAutomation-
-// AssistModalUI calls — the Lit card re-renders from the controller's state.
-//
-// Cleanup vs legacy (noted in the refactor plan): disconnected() actually
-// unsubscribes the MQTT listener, including one still waiting for HA's ack.
+// subsystem, DOM-free. The host interface supplies hass/config/hub-queue
+// context; onChange() asks the Lit card to re-render from the controller's
+// state. disconnected() unsubscribes the MQTT listener, including one still
+// waiting for HA's ack.
 
 import {
   automationAssistButtonYaml,

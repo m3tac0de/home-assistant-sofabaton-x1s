@@ -6,6 +6,7 @@ import {
 } from "../../remote-card/src/state/remote-card-store";
 import type { HassLike, RemoteCardConfig } from "../../remote-card/src/remote-card-types";
 import { str } from "../../remote-card/src/remote-card-strings";
+import { createRemoteCardHass, type ServiceCall } from "./helpers/remote-card-hass";
 
 const ENTITY = "remote.living_room";
 
@@ -20,33 +21,9 @@ const flush = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
-interface ServiceCall {
-  domain: string;
-  service: string;
-  data: Record<string, unknown>;
-}
 
-function createHass(options: {
-  platform?: string;
-  state?: Record<string, unknown> | null;
-  calls?: ServiceCall[];
-} = {}): HassLike {
-  const platform = options.platform ?? "sofabaton_x1s";
-  const calls = options.calls ?? [];
-  return {
-    states: options.state ? { [ENTITY]: options.state as never } : {},
-    async callWS<T>(message: Record<string, unknown>) {
-      if (String(message.type) === "config/entity_registry/get") {
-        return { platform } as T;
-      }
-      return { ok: true } as T;
-    },
-    async callService(domain: string, service: string, data?: Record<string, unknown>) {
-      calls.push({ domain, service, data: data ?? {} });
-      return undefined;
-    },
-  };
-}
+// The shared fake (tests/frontend/helpers/remote-card-hass.ts).
+const createHass = createRemoteCardHass;
 
 function activeState(overrides: Record<string, unknown> = {}) {
   return {

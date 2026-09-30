@@ -176,10 +176,17 @@ export class SbHaSelect extends HTMLElement {
         if (this.disabled) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          if (!this.hasAttribute("open")) this._openMenu();
+          const wasOpen = this.hasAttribute("open");
+          if (!wasOpen) this._openMenu();
           const buttons = Array.from(this._menu?.querySelectorAll<HTMLButtonElement>(".option") ?? []);
-          const index = Math.max(0, this._options.findIndex((option) => option.value === this._value));
-          const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : Math.max(0, index - 1);
+          const selected = this._options.findIndex((option) => option.value === this._value);
+          // Opening lands on the selected option (the first when none is
+          // selected); an open menu moves from there (CR-F4b-9).
+          const next = !wasOpen
+            ? Math.max(0, selected)
+            : event.key === "ArrowDown"
+              ? Math.min(buttons.length - 1, selected + 1)
+              : Math.max(0, selected - 1);
           buttons[next]?.focus();
         } else if (event.key === "Escape" && this.hasAttribute("open")) {
           event.preventDefault();

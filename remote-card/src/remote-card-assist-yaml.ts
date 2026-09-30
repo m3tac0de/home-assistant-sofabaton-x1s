@@ -1,7 +1,6 @@
 // Pure generators for the Automation Assist output: the remote service-call
 // YAML, the Lovelace button-card YAML, and the persistent-notification body.
-// Extracted from the legacy card class; no DOM or card state — everything
-// comes in through the capture object.
+// No DOM or card state: everything comes in through the capture object.
 
 import { str } from "./remote-card-strings";
 

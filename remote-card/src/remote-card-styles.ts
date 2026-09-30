@@ -1,7 +1,5 @@
-// Stylesheets for the remote card and its config editor, extracted verbatim
-// from the legacy monolith so the strings can be shared with the Lit port
-// (wrap with unsafeCSS for static styles). Byte-identical to the previous
-// inline template literals.
+// Stylesheets for the remote card and its config editor, kept as strings so
+// every host can share them (wrap with unsafeCSS for static styles).
 
 export const REMOTE_CARD_CSS = `
       :host {
@@ -1269,15 +1267,6 @@ export const REMOTE_CARD_CSS = `
     `;
 
 export const REMOTE_CARD_EDITOR_CSS = `
-          .sb-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); z-index: 9999; }
-          .sb-modal.open { display: flex; }
-          .sb-modal__dialog { width: min(560px, 92vw); max-height: 90vh; overflow: auto; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
-          .sb-modal__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-          .sb-modal__title { font-weight: 700; font-size: 18px; }
-          .sb-modal__close { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 22px; line-height: 1; }
-          .sb-modal__text { font-size: 15px; line-height: 1.5; opacity: 0.95; }
-          .sb-modal__optout { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-          .sb-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
           .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
           .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; transition: background-color 120ms ease; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
@@ -1286,7 +1275,6 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-exp-collapsed .sb-exp-body { display: none; }
           .sb-exp:not(.sb-exp-collapsed) > .sb-exp-hdr { background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
                     
-          .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
           .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -1335,10 +1323,10 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-row-menu-btn { color: var(--secondary-text-color); }
           .sb-row-menu-btn ha-icon { --mdc-icon-size: 20px; }
           .sb-row-menu-btn.is-open { border-color: var(--primary-color); color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
-          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
           /* These labels explain the switch next to them — translations can be long, so wrap instead of ellipsing. */
           .sb-row-menu-panel .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
-          .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+          .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
           /* This label explains the switch next to it — translations can be long, so wrap instead of ellipsing. */
           .sb-mf-rows-row .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
           .sb-mf-rows-row + .sb-layout-row { border-top: 0; }
@@ -1350,6 +1338,7 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
+          .sb-drag-handle:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; border-radius: 8px; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           /* Shortcuts slot editing on the group-order row: the three mini
              slot buttons fill the row's second cell; the open slot's panel
@@ -1365,7 +1354,7 @@ export const REMOTE_CARD_EDITOR_CSS = `
           .sb-shortcut-slot.is-configured { border-style: solid; }
           .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
           .sb-shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--primary-color); pointer-events: none; }
-          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
           .sb-shortcut-panel ha-form { display: block; }
           .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
           .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
@@ -1404,97 +1393,8 @@ export const REMOTE_CARD_EDITOR_CSS = `
             --mdc-typography-body2-line-height: 1.3;
             --ha-font-size-m: 13px;
           }
-          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-          .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
-          .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
-          .sb-command-sync-row-ok { border-color: var(--success-color, #22c55e); border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: rgba(34, 197, 94, 0.12); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
-          .sb-command-sync-message-wrap { display:flex; align-items:center; gap: 8px; min-width: 0; }
-          .sb-command-sync-message-wrap ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
-          .sb-command-sync-row-ok .sb-command-sync-message-wrap ha-icon { color: var(--success-color, #22c55e); }
-          .sb-command-sync-row-error .sb-command-sync-message-wrap ha-icon { color: var(--error-color); }
-          .sb-command-sync-row-running .sb-command-sync-message-wrap ha-icon { color: var(--primary-color); }
-          .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
-          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-sync-btn:hover { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.28); background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
-          .sb-command-sync-btn:active { transform: translateY(1px); }
-          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(var(--rgb-primary-color, 3, 169, 244), 0.45); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
-          .sb-command-sync-btn[disabled],
-          .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
-          .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
-          .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: start; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
-          .sb-command-slot-btn:hover { border-color: var(--primary-color); }
-          .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
-                    .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
-          .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 20px; color: var(--state-icon-color); }
-          .sb-command-slot-name { font-weight: 700; font-size: 16px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary-text-color); }
-          .sb-command-slot-meta { margin-top: 3px; font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display:flex; align-items:center; gap: 4px; }
-          .sb-command-slot-favorite { color: var(--error-color); display:inline-flex; }
-          .sb-command-slot-favorite ha-icon { --mdc-icon-size: 14px; }
-          .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
-          .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
-          .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
-          .sb-command-slot-clear { position: absolute; top: 8px; inset-inline-end: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
-          .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
-          .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: start; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
-          .sb-command-slot-action-btn:active { transform: translateY(1px); }
-          .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
-          .sb-command-slot-confirm { padding: 14px 12px 10px; display:flex; flex-direction:column; }
-          .sb-command-slot-confirm-title { font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--primary-text-color); }
-          .sb-command-slot-confirm-sub { margin-top: 1px; font-size: 12px; color: var(--secondary-text-color); }
-          .sb-command-slot-confirm-actions { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 10px 10px; }
-          .sb-command-slot-confirm-actions .sb-command-slot-action-btn { margin: 0; text-align: center; justify-content: center; display:flex; align-items:center; }
-          .sb-command-slot-empty { border-color: var(--divider-color); background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); }
-          .sb-command-slot-empty .sb-command-slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; }
-          .sb-command-slot-empty .sb-command-slot-empty-text { font-size: 64px; line-height: 1; color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; opacity: 0.8; }
-          .sb-command-slot-empty .sb-command-slot-name { font-size: 18px; font-weight: 500; text-align: center; color: var(--secondary-text-color); }
-          .sb-command-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.52); display:none; align-items:center; justify-content:center; padding: 18px; }
-          .sb-command-modal.open { display:flex; }
-          .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); }
-          .sb-command-dialog-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--divider-color); }
-          .sb-command-dialog-title { font-size: 16px; font-weight: 700; }
-          .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
-          .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
-          .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
-          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: start; }
-          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-inline-start: auto; }
-          .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
-          .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
-          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-hub-version-warn-btn { all: unset; cursor: pointer; text-decoration: underline; display: block; }
-          .sb-hub-version-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
-          .sb-hub-version-chip { border: 1px solid var(--divider-color); border-radius: 20px; padding: 4px 14px; background: transparent; color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
-          .sb-hub-version-chip.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-note { border: 1px solid var(--divider-color); border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: var(--ha-card-background, var(--card-background-color)); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
-          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.22); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
-          .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
-          .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
-          .sb-command-input-label { font-size: 12px; opacity: 0.78; }
-          .sb-command-name-field { width: 100%; }
-          .sb-command-input-select { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, transparent); color: inherit; min-height: 40px; padding: 6px 12px; }
-          .sb-command-checkbox { width: 100%; border: 0; background: transparent; padding: 0; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; cursor: pointer; color: inherit; }
-          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: var(--ha-card-background, rgba(0, 0, 0, 0.12)); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
-          .sb-command-checkbox-icon ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-checkbox-left { display:flex; align-items:center; gap:10px; }
-          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
-          .sb-command-helper { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-          .sb-command-activity-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
-          .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
-          .sb-command-activity-chip.active { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
-          .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
-          .sb-command-action-tabs { display:flex; gap:8px; }
-          .sb-command-action-tab { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 8px 12px; cursor:pointer; font: inherit; }
-          .sb-command-action-tab.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-body ha-textfield,
-          .sb-command-dialog-body ha-selector { width: 100%; }
           @media (max-width: 760px) {
-            .sb-command-grid { grid-template-columns: 1fr; }
           }
           @media (max-width: 700px) {
-            .sb-command-modal { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-            .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
-            .sb-command-dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
           }
         `;

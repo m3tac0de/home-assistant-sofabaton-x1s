@@ -1789,44 +1789,6 @@ function numpadEnabled(layout) {
   return true;
 }
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var HARD_BUTTON_ID_MAP = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C
-};
-var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
 
 // remote-card/src/remote-card-compat.ts
 function hubVersionFromState(remoteState) {
@@ -1987,6 +1949,9 @@ var REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel) => `Move ${groupLabel} up`,
     moveGroupDown: (groupLabel) => `Move ${groupLabel} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel) => `Reorder ${groupLabel} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -3613,8 +3578,8 @@ function attachPrimaryAction(els, fn, options = {}) {
     (el) => Boolean(el)
   );
   const gate = createPrimaryActionGate();
-  const wrapped = (ev) => {
-    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+  const wrapped = (ev, gateType = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: ev.pointerId }, Date.now())) return;
     if (typeof ev.preventDefault === "function") ev.preventDefault();
     if (typeof ev.stopPropagation === "function") ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === "function")
@@ -3625,21 +3590,34 @@ function attachPrimaryAction(els, fn, options = {}) {
     } catch (e6) {
     }
   };
+  const keyboardClick = (ev) => {
+    if (ev.detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev) => {
+    const key = ev.key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 var DRAWER_MAX_HEIGHT = 350;
@@ -6772,7 +6750,9 @@ var SbKeyButton = class extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button"
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback
     );
   }
   connectedCallback() {
@@ -6809,11 +6789,6 @@ var SbKeyButton = class extends BaseElement {
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
-    });
   }
   disconnectedCallback() {
     this._hold.stop();
@@ -6825,6 +6800,13 @@ if (!customElements.get("sb-key-button")) {
 }
 
 // remote-card/src/sections/key-groups.ts
+function keyFaceLabel(spec) {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+function keyAccessibleLabel(spec) {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
+}
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.C,
   ID.B,
@@ -6856,7 +6838,7 @@ var NUMPAD_KEYS = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -6881,7 +6863,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -6901,14 +6883,11 @@ function renderKey(params, spec) {
   if (!shouldShow) return A;
   const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
   const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
   return b2`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -6938,8 +6917,25 @@ function renderDpad(params, visible, numpad = null) {
     ready ? "dpad--numpad-ready" : "",
     open ? "dpad--numpad-open" : ""
   ].filter(Boolean).join(" ");
+  const onKeydown = (ev) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || ev.currentTarget.contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return b2`
-    <div class=${className} ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n5(numpad.hostRef) : A}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
       </div>
@@ -7831,6 +7827,20 @@ var SofabatonRemoteCard = class extends i4 {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+  _closeNumpad(restoreFocus) {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  _focusDpadControl(selector) {
+    const target = this._dpadRef.value?.querySelector(selector);
+    const control = target?.shadowRoot?.querySelector(".sb-key-control") ?? target;
+    control?.focus();
   }
   _handleModeToggle() {
     if (this._editMode) return;
@@ -8292,7 +8302,8 @@ var SofabatonRemoteCard = class extends i4 {
         available: numpadAvailable,
         open: this._numpadOpen,
         hostRef: this._dpadRef,
-        onOpen: () => this._openNumpad()
+        onOpen: () => this._openNumpad(),
+        onClose: (restoreFocus) => this._closeNumpad(restoreFocus)
       }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -8365,7 +8376,7 @@ var SofabatonRemoteCard = class extends i4 {
     }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",
@@ -8617,9 +8628,6 @@ var mdiAlert = "M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z";
 var mdiAlertCircle = "M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiAlertCircleOutline = "M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z";
 var mdiAlertOutline = "M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16";
-var mdiAlphaACircleOutline = "M11,7H13A2,2 0 0,1 15,9V17H13V13H11V17H9V9A2,2 0 0,1 11,7M11,9V11H13V9H11M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2Z";
-var mdiAlphaBCircleOutline = "M15,10.5C15,11.3 14.3,12 13.5,12C14.3,12 15,12.7 15,13.5V15A2,2 0 0,1 13,17H9V7H13A2,2 0 0,1 15,9V10.5M13,15V13H11V15H13M13,11V9H11V11H13M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
-var mdiAlphaCCircleOutline = "M11,7H13A2,2 0 0,1 15,9V10H13V9H11V15H13V14H15V15A2,2 0 0,1 13,17H11A2,2 0 0,1 9,15V9A2,2 0 0,1 11,7M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiAmplifier = "M10,2H14A1,1 0 0,1 15,3H21V21H19A1,1 0 0,1 18,22A1,1 0 0,1 17,21H7A1,1 0 0,1 6,22A1,1 0 0,1 5,21H3V3H9A1,1 0 0,1 10,2M5,5V9H19V5H5M7,6A1,1 0 0,1 8,7A1,1 0 0,1 7,8A1,1 0 0,1 6,7A1,1 0 0,1 7,6M12,6H14V7H12V6M15,6H16V8H15V6M17,6H18V8H17V6M12,11A4,4 0 0,0 8,15A4,4 0 0,0 12,19A4,4 0 0,0 16,15A4,4 0 0,0 12,11M10,6A1,1 0 0,1 11,7A1,1 0 0,1 10,8A1,1 0 0,1 9,7A1,1 0 0,1 10,6Z";
 var mdiApple = "M18.71,19.5C17.88,20.74 17,21.95 15.66,21.97C14.32,22 13.89,21.18 12.37,21.18C10.84,21.18 10.37,21.95 9.1,22C7.79,22.05 6.8,20.68 5.96,19.47C4.25,17 2.94,12.45 4.7,9.39C5.57,7.87 7.13,6.91 8.82,6.88C10.1,6.86 11.32,7.75 12.11,7.75C12.89,7.75 14.37,6.68 15.92,6.84C16.57,6.87 18.39,7.1 19.56,8.82C19.47,8.88 17.39,10.1 17.41,12.63C17.44,15.65 20.06,16.66 20.09,16.67C20.06,16.74 19.67,18.11 18.71,19.5M13,3.5C13.73,2.67 14.94,2.04 15.94,2C16.07,3.17 15.6,4.35 14.9,5.19C14.21,6.04 13.07,6.7 11.95,6.61C11.8,5.46 12.36,4.26 13,3.5Z";
 var mdiArrowDown = "M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z";
@@ -8675,11 +8683,9 @@ var mdiChevronDoubleLeft = "M18.41,7.41L17,6L11,12L17,18L18.41,16.59L13.83,12L18
 var mdiChevronDoubleRight = "M5.59,7.41L7,6L13,12L7,18L5.59,16.59L10.17,12L5.59,7.41M11.59,7.41L13,6L19,12L13,18L11.59,16.59L16.17,12L11.59,7.41Z";
 var mdiChevronDoubleUp = "M7.41,18.41L6,17L12,11L18,17L16.59,18.41L12,13.83L7.41,18.41M7.41,12.41L6,11L12,5L18,11L16.59,12.41L12,7.83L7.41,12.41Z";
 var mdiChevronDown = "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z";
-var mdiChevronDownCircleOutline = "M22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12M20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12M6,10L12,16L18,10L16.6,8.6L12,13.2L7.4,8.6L6,10Z";
 var mdiChevronLeft = "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z";
 var mdiChevronRight = "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z";
 var mdiChevronUp = "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z";
-var mdiChevronUpCircleOutline = "M22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12M20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12M7.4,15.4L12,10.8L16.6,15.4L18,14L12,8L6,14L7.4,15.4Z";
 var mdiCircle = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiCircleOutline = "M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiClock = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M16.2,16.2L11,13V7H12.5V12.2L17,14.9L16.2,16.2Z";
@@ -8944,9 +8950,6 @@ var MDI_ICON_PATHS = {
   "alert-circle": mdiAlertCircle,
   "alert-circle-outline": mdiAlertCircleOutline,
   "alert-outline": mdiAlertOutline,
-  "alpha-a-circle-outline": mdiAlphaACircleOutline,
-  "alpha-b-circle-outline": mdiAlphaBCircleOutline,
-  "alpha-c-circle-outline": mdiAlphaCCircleOutline,
   "amplifier": mdiAmplifier,
   "apple": mdiApple,
   "arrow-down": mdiArrowDown,
@@ -9002,11 +9005,9 @@ var MDI_ICON_PATHS = {
   "chevron-double-right": mdiChevronDoubleRight,
   "chevron-double-up": mdiChevronDoubleUp,
   "chevron-down": mdiChevronDown,
-  "chevron-down-circle-outline": mdiChevronDownCircleOutline,
   "chevron-left": mdiChevronLeft,
   "chevron-right": mdiChevronRight,
   "chevron-up": mdiChevronUp,
-  "chevron-up-circle-outline": mdiChevronUpCircleOutline,
   "circle": mdiCircle,
   "circle-outline": mdiCircleOutline,
   "clock": mdiClock,
@@ -9474,10 +9475,11 @@ var SbHaSelect = class extends HTMLElement {
         if (this.disabled) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          if (!this.hasAttribute("open")) this._openMenu();
+          const wasOpen = this.hasAttribute("open");
+          if (!wasOpen) this._openMenu();
           const buttons = Array.from(this._menu?.querySelectorAll(".option") ?? []);
-          const index = Math.max(0, this._options.findIndex((option) => option.value === this._value));
-          const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : Math.max(0, index - 1);
+          const selected = this._options.findIndex((option) => option.value === this._value);
+          const next = !wasOpen ? Math.max(0, selected) : event.key === "ArrowDown" ? Math.min(buttons.length - 1, selected + 1) : Math.max(0, selected - 1);
           buttons[next]?.focus();
         } else if (event.key === "Escape" && this.hasAttribute("open")) {
           event.preventDefault();
@@ -9907,6 +9909,9 @@ var REMOTE_CARD_STRINGS_AR = {
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    fewerVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0642\u0644",
+    moreVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0643\u062B\u0631",
+    reorderGroupHandle: (groupLabel) => `\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 ${isolate(groupLabel)} (\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u0623\u0633\u0647\u0645)`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -10129,6 +10134,9 @@ var REMOTE_CARD_STRINGS_DE = {
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel) => `${groupLabel} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel) => `${groupLabel} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -10331,6 +10339,9 @@ var REMOTE_CARD_STRINGS_ES = {
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel) => `Mover ${groupLabel} hacia arriba`,
     moveGroupDown: (groupLabel) => `Mover ${groupLabel} hacia abajo`,
+    fewerVisibleRows: "Menos filas visibles",
+    moreVisibleRows: "M\xE1s filas visibles",
+    reorderGroupHandle: (groupLabel) => `Reordenar ${groupLabel} (teclas de flecha)`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -10533,6 +10544,9 @@ var REMOTE_CARD_STRINGS_FR = {
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel) => `D\xE9placer ${groupLabel} vers le haut`,
     moveGroupDown: (groupLabel) => `D\xE9placer ${groupLabel} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel) => `R\xE9ordonner ${groupLabel} (touches fl\xE9ch\xE9es)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -10734,6 +10748,9 @@ var REMOTE_CARD_STRINGS_NL = {
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel) => `Verplaats ${groupLabel} omhoog`,
     moveGroupDown: (groupLabel) => `Verplaats ${groupLabel} omlaag`,
+    fewerVisibleRows: "Minder zichtbare rijen",
+    moreVisibleRows: "Meer zichtbare rijen",
+    reorderGroupHandle: (groupLabel) => `${groupLabel} verplaatsen (pijltjestoetsen)`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -10935,6 +10952,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel) => `\u5C06${groupLabel}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel) => `\u5C06${groupLabel}\u4E0B\u79FB`,
+    fewerVisibleRows: "\u51CF\u5C11\u53EF\u89C1\u884C\u6570",
+    moreVisibleRows: "\u589E\u52A0\u53EF\u89C1\u884C\u6570",
+    reorderGroupHandle: (groupLabel) => `\u8C03\u6574${groupLabel}\u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",

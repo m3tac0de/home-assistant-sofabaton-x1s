@@ -149,6 +149,9 @@ const REMOTE_CARD_STRINGS_DE = {
     moveGroupUp: (groupLabel: string) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel: string) =>
       `${groupLabel} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel: string) => `${groupLabel} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautstärke",

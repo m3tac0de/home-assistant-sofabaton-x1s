@@ -132,7 +132,6 @@ export function deviceModeBlock(
   return block && typeof block === "object" ? block : null;
 }
 
-/** The `device_mode.enabled` master switch: absent = enabled. */
 /**
  * Key surface treatment from config; unknown values fall back to "flat".
  * The legacy `key_style: "panel"` value (panels used to be a key style)
@@ -159,6 +158,7 @@ export function tintedPanelsFromConfig(
   return config?.tinted_panels === true || config?.key_style === "panel";
 }
 
+/** The `device_mode.enabled` master switch: absent = enabled. */
 export function deviceModeEnabledInConfig(
   config: Record<string, any> | null | undefined,
 ): boolean {
@@ -397,14 +397,6 @@ export function mfAsRows(layout: Record<string, any> | null | undefined) {
   return layout?.mf_as_rows === true;
 }
 
-export function macrosRowEnabled(layout: Record<string, any> | null | undefined) {
-  return mfAsRows(layout) && macrosButtonEnabled(layout);
-}
-
-export function favoritesRowEnabled(layout: Record<string, any> | null | undefined) {
-  return mfAsRows(layout) && favoritesButtonEnabled(layout);
-}
-
 function clampVisibleRows(value: unknown): number {
   const num = Number(value);
   if (!Number.isFinite(num)) return DEFAULT_ROW_VISIBLE_ROWS;
@@ -547,80 +539,7 @@ export function numpadEnabled(layout: Record<string, any> | null | undefined) {
   return true;
 }
 
-export const HARD_BUTTON_ICONS: Record<string, string> = {
-  up: "mdi:arrow-up-bold",
-  down: "mdi:arrow-down-bold",
-  left: "mdi:arrow-left-bold",
-  right: "mdi:arrow-right-bold",
-  ok: "mdi:check-circle-outline",
-  back: "mdi:arrow-u-left-top",
-  home: "mdi:home-outline",
-  menu: "mdi:menu",
-  volup: "mdi:volume-plus",
-  voldn: "mdi:volume-minus",
-  mute: "mdi:volume-mute",
-  chup: "mdi:chevron-up-circle-outline",
-  chdn: "mdi:chevron-down-circle-outline",
-  guide: "mdi:television-guide",
-  dvr: "mdi:record-rec",
-  play: "mdi:play-circle-outline",
-  exit: "mdi:close-circle-outline",
-  rew: "mdi:rewind",
-  pause: "mdi:pause-circle-outline",
-  fwd: "mdi:fast-forward",
-  red: "mdi:circle",
-  green: "mdi:circle",
-  yellow: "mdi:circle",
-  blue: "mdi:circle",
-  a: "mdi:alpha-a-circle-outline",
-  b: "mdi:alpha-b-circle-outline",
-  c: "mdi:alpha-c-circle-outline",
-};
-
 // Protocol/state values (NOT display labels) — these match HA state strings
 // coming from the integration and must stay English. The localized display
 // label is str().card.poweredOff.
 export const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
-
-// Default key display labels live in remote-card-strings.ts (str().keys) so
-// they can be localized.
-
-export const HARD_BUTTON_ID_MAP: Record<string, number> = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C,
-};
-
-export const X2_ONLY_HARD_BUTTON_IDS = new Set<number>([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE,
-]);

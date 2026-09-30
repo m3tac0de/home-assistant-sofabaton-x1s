@@ -1,7 +1,6 @@
-// Macro/Favorites tabs, drawer overlays, and inline rows for the Lit card
-// (legacy buildMacroFavoritesSection / buildInlineDrawerRow / the drawer
-// population half of _update). Drawer item buttons are cheap ha-cards and
-// render declaratively; tabs reuse lightweight <sb-key-button> hosts.
+// Macro/Favorites tabs, drawer overlays, and inline rows for the Lit card.
+// Drawer item buttons are cheap ha-cards and render declaratively; tabs
+// reuse lightweight <sb-key-button> hosts.
 
 import { html, nothing, type TemplateResult } from "lit";
 import { repeat } from "lit/directives/repeat.js";

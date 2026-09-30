@@ -920,44 +920,6 @@ function numpadEnabled(layout) {
   return true;
 }
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var HARD_BUTTON_ID_MAP = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C
-};
-var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
 
 // remote-card/src/remote-card-strings.ts
 var REMOTE_CARD_STRINGS_EN = {
@@ -1078,6 +1040,9 @@ var REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel2) => `Move ${groupLabel2} up`,
     moveGroupDown: (groupLabel2) => `Move ${groupLabel2} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel2) => `Reorder ${groupLabel2} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -2836,15 +2801,6 @@ var REMOTE_CARD_CSS = `
       }
     `;
 var REMOTE_CARD_EDITOR_CSS = `
-          .sb-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); z-index: 9999; }
-          .sb-modal.open { display: flex; }
-          .sb-modal__dialog { width: min(560px, 92vw); max-height: 90vh; overflow: auto; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
-          .sb-modal__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-          .sb-modal__title { font-weight: 700; font-size: 18px; }
-          .sb-modal__close { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 22px; line-height: 1; }
-          .sb-modal__text { font-size: 15px; line-height: 1.5; opacity: 0.95; }
-          .sb-modal__optout { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-          .sb-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
           .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
           .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; transition: background-color 120ms ease; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
@@ -2853,7 +2809,6 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-exp-collapsed .sb-exp-body { display: none; }
           .sb-exp:not(.sb-exp-collapsed) > .sb-exp-hdr { background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
                     
-          .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
           .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -2902,10 +2857,10 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-row-menu-btn { color: var(--secondary-text-color); }
           .sb-row-menu-btn ha-icon { --mdc-icon-size: 20px; }
           .sb-row-menu-btn.is-open { border-color: var(--primary-color); color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
-          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-row-menu-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
           /* These labels explain the switch next to them \u2014 translations can be long, so wrap instead of ellipsing. */
           .sb-row-menu-panel .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
-          .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+          .sb-mf-rows-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
           /* This label explains the switch next to it \u2014 translations can be long, so wrap instead of ellipsing. */
           .sb-mf-rows-row .sb-layout-switch-label { white-space: normal; overflow: visible; text-overflow: clip; }
           .sb-mf-rows-row + .sb-layout-row { border-top: 0; }
@@ -2917,6 +2872,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
           .sb-drag-handle { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; justify-self: end; color: var(--secondary-text-color); cursor: grab; touch-action: none; }
           .sb-drag-handle:active { cursor: grabbing; }
+          .sb-drag-handle:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; border-radius: 8px; }
           .sb-drag-handle ha-icon { --mdc-icon-size: 20px; }
           /* Shortcuts slot editing on the group-order row: the three mini
              slot buttons fill the row's second cell; the open slot's panel
@@ -2932,7 +2888,7 @@ var REMOTE_CARD_EDITOR_CSS = `
           .sb-shortcut-slot.is-configured { border-style: solid; }
           .sb-shortcut-slot.is-open { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color) inset; }
           .sb-shortcut-slot.is-open::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--primary-color); pointer-events: none; }
-          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); }
+          .sb-shortcut-panel { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 4px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04); background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
           .sb-shortcut-panel ha-form { display: block; }
           .sb-shortcut-panel-footer { display: flex; justify-content: flex-end; }
           .sb-shortcut-note { font-size: 12px; color: var(--secondary-text-color); line-height: 1.35; }
@@ -2971,98 +2927,9 @@ var REMOTE_CARD_EDITOR_CSS = `
             --mdc-typography-body2-line-height: 1.3;
             --ha-font-size-m: 13px;
           }
-          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-          .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
-          .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
-          .sb-command-sync-row-ok { border-color: var(--success-color, #22c55e); border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: rgba(34, 197, 94, 0.12); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
-          .sb-command-sync-message-wrap { display:flex; align-items:center; gap: 8px; min-width: 0; }
-          .sb-command-sync-message-wrap ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
-          .sb-command-sync-row-ok .sb-command-sync-message-wrap ha-icon { color: var(--success-color, #22c55e); }
-          .sb-command-sync-row-error .sb-command-sync-message-wrap ha-icon { color: var(--error-color); }
-          .sb-command-sync-row-running .sb-command-sync-message-wrap ha-icon { color: var(--primary-color); }
-          .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
-          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-sync-btn:hover { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.28); background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
-          .sb-command-sync-btn:active { transform: translateY(1px); }
-          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(var(--rgb-primary-color, 3, 169, 244), 0.45); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
-          .sb-command-sync-btn[disabled],
-          .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
-          .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
-          .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: start; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
-          .sb-command-slot-btn:hover { border-color: var(--primary-color); }
-          .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
-                    .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
-          .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 20px; color: var(--state-icon-color); }
-          .sb-command-slot-name { font-weight: 700; font-size: 16px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary-text-color); }
-          .sb-command-slot-meta { margin-top: 3px; font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display:flex; align-items:center; gap: 4px; }
-          .sb-command-slot-favorite { color: var(--error-color); display:inline-flex; }
-          .sb-command-slot-favorite ha-icon { --mdc-icon-size: 14px; }
-          .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
-          .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
-          .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
-          .sb-command-slot-clear { position: absolute; top: 8px; inset-inline-end: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
-          .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
-          .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: start; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
-          .sb-command-slot-action-btn:active { transform: translateY(1px); }
-          .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
-          .sb-command-slot-confirm { padding: 14px 12px 10px; display:flex; flex-direction:column; }
-          .sb-command-slot-confirm-title { font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--primary-text-color); }
-          .sb-command-slot-confirm-sub { margin-top: 1px; font-size: 12px; color: var(--secondary-text-color); }
-          .sb-command-slot-confirm-actions { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 10px 10px; }
-          .sb-command-slot-confirm-actions .sb-command-slot-action-btn { margin: 0; text-align: center; justify-content: center; display:flex; align-items:center; }
-          .sb-command-slot-empty { border-color: var(--divider-color); background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); }
-          .sb-command-slot-empty .sb-command-slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; }
-          .sb-command-slot-empty .sb-command-slot-empty-text { font-size: 64px; line-height: 1; color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; opacity: 0.8; }
-          .sb-command-slot-empty .sb-command-slot-name { font-size: 18px; font-weight: 500; text-align: center; color: var(--secondary-text-color); }
-          .sb-command-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.52); display:none; align-items:center; justify-content:center; padding: 18px; }
-          .sb-command-modal.open { display:flex; }
-          .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); }
-          .sb-command-dialog-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--divider-color); }
-          .sb-command-dialog-title { font-size: 16px; font-weight: 700; }
-          .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
-          .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
-          .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
-          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: start; }
-          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-inline-start: auto; }
-          .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
-          .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
-          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-hub-version-warn-btn { all: unset; cursor: pointer; text-decoration: underline; display: block; }
-          .sb-hub-version-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
-          .sb-hub-version-chip { border: 1px solid var(--divider-color); border-radius: 20px; padding: 4px 14px; background: transparent; color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
-          .sb-hub-version-chip.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-note { border: 1px solid var(--divider-color); border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: var(--ha-card-background, var(--card-background-color)); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
-          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.22); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
-          .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
-          .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
-          .sb-command-input-label { font-size: 12px; opacity: 0.78; }
-          .sb-command-name-field { width: 100%; }
-          .sb-command-input-select { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, transparent); color: inherit; min-height: 40px; padding: 6px 12px; }
-          .sb-command-checkbox { width: 100%; border: 0; background: transparent; padding: 0; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; cursor: pointer; color: inherit; }
-          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: var(--ha-card-background, rgba(0, 0, 0, 0.12)); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
-          .sb-command-checkbox-icon ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-checkbox-left { display:flex; align-items:center; gap:10px; }
-          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
-          .sb-command-helper { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-          .sb-command-activity-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
-          .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
-          .sb-command-activity-chip.active { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
-          .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
-          .sb-command-action-tabs { display:flex; gap:8px; }
-          .sb-command-action-tab { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 8px 12px; cursor:pointer; font: inherit; }
-          .sb-command-action-tab.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-body ha-textfield,
-          .sb-command-dialog-body ha-selector { width: 100%; }
           @media (max-width: 760px) {
-            .sb-command-grid { grid-template-columns: 1fr; }
           }
           @media (max-width: 700px) {
-            .sb-command-modal { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-            .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
-            .sb-command-dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
           }
         `;
 
@@ -3818,7 +3685,7 @@ function renderSwitchItem(text, checked, onSet, disabled = false) {
   };
   return b2`
     <div class="sb-layout-switch-item${disabled ? " is-disabled" : ""}">
-      <ha-switch .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
+      <ha-switch aria-label=${text} .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>
       <div class="sb-layout-switch-label">${text}</div>
     </div>
   `;
@@ -3875,12 +3742,13 @@ function renderGroupOrderSection(params) {
   )}
     </ha-select>
   `;
-  const stepButton = (icon, delta) => {
+  const stepButton = (icon, delta, label) => {
     const disabled = !params.asRows || delta < 0 && params.visibleRows <= MIN_ROW_VISIBLE_ROWS || delta > 0 && params.visibleRows >= MAX_ROW_VISIBLE_ROWS;
     return b2`
       <button
         type="button"
         class="sb-icon-btn"
+        aria-label=${label}
         .disabled=${disabled}
         @click=${(ev) => {
       stopEvent(ev);
@@ -3901,6 +3769,7 @@ function renderGroupOrderSection(params) {
     <div class="sb-layout-row sb-mf-rows-row">
       <div class="sb-layout-switch-item">
         <ha-switch
+          aria-label=${params.isDeviceSelection ? str().editor.commandsAsRows : str().editor.macrosFavoritesAsRows}
           .checked=${params.asRows}
           @change=${(ev) => {
     stopEvent(ev);
@@ -3917,9 +3786,9 @@ function renderGroupOrderSection(params) {
       >
         <div class="sb-layout-switch-label">${str().editor.visibleRows}</div>
         <div class="sb-rows-stepper">
-          ${stepButton("mdi:minus", -1)}
+          ${stepButton("mdi:minus", -1, str().editor.fewerVisibleRows)}
           <div class="sb-rows-value">${String(params.visibleRows)}</div>
-          ${stepButton("mdi:plus", 1)}
+          ${stepButton("mdi:plus", 1, str().editor.moreVisibleRows)}
         </div>
       </div>
     </div>
@@ -3963,8 +3832,27 @@ function renderGroupOrderSection(params) {
   `;
   const moveControl = (key, index) => {
     if (params.sortableReady) {
+      const last = params.visibleOrder.length - 1;
       return b2`
-        <div class="sb-drag-handle" aria-hidden="true">
+        <div
+          class="sb-drag-handle"
+          role="button"
+          tabindex="0"
+          data-group-key=${key}
+          aria-label=${str().editor.reorderGroupHandle(params.groupLabel(key))}
+          @keydown=${(ev) => {
+        const delta = ev.key === "ArrowUp" ? -1 : ev.key === "ArrowDown" ? 1 : 0;
+        if (!delta) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (delta < 0 && index === 0 || delta > 0 && index === last) return;
+        const root = ev.currentTarget.getRootNode();
+        params.onMoveGroupByKey(key, delta);
+        requestAnimationFrame(() => {
+          root.querySelector(`.sb-drag-handle[data-group-key="${key}"]`)?.focus();
+        });
+      }}
+        >
           <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
         </div>
       `;
@@ -4621,7 +4509,11 @@ var SofabatonRemoteCardEditor = class extends i4 {
       ] : []
     ];
     if (!selectionOptions.some((option) => option.value === selection)) {
-      this._layoutSelection = "default";
+      const deviceId = parseDeviceLayoutKey(selection);
+      selectionOptions.push({
+        value: selection,
+        label: selection === "device:default" ? str().editor.allDevicesOption : deviceId != null ? str().card.deviceFallback(deviceId) : str().card.activityFallback(selection)
+      });
     }
     const isEditorX2 = this._isEditorX2();
     const layoutCfg = layoutConfigForSelection(this._config, this._layoutSelectionKey());
@@ -5009,8 +4901,8 @@ function attachPrimaryAction(els, fn, options = {}) {
     (el) => Boolean(el)
   );
   const gate = createPrimaryActionGate();
-  const wrapped = (ev) => {
-    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+  const wrapped = (ev, gateType = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: ev.pointerId }, Date.now())) return;
     if (typeof ev.preventDefault === "function") ev.preventDefault();
     if (typeof ev.stopPropagation === "function") ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === "function")
@@ -5021,21 +4913,34 @@ function attachPrimaryAction(els, fn, options = {}) {
     } catch (e6) {
     }
   };
+  const keyboardClick = (ev) => {
+    if (ev.detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev) => {
+    const key = ev.key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 var DRAWER_MAX_HEIGHT = 350;
@@ -8087,7 +7992,9 @@ var SbKeyButton = class extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button"
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback
     );
   }
   connectedCallback() {
@@ -8124,11 +8031,6 @@ var SbKeyButton = class extends BaseElement {
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
-    });
   }
   disconnectedCallback() {
     this._hold.stop();
@@ -8140,6 +8042,13 @@ if (!customElements.get("sb-key-button")) {
 }
 
 // remote-card/src/sections/key-groups.ts
+function keyFaceLabel(spec) {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+function keyAccessibleLabel(spec) {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
+}
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.C,
   ID.B,
@@ -8171,7 +8080,7 @@ var NUMPAD_KEYS = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -8196,7 +8105,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -8216,14 +8125,11 @@ function renderKey(params, spec) {
   if (!shouldShow) return A;
   const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
   const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
   return b2`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -8253,8 +8159,25 @@ function renderDpad(params, visible, numpad = null) {
     ready ? "dpad--numpad-ready" : "",
     open ? "dpad--numpad-open" : ""
   ].filter(Boolean).join(" ");
+  const onKeydown = (ev) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || ev.currentTarget.contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return b2`
-    <div class=${className} ${numpad?.hostRef ? n6(numpad.hostRef) : A}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n6(numpad.hostRef) : A}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
       </div>
@@ -9146,6 +9069,20 @@ var SofabatonRemoteCard = class extends i4 {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+  _closeNumpad(restoreFocus) {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  _focusDpadControl(selector) {
+    const target = this._dpadRef.value?.querySelector(selector);
+    const control = target?.shadowRoot?.querySelector(".sb-key-control") ?? target;
+    control?.focus();
   }
   _handleModeToggle() {
     if (this._editMode) return;
@@ -9607,7 +9544,8 @@ var SofabatonRemoteCard = class extends i4 {
         available: numpadAvailable,
         open: this._numpadOpen,
         hostRef: this._dpadRef,
-        onOpen: () => this._openNumpad()
+        onOpen: () => this._openNumpad(),
+        onClose: (restoreFocus) => this._closeNumpad(restoreFocus)
       }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -9680,7 +9618,7 @@ var SofabatonRemoteCard = class extends i4 {
     }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",
@@ -9878,6 +9816,9 @@ var REMOTE_CARD_STRINGS_AR = {
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel2) => `\u0646\u0642\u0644 ${isolate(groupLabel2)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    fewerVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0642\u0644",
+    moreVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0643\u062B\u0631",
+    reorderGroupHandle: (groupLabel2) => `\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 ${isolate(groupLabel2)} (\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u0623\u0633\u0647\u0645)`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -10100,6 +10041,9 @@ var REMOTE_CARD_STRINGS_DE = {
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel2) => `${groupLabel2} nach oben verschieben`,
     moveGroupDown: (groupLabel2) => `${groupLabel2} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -10302,6 +10246,9 @@ var REMOTE_CARD_STRINGS_ES = {
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel2) => `Mover ${groupLabel2} hacia arriba`,
     moveGroupDown: (groupLabel2) => `Mover ${groupLabel2} hacia abajo`,
+    fewerVisibleRows: "Menos filas visibles",
+    moreVisibleRows: "M\xE1s filas visibles",
+    reorderGroupHandle: (groupLabel2) => `Reordenar ${groupLabel2} (teclas de flecha)`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -10504,6 +10451,9 @@ var REMOTE_CARD_STRINGS_FR = {
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le haut`,
     moveGroupDown: (groupLabel2) => `D\xE9placer ${groupLabel2} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel2) => `R\xE9ordonner ${groupLabel2} (touches fl\xE9ch\xE9es)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -10705,6 +10655,9 @@ var REMOTE_CARD_STRINGS_NL = {
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel2) => `Verplaats ${groupLabel2} omhoog`,
     moveGroupDown: (groupLabel2) => `Verplaats ${groupLabel2} omlaag`,
+    fewerVisibleRows: "Minder zichtbare rijen",
+    moreVisibleRows: "Meer zichtbare rijen",
+    reorderGroupHandle: (groupLabel2) => `${groupLabel2} verplaatsen (pijltjestoetsen)`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -10906,6 +10859,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel2) => `\u5C06${groupLabel2}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel2) => `\u5C06${groupLabel2}\u4E0B\u79FB`,
+    fewerVisibleRows: "\u51CF\u5C11\u53EF\u89C1\u884C\u6570",
+    moreVisibleRows: "\u589E\u52A0\u53EF\u89C1\u884C\u6570",
+    reorderGroupHandle: (groupLabel2) => `\u8C03\u6574${groupLabel2}\u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",
