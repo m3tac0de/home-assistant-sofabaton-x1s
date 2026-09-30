@@ -17,44 +17,22 @@
  * the detail view. The Backup → Edit tab embeds it with mode="backup";
  * the live Activities tab embeds it with mode="live" and syncs the
  * edits to the hub behind the same events.
+ *
+ * The larger state islands live in reactive controllers under
+ * edit-detail/ (R6, CR-F2-14): IR learn (_learn), the payload dialog
+ * (_payload), the Wifi Event target (_events), the binding picker
+ * (_binding) and the macro step editor (_steps).
  */
-import { LitElement, css, html, nothing } from "lit";
-import { DOC_URLS } from "../shared/doc-links";
-import { hubSupportsUnicodeNames, sanitizeEntityName, sanitizeWifiName } from "../shared/hub-names";
-import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN, byteToSeconds, secondsToByte } from "../shared/hub-rules";
-import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../strings";
+import { LitElement, html, nothing } from "lit";
+import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN } from "../shared/hub-rules";
+import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   activityEditorStyles,
   renderActivityRolesBlock,
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
-import {
-  IrFormatError,
-  buildSofabatonBlob,
-  detectIrPayloadFormat,
-  formatHexForDisplay,
-  parseProntoHex,
-  parseSofabatonBlob,
-  renderProntoHex,
-  resolveUcPaste,
-} from "../shared/ir-format";
-import type {
-  BackupBundlePayload,
-  BlobFetchDecodedBlock,
-  IrEmissionRecord,
-  IrEmitterConsumer,
-  IrEmitterConsumersResponse,
-  IrLearnEvent,
-  IrLearnState,
-  IrPayloadConvertResponse,
-  IrPayloadForeignFormat,
-  WifiEvent,
-} from "../shared/ha-context";
-import {
-  backendErrorCode,
-  localizeBackendError,
-} from "../shared/utils/backend-state-localization";
+import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat } from "../shared/ha-context";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -66,23 +44,15 @@ import {
   activityUserMacroSummaries,
   roleMappableButtonCount,
   setActivityRoleDevice,
-  addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
-  addBundleDeviceCommand,
-  addDeviceMacroCommandStep,
   applyBundleDelete,
   activityQuickAccessItems,
   backupDeleteHasCascade,
   type BackupButtonBindingItem,
-  type BackupCommandDecodedBlock,
   type BackupDeleteTarget,
   type BundleDeleteOptions,
   type BackupDeviceCommandItem,
-  type BackupMacroStepItem,
-  type ButtonCatalogEntry,
-  type DecodableCommandClass,
-  type DecodedFieldSpec,
   bundleDeleteImpact,
   bundleActivityOptions,
   bundleDeviceBrand,
@@ -92,169 +62,51 @@ import {
   isWifiEventsLongRecord,
   wifiEventsSlotCount,
   bundleDeviceOptions,
-  buttonName,
-  clearActivityDeviceInput,
   commandDecodedBlock,
   commandRawPayloadHex,
   normalizeCommandPayloadHex,
-  setCommandRestoreData,
-  updateCommandRawPayload,
-  DECODED_CLASS_FORM_SPECS,
   deviceButtonBindingItems,
-  defaultDecodedSnapshotForClass,
   deviceCommandItems,
   deviceMacroStepItems,
   deviceIpAddress,
   deviceIdleBehavior,
-  nextFreeDeviceCommandId,
   updateBundleDeviceIdleBehavior,
   IDLE_BEHAVIOR_AUTO_OFF,
   IDLE_BEHAVIOR_ALWAYS_ON,
   IDLE_BEHAVIOR_STAY_ON,
   IDLE_BEHAVIOR_DISABLED,
-  removeActivityMacroStep,
-  removeDeviceMacroStep,
-  reorderActivityMacroSteps,
   reorderBundleActivityQuickAccess,
-  reorderDeviceMacroSteps,
   renameBundleActivity,
   renameBundleActivityFavorite,
   renameBundleActivityMacro,
   renameBundleDevice,
   renameBundleDeviceCommand,
-  setActivityDeviceInput,
-  setActivityMacroStepWait,
-  setDeviceMacroStepWait,
   unboundButtonsForActivity,
   unboundButtonsForDevice,
-  updateActivityMacroStep,
   updateBundleDeviceIp,
-  updateCommandDecodedFields,
-  updateDeviceMacroStep,
-  upsertActivityButtonBinding,
-  upsertDeviceButtonBinding,
 } from "./backup-state";
+import type {
+  ActivityBindingTargetKind,
+  BackupEditDetailSectionId,
+  BackupEditTargetKind,
+  BackupQuickAccessKind,
+  BackupRenameDialogTarget,
+  FetchedCommandPayload,
+  IrLearnHost,
+  MacroTargetMode,
+  WifiEventsHost,
+} from "./edit-detail/host-types";
+import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
+import { editDetailViewStyles } from "./edit-detail/styles";
+import { IrLearnController } from "./edit-detail/ir-learn-controller";
+import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
+import { WifiEventTargets } from "./edit-detail/wifi-event-targets";
+import { BindingDialogController } from "./edit-detail/binding-dialog-controller";
+import { MacroStepEditorController } from "./edit-detail/macro-step-editor";
 
-export type BackupEditTargetKind = "activity" | "device";
-
-/**
- * A command payload fetched on demand from the hub (live mode). `dataHex` is
- * the raw stored blob; `decoded` is the structured block when the class /
- * hub supports it (raw IR on X1/X1S has none). Supplied by the host's
- * `fetchCommandPayload` callback — the detail view stays hass-free.
- */
-export interface FetchedCommandPayload {
-  dataHex: string;
-  decoded: BlobFetchDecodedBlock | null;
-}
-// POWER_ON / POWER_OFF macro slots. These carry fixed semantic names
-// ("Power On"/"Power Off") and a binding refers to them by slot, so they
-// are not renameable — unlike user macros bound to activity buttons.
-const POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
-type BackupEditDetailSectionId =
-  | "power"
-  | "quick_access"
-  | "network"
-  | "commands"
-  | "bindings";
-type BackupQuickAccessKind = "macro" | "favorite";
-type ActivityBindingTargetKind = "command" | "action" | "wifi_event";
-
-/** One Wifi Event target selection inside an Add dialog. */
-type WifiEventTargetSel = { mode: "existing" | "new"; slot: number | null; name: string };
-
-/**
- * Facade the LIVE host (activities-tab) provides for the Wifi Event kind
- * in the Add dialogs. `create` allocates the event in the store (W7: no
- * hub write; the Sync press deploys it) and grafts the Wifi Events
- * device block into the host's captured baseline + working bundles (both:
- * the sync validator's baseline grandfathering depends on it), returning
- * the grafted working bundle for the ref insert. `ensureGrafted` does the
- * graft alone (selecting an existing event whose device predates the
- * capture). `enableLongPress` flips the slot's standalone flag — a pure
- * store edit, the long record is always deployed.
- */
-export interface WifiEventsHost {
-  list(): Promise<WifiEvent[]>;
-  create(name: string): Promise<{ event: WifiEvent; bundle: BackupBundlePayload | null }>;
-  ensureGrafted(): Promise<BackupBundlePayload | null>;
-  enableLongPress(slotIndex: number): Promise<void>;
-}
-/**
- * Host facade for the payload editor's learn mode (IR9). The detail view
- * is hass-free; the live Activities host owns the WS subscriptions.
- *
- * `learnFromHub` arms one hub learn window and streams its events; the
- * resolved function cancels the window (and is also how the view lets
- * go of a finished subscription). `subscribeEmissions` is the emitter
- * inbox: the backend replays its intercept ring on subscribe and after
- * every send. `consumers` gates the Home Assistant option.
- */
-export interface IrLearnHost {
-  learnFromHub(onEvent: (event: IrLearnEvent) => void, timeoutS: number): Promise<() => void>;
-  subscribeEmissions(onEvent: (emissions: IrEmissionRecord[]) => void): Promise<() => void>;
-  consumers(): Promise<IrEmitterConsumersResponse>;
-}
-/** Seconds the hub keeps its receiver armed per learn attempt (hub exits at ~60 s anyway). */
-const LEARN_TIMEOUT_S = 60;
-
-/** Format a carrier frequency with the decimal separator of the active card locale. */
-function formatCarrierKhz(carrierHz: number): string {
-  const locale = toolsCardLanguage() || "en";
-  try {
-    return new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }).format(carrierHz / 1000);
-  } catch {
-    return (carrierHz / 1000).toFixed(1);
-  }
-}
-
-type MacroTargetMode = "existing" | "new";
-// Step-dialog modes. "input" edits an activity power-macro input ref;
-// "power" refs never open the dialog so aren't included here. Waits are no
-// longer a dialog mode — they're edited inline on each command row.
-type MacroStepKind = "command" | "input" | "wifi_event";
-type BackupRenameDialogTarget =
-  | { kind: "detail"; entityKind: BackupEditTargetKind; entityId: number }
-  | { kind: "macro"; activityId: number; buttonId: number }
-  | { kind: "favorite"; activityId: number; buttonId: number }
-  | { kind: "command"; deviceId: number; commandId: number }
-  | { kind: "device_ip"; deviceId: number };
-
-// ── Name rules shared with the host ─────────────────────────────────
-// The hub-rename dialog stays in backup-tab (it opens from the edit
-// overview, outside any detail view), so the name-sanitizing rules are
-// exported functions over the bundle instead of private methods.
-
-export function bundleSupportsUnicodeNames(bundle: BackupBundlePayload | null): boolean {
-  return hubSupportsUnicodeNames(bundle?.hub?.version);
-}
-
-/** Descriptive (`P:`) IR payloads are an X2-only hub capability. */
-export function bundleIsX2(bundle: BackupBundlePayload | null): boolean {
-  return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
-}
-
-export function sanitizeBundleName(bundle: BackupBundlePayload | null, value: unknown): string {
-  return sanitizeEntityName(bundle?.hub?.version, value);
-}
-
-/**
- * A failure's text for an editor status line. Our own code throws Errors
- * with localized messages; a hub or store refusal arrives as HA's
- * `{ code, message }` rejection and is localized by its code, never shown
- * as backend prose (CR-F2-1, L-T5).
- */
-export function editorErrorMessage(error: unknown, surface: "hub_request" | "wifi_event"): string {
-  if (error instanceof Error) return error.message;
-  return localizeBackendError(error, surface);
-}
-
-export function useLegacyTextField(): boolean {
-  return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
-}
+// The element's public names, kept here for its importers (R6, CR-F2-14).
+export type { BackupEditTargetKind, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
+export { bundleIsX2, bundleSupportsUnicodeNames, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 
 export class SofabatonEditDetailView extends LitElement {
   static properties = {
@@ -264,45 +116,14 @@ export class SofabatonEditDetailView extends LitElement {
     dirty: { type: Boolean },
     mode: { type: String },
     wifiEvents: { attribute: false },
-    _wifiEventsList: { state: true },
-    _wifiEventBusy: { state: true },
-    _wifiEventPrimary: { state: true },
     _editDetailActiveSection: { state: true },
     _editRenameDialogOpen: { state: true },
     _editRenameDialogDraft: { state: true },
     _editRenameDialogError: { state: true },
     _editRenameDialogTarget: { state: true },
-    _payloadDialogOpen: { state: true },
-    _payloadDialogTarget: { state: true },
-    _payloadDialogDecodedDrafts: { state: true },
-    _payloadDialogDecodedSnapshot: { state: true },
-    _payloadDialogRawDraft: { state: true },
-    _payloadDialogHexTab: { state: true },
-    _payloadDialogProntoDraft: { state: true },
-    _payloadDialogProntoAvailable: { state: true },
-    _payloadDialogConverting: { state: true },
-    _payloadDialogFormatError: { state: true },
-    _payloadDialogError: { state: true },
     fetchCommandPayload: { attribute: false },
     testCommandPayload: { attribute: false },
-    _payloadFetchingCommandId: { state: true },
-    _payloadFetchError: { state: true },
-    _payloadDialogTestStatus: { state: true },
-    _payloadDialogTestError: { state: true },
-    _payloadDialogAddMode: { state: true },
-    _payloadDialogNameDraft: { state: true },
-    _addCommandPreparing: { state: true },
     irLearn: { attribute: false },
-    _payloadLearnView: { state: true },
-    _payloadLearnHubState: { state: true },
-    _payloadLearnHubEvent: { state: true },
-    _payloadLearnSecondsLeft: { state: true },
-    _payloadLearnEmissions: { state: true },
-    _payloadLearnEmissionsError: { state: true },
-    _payloadLearnHaAvailable: { state: true },
-    _payloadLearnConsumers: { state: true },
-    _payloadLearnSourceNote: { state: true },
-    _payloadLearnNow: { state: true },
     _confirmDeleteTarget: { state: true },
     _confirmDeleteLabel: { state: true },
     _addFavoriteOpen: { state: true },
@@ -311,32 +132,6 @@ export class SofabatonEditDetailView extends LitElement {
     _addFavoriteDeviceId: { state: true },
     _addFavoriteCommandId: { state: true },
     _addFavoriteError: { state: true },
-    _bindingDialogOpen: { state: true },
-    _bindingScope: { state: true },
-    _bindingEditButtonId: { state: true },
-    _bindingButtonId: { state: true },
-    _bindingDeviceId: { state: true },
-    _bindingCommandId: { state: true },
-    _bindingLongPressEnabled: { state: true },
-    _bindingLpDeviceId: { state: true },
-    _bindingLpCommandId: { state: true },
-    _bindingTargetKind: { state: true },
-    _bindingActionName: { state: true },
-    _bindingMacroMode: { state: true },
-    _bindingMacroId: { state: true },
-    _bindingLpTargetKind: { state: true },
-    _bindingLpMacroMode: { state: true },
-    _bindingLpMacroId: { state: true },
-    _bindingLpActionName: { state: true },
-    _bindingError: { state: true },
-    _macroEditor: { state: true },
-    _stepDialogOpen: { state: true },
-    _stepDialogEditIndex: { state: true },
-    _stepKind: { state: true },
-    _stepDeviceId: { state: true },
-    _stepCommandId: { state: true },
-    _stepHoldSeconds: { state: true },
-    _stepError: { state: true },
     _haSortableReady: { state: true },
     _powerControlMenuOpen: { state: true },
     _roleMenuOpen: { state: true },
@@ -351,191 +146,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, css`
-    :host {
-      flex-direction: column;
-    }
-    /* Glanceable member roster under the Activity power-sequence rows. */
-    .power-members-summary {
-      padding: 8px 4px 0;
-    }
-    /* Live-mode header Sync button — styled identically to the Wifi command
-       editor's .detail-sync-btn (primary when there are pending changes, a
-       green "up to date" disabled state when clean). */
-    .detail-sync-btn {
-      border: 1px solid var(--divider-color);
-      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85);
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 8px 12px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
-    }
-    .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .detail-sync-btn.sync-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-    .detail-sync-btn:disabled {
-      cursor: default;
-      opacity: 0.42;
-      color: var(--disabled-text-color, var(--secondary-text-color));
-      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
-    }
-    .detail-sync-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
-    .detail-sync-btn.detail-sync-btn--state-ok,
-    .detail-sync-btn.detail-sync-btn--state-ok:disabled {
-      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
-      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
-      color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color));
-      opacity: 1;
-    }
-    /* Spinner used on the live "fetch payload" command-row button. */
-    @keyframes sb-spin { to { transform: rotate(360deg); } }
-    ha-icon.sb-spin { animation: sb-spin 720ms linear infinite; }
-    /* Inline status line (fetch error + in-dialog Test result). */
-    .section-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 10px;
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--ha-card-border-radius, 10px);
-      font-size: 13px;
-      line-height: 1.4;
-      color: var(--secondary-text-color);
-    }
-    .section-status ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; }
-    .section-status.error {
-      color: var(--error-color, #db4437);
-      border-color: color-mix(in srgb, var(--error-color, #db4437) 30%, var(--divider-color));
-      background: color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .payload-test-status.success {
-      color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color));
-      border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
-      background: color-mix(in srgb, #2e7d32 6%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .payload-test-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
-    /* Payload dialog footer: docs link bottom-left on the Cancel/Save row,
-       styled like the control panel's bottom-dock documentation links. */
-    .payload-doc-link {
-      color: var(--sb-accent-text, var(--primary-color));
-      text-decoration: underline;
-      text-decoration-color: var(--primary-color);
-      font-weight: 400;
-      font-size: 13px;
-      white-space: nowrap;
-    }
-    .payload-doc-link:hover { color: var(--primary-text-color); text-decoration: underline; }
-    .payload-dialog-note { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
-    .payload-test-btn ha-icon { --mdc-icon-size: 16px; }
-    /* Device-class indicator in the payload dialog header. */
-    .dialog-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .dialog-title-group .dialog-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .payload-class-badge {
-      flex: 0 0 auto;
-      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      padding: 2px 9px;
-      border-radius: 999px;
-      border: 1px solid color-mix(in srgb, var(--primary-color) 40%, var(--divider-color));
-      color: var(--primary-text-color);
-      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-    }
-    /* Payload-editor learn mode (IR9): entry button, source menu, hub
-       listener stage, and the emitter inbox. */
-    .payload-learn-btn {
-      margin-left: auto; align-self: center; flex: 0 0 auto;
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 4px 11px; border-radius: 999px; cursor: pointer; font: inherit;
-      font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
-      color: var(--sb-accent-text, var(--primary-color));
-      border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    }
-    .payload-learn-btn:hover { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-    .payload-learn-btn ha-icon { --mdc-icon-size: 16px; }
-    .learn-panel { display: flex; flex-direction: column; gap: 12px; }
-    .learn-option, .learn-inbox-row {
-      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-      border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
-      background: var(--ha-card-background, var(--card-background-color));
-      color: var(--primary-text-color); cursor: pointer; font: inherit;
-    }
-    .learn-option { padding: 12px 14px; }
-    .learn-option:hover, .learn-inbox-row:hover {
-      border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .learn-option > ha-icon:first-child { --mdc-icon-size: 26px; color: var(--primary-color); flex: 0 0 auto; }
-    .learn-option > ha-icon:last-child { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: 0 0 auto; }
-    .learn-option-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-    .learn-option-title { font-weight: 600; font-size: 14px; }
-    .learn-option-desc { font-size: 12.5px; line-height: 1.4; color: var(--secondary-text-color); }
-    .learn-checking { font-size: 12.5px; color: var(--secondary-text-color); padding: 2px 4px; }
-    .learn-stage {
-      display: flex; align-items: center; gap: 14px; padding: 18px 16px;
-      border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
-    }
-    .learn-stage > ha-icon { --mdc-icon-size: 34px; color: var(--primary-color); flex: 0 0 auto; }
-    .learn-stage.listening > ha-icon { animation: sb-learn-pulse 1.4s ease-in-out infinite; }
-    .learn-stage.timed_out > ha-icon, .learn-stage.interrupted > ha-icon,
-    .learn-stage.refused > ha-icon, .learn-stage.error > ha-icon { color: var(--error-color, #db4437); }
-    .learn-stage.cancelled > ha-icon { color: var(--secondary-text-color); }
-    @keyframes sb-learn-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.92); } }
-    .learn-stage-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-    .learn-stage-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
-    .learn-stage-detail { font-size: 13px; color: var(--secondary-text-color); line-height: 1.4; font-variant-numeric: tabular-nums; }
-    .learn-inbox-help { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); }
-    .learn-consumers { display: flex; flex-direction: column; gap: 6px; }
-    .learn-consumers-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .learn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .learn-chip {
-      font-size: 12px; padding: 3px 10px; border-radius: 999px; color: var(--primary-text-color);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 40%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    }
-    .learn-inbox-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
-    .learn-inbox-row { padding: 10px 12px; }
-    .learn-inbox-row.is-new {
-      border-color: color-mix(in srgb, #48b851 55%, var(--divider-color));
-      background: color-mix(in srgb, #48b851 8%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .learn-inbox-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-    .learn-inbox-label {
-      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-      font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .learn-inbox-meta { font-size: 12px; color: var(--secondary-text-color); }
-    .learn-badge {
-      flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-      padding: 2px 7px; border-radius: 999px; color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color));
-      border: 1px solid color-mix(in srgb, #2e7d32 45%, transparent);
-    }
-    .learn-inbox-use { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--sb-accent-text, var(--primary-color)); }
-    .learn-inbox-empty {
-      display: flex; align-items: center; gap: 10px; padding: 16px 12px;
-      border: 1px dashed var(--divider-color); border-radius: var(--ha-card-border-radius, 10px);
-      color: var(--secondary-text-color); font-size: 13px;
-    }
-    .learn-inbox-empty ha-icon { --mdc-icon-size: 22px; }
-    .managed-wifi-lock { padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
-    .managed-wifi-lock-chip {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 12px; border-radius: 999px;
-      font-size: 13px; font-weight: 600;
-      color: var(--sb-accent-text, var(--primary-color));
-      border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-    }
-    .managed-wifi-lock-chip ha-icon { --mdc-icon-size: 18px; }
-    .managed-wifi-lock-copy { margin: 0; color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 46ch; }
-  `];
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, editDetailViewStyles];
 
   // ── Host-owned props ───────────────────────────────────────────────
   bundle: BackupBundlePayload | null = null;
@@ -554,56 +165,24 @@ export class SofabatonEditDetailView extends LitElement {
   private _roleMenuAnchor: DOMRect | null = null;
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
-  private _bindingsView = false;
+  _bindingsView = false;
   private _addShortcutKind: ActivityBindingTargetKind = "command";
   private _addShortcutActionName = "";
   private _addShortcutMacroMode: MacroTargetMode = "new";
   private _addShortcutMacroId: number | null = null;
   // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
-  // `_wifiEventPrimary` serves whichever Add dialog is open (shortcut,
+  // `_events.primary` serves whichever Add dialog is open (shortcut,
   // step, or binding). A Wifi Event is atomic — a binding's long-press
   // leg is the SAME event's long record, never an independent target — so
   // one selection covers both legs.
   wifiEvents: WifiEventsHost | null = null;
-  private _wifiEventsList: WifiEvent[] | null = null;
   /** The events device's slot count as the editor opened it (CR-F2-2): the
    *  working bundle loses two records per paired delete. */
   private _wifiEventsOpenedSlots: number | null = null;
-  private _wifiEventBusy = false;
-  private _wifiEventPrimary: WifiEventTargetSel = { mode: "new", slot: null, name: "" };
-  private _editRenameDialogOpen = false;
-  private _editRenameDialogDraft = "";
-  private _editRenameDialogError = "";
-  private _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
-  // ── Payload dialog (structured decoded form OR raw hex) ────────────
-  // Separate from the rename dialog: renaming is the common case and
-  // stays a compact name-only form; payload editing has its own button
-  // and popup on each command row.
-  private _payloadDialogOpen = false;
-  private _payloadDialogTarget: { deviceId: number; commandId: number } | null = null;
-  private _payloadDialogDecodedDrafts: Record<string, string> = {};
-  private _payloadDialogDecodedSnapshot: BackupCommandDecodedBlock | null = null;
-  private _payloadDialogRawSnapshot = "";
-  private _payloadDialogRawDraft = "";
-  // ── IR hex format tabs (IR8) ───────────────────────────────────────
-  // For IR devices the raw-payload textarea carries two projections of
-  // one canonical signal: the Sofabaton blob (always the byte source of
-  // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
-  // rendering. Pronto is the default view; it is unavailable when the
-  // stored bytes do not parse as raw timings (descriptive payloads,
-  // unknown variants) and the sofabaton tab then acts as passthrough.
-  private _payloadDialogHexTab: "pronto" | "sofabaton" = "pronto";
-  private _payloadDialogProntoDraft = "";
-  private _payloadDialogProntoAvailable = true;
-  private _payloadDialogFormatError = "";
-  private _payloadDialogError = "";
-  // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
-  // Detection is local (the shape is exact); rendering needs protocol
-  // knowledge and runs on the backend through the host callback. While a
-  // conversion is in flight the sofabaton bytes are stale, so Test/Save
-  // wait for it; a newer paste supersedes an older one via the sequence.
-  private _payloadDialogConverting = false;
-  private _payloadConversionSeq = 0;
+  _editRenameDialogOpen = false;
+  _editRenameDialogDraft = "";
+  _editRenameDialogError = "";
+  _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
   // to fetch a command's blob on demand and to Test it on the hub. Absent
@@ -614,19 +193,6 @@ export class SofabatonEditDetailView extends LitElement {
   convertForeignPayload:
     | ((text: string, format: IrPayloadForeignFormat) => Promise<IrPayloadConvertResponse>)
     | null = null;
-  private _payloadFetchingCommandId: number | null = null;
-  private _payloadFetchError = "";
-  private _payloadLiveFetched: FetchedCommandPayload | null = null;
-  private _payloadDialogTestStatus: "idle" | "testing" | "success" | "error" = "idle";
-  private _payloadDialogTestError = "";
-  // ── Add-command mode of the payload dialog (live mode only) ────────
-  // Same payload controls as command edit, plus a Name field. Decodable
-  // wifi classes seed their form (and the opaque record trailer) from an
-  // existing command fetched as a template; IR synthesizes from the
-  // descriptor alone on the backend, so it needs no template.
-  private _payloadDialogAddMode = false;
-  private _payloadDialogNameDraft = "";
-  private _addCommandPreparing = false;
   // ── Learn mode of the payload dialog (IR9, live IR devices only) ───
   // Two capture sources with opposite shapes. The hub receiver is a
   // *listener*: one armed window per attempt, countdown, cancel. The HA
@@ -636,22 +202,11 @@ export class SofabatonEditDetailView extends LitElement {
   // "New" is judged against the ring as first seen when learn mode
   // opened (payload -> timestamp), never against the browser clock.
   irLearn: IrLearnHost | null = null;
-  private _payloadLearnView: "off" | "menu" | "hub" | "ha" = "off";
-  private _payloadLearnHubState: IrLearnState | "arming" = "arming";
-  private _payloadLearnHubEvent: IrLearnEvent | null = null;
-  private _payloadLearnHubDeadline = 0;
-  private _payloadLearnSecondsLeft = 0;
-  private _payloadLearnHubCancel: (() => void) | null = null;
-  private _payloadLearnHubAttempt = 0;
-  private _payloadLearnTicker: ReturnType<typeof setInterval> | null = null;
-  private _payloadLearnEmissions: IrEmissionRecord[] = [];
-  private _payloadLearnEmissionsUnsub: (() => void) | null = null;
-  private _payloadLearnEmissionsError: { error_code: string } | null = null;
-  private _payloadLearnBaseline: Map<string, string> | null = null;
-  private _payloadLearnHaAvailable: boolean | null = null;
-  private _payloadLearnConsumers: IrEmitterConsumer[] = [];
-  private _payloadLearnSourceNote = "";
-  private _payloadLearnNow = Date.now();
+  readonly _learn = new IrLearnController(this);
+  readonly _payload = new PayloadDialogController(this);
+  readonly _events = new WifiEventTargets(this);
+  readonly _binding = new BindingDialogController(this);
+  readonly _steps = new MacroStepEditorController(this);
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;
@@ -660,35 +215,9 @@ export class SofabatonEditDetailView extends LitElement {
   private _addFavoriteDeviceId: number | null = null;
   private _addFavoriteCommandId: number | null = null;
   private _addFavoriteError = "";
-  private _bindingDialogOpen = false;
-  private _bindingScope: BackupEditTargetKind = "activity";
-  private _bindingEditButtonId: number | null = null;
-  private _bindingButtonId: number | null = null;
-  private _bindingDeviceId: number | null = null;
-  private _bindingCommandId: number | null = null;
-  private _bindingLongPressEnabled = false;
-  private _bindingLpDeviceId: number | null = null;
-  private _bindingLpCommandId: number | null = null;
-  private _bindingTargetKind: ActivityBindingTargetKind = "command";
-  private _bindingActionName = "";
-  private _bindingMacroMode: MacroTargetMode = "new";
-  private _bindingMacroId: number | null = null;
-  private _bindingLpTargetKind: ActivityBindingTargetKind = "command";
-  private _bindingLpMacroMode: MacroTargetMode = "new";
-  private _bindingLpMacroId: number | null = null;
-  private _bindingLpActionName = "";
-  private _bindingError = "";
   private _detailScrollTop = 0;
   private _bindingsScrollTop = 0;
-  private _macroEditor: { scope: BackupEditTargetKind; entityId: number; buttonId: number; name: string } | null = null;
-  private _stepDialogOpen = false;
-  private _stepDialogEditIndex: number | null = null;
-  private _stepKind: MacroStepKind = "command";
-  private _stepDeviceId: number | null = null;
-  private _stepCommandId: number | null = null;
-  private _stepHoldSeconds = "0";
-  private _stepError = "";
-  private _haSortableReady = Boolean(customElements.get("ha-sortable"));
+  _haSortableReady = Boolean(customElements.get("ha-sortable"));
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -703,7 +232,7 @@ export class SofabatonEditDetailView extends LitElement {
     super.disconnectedCallback();
     // Leaving the editor (Back, sidebar, tab switch) ends learn mode: the
     // hub window is released and the inbox and ticker stop (CR-F2-4).
-    this._exitLearnMode();
+    this._learn.exit();
   }
 
   // Lit reuses the element instance when the host re-renders with a
@@ -719,7 +248,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._wifiEventsOpenedSlots = null;
     // The events device pairs records by HA's frozen slot count: load the
     // event list (the authoritative source) as soon as it opens.
-    if (this._isWifiEventsLiveDevice()) this._loadWifiEvents();
+    if (this._isWifiEventsLiveDevice()) this._events.load();
     this._editDetailActiveSection = "power";
     this._powerControlMenuOpen = false;
     this._roleMenuOpen = null;
@@ -727,16 +256,16 @@ export class SofabatonEditDetailView extends LitElement {
     this._roleConfirm = null;
     this._bindingsView = false;
     this._closeEditRenameDialog();
-    this._closeCommandPayloadDialog();
-    this._payloadFetchingCommandId = null;
-    this._payloadFetchError = "";
-    this._addCommandPreparing = false;
+    this._payload.close();
+    this._payload.fetchingCommandId = null;
+    this._payload.fetchError = "";
+    this._payload.addPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeAddMemberDialog();
-    this._closeBindingDialog();
-    this._macroEditor = null;
-    this._closeStepDialog();
+    this._binding.close();
+    this._steps.editor = null;
+    this._steps.closeDialog();
   }
 
   /**
@@ -745,13 +274,13 @@ export class SofabatonEditDetailView extends LitElement {
    * tick), then hands the result to the host, which owns dirty/persistence
    * semantics.
    */
-  private _commitEditBundleEdit(next: BackupBundlePayload) {
+  _commitEditBundleEdit(next: BackupBundlePayload) {
     this.bundle = next;
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
 
   /** Ask the host to leave the detail view (back button, entity delete). */
-  private _requestClose = () => {
+  _requestClose = () => {
     this.dispatchEvent(new CustomEvent("close"));
   };
 
@@ -763,7 +292,7 @@ export class SofabatonEditDetailView extends LitElement {
   // "Unsaved".
   private _requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
 
-  private _renderDirtyChip() {
+  _renderDirtyChip() {
     // Live mode has no dirty chip — the Sync button's state carries that
     // signal (matching the Wifi command editor). Backup mode keeps "Unsaved".
     if (this.mode === "live" || !this.dirty) return nothing;
@@ -828,8 +357,8 @@ export class SofabatonEditDetailView extends LitElement {
 
   protected render() {
     if (!this.bundle || this.entityId == null) return nothing;
-    if (this._macroEditor) {
-      return this._renderMacroStepEditorView(this._macroEditor);
+    if (this._steps.editor) {
+      return this._steps.render(this._steps.editor);
     }
     if (this._bindingsView && this.kind === "activity") {
       return this._renderActivityBindingsView();
@@ -892,11 +421,11 @@ export class SofabatonEditDetailView extends LitElement {
           </div>
         </div>
         ${this._renderEditRenameDialog()}
-        ${this._renderCommandPayloadDialog()}
+        ${this._payload.render()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
         ${this._renderAddMemberDialog()}
-        ${this._renderBindingDialog()}
+        ${this._binding.render()}
         ${this._renderRoleConfirmDialog()}
       </div>
     `;
@@ -934,7 +463,7 @@ export class SofabatonEditDetailView extends LitElement {
    * dedicated "Wifi Event" kind, so listing the device too would present
    * every event twice. The offline Backup editor keeps showing everything.
    */
-  private _editableDeviceOptions() {
+  _editableDeviceOptions() {
     const options = bundleDeviceOptions(this.bundle);
     if (this.mode !== "live") return options;
     return options.filter(
@@ -968,7 +497,7 @@ export class SofabatonEditDetailView extends LitElement {
       );
       this._wifiEventsOpenedSlots = wifiEventsSlotCount(device);
     }
-    return wifiEventsSlotCount(null, this._wifiEventsList) || this._wifiEventsOpenedSlots;
+    return wifiEventsSlotCount(null, this._events.list) || this._wifiEventsOpenedSlots;
   }
 
   /** True when a command id is a long-press record (id > slot_count) on
@@ -1102,7 +631,7 @@ export class SofabatonEditDetailView extends LitElement {
     return html`
       <button
         class="quick-access-add-btn"
-        @click=${() => this._openAddBindingDialog(kind)}
+        @click=${() => this._binding.openAdd(kind)}
         ?disabled=${unbound.length === 0}
       >
         <ha-icon icon="mdi:plus"></ha-icon>
@@ -1137,7 +666,7 @@ export class SofabatonEditDetailView extends LitElement {
 
   private _closeBindingsView = () => {
     this._bindingsView = false;
-    this._closeBindingDialog();
+    this._binding.close();
     this._closeDeleteConfirm();
     this._restoreMainScroll();
   };
@@ -1179,7 +708,7 @@ export class SofabatonEditDetailView extends LitElement {
             </div>
           </div>
         </div>
-        ${this._renderBindingDialog()}
+        ${this._binding.render()}
         ${this._renderDeleteConfirmDialog()}
       </div>
     `;
@@ -1295,7 +824,7 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-actions">
             <button
               class="icon-btn"
-              @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
+              @click=${() => this._binding.openEdit(kind, item.buttonId)}
               aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
@@ -1381,12 +910,12 @@ export class SofabatonEditDetailView extends LitElement {
                 <div class="quick-access-head-actions">
                   <button
                     class="quick-access-add-btn"
-                    ?disabled=${this._addCommandPreparing}
-                    @click=${() => void this._openAddCommandDialog()}
+                    ?disabled=${this._payload.addPreparing}
+                    @click=${() => void this._payload.openAdd()}
                   >
                     <ha-icon
-                      icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
-                      class=${this._addCommandPreparing ? "sb-spin" : ""}
+                      icon=${this._payload.addPreparing ? "mdi:loading" : "mdi:plus"}
+                      class=${this._payload.addPreparing ? "sb-spin" : ""}
                     ></ha-icon>
                     <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
                   </button>
@@ -1394,11 +923,11 @@ export class SofabatonEditDetailView extends LitElement {
               `
             : nothing}
         </div>
-        ${this._payloadFetchError
+        ${this._payload.fetchError
           ? html`
               <div class="section-status error" role="alert">
                 <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${this._payloadFetchError}</span>
+                <span>${this._payload.fetchError}</span>
               </div>
             `
           : nothing}
@@ -1443,7 +972,7 @@ export class SofabatonEditDetailView extends LitElement {
               ? html`
                   <button
                     class="icon-btn"
-                    @click=${() => this._openCommandPayloadDialog(item.commandId)}
+                    @click=${() => this._payload.openFromBundle(item.commandId)}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                     title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                   >
@@ -1455,14 +984,14 @@ export class SofabatonEditDetailView extends LitElement {
               ? html`
                   <button
                     class="icon-btn"
-                    @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
-                    ?disabled=${this._payloadFetchingCommandId != null}
+                    @click=${() => void this._payload.liveFetchAndOpen(item.commandId)}
+                    ?disabled=${this._payload.fetchingCommandId != null}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                     title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
                   >
                     <ha-icon
-                      icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
-                      class=${this._payloadFetchingCommandId === item.commandId ? "sb-spin" : ""}
+                      icon=${this._payload.fetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
+                      class=${this._payload.fetchingCommandId === item.commandId ? "sb-spin" : ""}
                     ></ha-icon>
                   </button>
                 `
@@ -1587,7 +1116,7 @@ export class SofabatonEditDetailView extends LitElement {
               ? html`
                   <button
                     class="icon-btn"
-                    @click=${() => this._openMacroEditor("activity", Number(this.entityId), item.buttonId, item.label)}
+                    @click=${() => this._steps.openEditor("activity", Number(this.entityId), item.buttonId, item.label)}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editStepsAria}
                   >
                     <ha-icon icon="mdi:playlist-edit"></ha-icon>
@@ -1618,8 +1147,7 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-
-  private _renderEditRenameDialog() {
+  _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return nothing;
     const label = this._editRenameDialogLabel();
     return html`
@@ -1667,677 +1195,6 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  /**
-   * The payload popup: structured per-class form when the command has a
-   * decoded block, raw hex replacement otherwise. Every command with a
-   * captured payload (`restore_data.data_hex`) is editable — classes
-   * without a parser just get the raw bytes.
-   */
-  private _renderCommandPayloadDialog() {
-    if (!this._payloadDialogOpen || !this._payloadDialogTarget) return nothing;
-    const decoded = this._payloadDialogDecodedSnapshot;
-    const deviceClass = String(
-      bundleDeviceClass(this.bundle, this._payloadDialogTarget.deviceId) || "",
-    ).trim();
-    return html`
-      <div class="modal-backdrop" @click=${this._closeCommandPayloadDialog}>
-        <div class="dialog medium" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title-group">
-              <div class="dialog-title">${this._payloadDialogAddMode
-                ? TOOLS_CARD_STRINGS.backup.addCommandTitle
-                : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
-              ${deviceClass
-                ? html`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>`
-                : nothing}
-            </div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${this._payloadDialogAddMode && this._payloadLearnView === "off"
-              ? html`
-                  <label class="decoded-field">
-                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
-                    <input
-                      class="decoded-field-input"
-                      type="text"
-                      maxlength="20"
-                      spellcheck="false"
-                      .value=${this._payloadDialogNameDraft}
-                      @input=${this._handleAddCommandNameInput}
-                      @change=${this._handleAddCommandNameInput}
-                    />
-                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
-                  </label>
-                `
-              : nothing}
-            ${this._payloadLearnView !== "off"
-              ? this._renderLearnPanel()
-              : decoded
-                ? this._renderDecodedPayloadForm(decoded.className)
-                : this._liveDeviceIsIr()
-                  ? this._renderIrHexPayloadForm()
-                  : this._renderRawPayloadForm()}
-            ${this._payloadLearnView === "off" && this._payloadLearnSourceNote
-              ? html`
-                  <div class="section-status payload-test-status success" role="status" aria-live="polite">
-                    <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                    <span>${this._payloadLearnSourceNote}</span>
-                  </div>
-                `
-              : nothing}
-            ${this._payloadLearnView === "off" && this._liveDeviceIsIr()
-              ? html`
-                  <div class="payload-test-note">
-                    <ha-icon icon="mdi:flash-outline"></ha-icon>
-                    <span>
-                      ${this.mode === "live"
-                        ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive
-                        : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
-                    </span>
-                  </div>
-                `
-              : nothing}
-            ${this._payloadLearnView === "off" && this._payloadDialogTestStatus !== "idle"
-              ? html`
-                  <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
-                    <ha-icon icon=${this._payloadDialogTestStatus === "success"
-                      ? "mdi:check-circle-outline"
-                      : this._payloadDialogTestStatus === "error"
-                        ? "mdi:alert-circle-outline"
-                        : "mdi:progress-clock"}></ha-icon>
-                    <span>
-                      ${this._payloadDialogTestStatus === "testing"
-                        ? TOOLS_CARD_STRINGS.backup.sendingToHub
-                        : this._payloadDialogTestStatus === "success"
-                          ? TOOLS_CARD_STRINGS.backup.sentToHub
-                          : this._payloadDialogTestError || TOOLS_CARD_STRINGS.backup.testFailed}
-                    </span>
-                  </div>
-                `
-              : nothing}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note payload-dialog-note">
-              <a
-                class="payload-doc-link"
-                href=${DOC_URLS.commandPayloads}
-                target="_blank"
-                rel="noreferrer noopener"
-              >${TOOLS_CARD_STRINGS.backup.payloadDocsLink}</a>
-              ${this._payloadLearnView === "off" && this._payloadDialogError
-                ? html`<span class="payload-dialog-error">${this._payloadDialogError}</span>`
-                : nothing}
-            </div>
-            <div class="dialog-footer-actions">
-              ${this._payloadLearnView !== "off"
-                ? this._renderLearnFooterActions()
-                : nothing}
-              ${this._payloadLearnView === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload
-                ? html`
-                    <button
-                      class="dialog-btn payload-test-btn"
-                      ?disabled=${this._payloadDialogTestStatus === "testing"}
-                      @click=${() => void this._runLivePayloadTest()}
-                    >
-                      <ha-icon icon="mdi:flash-outline"></ha-icon>
-                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
-                    </button>
-                  `
-                : nothing}
-              ${this._payloadLearnView === "off"
-                ? html`
-                    <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-                    <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
-                  `
-                : nothing}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Learn mode rendering (IR9) ─────────────────────────────────────
-
-  private _renderLearnEntryButton() {
-    if (!this._learnAvailable()) return nothing;
-    const S = TOOLS_CARD_STRINGS.backup;
-    return html`
-      <button
-        class="payload-learn-btn"
-        type="button"
-        title=${S.learnAria}
-        aria-label=${S.learnAria}
-        @click=${() => void this._enterLearnMode()}
-      >
-        <ha-icon icon="mdi:import"></ha-icon>
-        <span>${S.learn}</span>
-      </button>
-    `;
-  }
-
-  private _renderLearnPanel() {
-    switch (this._payloadLearnView) {
-      case "menu":
-        return this._renderLearnMenu();
-      case "hub":
-        return this._renderLearnHub();
-      case "ha":
-        return this._renderLearnInbox();
-      default:
-        return nothing;
-    }
-  }
-
-  private _renderLearnMenu() {
-    const S = TOOLS_CARD_STRINGS.backup;
-    return html`
-      <div class="learn-panel" data-learn-view="menu">
-        <button class="learn-option" type="button" @click=${() => void this._startHubLearn()}>
-          <ha-icon icon="mdi:remote"></ha-icon>
-          <span class="learn-option-body">
-            <span class="learn-option-title">${S.learnFromHub}</span>
-            <span class="learn-option-desc">${S.learnFromHubDescription}</span>
-          </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
-        </button>
-        ${this._learnHaOptionVisible()
-          ? html`
-              <button class="learn-option" type="button" @click=${() => this._openLearnInbox()}>
-                <ha-icon icon="mdi:home-assistant"></ha-icon>
-                <span class="learn-option-body">
-                  <span class="learn-option-title">${S.learnFromHa}</span>
-                  <span class="learn-option-desc">${S.learnFromHaDescription}</span>
-                </span>
-                <ha-icon icon="mdi:chevron-right"></ha-icon>
-              </button>
-            `
-          : this._payloadLearnHaAvailable === null
-            ? html`<div class="learn-checking">${S.learnHaChecking}</div>`
-            : nothing}
-      </div>
-    `;
-  }
-
-  private _renderLearnHub() {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const state = this._payloadLearnHubState;
-    const event = this._payloadLearnHubEvent;
-    let icon = "mdi:remote";
-    let title = "";
-    let detail = "";
-    switch (state) {
-      case "arming":
-        icon = "mdi:progress-clock";
-        title = S.learnHubArming;
-        break;
-      case "listening":
-        title = S.learnHubListening;
-        detail = S.learnHubCountdown(this._formatCountdown(this._payloadLearnSecondsLeft));
-        break;
-      case "timed_out":
-        icon = "mdi:timer-off-outline";
-        title = S.learnHubTimedOut;
-        break;
-      case "interrupted":
-        icon = "mdi:alert-circle-outline";
-        title = S.learnHubInterrupted(String(event?.interrupted_by || "?"));
-        break;
-      case "cancelled":
-        icon = "mdi:cancel";
-        title = S.learnHubCancelled;
-        break;
-      case "refused":
-        icon = "mdi:alert-circle-outline";
-        title = localizeBackendError(event, "ir_learn");
-        break;
-      case "error":
-        icon = "mdi:alert-circle-outline";
-        title = localizeBackendError(event, "ir_learn");
-        break;
-      default:
-        title = S.learnHubListening;
-    }
-    return html`
-      <div class="learn-panel" data-learn-view="hub">
-        <div class="learn-stage ${state}" role="status" aria-live="polite">
-          <ha-icon icon=${icon}></ha-icon>
-          <div class="learn-stage-copy">
-            <div class="learn-stage-title">${title}</div>
-            ${detail ? html`<div class="learn-stage-detail">${detail}</div>` : nothing}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderLearnInbox() {
-    const S = TOOLS_CARD_STRINGS.backup;
-    // One chip per consumer integration (its config-entry title), with the
-    // entity ids as the tooltip: live Samsung Infrared exposes a dozen
-    // button entities per TV, so per-entity chips would swamp the panel.
-    const chips = this._payloadLearnConsumers.map((consumer) => ({
-      name: consumer.title || consumer.domain,
-      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain,
-    }));
-    const emissions = [...this._payloadLearnEmissions].reverse();
-    return html`
-      <div class="learn-panel" data-learn-view="ha">
-        <div class="learn-inbox-help">${S.learnHaHelper}</div>
-        ${chips.length
-          ? html`
-              <div class="learn-consumers">
-                <span class="learn-consumers-label">${S.learnHaConsumers}</span>
-                <div class="learn-chips">
-                  ${chips.map((chip) => html`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
-                </div>
-              </div>
-            `
-          : nothing}
-        ${this._payloadLearnEmissionsError
-          ? html`
-              <div class="section-status error" role="alert">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${localizeBackendError(this._payloadLearnEmissionsError, "ir_emissions")}</span>
-              </div>
-            `
-          : nothing}
-        <div class="learn-inbox-list" role="list">
-          ${emissions.length
-            ? emissions.map((rec) => this._renderInboxRow(rec))
-            : html`
-                <div class="learn-inbox-empty">
-                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
-                  <span>${S.learnHaEmpty}</span>
-                </div>
-              `}
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderInboxRow(rec: IrEmissionRecord) {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const isNew = this._emissionIsNew(rec);
-    const meta: string[] = [this._learnTimeAgo(rec.when)];
-    if (Number(rec.count) > 1) meta.push(S.learnHaSentCount(Number(rec.count)));
-    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
-    return html`
-      <button
-        class="learn-inbox-row ${isNew ? "is-new" : ""}"
-        type="button"
-        role="listitem"
-        @click=${() => this._useEmission(rec)}
-      >
-        <span class="learn-inbox-main">
-          <span class="learn-inbox-label">${this._emissionDisplayName(rec)}</span>
-          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" · ")}</span>
-        </span>
-        ${isNew ? html`<span class="learn-badge">${S.learnHaNew}</span>` : nothing}
-        <span class="learn-inbox-use">${S.learnHaUse}</span>
-      </button>
-    `;
-  }
-
-  private _renderLearnFooterActions() {
-    const S = TOOLS_CARD_STRINGS.backup;
-    if (this._payloadLearnView === "menu") {
-      return html`<button class="dialog-btn" @click=${() => this._exitLearnMode()}>${S.learnBack}</button>`;
-    }
-    if (this._payloadLearnView === "hub") {
-      const terminal = this._hubLearnIsTerminal();
-      return html`
-        ${terminal
-          ? html`<button class="dialog-btn dialog-btn-primary" @click=${() => void this._startHubLearn()}>${S.learnTryAgain}</button>`
-          : nothing}
-        <button class="dialog-btn" @click=${() => this._backToLearnMenu()}>
-          ${terminal ? S.learnBack : TOOLS_CARD_STRINGS.common.cancel}
-        </button>
-      `;
-    }
-    return html`<button class="dialog-btn" @click=${() => this._backToLearnMenu()}>${S.learnBack}</button>`;
-  }
-
-  private _renderRawPayloadForm() {
-    return html`
-      <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
-          <div class="decoded-form-sub">
-            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
-          </div>
-        </div>
-        <label class="decoded-field">
-          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
-          <textarea
-            class="decoded-field-input decoded-field-input--multiline"
-            rows="6"
-            spellcheck="false"
-            .value=${this._payloadDialogRawDraft}
-            @input=${this._handleRawPayloadInput}
-            @change=${this._handleRawPayloadInput}
-          ></textarea>
-          <span class="decoded-field-helper">
-            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
-          </span>
-        </label>
-      </div>
-    `;
-  }
-
-  /**
-   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
-   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
-   * `_payloadDialogRawDraft` stay the source of truth for Test/Save;
-   * pronto edits write through via conversion. Pasting a descriptive
-   * `P:` payload morphs the dialog into descriptor mode (X2 only).
-   */
-  private _renderIrHexPayloadForm() {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const tab = this._payloadDialogProntoAvailable ? this._payloadDialogHexTab : "sofabaton";
-    const prontoActive = tab === "pronto";
-    return html`
-      <div class="decoded-form">
-        <div class="payload-format-tabs" role="tablist">
-          <button
-            class="payload-format-tab ${prontoActive ? "active" : ""}"
-            role="tab"
-            aria-selected=${prontoActive ? "true" : "false"}
-            ?disabled=${!this._payloadDialogProntoAvailable}
-            title=${this._payloadDialogProntoAvailable ? "" : S.prontoUnavailable}
-            @click=${() => this._selectHexTab("pronto")}
-          >${S.prontoHexTab}</button>
-          <button
-            class="payload-format-tab ${prontoActive ? "" : "active"}"
-            role="tab"
-            aria-selected=${prontoActive ? "false" : "true"}
-            @click=${() => this._selectHexTab("sofabaton")}
-          >${S.sofabatonHexTab}</button>
-          ${this._renderLearnEntryButton()}
-        </div>
-        <label class="decoded-field">
-          <textarea
-            class="decoded-field-input decoded-field-input--multiline"
-            rows="6"
-            spellcheck="false"
-            .value=${prontoActive ? this._payloadDialogProntoDraft : this._payloadDialogRawDraft}
-            @input=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
-            @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
-          ></textarea>
-          <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
-            ${this._payloadDialogFormatError
-              || (this._payloadDialogConverting ? S.ucHexConverting : "")
-              || (prontoActive ? S.prontoHexHelper : S.payloadHexHelper)}
-          </span>
-        </label>
-      </div>
-    `;
-  }
-
-  private _selectHexTab(tab: "pronto" | "sofabaton") {
-    if (tab === "pronto" && !this._payloadDialogProntoAvailable) return;
-    this._payloadDialogHexTab = tab;
-    this._payloadDialogFormatError = "";
-  }
-
-  /** Map an IrFormatError to a user string; anything else falls through. */
-  private _irFormatMessage(error: unknown, fallback: string): string {
-    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
-    return fallback;
-  }
-
-  /**
-   * Re-derive the pronto projection after the sofabaton draft changed.
-   * Unparseable bytes are legal (passthrough for unknown variants); they
-   * only disable the pronto tab.
-   */
-  private _syncProntoFromRaw() {
-    try {
-      const signal = parseSofabatonBlob(this._payloadDialogRawDraft);
-      this._payloadDialogProntoDraft = renderProntoHex(signal);
-      this._payloadDialogProntoAvailable = true;
-    } catch {
-      this._payloadDialogProntoDraft = "";
-      this._payloadDialogProntoAvailable = false;
-    }
-  }
-
-  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
-  private _morphToDescriptor(text: string) {
-    this._payloadDialogDecodedSnapshot = {
-      className: "ir",
-      fields: { descriptor: "" },
-      trailerHex: "",
-      edited: false,
-    };
-    this._payloadDialogDecodedDrafts = { descriptor: text.trim() };
-    this._payloadDialogFormatError = "";
-  }
-
-  /** Morph the open dialog from descriptor mode to the hex tabs. */
-  private _morphToHex(text: string, format: "pronto" | "sofabaton") {
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogFormatError = "";
-    if (format === "pronto") {
-      this._payloadDialogHexTab = "pronto";
-      this._payloadDialogProntoDraft = text.trim();
-      this._applyProntoDraft(text.trim());
-    } else {
-      this._payloadDialogHexTab = "sofabaton";
-      this._payloadDialogRawDraft = text.trim();
-      this._syncProntoFromRaw();
-    }
-  }
-
-  /**
-   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
-   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
-   * codes go to the backend, which renders them through infrared-protocols
-   * and returns both hex projections. Returns false when the text is not a
-   * UC paste so the caller continues with its own handling.
-   */
-  private _tryForeignPaste(text: string): boolean {
-    const paste = resolveUcPaste(text);
-    if (!paste) return false;
-    if (paste.name && this._payloadDialogAddMode && !this._payloadDialogNameDraft.trim()) {
-      this._payloadDialogNameDraft = sanitizeBundleName(this.bundle, paste.name);
-    }
-    if (paste.kind === "pronto") {
-      this._morphToHex(paste.code, "pronto");
-      return true;
-    }
-    void this._convertForeignCode(paste.code, "uc_hex");
-    return true;
-  }
-
-  private async _convertForeignCode(code: string, format: IrPayloadForeignFormat) {
-    // Show the pasted code on the pronto tab while the backend works; the
-    // stale sofabaton bytes underneath are fenced off by `_converting`.
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoAvailable = true;
-    this._payloadDialogProntoDraft = code;
-    this._payloadDialogFormatError = "";
-    const seq = ++this._payloadConversionSeq;
-    if (!this.convertForeignPayload) {
-      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
-      return;
-    }
-    this._payloadDialogConverting = true;
-    try {
-      const result = await this.convertForeignPayload(code, format);
-      if (seq !== this._payloadConversionSeq) return;
-      // The backend's sofabaton bytes are the truth (they are what the
-      // emitter would send); the pronto view is re-derived from them.
-      this._morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
-      this._payloadDialogHexTab = "pronto";
-    } catch (error) {
-      if (seq !== this._payloadConversionSeq) return;
-      this._payloadDialogFormatError = localizeBackendError(error, "ir_convert");
-    } finally {
-      if (seq === this._payloadConversionSeq) this._payloadDialogConverting = false;
-    }
-  }
-
-  /** Parse a pronto draft and write the sofabaton bytes through. */
-  private _applyProntoDraft(text: string) {
-    if (!text.trim()) {
-      this._payloadDialogFormatError = "";
-      return;
-    }
-    try {
-      const signal = parseProntoHex(text);
-      this._payloadDialogRawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
-      this._payloadDialogProntoAvailable = true;
-      this._payloadDialogFormatError = "";
-    } catch (error) {
-      this._payloadDialogFormatError = this._irFormatMessage(
-        error,
-        TOOLS_CARD_STRINGS.backup.invalidProntoHex,
-      );
-    }
-  }
-
-  private _handleProntoPayloadInput = (event: Event) => {
-    const input = event.currentTarget as HTMLTextAreaElement;
-    const text = input.value;
-    this._payloadDialogError = "";
-    if (this._tryForeignPaste(text)) return;
-    // Any further typing supersedes an in-flight conversion.
-    this._payloadConversionSeq += 1;
-    this._payloadDialogConverting = false;
-    const detected = detectIrPayloadFormat(text);
-    if (detected === "descriptor") {
-      if (bundleIsX2(this.bundle)) {
-        this._morphToDescriptor(text);
-        return;
-      }
-      this._payloadDialogProntoDraft = text;
-      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
-      return;
-    }
-    if (detected === "sofabaton") {
-      // Only steal the paste when it is a complete, parseable blob -
-      // partial pronto typing also looks hex-ish and must stay put.
-      try {
-        parseSofabatonBlob(text);
-        this._morphToHex(text, "sofabaton");
-        return;
-      } catch {
-        // fall through: treat as in-progress pronto input
-      }
-    }
-    this._payloadDialogProntoDraft = text;
-    this._applyProntoDraft(text);
-  };
-
-  private _handleAddCommandNameInput = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement;
-    const value = sanitizeBundleName(this.bundle, input.value);
-    input.value = value;
-    this._payloadDialogNameDraft = value;
-    this._payloadDialogError = "";
-  };
-
-  private _handleRawPayloadInput = (event: Event) => {
-    const input = event.currentTarget as HTMLTextAreaElement;
-    const text = input.value;
-    this._payloadDialogError = "";
-    if (this._liveDeviceIsIr()) {
-      if (this._tryForeignPaste(text)) return;
-      this._payloadConversionSeq += 1;
-      this._payloadDialogConverting = false;
-      const detected = detectIrPayloadFormat(text);
-      if (detected === "pronto") {
-        this._morphToHex(text, "pronto");
-        return;
-      }
-      if (detected === "descriptor") {
-        if (bundleIsX2(this.bundle)) {
-          this._morphToDescriptor(text);
-          return;
-        }
-        this._payloadDialogRawDraft = text;
-        this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
-        return;
-      }
-      this._payloadDialogRawDraft = text;
-      this._payloadDialogFormatError = "";
-      this._syncProntoFromRaw();
-      return;
-    }
-    this._payloadDialogRawDraft = text;
-  };
-
-  private _renderDecodedPayloadForm(className: DecodableCommandClass) {
-    const spec = DECODED_CLASS_FORM_SPECS[className];
-    if (!spec) return nothing;
-    // IR descriptor mode shows a single DESCRIPTOR tab in place of the
-    // form title, mirroring the hex-mode tab row (IR8); pasting hex into
-    // the field switches back to the hex tabs.
-    const head = className === "ir"
-      ? html`
-          <div class="payload-format-tabs" role="tablist">
-            <button class="payload-format-tab active" role="tab" aria-selected="true">
-              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
-            </button>
-            ${this._renderLearnEntryButton()}
-          </div>
-          ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
-        `
-      : html`
-          <div class="decoded-form-head">
-            <div class="decoded-form-title">${spec.title}</div>
-            ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
-          </div>
-        `;
-    return html`
-      <div class="decoded-form">
-        ${head}
-        ${spec.fields.map((field) => this._renderDecodedField(field))}
-      </div>
-    `;
-  }
-
-  private _renderDecodedField(field: DecodedFieldSpec) {
-    const value = this._payloadDialogDecodedDrafts[field.key] ?? "";
-    const onInput = (event: Event) => this._handleDecodedFieldInput(event, field.key);
-    const multilineClass = field.escapedDisplay
-      ? "decoded-field-input--multiline decoded-field-input--escaped"
-      : "decoded-field-input--multiline";
-    return html`
-      <label class="decoded-field">
-        <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline
-          ? html`
-              <textarea
-                class="decoded-field-input ${multilineClass}"
-                rows="4"
-                spellcheck="false"
-                .value=${value}
-                @input=${onInput}
-                @change=${onInput}
-              ></textarea>
-            `
-          : html`
-              <input
-                class="decoded-field-input"
-                type=${field.numeric ? "number" : "text"}
-                spellcheck="false"
-                .value=${value}
-                ?disabled=${Boolean(field.readonly)}
-                @input=${field.readonly ? null : onInput}
-                @change=${field.readonly ? null : onInput}
-              />
-            `}
-        ${field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
-      </label>
-    `;
-  }
-
   private _editRenameDialogLabel() {
     const target = this._editRenameDialogTarget;
     const S = TOOLS_CARD_STRINGS.backup;
@@ -2363,92 +1220,6 @@ export class SofabatonEditDetailView extends LitElement {
     // wire name slot.
     return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
   }
-
-  /**
-   * Diff each spec field against the open-dialog snapshot. Returns a
-   * record of fields that changed (mapped back through the wire-format
-   * coercion in `_draftToFieldValue`), or `null` when nothing changed
-   * and the bundle should be left untouched.
-   */
-  private _collectChangedDecodedFields(
-    snapshot: BackupCommandDecodedBlock,
-  ): Record<string, unknown> | null {
-    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-    if (!spec) return null;
-    const changed: Record<string, unknown> = {};
-    let touched = false;
-    for (const field of spec.fields) {
-      const draft = this._payloadDialogDecodedDrafts[field.key] ?? "";
-      const original = this._fieldValueToDraft(snapshot.fields[field.key], field);
-      if (draft === original) continue;
-      changed[field.key] = this._draftToFieldValue(draft, field);
-      touched = true;
-    }
-    return touched ? changed : null;
-  }
-
-  /**
-   * Convert a draft string from a form control to the value shape the
-   * decoder expects. `numeric` fields become numbers; `crlfOnWire`
-   * fields get `\n` line endings normalized to `\r\n` so the wire
-   * round-trip stays exact even though the browser textarea hides the
-   * `\r`. Everything else passes through verbatim.
-   */
-  private _draftToFieldValue(draft: string, field: DecodedFieldSpec): unknown {
-    if (field.numeric) {
-      const numeric = Number(draft);
-      return Number.isFinite(numeric) ? numeric : 0;
-    }
-    if (field.escapedDisplay) {
-      // Inverse of the display escape in `_fieldValueToDraft`. We do
-      // NOT touch lone backslashes — body_block content in observed
-      // Hue / Sonos commands never contains literal `\` text, and
-      // honoring `\\` would force the user to double-escape ordinary
-      // backslashes in pasted JSON.
-      let result = draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
-      // If the user pressed Enter inside the textarea, that produces
-      // a real LF in the input value. Keep it — they meant a newline,
-      // and the next render will re-escape it for display. The above
-      // replace order means typed `\n` text wins over rendered LF,
-      // which is what we want.
-      return result;
-    }
-    if (field.crlfOnWire) {
-      return draft.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
-    }
-    return draft;
-  }
-
-  private _handleDecodedFieldInput = (event: Event, fieldKey: string) => {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
-    // IR descriptor field: pasting hex flips the dialog to the hex tabs
-    // (IR8 format auto-recognition). Complete blobs only, so typing a
-    // descriptor with digits never gets hijacked.
-    if (
-      fieldKey === "descriptor" &&
-      this._payloadDialogDecodedSnapshot?.className === "ir"
-    ) {
-      if (this._tryForeignPaste(input.value)) return;
-      const detected = detectIrPayloadFormat(input.value);
-      if (detected === "pronto") {
-        this._morphToHex(input.value, "pronto");
-        return;
-      }
-      if (detected === "sofabaton") {
-        try {
-          parseSofabatonBlob(input.value);
-          this._morphToHex(input.value, "sofabaton");
-          return;
-        } catch {
-          // not a complete blob: keep treating it as descriptor text
-        }
-      }
-    }
-    this._payloadDialogDecodedDrafts = {
-      ...this._payloadDialogDecodedDrafts,
-      [fieldKey]: input.value,
-    };
-  };
 
   private _handleEditRenameDialogInput = (event: Event) => {
     const input = event.currentTarget as HTMLElement & { value: string };
@@ -2525,558 +1296,10 @@ export class SofabatonEditDetailView extends LitElement {
     );
   }
 
-  /**
-   * True for IR devices. Live payload *editing* is offered for all classes
-   * (raw hex, or the structured form where a parser exists), but the Test
-   * button — `playIrBlob` — is IR-only, so it gates on this.
-   */
-  private _liveDeviceIsIr(): boolean {
-    if (this.entityId == null || !this.bundle) return false;
-    return String(bundleDeviceClass(this.bundle, Number(this.entityId)) || "")
-      .trim()
-      .toLowerCase() === "ir";
-  }
-
-  /**
-   * Live "edit payload": fetch this one command's blob from the hub on
-   * demand (the structural bundle is blob-free), then open the same payload
-   * dialog backup uses — populated from the fetch, not the bundle, so the
-   * fetch itself never marks the bundle dirty. The host supplies the fetch.
-   */
-  private async _liveFetchAndOpenPayload(commandId: number) {
-    if (this.mode !== "live" || this.entityId == null || !this.fetchCommandPayload) return;
-    if (this._payloadFetchingCommandId != null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    this._payloadFetchingCommandId = normalizedCommandId;
-    this._payloadFetchError = "";
-    try {
-      const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
-      if (!fetched || !String(fetched.dataHex || "").trim()) {
-        this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
-        return;
-      }
-      this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
-    } catch (error) {
-      this._payloadFetchError = editorErrorMessage(error, "hub_request");
-    } finally {
-      this._payloadFetchingCommandId = null;
-    }
-  }
-
-  private _openLivePayloadDialog(deviceId: number, commandId: number, fetched: FetchedCommandPayload) {
-    const decoded = this._decodedSnapshotFromFetch(fetched.decoded);
-    const rawHex = decoded ? "" : (normalizeCommandPayloadHex(fetched.dataHex) ?? fetched.dataHex);
-    this._payloadDialogTarget = { deviceId, commandId };
-    this._payloadLiveFetched = fetched;
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = rawHex;
-    this._payloadDialogRawDraft = rawHex;
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-
-  /**
-   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
-   * the default view when the blob parses as raw timings (IR8).
-   */
-  private _resetIrHexTabState() {
-    this._payloadDialogFormatError = "";
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoDraft = "";
-    this._payloadDialogProntoAvailable = true;
-    if (!this._liveDeviceIsIr()) return;
-    if (String(this._payloadDialogRawDraft ?? "").trim()) {
-      this._syncProntoFromRaw();
-      if (!this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "sofabaton";
-    }
-  }
-
-  /**
-   * Open the payload dialog in add-command mode (live only). The controls
-   * mirror command edit for the device's class:
-   *
-   * * `ir` — blank descriptor form. The backend synthesizes the record
-   *   from the descriptor alone (`build_descriptive_ir_blob_body`), so no
-   *   template is needed and Test works before anything is saved.
-   * * decodable wifi classes — the structured form, seeded from an
-   *   existing command fetched as a template. The template supplies the
-   *   record's opaque trailer (a checksum region we cannot synthesize)
-   *   plus sensible defaults like host/port.
-   * * everything else — raw hex entry.
-   *
-   * Non-IR devices need at least one existing command: the template
-   * trailer and the codec (`library_type`) are both read from it.
-   */
-  private async _openAddCommandDialog() {
-    if (this.mode !== "live" || this.entityId == null || !this.bundle) return;
-    if (this._addCommandPreparing) return;
-    const deviceId = Number(this.entityId);
-    const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
-    this._payloadFetchError = "";
-
-    if (deviceClass === "ir") {
-      // Descriptive synthesis is X2-only (IR8 decision 5); other hubs
-      // open straight in the hex tabs, pronto view, empty.
-      this._openAddDialogWithSnapshot(
-        deviceId,
-        bundleIsX2(this.bundle)
-          ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false }
-          : null,
-      );
-      return;
-    }
-
-    const existing = deviceCommandItems(this.bundle, deviceId);
-    if (!existing.length) {
-      // A device created empty (Hub tab "Add device") has no template
-      // command to clone a decoded snapshot from: open the class's form
-      // with neutral defaults, or raw hex for classes without a form.
-      this._openAddDialogWithSnapshot(
-        deviceId,
-        defaultDecodedSnapshotForClass(deviceClass, {
-          deviceId,
-          commandId: nextFreeDeviceCommandId(this.bundle, deviceId),
-        }),
-      );
-      return;
-    }
-
-    if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
-      this._addCommandPreparing = true;
-      try {
-        const fetched = await this.fetchCommandPayload(deviceId, existing[0].commandId);
-        const decoded = this._decodedSnapshotFromFetch(fetched?.decoded ?? null);
-        if (decoded) {
-          this._openAddDialogWithSnapshot(deviceId, decoded);
-          return;
-        }
-      } catch (error) {
-        this._payloadFetchError = editorErrorMessage(error, "hub_request");
-        return;
-      } finally {
-        this._addCommandPreparing = false;
-      }
-    }
-
-    // Non-decodable class (BT / RF / learned-IR style records) or the
-    // template did not decode: raw hex entry.
-    this._openAddDialogWithSnapshot(deviceId, null);
-  }
-
-  private _openAddDialogWithSnapshot(deviceId: number, decoded: BackupCommandDecodedBlock | null) {
-    this._payloadDialogTarget = { deviceId, commandId: 0 };
-    this._payloadDialogAddMode = true;
-    this._payloadDialogNameDraft = "";
-    this._payloadLiveFetched = null;
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = "";
-    this._payloadDialogRawDraft = "";
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-
-  /**
-   * Commit a new command from the add dialog: allocate the next free id on
-   * the device and append a row whose `restore_data` carries the
-   * `new: true` marker the device-sync planner turns into a `command_add`
-   * step. Decoded forms serialize every field (there is no pristine
-   * baseline to diff against); raw entry normalizes the hex.
-   */
-  private _applyAddCommandDialog(target: { deviceId: number; commandId: number }) {
-    if (!this.bundle) return;
-    const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
-    if (!name) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
-      return;
-    }
-    let restoreData: Record<string, unknown>;
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-      const fields: Record<string, unknown> = {};
-      for (const field of spec.fields) {
-        fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
-      }
-      if (snapshot.className === "wifi_mqtt") {
-        // Read-only ids: keep them equal to this device and the id the
-        // commit is about to allocate (the hub ignores both bytes anyway).
-        fields["device_id"] = target.deviceId & 0xff;
-        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? (Number(fields["command_id"]) || 1)) & 0xff;
-      }
-      if (snapshot.className === "ir") {
-        const descriptor = String(fields["descriptor"] ?? "").trim();
-        if (!descriptor.startsWith("P:")) {
-          this._payloadDialogError = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
-          return;
-        }
-      }
-      restoreData = {
-        transport: "hub_code_record",
-        decoded: {
-          class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields,
-          edited: true,
-        },
-      };
-    } else {
-      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-      if (!normalized) {
-        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-        return;
-      }
-      restoreData = { transport: "hub_code_record", data_hex: normalized };
-    }
-    const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
-    if (newId == null) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
-      return;
-    }
-    this._commitEditBundleEdit(
-      addBundleDeviceCommand(this.bundle, target.deviceId, newId, name, restoreData),
-    );
-    this._closeCommandPayloadDialog();
-  }
-
-  /** Convert a fetched decoded block into the editor's snapshot shape. */
-  private _decodedSnapshotFromFetch(decoded: BlobFetchDecodedBlock | null): BackupCommandDecodedBlock | null {
-    if (!decoded) return null;
-    const className = String(decoded.class ?? "").trim().toLowerCase();
-    if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
-    return {
-      className: className as DecodableCommandClass,
-      fields: { ...(decoded.fields ?? {}) },
-      trailerHex: String(decoded.trailer_hex ?? ""),
-      edited: false,
-    };
-  }
-
-  /**
-   * Commit a live payload edit. The working command has no restore_data yet
-   * (blob-free bundle), so build the whole block — carrying the `edited`
-   * marker the device-sync planner keys on — and set it via
-   * `setCommandRestoreData`. A pristine (unchanged) dialog commits nothing.
-   */
-  private _applyLivePayloadDialog(target: { deviceId: number; commandId: number }) {
-    if (!this.bundle) return;
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      const changedFields = this._collectChangedDecodedFields(snapshot);
-      if (!changedFields) {
-        this._closeCommandPayloadDialog();
-        return;
-      }
-      const restoreData = {
-        transport: "hub_code_record",
-        data_hex: this._payloadLiveFetched?.dataHex ?? "",
-        decoded: {
-          class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields: { ...snapshot.fields, ...changedFields },
-          edited: true,
-        },
-      };
-      this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-    if (!normalized) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-      return;
-    }
-    if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const restoreData = { transport: "hub_code_record", data_hex: normalized, edited: true };
-    this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
-    this._closeCommandPayloadDialog();
-  }
-
-  /** Test the current draft on the hub (IR only), via the host's callback. */
-  private async _runLivePayloadTest() {
-    if (!this.testCommandPayload) return;
-    if (this._payloadDialogFormatError) {
-      // The active hex tab holds unparseable text; the sofabaton bytes
-      // behind Test/Save would be stale.
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = this._payloadDialogFormatError;
-      return;
-    }
-    if (this._payloadDialogConverting) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
-      return;
-    }
-    const value = this._payloadDialogDecodedSnapshot
-      ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim()
-      : String(this._payloadDialogRawDraft ?? "").trim();
-    if (!value) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.nothingToTest;
-      return;
-    }
-    this._payloadDialogTestStatus = "testing";
-    this._payloadDialogTestError = "";
-    try {
-      await this.testCommandPayload(value);
-      this._payloadDialogTestStatus = "success";
-    } catch (error) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = editorErrorMessage(error, "hub_request");
-    }
-  }
-
-  private _openCommandPayloadDialog(commandId: number) {
-    if (this.mode === "live") return;
-    if (this.entityId == null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    // A decoded block gets the structured per-class form; anything else
-    // with a captured payload gets the raw hex editor. Commands with no
-    // restore_data at all never reach here (the row hides the button).
-    const decoded = commandDecodedBlock(this.bundle, deviceId, normalizedCommandId);
-    const rawHex = decoded
-      ? null
-      : commandRawPayloadHex(this.bundle, deviceId, normalizedCommandId);
-    if (!decoded && !rawHex) return;
-    this._payloadDialogTarget = { deviceId, commandId: normalizedCommandId };
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = rawHex ?? "";
-    this._payloadDialogRawDraft = rawHex ?? "";
-    this._payloadDialogError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-
-  private _closeCommandPayloadDialog = () => {
-    this._exitLearnMode();
-    this._payloadLearnSourceNote = "";
-    // A conversion still in flight must not land in the next dialog.
-    this._payloadConversionSeq += 1;
-    this._payloadDialogConverting = false;
-    this._payloadDialogOpen = false;
-    this._payloadDialogTarget = null;
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogRawSnapshot = "";
-    this._payloadDialogRawDraft = "";
-    this._payloadDialogError = "";
-    this._payloadLiveFetched = null;
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._payloadDialogAddMode = false;
-    this._payloadDialogNameDraft = "";
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoDraft = "";
-    this._payloadDialogProntoAvailable = true;
-    this._payloadDialogFormatError = "";
-  };
-
-  // ── Learn mode logic (IR9) ─────────────────────────────────────────
-
+  // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
   /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
-  private _learnAvailable(): boolean {
-    return this.mode === "live" && !!this.irLearn && this._liveDeviceIsIr();
-  }
-
-  /**
-   * Open the source menu. The HA option is gated on the emitter existing
-   * AND either a consumer config entry or a non-empty intercept ring, so
-   * the inbox subscription is opened right away (it also feeds the inbox
-   * view later) while the consumer lookup runs alongside it.
-   */
-  private async _enterLearnMode() {
-    const host = this.irLearn;
-    if (!host || !this._learnAvailable()) return;
-    this._payloadLearnView = "menu";
-    this._payloadLearnSourceNote = "";
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-    this._startLearnTicker();
-    void this._openEmissionInbox(host);
-    try {
-      const response = await host.consumers();
-      if (this._learnModeLeft()) return;
-      this._payloadLearnConsumers = Array.isArray(response?.consumers) ? response.consumers : [];
-      this._payloadLearnHaAvailable = !!response?.available;
-    } catch {
-      if (this._learnModeLeft()) return;
-      this._payloadLearnHaAvailable = false;
-    }
-  }
-
-  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
-  private _learnModeLeft(): boolean {
-    return this._payloadLearnView === "off";
-  }
-
-  private _learnHaOptionVisible(): boolean {
-    return this._payloadLearnHaAvailable === true
-      && (this._payloadLearnConsumers.length > 0 || this._payloadLearnEmissions.length > 0);
-  }
-
-  private async _openEmissionInbox(host: IrLearnHost) {
-    if (this._payloadLearnEmissionsUnsub) return;
-    this._payloadLearnEmissionsError = null;
-    try {
-      const unsubscribe = await host.subscribeEmissions((emissions) => {
-        if (this._payloadLearnView === "off") return;
-        const next = Array.isArray(emissions) ? emissions : [];
-        if (!this._payloadLearnBaseline) {
-          this._payloadLearnBaseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
-        }
-        this._payloadLearnEmissions = next;
-      });
-      if (this._payloadLearnView === "off") {
-        unsubscribe();
-        return;
-      }
-      this._payloadLearnEmissionsUnsub = unsubscribe;
-    } catch (error) {
-      if (this._payloadLearnView === "off") return;
-      this._payloadLearnEmissionsError = {
-        error_code: backendErrorCode(error) ?? "ir_emissions_failed",
-      };
-    }
-  }
-
-  /**
-   * Row name: the command's own repr when its class defines one (it
-   * carries address/command), otherwise the backend label, which is the
-   * class name plus a per-code digest. Repr-less classes (live finding:
-   * SonyX700Command) would otherwise make every code read identically.
-   */
-  private _emissionDisplayName(rec: IrEmissionRecord): string {
-    const repr = String(rec.command_repr ?? "").trim();
-    const label = String(rec.label ?? "").trim();
-    if (!repr) return label;
-    const className = label.replace(/\s*\(.*$/, "");
-    return repr === className ? label : repr;
-  }
-
-  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
-  private _emissionIsNew(rec: IrEmissionRecord): boolean {
-    const baseline = this._payloadLearnBaseline;
-    if (!baseline) return false;
-    return baseline.get(rec.payload_hex) !== rec.when;
-  }
-
-  private _openLearnInbox() {
-    this._cancelHubLearn();
-    this._payloadLearnView = "ha";
-    if (this.irLearn) void this._openEmissionInbox(this.irLearn);
-  }
-
-  private _backToLearnMenu() {
-    this._cancelHubLearn();
-    this._payloadLearnView = "menu";
-  }
-
-  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
-  private _exitLearnMode() {
-    this._cancelHubLearn();
-    const unsubscribe = this._payloadLearnEmissionsUnsub;
-    this._payloadLearnEmissionsUnsub = null;
-    if (unsubscribe) {
-      try { unsubscribe(); } catch { /* socket already gone */ }
-    }
-    this._stopLearnTicker();
-    this._payloadLearnView = "off";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsError = null;
-    this._payloadLearnBaseline = null;
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-  }
-
-  private async _startHubLearn() {
-    const host = this.irLearn;
-    if (!host) return;
-    this._cancelHubLearn();
-    const attempt = ++this._payloadLearnHubAttempt;
-    this._payloadLearnView = "hub";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._startLearnTicker();
-    try {
-      const cancel = await host.learnFromHub((event) => {
-        if (attempt !== this._payloadLearnHubAttempt) return;
-        this._handleHubLearnEvent(event);
-      }, LEARN_TIMEOUT_S);
-      if (attempt !== this._payloadLearnHubAttempt || this._payloadLearnView !== "hub") {
-        // Superseded (Back/Cancel/close) while the subscribe was in flight.
-        try { cancel(); } catch { /* ignore */ }
-        return;
-      }
-      if (this._hubLearnIsTerminal()) {
-        // Outcome already arrived: just let go of the subscription.
-        try { cancel(); } catch { /* ignore */ }
-        return;
-      }
-      this._payloadLearnHubCancel = cancel;
-    } catch (error) {
-      if (attempt !== this._payloadLearnHubAttempt) return;
-      this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = {
-        state: "error",
-        error_code: backendErrorCode(error) ?? "ir_learn_failed",
-      };
-    }
-  }
-
-  private _handleHubLearnEvent(event: IrLearnEvent) {
-    const S = TOOLS_CARD_STRINGS.backup;
-    this._payloadLearnHubEvent = event;
-    this._payloadLearnHubState = event.state;
-    if (event.state === "listening") {
-      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
-      this._payloadLearnHubDeadline = Date.now() + timeout * 1000;
-      this._payloadLearnSecondsLeft = Math.ceil(timeout);
-      return;
-    }
-    // Terminal: the window is over, release the subscription (the backend
-    // treats a post-outcome unsubscribe as a no-op).
-    this._releaseHubLearn();
-    if (event.state !== "learned") return;
-    const hex = String(event.payload_hex ?? "").trim();
-    if (!hex) {
-      this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = { state: "error", error_code: "ir_learn_no_payload" };
-      return;
-    }
-    const timings = Number(event.duration_count) || 0;
-    const carrier = Number(event.carrier_hz) || 0;
-    const note = timings && carrier
-      ? S.learnHubLearned(timings, formatCarrierKhz(carrier))
-      : S.learnHubLearnedRaw;
-    this._adoptLearnedPayload(hex, note);
-  }
-
-  private _useEmission(rec: IrEmissionRecord) {
-    const hex = String(rec.payload_hex ?? "").trim();
-    if (!hex) return;
-    this._adoptLearnedPayload(
-      hex,
-      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this._emissionDisplayName(rec)),
-    );
+  _learnAvailable(): boolean {
+    return this.mode === "live" && !!this.irLearn && this._payload.liveDeviceIsIr();
   }
 
   /**
@@ -3084,150 +1307,15 @@ export class SofabatonEditDetailView extends LitElement {
    * descriptor form if the dialog was in one), pronto view when the bytes
    * parse as raw timings, Test/Save untouched and ready.
    */
-  private _adoptLearnedPayload(hex: string, note: string) {
-    this._exitLearnMode();
+  _adoptLearnedPayload(hex: string, note: string) {
+    this._learn.exit();
     const normalized = normalizeCommandPayloadHex(hex) ?? hex;
-    this._morphToHex(normalized, "sofabaton");
-    if (this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "pronto";
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._payloadLearnSourceNote = note;
-  }
-
-  private _hubLearnIsTerminal(): boolean {
-    return this._payloadLearnHubState !== "arming" && this._payloadLearnHubState !== "listening";
-  }
-
-  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
-  private _cancelHubLearn() {
-    this._payloadLearnHubAttempt++;
-    this._releaseHubLearn();
-  }
-
-  private _releaseHubLearn() {
-    const cancel = this._payloadLearnHubCancel;
-    this._payloadLearnHubCancel = null;
-    if (cancel) {
-      try { cancel(); } catch { /* socket already gone */ }
-    }
-  }
-
-  private _startLearnTicker() {
-    if (this._payloadLearnTicker) return;
-    this._payloadLearnNow = Date.now();
-    this._payloadLearnTicker = setInterval(() => this._learnTick(), 1000);
-  }
-
-  private _stopLearnTicker() {
-    if (this._payloadLearnTicker) clearInterval(this._payloadLearnTicker);
-    this._payloadLearnTicker = null;
-  }
-
-  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
-  private _learnTick() {
-    this._payloadLearnNow = Date.now();
-    if (this._payloadLearnView === "hub" && this._payloadLearnHubState === "listening" && this._payloadLearnHubDeadline) {
-      this._payloadLearnSecondsLeft = Math.max(
-        0,
-        Math.ceil((this._payloadLearnHubDeadline - this._payloadLearnNow) / 1000),
-      );
-    }
-  }
-
-  private _formatCountdown(seconds: number): string {
-    const total = Math.max(0, Math.floor(seconds));
-    const minutes = Math.floor(total / 60);
-    const rest = total % 60;
-    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
-  }
-
-  private _learnTimeAgo(when: string): string {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const ts = Date.parse(String(when ?? ""));
-    if (!Number.isFinite(ts)) return "";
-    const secs = Math.max(0, Math.round((this._payloadLearnNow - ts) / 1000));
-    if (secs < 5) return S.learnJustNow;
-    if (secs < 60) return S.learnSecondsAgo(secs);
-    const mins = Math.round(secs / 60);
-    if (mins < 60) return S.learnMinutesAgo(mins);
-    return S.learnHoursAgo(Math.round(mins / 60));
-  }
-
-  private _applyCommandPayloadDialog = () => {
-    const target = this._payloadDialogTarget;
-    if (!target || !this.bundle) return;
-    if (this._payloadDialogFormatError) {
-      this._payloadDialogError = this._payloadDialogFormatError;
-      return;
-    }
-    if (this._payloadDialogConverting) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
-      return;
-    }
-    if (this._payloadDialogAddMode) {
-      this._applyAddCommandDialog(target);
-      return;
-    }
-    if (this.mode === "live") {
-      this._applyLivePayloadDialog(target);
-      return;
-    }
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      // Structured form: diff against the open-dialog snapshot and only
-      // push a bundle update when something changed, so `edited: true`
-      // stays off pristine rows (which would otherwise force restore
-      // through a re-encode + round-trip verify for no reason).
-      const changedFields = this._collectChangedDecodedFields(snapshot);
-      if (changedFields) {
-        this._commitEditBundleEdit(updateCommandDecodedFields(
-          this.bundle,
-          target.deviceId,
-          target.commandId,
-          changedFields,
-        ));
-      }
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-    if (!normalized) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-      return;
-    }
-    if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
-      this._commitEditBundleEdit(updateCommandRawPayload(
-        this.bundle,
-        target.deviceId,
-        target.commandId,
-        normalized,
-      ));
-    }
-    this._closeCommandPayloadDialog();
-  };
-
-  private _initialDecodedDrafts(decoded: BackupCommandDecodedBlock): Record<string, string> {
-    const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
-    if (!spec) return {};
-    const drafts: Record<string, string> = {};
-    for (const field of spec.fields) {
-      drafts[field.key] = this._fieldValueToDraft(decoded.fields[field.key], field);
-    }
-    return drafts;
-  }
-
-  private _fieldValueToDraft(value: unknown, field: DecodedFieldSpec): string {
-    if (value == null) return "";
-    if (field.numeric) return String(Number(value) || 0);
-    const stringValue = String(value);
-    if (field.escapedDisplay) {
-      // Surface the wire `\n` / `\r` characters as their two-char
-      // escape sequences so the user can see and edit the literal
-      // string. `_draftToFieldValue` performs the reverse on save.
-      return stringValue.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-    }
-    return stringValue;
+    this._payload.morphToHex(normalized, "sofabaton");
+    if (this._payload.prontoAvailable) this._payload.hexTab = "pronto";
+    this._payload.error = "";
+    this._payload.testStatus = "idle";
+    this._payload.testError = "";
+    this._learn.sourceNote = note;
   }
 
   private _openQuickAccessRenameDialog(kind: BackupQuickAccessKind, buttonId: number) {
@@ -3360,7 +1448,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._confirmDeleteLabel = name;
   }
 
-  private _renderDeleteConfirmDialog() {
+  _renderDeleteConfirmDialog() {
     const target = this._confirmDeleteTarget;
     if (!target || !this.bundle) return nothing;
     const impact = bundleDeleteImpact(this.bundle, target);
@@ -3444,7 +1532,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._addFavoriteError = "";
     this._addShortcutActionName = "";
     this._resetMacroTarget("shortcut");
-    this._loadWifiEvents();
+    this._events.load();
     this._addFavoriteOpen = true;
   };
 
@@ -3515,7 +1603,7 @@ export class SofabatonEditDetailView extends LitElement {
     );
   }
 
-  private _openAddMemberDialog = () => {
+  _openAddMemberDialog = () => {
     const options = this._addableMemberDevices();
     this._addMemberDeviceId = options[0]?.id ?? null;
     this._addMemberOpen = true;
@@ -3536,18 +1624,18 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeAddMemberDialog();
   };
 
-  private _openMemberRemoveConfirm(activityId: number, deviceId: number, deviceName: string) {
+  _openMemberRemoveConfirm(activityId: number, deviceId: number, deviceName: string) {
     this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
     this._confirmDeleteLabel = deviceName;
   }
 
-  private _memberDeviceName(activityId: number, deviceId: number): string {
+  _memberDeviceName(activityId: number, deviceId: number): string {
     const member = activityMemberViews(this.bundle, activityId)
       .find((candidate) => candidate.deviceId === deviceId);
     return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
   }
 
-  private _renderAddMemberDialog() {
+  _renderAddMemberDialog() {
     if (!this._addMemberOpen || !this.bundle) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
     const options = this._addableMemberDevices();
@@ -3600,7 +1688,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this.bundle || this.entityId == null) return;
     const activityId = Number(this.entityId);
     try {
-      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
+      const ref = await this._events.resolveRef(this._events.primary);
       this._commitEditBundleEdit(addBundleActivityFavorite(
         ref.bundle,
         activityId,
@@ -3634,7 +1722,7 @@ export class SofabatonEditDetailView extends LitElement {
         return;
       }
       this._closeAddFavoriteDialog();
-      this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
+      this._steps.openEditor("activity", activityId, existing.buttonId, existing.name);
       return;
     }
     const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim()
@@ -3644,7 +1732,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeAddFavoriteDialog();
     const summaries = activityUserMacroSummaries(next, activityId);
     const created = summaries[summaries.length - 1];
-    if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+    if (created) this._steps.openEditor("activity", activityId, created.buttonId, created.name);
   };
 
   private _renderAddFavoriteDialog() {
@@ -3659,10 +1747,10 @@ export class SofabatonEditDetailView extends LitElement {
     const canAdd = kind === "command"
       ? this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null
       : kind === "wifi_event"
-        ? !this._wifiEventBusy && (
-            this._wifiEventPrimary.mode === "existing"
-              ? this._wifiEventPrimary.slot != null
-              : this._wifiEventPrimary.name.trim().length > 0
+        ? !this._events.busy && (
+            this._events.primary.mode === "existing"
+              ? this._events.primary.slot != null
+              : this._events.primary.name.trim().length > 0
           )
         : true;
     const commandFields = devices.length === 0
@@ -3753,14 +1841,14 @@ export class SofabatonEditDetailView extends LitElement {
                     ActivityBindingTargetKind;
                   if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
                   if (this._addShortcutKind === "wifi_event") {
-                    this._wifiEventPrimary = this._defaultWifiEventSel();
+                    this._events.primary = this._events.defaultSel();
                   }
                   this._addFavoriteError = "";
                 }}
               >
                 <option value="command" ?selected=${kind === "command"}>${S.shortcutKindCommand}</option>
                 <option value="action" ?selected=${kind === "action"}>${S.shortcutKindAction}</option>
-                ${this._wifiEventsAvailable()
+                ${this._events.available()
                   ? html`<option value="wifi_event" ?selected=${kind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
                   : nothing}
               </select>
@@ -3768,11 +1856,11 @@ export class SofabatonEditDetailView extends LitElement {
             ${kind === "command"
               ? commandFields
               : kind === "wifi_event"
-                ? this._renderWifiEventTargetFields({
+                ? this._events.renderTargetFields({
                     idPrefix: "sb-add-fav",
-                    sel: this._wifiEventPrimary,
+                    sel: this._events.primary,
                     onSelChange: (sel) => {
-                      this._wifiEventPrimary = sel;
+                      this._events.primary = sel;
                       this._addFavoriteError = "";
                     },
                   })
@@ -3800,7 +1888,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
   }
 
-  private _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
+  _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
     return kind === "activity"
       ? TOOLS_CARD_STRINGS.backup.crumbActivities
       : TOOLS_CARD_STRINGS.backup.crumbDevices;
@@ -3809,7 +1897,7 @@ export class SofabatonEditDetailView extends LitElement {
   // Compact ancestor trail shown above the detail/editor title. Each crumb
   // is a tappable button that pops back to that level; the trailing "›"
   // leads the eye into the current page's big title beneath it.
-  private _renderDetailCrumbs(crumbs: Array<{ label: string; onClick: () => void }>) {
+  _renderDetailCrumbs(crumbs: Array<{ label: string; onClick: () => void }>) {
     if (!crumbs.length) return nothing;
     return html`
       <div class="detail-crumbs">
@@ -3854,12 +1942,12 @@ export class SofabatonEditDetailView extends LitElement {
       // If the renamed macro is the one open in the step editor, refresh its
       // title so the rename shows immediately without backing out.
       if (
-        this._macroEditor &&
-        this._macroEditor.scope === "activity" &&
-        this._macroEditor.entityId === target.activityId &&
-        this._macroEditor.buttonId === target.buttonId
+        this._steps.editor &&
+        this._steps.editor.scope === "activity" &&
+        this._steps.editor.entityId === target.activityId &&
+        this._steps.editor.buttonId === target.buttonId
       ) {
-        this._macroEditor = { ...this._macroEditor, name: next };
+        this._steps.editor = { ...this._steps.editor, name: next };
       }
       this._closeEditRenameDialog();
       return;
@@ -3925,201 +2013,20 @@ export class SofabatonEditDetailView extends LitElement {
     ));
   };
 
-  // ── Button bindings (add / edit picker) ─────────────────────────────
-  private _bindingCommandDeviceOptions(): Array<{ value: number; label: string }> {
-    if (!this.bundle) return [];
-    return this._editableDeviceOptions()
-      .map((device) => ({ value: device.id, label: device.label }));
-  }
-
-  private _bindingTargetKindFor(
-    deviceId: number | null | undefined,
-  ): ActivityBindingTargetKind {
-    if (!this.bundle || this.entityId == null) return "command";
-    const dId = Number(deviceId || 0);
-    if (dId === Number(this.entityId)) return "action";
-    if (this._wifiEventsAvailable() && isWifiEventsBrand(bundleDeviceBrand(this.bundle, dId))) {
-      return "wifi_event";
-    }
-    return "command";
-  }
-
-  private _macroName(buttonId: number | null | undefined): string {
+  _macroName(buttonId: number | null | undefined): string {
     if (!this.bundle || this.entityId == null) return "";
     const bId = Number(buttonId || 0);
     return activityUserMacroSummaries(this.bundle, Number(this.entityId))
       .find((macro) => macro.buttonId === bId)?.name ?? "";
   }
 
-  private _macroOptions(): Array<{ value: number; label: string }> {
+  _macroOptions(): Array<{ value: number; label: string }> {
     if (!this.bundle || this.entityId == null) return [];
     return activityUserMacroSummaries(this.bundle, Number(this.entityId))
       .map((macro) => ({ value: macro.buttonId, label: macro.name }));
   }
 
-  // ── Wifi Event kind (shared by all three Add dialogs, live mode) ────
-
-  /** The Wifi Event kind is offered only in live activity-scope dialogs. */
-  private _wifiEventsAvailable(): boolean {
-    return this.mode === "live" && this.wifiEvents != null;
-  }
-
-  private _deployedWifiEvents(): WifiEvent[] {
-    // W7 full deferral: staged (not-yet-deployed) events are selectable —
-    // they deploy as phase 1 of the Sync press. The name is historical.
-    return this._wifiEventsList ?? [];
-  }
-
-  /** Fire-and-forget refresh of the event list when a dialog opens. */
-  private _loadWifiEvents() {
-    if (!this._wifiEventsAvailable()) return;
-    void this.wifiEvents!.list()
-      .then((events) => {
-        this._wifiEventsList = events;
-        // Re-seat only untouched selections: the response can land after
-        // the user already picked an event or typed a new-event name, and
-        // clobbering that mid-flight would lose their input.
-        const pristine = (sel: WifiEventTargetSel) =>
-          sel.mode === "new" && sel.slot == null && sel.name === "";
-        if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
-      })
-      .catch(() => {
-        this._wifiEventsList = [];
-      });
-  }
-
-  private _defaultWifiEventSel(): WifiEventTargetSel {
-    const first = this._deployedWifiEvents()[0] ?? null;
-    return first
-      ? { mode: "existing", slot: first.slot_index, name: "" }
-      : { mode: "new", slot: null, name: "" };
-  }
-
-  private _renderWifiEventTargetFields(params: {
-    idPrefix: string;
-    sel: WifiEventTargetSel;
-    onSelChange: (sel: WifiEventTargetSel) => void;
-  }) {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const events = this._deployedWifiEvents();
-    const sel = params.sel;
-    return html`
-      ${events.length
-        ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S.wifiEventTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-wifi-event`}
-                class="decoded-field-input"
-                @change=${(event: Event) => {
-                  const value = (event.target as HTMLSelectElement).value;
-                  params.onSelChange(
-                    value === "__new__"
-                      ? { mode: "new", slot: null, name: sel.name }
-                      : { mode: "existing", slot: Number(value), name: sel.name },
-                  );
-                }}
-              >
-                ${events.map((item) => html`
-                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
-                `)}
-                <option value="__new__" ?selected=${sel.mode === "new"}>${S.wifiEventTargetCreateNew}</option>
-              </select>
-            </div>
-          `
-        : html`<div class="quick-access-empty">${S.wifiEventNoneYet}</div>`}
-      ${sel.mode === "new"
-        ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event-name`}>${S.wifiEventNameLabel}</label>
-              <input
-                id=${`${params.idPrefix}-wifi-event-name`}
-                class="decoded-field-input"
-                maxlength="20"
-                .value=${sel.name}
-                ?disabled=${this._wifiEventBusy}
-                @input=${(event: Event) => {
-                  // The backend refuses what the hub cannot store (CR-X4-1).
-                  const input = event.target as HTMLInputElement;
-                  const name = sanitizeWifiName(this.bundle?.hub?.version, input.value);
-                  if (name !== input.value) input.value = name;
-                  params.onSelChange({ ...sel, name });
-                }}
-              />
-              <div class="decoded-field-helper">${S.wifiEventNameHelper}</div>
-            </div>
-          `
-        : nothing}
-      ${this._wifiEventBusy
-        ? html`<div class="decoded-field-helper">${S.wifiEventDeploying}</div>`
-        : nothing}
-    `;
-  }
-
-  /**
-   * Resolve a Wifi Event target selection to its atomic ref: a single
-   * event carries BOTH a short and a long record (short = slot+1, long =
-   * short + slot_count). A reference always addresses the event as one
-   * unit — the short record — and the long record is derived from the
-   * same event when a binding's long-press leg needs it (there is no
-   * separate long-press *target*; short vs long is an action-config
-   * distinction made in the Events tab, per the Wifi Events model).
-   *
-   * Returns the (possibly grafted) working bundle to insert into. Creating
-   * a new event is an instant store allocation (W7) — no hub deploy here.
-   * `deviceId` is the host's positive placeholder id before the first-ever
-   * deploy; the Sync flow rewrites it. Throws a user-facing Error on failure.
-   */
-  private async _resolveWifiEventRef(
-    sel: WifiEventTargetSel,
-  ): Promise<{
-    deviceId: number;
-    shortCommandId: number;
-    longCommandId: number;
-    slotIndex: number;
-    name: string;
-    bundle: BackupBundlePayload;
-  }> {
-    const S = TOOLS_CARD_STRINGS.backup;
-    if (!this.wifiEvents || !this.bundle) throw new Error(S.bindingIncomplete);
-    if (sel.mode === "existing") {
-      const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
-      // The host fills device_id (real deployed id, or a computed free
-      // placeholder the Sync flow rewrites) — a null id would be an
-      // internal error, not a user one.
-      if (!event || event.device_id == null) throw new Error(S.bindingIncomplete);
-      const grafted = await this.wifiEvents.ensureGrafted();
-      return {
-        deviceId: event.device_id,
-        shortCommandId: event.command_id,
-        longCommandId: event.long_press_command_id,
-        slotIndex: event.slot_index,
-        name: event.name,
-        bundle: grafted ?? this.bundle,
-      };
-    }
-    const name = sel.name.trim();
-    if (!name) throw new Error(S.wifiEventNameRequired);
-    this._wifiEventBusy = true;
-    try {
-      const created = await this.wifiEvents.create(name);
-      const event = created.event;
-      this._wifiEventsList = null;
-      if (event.device_id == null) throw new Error(S.wifiEventCreateFailed);
-      return {
-        deviceId: event.device_id,
-        shortCommandId: event.command_id,
-        longCommandId: event.long_press_command_id,
-        slotIndex: event.slot_index,
-        name: event.name,
-        bundle: created.bundle ?? this.bundle,
-      };
-    } finally {
-      this._wifiEventBusy = false;
-    }
-  }
-
-  private _resetMacroTarget(prefix: "shortcut" | "binding" | "bindingLp") {
+  _resetMacroTarget(prefix: "shortcut" | "binding" | "bindingLp") {
     const firstMacro = this._macroOptions()[0] ?? null;
     const mode: MacroTargetMode = firstMacro ? "existing" : "new";
     if (prefix === "shortcut") {
@@ -4128,15 +2035,15 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     if (prefix === "binding") {
-      this._bindingMacroMode = mode;
-      this._bindingMacroId = firstMacro?.value ?? null;
+      this._binding.macroMode = mode;
+      this._binding.macroId = firstMacro?.value ?? null;
       return;
     }
-    this._bindingLpMacroMode = mode;
-    this._bindingLpMacroId = firstMacro?.value ?? null;
+    this._binding.lpMacroMode = mode;
+    this._binding.lpMacroId = firstMacro?.value ?? null;
   }
 
-  private _captureCurrentScrollPosition() {
+  _captureCurrentScrollPosition() {
     const root = this.renderRoot as ParentNode | undefined;
     const scrollEl = root?.querySelector<HTMLElement>(".detail-scroll");
     if (!scrollEl) return;
@@ -4144,7 +2051,7 @@ export class SofabatonEditDetailView extends LitElement {
     else this._detailScrollTop = scrollEl.scrollTop;
   }
 
-  private _restoreMainScroll() {
+  _restoreMainScroll() {
     void this.updateComplete.then(() => {
       const root = this.renderRoot as ParentNode | undefined;
       const scrollEl = root?.querySelector<HTMLElement>(".detail-scroll");
@@ -4152,7 +2059,7 @@ export class SofabatonEditDetailView extends LitElement {
     });
   }
 
-  private _restoreBindingsScroll() {
+  _restoreBindingsScroll() {
     void this.updateComplete.then(() => {
       const root = this.renderRoot as ParentNode | undefined;
       const scrollEl = root?.querySelector<HTMLElement>(".detail-scroll");
@@ -4160,432 +2067,7 @@ export class SofabatonEditDetailView extends LitElement {
     });
   }
 
-  // Command options for a chosen target: the activity's own macros when the
-  // target is the activity itself, otherwise the target device's commands.
-  private _bindingCommandOptions(targetDeviceId: number | null): Array<{ value: number; label: string }> {
-    if (targetDeviceId == null || !this.bundle) return [];
-    if (this._bindingScope === "activity" && this.entityId != null && targetDeviceId === Number(this.entityId)) {
-      return activityUserMacroSummaries(this.bundle, Number(this.entityId))
-        .map((macro) => ({ value: macro.buttonId, label: macro.name }));
-    }
-    return deviceCommandItems(this.bundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
-  }
-
-  private _openAddBindingDialog(kind: BackupEditTargetKind) {
-    if (this.entityId == null || !this.bundle) return;
-    const entityId = Number(this.entityId);
-    const unbound = kind === "activity"
-      ? unboundButtonsForActivity(this.bundle, entityId)
-      : unboundButtonsForDevice(this.bundle, entityId);
-    if (!unbound.length) return;
-    this._bindingScope = kind;
-    this._bindingEditButtonId = null;
-    this._bindingButtonId = unbound[0].code;
-    this._bindingTargetKind = "command";
-    this._bindingActionName = "";
-    this._resetMacroTarget("binding");
-    this._bindingLpTargetKind = "command";
-    this._bindingLpActionName = "";
-    this._resetMacroTarget("bindingLp");
-    if (kind === "activity") {
-      const devices = this._bindingCommandDeviceOptions();
-      this._bindingDeviceId = devices[0]?.value ?? null;
-    } else {
-      this._bindingDeviceId = entityId;
-    }
-    const commandDeviceId = kind === "activity" ? this._bindingDeviceId : entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    this._bindingCommandId = commands[0]?.commandId ?? null;
-    this._bindingLongPressEnabled = false;
-    this._bindingLpDeviceId = this._bindingDeviceId;
-    this._bindingLpCommandId = this._bindingCommandId;
-    this._bindingError = "";
-    this._loadWifiEvents();
-    this._bindingDialogOpen = true;
-  }
-
-  private _openEditBindingDialog(kind: BackupEditTargetKind, buttonId: number) {
-    if (this.entityId == null || !this.bundle) return;
-    const entityId = Number(this.entityId);
-    const items = kind === "activity"
-      ? activityButtonBindingItems(this.bundle, entityId)
-      : deviceButtonBindingItems(this.bundle, entityId);
-    const item = items.find((entry) => entry.buttonId === Number(buttonId));
-    if (!item) return;
-    this._bindingScope = kind;
-    this._bindingEditButtonId = item.buttonId;
-    this._bindingButtonId = item.buttonId;
-    this._bindingDeviceId = kind === "activity" ? (item.deviceId ?? null) : entityId;
-    this._bindingCommandId = item.commandId;
-    this._bindingTargetKind = kind === "activity"
-      ? this._bindingTargetKindFor(item.deviceId)
-      : "command";
-    if (this._bindingTargetKind === "wifi_event") {
-      // A wifi-event binding is atomic: the primary short record maps to
-      // its event slot (short command id = slot + 1); long press (if
-      // present) is the same event's long record, gated by the toggle.
-      this._wifiEventPrimary = {
-        mode: "existing",
-        slot: Number(item.commandId) - 1,
-        name: "",
-      };
-      this._bindingLongPressEnabled = Boolean(item.longPress);
-      this._bindingError = "";
-      this._loadWifiEvents();
-      this._bindingDialogOpen = true;
-      return;
-    }
-    this._bindingActionName = this._bindingTargetKind === "action"
-      ? this._macroName(item.commandId)
-      : "";
-    this._bindingMacroMode = this._bindingTargetKind === "action" ? "existing" : "new";
-    this._bindingMacroId = this._bindingTargetKind === "action" ? item.commandId : null;
-    this._bindingLongPressEnabled = Boolean(item.longPress);
-    this._bindingLpDeviceId = kind === "activity"
-      ? (item.longPress?.deviceId ?? item.deviceId ?? null)
-      : entityId;
-    this._bindingLpCommandId = item.longPress?.commandId ?? null;
-    this._bindingLpTargetKind = kind === "activity"
-      ? this._bindingTargetKindFor(this._bindingLpDeviceId)
-      : "command";
-    this._bindingLpActionName = this._bindingLpTargetKind === "action"
-      ? this._macroName(this._bindingLpCommandId)
-      : "";
-    this._bindingLpMacroMode = this._bindingLpTargetKind === "action" ? "existing" : "new";
-    this._bindingLpMacroId = this._bindingLpTargetKind === "action" ? this._bindingLpCommandId : null;
-    this._bindingError = "";
-    this._loadWifiEvents();
-    this._bindingDialogOpen = true;
-  }
-
-  private _closeBindingDialog = () => {
-    this._bindingDialogOpen = false;
-    this._bindingEditButtonId = null;
-    this._bindingButtonId = null;
-    this._bindingDeviceId = null;
-    this._bindingCommandId = null;
-    this._bindingLongPressEnabled = false;
-    this._bindingLpDeviceId = null;
-    this._bindingLpCommandId = null;
-    this._bindingTargetKind = "command";
-    this._bindingActionName = "";
-    this._bindingMacroMode = "new";
-    this._bindingMacroId = null;
-    this._bindingLpTargetKind = "command";
-    this._bindingLpMacroMode = "new";
-    this._bindingLpMacroId = null;
-    this._bindingLpActionName = "";
-    this._bindingError = "";
-  };
-
-  private _handleBindingButtonChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._bindingButtonId = Number.isFinite(value) ? value : null;
-  };
-
-  private _handleBindingDeviceChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._bindingDeviceId = Number.isFinite(value) ? value : null;
-    this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
-  };
-
-  private _handleBindingCommandChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._bindingCommandId = Number.isFinite(value) ? value : null;
-  };
-
-  private _handleBindingTargetKindChange = (event: Event) => {
-    const kind = (event.target as HTMLSelectElement).value as ActivityBindingTargetKind;
-    this._bindingTargetKind = kind;
-    this._bindingError = "";
-    if (kind === "command") {
-      const devices = this._bindingCommandDeviceOptions();
-      if (!devices.some((device) => device.value === this._bindingDeviceId)) {
-        this._bindingDeviceId = devices[0]?.value ?? null;
-      }
-      this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
-      return;
-    }
-    if (kind === "wifi_event") {
-      this._wifiEventPrimary = this._defaultWifiEventSel();
-      return;
-    }
-    // "action"
-    this._resetMacroTarget("binding");
-    this._bindingActionName ||= this._macroName(this._bindingCommandId);
-  };
-
-  private _handleBindingActionNameInput = (event: Event) => {
-    this._bindingActionName = (event.target as HTMLInputElement).value;
-    this._bindingError = "";
-  };
-
-  private _handleBindingMacroTargetChange = (event: Event) => {
-    const value = (event.target as HTMLSelectElement).value;
-    if (value === "__new__") {
-      this._bindingMacroMode = "new";
-      this._bindingMacroId = null;
-    } else {
-      this._bindingMacroMode = "existing";
-      this._bindingMacroId = Number(value);
-    }
-    this._bindingError = "";
-  };
-
-  private _handleBindingLpTargetKindChange = (event: Event) => {
-    const kind = (event.target as HTMLSelectElement).value as ActivityBindingTargetKind;
-    this._bindingLpTargetKind = kind;
-    this._bindingError = "";
-    if (kind === "command") {
-      const devices = this._bindingCommandDeviceOptions();
-      if (!devices.some((device) => device.value === this._bindingLpDeviceId)) {
-        this._bindingLpDeviceId = devices[0]?.value ?? null;
-      }
-      this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
-      return;
-    }
-    // "action" (the long-press leg never targets a wifi event — that is
-    // only reachable atomically when the PRIMARY is a wifi event).
-    this._resetMacroTarget("bindingLp");
-    this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
-  };
-
-  private _handleBindingLpActionNameInput = (event: Event) => {
-    this._bindingLpActionName = (event.target as HTMLInputElement).value;
-    this._bindingError = "";
-  };
-
-  private _handleBindingLpMacroTargetChange = (event: Event) => {
-    const value = (event.target as HTMLSelectElement).value;
-    if (value === "__new__") {
-      this._bindingLpMacroMode = "new";
-      this._bindingLpMacroId = null;
-    } else {
-      this._bindingLpMacroMode = "existing";
-      this._bindingLpMacroId = Number(value);
-    }
-    this._bindingError = "";
-  };
-
-  private _handleBindingLongPressToggle = (event: Event) => {
-    const enabled = Boolean((event.target as { checked?: boolean }).checked);
-    this._bindingLongPressEnabled = enabled;
-    if (!enabled || !this.bundle) return;
-    this._bindingLpTargetKind = "command";
-    if (this._bindingScope === "activity") {
-      const devices = this._bindingCommandDeviceOptions();
-      if (!devices.some((device) => device.value === this._bindingLpDeviceId)) {
-        this._bindingLpDeviceId = devices[0]?.value ?? null;
-      }
-    } else if (this._bindingLpDeviceId == null) {
-      this._bindingLpDeviceId = Number(this.entityId);
-    }
-    const commands = this._bindingCommandOptions(this._bindingLpDeviceId);
-    if (!commands.some((command) => command.value === this._bindingLpCommandId)) {
-      this._bindingLpCommandId = commands[0]?.value ?? null;
-    }
-  };
-
-  private _handleBindingLpDeviceChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._bindingLpDeviceId = Number.isFinite(value) ? value : null;
-    this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
-  };
-
-  private _handleBindingLpCommandChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._bindingLpCommandId = Number.isFinite(value) ? value : null;
-  };
-
-  private _resolveMacroTarget(
-    bundle: BackupBundlePayload,
-    activityId: number,
-    mode: MacroTargetMode,
-    macroId: number | null,
-    rawName: string,
-  ): { bundle: BackupBundlePayload; macroId: number; name: string; created: boolean } | null {
-    if (mode === "existing") {
-      const existing = activityUserMacroSummaries(bundle, activityId)
-        .find((macro) => macro.buttonId === Number(macroId));
-      return existing
-        ? { bundle, macroId: existing.buttonId, name: existing.name, created: false }
-        : null;
-    }
-    const name = sanitizeBundleName(bundle, rawName).trim()
-      || TOOLS_CARD_STRINGS.backup.newMacroName;
-    const next = addActivityUserMacro(bundle, activityId, name);
-    const summaries = activityUserMacroSummaries(next, activityId);
-    const created = summaries[summaries.length - 1];
-    return created
-      ? { bundle: next, macroId: created.buttonId, name: created.name, created: true }
-      : null;
-  }
-
-  private _resolveActivityLongPressTarget(
-    bundle: BackupBundlePayload,
-    activityId: number,
-  ): {
-    bundle: BackupBundlePayload;
-    longPress: { deviceId: number; commandId: number } | null;
-    createdMacro: { buttonId: number; name: string } | null;
-  } | null {
-    if (!this._bindingLongPressEnabled) {
-      return { bundle, longPress: null, createdMacro: null };
-    }
-    if (this._bindingLpTargetKind === "command") {
-      if (!this._bindingLpDeviceId || !this._bindingLpCommandId) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return null;
-      }
-      return {
-        bundle,
-        longPress: {
-          deviceId: Number(this._bindingLpDeviceId),
-          commandId: Number(this._bindingLpCommandId),
-        },
-        createdMacro: null,
-      };
-    }
-    // "action"
-    const resolved = this._resolveMacroTarget(
-      bundle,
-      activityId,
-      this._bindingLpMacroMode,
-      this._bindingLpMacroId,
-      this._bindingLpActionName,
-    );
-    if (!resolved) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-      return null;
-    }
-    return {
-      bundle: resolved.bundle,
-      longPress: { deviceId: activityId, commandId: resolved.macroId },
-      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null,
-    };
-  }
-
-  /**
-   * Async binding apply when the button targets a Wifi Event. The event
-   * is atomic: the short press fires its short record, and — when the
-   * long-press toggle is on — the *same* event's long record is wired to
-   * the button's long press (and the event's long-press action is enabled
-   * for configuration in the Events tab). There is no independent
-   * long-press target here; that would collide with the Wifi Events model
-   * where short/long are two actions of one event.
-   */
-  private _applyActivityBindingWithWifiEvents = async () => {
-    const S = TOOLS_CARD_STRINGS.backup;
-    if (!this.bundle || this.entityId == null) return;
-    const activityId = Number(this.entityId);
-    const buttonId = Number(this._bindingButtonId);
-    if (!buttonId) {
-      this._bindingError = S.bindingIncomplete;
-      return;
-    }
-    try {
-      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-      let longPress: { deviceId: number; commandId: number } | null = null;
-      if (this._bindingLongPressEnabled) {
-        // Wire the SAME event's long record and turn on its long-press
-        // action (a pure store-flag edit — the long record is always
-        // deployed; the Events tab exposes the action).
-        await this.wifiEvents!.enableLongPress(ref.slotIndex);
-        this._wifiEventsList = null;
-        longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
-      }
-      this._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
-        buttonId,
-        deviceId: ref.deviceId,
-        commandId: ref.shortCommandId,
-        longPress,
-      }));
-      this._closeBindingDialog();
-    } catch (err) {
-      this._bindingError = editorErrorMessage(err, "wifi_event");
-    }
-  };
-
-  private _applyBinding = () => {
-    if (!this.bundle || this.entityId == null) return;
-    const buttonId = Number(this._bindingButtonId);
-    const entityId = Number(this.entityId);
-    if (!buttonId) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-      return;
-    }
-    // A Wifi Event binding is atomic (short + long from one event); its
-    // long-press leg is never an independent target.
-    if (this._bindingScope === "activity" && this._bindingTargetKind === "wifi_event") {
-      void this._applyActivityBindingWithWifiEvents();
-      return;
-    }
-    if (this._bindingScope === "activity") {
-      const activityId = entityId;
-      let next = this.bundle;
-      let macroToOpen: { buttonId: number; name: string } | null = null;
-      const longPressTarget = this._resolveActivityLongPressTarget(next, activityId);
-      if (!longPressTarget) return;
-      next = longPressTarget.bundle;
-      macroToOpen = longPressTarget.createdMacro;
-      const longPress = longPressTarget.longPress;
-      if (this._bindingTargetKind === "command") {
-        const commandId = Number(this._bindingCommandId);
-        if (!commandId || !this._bindingDeviceId) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        this._commitEditBundleEdit(upsertActivityButtonBinding(next, activityId, {
-          buttonId,
-          deviceId: Number(this._bindingDeviceId),
-          commandId,
-          longPress,
-        }));
-        this._closeBindingDialog();
-        if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
-        return;
-      }
-      // "action"
-      const resolved = this._resolveMacroTarget(
-        next,
-        activityId,
-        this._bindingMacroMode,
-        this._bindingMacroId,
-        this._bindingActionName,
-      );
-      if (!resolved) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return;
-      }
-      next = upsertActivityButtonBinding(resolved.bundle, activityId, {
-        buttonId,
-        deviceId: activityId,
-        commandId: resolved.macroId,
-        longPress,
-      });
-      this._commitEditBundleEdit(next);
-      this._closeBindingDialog();
-      if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-      if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
-    } else {
-      const commandId = Number(this._bindingCommandId);
-      if (!commandId) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return;
-      }
-      const longPressCommandId = this._bindingLongPressEnabled && this._bindingLpCommandId
-        ? Number(this._bindingLpCommandId)
-        : null;
-      this._commitEditBundleEdit(upsertDeviceButtonBinding(this.bundle, entityId, {
-        buttonId,
-        commandId,
-        longPressCommandId,
-      }));
-      this._closeBindingDialog();
-    }
-  };
-
-  private _renderBindingSelect(params: {
+  _renderBindingSelect(params: {
     id: string;
     label: string;
     value: number | null;
@@ -4609,486 +2091,9 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _renderMacroTargetFields(params: {
-    idPrefix: string;
-    mode: MacroTargetMode;
-    macroId: number | null;
-    name: string;
-    onMacroChange: (event: Event) => void;
-    onNameInput: (event: Event) => void;
-  }) {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const macros = this._macroOptions();
-    return html`
-      ${macros.length
-        ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S.macroTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-macro-target`}
-                class="decoded-field-input"
-                @change=${params.onMacroChange}
-              >
-                ${macros.map((macro) => html`
-                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
-                `)}
-                <option value="__new__" ?selected=${params.mode === "new"}>${S.macroTargetCreateNew}</option>
-              </select>
-            </div>
-          `
-        : html`<div class="quick-access-empty">${S.macroTargetNoExisting}</div>`}
-      ${params.mode === "new"
-        ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-name`}>${S.addShortcutActionName}</label>
-              <input
-                id=${`${params.idPrefix}-macro-name`}
-                class="decoded-field-input"
-                maxlength="20"
-                .value=${params.name}
-                @input=${params.onNameInput}
-              />
-              <div class="decoded-field-helper">${S.addShortcutActionHelper}</div>
-            </div>
-          `
-        : nothing}
-    `;
-  }
-
-  private _renderBindingDialog() {
-    if (!this._bindingDialogOpen || !this.bundle || this.entityId == null) return nothing;
-    const S = TOOLS_CARD_STRINGS.backup;
-    const scope = this._bindingScope;
-    const entityId = Number(this.entityId);
-    const isEdit = this._bindingEditButtonId != null;
-    const isActivity = scope === "activity";
-    const targetKind = isActivity ? this._bindingTargetKind : "command";
-    const lpTargetKind = isActivity ? this._bindingLpTargetKind : "command";
-    const unbound: ButtonCatalogEntry[] = scope === "activity"
-      ? unboundButtonsForActivity(this.bundle, entityId)
-      : unboundButtonsForDevice(this.bundle, entityId);
-    const commandDeviceOptions = this._bindingCommandDeviceOptions();
-    const commandDeviceId = scope === "activity" && targetKind === "command" ? this._bindingDeviceId : entityId;
-    const commandOptions = this._bindingCommandOptions(commandDeviceId);
-    const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this._bindingLpDeviceId : entityId;
-    const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
-    const wifiSelReady = (sel: WifiEventTargetSel) => !this._wifiEventBusy && (
-      sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0
-    );
-    // A wifi-event binding is atomic: the long-press leg is the same
-    // event's long record, so it never gates saving independently.
-    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
-    const canSave = this._bindingButtonId != null && (
-      scope === "device"
-        ? this._bindingCommandId != null
-        : targetKind === "command"
-          ? this._bindingDeviceId != null && this._bindingCommandId != null
-          : targetKind === "wifi_event"
-            ? wifiSelReady(this._wifiEventPrimary)
-            : true
-    );
-    const title = isEdit
-      ? S.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId)))
-      : S.bindingDialogAddTitle;
-    const commandFields = html`
-      ${scope === "activity"
-        ? this._renderBindingSelect({
-            id: "sb-binding-device",
-            label: S.bindingTargetDevice,
-            value: this._bindingDeviceId,
-            options: commandDeviceOptions,
-            onChange: this._handleBindingDeviceChange,
-            emptyText: S.bindingNoDevices,
-          })
-        : nothing}
-      ${this._renderBindingSelect({
-        id: "sb-binding-command",
-        label: S.bindingCommand,
-        value: this._bindingCommandId,
-        options: commandOptions,
-        onChange: this._handleBindingCommandChange,
-        emptyText: S.bindingNoCommands,
-      })}
-    `;
-    const actionFields = this._renderMacroTargetFields({
-      idPrefix: "sb-binding",
-      mode: this._bindingMacroMode,
-      macroId: this._bindingMacroId,
-      name: this._bindingActionName,
-      onMacroChange: this._handleBindingMacroTargetChange,
-      onNameInput: this._handleBindingActionNameInput,
-    });
-    const lpCommandFields = html`
-      ${scope === "activity"
-        ? this._renderBindingSelect({
-            id: "sb-binding-lp-device",
-            label: S.bindingLongPressDevice,
-            value: this._bindingLpDeviceId,
-            options: commandDeviceOptions,
-            onChange: this._handleBindingLpDeviceChange,
-            emptyText: S.bindingNoDevices,
-          })
-        : nothing}
-      ${this._renderBindingSelect({
-        id: "sb-binding-lp-command",
-        label: S.bindingLongPressCommand,
-        value: this._bindingLpCommandId,
-        options: lpCommandOptions,
-        onChange: this._handleBindingLpCommandChange,
-        emptyText: S.bindingNoCommands,
-      })}
-    `;
-    const lpActionFields = this._renderMacroTargetFields({
-      idPrefix: "sb-binding-lp",
-      mode: this._bindingLpMacroMode,
-      macroId: this._bindingLpMacroId,
-      name: this._bindingLpActionName,
-      onMacroChange: this._handleBindingLpMacroTargetChange,
-      onNameInput: this._handleBindingLpActionNameInput,
-    });
-    return html`
-      <div class="modal-backdrop" @click=${this._closeBindingDialog}>
-        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeBindingDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isEdit
-              ? html`
-                  <div class="decoded-field">
-                    <span class="decoded-field-label">${S.bindingButton}</span>
-                    <div class="binding-static-field">${buttonName(Number(this._bindingButtonId))}</div>
-                  </div>
-                `
-              : this._renderBindingSelect({
-                  id: "sb-binding-button",
-                  label: S.bindingButton,
-                  value: this._bindingButtonId,
-                  options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
-                  onChange: this._handleBindingButtonChange,
-                  emptyText: S.bindingNoButtons,
-                })}
-            ${isActivity
-              ? html`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-binding-kind">${S.addShortcutKindLabel}</label>
-                    <select
-                      id="sb-binding-kind"
-                      class="decoded-field-input"
-                      @change=${this._handleBindingTargetKindChange}
-                    >
-                      <option value="command" ?selected=${targetKind === "command"}>${S.shortcutKindCommand}</option>
-                      <option value="action" ?selected=${targetKind === "action"}>${S.shortcutKindAction}</option>
-                      ${this._wifiEventsAvailable()
-                        ? html`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
-                        : nothing}
-                    </select>
-                  </div>
-                `
-              : nothing}
-            ${targetKind === "command"
-              ? commandFields
-              : targetKind === "wifi_event"
-                ? this._renderWifiEventTargetFields({
-                    idPrefix: "sb-binding",
-                    sel: this._wifiEventPrimary,
-                    onSelChange: (sel) => {
-                      this._wifiEventPrimary = sel;
-                      this._bindingError = "";
-                    },
-                  })
-                : actionFields}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S.bindingEnableLongPress}</span>
-              <ha-switch
-                .checked=${this._bindingLongPressEnabled}
-                @change=${this._handleBindingLongPressToggle}
-              ></ha-switch>
-            </div>
-            ${this._bindingLongPressEnabled
-              ? primaryIsWifiEvent
-                ? html`
-                    <div class="decoded-field-helper">${S.wifiEventBindingLongPressNote}</div>
-                  `
-                : html`
-                    ${isActivity
-                      ? html`
-                          <div class="decoded-field">
-                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
-                            <select
-                              id="sb-binding-lp-kind"
-                              class="decoded-field-input"
-                              @change=${this._handleBindingLpTargetKindChange}
-                            >
-                              <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
-                              <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
-                            </select>
-                          </div>
-                        `
-                      : nothing}
-                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
-                  `
-              : nothing}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._bindingError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeBindingDialog}>${S.bindingCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyBinding} ?disabled=${!canSave}>
-                ${isEdit ? S.bindingSave : S.bindingAdd}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // ── Macro step editor (device macros + activity user macros) ────────
-  private _openMacroEditor(scope: BackupEditTargetKind, entityId: number, buttonId: number, name: string) {
-    this._captureCurrentScrollPosition();
-    this._macroEditor = { scope, entityId: Number(entityId), buttonId: Number(buttonId), name };
-  }
-
-  private _closeMacroEditor = () => {
-    this._macroEditor = null;
-    this._closeStepDialog();
-    if (this._bindingsView) this._restoreBindingsScroll();
-    else this._restoreMainScroll();
-  };
-
-  // Rename the macro currently open in the step editor. Reuses the shared
-  // rename dialog (kind "macro"); applying it also refreshes the editor's
-  // own title via the macro branch in _applyEditRenameDialog.
-  private _openMacroNameRenameDialog = () => {
-    const editor = this._macroEditor;
-    if (!editor || editor.scope !== "activity" || POWER_MACRO_BUTTON_IDS.has(editor.buttonId)) return;
-    this._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
-    this._editRenameDialogDraft = editor.name;
-    this._editRenameDialogError = "";
-    this._editRenameDialogOpen = true;
-  };
-
-  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
-  private _snapHalfSeconds(value: string): string {
-    return byteToSeconds(secondsToByte(value));
-  }
-
-  private _currentMacroStepItems(): BackupMacroStepItem[] {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return [];
-    return editor.scope === "device"
-      ? deviceMacroStepItems(this.bundle, editor.entityId, editor.buttonId)
-      : activityMacroStepItems(this.bundle, editor.entityId, editor.buttonId);
-  }
-
-  private _openAddStepDialog = () => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    this._stepDialogEditIndex = null;
-    this._stepKind = "command";
-    this._stepDeviceId = editor.scope === "activity"
-      ? (this._editableDeviceOptions()[0]?.id ?? null)
-      : editor.entityId;
-    const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    this._stepCommandId = commands[0]?.commandId ?? null;
-    this._stepHoldSeconds = "0";
-    this._stepError = "";
-    this._loadWifiEvents();
-    this._stepDialogOpen = true;
-  };
-
-  private _openEditStepDialog(item: BackupMacroStepItem) {
-    const editor = this._macroEditor;
-    if (!editor) return;
-    this._stepDialogEditIndex = item.index;
-    this._stepError = "";
-    this._stepDialogOpen = true;
-    // An input ref: pick the device's command that drives the input (or none).
-    if (item.kind === "input") {
-      this._stepKind = "input";
-      this._stepDeviceId = item.deviceId ?? null;
-      this._stepCommandId = item.commandId ?? null;
-      return;
-    }
-    // A step referencing the (picker-hidden) Wifi Events device edits as
-    // the wifi_event kind — the filtered device select would otherwise
-    // strand it. slot = command_id - 1 (short law).
-    if (
-      this._wifiEventsAvailable()
-      && editor.scope === "activity"
-      && item.deviceId != null
-      && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(item.deviceId)))
-    ) {
-      this._stepKind = "wifi_event";
-      this._stepDeviceId = item.deviceId;
-      this._stepCommandId = item.commandId ?? null;
-      this._stepHoldSeconds = byteToSeconds(item.hold);
-      this._wifiEventPrimary = {
-        mode: "existing",
-        slot: item.commandId != null ? Number(item.commandId) - 1 : null,
-        name: "",
-      };
-      this._loadWifiEvents();
-      return;
-    }
-    this._stepKind = "command";
-    this._stepDeviceId = editor.scope === "activity" ? (item.deviceId ?? null) : editor.entityId;
-    this._stepCommandId = item.commandId ?? null;
-    this._stepHoldSeconds = byteToSeconds(item.hold);
-  }
-
-  private _closeStepDialog = () => {
-    this._stepDialogOpen = false;
-    this._stepDialogEditIndex = null;
-    this._stepKind = "command";
-    this._stepDeviceId = null;
-    this._stepCommandId = null;
-    this._stepHoldSeconds = "0";
-    this._stepError = "";
-  };
-
-  private _handleStepDeviceChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._stepDeviceId = Number.isFinite(value) ? value : null;
-    const commands = this._stepDeviceId != null && this.bundle
-      ? deviceCommandItems(this.bundle, this._stepDeviceId)
-      : [];
-    this._stepCommandId = commands[0]?.commandId ?? null;
-  };
-
-  private _handleStepCommandChange = (event: Event) => {
-    const raw = (event.target as HTMLSelectElement).value;
-    this._stepCommandId = raw === "" ? null : Number(raw);
-  };
-
-  private _handleStepHoldInput = (event: Event) => {
-    this._stepHoldSeconds = (event.target as HTMLInputElement).value;
-  };
-
-  // Snap the dialog's hold field to the 0.5s grid when the user commits it
-  // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
-  private _handleStepHoldChange = (event: Event) => {
-    this._stepHoldSeconds = this._snapHalfSeconds((event.target as HTMLInputElement).value);
-  };
-
-  // Inline per-row wait edit: the attached delay travels with its command.
-  private _handleStepWaitChange = (item: BackupMacroStepItem, event: Event) => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const input = event.target as HTMLInputElement;
-    const waitByte = secondsToByte(input.value);
-    // Reflect the snapped 0.5s value in the field immediately. A re-render
-    // alone can't fix it when the typed value rounds to the current byte:
-    // the bound value is unchanged, so Lit leaves the stray text in place.
-    input.value = byteToSeconds(waitByte);
-    const next = editor.scope === "device"
-      ? setDeviceMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte)
-      : setActivityMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
-    this._commitEditBundleEdit(next);
-  };
-
-  private _applyStepWifiEvent = async () => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const timeByte = secondsToByte(this._stepHoldSeconds);
-    const editIndex = this._stepDialogEditIndex;
-    try {
-      const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-      const next = editIndex === null
-        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte)
-        : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
-            deviceId: ref.deviceId,
-            commandId: ref.shortCommandId,
-            hold: timeByte,
-          });
-      this._commitEditBundleEdit(next);
-      this._closeStepDialog();
-    } catch (err) {
-      this._stepError = editorErrorMessage(err, "wifi_event");
-    }
-  };
-
-  private _applyStep = () => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const timeByte = secondsToByte(this._stepHoldSeconds);
-    const editIndex = this._stepDialogEditIndex;
-    const isDevice = editor.scope === "device";
-    if (this._stepKind === "wifi_event") {
-      void this._applyStepWifiEvent();
-      return;
-    }
-    // Editing an activity power-macro input ref: set (or clear) the input.
-    if (this._stepKind === "input") {
-      const deviceId = Number(this._stepDeviceId);
-      if (deviceId > 0) {
-        const next = this._stepCommandId == null
-          ? clearActivityDeviceInput(this.bundle, editor.entityId, deviceId)
-          : setActivityDeviceInput(this.bundle, editor.entityId, deviceId, Number(this._stepCommandId));
-        this._commitEditBundleEdit(next);
-      }
-      this._closeStepDialog();
-      return;
-    }
-    const commandId = Number(this._stepCommandId);
-    if (!commandId || (!isDevice && !this._stepDeviceId)) {
-      this._stepError = TOOLS_CARD_STRINGS.backup.stepNoCommands;
-      return;
-    }
-    const deviceId = Number(this._stepDeviceId);
-    let next: BackupBundlePayload;
-    if (editIndex === null) {
-      next = isDevice
-        ? addDeviceMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, commandId, timeByte)
-        : addActivityMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
-    } else {
-      next = isDevice
-        ? updateDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte })
-        : updateActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
-    }
-    this._commitEditBundleEdit(next);
-    this._closeStepDialog();
-  };
-
-  private _removeStep(index: number) {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const next = editor.scope === "device"
-      ? removeDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, index)
-      : removeActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, index);
-    this._commitEditBundleEdit(next);
-  }
-
-  private _handleStepReorder = (event: Event) => {
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const sortableEvent = event as CustomEvent<{ oldIndex?: number; newIndex?: number }>;
-    this._reorderSteps(Number(sortableEvent.detail?.oldIndex), Number(sortableEvent.detail?.newIndex));
-  };
-
-  private _reorderSteps(oldIndex: number, newIndex: number) {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const items = this._currentMacroStepItems();
-    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-    if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
-    const order = items.map((_, index) => index);
-    const [moved] = order.splice(oldIndex, 1);
-    order.splice(newIndex, 0, moved);
-    const next = editor.scope === "device"
-      ? reorderDeviceMacroSteps(this.bundle, editor.entityId, editor.buttonId, order)
-      : reorderActivityMacroSteps(this.bundle, editor.entityId, editor.buttonId, order);
-    this._commitEditBundleEdit(next);
-  }
-
   /** The drag handle doubles as the keyboard way to reorder: focus it and
    *  press the up/down arrows (CR-F2-11). Focus follows the moved row. */
-  private _renderReorderHandle(label: string, position: number, count: number, move: (delta: -1 | 1) => void) {
+  _renderReorderHandle(label: string, position: number, count: number, move: (delta: -1 | 1) => void) {
     return html`
       <div
         class="quick-access-drag"
@@ -5109,318 +2114,6 @@ export class SofabatonEditDetailView extends LitElement {
         }}
       >
         <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-      </div>
-    `;
-  }
-
-  private _renderMacroStepEditorView(editor: { scope: BackupEditTargetKind; entityId: number; buttonId: number; name: string }) {
-    const items = this._currentMacroStepItems();
-    // User macros (activity-bound) can be renamed right here so a freshly
-    // created one can be named without backing out. Power On/Off slots keep
-    // their fixed names, so no pencil for those.
-    const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
-    const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () =>
-      items.map((item, position) => this._renderMacroStepRow(item, position, items.length));
-    return html`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <div class="detail-title-main">
-                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeMacroEditor}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
-                </button>
-                <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-                    { label: this._entityKindCrumbLabel(editor.scope), onClick: this._requestClose },
-                    { label: this._selectedEditTitle(), onClick: this._closeMacroEditor },
-                  ])}
-                  <div class="detail-title">${editor.name}</div>
-                </div>
-                ${this._renderDirtyChip()}
-                ${canRename
-                  ? html`
-                      <div class="detail-title-actions">
-                        <button
-                          class="icon-btn"
-                          @click=${this._openMacroNameRenameDialog}
-                          aria-label=${TOOLS_CARD_STRINGS.backup.renameMacroAria}
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      </div>
-                    `
-                  : nothing}
-              </div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            <div class="quick-access-section">
-              <div class="quick-access-head">
-                <div class="quick-access-head-main">
-                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
-                  <div class="quick-access-sub">
-                    ${this._haSortableReady
-                      ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp
-                      : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
-                  </div>
-                </div>
-                <div class="quick-access-head-actions">
-                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId)
-                    ? html`
-                        <button class="quick-access-add-btn add-member-btn" @click=${this._openAddMemberDialog}>
-                          <ha-icon icon="mdi:plus"></ha-icon>
-                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
-                        </button>
-                      `
-                    : nothing}
-                  <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
-                    <ha-icon icon="mdi:plus"></ha-icon>
-                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
-                  </button>
-                </div>
-              </div>
-              ${items.length
-                ? html`
-                    <div class="quick-access-list">
-                      ${sortable
-                        ? html`
-                            <ha-sortable
-                              class="quick-access-sortable"
-                              draggable-selector=".quick-access-sortable-item"
-                              handle-selector=".quick-access-drag"
-                              animation="180"
-                              @item-moved=${this._handleStepReorder}
-                            >
-                              <div class="quick-access-sortable-container">${renderRows()}</div>
-                            </ha-sortable>
-                          `
-                        : html`<div class="quick-access-sortable-container">${renderRows()}</div>`}
-                    </div>
-                  `
-                : html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noMacroSteps}</div>`}
-            </div>
-          </div>
-        </div>
-        ${this._renderStepDialog()}
-        ${this._renderEditRenameDialog()}
-        ${this._renderAddMemberDialog()}
-        ${this._renderDeleteConfirmDialog()}
-      </div>
-    `;
-  }
-
-  private _renderMacroStepRow(item: BackupMacroStepItem, position: number, count: number) {
-    const isLast = position === count - 1;
-    const isPower = item.kind === "power";
-    const isInput = item.kind === "input";
-    const meta = item.kind === "command" && item.hold > 0
-      ? TOOLS_CARD_STRINGS.backup.holdLabel(byteToSeconds(item.hold))
-      : "";
-    const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
-    // An activity power-ref row is the device's membership token, so its
-    // delete affordance means "remove the device from this Activity" and
-    // routes through the member impact-confirm (both sequences, favorites,
-    // bindings, steps). Input refs keep their edit-only treatment.
-    const editor = this._macroEditor;
-    const memberDeviceId = isPower && editor?.scope === "activity"
-      ? Number(item.deviceId ?? 0)
-      : 0;
-    // Power refs: command/order protected (no rename) but their
-    // attached wait is editable. Input refs: editable (change input), no
-    // delete. Commands: full edit + delete. Every row owns an attached wait,
-    // rendered as a slim sub-row UNDER the step (matching execution order:
-    // step first, then the wait before the next step) — except the last
-    // step, whose wait is dead time: the sub-row is hidden and mutations
-    // normalize the stored value to 0.
-    return html`
-      <div class="quick-access-sortable-item" data-step-index=${item.index}>
-        <div class="quick-access-row">
-          ${count > 1
-            ? this._renderReorderHandle(item.label, position, count, (delta) => this._reorderSteps(position, position + delta))
-            : html`<span></span>`}
-          <div class="quick-access-main">
-            <div class="quick-access-label-row">
-              <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${chip}</div>
-            </div>
-            ${meta ? html`<div class="quick-access-meta">${meta}</div>` : nothing}
-          </div>
-          <div class="quick-access-actions">
-            ${isPower
-              ? (memberDeviceId > 0
-                  ? html`
-                      <button
-                        class="icon-btn icon-btn--danger"
-                        @click=${() => this._openMemberRemoveConfirm(
-                          Number(editor?.entityId ?? 0),
-                          memberDeviceId,
-                          this._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId),
-                        )}
-                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
-                      >
-                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                      </button>
-                    `
-                  : nothing)
-              : html`
-                  <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                  ${isInput
-                    ? nothing
-                    : html`
-                        <button class="icon-btn icon-btn--danger" @click=${() => this._removeStep(item.index)} aria-label=${TOOLS_CARD_STRINGS.backup.deleteStepAria}>
-                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                        </button>
-                      `}
-                `}
-          </div>
-        </div>
-        ${isLast
-          ? nothing
-          : html`
-              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
-                <span class="step-wait-field">
-                  <input
-                    class="step-wait-input"
-                    type="number"
-                    min="0"
-                    max="120"
-                    step="0.5"
-                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                    .value=${byteToSeconds(item.wait)}
-                    @change=${(event: Event) => this._handleStepWaitChange(item, event)}
-                  />
-                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
-                </span>
-              </label>
-            `}
-      </div>
-    `;
-  }
-
-  private _renderStepDialog() {
-    if (!this._stepDialogOpen || !this.bundle || !this._macroEditor) return nothing;
-    const editor = this._macroEditor;
-    const isEdit = this._stepDialogEditIndex !== null;
-    const isActivity = editor.scope === "activity";
-    const isInput = this._stepKind === "input";
-    const isWifiEvent = this._stepKind === "wifi_event";
-    const devices = this._editableDeviceOptions();
-    const commandDeviceId = isInput ? this._stepDeviceId : (isActivity ? this._stepDeviceId : editor.entityId);
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    const canSave = isInput
-      || (isWifiEvent
-        ? !this._wifiEventBusy && (
-            this._wifiEventPrimary.mode === "existing"
-              ? this._wifiEventPrimary.slot != null
-              : this._wifiEventPrimary.name.trim().length > 0
-          )
-        : this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
-    const title = isInput
-      ? TOOLS_CARD_STRINGS.backup.inputStepTitle
-      : isEdit
-        ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle
-        : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
-    return html`
-      <div class="modal-backdrop" @click=${this._closeStepDialog}>
-        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeStepDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isInput
-              ? html`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
-                    <select id="sb-step-input" class="decoded-field-input" @change=${this._handleStepCommandChange}>
-                      <option value="" ?selected=${this._stepCommandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
-                      ${commands.map((command) => html`
-                        <option value=${command.commandId} ?selected=${command.commandId === this._stepCommandId}>${command.label}</option>
-                      `)}
-                    </select>
-                  </div>
-                `
-              : html`
-                  ${isActivity && this._wifiEventsAvailable()
-                    ? html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-step-kind"
-                            class="decoded-field-input"
-                            @change=${(event: Event) => {
-                              const value = (event.target as HTMLSelectElement).value as MacroStepKind;
-                              this._stepKind = value;
-                              if (value === "wifi_event") this._wifiEventPrimary = this._defaultWifiEventSel();
-                              this._stepError = "";
-                            }}
-                          >
-                            <option value="command" ?selected=${this._stepKind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
-                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
-                          </select>
-                        </div>
-                      `
-                    : nothing}
-                  ${isWifiEvent
-                    ? this._renderWifiEventTargetFields({
-                        idPrefix: "sb-step",
-                        sel: this._wifiEventPrimary,
-                        onSelChange: (sel) => {
-                          this._wifiEventPrimary = sel;
-                          this._stepError = "";
-                        },
-                      })
-                    : html`
-                        ${isActivity
-                          ? this._renderBindingSelect({
-                              id: "sb-step-device",
-                              label: TOOLS_CARD_STRINGS.backup.stepDevice,
-                              value: this._stepDeviceId,
-                              options: devices.map((device) => ({ value: device.id, label: device.label })),
-                              onChange: this._handleStepDeviceChange,
-                              emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
-                            })
-                          : nothing}
-                        ${this._renderBindingSelect({
-                          id: "sb-step-command",
-                          label: TOOLS_CARD_STRINGS.backup.stepCommand,
-                          value: this._stepCommandId,
-                          options: commands.map((command) => ({ value: command.commandId, label: command.label })),
-                          onChange: this._handleStepCommandChange,
-                          emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
-                        })}
-                      `}
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
-                    <input
-                      id="sb-step-hold"
-                      class="decoded-field-input"
-                      type="number"
-                      min="0"
-                      max="120"
-                      step="0.5"
-                      .value=${this._stepHoldSeconds}
-                      @input=${this._handleStepHoldInput}
-                      @change=${this._handleStepHoldChange}
-                    />
-                  </div>
-                `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._stepError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeStepDialog}>${TOOLS_CARD_STRINGS.backup.stepCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyStep} ?disabled=${!canSave}>
-                ${isEdit ? TOOLS_CARD_STRINGS.backup.stepSave : TOOLS_CARD_STRINGS.backup.stepAdd}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -5448,7 +2141,7 @@ export class SofabatonEditDetailView extends LitElement {
           aria-disabled=${disabled ? "true" : "false"}
           tabindex=${disabled ? "-1" : "0"}
           @click=${() => {
-            if (!disabled) this._openMacroEditor(scope, entityId, buttonId, label);
+            if (!disabled) this._steps.openEditor(scope, entityId, buttonId, label);
           }}
         >
           <span class="selection-main">
@@ -5607,7 +2300,7 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _selectedEditTitle() {
+  _selectedEditTitle() {
     if (!this.bundle || !this.kind || this.entityId == null) return "";
     const options = this.kind === "activity"
       ? bundleActivityOptions(this.bundle)

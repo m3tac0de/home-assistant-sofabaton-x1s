@@ -7850,232 +7850,6 @@ var addButtonStyles = i`
   .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; color: var(--primary-color); }
 `;
 
-// custom_components/sofabaton_x1s/www/src/shared/ir-format.ts
-var IrFormatError = class extends Error {
-  constructor(code) {
-    super(code);
-    this.code = code;
-    this.name = "IrFormatError";
-  }
-};
-var RAW_IR_DEFAULT_TRAILING_GAP_US = 4e4;
-var PRONTO_REFERENCE_HZ = 4145146;
-var PRONTO_MAX_WORD = 65535;
-function roundHalfEven(value) {
-  const floor = Math.floor(value);
-  const diff = value - floor;
-  if (diff > 0.5) return floor + 1;
-  if (diff < 0.5) return floor;
-  return floor % 2 === 0 ? floor : floor + 1;
-}
-function parseProntoHex(text) {
-  const tokens = text.trim().split(/\s+/).filter((t4) => t4.length > 0);
-  const words = tokens.map((token) => {
-    const value = /^(?:0[xX])?[0-9a-fA-F]+$/.test(token) ? parseInt(token.replace(/^0[xX]/, ""), 16) : NaN;
-    if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
-    return value;
-  });
-  if (words.length < 6) {
-    throw new IrFormatError("ir-format/pronto-too-short");
-  }
-  if (words.some((w2) => w2 < 0 || w2 > 65535)) {
-    throw new IrFormatError("ir-format/pronto-word-range");
-  }
-  const [preamble, freqWord, oncePairs, repeatPairs] = words;
-  if (preamble !== 0) {
-    throw new IrFormatError("ir-format/pronto-not-learned-format");
-  }
-  if (freqWord === 0) throw new IrFormatError("ir-format/pronto-zero-frequency");
-  const expected = 4 + 2 * (oncePairs + repeatPairs);
-  if (words.length !== expected) {
-    throw new IrFormatError("ir-format/pronto-count-mismatch");
-  }
-  const carrierHz = roundHalfEven(PRONTO_REFERENCE_HZ / freqWord);
-  let count;
-  if (oncePairs > 0) {
-    count = 2 * oncePairs;
-  } else if (repeatPairs > 0) {
-    count = 2 * repeatPairs;
-  } else {
-    throw new IrFormatError("ir-format/pronto-empty");
-  }
-  const section = words.slice(4, 4 + count);
-  if (section.some((w2) => w2 === 0)) throw new IrFormatError("ir-format/pronto-zero-timing");
-  const cycleUs = 1e6 / carrierHz;
-  const timingsUs = section.map((w2) => Math.max(1, roundHalfEven(w2 * cycleUs)));
-  return { timingsUs, carrierHz };
-}
-function renderProntoHex(signal) {
-  const { carrierHz } = signal;
-  const durations = normalizeTimings(signal);
-  const freqWord = Math.max(
-    1,
-    Math.min(PRONTO_MAX_WORD, roundHalfEven(PRONTO_REFERENCE_HZ / carrierHz))
-  );
-  const cyclesPerUs = carrierHz / 1e6;
-  const words = [0, freqWord, durations.length / 2, 0];
-  for (const value of durations) {
-    words.push(Math.max(1, Math.min(PRONTO_MAX_WORD, roundHalfEven(value * cyclesPerUs))));
-  }
-  return words.map((w2) => w2.toString(16).toUpperCase().padStart(4, "0")).join(" ");
-}
-function parseSofabatonBlob(hexText) {
-  const blob = hexToBytes(hexText);
-  if (blob.length < 8 + 2 * 4 + 4) {
-    throw new IrFormatError("ir-format/blob-too-short");
-  }
-  if (looksLikeDescriptorBlob(blob)) {
-    throw new IrFormatError("ir-format/blob-descriptive");
-  }
-  const carrierHz = blob[6] << 8 | blob[7];
-  if (carrierHz < 1e4 || carrierHz > 5e5) {
-    throw new IrFormatError("ir-format/blob-carrier");
-  }
-  const wordAt = (pos) => blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
-  let timingsUs = [];
-  const declaredBytes = (blob[0] << 8 | blob[1]) + (blob[2] << 8 | blob[3]);
-  if (declaredBytes > 0 && declaredBytes % 4 === 0 && 8 + declaredBytes + 4 <= blob.length) {
-    for (let pos = 8; pos < 8 + declaredBytes; pos += 4) timingsUs.push(wordAt(pos));
-    if (timingsUs.some((v2) => v2 === 0)) timingsUs = [];
-  }
-  if (timingsUs.length === 0) {
-    let terminated = false;
-    for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
-      const word = wordAt(pos);
-      if (word === 0) {
-        terminated = true;
-        break;
-      }
-      timingsUs.push(word);
-    }
-    if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
-  }
-  if (timingsUs.length < 2) {
-    throw new IrFormatError("ir-format/blob-too-few-timings");
-  }
-  if (timingsUs.some((v2) => v2 < 20 || v2 > 2e6)) {
-    throw new IrFormatError("ir-format/blob-timing-range");
-  }
-  return { timingsUs, carrierHz };
-}
-function buildSofabatonBlob(signal) {
-  const { carrierHz } = signal;
-  if (!(carrierHz > 0 && carrierHz < 65536)) {
-    throw new IrFormatError("ir-format/carrier-range");
-  }
-  const durations = normalizeTimings(signal);
-  if (4 * durations.length >= 65536) {
-    throw new IrFormatError("ir-format/too-many-timings");
-  }
-  const bytes = [];
-  pushBe16(bytes, 4 * durations.length);
-  bytes.push(0, 0, 0, 0);
-  pushBe16(bytes, carrierHz);
-  for (const value of durations) {
-    if (value >= 4294967296) throw new IrFormatError("ir-format/timing-range");
-    bytes.push(value >>> 24 & 255, value >>> 16 & 255, value >>> 8 & 255, value & 255);
-  }
-  bytes.push(0, 0, 0, 0);
-  return bytes.map((b3) => b3.toString(16).padStart(2, "0")).join("");
-}
-var UC_HEX_RE = /^\s*([A-Za-z_0-9]+)\s*;\s*(?:0[xX])?([0-9A-Fa-f]+)\s*;\s*(\d+)\s*;\s*(\d+)\s*$/;
-function isUcHexCode(text) {
-  return UC_HEX_RE.test(text);
-}
-function unwrapUcCodesetRow(text) {
-  const trimmed = text.trim();
-  if (!trimmed.includes(",")) return null;
-  const cells = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < trimmed.length; index += 1) {
-    const char = trimmed[index];
-    if (char === '"') {
-      if (quoted && trimmed[index + 1] === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (char === "," && !quoted) {
-      cells.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  cells.push(current);
-  const values = cells.map((cell) => cell.trim());
-  const formatIndex = values.findIndex((cell) => /^(HEX|PRONTO)$/i.test(cell));
-  if (formatIndex < 0 || formatIndex + 1 >= values.length) return null;
-  const format = values[formatIndex].toUpperCase();
-  const code = values.slice(formatIndex + 1).join(",").trim();
-  if (!code) return null;
-  const name = formatIndex > 0 ? values.slice(0, formatIndex).join(",").trim() : "";
-  return { name: name || null, format, code };
-}
-function resolveUcPaste(text) {
-  const row = unwrapUcCodesetRow(text);
-  if (row) {
-    if (row.format === "HEX" && isUcHexCode(row.code)) {
-      return { name: row.name, kind: "uc_hex", code: row.code.trim() };
-    }
-    if (row.format === "PRONTO" && detectIrPayloadFormat(row.code) === "pronto") {
-      return { name: row.name, kind: "pronto", code: row.code.trim() };
-    }
-    return null;
-  }
-  if (isUcHexCode(text)) return { name: null, kind: "uc_hex", code: text.trim() };
-  return null;
-}
-function detectIrPayloadFormat(text) {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return "unknown";
-  if (/^P:/i.test(trimmed)) return "descriptor";
-  if (isUcHexCode(trimmed)) return "uc_hex";
-  const tokens = trimmed.split(/\s+/);
-  if (tokens.length >= 6 && tokens.every((t4) => /^[0-9a-fA-F]{4}$/.test(t4)) && parseInt(tokens[0], 16) === 0) {
-    const once = parseInt(tokens[2], 16);
-    const repeat = parseInt(tokens[3], 16);
-    if (tokens.length === 4 + 2 * (once + repeat)) return "pronto";
-  }
-  if (/^[0-9a-fA-F\s]+$/.test(trimmed)) return "sofabaton";
-  return "unknown";
-}
-function normalizeTimings(signal) {
-  if (signal.timingsUs.length === 0) {
-    throw new IrFormatError("ir-format/empty");
-  }
-  const durations = signal.timingsUs.map((v2) => Math.abs(Math.trunc(v2)));
-  if (durations.some((v2) => v2 === 0)) {
-    throw new IrFormatError("ir-format/zero-timing");
-  }
-  if (durations.length % 2 === 1) durations.push(RAW_IR_DEFAULT_TRAILING_GAP_US);
-  return durations;
-}
-function looksLikeDescriptorBlob(blob) {
-  const magic = [0, 0, 17, 0, 148, 112];
-  return blob.length >= 8 && magic.every((b3, i7) => blob[2 + i7] === b3);
-}
-function pushBe16(bytes, value) {
-  bytes.push(value >>> 8 & 255, value & 255);
-}
-function hexToBytes(hexText) {
-  const clean = hexText.replace(/\s+/g, "");
-  if (clean.length === 0 || clean.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(clean)) {
-    throw new IrFormatError("ir-format/not-hex-bytes");
-  }
-  const out = new Uint8Array(clean.length / 2);
-  for (let i7 = 0; i7 < out.length; i7 += 1) {
-    out[i7] = parseInt(clean.slice(2 * i7, 2 * i7 + 2), 16);
-  }
-  return out;
-}
-function formatHexForDisplay(hexText) {
-  const clean = hexText.replace(/\s+/g, "").toLowerCase();
-  return clean.replace(/(..)/g, "$1 ").trim();
-}
-
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
@@ -10266,20 +10040,7 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   }
 }
 
-// custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
-var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
-var LEARN_TIMEOUT_S = 60;
-function formatCarrierKhz(carrierHz) {
-  const locale = toolsCardLanguage() || "en";
-  try {
-    return new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1
-    }).format(carrierHz / 1e3);
-  } catch {
-    return (carrierHz / 1e3).toFixed(1);
-  }
-}
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/names.ts
 function bundleIsX2(bundle) {
   return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
 }
@@ -10293,4387 +10054,9 @@ function editorErrorMessage(error, surface) {
 function useLegacyTextField() {
   return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
 }
-var SofabatonEditDetailView = class extends i4 {
-  constructor() {
-    super(...arguments);
-    // ── Host-owned props ───────────────────────────────────────────────
-    this.bundle = null;
-    this.kind = "activity";
-    this.entityId = null;
-    this.dirty = false;
-    this.mode = "backup";
-    // ── Transient view state (moved 1:1 from backup-tab) ──────────────
-    this._editDetailActiveSection = "power";
-    this._powerControlMenuOpen = false;
-    this._roleMenuOpen = null;
-    // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
-    // Captured at click time; not reactive — they change only together with
-    // the open-state fields above/below.
-    this._roleMenuAnchor = null;
-    this._roleConfirm = null;
-    // Full sub-view for individual button bindings (never an accordion).
-    this._bindingsView = false;
-    this._addShortcutKind = "command";
-    this._addShortcutActionName = "";
-    this._addShortcutMacroMode = "new";
-    this._addShortcutMacroId = null;
-    // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
-    // `_wifiEventPrimary` serves whichever Add dialog is open (shortcut,
-    // step, or binding). A Wifi Event is atomic — a binding's long-press
-    // leg is the SAME event's long record, never an independent target — so
-    // one selection covers both legs.
-    this.wifiEvents = null;
-    this._wifiEventsList = null;
-    /** The events device's slot count as the editor opened it (CR-F2-2): the
-     *  working bundle loses two records per paired delete. */
-    this._wifiEventsOpenedSlots = null;
-    this._wifiEventBusy = false;
-    this._wifiEventPrimary = { mode: "new", slot: null, name: "" };
-    this._editRenameDialogOpen = false;
-    this._editRenameDialogDraft = "";
-    this._editRenameDialogError = "";
-    this._editRenameDialogTarget = null;
-    // ── Payload dialog (structured decoded form OR raw hex) ────────────
-    // Separate from the rename dialog: renaming is the common case and
-    // stays a compact name-only form; payload editing has its own button
-    // and popup on each command row.
-    this._payloadDialogOpen = false;
-    this._payloadDialogTarget = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogRawSnapshot = "";
-    this._payloadDialogRawDraft = "";
-    // ── IR hex format tabs (IR8) ───────────────────────────────────────
-    // For IR devices the raw-payload textarea carries two projections of
-    // one canonical signal: the Sofabaton blob (always the byte source of
-    // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
-    // rendering. Pronto is the default view; it is unavailable when the
-    // stored bytes do not parse as raw timings (descriptive payloads,
-    // unknown variants) and the sofabaton tab then acts as passthrough.
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoDraft = "";
-    this._payloadDialogProntoAvailable = true;
-    this._payloadDialogFormatError = "";
-    this._payloadDialogError = "";
-    // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
-    // Detection is local (the shape is exact); rendering needs protocol
-    // knowledge and runs on the backend through the host callback. While a
-    // conversion is in flight the sofabaton bytes are stale, so Test/Save
-    // wait for it; a newer paste supersedes an older one via the sequence.
-    this._payloadDialogConverting = false;
-    this._payloadConversionSeq = 0;
-    // ── Live payload editing (host-provided I/O) ───────────────────────
-    // The detail view is hass-free; the live Activities host injects these
-    // to fetch a command's blob on demand and to Test it on the hub. Absent
-    // in backup mode (the payload already lives in the bundle there).
-    this.fetchCommandPayload = null;
-    this.testCommandPayload = null;
-    // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
-    this.convertForeignPayload = null;
-    this._payloadFetchingCommandId = null;
-    this._payloadFetchError = "";
-    this._payloadLiveFetched = null;
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    // ── Add-command mode of the payload dialog (live mode only) ────────
-    // Same payload controls as command edit, plus a Name field. Decodable
-    // wifi classes seed their form (and the opaque record trailer) from an
-    // existing command fetched as a template; IR synthesizes from the
-    // descriptor alone on the backend, so it needs no template.
-    this._payloadDialogAddMode = false;
-    this._payloadDialogNameDraft = "";
-    this._addCommandPreparing = false;
-    // ── Learn mode of the payload dialog (IR9, live IR devices only) ───
-    // Two capture sources with opposite shapes. The hub receiver is a
-    // *listener*: one armed window per attempt, countdown, cancel. The HA
-    // emitter is an *inbox*: the backend's intercept ring, replayed on
-    // subscribe and pushed on every send, so nothing has to stay alive in
-    // the browser while the user walks off to press a button elsewhere.
-    // "New" is judged against the ring as first seen when learn mode
-    // opened (payload -> timestamp), never against the browser clock.
-    this.irLearn = null;
-    this._payloadLearnView = "off";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._payloadLearnHubCancel = null;
-    this._payloadLearnHubAttempt = 0;
-    this._payloadLearnTicker = null;
-    this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsUnsub = null;
-    this._payloadLearnEmissionsError = null;
-    this._payloadLearnBaseline = null;
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-    this._payloadLearnSourceNote = "";
-    this._payloadLearnNow = Date.now();
-    this._confirmDeleteTarget = null;
-    this._confirmDeleteLabel = "";
-    this._addFavoriteOpen = false;
-    this._addMemberOpen = false;
-    this._addMemberDeviceId = null;
-    this._addFavoriteDeviceId = null;
-    this._addFavoriteCommandId = null;
-    this._addFavoriteError = "";
-    this._bindingDialogOpen = false;
-    this._bindingScope = "activity";
-    this._bindingEditButtonId = null;
-    this._bindingButtonId = null;
-    this._bindingDeviceId = null;
-    this._bindingCommandId = null;
-    this._bindingLongPressEnabled = false;
-    this._bindingLpDeviceId = null;
-    this._bindingLpCommandId = null;
-    this._bindingTargetKind = "command";
-    this._bindingActionName = "";
-    this._bindingMacroMode = "new";
-    this._bindingMacroId = null;
-    this._bindingLpTargetKind = "command";
-    this._bindingLpMacroMode = "new";
-    this._bindingLpMacroId = null;
-    this._bindingLpActionName = "";
-    this._bindingError = "";
-    this._detailScrollTop = 0;
-    this._bindingsScrollTop = 0;
-    this._macroEditor = null;
-    this._stepDialogOpen = false;
-    this._stepDialogEditIndex = null;
-    this._stepKind = "command";
-    this._stepDeviceId = null;
-    this._stepCommandId = null;
-    this._stepHoldSeconds = "0";
-    this._stepError = "";
-    this._haSortableReady = Boolean(customElements.get("ha-sortable"));
-    /** Ask the host to leave the detail view (back button, entity delete). */
-    this._requestClose = () => {
-      this.dispatchEvent(new CustomEvent("close"));
-    };
-    // ── Live-mode header (§4.3) ─────────────────────────────────────────
-    // The live header mirrors the Wifi command editor: Back (= discard, via the
-    // host's exit-confirm) on the left, rename/delete + a single stateful Sync
-    // button on the right. The element only signals sync intent; the host owns
-    // the write. In backup mode there is no Sync button and the chip reads
-    // "Unsaved".
-    this._requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
-    this._handleEditDetailScroll = (event) => {
-      const scrollEl = event.currentTarget;
-      if (!scrollEl) return;
-      if (this._roleMenuOpen !== null) {
-        this._roleMenuAnchor = null;
-        this._roleMenuOpen = null;
-      }
-      const sections = Array.from(
-        scrollEl.querySelectorAll("[data-edit-section]")
-      );
-      if (!sections.length) return;
-      if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2) {
-        const lastSection = sections[sections.length - 1];
-        const lastActive = String(lastSection.dataset.editSection || "power");
-        if (lastActive !== this._editDetailActiveSection) {
-          this._editDetailActiveSection = lastActive;
-        }
-        return;
-      }
-      const markerTop = scrollEl.getBoundingClientRect().top + 24;
-      let active = String(sections[0].dataset.editSection || "power");
-      for (const section of sections) {
-        if (section.getBoundingClientRect().top <= markerTop) {
-          active = String(section.dataset.editSection || active);
-        }
-      }
-      if (active !== this._editDetailActiveSection) {
-        this._editDetailActiveSection = active;
-      }
-    };
-    this._closeBindingsView = () => {
-      this._bindingsView = false;
-      this._closeBindingDialog();
-      this._closeDeleteConfirm();
-      this._restoreMainScroll();
-    };
-    this._handleRoleAssign = (group, deviceId) => {
-      this._roleMenuOpen = null;
-      if (!this.bundle || this.entityId == null) return;
-      const current = activityRoleAssignments(this.bundle, Number(this.entityId)).find((role) => role.group === group);
-      if (current && current.deviceId === deviceId && current.state !== "customized" && deviceId != null) return;
-      if (current && (current.state === "customized" || current.state === "custom")) {
-        this._roleConfirm = { group, deviceId };
-        return;
-      }
-      this._applyRoleAssign(group, deviceId);
-    };
-    this._closeRoleConfirm = () => {
-      this._roleConfirm = null;
-    };
-    this._confirmRoleAssign = () => {
-      const pending = this._roleConfirm;
-      this._roleConfirm = null;
-      if (!pending) return;
-      this._applyRoleAssign(pending.group, pending.deviceId);
-    };
-    this._handleProntoPayloadInput = (event) => {
-      const input = event.currentTarget;
-      const text = input.value;
-      this._payloadDialogError = "";
-      if (this._tryForeignPaste(text)) return;
-      this._payloadConversionSeq += 1;
-      this._payloadDialogConverting = false;
-      const detected = detectIrPayloadFormat(text);
-      if (detected === "descriptor") {
-        if (bundleIsX2(this.bundle)) {
-          this._morphToDescriptor(text);
-          return;
-        }
-        this._payloadDialogProntoDraft = text;
-        this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
-        return;
-      }
-      if (detected === "sofabaton") {
-        try {
-          parseSofabatonBlob(text);
-          this._morphToHex(text, "sofabaton");
-          return;
-        } catch {
-        }
-      }
-      this._payloadDialogProntoDraft = text;
-      this._applyProntoDraft(text);
-    };
-    this._handleAddCommandNameInput = (event) => {
-      const input = event.currentTarget;
-      const value = sanitizeBundleName(this.bundle, input.value);
-      input.value = value;
-      this._payloadDialogNameDraft = value;
-      this._payloadDialogError = "";
-    };
-    this._handleRawPayloadInput = (event) => {
-      const input = event.currentTarget;
-      const text = input.value;
-      this._payloadDialogError = "";
-      if (this._liveDeviceIsIr()) {
-        if (this._tryForeignPaste(text)) return;
-        this._payloadConversionSeq += 1;
-        this._payloadDialogConverting = false;
-        const detected = detectIrPayloadFormat(text);
-        if (detected === "pronto") {
-          this._morphToHex(text, "pronto");
-          return;
-        }
-        if (detected === "descriptor") {
-          if (bundleIsX2(this.bundle)) {
-            this._morphToDescriptor(text);
-            return;
-          }
-          this._payloadDialogRawDraft = text;
-          this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
-          return;
-        }
-        this._payloadDialogRawDraft = text;
-        this._payloadDialogFormatError = "";
-        this._syncProntoFromRaw();
-        return;
-      }
-      this._payloadDialogRawDraft = text;
-    };
-    this._handleDecodedFieldInput = (event, fieldKey) => {
-      const input = event.currentTarget;
-      if (fieldKey === "descriptor" && this._payloadDialogDecodedSnapshot?.className === "ir") {
-        if (this._tryForeignPaste(input.value)) return;
-        const detected = detectIrPayloadFormat(input.value);
-        if (detected === "pronto") {
-          this._morphToHex(input.value, "pronto");
-          return;
-        }
-        if (detected === "sofabaton") {
-          try {
-            parseSofabatonBlob(input.value);
-            this._morphToHex(input.value, "sofabaton");
-            return;
-          } catch {
-          }
-        }
-      }
-      this._payloadDialogDecodedDrafts = {
-        ...this._payloadDialogDecodedDrafts,
-        [fieldKey]: input.value
-      };
-    };
-    this._handleEditRenameDialogInput = (event) => {
-      const input = event.currentTarget;
-      if (this._editRenameDialogTarget?.kind === "device_ip") {
-        this._editRenameDialogDraft = input.value;
-      } else {
-        const value = sanitizeBundleName(this.bundle, input.value);
-        input.value = value;
-        this._editRenameDialogDraft = value;
-      }
-      this._editRenameDialogError = "";
-    };
-    this._openDetailRenameDialog = () => {
-      if (!this.kind || this.entityId == null) return;
-      this._editRenameDialogTarget = {
-        kind: "detail",
-        entityKind: this.kind,
-        entityId: this.entityId
-      };
-      this._editRenameDialogDraft = this._selectedEditTitle();
-      this._editRenameDialogError = "";
-      this._editRenameDialogOpen = true;
-    };
-    this._closeCommandPayloadDialog = () => {
-      this._exitLearnMode();
-      this._payloadLearnSourceNote = "";
-      this._payloadConversionSeq += 1;
-      this._payloadDialogConverting = false;
-      this._payloadDialogOpen = false;
-      this._payloadDialogTarget = null;
-      this._payloadDialogDecodedSnapshot = null;
-      this._payloadDialogDecodedDrafts = {};
-      this._payloadDialogRawSnapshot = "";
-      this._payloadDialogRawDraft = "";
-      this._payloadDialogError = "";
-      this._payloadLiveFetched = null;
-      this._payloadDialogTestStatus = "idle";
-      this._payloadDialogTestError = "";
-      this._payloadDialogAddMode = false;
-      this._payloadDialogNameDraft = "";
-      this._payloadDialogHexTab = "pronto";
-      this._payloadDialogProntoDraft = "";
-      this._payloadDialogProntoAvailable = true;
-      this._payloadDialogFormatError = "";
-    };
-    this._applyCommandPayloadDialog = () => {
-      const target = this._payloadDialogTarget;
-      if (!target || !this.bundle) return;
-      if (this._payloadDialogFormatError) {
-        this._payloadDialogError = this._payloadDialogFormatError;
-        return;
-      }
-      if (this._payloadDialogConverting) {
-        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
-        return;
-      }
-      if (this._payloadDialogAddMode) {
-        this._applyAddCommandDialog(target);
-        return;
-      }
-      if (this.mode === "live") {
-        this._applyLivePayloadDialog(target);
-        return;
-      }
-      const snapshot = this._payloadDialogDecodedSnapshot;
-      if (snapshot) {
-        const changedFields = this._collectChangedDecodedFields(snapshot);
-        if (changedFields) {
-          this._commitEditBundleEdit(updateCommandDecodedFields(
-            this.bundle,
-            target.deviceId,
-            target.commandId,
-            changedFields
-          ));
-        }
-        this._closeCommandPayloadDialog();
-        return;
-      }
-      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-      if (!normalized) {
-        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-        return;
-      }
-      if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
-        this._commitEditBundleEdit(updateCommandRawPayload(
-          this.bundle,
-          target.deviceId,
-          target.commandId,
-          normalized
-        ));
-      }
-      this._closeCommandPayloadDialog();
-    };
-    this._closeEditRenameDialog = () => {
-      this._editRenameDialogOpen = false;
-      this._editRenameDialogDraft = "";
-      this._editRenameDialogError = "";
-      this._editRenameDialogTarget = null;
-    };
-    // ── Delete (with cascade-aware confirm) ─────────────────────────────
-    this._openDetailDeleteConfirm = () => {
-      if (!this.kind || this.entityId == null) return;
-      const id = Number(this.entityId);
-      this._confirmDeleteTarget = this.kind === "activity" ? { kind: "activity", activityId: id } : { kind: "device", deviceId: id };
-      this._confirmDeleteLabel = this._selectedEditTitle();
-    };
-    this._closeDeleteConfirm = () => {
-      this._confirmDeleteTarget = null;
-      this._confirmDeleteLabel = "";
-    };
-    this._confirmDelete = () => {
-      const target = this._confirmDeleteTarget;
-      if (!target || !this.bundle) return;
-      if (this.mode === "live" && (target.kind === "activity" || target.kind === "device")) {
-        const entityId = target.kind === "activity" ? target.activityId : target.deviceId;
-        this._closeDeleteConfirm();
-        this.dispatchEvent(new CustomEvent("delete-request", {
-          detail: { kind: target.kind, entityId }
-        }));
-        return;
-      }
-      const deleteOptions = { reconcileMembership: this.mode !== "live" };
-      let next = applyBundleDelete(this.bundle, target, deleteOptions);
-      if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
-        const slotCount = this._wifiEventsSlotCount();
-        if (slotCount > 0 && Number(target.commandId) <= slotCount) {
-          next = applyBundleDelete(next, {
-            kind: "command",
-            deviceId: target.deviceId,
-            commandId: Number(target.commandId) + slotCount
-          }, deleteOptions);
-        }
-      }
-      this._commitEditBundleEdit(next);
-      if (target.kind === "activity" || target.kind === "device") {
-        this._requestClose();
-      }
-      this._closeDeleteConfirm();
-    };
-    // ── Add favorite (device → command picker) ──────────────────────────
-    // One entry point for everything that can land on the remote screen:
-    // a device command or a macro (existing or new). The kind selector
-    // swaps the dialog's fields.
-    this._openAddShortcutDialog = () => {
-      if (this.entityId == null || !this.bundle) return;
-      const devices = this._editableDeviceOptions();
-      const firstDeviceId = devices[0]?.id ?? null;
-      const commands = firstDeviceId != null ? deviceCommandItems(this.bundle, firstDeviceId) : [];
-      this._addShortcutKind = "command";
-      this._addFavoriteDeviceId = firstDeviceId;
-      this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-      this._addFavoriteError = "";
-      this._addShortcutActionName = "";
-      this._resetMacroTarget("shortcut");
-      this._loadWifiEvents();
-      this._addFavoriteOpen = true;
-    };
-    this._closeAddFavoriteDialog = () => {
-      this._addFavoriteOpen = false;
-      this._addFavoriteDeviceId = null;
-      this._addFavoriteCommandId = null;
-      this._addFavoriteError = "";
-      this._addShortcutKind = "command";
-      this._addShortcutActionName = "";
-      this._addShortcutMacroMode = "new";
-      this._addShortcutMacroId = null;
-    };
-    this._handleAddFavoriteDeviceChange = (event) => {
-      const value = Number(event.target.value);
-      this._addFavoriteDeviceId = Number.isFinite(value) ? value : null;
-      const commands = this._addFavoriteDeviceId != null && this.bundle ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
-      this._addFavoriteCommandId = commands[0]?.commandId ?? null;
-      this._addFavoriteError = "";
-    };
-    this._handleAddFavoriteCommandChange = (event) => {
-      const value = Number(event.target.value);
-      this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
-      this._addFavoriteError = "";
-    };
-    this._applyAddFavorite = () => {
-      if (!this.bundle || this.entityId == null) return;
-      if (this._addFavoriteDeviceId == null || this._addFavoriteCommandId == null) {
-        this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
-        return;
-      }
-      const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
-      const name = sanitizeBundleName(this.bundle, command?.label ?? "");
-      this._commitEditBundleEdit(addBundleActivityFavorite(
-        this.bundle,
-        Number(this.entityId),
-        this._addFavoriteDeviceId,
-        this._addFavoriteCommandId,
-        name
-      ));
-      this._closeAddFavoriteDialog();
-    };
-    this._openAddMemberDialog = () => {
-      const options = this._addableMemberDevices();
-      this._addMemberDeviceId = options[0]?.id ?? null;
-      this._addMemberOpen = true;
-    };
-    this._closeAddMemberDialog = () => {
-      this._addMemberOpen = false;
-      this._addMemberDeviceId = null;
-    };
-    this._applyAddMember = () => {
-      if (!this.bundle || this.entityId == null || this._addMemberDeviceId == null) return;
-      this._commitEditBundleEdit(addActivityMemberDevice(
-        this.bundle,
-        Number(this.entityId),
-        this._addMemberDeviceId
-      ));
-      this._closeAddMemberDialog();
-    };
-    this._applyAddShortcutWifiEvent = async () => {
-      if (!this.bundle || this.entityId == null) return;
-      const activityId = Number(this.entityId);
-      try {
-        const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-        this._commitEditBundleEdit(addBundleActivityFavorite(
-          ref.bundle,
-          activityId,
-          ref.deviceId,
-          ref.shortCommandId,
-          sanitizeBundleName(ref.bundle, ref.name)
-        ));
-        this._closeAddFavoriteDialog();
-      } catch (err) {
-        this._addFavoriteError = editorErrorMessage(err, "wifi_event");
-      }
-    };
-    this._applyAddShortcut = () => {
-      if (!this.bundle || this.entityId == null) return;
-      if (this._addShortcutKind === "command") {
-        this._applyAddFavorite();
-        return;
-      }
-      if (this._addShortcutKind === "wifi_event") {
-        void this._applyAddShortcutWifiEvent();
-        return;
-      }
-      const activityId = Number(this.entityId);
-      if (this._addShortcutMacroMode === "existing") {
-        const existing = activityUserMacroSummaries(this.bundle, activityId).find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
-        if (!existing) {
-          this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        this._closeAddFavoriteDialog();
-        this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
-        return;
-      }
-      const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
-      const next = addActivityUserMacro(this.bundle, activityId, name);
-      this._commitEditBundleEdit(next);
-      this._closeAddFavoriteDialog();
-      const summaries = activityUserMacroSummaries(next, activityId);
-      const created = summaries[summaries.length - 1];
-      if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
-    };
-    this._applyEditRenameDialog = () => {
-      const target = this._editRenameDialogTarget;
-      if (!target || !this.bundle) return;
-      if (target.kind === "device_ip") {
-        const draft = this._editRenameDialogDraft.trim();
-        if (draft && !IPV4_PATTERN.test(draft)) {
-          this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.ipv4Required;
-          return;
-        }
-        this._commitEditBundleEdit(updateBundleDeviceIp(this.bundle, target.deviceId, draft));
-        this._closeEditRenameDialog();
-        return;
-      }
-      const next = sanitizeBundleName(this.bundle, this._editRenameDialogDraft);
-      if (!next) {
-        this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.enterName;
-        return;
-      }
-      if (target.kind === "detail") {
-        if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
-        else this._applyDeviceRename(target.entityId, next);
-        this._closeEditRenameDialog();
-        return;
-      }
-      if (target.kind === "macro") {
-        this._commitEditBundleEdit(renameBundleActivityMacro(this.bundle, target.activityId, target.buttonId, next));
-        if (this._macroEditor && this._macroEditor.scope === "activity" && this._macroEditor.entityId === target.activityId && this._macroEditor.buttonId === target.buttonId) {
-          this._macroEditor = { ...this._macroEditor, name: next };
-        }
-        this._closeEditRenameDialog();
-        return;
-      }
-      if (target.kind === "command") {
-        this._commitEditBundleEdit(
-          renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next)
-        );
-        this._closeEditRenameDialog();
-        return;
-      }
-      if (this.mode === "live") {
-        this._closeEditRenameDialog();
-        return;
-      }
-      this._commitEditBundleEdit(renameBundleActivityFavorite(this.bundle, target.activityId, target.buttonId, next));
-      this._closeEditRenameDialog();
-    };
-    this._handleActivityQuickAccessSort = (event) => {
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      if (!this.bundle || this.entityId == null) return;
-      const sortableEvent = event;
-      const oldIndex = Number(sortableEvent.detail?.oldIndex);
-      const newIndex = Number(sortableEvent.detail?.newIndex);
-      if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-      const items = activityQuickAccessItems(this.bundle, this.entityId);
-      if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
-      const nextItems = [...items];
-      const [moved] = nextItems.splice(oldIndex, 1);
-      if (!moved) return;
-      nextItems.splice(newIndex, 0, moved);
-      this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
-        this.bundle,
-        this.entityId,
-        nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
-      ));
-    };
-    this._closeBindingDialog = () => {
-      this._bindingDialogOpen = false;
-      this._bindingEditButtonId = null;
-      this._bindingButtonId = null;
-      this._bindingDeviceId = null;
-      this._bindingCommandId = null;
-      this._bindingLongPressEnabled = false;
-      this._bindingLpDeviceId = null;
-      this._bindingLpCommandId = null;
-      this._bindingTargetKind = "command";
-      this._bindingActionName = "";
-      this._bindingMacroMode = "new";
-      this._bindingMacroId = null;
-      this._bindingLpTargetKind = "command";
-      this._bindingLpMacroMode = "new";
-      this._bindingLpMacroId = null;
-      this._bindingLpActionName = "";
-      this._bindingError = "";
-    };
-    this._handleBindingButtonChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingButtonId = Number.isFinite(value) ? value : null;
-    };
-    this._handleBindingDeviceChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingDeviceId = Number.isFinite(value) ? value : null;
-      this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
-    };
-    this._handleBindingCommandChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingCommandId = Number.isFinite(value) ? value : null;
-    };
-    this._handleBindingTargetKindChange = (event) => {
-      const kind = event.target.value;
-      this._bindingTargetKind = kind;
-      this._bindingError = "";
-      if (kind === "command") {
-        const devices = this._bindingCommandDeviceOptions();
-        if (!devices.some((device) => device.value === this._bindingDeviceId)) {
-          this._bindingDeviceId = devices[0]?.value ?? null;
-        }
-        this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
-        return;
-      }
-      if (kind === "wifi_event") {
-        this._wifiEventPrimary = this._defaultWifiEventSel();
-        return;
-      }
-      this._resetMacroTarget("binding");
-      this._bindingActionName || (this._bindingActionName = this._macroName(this._bindingCommandId));
-    };
-    this._handleBindingActionNameInput = (event) => {
-      this._bindingActionName = event.target.value;
-      this._bindingError = "";
-    };
-    this._handleBindingMacroTargetChange = (event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this._bindingMacroMode = "new";
-        this._bindingMacroId = null;
-      } else {
-        this._bindingMacroMode = "existing";
-        this._bindingMacroId = Number(value);
-      }
-      this._bindingError = "";
-    };
-    this._handleBindingLpTargetKindChange = (event) => {
-      const kind = event.target.value;
-      this._bindingLpTargetKind = kind;
-      this._bindingError = "";
-      if (kind === "command") {
-        const devices = this._bindingCommandDeviceOptions();
-        if (!devices.some((device) => device.value === this._bindingLpDeviceId)) {
-          this._bindingLpDeviceId = devices[0]?.value ?? null;
-        }
-        this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
-        return;
-      }
-      this._resetMacroTarget("bindingLp");
-      this._bindingLpActionName || (this._bindingLpActionName = this._macroName(this._bindingLpCommandId));
-    };
-    this._handleBindingLpActionNameInput = (event) => {
-      this._bindingLpActionName = event.target.value;
-      this._bindingError = "";
-    };
-    this._handleBindingLpMacroTargetChange = (event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this._bindingLpMacroMode = "new";
-        this._bindingLpMacroId = null;
-      } else {
-        this._bindingLpMacroMode = "existing";
-        this._bindingLpMacroId = Number(value);
-      }
-      this._bindingError = "";
-    };
-    this._handleBindingLongPressToggle = (event) => {
-      const enabled = Boolean(event.target.checked);
-      this._bindingLongPressEnabled = enabled;
-      if (!enabled || !this.bundle) return;
-      this._bindingLpTargetKind = "command";
-      if (this._bindingScope === "activity") {
-        const devices = this._bindingCommandDeviceOptions();
-        if (!devices.some((device) => device.value === this._bindingLpDeviceId)) {
-          this._bindingLpDeviceId = devices[0]?.value ?? null;
-        }
-      } else if (this._bindingLpDeviceId == null) {
-        this._bindingLpDeviceId = Number(this.entityId);
-      }
-      const commands = this._bindingCommandOptions(this._bindingLpDeviceId);
-      if (!commands.some((command) => command.value === this._bindingLpCommandId)) {
-        this._bindingLpCommandId = commands[0]?.value ?? null;
-      }
-    };
-    this._handleBindingLpDeviceChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingLpDeviceId = Number.isFinite(value) ? value : null;
-      this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
-    };
-    this._handleBindingLpCommandChange = (event) => {
-      const value = Number(event.target.value);
-      this._bindingLpCommandId = Number.isFinite(value) ? value : null;
-    };
-    /**
-     * Async binding apply when the button targets a Wifi Event. The event
-     * is atomic: the short press fires its short record, and — when the
-     * long-press toggle is on — the *same* event's long record is wired to
-     * the button's long press (and the event's long-press action is enabled
-     * for configuration in the Events tab). There is no independent
-     * long-press target here; that would collide with the Wifi Events model
-     * where short/long are two actions of one event.
-     */
-    this._applyActivityBindingWithWifiEvents = async () => {
-      const S5 = TOOLS_CARD_STRINGS.backup;
-      if (!this.bundle || this.entityId == null) return;
-      const activityId = Number(this.entityId);
-      const buttonId = Number(this._bindingButtonId);
-      if (!buttonId) {
-        this._bindingError = S5.bindingIncomplete;
-        return;
-      }
-      try {
-        const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-        let longPress = null;
-        if (this._bindingLongPressEnabled) {
-          await this.wifiEvents.enableLongPress(ref.slotIndex);
-          this._wifiEventsList = null;
-          longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
-        }
-        this._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
-          buttonId,
-          deviceId: ref.deviceId,
-          commandId: ref.shortCommandId,
-          longPress
-        }));
-        this._closeBindingDialog();
-      } catch (err) {
-        this._bindingError = editorErrorMessage(err, "wifi_event");
-      }
-    };
-    this._applyBinding = () => {
-      if (!this.bundle || this.entityId == null) return;
-      const buttonId = Number(this._bindingButtonId);
-      const entityId = Number(this.entityId);
-      if (!buttonId) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return;
-      }
-      if (this._bindingScope === "activity" && this._bindingTargetKind === "wifi_event") {
-        void this._applyActivityBindingWithWifiEvents();
-        return;
-      }
-      if (this._bindingScope === "activity") {
-        const activityId = entityId;
-        let next = this.bundle;
-        let macroToOpen = null;
-        const longPressTarget = this._resolveActivityLongPressTarget(next, activityId);
-        if (!longPressTarget) return;
-        next = longPressTarget.bundle;
-        macroToOpen = longPressTarget.createdMacro;
-        const longPress = longPressTarget.longPress;
-        if (this._bindingTargetKind === "command") {
-          const commandId = Number(this._bindingCommandId);
-          if (!commandId || !this._bindingDeviceId) {
-            this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-            return;
-          }
-          this._commitEditBundleEdit(upsertActivityButtonBinding(next, activityId, {
-            buttonId,
-            deviceId: Number(this._bindingDeviceId),
-            commandId,
-            longPress
-          }));
-          this._closeBindingDialog();
-          if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
-          return;
-        }
-        const resolved = this._resolveMacroTarget(
-          next,
-          activityId,
-          this._bindingMacroMode,
-          this._bindingMacroId,
-          this._bindingActionName
-        );
-        if (!resolved) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        next = upsertActivityButtonBinding(resolved.bundle, activityId, {
-          buttonId,
-          deviceId: activityId,
-          commandId: resolved.macroId,
-          longPress
-        });
-        this._commitEditBundleEdit(next);
-        this._closeBindingDialog();
-        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-        if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
-      } else {
-        const commandId = Number(this._bindingCommandId);
-        if (!commandId) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        const longPressCommandId = this._bindingLongPressEnabled && this._bindingLpCommandId ? Number(this._bindingLpCommandId) : null;
-        this._commitEditBundleEdit(upsertDeviceButtonBinding(this.bundle, entityId, {
-          buttonId,
-          commandId,
-          longPressCommandId
-        }));
-        this._closeBindingDialog();
-      }
-    };
-    this._closeMacroEditor = () => {
-      this._macroEditor = null;
-      this._closeStepDialog();
-      if (this._bindingsView) this._restoreBindingsScroll();
-      else this._restoreMainScroll();
-    };
-    // Rename the macro currently open in the step editor. Reuses the shared
-    // rename dialog (kind "macro"); applying it also refreshes the editor's
-    // own title via the macro branch in _applyEditRenameDialog.
-    this._openMacroNameRenameDialog = () => {
-      const editor = this._macroEditor;
-      if (!editor || editor.scope !== "activity" || POWER_MACRO_BUTTON_IDS.has(editor.buttonId)) return;
-      this._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
-      this._editRenameDialogDraft = editor.name;
-      this._editRenameDialogError = "";
-      this._editRenameDialogOpen = true;
-    };
-    this._openAddStepDialog = () => {
-      const editor = this._macroEditor;
-      if (!editor || !this.bundle) return;
-      this._stepDialogEditIndex = null;
-      this._stepKind = "command";
-      this._stepDeviceId = editor.scope === "activity" ? this._editableDeviceOptions()[0]?.id ?? null : editor.entityId;
-      const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
-      const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-      this._stepCommandId = commands[0]?.commandId ?? null;
-      this._stepHoldSeconds = "0";
-      this._stepError = "";
-      this._loadWifiEvents();
-      this._stepDialogOpen = true;
-    };
-    this._closeStepDialog = () => {
-      this._stepDialogOpen = false;
-      this._stepDialogEditIndex = null;
-      this._stepKind = "command";
-      this._stepDeviceId = null;
-      this._stepCommandId = null;
-      this._stepHoldSeconds = "0";
-      this._stepError = "";
-    };
-    this._handleStepDeviceChange = (event) => {
-      const value = Number(event.target.value);
-      this._stepDeviceId = Number.isFinite(value) ? value : null;
-      const commands = this._stepDeviceId != null && this.bundle ? deviceCommandItems(this.bundle, this._stepDeviceId) : [];
-      this._stepCommandId = commands[0]?.commandId ?? null;
-    };
-    this._handleStepCommandChange = (event) => {
-      const raw = event.target.value;
-      this._stepCommandId = raw === "" ? null : Number(raw);
-    };
-    this._handleStepHoldInput = (event) => {
-      this._stepHoldSeconds = event.target.value;
-    };
-    // Snap the dialog's hold field to the 0.5s grid when the user commits it
-    // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
-    this._handleStepHoldChange = (event) => {
-      this._stepHoldSeconds = this._snapHalfSeconds(event.target.value);
-    };
-    // Inline per-row wait edit: the attached delay travels with its command.
-    this._handleStepWaitChange = (item, event) => {
-      const editor = this._macroEditor;
-      if (!editor || !this.bundle) return;
-      const input = event.target;
-      const waitByte = secondsToByte(input.value);
-      input.value = byteToSeconds(waitByte);
-      const next = editor.scope === "device" ? setDeviceMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
-      this._commitEditBundleEdit(next);
-    };
-    this._applyStepWifiEvent = async () => {
-      const editor = this._macroEditor;
-      if (!editor || !this.bundle) return;
-      const timeByte = secondsToByte(this._stepHoldSeconds);
-      const editIndex = this._stepDialogEditIndex;
-      try {
-        const ref = await this._resolveWifiEventRef(this._wifiEventPrimary);
-        const next = editIndex === null ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte) : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
-          deviceId: ref.deviceId,
-          commandId: ref.shortCommandId,
-          hold: timeByte
-        });
-        this._commitEditBundleEdit(next);
-        this._closeStepDialog();
-      } catch (err) {
-        this._stepError = editorErrorMessage(err, "wifi_event");
-      }
-    };
-    this._applyStep = () => {
-      const editor = this._macroEditor;
-      if (!editor || !this.bundle) return;
-      const timeByte = secondsToByte(this._stepHoldSeconds);
-      const editIndex = this._stepDialogEditIndex;
-      const isDevice = editor.scope === "device";
-      if (this._stepKind === "wifi_event") {
-        void this._applyStepWifiEvent();
-        return;
-      }
-      if (this._stepKind === "input") {
-        const deviceId2 = Number(this._stepDeviceId);
-        if (deviceId2 > 0) {
-          const next2 = this._stepCommandId == null ? clearActivityDeviceInput(this.bundle, editor.entityId, deviceId2) : setActivityDeviceInput(this.bundle, editor.entityId, deviceId2, Number(this._stepCommandId));
-          this._commitEditBundleEdit(next2);
-        }
-        this._closeStepDialog();
-        return;
-      }
-      const commandId = Number(this._stepCommandId);
-      if (!commandId || !isDevice && !this._stepDeviceId) {
-        this._stepError = TOOLS_CARD_STRINGS.backup.stepNoCommands;
-        return;
-      }
-      const deviceId = Number(this._stepDeviceId);
-      let next;
-      if (editIndex === null) {
-        next = isDevice ? addDeviceMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, commandId, timeByte) : addActivityMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
-      } else {
-        next = isDevice ? updateDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte }) : updateActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
-      }
-      this._commitEditBundleEdit(next);
-      this._closeStepDialog();
-    };
-    this._handleStepReorder = (event) => {
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      const editor = this._macroEditor;
-      if (!editor || !this.bundle) return;
-      const sortableEvent = event;
-      this._reorderSteps(Number(sortableEvent.detail?.oldIndex), Number(sortableEvent.detail?.newIndex));
-    };
-    this._togglePowerControlMenu = () => {
-      this._powerControlMenuOpen = !this._powerControlMenuOpen;
-    };
-  }
-  connectedCallback() {
-    super.connectedCallback();
-    if (!this._haSortableReady) {
-      void customElements.whenDefined("ha-sortable").then(() => {
-        this._haSortableReady = true;
-      });
-    }
-  }
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    this._exitLearnMode();
-  }
-  // Lit reuses the element instance when the host re-renders with a
-  // different entity, so all transient view state must reset exactly the
-  // way backup-tab's _openEditDetail/_closeEditDetail pair used to.
-  willUpdate(changed) {
-    if (changed.has("kind") || changed.has("entityId")) {
-      this._resetForEntity();
-    }
-  }
-  _resetForEntity() {
-    this._wifiEventsOpenedSlots = null;
-    if (this._isWifiEventsLiveDevice()) this._loadWifiEvents();
-    this._editDetailActiveSection = "power";
-    this._powerControlMenuOpen = false;
-    this._roleMenuOpen = null;
-    this._roleMenuAnchor = null;
-    this._roleConfirm = null;
-    this._bindingsView = false;
-    this._closeEditRenameDialog();
-    this._closeCommandPayloadDialog();
-    this._payloadFetchingCommandId = null;
-    this._payloadFetchError = "";
-    this._addCommandPreparing = false;
-    this._closeDeleteConfirm();
-    this._closeAddFavoriteDialog();
-    this._closeAddMemberDialog();
-    this._closeBindingDialog();
-    this._macroEditor = null;
-    this._closeStepDialog();
-  }
-  /**
-   * Commit a mutated bundle from any edit handler. The element updates its
-   * own prop synchronously (handlers read the fresh bundle in the same
-   * tick), then hands the result to the host, which owns dirty/persistence
-   * semantics.
-   */
-  _commitEditBundleEdit(next) {
-    this.bundle = next;
-    this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
-  }
-  _renderDirtyChip() {
-    if (this.mode === "live" || !this.dirty) return A;
-    return b2`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.backup.unsavedTooltip}>${TOOLS_CARD_STRINGS.backup.unsaved}</span>`;
-  }
-  _renderLiveSyncButton() {
-    const S5 = TOOLS_CARD_STRINGS.activities;
-    const dirty = this.dirty;
-    const label = dirty ? S5.syncToHub : S5.syncUpToDate;
-    const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
-    return b2`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
-  }
-  // Rename (pencil) + delete (trash) header buttons — shared by live and
-  // backup mode so both editors expose the identical affordance. In live
-  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
-  // delete executes immediately on the hub through the host (see
-  // _confirmDelete).
-  _renderDetailRenameDeleteButtons(kind) {
-    const managed = this._isManagedWifiLiveDevice();
-    return b2`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
-        <ha-icon icon="mdi:pencil"></ha-icon>
-      </button>
-      ${managed ? A : b2`
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${this._openDetailDeleteConfirm}
-              aria-label=${kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
-          `}
-    `;
-  }
-  _renderManagedWifiLockNotice() {
-    return b2`
-      <div class="managed-wifi-lock">
-        <div class="managed-wifi-lock-chip">
-          <ha-icon icon="mdi:wifi-cog"></ha-icon>
-          <span>${TOOLS_CARD_STRINGS.backup.managedWifiTitle}</span>
-        </div>
-        <p class="managed-wifi-lock-copy">
-          ${TOOLS_CARD_STRINGS.backup.managedWifiIntro}
-          ${TOOLS_CARD_STRINGS.backup.managedWifiBody}
-        </p>
-        <p class="managed-wifi-lock-copy">
-          ${TOOLS_CARD_STRINGS.backup.managedWifiRename}
-        </p>
-      </div>
-    `;
-  }
-  render() {
-    if (!this.bundle || this.entityId == null) return A;
-    if (this._macroEditor) {
-      return this._renderMacroStepEditorView(this._macroEditor);
-    }
-    if (this._bindingsView && this.kind === "activity") {
-      return this._renderActivityBindingsView();
-    }
-    const title = this._selectedEditTitle();
-    if (!title) return A;
-    return this._renderEditDetailView({ kind: this.kind, title });
-  }
-  _renderEditDetailView(params) {
-    const sectionItems = this._editDetailSectionItems(params.kind);
-    const activityQuickAccess = params.kind === "activity" && this.entityId != null ? activityQuickAccessItems(this.bundle, this.entityId) : [];
-    const deviceCommands2 = params.kind === "device" && this.entityId != null ? deviceCommandItems(this.bundle, this.entityId) : [];
-    return b2`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <div class="detail-title-main">
-                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
-                </button>
-                <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose }
-    ])}
-                  <div class="detail-title">${params.title}</div>
-                </div>
-                ${this._renderDirtyChip()}
-                <div class="detail-title-actions">
-                  ${this._renderDetailRenameDeleteButtons(params.kind)}
-                  ${this.mode === "live" ? this._renderLiveSyncButton() : A}
-                </div>
-              </div>
-            </div>
-            ${this._renderEditDetailSectionNav(sectionItems)}
-          </div>
-          <div class="detail-scroll" @scroll=${this._handleEditDetailScroll}>
-            ${params.kind === "activity" ? b2`
-                  ${this._renderPowerSetupSection("activity", Number(this.entityId))}
-                  ${this._renderButtonBindingsSection("activity")}
-                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
-                ` : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
-                    ${this._renderPowerSetupSection("device", Number(this.entityId))}
-                    ${this._renderDeviceNetworkSection()}
-                    ${this._renderDeviceCommandsSection(deviceCommands2)}
-                    ${this._renderButtonBindingsSection("device")}
-                  `}
-          </div>
-        </div>
-        ${this._renderEditRenameDialog()}
-        ${this._renderCommandPayloadDialog()}
-        ${this._renderDeleteConfirmDialog()}
-        ${this._renderAddFavoriteDialog()}
-        ${this._renderAddMemberDialog()}
-        ${this._renderBindingDialog()}
-        ${this._renderRoleConfirmDialog()}
-      </div>
-    `;
-  }
-  /**
-   * True when the LIVE editor is showing a managed Wifi Commands device.
-   * Such a device's records (commands, power, input, bindings) are owned by
-   * the Wifi Commands tab — editing them here would silently diverge and be
-   * overwritten on the next sync — so the live editor locks everything but
-   * the device name (renaming is coordinated with the Wifi Commands store).
-   * The offline Backup editor is unaffected (mode !== "live").
-   */
-  _isManagedWifiLiveDevice() {
-    const brand = this.entityId != null ? bundleDeviceBrand(this.bundle, Number(this.entityId)) : "";
-    return this.mode === "live" && this.kind === "device" && this.entityId != null && isManagedWifiBrand(brand) && !isWifiEventsBrand(brand);
-  }
-  /**
-   * Device options for pickers/dialogs. In LIVE mode the reserved Wifi
-   * Events device is filtered out — its commands are offered through the
-   * dedicated "Wifi Event" kind, so listing the device too would present
-   * every event twice. The offline Backup editor keeps showing everything.
-   */
-  _editableDeviceOptions() {
-    const options = bundleDeviceOptions(this.bundle);
-    if (this.mode !== "live") return options;
-    return options.filter(
-      (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id))
-    );
-  }
-  /** True when the live editor is showing the reserved Wifi Events device.
-   *  It is fully editable (unlike other managed wifi devices). Command
-   *  deletion is available on every live device (a `command_delete` step
-   *  in the sync); what is events-specific is the short+long record
-   *  pairing: deleting a short row takes its long record along and long
-   *  rows carry no delete of their own. */
-  _isWifiEventsLiveDevice() {
-    return this.mode === "live" && this.kind === "device" && this.entityId != null && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)));
-  }
-  /** The Wifi Events device's slot count (the long-record offset): from
-   *  HA's event records when loaded, else as the device was when the editor
-   *  opened. Never from the working bundle (see wifiEventsSlotCount). */
-  _wifiEventsSlotCount() {
-    if (this.entityId == null || !this.bundle) return 0;
-    if (this._wifiEventsOpenedSlots == null) {
-      const device = (this.bundle.devices ?? []).find(
-        (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId)
-      );
-      this._wifiEventsOpenedSlots = wifiEventsSlotCount(device);
-    }
-    return wifiEventsSlotCount(null, this._wifiEventsList) || this._wifiEventsOpenedSlots;
-  }
-  /** True when a command id is a long-press record (id > slot_count) on
-   *  the events device — long rows carry no independent delete; deleting
-   *  the short row removes the pair. */
-  _commandIsLongRecord(commandId) {
-    if (!this._isWifiEventsLiveDevice()) return false;
-    return isWifiEventsLongRecord(commandId, this._wifiEventsSlotCount());
-  }
-  _editDetailSectionItems(kind) {
-    if (kind === "activity") {
-      return [];
-    }
-    if (this._isManagedWifiLiveDevice()) {
-      return [];
-    }
-    const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
-    return [
-      { id: "power", icon: "mdi:power-plug-outline", label: TOOLS_CARD_STRINGS.backup.detailPower },
-      ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: TOOLS_CARD_STRINGS.backup.detailNetwork }] : [],
-      { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
-      { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons }
-    ];
-  }
-  _renderEditDetailSectionNav(items) {
-    if (items.length <= 1) return A;
-    const activeId = items.some((item) => item.id === this._editDetailActiveSection) ? this._editDetailActiveSection : items[0].id;
-    return b2`
-      <div class="detail-section-nav" role="tablist" aria-label=${TOOLS_CARD_STRINGS.backup.detailSectionsAria}>
-        ${items.map((item) => b2`
-          <button
-            class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected=${item.id === activeId ? "true" : "false"}
-            @click=${() => this._scrollEditDetailSection(item.id)}
-          >
-            <ha-icon icon=${item.icon}></ha-icon>
-            <span class="detail-section-nav-label">${item.label}</span>
-          </button>
-        `)}
-      </div>
-    `;
-  }
-  _scrollEditDetailSection(sectionId) {
-    const scrollEl = this.renderRoot.querySelector(".detail-scroll");
-    const sectionEl = scrollEl?.querySelector(`[data-edit-section="${sectionId}"]`);
-    if (!scrollEl || !sectionEl) return;
-    const targetTop = sectionEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
-    scrollEl.scrollTop = Math.max(0, targetTop);
-    this._editDetailActiveSection = sectionId;
-  }
-  _renderBindingsListBody(kind) {
-    if (this.entityId == null || !this.bundle) return A;
-    const entityId = Number(this.entityId);
-    const items = kind === "activity" ? activityButtonBindingItems(this.bundle, entityId) : deviceButtonBindingItems(this.bundle, entityId);
-    if (!items.length) {
-      return b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`;
-    }
-    return b2`
-      <div class="quick-access-list">
-        <div class="quick-access-sortable-container">
-          ${items.map((item) => this._renderButtonBindingRow(item, kind))}
-        </div>
-      </div>
-    `;
-  }
-  _renderAddBindingButton(kind) {
-    if (this.entityId == null || !this.bundle) return A;
-    const entityId = Number(this.entityId);
-    const unbound = kind === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
-    return b2`
-      <button
-        class="quick-access-add-btn"
-        @click=${() => this._openAddBindingDialog(kind)}
-        ?disabled=${unbound.length === 0}
-      >
-        <ha-icon icon="mdi:plus"></ha-icon>
-        <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
-      </button>
-    `;
-  }
-  _renderButtonBindingsSection(kind) {
-    if (this.entityId == null || !this.bundle) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const isActivity = kind === "activity";
-    return b2`
-      <div class="quick-access-section" data-edit-section="bindings">
-        <div class="quick-access-head">
-          <div class="quick-access-head-main">
-            <div class="quick-access-title">
-              ${isActivity ? S5.activityRunningTitle : S5.buttonBindingsTitle}
-            </div>
-            <div class="quick-access-sub">
-              ${isActivity ? S5.activityRunningSub : S5.buttonBindingsDeviceSub}
-            </div>
-          </div>
-          ${isActivity ? A : this._renderAddBindingButton(kind)}
-        </div>
-        ${isActivity ? this._renderActivityRolesBlock() : this._renderBindingsListBody(kind)}
-      </div>
-    `;
-  }
-  // Sub-view for per-button customization — same navigation pattern as
-  // the step editor (breadcrumbs + back), never an inline accordion.
-  _renderActivityBindingsView() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return b2`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <div class="detail-title-main">
-                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeBindingsView}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
-                </button>
-                <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel("activity"), onClick: this._requestClose },
-      { label: this._selectedEditTitle(), onClick: this._closeBindingsView }
-    ])}
-                  <div class="detail-title">${S5.bindingsViewTitle}</div>
-                </div>
-                ${this._renderDirtyChip()}
-              </div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            <div class="quick-access-section">
-              <div class="quick-access-head">
-                <div class="quick-access-head-main">
-                  <div class="quick-access-title">${S5.buttonBindingsTitle}</div>
-                  <div class="quick-access-sub">${S5.buttonBindingsActivitySub}</div>
-                </div>
-                ${this._renderAddBindingButton("activity")}
-              </div>
-              ${this._renderBindingsListBody("activity")}
-            </div>
-          </div>
-        </div>
-        ${this._renderBindingDialog()}
-        ${this._renderDeleteConfirmDialog()}
-      </div>
-    `;
-  }
-  // ── Role-based button assignment (activity) ──────────────────────────
-  _renderActivityRolesBlock() {
-    if (this.entityId == null || !this.bundle) return A;
-    const bundle = this.bundle;
-    const activityId = Number(this.entityId);
-    const deviceOptions = this._editableDeviceOptions().map((device) => ({
-      deviceId: device.id,
-      label: device.label
-    }));
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const bindingCount = activityButtonBindingItems(bundle, activityId).length;
-    return renderActivityRolesBlock({
-      roles: activityRoleAssignments(bundle, activityId),
-      optionsFor: (group) => deviceOptions.map((option) => ({
-        ...option,
-        mappable: roleMappableButtonCount(bundle, option.deviceId, group)
-      })),
-      openGroup: this._roleMenuOpen,
-      menuAnchor: this._roleMenuAnchor,
-      onToggleMenu: (group, anchor) => {
-        this._roleMenuAnchor = group == null ? null : anchor ?? null;
-        this._roleMenuOpen = group;
-      },
-      onAssign: this._handleRoleAssign,
-      customize: {
-        label: S5.customizeButtonsToggle,
-        meta: bindingCount > 0 ? S5.bindingsConfiguredCount(bindingCount) : S5.bindingsNoneConfigured,
-        onOpen: () => {
-          this._captureCurrentScrollPosition();
-          this._bindingsView = true;
-        }
-      }
-    });
-  }
-  _applyRoleAssign(group, deviceId) {
-    if (!this.bundle || this.entityId == null) return;
-    this._commitEditBundleEdit(
-      setActivityRoleDevice(this.bundle, Number(this.entityId), group, deviceId)
-    );
-  }
-  _renderRoleConfirmDialog() {
-    if (!this._roleConfirm) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeRoleConfirm}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${S5.roleConfirmTitle}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeRoleConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="backup-drawer-sub">${S5.roleConfirmBody}</div>
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note"></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeRoleConfirm}>${S5.roleConfirmCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmRoleAssign}>${S5.roleConfirmReplace}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderButtonBindingRow(item, kind) {
-    return b2`
-      <div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
-        <div class="quick-access-row quick-access-row--no-drag">
-          <div class="quick-access-main">
-            <div class="quick-access-label-row">
-              <div class="quick-access-label">${item.buttonName}</div>
-              <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.buttonChip}</div>
-            </div>
-            <div class="quick-access-meta">${item.shortPressLabel}</div>
-            ${item.longPress ? b2`<div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.bindingLongPressMeta(item.longPress.label)}</div>` : A}
-          </div>
-          <div class="quick-access-actions">
-            <button
-              class="icon-btn"
-              @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openBindingDeleteConfirm(kind, item.buttonId, item.buttonName)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteBindingAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  /**
-   * "Network" section shown above Commands in the Device detail view
-   * for hue / roku / sonos devices, where the IP address lives on the
-   * device head and the hub uses it to build Host headers / addressing
-   * at replay time. wifi_ip devices are deliberately excluded — their
-   * IP lives inside each command blob and is edited per-command via
-   * the structured-payload form.
-   */
-  _renderDeviceNetworkSection() {
-    if (this.entityId == null || !this.bundle) return A;
-    const deviceId = Number(this.entityId);
-    const deviceClass = bundleDeviceClass(this.bundle, deviceId) ?? "";
-    if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
-    const ip = deviceIpAddress(this.bundle, deviceId);
-    return b2`
-      <div class="quick-access-section" data-edit-section="network">
-        <div class="quick-access-head">
-          <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailNetwork}</div>
-          <div class="quick-access-sub">
-            ${TOOLS_CARD_STRINGS.backup.networkDescription}
-          </div>
-        </div>
-        <div class="quick-access-list">
-          <div class="quick-access-sortable-container">
-            <div class="quick-access-sortable-item">
-              <div class="quick-access-row quick-access-row--no-drag">
-                <div class="quick-access-main">
-                  <div class="quick-access-label-row">
-                    <div class="quick-access-label">${ip ?? TOOLS_CARD_STRINGS.backup.hubNameNotSet}</div>
-                    <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.ipChip}</div>
-                  </div>
-                  <div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.ipv4Description}</div>
-                </div>
-                <div class="quick-access-actions">
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.editIpAria}
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderDeviceCommandsSection(items) {
-    if (this.entityId == null) return A;
-    return b2`
-      <div class="quick-access-section" data-edit-section="commands">
-        <div class="quick-access-head">
-          <div class="quick-access-head-main">
-            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
-            <div class="quick-access-sub">
-              ${this.mode === "live" ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
-            </div>
-          </div>
-          ${this.mode === "live" ? b2`
-                <div class="quick-access-head-actions">
-                  <button
-                    class="quick-access-add-btn"
-                    ?disabled=${this._addCommandPreparing}
-                    @click=${() => void this._openAddCommandDialog()}
-                  >
-                    <ha-icon
-                      icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
-                      class=${this._addCommandPreparing ? "sb-spin" : ""}
-                    ></ha-icon>
-                    <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
-                  </button>
-                </div>
-              ` : A}
-        </div>
-        ${this._payloadFetchError ? b2`
-              <div class="section-status error" role="alert">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${this._payloadFetchError}</span>
-              </div>
-            ` : A}
-        ${items.length ? b2`
-              <div class="quick-access-list">
-                <div class="quick-access-sortable-container">
-                  ${items.map((item) => this._renderDeviceCommandRow(item))}
-                </div>
-              </div>
-            ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noDeviceCommands}</div>`}
-      </div>
-    `;
-  }
-  _renderDeviceCommandRow(item) {
-    const pendingAdd = this._commandIsPendingAdd(item.commandId);
-    return b2`
-      <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
-        <div class="quick-access-row quick-access-row--no-drag">
-          <div class="quick-access-main">
-            <div class="quick-access-label-row">
-              <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${pendingAdd ? TOOLS_CARD_STRINGS.backup.newCommandChip : TOOLS_CARD_STRINGS.backup.commandChip}</div>
-            </div>
-            <div class="quick-access-meta">
-              ${TOOLS_CARD_STRINGS.backup.commandId} ${item.commandId}
-            </div>
-          </div>
-          <div class="quick-access-actions">
-            <button
-              class="icon-btn"
-              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.renameCommandAria}
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
-            ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId) ? b2`
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openCommandPayloadDialog(item.commandId)}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
-                    title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
-                  >
-                    <ha-icon icon="mdi:code-braces"></ha-icon>
-                  </button>
-                ` : A}
-            ${this.mode === "live" && !pendingAdd ? b2`
-                  <button
-                    class="icon-btn"
-                    @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
-                    ?disabled=${this._payloadFetchingCommandId != null}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
-                    title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
-                  >
-                    <ha-icon
-                      icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
-                      class=${this._payloadFetchingCommandId === item.commandId ? "sb-spin" : ""}
-                    ></ha-icon>
-                  </button>
-                ` : A}
-            ${!this._commandIsLongRecord(item.commandId) ? b2`
-                  <button
-                    class="icon-btn icon-btn--danger"
-                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-                  >
-                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                  </button>
-                ` : A}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderActivityQuickAccessSection(items) {
-    if (this.entityId == null) return A;
-    const rows = items.map((item, position) => this._renderActivityQuickAccessRow(item, position, items.length));
-    return b2`
-      <div class="quick-access-section" data-edit-section="quick_access">
-        <div class="quick-access-head">
-          <div class="quick-access-head-main">
-            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.activityShortcutsTitle}</div>
-            <div class="quick-access-sub">
-              ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.activityShortcutsSubSortable : TOOLS_CARD_STRINGS.backup.activityShortcutsSubStatic}
-            </div>
-          </div>
-          <div class="quick-access-head-actions">
-            <button class="quick-access-add-btn" @click=${this._openAddShortcutDialog}>
-              <ha-icon icon="mdi:plus"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.addShortcutButton}</span>
-            </button>
-          </div>
-        </div>
-        ${items.length ? b2`
-              <div class="quick-access-list">
-                ${this._haSortableReady ? b2`
-                      <ha-sortable
-                        class="quick-access-sortable"
-                        draggable-selector=".quick-access-sortable-item"
-                        handle-selector=".quick-access-drag"
-                        animation="180"
-                        @item-moved=${this._handleActivityQuickAccessSort}
-                      >
-                        <div class="quick-access-sortable-container">
-                          ${rows}
-                        </div>
-                      </ha-sortable>
-                    ` : rows}
-              </div>
-            ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.activityShortcutsEmpty}</div>`}
-      </div>
-    `;
-  }
-  // Narrative meta line: a custom action shows its step count; a command
-  // shortcut shows which device it plays on. Slot ids are storage detail.
-  _quickAccessRowMeta(item) {
-    if (item.kind === "macro") {
-      const summary = this.entityId != null ? activityUserMacroSummaries(this.bundle, Number(this.entityId)).find((macro) => macro.buttonId === item.buttonId) : void 0;
-      return TOOLS_CARD_STRINGS.backup.macroStepsCount(summary?.commandStepCount ?? 0);
-    }
-    const device = (this.bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
-    return String(device?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(item.deviceId ?? "?");
-  }
-  _renderActivityQuickAccessRow(item, position, count) {
-    return b2`
-      <div class="quick-access-sortable-item" data-kind=${item.kind} data-button-id=${item.buttonId}>
-        <div class="quick-access-row">
-          ${this._renderReorderHandle(item.label, position, count, (delta) => this._moveActivityQuickAccessItem(position, delta))}
-          <div class="quick-access-main">
-            <div class="quick-access-label-row">
-              <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">
-                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
-              </div>
-            </div>
-            <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
-          </div>
-          <div class="quick-access-actions">
-            ${this._haSortableReady ? A : b2`
-              <button
-                class="icon-btn"
-                @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, -1)}
-                aria-label=${TOOLS_CARD_STRINGS.backup.moveUpAria}
-              >
-                <ha-icon icon="mdi:chevron-up"></ha-icon>
-              </button>
-              <button
-                class="icon-btn"
-                @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, 1)}
-                aria-label=${TOOLS_CARD_STRINGS.backup.moveDownAria}
-              >
-                <ha-icon icon="mdi:chevron-down"></ha-icon>
-              </button>
-            `}
-            ${item.kind === "macro" ? b2`
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openMacroEditor("activity", Number(this.entityId), item.buttonId, item.label)}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.editStepsAria}
-                  >
-                    <ha-icon icon="mdi:playlist-edit"></ha-icon>
-                  </button>
-                ` : A}
-            ${this.mode === "live" && item.kind === "favorite" ? A : b2`
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                `}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutDeleteAria(item.kind)}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderEditRenameDialog() {
-    if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return A;
-    const label = this._editRenameDialogLabel();
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${label}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${useLegacyTextField() ? b2`
-                  <ha-textfield
-                    id="sb-backup-edit-name"
-                    .label=${this._editRenameFieldLabel()}
-                    .maxLength=${this._editRenameFieldMaxLength()}
-                    .value=${this._editRenameDialogDraft}
-                    @input=${this._handleEditRenameDialogInput}
-                    @change=${this._handleEditRenameDialogInput}
-                    @keydown=${(event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        this._applyEditRenameDialog();
-      }
-    }}
-                  ></ha-textfield>
-                ` : b2`
-                  <ha-input
-                    id="sb-backup-edit-name"
-                    type="text"
-                    .label=${this._editRenameFieldLabel()}
-                    .maxlength=${this._editRenameFieldMaxLength()}
-                    .value=${this._editRenameDialogDraft}
-                    @input=${this._handleEditRenameDialogInput}
-                    @change=${this._handleEditRenameDialogInput}
-                    @keydown=${(event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        this._applyEditRenameDialog();
-      }
-    }}
-                  ></ha-input>
-                `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  /**
-   * The payload popup: structured per-class form when the command has a
-   * decoded block, raw hex replacement otherwise. Every command with a
-   * captured payload (`restore_data.data_hex`) is editable — classes
-   * without a parser just get the raw bytes.
-   */
-  _renderCommandPayloadDialog() {
-    if (!this._payloadDialogOpen || !this._payloadDialogTarget) return A;
-    const decoded = this._payloadDialogDecodedSnapshot;
-    const deviceClass = String(
-      bundleDeviceClass(this.bundle, this._payloadDialogTarget.deviceId) || ""
-    ).trim();
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeCommandPayloadDialog}>
-        <div class="dialog medium" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title-group">
-              <div class="dialog-title">${this._payloadDialogAddMode ? TOOLS_CARD_STRINGS.backup.addCommandTitle : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
-              ${deviceClass ? b2`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>` : A}
-            </div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${this._payloadDialogAddMode && this._payloadLearnView === "off" ? b2`
-                  <label class="decoded-field">
-                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
-                    <input
-                      class="decoded-field-input"
-                      type="text"
-                      maxlength="20"
-                      spellcheck="false"
-                      .value=${this._payloadDialogNameDraft}
-                      @input=${this._handleAddCommandNameInput}
-                      @change=${this._handleAddCommandNameInput}
-                    />
-                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
-                  </label>
-                ` : A}
-            ${this._payloadLearnView !== "off" ? this._renderLearnPanel() : decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
-            ${this._payloadLearnView === "off" && this._payloadLearnSourceNote ? b2`
-                  <div class="section-status payload-test-status success" role="status" aria-live="polite">
-                    <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                    <span>${this._payloadLearnSourceNote}</span>
-                  </div>
-                ` : A}
-            ${this._payloadLearnView === "off" && this._liveDeviceIsIr() ? b2`
-                  <div class="payload-test-note">
-                    <ha-icon icon="mdi:flash-outline"></ha-icon>
-                    <span>
-                      ${this.mode === "live" ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
-                    </span>
-                  </div>
-                ` : A}
-            ${this._payloadLearnView === "off" && this._payloadDialogTestStatus !== "idle" ? b2`
-                  <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
-                    <ha-icon icon=${this._payloadDialogTestStatus === "success" ? "mdi:check-circle-outline" : this._payloadDialogTestStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
-                    <span>
-                      ${this._payloadDialogTestStatus === "testing" ? TOOLS_CARD_STRINGS.backup.sendingToHub : this._payloadDialogTestStatus === "success" ? TOOLS_CARD_STRINGS.backup.sentToHub : this._payloadDialogTestError || TOOLS_CARD_STRINGS.backup.testFailed}
-                    </span>
-                  </div>
-                ` : A}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note payload-dialog-note">
-              <a
-                class="payload-doc-link"
-                href=${DOC_URLS.commandPayloads}
-                target="_blank"
-                rel="noreferrer noopener"
-              >${TOOLS_CARD_STRINGS.backup.payloadDocsLink}</a>
-              ${this._payloadLearnView === "off" && this._payloadDialogError ? b2`<span class="payload-dialog-error">${this._payloadDialogError}</span>` : A}
-            </div>
-            <div class="dialog-footer-actions">
-              ${this._payloadLearnView !== "off" ? this._renderLearnFooterActions() : A}
-              ${this._payloadLearnView === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
-                    <button
-                      class="dialog-btn payload-test-btn"
-                      ?disabled=${this._payloadDialogTestStatus === "testing"}
-                      @click=${() => void this._runLivePayloadTest()}
-                    >
-                      <ha-icon icon="mdi:flash-outline"></ha-icon>
-                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
-                    </button>
-                  ` : A}
-              ${this._payloadLearnView === "off" ? b2`
-                    <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-                    <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
-                  ` : A}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  // ── Learn mode rendering (IR9) ─────────────────────────────────────
-  _renderLearnEntryButton() {
-    if (!this._learnAvailable()) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return b2`
-      <button
-        class="payload-learn-btn"
-        type="button"
-        title=${S5.learnAria}
-        aria-label=${S5.learnAria}
-        @click=${() => void this._enterLearnMode()}
-      >
-        <ha-icon icon="mdi:import"></ha-icon>
-        <span>${S5.learn}</span>
-      </button>
-    `;
-  }
-  _renderLearnPanel() {
-    switch (this._payloadLearnView) {
-      case "menu":
-        return this._renderLearnMenu();
-      case "hub":
-        return this._renderLearnHub();
-      case "ha":
-        return this._renderLearnInbox();
-      default:
-        return A;
-    }
-  }
-  _renderLearnMenu() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return b2`
-      <div class="learn-panel" data-learn-view="menu">
-        <button class="learn-option" type="button" @click=${() => void this._startHubLearn()}>
-          <ha-icon icon="mdi:remote"></ha-icon>
-          <span class="learn-option-body">
-            <span class="learn-option-title">${S5.learnFromHub}</span>
-            <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
-          </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
-        </button>
-        ${this._learnHaOptionVisible() ? b2`
-              <button class="learn-option" type="button" @click=${() => this._openLearnInbox()}>
-                <ha-icon icon="mdi:home-assistant"></ha-icon>
-                <span class="learn-option-body">
-                  <span class="learn-option-title">${S5.learnFromHa}</span>
-                  <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
-                </span>
-                <ha-icon icon="mdi:chevron-right"></ha-icon>
-              </button>
-            ` : this._payloadLearnHaAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
-      </div>
-    `;
-  }
-  _renderLearnHub() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const state = this._payloadLearnHubState;
-    const event = this._payloadLearnHubEvent;
-    let icon = "mdi:remote";
-    let title = "";
-    let detail = "";
-    switch (state) {
-      case "arming":
-        icon = "mdi:progress-clock";
-        title = S5.learnHubArming;
-        break;
-      case "listening":
-        title = S5.learnHubListening;
-        detail = S5.learnHubCountdown(this._formatCountdown(this._payloadLearnSecondsLeft));
-        break;
-      case "timed_out":
-        icon = "mdi:timer-off-outline";
-        title = S5.learnHubTimedOut;
-        break;
-      case "interrupted":
-        icon = "mdi:alert-circle-outline";
-        title = S5.learnHubInterrupted(String(event?.interrupted_by || "?"));
-        break;
-      case "cancelled":
-        icon = "mdi:cancel";
-        title = S5.learnHubCancelled;
-        break;
-      case "refused":
-        icon = "mdi:alert-circle-outline";
-        title = localizeBackendError(event, "ir_learn");
-        break;
-      case "error":
-        icon = "mdi:alert-circle-outline";
-        title = localizeBackendError(event, "ir_learn");
-        break;
-      default:
-        title = S5.learnHubListening;
-    }
-    return b2`
-      <div class="learn-panel" data-learn-view="hub">
-        <div class="learn-stage ${state}" role="status" aria-live="polite">
-          <ha-icon icon=${icon}></ha-icon>
-          <div class="learn-stage-copy">
-            <div class="learn-stage-title">${title}</div>
-            ${detail ? b2`<div class="learn-stage-detail">${detail}</div>` : A}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderLearnInbox() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const chips = this._payloadLearnConsumers.map((consumer) => ({
-      name: consumer.title || consumer.domain,
-      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain
-    }));
-    const emissions = [...this._payloadLearnEmissions].reverse();
-    return b2`
-      <div class="learn-panel" data-learn-view="ha">
-        <div class="learn-inbox-help">${S5.learnHaHelper}</div>
-        ${chips.length ? b2`
-              <div class="learn-consumers">
-                <span class="learn-consumers-label">${S5.learnHaConsumers}</span>
-                <div class="learn-chips">
-                  ${chips.map((chip) => b2`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
-                </div>
-              </div>
-            ` : A}
-        ${this._payloadLearnEmissionsError ? b2`
-              <div class="section-status error" role="alert">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${localizeBackendError(this._payloadLearnEmissionsError, "ir_emissions")}</span>
-              </div>
-            ` : A}
-        <div class="learn-inbox-list" role="list">
-          ${emissions.length ? emissions.map((rec) => this._renderInboxRow(rec)) : b2`
-                <div class="learn-inbox-empty">
-                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
-                  <span>${S5.learnHaEmpty}</span>
-                </div>
-              `}
-        </div>
-      </div>
-    `;
-  }
-  _renderInboxRow(rec) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const isNew = this._emissionIsNew(rec);
-    const meta = [this._learnTimeAgo(rec.when)];
-    if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
-    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
-    return b2`
-      <button
-        class="learn-inbox-row ${isNew ? "is-new" : ""}"
-        type="button"
-        role="listitem"
-        @click=${() => this._useEmission(rec)}
-      >
-        <span class="learn-inbox-main">
-          <span class="learn-inbox-label">${this._emissionDisplayName(rec)}</span>
-          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" \xB7 ")}</span>
-        </span>
-        ${isNew ? b2`<span class="learn-badge">${S5.learnHaNew}</span>` : A}
-        <span class="learn-inbox-use">${S5.learnHaUse}</span>
-      </button>
-    `;
-  }
-  _renderLearnFooterActions() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    if (this._payloadLearnView === "menu") {
-      return b2`<button class="dialog-btn" @click=${() => this._exitLearnMode()}>${S5.learnBack}</button>`;
-    }
-    if (this._payloadLearnView === "hub") {
-      const terminal = this._hubLearnIsTerminal();
-      return b2`
-        ${terminal ? b2`<button class="dialog-btn dialog-btn-primary" @click=${() => void this._startHubLearn()}>${S5.learnTryAgain}</button>` : A}
-        <button class="dialog-btn" @click=${() => this._backToLearnMenu()}>
-          ${terminal ? S5.learnBack : TOOLS_CARD_STRINGS.common.cancel}
-        </button>
-      `;
-    }
-    return b2`<button class="dialog-btn" @click=${() => this._backToLearnMenu()}>${S5.learnBack}</button>`;
-  }
-  _renderRawPayloadForm() {
-    return b2`
-      <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
-          <div class="decoded-form-sub">
-            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
-          </div>
-        </div>
-        <label class="decoded-field">
-          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
-          <textarea
-            class="decoded-field-input decoded-field-input--multiline"
-            rows="6"
-            spellcheck="false"
-            .value=${this._payloadDialogRawDraft}
-            @input=${this._handleRawPayloadInput}
-            @change=${this._handleRawPayloadInput}
-          ></textarea>
-          <span class="decoded-field-helper">
-            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
-          </span>
-        </label>
-      </div>
-    `;
-  }
-  /**
-   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
-   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
-   * `_payloadDialogRawDraft` stay the source of truth for Test/Save;
-   * pronto edits write through via conversion. Pasting a descriptive
-   * `P:` payload morphs the dialog into descriptor mode (X2 only).
-   */
-  _renderIrHexPayloadForm() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const tab = this._payloadDialogProntoAvailable ? this._payloadDialogHexTab : "sofabaton";
-    const prontoActive = tab === "pronto";
-    return b2`
-      <div class="decoded-form">
-        <div class="payload-format-tabs" role="tablist">
-          <button
-            class="payload-format-tab ${prontoActive ? "active" : ""}"
-            role="tab"
-            aria-selected=${prontoActive ? "true" : "false"}
-            ?disabled=${!this._payloadDialogProntoAvailable}
-            title=${this._payloadDialogProntoAvailable ? "" : S5.prontoUnavailable}
-            @click=${() => this._selectHexTab("pronto")}
-          >${S5.prontoHexTab}</button>
-          <button
-            class="payload-format-tab ${prontoActive ? "" : "active"}"
-            role="tab"
-            aria-selected=${prontoActive ? "false" : "true"}
-            @click=${() => this._selectHexTab("sofabaton")}
-          >${S5.sofabatonHexTab}</button>
-          ${this._renderLearnEntryButton()}
-        </div>
-        <label class="decoded-field">
-          <textarea
-            class="decoded-field-input decoded-field-input--multiline"
-            rows="6"
-            spellcheck="false"
-            .value=${prontoActive ? this._payloadDialogProntoDraft : this._payloadDialogRawDraft}
-            @input=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
-            @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
-          ></textarea>
-          <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
-            ${this._payloadDialogFormatError || (this._payloadDialogConverting ? S5.ucHexConverting : "") || (prontoActive ? S5.prontoHexHelper : S5.payloadHexHelper)}
-          </span>
-        </label>
-      </div>
-    `;
-  }
-  _selectHexTab(tab) {
-    if (tab === "pronto" && !this._payloadDialogProntoAvailable) return;
-    this._payloadDialogHexTab = tab;
-    this._payloadDialogFormatError = "";
-  }
-  /** Map an IrFormatError to a user string; anything else falls through. */
-  _irFormatMessage(error, fallback) {
-    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
-    return fallback;
-  }
-  /**
-   * Re-derive the pronto projection after the sofabaton draft changed.
-   * Unparseable bytes are legal (passthrough for unknown variants); they
-   * only disable the pronto tab.
-   */
-  _syncProntoFromRaw() {
-    try {
-      const signal = parseSofabatonBlob(this._payloadDialogRawDraft);
-      this._payloadDialogProntoDraft = renderProntoHex(signal);
-      this._payloadDialogProntoAvailable = true;
-    } catch {
-      this._payloadDialogProntoDraft = "";
-      this._payloadDialogProntoAvailable = false;
-    }
-  }
-  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
-  _morphToDescriptor(text) {
-    this._payloadDialogDecodedSnapshot = {
-      className: "ir",
-      fields: { descriptor: "" },
-      trailerHex: "",
-      edited: false
-    };
-    this._payloadDialogDecodedDrafts = { descriptor: text.trim() };
-    this._payloadDialogFormatError = "";
-  }
-  /** Morph the open dialog from descriptor mode to the hex tabs. */
-  _morphToHex(text, format) {
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogFormatError = "";
-    if (format === "pronto") {
-      this._payloadDialogHexTab = "pronto";
-      this._payloadDialogProntoDraft = text.trim();
-      this._applyProntoDraft(text.trim());
-    } else {
-      this._payloadDialogHexTab = "sofabaton";
-      this._payloadDialogRawDraft = text.trim();
-      this._syncProntoFromRaw();
-    }
-  }
-  /**
-   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
-   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
-   * codes go to the backend, which renders them through infrared-protocols
-   * and returns both hex projections. Returns false when the text is not a
-   * UC paste so the caller continues with its own handling.
-   */
-  _tryForeignPaste(text) {
-    const paste = resolveUcPaste(text);
-    if (!paste) return false;
-    if (paste.name && this._payloadDialogAddMode && !this._payloadDialogNameDraft.trim()) {
-      this._payloadDialogNameDraft = sanitizeBundleName(this.bundle, paste.name);
-    }
-    if (paste.kind === "pronto") {
-      this._morphToHex(paste.code, "pronto");
-      return true;
-    }
-    void this._convertForeignCode(paste.code, "uc_hex");
-    return true;
-  }
-  async _convertForeignCode(code, format) {
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoAvailable = true;
-    this._payloadDialogProntoDraft = code;
-    this._payloadDialogFormatError = "";
-    const seq = ++this._payloadConversionSeq;
-    if (!this.convertForeignPayload) {
-      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
-      return;
-    }
-    this._payloadDialogConverting = true;
-    try {
-      const result = await this.convertForeignPayload(code, format);
-      if (seq !== this._payloadConversionSeq) return;
-      this._morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
-      this._payloadDialogHexTab = "pronto";
-    } catch (error) {
-      if (seq !== this._payloadConversionSeq) return;
-      this._payloadDialogFormatError = localizeBackendError(error, "ir_convert");
-    } finally {
-      if (seq === this._payloadConversionSeq) this._payloadDialogConverting = false;
-    }
-  }
-  /** Parse a pronto draft and write the sofabaton bytes through. */
-  _applyProntoDraft(text) {
-    if (!text.trim()) {
-      this._payloadDialogFormatError = "";
-      return;
-    }
-    try {
-      const signal = parseProntoHex(text);
-      this._payloadDialogRawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
-      this._payloadDialogProntoAvailable = true;
-      this._payloadDialogFormatError = "";
-    } catch (error) {
-      this._payloadDialogFormatError = this._irFormatMessage(
-        error,
-        TOOLS_CARD_STRINGS.backup.invalidProntoHex
-      );
-    }
-  }
-  _renderDecodedPayloadForm(className) {
-    const spec = DECODED_CLASS_FORM_SPECS[className];
-    if (!spec) return A;
-    const head = className === "ir" ? b2`
-          <div class="payload-format-tabs" role="tablist">
-            <button class="payload-format-tab active" role="tab" aria-selected="true">
-              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
-            </button>
-            ${this._renderLearnEntryButton()}
-          </div>
-          ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
-        ` : b2`
-          <div class="decoded-form-head">
-            <div class="decoded-form-title">${spec.title}</div>
-            ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
-          </div>
-        `;
-    return b2`
-      <div class="decoded-form">
-        ${head}
-        ${spec.fields.map((field) => this._renderDecodedField(field))}
-      </div>
-    `;
-  }
-  _renderDecodedField(field) {
-    const value = this._payloadDialogDecodedDrafts[field.key] ?? "";
-    const onInput = (event) => this._handleDecodedFieldInput(event, field.key);
-    const multilineClass = field.escapedDisplay ? "decoded-field-input--multiline decoded-field-input--escaped" : "decoded-field-input--multiline";
-    return b2`
-      <label class="decoded-field">
-        <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline ? b2`
-              <textarea
-                class="decoded-field-input ${multilineClass}"
-                rows="4"
-                spellcheck="false"
-                .value=${value}
-                @input=${onInput}
-                @change=${onInput}
-              ></textarea>
-            ` : b2`
-              <input
-                class="decoded-field-input"
-                type=${field.numeric ? "number" : "text"}
-                spellcheck="false"
-                .value=${value}
-                ?disabled=${Boolean(field.readonly)}
-                @input=${field.readonly ? null : onInput}
-                @change=${field.readonly ? null : onInput}
-              />
-            `}
-        ${field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A}
-      </label>
-    `;
-  }
-  _editRenameDialogLabel() {
-    const target = this._editRenameDialogTarget;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    if (!target) return S5.rename;
-    if (target.kind === "detail") {
-      return target.entityKind === "activity" ? S5.renameActivity : S5.renameDevice;
-    }
-    if (target.kind === "macro") return S5.renameMacro;
-    if (target.kind === "favorite") return S5.renameFavorite;
-    if (target.kind === "device_ip") return S5.editIpAria;
-    return S5.renameCommand;
-  }
-  /** Per-target label & max length used by the dialog's primary text input. */
-  _editRenameFieldLabel() {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? TOOLS_CARD_STRINGS.backup.ipAddress : TOOLS_CARD_STRINGS.backup.name;
-  }
-  _editRenameFieldMaxLength() {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
-  }
-  /**
-   * Diff each spec field against the open-dialog snapshot. Returns a
-   * record of fields that changed (mapped back through the wire-format
-   * coercion in `_draftToFieldValue`), or `null` when nothing changed
-   * and the bundle should be left untouched.
-   */
-  _collectChangedDecodedFields(snapshot) {
-    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-    if (!spec) return null;
-    const changed = {};
-    let touched = false;
-    for (const field of spec.fields) {
-      const draft = this._payloadDialogDecodedDrafts[field.key] ?? "";
-      const original = this._fieldValueToDraft(snapshot.fields[field.key], field);
-      if (draft === original) continue;
-      changed[field.key] = this._draftToFieldValue(draft, field);
-      touched = true;
-    }
-    return touched ? changed : null;
-  }
-  /**
-   * Convert a draft string from a form control to the value shape the
-   * decoder expects. `numeric` fields become numbers; `crlfOnWire`
-   * fields get `\n` line endings normalized to `\r\n` so the wire
-   * round-trip stays exact even though the browser textarea hides the
-   * `\r`. Everything else passes through verbatim.
-   */
-  _draftToFieldValue(draft, field) {
-    if (field.numeric) {
-      const numeric = Number(draft);
-      return Number.isFinite(numeric) ? numeric : 0;
-    }
-    if (field.escapedDisplay) {
-      let result = draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
-      return result;
-    }
-    if (field.crlfOnWire) {
-      return draft.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
-    }
-    return draft;
-  }
-  _openDeviceIpRenameDialog(deviceId) {
-    const normalizedId = Number(deviceId);
-    this._editRenameDialogTarget = { kind: "device_ip", deviceId: normalizedId };
-    this._editRenameDialogDraft = deviceIpAddress(this.bundle, normalizedId) || "";
-    this._editRenameDialogError = "";
-    this._editRenameDialogOpen = true;
-  }
-  _openDeviceCommandRenameDialog(commandId) {
-    if (this.entityId == null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    this._editRenameDialogTarget = { kind: "command", deviceId, commandId: normalizedCommandId };
-    const item = deviceCommandItems(this.bundle, deviceId).find(
-      (entry) => entry.commandId === normalizedCommandId
-    );
-    this._editRenameDialogDraft = item?.label || "";
-    this._editRenameDialogError = "";
-    this._editRenameDialogOpen = true;
-  }
-  /**
-   * True when the command is a not-yet-synced addition (live mode): its
-   * bundle row carries the `restore_data.new` marker and there is nothing
-   * on the hub to fetch for it yet.
-   */
-  _commandIsPendingAdd(commandId) {
-    if (this.entityId == null || !this.bundle) return false;
-    const device = (this.bundle.devices ?? []).find(
-      (entry) => Number(entry?.device?.device_id || 0) === Number(this.entityId)
-    );
-    const command = (device?.commands ?? []).find(
-      (row) => Number(row?.command_id || 0) === Number(commandId)
-    );
-    return Boolean(command?.restore_data?.["new"]);
-  }
-  /** True when the command carries anything the payload dialog can edit. */
-  _commandHasEditablePayload(commandId) {
-    if (this.entityId == null) return false;
-    const deviceId = Number(this.entityId);
-    return Boolean(
-      commandDecodedBlock(this.bundle, deviceId, Number(commandId)) || commandRawPayloadHex(this.bundle, deviceId, Number(commandId))
-    );
-  }
-  /**
-   * True for IR devices. Live payload *editing* is offered for all classes
-   * (raw hex, or the structured form where a parser exists), but the Test
-   * button — `playIrBlob` — is IR-only, so it gates on this.
-   */
-  _liveDeviceIsIr() {
-    if (this.entityId == null || !this.bundle) return false;
-    return String(bundleDeviceClass(this.bundle, Number(this.entityId)) || "").trim().toLowerCase() === "ir";
-  }
-  /**
-   * Live "edit payload": fetch this one command's blob from the hub on
-   * demand (the structural bundle is blob-free), then open the same payload
-   * dialog backup uses — populated from the fetch, not the bundle, so the
-   * fetch itself never marks the bundle dirty. The host supplies the fetch.
-   */
-  async _liveFetchAndOpenPayload(commandId) {
-    if (this.mode !== "live" || this.entityId == null || !this.fetchCommandPayload) return;
-    if (this._payloadFetchingCommandId != null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    this._payloadFetchingCommandId = normalizedCommandId;
-    this._payloadFetchError = "";
-    try {
-      const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
-      if (!fetched || !String(fetched.dataHex || "").trim()) {
-        this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
-        return;
-      }
-      this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
-    } catch (error) {
-      this._payloadFetchError = editorErrorMessage(error, "hub_request");
-    } finally {
-      this._payloadFetchingCommandId = null;
-    }
-  }
-  _openLivePayloadDialog(deviceId, commandId, fetched) {
-    const decoded = this._decodedSnapshotFromFetch(fetched.decoded);
-    const rawHex = decoded ? "" : normalizeCommandPayloadHex(fetched.dataHex) ?? fetched.dataHex;
-    this._payloadDialogTarget = { deviceId, commandId };
-    this._payloadLiveFetched = fetched;
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = rawHex;
-    this._payloadDialogRawDraft = rawHex;
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-  /**
-   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
-   * the default view when the blob parses as raw timings (IR8).
-   */
-  _resetIrHexTabState() {
-    this._payloadDialogFormatError = "";
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoDraft = "";
-    this._payloadDialogProntoAvailable = true;
-    if (!this._liveDeviceIsIr()) return;
-    if (String(this._payloadDialogRawDraft ?? "").trim()) {
-      this._syncProntoFromRaw();
-      if (!this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "sofabaton";
-    }
-  }
-  /**
-   * Open the payload dialog in add-command mode (live only). The controls
-   * mirror command edit for the device's class:
-   *
-   * * `ir` — blank descriptor form. The backend synthesizes the record
-   *   from the descriptor alone (`build_descriptive_ir_blob_body`), so no
-   *   template is needed and Test works before anything is saved.
-   * * decodable wifi classes — the structured form, seeded from an
-   *   existing command fetched as a template. The template supplies the
-   *   record's opaque trailer (a checksum region we cannot synthesize)
-   *   plus sensible defaults like host/port.
-   * * everything else — raw hex entry.
-   *
-   * Non-IR devices need at least one existing command: the template
-   * trailer and the codec (`library_type`) are both read from it.
-   */
-  async _openAddCommandDialog() {
-    if (this.mode !== "live" || this.entityId == null || !this.bundle) return;
-    if (this._addCommandPreparing) return;
-    const deviceId = Number(this.entityId);
-    const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
-    this._payloadFetchError = "";
-    if (deviceClass === "ir") {
-      this._openAddDialogWithSnapshot(
-        deviceId,
-        bundleIsX2(this.bundle) ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false } : null
-      );
-      return;
-    }
-    const existing = deviceCommandItems(this.bundle, deviceId);
-    if (!existing.length) {
-      this._openAddDialogWithSnapshot(
-        deviceId,
-        defaultDecodedSnapshotForClass(deviceClass, {
-          deviceId,
-          commandId: nextFreeDeviceCommandId(this.bundle, deviceId)
-        })
-      );
-      return;
-    }
-    if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
-      this._addCommandPreparing = true;
-      try {
-        const fetched = await this.fetchCommandPayload(deviceId, existing[0].commandId);
-        const decoded = this._decodedSnapshotFromFetch(fetched?.decoded ?? null);
-        if (decoded) {
-          this._openAddDialogWithSnapshot(deviceId, decoded);
-          return;
-        }
-      } catch (error) {
-        this._payloadFetchError = editorErrorMessage(error, "hub_request");
-        return;
-      } finally {
-        this._addCommandPreparing = false;
-      }
-    }
-    this._openAddDialogWithSnapshot(deviceId, null);
-  }
-  _openAddDialogWithSnapshot(deviceId, decoded) {
-    this._payloadDialogTarget = { deviceId, commandId: 0 };
-    this._payloadDialogAddMode = true;
-    this._payloadDialogNameDraft = "";
-    this._payloadLiveFetched = null;
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = "";
-    this._payloadDialogRawDraft = "";
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-  /**
-   * Commit a new command from the add dialog: allocate the next free id on
-   * the device and append a row whose `restore_data` carries the
-   * `new: true` marker the device-sync planner turns into a `command_add`
-   * step. Decoded forms serialize every field (there is no pristine
-   * baseline to diff against); raw entry normalizes the hex.
-   */
-  _applyAddCommandDialog(target) {
-    if (!this.bundle) return;
-    const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
-    if (!name) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
-      return;
-    }
-    let restoreData;
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-      const fields = {};
-      for (const field of spec.fields) {
-        fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
-      }
-      if (snapshot.className === "wifi_mqtt") {
-        fields["device_id"] = target.deviceId & 255;
-        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? (Number(fields["command_id"]) || 1)) & 255;
-      }
-      if (snapshot.className === "ir") {
-        const descriptor = String(fields["descriptor"] ?? "").trim();
-        if (!descriptor.startsWith("P:")) {
-          this._payloadDialogError = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
-          return;
-        }
-      }
-      restoreData = {
-        transport: "hub_code_record",
-        decoded: {
-          class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields,
-          edited: true
-        }
-      };
-    } else {
-      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-      if (!normalized) {
-        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-        return;
-      }
-      restoreData = { transport: "hub_code_record", data_hex: normalized };
-    }
-    const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
-    if (newId == null) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
-      return;
-    }
-    this._commitEditBundleEdit(
-      addBundleDeviceCommand(this.bundle, target.deviceId, newId, name, restoreData)
-    );
-    this._closeCommandPayloadDialog();
-  }
-  /** Convert a fetched decoded block into the editor's snapshot shape. */
-  _decodedSnapshotFromFetch(decoded) {
-    if (!decoded) return null;
-    const className = String(decoded.class ?? "").trim().toLowerCase();
-    if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
-    return {
-      className,
-      fields: { ...decoded.fields ?? {} },
-      trailerHex: String(decoded.trailer_hex ?? ""),
-      edited: false
-    };
-  }
-  /**
-   * Commit a live payload edit. The working command has no restore_data yet
-   * (blob-free bundle), so build the whole block — carrying the `edited`
-   * marker the device-sync planner keys on — and set it via
-   * `setCommandRestoreData`. A pristine (unchanged) dialog commits nothing.
-   */
-  _applyLivePayloadDialog(target) {
-    if (!this.bundle) return;
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      const changedFields = this._collectChangedDecodedFields(snapshot);
-      if (!changedFields) {
-        this._closeCommandPayloadDialog();
-        return;
-      }
-      const restoreData2 = {
-        transport: "hub_code_record",
-        data_hex: this._payloadLiveFetched?.dataHex ?? "",
-        decoded: {
-          class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields: { ...snapshot.fields, ...changedFields },
-          edited: true
-        }
-      };
-      this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData2));
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-    if (!normalized) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-      return;
-    }
-    if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const restoreData = { transport: "hub_code_record", data_hex: normalized, edited: true };
-    this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
-    this._closeCommandPayloadDialog();
-  }
-  /** Test the current draft on the hub (IR only), via the host's callback. */
-  async _runLivePayloadTest() {
-    if (!this.testCommandPayload) return;
-    if (this._payloadDialogFormatError) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = this._payloadDialogFormatError;
-      return;
-    }
-    if (this._payloadDialogConverting) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
-      return;
-    }
-    const value = this._payloadDialogDecodedSnapshot ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim() : String(this._payloadDialogRawDraft ?? "").trim();
-    if (!value) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.nothingToTest;
-      return;
-    }
-    this._payloadDialogTestStatus = "testing";
-    this._payloadDialogTestError = "";
-    try {
-      await this.testCommandPayload(value);
-      this._payloadDialogTestStatus = "success";
-    } catch (error) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = editorErrorMessage(error, "hub_request");
-    }
-  }
-  _openCommandPayloadDialog(commandId) {
-    if (this.mode === "live") return;
-    if (this.entityId == null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    const decoded = commandDecodedBlock(this.bundle, deviceId, normalizedCommandId);
-    const rawHex = decoded ? null : commandRawPayloadHex(this.bundle, deviceId, normalizedCommandId);
-    if (!decoded && !rawHex) return;
-    this._payloadDialogTarget = { deviceId, commandId: normalizedCommandId };
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = rawHex ?? "";
-    this._payloadDialogRawDraft = rawHex ?? "";
-    this._payloadDialogError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-  // ── Learn mode logic (IR9) ─────────────────────────────────────────
-  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
-  _learnAvailable() {
-    return this.mode === "live" && !!this.irLearn && this._liveDeviceIsIr();
-  }
-  /**
-   * Open the source menu. The HA option is gated on the emitter existing
-   * AND either a consumer config entry or a non-empty intercept ring, so
-   * the inbox subscription is opened right away (it also feeds the inbox
-   * view later) while the consumer lookup runs alongside it.
-   */
-  async _enterLearnMode() {
-    const host = this.irLearn;
-    if (!host || !this._learnAvailable()) return;
-    this._payloadLearnView = "menu";
-    this._payloadLearnSourceNote = "";
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-    this._startLearnTicker();
-    void this._openEmissionInbox(host);
-    try {
-      const response = await host.consumers();
-      if (this._learnModeLeft()) return;
-      this._payloadLearnConsumers = Array.isArray(response?.consumers) ? response.consumers : [];
-      this._payloadLearnHaAvailable = !!response?.available;
-    } catch {
-      if (this._learnModeLeft()) return;
-      this._payloadLearnHaAvailable = false;
-    }
-  }
-  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
-  _learnModeLeft() {
-    return this._payloadLearnView === "off";
-  }
-  _learnHaOptionVisible() {
-    return this._payloadLearnHaAvailable === true && (this._payloadLearnConsumers.length > 0 || this._payloadLearnEmissions.length > 0);
-  }
-  async _openEmissionInbox(host) {
-    if (this._payloadLearnEmissionsUnsub) return;
-    this._payloadLearnEmissionsError = null;
-    try {
-      const unsubscribe = await host.subscribeEmissions((emissions) => {
-        if (this._payloadLearnView === "off") return;
-        const next = Array.isArray(emissions) ? emissions : [];
-        if (!this._payloadLearnBaseline) {
-          this._payloadLearnBaseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
-        }
-        this._payloadLearnEmissions = next;
-      });
-      if (this._payloadLearnView === "off") {
-        unsubscribe();
-        return;
-      }
-      this._payloadLearnEmissionsUnsub = unsubscribe;
-    } catch (error) {
-      if (this._payloadLearnView === "off") return;
-      this._payloadLearnEmissionsError = {
-        error_code: backendErrorCode(error) ?? "ir_emissions_failed"
-      };
-    }
-  }
-  /**
-   * Row name: the command's own repr when its class defines one (it
-   * carries address/command), otherwise the backend label, which is the
-   * class name plus a per-code digest. Repr-less classes (live finding:
-   * SonyX700Command) would otherwise make every code read identically.
-   */
-  _emissionDisplayName(rec) {
-    const repr = String(rec.command_repr ?? "").trim();
-    const label = String(rec.label ?? "").trim();
-    if (!repr) return label;
-    const className = label.replace(/\s*\(.*$/, "");
-    return repr === className ? label : repr;
-  }
-  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
-  _emissionIsNew(rec) {
-    const baseline = this._payloadLearnBaseline;
-    if (!baseline) return false;
-    return baseline.get(rec.payload_hex) !== rec.when;
-  }
-  _openLearnInbox() {
-    this._cancelHubLearn();
-    this._payloadLearnView = "ha";
-    if (this.irLearn) void this._openEmissionInbox(this.irLearn);
-  }
-  _backToLearnMenu() {
-    this._cancelHubLearn();
-    this._payloadLearnView = "menu";
-  }
-  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
-  _exitLearnMode() {
-    this._cancelHubLearn();
-    const unsubscribe = this._payloadLearnEmissionsUnsub;
-    this._payloadLearnEmissionsUnsub = null;
-    if (unsubscribe) {
-      try {
-        unsubscribe();
-      } catch {
-      }
-    }
-    this._stopLearnTicker();
-    this._payloadLearnView = "off";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsError = null;
-    this._payloadLearnBaseline = null;
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-  }
-  async _startHubLearn() {
-    const host = this.irLearn;
-    if (!host) return;
-    this._cancelHubLearn();
-    const attempt = ++this._payloadLearnHubAttempt;
-    this._payloadLearnView = "hub";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._startLearnTicker();
-    try {
-      const cancel = await host.learnFromHub((event) => {
-        if (attempt !== this._payloadLearnHubAttempt) return;
-        this._handleHubLearnEvent(event);
-      }, LEARN_TIMEOUT_S);
-      if (attempt !== this._payloadLearnHubAttempt || this._payloadLearnView !== "hub") {
-        try {
-          cancel();
-        } catch {
-        }
-        return;
-      }
-      if (this._hubLearnIsTerminal()) {
-        try {
-          cancel();
-        } catch {
-        }
-        return;
-      }
-      this._payloadLearnHubCancel = cancel;
-    } catch (error) {
-      if (attempt !== this._payloadLearnHubAttempt) return;
-      this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = {
-        state: "error",
-        error_code: backendErrorCode(error) ?? "ir_learn_failed"
-      };
-    }
-  }
-  _handleHubLearnEvent(event) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    this._payloadLearnHubEvent = event;
-    this._payloadLearnHubState = event.state;
-    if (event.state === "listening") {
-      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
-      this._payloadLearnHubDeadline = Date.now() + timeout * 1e3;
-      this._payloadLearnSecondsLeft = Math.ceil(timeout);
-      return;
-    }
-    this._releaseHubLearn();
-    if (event.state !== "learned") return;
-    const hex = String(event.payload_hex ?? "").trim();
-    if (!hex) {
-      this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = { state: "error", error_code: "ir_learn_no_payload" };
-      return;
-    }
-    const timings = Number(event.duration_count) || 0;
-    const carrier = Number(event.carrier_hz) || 0;
-    const note = timings && carrier ? S5.learnHubLearned(timings, formatCarrierKhz(carrier)) : S5.learnHubLearnedRaw;
-    this._adoptLearnedPayload(hex, note);
-  }
-  _useEmission(rec) {
-    const hex = String(rec.payload_hex ?? "").trim();
-    if (!hex) return;
-    this._adoptLearnedPayload(
-      hex,
-      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this._emissionDisplayName(rec))
-    );
-  }
-  /**
-   * Drop a captured Sofabaton blob into the editor: hex mode (leaving a
-   * descriptor form if the dialog was in one), pronto view when the bytes
-   * parse as raw timings, Test/Save untouched and ready.
-   */
-  _adoptLearnedPayload(hex, note) {
-    this._exitLearnMode();
-    const normalized = normalizeCommandPayloadHex(hex) ?? hex;
-    this._morphToHex(normalized, "sofabaton");
-    if (this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "pronto";
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._payloadLearnSourceNote = note;
-  }
-  _hubLearnIsTerminal() {
-    return this._payloadLearnHubState !== "arming" && this._payloadLearnHubState !== "listening";
-  }
-  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
-  _cancelHubLearn() {
-    this._payloadLearnHubAttempt++;
-    this._releaseHubLearn();
-  }
-  _releaseHubLearn() {
-    const cancel = this._payloadLearnHubCancel;
-    this._payloadLearnHubCancel = null;
-    if (cancel) {
-      try {
-        cancel();
-      } catch {
-      }
-    }
-  }
-  _startLearnTicker() {
-    if (this._payloadLearnTicker) return;
-    this._payloadLearnNow = Date.now();
-    this._payloadLearnTicker = setInterval(() => this._learnTick(), 1e3);
-  }
-  _stopLearnTicker() {
-    if (this._payloadLearnTicker) clearInterval(this._payloadLearnTicker);
-    this._payloadLearnTicker = null;
-  }
-  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
-  _learnTick() {
-    this._payloadLearnNow = Date.now();
-    if (this._payloadLearnView === "hub" && this._payloadLearnHubState === "listening" && this._payloadLearnHubDeadline) {
-      this._payloadLearnSecondsLeft = Math.max(
-        0,
-        Math.ceil((this._payloadLearnHubDeadline - this._payloadLearnNow) / 1e3)
-      );
-    }
-  }
-  _formatCountdown(seconds) {
-    const total = Math.max(0, Math.floor(seconds));
-    const minutes = Math.floor(total / 60);
-    const rest = total % 60;
-    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
-  }
-  _learnTimeAgo(when) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const ts = Date.parse(String(when ?? ""));
-    if (!Number.isFinite(ts)) return "";
-    const secs = Math.max(0, Math.round((this._payloadLearnNow - ts) / 1e3));
-    if (secs < 5) return S5.learnJustNow;
-    if (secs < 60) return S5.learnSecondsAgo(secs);
-    const mins = Math.round(secs / 60);
-    if (mins < 60) return S5.learnMinutesAgo(mins);
-    return S5.learnHoursAgo(Math.round(mins / 60));
-  }
-  _initialDecodedDrafts(decoded) {
-    const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
-    if (!spec) return {};
-    const drafts = {};
-    for (const field of spec.fields) {
-      drafts[field.key] = this._fieldValueToDraft(decoded.fields[field.key], field);
-    }
-    return drafts;
-  }
-  _fieldValueToDraft(value, field) {
-    if (value == null) return "";
-    if (field.numeric) return String(Number(value) || 0);
-    const stringValue = String(value);
-    if (field.escapedDisplay) {
-      return stringValue.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-    }
-    return stringValue;
-  }
-  _openQuickAccessRenameDialog(kind, buttonId) {
-    if (this.mode === "live" && kind === "favorite") return;
-    if (this.entityId == null) return;
-    this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this.entityId, buttonId } : { kind: "favorite", activityId: this.entityId, buttonId };
-    const item = activityQuickAccessItems(this.bundle, this.entityId).find(
-      (entry) => entry.kind === kind && entry.buttonId === Number(buttonId)
-    );
-    this._editRenameDialogDraft = item?.label || "";
-    this._editRenameDialogError = "";
-    this._editRenameDialogOpen = true;
-  }
-  _openCommandDeleteConfirm(commandId, label) {
-    if (this.entityId == null) return;
-    this._confirmDeleteTarget = {
-      kind: "command",
-      deviceId: Number(this.entityId),
-      commandId: Number(commandId)
-    };
-    this._confirmDeleteLabel = label;
-  }
-  _openQuickAccessDeleteConfirm(kind, buttonId, label) {
-    if (this.entityId == null) return;
-    const activityId = Number(this.entityId);
-    this._confirmDeleteTarget = kind === "macro" ? { kind: "macro", activityId, buttonId: Number(buttonId) } : { kind: "favorite", activityId, buttonId: Number(buttonId) };
-    this._confirmDeleteLabel = label;
-  }
-  _deleteConfirmTitle(target, label) {
-    const name = label || TOOLS_CARD_STRINGS.backup.thisItem;
-    switch (target.kind) {
-      case "activity":
-        return TOOLS_CARD_STRINGS.backup.deleteActivityTitle(name);
-      case "device":
-        return TOOLS_CARD_STRINGS.backup.deleteDeviceTitle(name);
-      case "command":
-        return TOOLS_CARD_STRINGS.backup.deleteCommandTitle(name);
-      case "favorite":
-        return TOOLS_CARD_STRINGS.backup.deleteFavoriteTitle(name);
-      case "macro":
-        return TOOLS_CARD_STRINGS.backup.deleteMacroTitle(name);
-      case "activity_binding":
-      case "device_binding":
-        return TOOLS_CARD_STRINGS.backup.deleteBindingTitle(name);
-      case "activity_member":
-        return TOOLS_CARD_STRINGS.backup.activityRemoveDeviceTitle(name);
-    }
-  }
-  _openBindingDeleteConfirm(kind, buttonId, name) {
-    if (this.entityId == null) return;
-    const entityId = Number(this.entityId);
-    this._confirmDeleteTarget = kind === "activity" ? { kind: "activity_binding", activityId: entityId, buttonId: Number(buttonId) } : { kind: "device_binding", deviceId: entityId, buttonId: Number(buttonId) };
-    this._confirmDeleteLabel = name;
-  }
-  _renderDeleteConfirmDialog() {
-    const target = this._confirmDeleteTarget;
-    if (!target || !this.bundle) return A;
-    const impact = bundleDeleteImpact(this.bundle, target);
-    const hasCascade = backupDeleteHasCascade(impact);
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const isLive = this.mode === "live";
-    const isImmediate = isLive && (target.kind === "activity" || target.kind === "device");
-    const intro = isLive ? hasCascade ? S5.deleteCascadeIntroLive : S5.deleteSimpleBodyLive : hasCascade ? S5.deleteCascadeIntro : S5.deleteSimpleBody;
-    const note = isLive ? isImmediate ? S5.deleteImmediateNote : S5.deleteSyncNote : S5.deleteReplaceNote;
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${this._deleteConfirmTitle(target, this._confirmDeleteLabel)}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeDeleteConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="backup-drawer-sub">
-              ${intro}
-            </div>
-            ${hasCascade ? b2`
-                  <ul class="delete-impact-list">
-                    ${impact.activities > 0 ? b2`<li><ha-icon icon="mdi:link-variant"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactActivities(impact.activities)}</span></li>` : A}
-                    ${impact.favorites > 0 ? b2`<li><ha-icon icon="mdi:star-outline"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
-                    ${impact.macroSteps > 0 ? b2`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
-                    ${impact.powerSteps > 0 ? b2`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
-                    ${impact.bindings > 0 ? b2`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>` : A}
-                    ${impact.members > 0 ? b2`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMembers(impact.members)}</span></li>` : A}
-                  </ul>
-                ` : A}
-            <div class="delete-replace-note">
-              <ha-icon icon="mdi:information-outline"></ha-icon>
-              <span>${note}</span>
-            </div>
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note"></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeDeleteConfirm}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
-              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmDelete}>${TOOLS_CARD_STRINGS.backup.deleteConfirm}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  // ── Activity member devices (power-only membership, issue #263) ─────
-  /**
-   * Devices offered by the "Add device" picker. In LIVE mode every
-   * managed Wifi Commands device (including the reserved Wifi Events
-   * device) is excluded: their activity membership is owned by the Wifi
-   * Commands deploy, and a manual add here would silently be undone by
-   * the next resync. The offline Backup editor keeps showing everything.
-   */
-  _addableMemberDevices() {
-    if (!this.bundle || this.entityId == null) return [];
-    const options = activityAddableDevices(this.bundle, Number(this.entityId));
-    if (this.mode !== "live") return options;
-    return options.filter(
-      (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id))
-    );
-  }
-  _openMemberRemoveConfirm(activityId, deviceId, deviceName) {
-    this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
-    this._confirmDeleteLabel = deviceName;
-  }
-  _memberDeviceName(activityId, deviceId) {
-    const member = activityMemberViews(this.bundle, activityId).find((candidate) => candidate.deviceId === deviceId);
-    return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
-  }
-  _renderAddMemberDialog() {
-    if (!this._addMemberOpen || !this.bundle) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const options = this._addableMemberDevices();
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeAddMemberDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${S5.addMemberTitle}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${options.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addMemberNoneLeft}</div>` : b2`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-member-device">${S5.addFavoriteDevice}</label>
-                    <select
-                      id="sb-add-member-device"
-                      class="decoded-field-input"
-                      @change=${(event) => {
-      const value = Number(event.target.value);
-      this._addMemberDeviceId = Number.isFinite(value) ? value : null;
-    }}
-                    >
-                      ${options.map((device) => b2`
-                        <option value=${device.id} ?selected=${device.id === this._addMemberDeviceId}>${device.label}</option>
-                      `)}
-                    </select>
-                    <div class="decoded-field-helper">${S5.addMemberHelper}</div>
-                  </div>
-                `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note"></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeAddMemberDialog}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
-              <button
-                class="dialog-btn dialog-btn-primary"
-                ?disabled=${options.length === 0 || this._addMemberDeviceId == null}
-                @click=${this._applyAddMember}
-              >${S5.addMemberConfirm}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderAddFavoriteDialog() {
-    if (!this._addFavoriteOpen || !this.bundle) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const kind = this._addShortcutKind;
-    const devices = this._editableDeviceOptions();
-    const macros = this._macroOptions();
-    const commands = this._addFavoriteDeviceId != null ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
-    const canAdd = kind === "command" ? this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null : kind === "wifi_event" ? !this._wifiEventBusy && (this._wifiEventPrimary.mode === "existing" ? this._wifiEventPrimary.slot != null : this._wifiEventPrimary.name.trim().length > 0) : true;
-    const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addFavoriteNoDevices}</div>` : b2`
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-device">${S5.addFavoriteDevice}</label>
-            <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
-              ${devices.map((device) => b2`
-                <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
-              `)}
-            </select>
-          </div>
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-command">${S5.addFavoriteCommand}</label>
-            ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.addFavoriteNoCommands}</div>` : b2`
-                  <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
-                    ${commands.map((command) => b2`
-                      <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
-                    `)}
-                  </select>
-                `}
-            <div class="decoded-field-helper">${S5.addShortcutCommandHelper}</div>
-          </div>
-        `;
-    const actionFields = b2`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-add-action-name">${S5.addShortcutActionName}</label>
-        <input
-          id="sb-add-action-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._addShortcutActionName}
-          @input=${(event) => {
-      this._addShortcutActionName = event.target.value;
-    }}
-        />
-        <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
-      </div>
-    `;
-    const macroFields = b2`
-      ${macros.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-add-macro-target">${S5.macroTargetLabel}</label>
-              <select
-                id="sb-add-macro-target"
-                class="decoded-field-input"
-                @change=${(event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this._addShortcutMacroMode = "new";
-        this._addShortcutMacroId = null;
-      } else {
-        this._addShortcutMacroMode = "existing";
-        this._addShortcutMacroId = Number(value);
-      }
-      this._addFavoriteError = "";
-    }}
-              >
-                ${macros.map((macro) => b2`
-                  <option value=${macro.value} ?selected=${this._addShortcutMacroMode === "existing" && macro.value === this._addShortcutMacroId}>${macro.label}</option>
-                `)}
-                <option value="__new__" ?selected=${this._addShortcutMacroMode === "new"}>${S5.macroTargetCreateNew}</option>
-              </select>
-            </div>
-          ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
-      ${this._addShortcutMacroMode === "new" ? actionFields : A}
-    `;
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${S5.addShortcutTitle}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-add-shortcut-kind">${S5.addShortcutKindLabel}</label>
-              <select
-                id="sb-add-shortcut-kind"
-                class="decoded-field-input"
-                @change=${(event) => {
-      this._addShortcutKind = event.target.value;
-      if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
-      if (this._addShortcutKind === "wifi_event") {
-        this._wifiEventPrimary = this._defaultWifiEventSel();
-      }
-      this._addFavoriteError = "";
-    }}
-              >
-                <option value="command" ?selected=${kind === "command"}>${S5.shortcutKindCommand}</option>
-                <option value="action" ?selected=${kind === "action"}>${S5.shortcutKindAction}</option>
-                ${this._wifiEventsAvailable() ? b2`<option value="wifi_event" ?selected=${kind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
-              </select>
-            </div>
-            ${kind === "command" ? commandFields : kind === "wifi_event" ? this._renderWifiEventTargetFields({
-      idPrefix: "sb-add-fav",
-      sel: this._wifiEventPrimary,
-      onSelChange: (sel) => {
-        this._wifiEventPrimary = sel;
-        this._addFavoriteError = "";
-      }
-    }) : macroFields}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._addFavoriteError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${S5.addFavoriteCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddShortcut} ?disabled=${!canAdd}>${S5.addFavoriteAdd}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _applyActivityRename(activityId, name) {
-    if (!this.bundle) return;
-    this._commitEditBundleEdit(renameBundleActivity(this.bundle, activityId, name));
-  }
-  _applyDeviceRename(deviceId, name) {
-    if (!this.bundle) return;
-    this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
-  }
-  _entityKindCrumbLabel(kind) {
-    return kind === "activity" ? TOOLS_CARD_STRINGS.backup.crumbActivities : TOOLS_CARD_STRINGS.backup.crumbDevices;
-  }
-  // Compact ancestor trail shown above the detail/editor title. Each crumb
-  // is a tappable button that pops back to that level; the trailing "›"
-  // leads the eye into the current page's big title beneath it.
-  _renderDetailCrumbs(crumbs) {
-    if (!crumbs.length) return A;
-    return b2`
-      <div class="detail-crumbs">
-        ${crumbs.map((crumb, index) => b2`
-          ${index > 0 ? b2`<span class="detail-crumb-sep" aria-hidden="true">›</span>` : A}
-          <button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button>
-        `)}
-        <span class="detail-crumb-sep" aria-hidden="true">›</span>
-      </div>
-    `;
-  }
-  _moveActivityQuickAccessItem(index, delta) {
-    if (!this.bundle || this.entityId == null) return;
-    const items = activityQuickAccessItems(this.bundle, this.entityId);
-    const nextIndex = index + delta;
-    if (index < 0 || nextIndex < 0 || index >= items.length || nextIndex >= items.length) return;
-    const nextItems = [...items];
-    const [moved] = nextItems.splice(index, 1);
-    nextItems.splice(nextIndex, 0, moved);
-    this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
-      this.bundle,
-      this.entityId,
-      nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
-    ));
-  }
-  _moveQuickAccessByIdentity(kind, buttonId, delta) {
-    if (!this.bundle || this.entityId == null) return;
-    const items = activityQuickAccessItems(this.bundle, this.entityId);
-    const index = items.findIndex((item) => item.kind === kind && item.buttonId === Number(buttonId));
-    if (index === -1) return;
-    this._moveActivityQuickAccessItem(index, delta);
-  }
-  // ── Button bindings (add / edit picker) ─────────────────────────────
-  _bindingCommandDeviceOptions() {
-    if (!this.bundle) return [];
-    return this._editableDeviceOptions().map((device) => ({ value: device.id, label: device.label }));
-  }
-  _bindingTargetKindFor(deviceId) {
-    if (!this.bundle || this.entityId == null) return "command";
-    const dId = Number(deviceId || 0);
-    if (dId === Number(this.entityId)) return "action";
-    if (this._wifiEventsAvailable() && isWifiEventsBrand(bundleDeviceBrand(this.bundle, dId))) {
-      return "wifi_event";
-    }
-    return "command";
-  }
-  _macroName(buttonId) {
-    if (!this.bundle || this.entityId == null) return "";
-    const bId = Number(buttonId || 0);
-    return activityUserMacroSummaries(this.bundle, Number(this.entityId)).find((macro) => macro.buttonId === bId)?.name ?? "";
-  }
-  _macroOptions() {
-    if (!this.bundle || this.entityId == null) return [];
-    return activityUserMacroSummaries(this.bundle, Number(this.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
-  }
-  // ── Wifi Event kind (shared by all three Add dialogs, live mode) ────
-  /** The Wifi Event kind is offered only in live activity-scope dialogs. */
-  _wifiEventsAvailable() {
-    return this.mode === "live" && this.wifiEvents != null;
-  }
-  _deployedWifiEvents() {
-    return this._wifiEventsList ?? [];
-  }
-  /** Fire-and-forget refresh of the event list when a dialog opens. */
-  _loadWifiEvents() {
-    if (!this._wifiEventsAvailable()) return;
-    void this.wifiEvents.list().then((events) => {
-      this._wifiEventsList = events;
-      const pristine = (sel) => sel.mode === "new" && sel.slot == null && sel.name === "";
-      if (pristine(this._wifiEventPrimary)) this._wifiEventPrimary = this._defaultWifiEventSel();
-    }).catch(() => {
-      this._wifiEventsList = [];
-    });
-  }
-  _defaultWifiEventSel() {
-    const first = this._deployedWifiEvents()[0] ?? null;
-    return first ? { mode: "existing", slot: first.slot_index, name: "" } : { mode: "new", slot: null, name: "" };
-  }
-  _renderWifiEventTargetFields(params) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const events = this._deployedWifiEvents();
-    const sel = params.sel;
-    return b2`
-      ${events.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S5.wifiEventTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-wifi-event`}
-                class="decoded-field-input"
-                @change=${(event) => {
-      const value = event.target.value;
-      params.onSelChange(
-        value === "__new__" ? { mode: "new", slot: null, name: sel.name } : { mode: "existing", slot: Number(value), name: sel.name }
-      );
-    }}
-              >
-                ${events.map((item) => b2`
-                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
-                `)}
-                <option value="__new__" ?selected=${sel.mode === "new"}>${S5.wifiEventTargetCreateNew}</option>
-              </select>
-            </div>
-          ` : b2`<div class="quick-access-empty">${S5.wifiEventNoneYet}</div>`}
-      ${sel.mode === "new" ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event-name`}>${S5.wifiEventNameLabel}</label>
-              <input
-                id=${`${params.idPrefix}-wifi-event-name`}
-                class="decoded-field-input"
-                maxlength="20"
-                .value=${sel.name}
-                ?disabled=${this._wifiEventBusy}
-                @input=${(event) => {
-      const input = event.target;
-      const name = sanitizeWifiName(this.bundle?.hub?.version, input.value);
-      if (name !== input.value) input.value = name;
-      params.onSelChange({ ...sel, name });
-    }}
-              />
-              <div class="decoded-field-helper">${S5.wifiEventNameHelper}</div>
-            </div>
-          ` : A}
-      ${this._wifiEventBusy ? b2`<div class="decoded-field-helper">${S5.wifiEventDeploying}</div>` : A}
-    `;
-  }
-  /**
-   * Resolve a Wifi Event target selection to its atomic ref: a single
-   * event carries BOTH a short and a long record (short = slot+1, long =
-   * short + slot_count). A reference always addresses the event as one
-   * unit — the short record — and the long record is derived from the
-   * same event when a binding's long-press leg needs it (there is no
-   * separate long-press *target*; short vs long is an action-config
-   * distinction made in the Events tab, per the Wifi Events model).
-   *
-   * Returns the (possibly grafted) working bundle to insert into. Creating
-   * a new event is an instant store allocation (W7) — no hub deploy here.
-   * `deviceId` is the host's positive placeholder id before the first-ever
-   * deploy; the Sync flow rewrites it. Throws a user-facing Error on failure.
-   */
-  async _resolveWifiEventRef(sel) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    if (!this.wifiEvents || !this.bundle) throw new Error(S5.bindingIncomplete);
-    if (sel.mode === "existing") {
-      const event = this._deployedWifiEvents().find((item) => item.slot_index === sel.slot);
-      if (!event || event.device_id == null) throw new Error(S5.bindingIncomplete);
-      const grafted = await this.wifiEvents.ensureGrafted();
-      return {
-        deviceId: event.device_id,
-        shortCommandId: event.command_id,
-        longCommandId: event.long_press_command_id,
-        slotIndex: event.slot_index,
-        name: event.name,
-        bundle: grafted ?? this.bundle
-      };
-    }
-    const name = sel.name.trim();
-    if (!name) throw new Error(S5.wifiEventNameRequired);
-    this._wifiEventBusy = true;
-    try {
-      const created = await this.wifiEvents.create(name);
-      const event = created.event;
-      this._wifiEventsList = null;
-      if (event.device_id == null) throw new Error(S5.wifiEventCreateFailed);
-      return {
-        deviceId: event.device_id,
-        shortCommandId: event.command_id,
-        longCommandId: event.long_press_command_id,
-        slotIndex: event.slot_index,
-        name: event.name,
-        bundle: created.bundle ?? this.bundle
-      };
-    } finally {
-      this._wifiEventBusy = false;
-    }
-  }
-  _resetMacroTarget(prefix) {
-    const firstMacro = this._macroOptions()[0] ?? null;
-    const mode = firstMacro ? "existing" : "new";
-    if (prefix === "shortcut") {
-      this._addShortcutMacroMode = mode;
-      this._addShortcutMacroId = firstMacro?.value ?? null;
-      return;
-    }
-    if (prefix === "binding") {
-      this._bindingMacroMode = mode;
-      this._bindingMacroId = firstMacro?.value ?? null;
-      return;
-    }
-    this._bindingLpMacroMode = mode;
-    this._bindingLpMacroId = firstMacro?.value ?? null;
-  }
-  _captureCurrentScrollPosition() {
-    const root = this.renderRoot;
-    const scrollEl = root?.querySelector(".detail-scroll");
-    if (!scrollEl) return;
-    if (this._bindingsView) this._bindingsScrollTop = scrollEl.scrollTop;
-    else this._detailScrollTop = scrollEl.scrollTop;
-  }
-  _restoreMainScroll() {
-    void this.updateComplete.then(() => {
-      const root = this.renderRoot;
-      const scrollEl = root?.querySelector(".detail-scroll");
-      if (scrollEl) scrollEl.scrollTop = this._detailScrollTop;
-    });
-  }
-  _restoreBindingsScroll() {
-    void this.updateComplete.then(() => {
-      const root = this.renderRoot;
-      const scrollEl = root?.querySelector(".detail-scroll");
-      if (scrollEl) scrollEl.scrollTop = this._bindingsScrollTop;
-    });
-  }
-  // Command options for a chosen target: the activity's own macros when the
-  // target is the activity itself, otherwise the target device's commands.
-  _bindingCommandOptions(targetDeviceId) {
-    if (targetDeviceId == null || !this.bundle) return [];
-    if (this._bindingScope === "activity" && this.entityId != null && targetDeviceId === Number(this.entityId)) {
-      return activityUserMacroSummaries(this.bundle, Number(this.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
-    }
-    return deviceCommandItems(this.bundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
-  }
-  _openAddBindingDialog(kind) {
-    if (this.entityId == null || !this.bundle) return;
-    const entityId = Number(this.entityId);
-    const unbound = kind === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
-    if (!unbound.length) return;
-    this._bindingScope = kind;
-    this._bindingEditButtonId = null;
-    this._bindingButtonId = unbound[0].code;
-    this._bindingTargetKind = "command";
-    this._bindingActionName = "";
-    this._resetMacroTarget("binding");
-    this._bindingLpTargetKind = "command";
-    this._bindingLpActionName = "";
-    this._resetMacroTarget("bindingLp");
-    if (kind === "activity") {
-      const devices = this._bindingCommandDeviceOptions();
-      this._bindingDeviceId = devices[0]?.value ?? null;
-    } else {
-      this._bindingDeviceId = entityId;
-    }
-    const commandDeviceId = kind === "activity" ? this._bindingDeviceId : entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    this._bindingCommandId = commands[0]?.commandId ?? null;
-    this._bindingLongPressEnabled = false;
-    this._bindingLpDeviceId = this._bindingDeviceId;
-    this._bindingLpCommandId = this._bindingCommandId;
-    this._bindingError = "";
-    this._loadWifiEvents();
-    this._bindingDialogOpen = true;
-  }
-  _openEditBindingDialog(kind, buttonId) {
-    if (this.entityId == null || !this.bundle) return;
-    const entityId = Number(this.entityId);
-    const items = kind === "activity" ? activityButtonBindingItems(this.bundle, entityId) : deviceButtonBindingItems(this.bundle, entityId);
-    const item = items.find((entry) => entry.buttonId === Number(buttonId));
-    if (!item) return;
-    this._bindingScope = kind;
-    this._bindingEditButtonId = item.buttonId;
-    this._bindingButtonId = item.buttonId;
-    this._bindingDeviceId = kind === "activity" ? item.deviceId ?? null : entityId;
-    this._bindingCommandId = item.commandId;
-    this._bindingTargetKind = kind === "activity" ? this._bindingTargetKindFor(item.deviceId) : "command";
-    if (this._bindingTargetKind === "wifi_event") {
-      this._wifiEventPrimary = {
-        mode: "existing",
-        slot: Number(item.commandId) - 1,
-        name: ""
-      };
-      this._bindingLongPressEnabled = Boolean(item.longPress);
-      this._bindingError = "";
-      this._loadWifiEvents();
-      this._bindingDialogOpen = true;
-      return;
-    }
-    this._bindingActionName = this._bindingTargetKind === "action" ? this._macroName(item.commandId) : "";
-    this._bindingMacroMode = this._bindingTargetKind === "action" ? "existing" : "new";
-    this._bindingMacroId = this._bindingTargetKind === "action" ? item.commandId : null;
-    this._bindingLongPressEnabled = Boolean(item.longPress);
-    this._bindingLpDeviceId = kind === "activity" ? item.longPress?.deviceId ?? item.deviceId ?? null : entityId;
-    this._bindingLpCommandId = item.longPress?.commandId ?? null;
-    this._bindingLpTargetKind = kind === "activity" ? this._bindingTargetKindFor(this._bindingLpDeviceId) : "command";
-    this._bindingLpActionName = this._bindingLpTargetKind === "action" ? this._macroName(this._bindingLpCommandId) : "";
-    this._bindingLpMacroMode = this._bindingLpTargetKind === "action" ? "existing" : "new";
-    this._bindingLpMacroId = this._bindingLpTargetKind === "action" ? this._bindingLpCommandId : null;
-    this._bindingError = "";
-    this._loadWifiEvents();
-    this._bindingDialogOpen = true;
-  }
-  _resolveMacroTarget(bundle, activityId, mode, macroId, rawName) {
-    if (mode === "existing") {
-      const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(macroId));
-      return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
-    }
-    const name = sanitizeBundleName(bundle, rawName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
-    const next = addActivityUserMacro(bundle, activityId, name);
-    const summaries = activityUserMacroSummaries(next, activityId);
-    const created = summaries[summaries.length - 1];
-    return created ? { bundle: next, macroId: created.buttonId, name: created.name, created: true } : null;
-  }
-  _resolveActivityLongPressTarget(bundle, activityId) {
-    if (!this._bindingLongPressEnabled) {
-      return { bundle, longPress: null, createdMacro: null };
-    }
-    if (this._bindingLpTargetKind === "command") {
-      if (!this._bindingLpDeviceId || !this._bindingLpCommandId) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return null;
-      }
-      return {
-        bundle,
-        longPress: {
-          deviceId: Number(this._bindingLpDeviceId),
-          commandId: Number(this._bindingLpCommandId)
-        },
-        createdMacro: null
-      };
-    }
-    const resolved = this._resolveMacroTarget(
-      bundle,
-      activityId,
-      this._bindingLpMacroMode,
-      this._bindingLpMacroId,
-      this._bindingLpActionName
-    );
-    if (!resolved) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-      return null;
-    }
-    return {
-      bundle: resolved.bundle,
-      longPress: { deviceId: activityId, commandId: resolved.macroId },
-      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null
-    };
-  }
-  _renderBindingSelect(params) {
-    return b2`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for=${params.id}>${params.label}</label>
-        ${params.options.length === 0 ? b2`<div class="quick-access-empty">${params.emptyText ?? ""}</div>` : b2`
-              <select id=${params.id} class="decoded-field-input" @change=${params.onChange}>
-                ${params.options.map((option) => b2`
-                  <option value=${option.value} ?selected=${option.value === params.value}>${option.label}</option>
-                `)}
-              </select>
-            `}
-      </div>
-    `;
-  }
-  _renderMacroTargetFields(params) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const macros = this._macroOptions();
-    return b2`
-      ${macros.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S5.macroTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-macro-target`}
-                class="decoded-field-input"
-                @change=${params.onMacroChange}
-              >
-                ${macros.map((macro) => b2`
-                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
-                `)}
-                <option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>
-              </select>
-            </div>
-          ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
-      ${params.mode === "new" ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-name`}>${S5.addShortcutActionName}</label>
-              <input
-                id=${`${params.idPrefix}-macro-name`}
-                class="decoded-field-input"
-                maxlength="20"
-                .value=${params.name}
-                @input=${params.onNameInput}
-              />
-              <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
-            </div>
-          ` : A}
-    `;
-  }
-  _renderBindingDialog() {
-    if (!this._bindingDialogOpen || !this.bundle || this.entityId == null) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const scope = this._bindingScope;
-    const entityId = Number(this.entityId);
-    const isEdit = this._bindingEditButtonId != null;
-    const isActivity = scope === "activity";
-    const targetKind = isActivity ? this._bindingTargetKind : "command";
-    const lpTargetKind = isActivity ? this._bindingLpTargetKind : "command";
-    const unbound = scope === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
-    const commandDeviceOptions = this._bindingCommandDeviceOptions();
-    const commandDeviceId = scope === "activity" && targetKind === "command" ? this._bindingDeviceId : entityId;
-    const commandOptions = this._bindingCommandOptions(commandDeviceId);
-    const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this._bindingLpDeviceId : entityId;
-    const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
-    const wifiSelReady = (sel) => !this._wifiEventBusy && (sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0);
-    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
-    const canSave = this._bindingButtonId != null && (scope === "device" ? this._bindingCommandId != null : targetKind === "command" ? this._bindingDeviceId != null && this._bindingCommandId != null : targetKind === "wifi_event" ? wifiSelReady(this._wifiEventPrimary) : true);
-    const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this._bindingButtonId))) : S5.bindingDialogAddTitle;
-    const commandFields = b2`
-      ${scope === "activity" ? this._renderBindingSelect({
-      id: "sb-binding-device",
-      label: S5.bindingTargetDevice,
-      value: this._bindingDeviceId,
-      options: commandDeviceOptions,
-      onChange: this._handleBindingDeviceChange,
-      emptyText: S5.bindingNoDevices
-    }) : A}
-      ${this._renderBindingSelect({
-      id: "sb-binding-command",
-      label: S5.bindingCommand,
-      value: this._bindingCommandId,
-      options: commandOptions,
-      onChange: this._handleBindingCommandChange,
-      emptyText: S5.bindingNoCommands
-    })}
-    `;
-    const actionFields = this._renderMacroTargetFields({
-      idPrefix: "sb-binding",
-      mode: this._bindingMacroMode,
-      macroId: this._bindingMacroId,
-      name: this._bindingActionName,
-      onMacroChange: this._handleBindingMacroTargetChange,
-      onNameInput: this._handleBindingActionNameInput
-    });
-    const lpCommandFields = b2`
-      ${scope === "activity" ? this._renderBindingSelect({
-      id: "sb-binding-lp-device",
-      label: S5.bindingLongPressDevice,
-      value: this._bindingLpDeviceId,
-      options: commandDeviceOptions,
-      onChange: this._handleBindingLpDeviceChange,
-      emptyText: S5.bindingNoDevices
-    }) : A}
-      ${this._renderBindingSelect({
-      id: "sb-binding-lp-command",
-      label: S5.bindingLongPressCommand,
-      value: this._bindingLpCommandId,
-      options: lpCommandOptions,
-      onChange: this._handleBindingLpCommandChange,
-      emptyText: S5.bindingNoCommands
-    })}
-    `;
-    const lpActionFields = this._renderMacroTargetFields({
-      idPrefix: "sb-binding-lp",
-      mode: this._bindingLpMacroMode,
-      macroId: this._bindingLpMacroId,
-      name: this._bindingLpActionName,
-      onMacroChange: this._handleBindingLpMacroTargetChange,
-      onNameInput: this._handleBindingLpActionNameInput
-    });
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeBindingDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeBindingDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isEdit ? b2`
-                  <div class="decoded-field">
-                    <span class="decoded-field-label">${S5.bindingButton}</span>
-                    <div class="binding-static-field">${buttonName2(Number(this._bindingButtonId))}</div>
-                  </div>
-                ` : this._renderBindingSelect({
-      id: "sb-binding-button",
-      label: S5.bindingButton,
-      value: this._bindingButtonId,
-      options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
-      onChange: this._handleBindingButtonChange,
-      emptyText: S5.bindingNoButtons
-    })}
-            ${isActivity ? b2`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-binding-kind">${S5.addShortcutKindLabel}</label>
-                    <select
-                      id="sb-binding-kind"
-                      class="decoded-field-input"
-                      @change=${this._handleBindingTargetKindChange}
-                    >
-                      <option value="command" ?selected=${targetKind === "command"}>${S5.shortcutKindCommand}</option>
-                      <option value="action" ?selected=${targetKind === "action"}>${S5.shortcutKindAction}</option>
-                      ${this._wifiEventsAvailable() ? b2`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
-                    </select>
-                  </div>
-                ` : A}
-            ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this._renderWifiEventTargetFields({
-      idPrefix: "sb-binding",
-      sel: this._wifiEventPrimary,
-      onSelChange: (sel) => {
-        this._wifiEventPrimary = sel;
-        this._bindingError = "";
-      }
-    }) : actionFields}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
-              <ha-switch
-                .checked=${this._bindingLongPressEnabled}
-                @change=${this._handleBindingLongPressToggle}
-              ></ha-switch>
-            </div>
-            ${this._bindingLongPressEnabled ? primaryIsWifiEvent ? b2`
-                    <div class="decoded-field-helper">${S5.wifiEventBindingLongPressNote}</div>
-                  ` : b2`
-                    ${isActivity ? b2`
-                          <div class="decoded-field">
-                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
-                            <select
-                              id="sb-binding-lp-kind"
-                              class="decoded-field-input"
-                              @change=${this._handleBindingLpTargetKindChange}
-                            >
-                              <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
-                              <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
-                            </select>
-                          </div>
-                        ` : A}
-                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
-                  ` : A}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._bindingError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeBindingDialog}>${S5.bindingCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyBinding} ?disabled=${!canSave}>
-                ${isEdit ? S5.bindingSave : S5.bindingAdd}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  // ── Macro step editor (device macros + activity user macros) ────────
-  _openMacroEditor(scope, entityId, buttonId, name) {
-    this._captureCurrentScrollPosition();
-    this._macroEditor = { scope, entityId: Number(entityId), buttonId: Number(buttonId), name };
-  }
-  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
-  _snapHalfSeconds(value) {
-    return byteToSeconds(secondsToByte(value));
-  }
-  _currentMacroStepItems() {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return [];
-    return editor.scope === "device" ? deviceMacroStepItems(this.bundle, editor.entityId, editor.buttonId) : activityMacroStepItems(this.bundle, editor.entityId, editor.buttonId);
-  }
-  _openEditStepDialog(item) {
-    const editor = this._macroEditor;
-    if (!editor) return;
-    this._stepDialogEditIndex = item.index;
-    this._stepError = "";
-    this._stepDialogOpen = true;
-    if (item.kind === "input") {
-      this._stepKind = "input";
-      this._stepDeviceId = item.deviceId ?? null;
-      this._stepCommandId = item.commandId ?? null;
-      return;
-    }
-    if (this._wifiEventsAvailable() && editor.scope === "activity" && item.deviceId != null && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(item.deviceId)))) {
-      this._stepKind = "wifi_event";
-      this._stepDeviceId = item.deviceId;
-      this._stepCommandId = item.commandId ?? null;
-      this._stepHoldSeconds = byteToSeconds(item.hold);
-      this._wifiEventPrimary = {
-        mode: "existing",
-        slot: item.commandId != null ? Number(item.commandId) - 1 : null,
-        name: ""
-      };
-      this._loadWifiEvents();
-      return;
-    }
-    this._stepKind = "command";
-    this._stepDeviceId = editor.scope === "activity" ? item.deviceId ?? null : editor.entityId;
-    this._stepCommandId = item.commandId ?? null;
-    this._stepHoldSeconds = byteToSeconds(item.hold);
-  }
-  _removeStep(index) {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const next = editor.scope === "device" ? removeDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, index) : removeActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, index);
-    this._commitEditBundleEdit(next);
-  }
-  _reorderSteps(oldIndex, newIndex) {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const items = this._currentMacroStepItems();
-    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-    if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
-    const order = items.map((_2, index) => index);
-    const [moved] = order.splice(oldIndex, 1);
-    order.splice(newIndex, 0, moved);
-    const next = editor.scope === "device" ? reorderDeviceMacroSteps(this.bundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this.bundle, editor.entityId, editor.buttonId, order);
-    this._commitEditBundleEdit(next);
-  }
-  /** The drag handle doubles as the keyboard way to reorder: focus it and
-   *  press the up/down arrows (CR-F2-11). Focus follows the moved row. */
-  _renderReorderHandle(label, position, count, move) {
-    return b2`
-      <div
-        class="quick-access-drag"
-        role="button"
-        tabindex="0"
-        aria-label=${TOOLS_CARD_STRINGS.backup.reorderHandleAria(label)}
-        @keydown=${(event) => {
-      const delta = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-      if (!delta) return;
-      event.preventDefault();
-      const target = position + delta;
-      if (target < 0 || target >= count) return;
-      const list = event.currentTarget.closest(".quick-access-list");
-      move(delta);
-      void this.updateComplete.then(() => {
-        list?.querySelectorAll(".quick-access-drag")[target]?.focus();
-      });
-    }}
-      >
-        <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-      </div>
-    `;
-  }
-  _renderMacroStepEditorView(editor) {
-    const items = this._currentMacroStepItems();
-    const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
-    const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () => items.map((item, position) => this._renderMacroStepRow(item, position, items.length));
-    return b2`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <div class="detail-title-main">
-                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeMacroEditor}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
-                </button>
-                <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel(editor.scope), onClick: this._requestClose },
-      { label: this._selectedEditTitle(), onClick: this._closeMacroEditor }
-    ])}
-                  <div class="detail-title">${editor.name}</div>
-                </div>
-                ${this._renderDirtyChip()}
-                ${canRename ? b2`
-                      <div class="detail-title-actions">
-                        <button
-                          class="icon-btn"
-                          @click=${this._openMacroNameRenameDialog}
-                          aria-label=${TOOLS_CARD_STRINGS.backup.renameMacroAria}
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      </div>
-                    ` : A}
-              </div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            <div class="quick-access-section">
-              <div class="quick-access-head">
-                <div class="quick-access-head-main">
-                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
-                  <div class="quick-access-sub">
-                    ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
-                  </div>
-                </div>
-                <div class="quick-access-head-actions">
-                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId) ? b2`
-                        <button class="quick-access-add-btn add-member-btn" @click=${this._openAddMemberDialog}>
-                          <ha-icon icon="mdi:plus"></ha-icon>
-                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
-                        </button>
-                      ` : A}
-                  <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
-                    <ha-icon icon="mdi:plus"></ha-icon>
-                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
-                  </button>
-                </div>
-              </div>
-              ${items.length ? b2`
-                    <div class="quick-access-list">
-                      ${sortable ? b2`
-                            <ha-sortable
-                              class="quick-access-sortable"
-                              draggable-selector=".quick-access-sortable-item"
-                              handle-selector=".quick-access-drag"
-                              animation="180"
-                              @item-moved=${this._handleStepReorder}
-                            >
-                              <div class="quick-access-sortable-container">${renderRows()}</div>
-                            </ha-sortable>
-                          ` : b2`<div class="quick-access-sortable-container">${renderRows()}</div>`}
-                    </div>
-                  ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noMacroSteps}</div>`}
-            </div>
-          </div>
-        </div>
-        ${this._renderStepDialog()}
-        ${this._renderEditRenameDialog()}
-        ${this._renderAddMemberDialog()}
-        ${this._renderDeleteConfirmDialog()}
-      </div>
-    `;
-  }
-  _renderMacroStepRow(item, position, count) {
-    const isLast = position === count - 1;
-    const isPower = item.kind === "power";
-    const isInput = item.kind === "input";
-    const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(byteToSeconds(item.hold)) : "";
-    const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
-    const editor = this._macroEditor;
-    const memberDeviceId = isPower && editor?.scope === "activity" ? Number(item.deviceId ?? 0) : 0;
-    return b2`
-      <div class="quick-access-sortable-item" data-step-index=${item.index}>
-        <div class="quick-access-row">
-          ${count > 1 ? this._renderReorderHandle(item.label, position, count, (delta) => this._reorderSteps(position, position + delta)) : b2`<span></span>`}
-          <div class="quick-access-main">
-            <div class="quick-access-label-row">
-              <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${chip}</div>
-            </div>
-            ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
-          </div>
-          <div class="quick-access-actions">
-            ${isPower ? memberDeviceId > 0 ? b2`
-                      <button
-                        class="icon-btn icon-btn--danger"
-                        @click=${() => this._openMemberRemoveConfirm(
-      Number(editor?.entityId ?? 0),
-      memberDeviceId,
-      this._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId)
-    )}
-                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
-                      >
-                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                      </button>
-                    ` : A : b2`
-                  <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                  ${isInput ? A : b2`
-                        <button class="icon-btn icon-btn--danger" @click=${() => this._removeStep(item.index)} aria-label=${TOOLS_CARD_STRINGS.backup.deleteStepAria}>
-                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                        </button>
-                      `}
-                `}
-          </div>
-        </div>
-        ${isLast ? A : b2`
-              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
-                <span class="step-wait-field">
-                  <input
-                    class="step-wait-input"
-                    type="number"
-                    min="0"
-                    max="120"
-                    step="0.5"
-                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                    .value=${byteToSeconds(item.wait)}
-                    @change=${(event) => this._handleStepWaitChange(item, event)}
-                  />
-                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
-                </span>
-              </label>
-            `}
-      </div>
-    `;
-  }
-  _renderStepDialog() {
-    if (!this._stepDialogOpen || !this.bundle || !this._macroEditor) return A;
-    const editor = this._macroEditor;
-    const isEdit = this._stepDialogEditIndex !== null;
-    const isActivity = editor.scope === "activity";
-    const isInput = this._stepKind === "input";
-    const isWifiEvent = this._stepKind === "wifi_event";
-    const devices = this._editableDeviceOptions();
-    const commandDeviceId = isInput ? this._stepDeviceId : isActivity ? this._stepDeviceId : editor.entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    const canSave = isInput || (isWifiEvent ? !this._wifiEventBusy && (this._wifiEventPrimary.mode === "existing" ? this._wifiEventPrimary.slot != null : this._wifiEventPrimary.name.trim().length > 0) : this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
-    const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeStepDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeStepDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isInput ? b2`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
-                    <select id="sb-step-input" class="decoded-field-input" @change=${this._handleStepCommandChange}>
-                      <option value="" ?selected=${this._stepCommandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
-                      ${commands.map((command) => b2`
-                        <option value=${command.commandId} ?selected=${command.commandId === this._stepCommandId}>${command.label}</option>
-                      `)}
-                    </select>
-                  </div>
-                ` : b2`
-                  ${isActivity && this._wifiEventsAvailable() ? b2`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-step-kind"
-                            class="decoded-field-input"
-                            @change=${(event) => {
-      const value = event.target.value;
-      this._stepKind = value;
-      if (value === "wifi_event") this._wifiEventPrimary = this._defaultWifiEventSel();
-      this._stepError = "";
-    }}
-                          >
-                            <option value="command" ?selected=${this._stepKind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
-                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
-                          </select>
-                        </div>
-                      ` : A}
-                  ${isWifiEvent ? this._renderWifiEventTargetFields({
-      idPrefix: "sb-step",
-      sel: this._wifiEventPrimary,
-      onSelChange: (sel) => {
-        this._wifiEventPrimary = sel;
-        this._stepError = "";
-      }
-    }) : b2`
-                        ${isActivity ? this._renderBindingSelect({
-      id: "sb-step-device",
-      label: TOOLS_CARD_STRINGS.backup.stepDevice,
-      value: this._stepDeviceId,
-      options: devices.map((device) => ({ value: device.id, label: device.label })),
-      onChange: this._handleStepDeviceChange,
-      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
-    }) : A}
-                        ${this._renderBindingSelect({
-      id: "sb-step-command",
-      label: TOOLS_CARD_STRINGS.backup.stepCommand,
-      value: this._stepCommandId,
-      options: commands.map((command) => ({ value: command.commandId, label: command.label })),
-      onChange: this._handleStepCommandChange,
-      emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands
-    })}
-                      `}
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
-                    <input
-                      id="sb-step-hold"
-                      class="decoded-field-input"
-                      type="number"
-                      min="0"
-                      max="120"
-                      step="0.5"
-                      .value=${this._stepHoldSeconds}
-                      @input=${this._handleStepHoldInput}
-                      @change=${this._handleStepHoldChange}
-                    />
-                  </div>
-                `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._stepError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeStepDialog}>${TOOLS_CARD_STRINGS.backup.stepCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyStep} ?disabled=${!canSave}>
-                ${isEdit ? TOOLS_CARD_STRINGS.backup.stepSave : TOOLS_CARD_STRINGS.backup.stepAdd}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  // ── Power On/Off setup (shared by Device and Activity details) ──────
-  _powerSetupStepCount(scope, entityId, buttonId) {
-    if (!this.bundle) return 0;
-    return scope === "device" ? deviceMacroStepItems(this.bundle, entityId, buttonId).length : activityMacroStepItems(this.bundle, entityId, buttonId).length;
-  }
-  _renderPowerSetupRow(scope, entityId, buttonId, label, disabled) {
-    const count = this._powerSetupStepCount(scope, entityId, buttonId);
-    return b2`
-      <div class="quick-access-sortable-item">
-        <button
-          class="edit-selection-row"
-          aria-disabled=${disabled ? "true" : "false"}
-          tabindex=${disabled ? "-1" : "0"}
-          @click=${() => {
-      if (!disabled) this._openMacroEditor(scope, entityId, buttonId, label);
-    }}
-        >
-          <span class="selection-main">
-            <span class="selection-label">${label}</span>
-            <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
-          </span>
-          <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
-        </button>
-      </div>
-    `;
-  }
-  // The device Power section folds two concepts the hub keeps separate but
-  // the app presents together: the automatic-power / idle-behavior selector
-  // (one 0x0242 byte) and the POWER_ON/POWER_OFF command sequences. Choosing
-  // "Don't control power" makes the hub ignore the sequences, so they render
-  // inert. Activities have no idle behavior, so they get only the sequences.
-  _renderPowerSetupSection(scope, entityId) {
-    if (this.entityId == null || !this.bundle) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const isDevice = scope === "device";
-    const mode = isDevice ? deviceIdleBehavior(this.bundle, entityId) : null;
-    const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
-    return b2`
-      <div class="quick-access-section" data-edit-section="power">
-        <div class="quick-access-head">
-          <div class="quick-access-head-main">
-            <div class="quick-access-title">${S5.powerSetupTitle}</div>
-            <div class="quick-access-sub">
-              ${isDevice ? S5.powerSetupDeviceSub : S5.powerSetupActivitySub}
-            </div>
-          </div>
-        </div>
-        ${isDevice ? this._renderPowerControlDropdown(entityId, mode) : A}
-        <div class="quick-access-list">
-          ${sequencesDisabled ? b2`<div class="power-sequences-note">${S5.powerSequencesDisabledNote}</div>` : A}
-          <div
-            class="quick-access-sortable-container power-sequences"
-            data-disabled=${sequencesDisabled ? "true" : "false"}
-          >
-            ${this._renderPowerSetupRow(scope, entityId, 198, S5.powerOnLabel, sequencesDisabled)}
-            ${this._renderPowerSetupRow(scope, entityId, 199, S5.powerOffLabel, sequencesDisabled)}
-          </div>
-        </div>
-        ${isDevice ? A : this._renderActivityMemberBlock(entityId)}
-      </div>
-    `;
-  }
-  /**
-   * One-line member summary under the Activity power-sequence rows. The
-   * sequences themselves are the management surface (Add device beside
-   * Add step; deleting a power-ref row removes the device), so the
-   * section level keeps only the glanceable roster: device names with
-   * their configured input in parentheses.
-   */
-  _renderActivityMemberBlock(activityId) {
-    if (!this.bundle) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const members = activityMemberViews(this.bundle, activityId);
-    const names = members.map(
-      (member) => member.inputOrdinal > 0 && member.inputCommandName ? `${member.deviceName} (${member.inputCommandName})` : member.deviceName
-    ).join(", ");
-    return b2`
-      <div class="quick-access-sub power-members-summary" data-kind="member-summary">
-        ${members.length ? S5.memberSummary(names) : S5.memberSummaryEmpty}
-      </div>
-    `;
-  }
-  // ── Automatic power control selector (device only) ──────────────────
-  // One hub byte (the 0x0242 reply) encodes both the "Power On/Off Setup"
-  // toggle and the "Idle Behavior" choice, so it surfaces here as a single
-  // two-line dropdown. It lives in its own hub query, not the device
-  // record, so it is captured/restored separately.
-  _powerControlOptions() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return [
-      { mode: IDLE_BEHAVIOR_DISABLED, label: S5.powerControlDisabled, sub: S5.powerControlDisabledSub },
-      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S5.powerControlAutoOff, sub: S5.powerControlAutoOffSub },
-      { mode: IDLE_BEHAVIOR_STAY_ON, label: S5.powerControlStayOn, sub: S5.powerControlStayOnSub },
-      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S5.powerControlAlwaysOn, sub: S5.powerControlAlwaysOnSub }
-    ];
-  }
-  _selectPowerControl(deviceId, mode) {
-    this._powerControlMenuOpen = false;
-    if (!this.bundle) return;
-    if (deviceIdleBehavior(this.bundle, deviceId) === mode) return;
-    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this.bundle, deviceId, mode));
-  }
-  _renderPowerControlDropdown(deviceId, mode) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const options = this._powerControlOptions();
-    const selected = options.find((opt) => opt.mode === mode) ?? null;
-    const open = this._powerControlMenuOpen;
-    return b2`
-      <div class="power-control" data-open=${open ? "true" : "false"}>
-        <button
-          class="power-control-trigger"
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded=${open ? "true" : "false"}
-          @click=${this._togglePowerControlMenu}
-        >
-          <span class="selection-main">
-            <span class="selection-label">${selected ? selected.label : S5.powerControlUnset}</span>
-            <span class="selection-sub">${selected ? selected.sub : S5.powerControlUnsetSub}</span>
-          </span>
-          <span class="selection-chevron"><ha-icon icon="mdi:chevron-down"></ha-icon></span>
-        </button>
-        ${open ? b2`
-              <button
-                class="power-control-backdrop"
-                type="button"
-                tabindex="-1"
-                aria-hidden="true"
-                @click=${this._togglePowerControlMenu}
-              ></button>
-              <div class="power-control-menu" role="listbox" aria-label=${S5.powerControlTitle}>
-                ${options.map((opt) => {
-      const isSel = opt.mode === mode;
-      return b2`
-                    <button
-                      class="power-control-option"
-                      type="button"
-                      role="option"
-                      aria-selected=${isSel ? "true" : "false"}
-                      aria-checked=${isSel ? "true" : "false"}
-                      @click=${() => this._selectPowerControl(deviceId, opt.mode)}
-                    >
-                      <span class="selection-main">
-                        <span class="selection-label">${opt.label}</span>
-                        <span class="selection-sub">${opt.sub}</span>
-                      </span>
-                      <span class="selection-chevron">
-                        ${isSel ? b2`<ha-icon icon="mdi:check"></ha-icon>` : A}
-                      </span>
-                    </button>
-                  `;
-    })}
-              </div>
-            ` : A}
-      </div>
-    `;
-  }
-  _selectedEditTitle() {
-    if (!this.bundle || !this.kind || this.entityId == null) return "";
-    const options = this.kind === "activity" ? bundleActivityOptions(this.bundle) : bundleDeviceOptions(this.bundle);
-    return options.find((option) => option.id === this.entityId)?.label || "";
-  }
-};
-SofabatonEditDetailView.properties = {
-  bundle: { attribute: false },
-  kind: { attribute: false },
-  entityId: { attribute: false },
-  dirty: { type: Boolean },
-  mode: { type: String },
-  wifiEvents: { attribute: false },
-  _wifiEventsList: { state: true },
-  _wifiEventBusy: { state: true },
-  _wifiEventPrimary: { state: true },
-  _editDetailActiveSection: { state: true },
-  _editRenameDialogOpen: { state: true },
-  _editRenameDialogDraft: { state: true },
-  _editRenameDialogError: { state: true },
-  _editRenameDialogTarget: { state: true },
-  _payloadDialogOpen: { state: true },
-  _payloadDialogTarget: { state: true },
-  _payloadDialogDecodedDrafts: { state: true },
-  _payloadDialogDecodedSnapshot: { state: true },
-  _payloadDialogRawDraft: { state: true },
-  _payloadDialogHexTab: { state: true },
-  _payloadDialogProntoDraft: { state: true },
-  _payloadDialogProntoAvailable: { state: true },
-  _payloadDialogConverting: { state: true },
-  _payloadDialogFormatError: { state: true },
-  _payloadDialogError: { state: true },
-  fetchCommandPayload: { attribute: false },
-  testCommandPayload: { attribute: false },
-  _payloadFetchingCommandId: { state: true },
-  _payloadFetchError: { state: true },
-  _payloadDialogTestStatus: { state: true },
-  _payloadDialogTestError: { state: true },
-  _payloadDialogAddMode: { state: true },
-  _payloadDialogNameDraft: { state: true },
-  _addCommandPreparing: { state: true },
-  irLearn: { attribute: false },
-  _payloadLearnView: { state: true },
-  _payloadLearnHubState: { state: true },
-  _payloadLearnHubEvent: { state: true },
-  _payloadLearnSecondsLeft: { state: true },
-  _payloadLearnEmissions: { state: true },
-  _payloadLearnEmissionsError: { state: true },
-  _payloadLearnHaAvailable: { state: true },
-  _payloadLearnConsumers: { state: true },
-  _payloadLearnSourceNote: { state: true },
-  _payloadLearnNow: { state: true },
-  _confirmDeleteTarget: { state: true },
-  _confirmDeleteLabel: { state: true },
-  _addFavoriteOpen: { state: true },
-  _addMemberOpen: { state: true },
-  _addMemberDeviceId: { state: true },
-  _addFavoriteDeviceId: { state: true },
-  _addFavoriteCommandId: { state: true },
-  _addFavoriteError: { state: true },
-  _bindingDialogOpen: { state: true },
-  _bindingScope: { state: true },
-  _bindingEditButtonId: { state: true },
-  _bindingButtonId: { state: true },
-  _bindingDeviceId: { state: true },
-  _bindingCommandId: { state: true },
-  _bindingLongPressEnabled: { state: true },
-  _bindingLpDeviceId: { state: true },
-  _bindingLpCommandId: { state: true },
-  _bindingTargetKind: { state: true },
-  _bindingActionName: { state: true },
-  _bindingMacroMode: { state: true },
-  _bindingMacroId: { state: true },
-  _bindingLpTargetKind: { state: true },
-  _bindingLpMacroMode: { state: true },
-  _bindingLpMacroId: { state: true },
-  _bindingLpActionName: { state: true },
-  _bindingError: { state: true },
-  _macroEditor: { state: true },
-  _stepDialogOpen: { state: true },
-  _stepDialogEditIndex: { state: true },
-  _stepKind: { state: true },
-  _stepDeviceId: { state: true },
-  _stepCommandId: { state: true },
-  _stepHoldSeconds: { state: true },
-  _stepError: { state: true },
-  _haSortableReady: { state: true },
-  _powerControlMenuOpen: { state: true },
-  _roleMenuOpen: { state: true },
-  _roleConfirm: { state: true },
-  _bindingsView: { state: true },
-  _addShortcutKind: { state: true },
-  _addShortcutActionName: { state: true },
-  _addShortcutMacroMode: { state: true },
-  _addShortcutMacroId: { state: true }
-};
-// The whole backup-tab stylesheet ships to both shadow roots (see
-// backup-tab-styles.ts); the :host rule it carries gives this element
-// the same flex-fill layout the tab-panel had inside backup-tab.
-SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButtonStyles, i`
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/styles.ts
+var editDetailViewStyles = i`
     :host {
       flex-direction: column;
     }
@@ -14857,7 +10240,5080 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
     }
     .managed-wifi-lock-chip ha-icon { --mdc-icon-size: 18px; }
     .managed-wifi-lock-copy { margin: 0; color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 46ch; }
-  `];
+  `;
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/ir-learn-controller.ts
+var LEARN_TIMEOUT_S = 60;
+function formatCarrierKhz(carrierHz) {
+  const locale = toolsCardLanguage() || "en";
+  try {
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(carrierHz / 1e3);
+  } catch {
+    return (carrierHz / 1e3).toFixed(1);
+  }
+}
+var IrLearnController = class {
+  constructor(host) {
+    this.host = host;
+    // "New" is judged against the ring as first seen when learn mode
+    // opened (payload -> timestamp), never against the browser clock.
+    this._view = "off";
+    this._hubState = "arming";
+    this._hubEvent = null;
+    this.hubDeadline = 0;
+    this._secondsLeft = 0;
+    this.hubCancel = null;
+    this.hubAttempt = 0;
+    this.ticker = null;
+    this._emissions = [];
+    this.emissionsUnsub = null;
+    this._emissionsError = null;
+    this.baseline = null;
+    this._haAvailable = null;
+    this._consumers = [];
+    this._sourceNote = "";
+    this._now = Date.now();
+    host.addController(this);
+  }
+  get view() {
+    return this._view;
+  }
+  set view(value) {
+    if (value === this._view) return;
+    this._view = value;
+    this.host.requestUpdate();
+  }
+  get hubState() {
+    return this._hubState;
+  }
+  set hubState(value) {
+    if (value === this._hubState) return;
+    this._hubState = value;
+    this.host.requestUpdate();
+  }
+  get hubEvent() {
+    return this._hubEvent;
+  }
+  set hubEvent(value) {
+    if (value === this._hubEvent) return;
+    this._hubEvent = value;
+    this.host.requestUpdate();
+  }
+  get secondsLeft() {
+    return this._secondsLeft;
+  }
+  set secondsLeft(value) {
+    if (value === this._secondsLeft) return;
+    this._secondsLeft = value;
+    this.host.requestUpdate();
+  }
+  get emissions() {
+    return this._emissions;
+  }
+  set emissions(value) {
+    if (value === this._emissions) return;
+    this._emissions = value;
+    this.host.requestUpdate();
+  }
+  get emissionsError() {
+    return this._emissionsError;
+  }
+  set emissionsError(value) {
+    if (value === this._emissionsError) return;
+    this._emissionsError = value;
+    this.host.requestUpdate();
+  }
+  get haAvailable() {
+    return this._haAvailable;
+  }
+  set haAvailable(value) {
+    if (value === this._haAvailable) return;
+    this._haAvailable = value;
+    this.host.requestUpdate();
+  }
+  get consumers() {
+    return this._consumers;
+  }
+  set consumers(value) {
+    if (value === this._consumers) return;
+    this._consumers = value;
+    this.host.requestUpdate();
+  }
+  get sourceNote() {
+    return this._sourceNote;
+  }
+  set sourceNote(value) {
+    if (value === this._sourceNote) return;
+    this._sourceNote = value;
+    this.host.requestUpdate();
+  }
+  get now() {
+    return this._now;
+  }
+  set now(value) {
+    if (value === this._now) return;
+    this._now = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  // ── Rendering ─────────────────────────────────────────────────────
+  renderEntryButton() {
+    if (!this.host._learnAvailable()) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <button
+        class="payload-learn-btn"
+        type="button"
+        title=${S5.learnAria}
+        aria-label=${S5.learnAria}
+        @click=${() => void this.enter()}
+      >
+        <ha-icon icon="mdi:import"></ha-icon>
+        <span>${S5.learn}</span>
+      </button>
+    `;
+  }
+  renderPanel() {
+    switch (this.view) {
+      case "menu":
+        return this.renderMenu();
+      case "hub":
+        return this.renderHub();
+      case "ha":
+        return this.renderInbox();
+      default:
+        return A;
+    }
+  }
+  renderMenu() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="learn-panel" data-learn-view="menu">
+        <button class="learn-option" type="button" @click=${() => void this.startHubLearn()}>
+          <ha-icon icon="mdi:remote"></ha-icon>
+          <span class="learn-option-body">
+            <span class="learn-option-title">${S5.learnFromHub}</span>
+            <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
+          </span>
+          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>
+        ${this.haOptionVisible() ? b2`
+              <button class="learn-option" type="button" @click=${() => this.openInbox()}>
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+                <span class="learn-option-body">
+                  <span class="learn-option-title">${S5.learnFromHa}</span>
+                  <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
+                </span>
+                <ha-icon icon="mdi:chevron-right"></ha-icon>
+              </button>
+            ` : this.haAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
+      </div>
+    `;
+  }
+  renderHub() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const state = this.hubState;
+    const event = this.hubEvent;
+    let icon = "mdi:remote";
+    let title = "";
+    let detail = "";
+    switch (state) {
+      case "arming":
+        icon = "mdi:progress-clock";
+        title = S5.learnHubArming;
+        break;
+      case "listening":
+        title = S5.learnHubListening;
+        detail = S5.learnHubCountdown(this.formatCountdown(this.secondsLeft));
+        break;
+      case "timed_out":
+        icon = "mdi:timer-off-outline";
+        title = S5.learnHubTimedOut;
+        break;
+      case "interrupted":
+        icon = "mdi:alert-circle-outline";
+        title = S5.learnHubInterrupted(String(event?.interrupted_by || "?"));
+        break;
+      case "cancelled":
+        icon = "mdi:cancel";
+        title = S5.learnHubCancelled;
+        break;
+      case "refused":
+        icon = "mdi:alert-circle-outline";
+        title = localizeBackendError(event, "ir_learn");
+        break;
+      case "error":
+        icon = "mdi:alert-circle-outline";
+        title = localizeBackendError(event, "ir_learn");
+        break;
+      default:
+        title = S5.learnHubListening;
+    }
+    return b2`
+      <div class="learn-panel" data-learn-view="hub">
+        <div class="learn-stage ${state}" role="status" aria-live="polite">
+          <ha-icon icon=${icon}></ha-icon>
+          <div class="learn-stage-copy">
+            <div class="learn-stage-title">${title}</div>
+            ${detail ? b2`<div class="learn-stage-detail">${detail}</div>` : A}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  renderInbox() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const chips = this.consumers.map((consumer) => ({
+      name: consumer.title || consumer.domain,
+      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain
+    }));
+    const emissions = [...this.emissions].reverse();
+    return b2`
+      <div class="learn-panel" data-learn-view="ha">
+        <div class="learn-inbox-help">${S5.learnHaHelper}</div>
+        ${chips.length ? b2`
+              <div class="learn-consumers">
+                <span class="learn-consumers-label">${S5.learnHaConsumers}</span>
+                <div class="learn-chips">
+                  ${chips.map((chip) => b2`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
+                </div>
+              </div>
+            ` : A}
+        ${this.emissionsError ? b2`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${localizeBackendError(this.emissionsError, "ir_emissions")}</span>
+              </div>
+            ` : A}
+        <div class="learn-inbox-list" role="list">
+          ${emissions.length ? emissions.map((rec) => this.renderInboxRow(rec)) : b2`
+                <div class="learn-inbox-empty">
+                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
+                  <span>${S5.learnHaEmpty}</span>
+                </div>
+              `}
+        </div>
+      </div>
+    `;
+  }
+  renderInboxRow(rec) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isNew = this.emissionIsNew(rec);
+    const meta = [this.timeAgo(rec.when)];
+    if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
+    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
+    return b2`
+      <button
+        class="learn-inbox-row ${isNew ? "is-new" : ""}"
+        type="button"
+        role="listitem"
+        @click=${() => this.useEmission(rec)}
+      >
+        <span class="learn-inbox-main">
+          <span class="learn-inbox-label">${this.emissionDisplayName(rec)}</span>
+          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" \xB7 ")}</span>
+        </span>
+        ${isNew ? b2`<span class="learn-badge">${S5.learnHaNew}</span>` : A}
+        <span class="learn-inbox-use">${S5.learnHaUse}</span>
+      </button>
+    `;
+  }
+  renderFooterActions() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (this.view === "menu") {
+      return b2`<button class="dialog-btn" @click=${() => this.exit()}>${S5.learnBack}</button>`;
+    }
+    if (this.view === "hub") {
+      const terminal = this.hubLearnIsTerminal();
+      return b2`
+        ${terminal ? b2`<button class="dialog-btn dialog-btn-primary" @click=${() => void this.startHubLearn()}>${S5.learnTryAgain}</button>` : A}
+        <button class="dialog-btn" @click=${() => this.backToMenu()}>
+          ${terminal ? S5.learnBack : TOOLS_CARD_STRINGS.common.cancel}
+        </button>
+      `;
+    }
+    return b2`<button class="dialog-btn" @click=${() => this.backToMenu()}>${S5.learnBack}</button>`;
+  }
+  // ── Logic ─────────────────────────────────────────────────────────
+  /**
+   * Open the source menu. The HA option is gated on the emitter existing
+   * AND either a consumer config entry or a non-empty intercept ring, so
+   * the inbox subscription is opened right away (it also feeds the inbox
+   * view later) while the consumer lookup runs alongside it.
+   */
+  async enter() {
+    const host = this.host.irLearn;
+    if (!host || !this.host._learnAvailable()) return;
+    this.view = "menu";
+    this.sourceNote = "";
+    this.haAvailable = null;
+    this.consumers = [];
+    this.startTicker();
+    void this.openEmissionInbox(host);
+    try {
+      const response = await host.consumers();
+      if (this.left()) return;
+      this.consumers = Array.isArray(response?.consumers) ? response.consumers : [];
+      this.haAvailable = !!response?.available;
+    } catch {
+      if (this.left()) return;
+      this.haAvailable = false;
+    }
+  }
+  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
+  left() {
+    return this.view === "off";
+  }
+  haOptionVisible() {
+    return this.haAvailable === true && (this.consumers.length > 0 || this.emissions.length > 0);
+  }
+  async openEmissionInbox(host) {
+    if (this.emissionsUnsub) return;
+    this.emissionsError = null;
+    try {
+      const unsubscribe = await host.subscribeEmissions((emissions) => {
+        if (this.view === "off") return;
+        const next = Array.isArray(emissions) ? emissions : [];
+        if (!this.baseline) {
+          this.baseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
+        }
+        this.emissions = next;
+      });
+      if (this.view === "off") {
+        unsubscribe();
+        return;
+      }
+      this.emissionsUnsub = unsubscribe;
+    } catch (error) {
+      if (this.view === "off") return;
+      this.emissionsError = {
+        error_code: backendErrorCode(error) ?? "ir_emissions_failed"
+      };
+    }
+  }
+  /**
+   * Row name: the command's own repr when its class defines one (it
+   * carries address/command), otherwise the backend label, which is the
+   * class name plus a per-code digest. Repr-less classes (live finding:
+   * SonyX700Command) would otherwise make every code read identically.
+   */
+  emissionDisplayName(rec) {
+    const repr = String(rec.command_repr ?? "").trim();
+    const label = String(rec.label ?? "").trim();
+    if (!repr) return label;
+    const className = label.replace(/\s*\(.*$/, "");
+    return repr === className ? label : repr;
+  }
+  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
+  emissionIsNew(rec) {
+    const baseline = this.baseline;
+    if (!baseline) return false;
+    return baseline.get(rec.payload_hex) !== rec.when;
+  }
+  openInbox() {
+    this.cancelHubLearn();
+    this.view = "ha";
+    if (this.host.irLearn) void this.openEmissionInbox(this.host.irLearn);
+  }
+  backToMenu() {
+    this.cancelHubLearn();
+    this.view = "menu";
+  }
+  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
+  exit() {
+    this.cancelHubLearn();
+    const unsubscribe = this.emissionsUnsub;
+    this.emissionsUnsub = null;
+    if (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch {
+      }
+    }
+    this.stopTicker();
+    this.view = "off";
+    this.hubState = "arming";
+    this.hubEvent = null;
+    this.hubDeadline = 0;
+    this.secondsLeft = 0;
+    this.emissions = [];
+    this.emissionsError = null;
+    this.baseline = null;
+    this.haAvailable = null;
+    this.consumers = [];
+  }
+  async startHubLearn() {
+    const host = this.host.irLearn;
+    if (!host) return;
+    this.cancelHubLearn();
+    const attempt = ++this.hubAttempt;
+    this.view = "hub";
+    this.hubState = "arming";
+    this.hubEvent = null;
+    this.hubDeadline = 0;
+    this.secondsLeft = 0;
+    this.startTicker();
+    try {
+      const cancel = await host.learnFromHub((event) => {
+        if (attempt !== this.hubAttempt) return;
+        this.handleHubLearnEvent(event);
+      }, LEARN_TIMEOUT_S);
+      if (attempt !== this.hubAttempt || this.view !== "hub") {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      if (this.hubLearnIsTerminal()) {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      this.hubCancel = cancel;
+    } catch (error) {
+      if (attempt !== this.hubAttempt) return;
+      this.hubState = "error";
+      this.hubEvent = {
+        state: "error",
+        error_code: backendErrorCode(error) ?? "ir_learn_failed"
+      };
+    }
+  }
+  handleHubLearnEvent(event) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    this.hubEvent = event;
+    this.hubState = event.state;
+    if (event.state === "listening") {
+      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
+      this.hubDeadline = Date.now() + timeout * 1e3;
+      this.secondsLeft = Math.ceil(timeout);
+      return;
+    }
+    this.releaseHubLearn();
+    if (event.state !== "learned") return;
+    const hex = String(event.payload_hex ?? "").trim();
+    if (!hex) {
+      this.hubState = "error";
+      this.hubEvent = { state: "error", error_code: "ir_learn_no_payload" };
+      return;
+    }
+    const timings = Number(event.duration_count) || 0;
+    const carrier = Number(event.carrier_hz) || 0;
+    const note = timings && carrier ? S5.learnHubLearned(timings, formatCarrierKhz(carrier)) : S5.learnHubLearnedRaw;
+    this.host._adoptLearnedPayload(hex, note);
+  }
+  useEmission(rec) {
+    const hex = String(rec.payload_hex ?? "").trim();
+    if (!hex) return;
+    this.host._adoptLearnedPayload(
+      hex,
+      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this.emissionDisplayName(rec))
+    );
+  }
+  hubLearnIsTerminal() {
+    return this.hubState !== "arming" && this.hubState !== "listening";
+  }
+  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
+  cancelHubLearn() {
+    this.hubAttempt++;
+    this.releaseHubLearn();
+  }
+  releaseHubLearn() {
+    const cancel = this.hubCancel;
+    this.hubCancel = null;
+    if (cancel) {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+  }
+  startTicker() {
+    if (this.ticker) return;
+    this.now = Date.now();
+    this.ticker = setInterval(() => this.tick(), 1e3);
+  }
+  stopTicker() {
+    if (this.ticker) clearInterval(this.ticker);
+    this.ticker = null;
+  }
+  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
+  tick() {
+    this.now = Date.now();
+    if (this.view === "hub" && this.hubState === "listening" && this.hubDeadline) {
+      this.secondsLeft = Math.max(
+        0,
+        Math.ceil((this.hubDeadline - this.now) / 1e3)
+      );
+    }
+  }
+  formatCountdown(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
+  }
+  timeAgo(when) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const ts = Date.parse(String(when ?? ""));
+    if (!Number.isFinite(ts)) return "";
+    const secs = Math.max(0, Math.round((this.now - ts) / 1e3));
+    if (secs < 5) return S5.learnJustNow;
+    if (secs < 60) return S5.learnSecondsAgo(secs);
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return S5.learnMinutesAgo(mins);
+    return S5.learnHoursAgo(Math.round(mins / 60));
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/shared/ir-format.ts
+var IrFormatError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "IrFormatError";
+  }
+};
+var RAW_IR_DEFAULT_TRAILING_GAP_US = 4e4;
+var PRONTO_REFERENCE_HZ = 4145146;
+var PRONTO_MAX_WORD = 65535;
+function roundHalfEven(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+function parseProntoHex(text) {
+  const tokens = text.trim().split(/\s+/).filter((t4) => t4.length > 0);
+  const words = tokens.map((token) => {
+    const value = /^(?:0[xX])?[0-9a-fA-F]+$/.test(token) ? parseInt(token.replace(/^0[xX]/, ""), 16) : NaN;
+    if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
+    return value;
+  });
+  if (words.length < 6) {
+    throw new IrFormatError("ir-format/pronto-too-short");
+  }
+  if (words.some((w2) => w2 < 0 || w2 > 65535)) {
+    throw new IrFormatError("ir-format/pronto-word-range");
+  }
+  const [preamble, freqWord, oncePairs, repeatPairs] = words;
+  if (preamble !== 0) {
+    throw new IrFormatError("ir-format/pronto-not-learned-format");
+  }
+  if (freqWord === 0) throw new IrFormatError("ir-format/pronto-zero-frequency");
+  const expected = 4 + 2 * (oncePairs + repeatPairs);
+  if (words.length !== expected) {
+    throw new IrFormatError("ir-format/pronto-count-mismatch");
+  }
+  const carrierHz = roundHalfEven(PRONTO_REFERENCE_HZ / freqWord);
+  let count;
+  if (oncePairs > 0) {
+    count = 2 * oncePairs;
+  } else if (repeatPairs > 0) {
+    count = 2 * repeatPairs;
+  } else {
+    throw new IrFormatError("ir-format/pronto-empty");
+  }
+  const section = words.slice(4, 4 + count);
+  if (section.some((w2) => w2 === 0)) throw new IrFormatError("ir-format/pronto-zero-timing");
+  const cycleUs = 1e6 / carrierHz;
+  const timingsUs = section.map((w2) => Math.max(1, roundHalfEven(w2 * cycleUs)));
+  return { timingsUs, carrierHz };
+}
+function renderProntoHex(signal) {
+  const { carrierHz } = signal;
+  const durations = normalizeTimings(signal);
+  const freqWord = Math.max(
+    1,
+    Math.min(PRONTO_MAX_WORD, roundHalfEven(PRONTO_REFERENCE_HZ / carrierHz))
+  );
+  const cyclesPerUs = carrierHz / 1e6;
+  const words = [0, freqWord, durations.length / 2, 0];
+  for (const value of durations) {
+    words.push(Math.max(1, Math.min(PRONTO_MAX_WORD, roundHalfEven(value * cyclesPerUs))));
+  }
+  return words.map((w2) => w2.toString(16).toUpperCase().padStart(4, "0")).join(" ");
+}
+function parseSofabatonBlob(hexText) {
+  const blob = hexToBytes(hexText);
+  if (blob.length < 8 + 2 * 4 + 4) {
+    throw new IrFormatError("ir-format/blob-too-short");
+  }
+  if (looksLikeDescriptorBlob(blob)) {
+    throw new IrFormatError("ir-format/blob-descriptive");
+  }
+  const carrierHz = blob[6] << 8 | blob[7];
+  if (carrierHz < 1e4 || carrierHz > 5e5) {
+    throw new IrFormatError("ir-format/blob-carrier");
+  }
+  const wordAt = (pos) => blob[pos] * 16777216 + blob[pos + 1] * 65536 + blob[pos + 2] * 256 + blob[pos + 3];
+  let timingsUs = [];
+  const declaredBytes = (blob[0] << 8 | blob[1]) + (blob[2] << 8 | blob[3]);
+  if (declaredBytes > 0 && declaredBytes % 4 === 0 && 8 + declaredBytes + 4 <= blob.length) {
+    for (let pos = 8; pos < 8 + declaredBytes; pos += 4) timingsUs.push(wordAt(pos));
+    if (timingsUs.some((v2) => v2 === 0)) timingsUs = [];
+  }
+  if (timingsUs.length === 0) {
+    let terminated = false;
+    for (let pos = 8; pos + 4 <= blob.length; pos += 4) {
+      const word = wordAt(pos);
+      if (word === 0) {
+        terminated = true;
+        break;
+      }
+      timingsUs.push(word);
+    }
+    if (!terminated) throw new IrFormatError("ir-format/blob-unterminated");
+  }
+  if (timingsUs.length < 2) {
+    throw new IrFormatError("ir-format/blob-too-few-timings");
+  }
+  if (timingsUs.some((v2) => v2 < 20 || v2 > 2e6)) {
+    throw new IrFormatError("ir-format/blob-timing-range");
+  }
+  return { timingsUs, carrierHz };
+}
+function buildSofabatonBlob(signal) {
+  const { carrierHz } = signal;
+  if (!(carrierHz > 0 && carrierHz < 65536)) {
+    throw new IrFormatError("ir-format/carrier-range");
+  }
+  const durations = normalizeTimings(signal);
+  if (4 * durations.length >= 65536) {
+    throw new IrFormatError("ir-format/too-many-timings");
+  }
+  const bytes = [];
+  pushBe16(bytes, 4 * durations.length);
+  bytes.push(0, 0, 0, 0);
+  pushBe16(bytes, carrierHz);
+  for (const value of durations) {
+    if (value >= 4294967296) throw new IrFormatError("ir-format/timing-range");
+    bytes.push(value >>> 24 & 255, value >>> 16 & 255, value >>> 8 & 255, value & 255);
+  }
+  bytes.push(0, 0, 0, 0);
+  return bytes.map((b3) => b3.toString(16).padStart(2, "0")).join("");
+}
+var UC_HEX_RE = /^\s*([A-Za-z_0-9]+)\s*;\s*(?:0[xX])?([0-9A-Fa-f]+)\s*;\s*(\d+)\s*;\s*(\d+)\s*$/;
+function isUcHexCode(text) {
+  return UC_HEX_RE.test(text);
+}
+function unwrapUcCodesetRow(text) {
+  const trimmed = text.trim();
+  if (!trimmed.includes(",")) return null;
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '"') {
+      if (quoted && trimmed[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  const values = cells.map((cell) => cell.trim());
+  const formatIndex = values.findIndex((cell) => /^(HEX|PRONTO)$/i.test(cell));
+  if (formatIndex < 0 || formatIndex + 1 >= values.length) return null;
+  const format = values[formatIndex].toUpperCase();
+  const code = values.slice(formatIndex + 1).join(",").trim();
+  if (!code) return null;
+  const name = formatIndex > 0 ? values.slice(0, formatIndex).join(",").trim() : "";
+  return { name: name || null, format, code };
+}
+function resolveUcPaste(text) {
+  const row = unwrapUcCodesetRow(text);
+  if (row) {
+    if (row.format === "HEX" && isUcHexCode(row.code)) {
+      return { name: row.name, kind: "uc_hex", code: row.code.trim() };
+    }
+    if (row.format === "PRONTO" && detectIrPayloadFormat(row.code) === "pronto") {
+      return { name: row.name, kind: "pronto", code: row.code.trim() };
+    }
+    return null;
+  }
+  if (isUcHexCode(text)) return { name: null, kind: "uc_hex", code: text.trim() };
+  return null;
+}
+function detectIrPayloadFormat(text) {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return "unknown";
+  if (/^P:/i.test(trimmed)) return "descriptor";
+  if (isUcHexCode(trimmed)) return "uc_hex";
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length >= 6 && tokens.every((t4) => /^[0-9a-fA-F]{4}$/.test(t4)) && parseInt(tokens[0], 16) === 0) {
+    const once = parseInt(tokens[2], 16);
+    const repeat = parseInt(tokens[3], 16);
+    if (tokens.length === 4 + 2 * (once + repeat)) return "pronto";
+  }
+  if (/^[0-9a-fA-F\s]+$/.test(trimmed)) return "sofabaton";
+  return "unknown";
+}
+function normalizeTimings(signal) {
+  if (signal.timingsUs.length === 0) {
+    throw new IrFormatError("ir-format/empty");
+  }
+  const durations = signal.timingsUs.map((v2) => Math.abs(Math.trunc(v2)));
+  if (durations.some((v2) => v2 === 0)) {
+    throw new IrFormatError("ir-format/zero-timing");
+  }
+  if (durations.length % 2 === 1) durations.push(RAW_IR_DEFAULT_TRAILING_GAP_US);
+  return durations;
+}
+function looksLikeDescriptorBlob(blob) {
+  const magic = [0, 0, 17, 0, 148, 112];
+  return blob.length >= 8 && magic.every((b3, i7) => blob[2 + i7] === b3);
+}
+function pushBe16(bytes, value) {
+  bytes.push(value >>> 8 & 255, value & 255);
+}
+function hexToBytes(hexText) {
+  const clean = hexText.replace(/\s+/g, "");
+  if (clean.length === 0 || clean.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(clean)) {
+    throw new IrFormatError("ir-format/not-hex-bytes");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i7 = 0; i7 < out.length; i7 += 1) {
+    out[i7] = parseInt(clean.slice(2 * i7, 2 * i7 + 2), 16);
+  }
+  return out;
+}
+function formatHexForDisplay(hexText) {
+  const clean = hexText.replace(/\s+/g, "").toLowerCase();
+  return clean.replace(/(..)/g, "$1 ").trim();
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/payload-drafts.ts
+function draftToFieldValue(draft, field) {
+  if (field.numeric) {
+    const numeric = Number(draft);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+  if (field.escapedDisplay) {
+    let result = draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+    return result;
+  }
+  if (field.crlfOnWire) {
+    return draft.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+  }
+  return draft;
+}
+function fieldValueToDraft(value, field) {
+  if (value == null) return "";
+  if (field.numeric) return String(Number(value) || 0);
+  const stringValue = String(value);
+  if (field.escapedDisplay) {
+    return stringValue.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+  }
+  return stringValue;
+}
+function decodedSnapshotFromFetch(decoded) {
+  if (!decoded) return null;
+  const className = String(decoded.class ?? "").trim().toLowerCase();
+  if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
+  return {
+    className,
+    fields: { ...decoded.fields ?? {} },
+    trailerHex: String(decoded.trailer_hex ?? ""),
+    edited: false
+  };
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/payload-dialog-controller.ts
+var PayloadDialogController = class {
+  constructor(host) {
+    this.host = host;
+    // ── Payload dialog (structured decoded form OR raw hex) ────────────
+    // Separate from the rename dialog: renaming is the common case and
+    // stays a compact name-only form; payload editing has its own button
+    // and popup on each command row.
+    this._open = false;
+    this._target = null;
+    this._decodedDrafts = {};
+    this._decodedSnapshot = null;
+    this.rawSnapshot = "";
+    this._rawDraft = "";
+    // ── IR hex format tabs (IR8) ───────────────────────────────────────
+    // For IR devices the raw-payload textarea carries two projections of
+    // one canonical signal: the Sofabaton blob (always the byte source of
+    // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
+    // rendering. Pronto is the default view; it is unavailable when the
+    // stored bytes do not parse as raw timings (descriptive payloads,
+    // unknown variants) and the sofabaton tab then acts as passthrough.
+    this._hexTab = "pronto";
+    this._prontoDraft = "";
+    this._prontoAvailable = true;
+    this._formatError = "";
+    this._error = "";
+    // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
+    // Detection is local (the shape is exact); rendering needs protocol
+    // knowledge and runs on the backend through the host callback. While a
+    // conversion is in flight the sofabaton bytes are stale, so Test/Save
+    // wait for it; a newer paste supersedes an older one via the sequence.
+    this._converting = false;
+    this.conversionSeq = 0;
+    this._fetchingCommandId = null;
+    this._fetchError = "";
+    this.liveFetched = null;
+    this._testStatus = "idle";
+    this._testError = "";
+    // ── Add-command mode of the payload dialog (live mode only) ────────
+    // Same payload controls as command edit, plus a Name field. Decodable
+    // wifi classes seed their form (and the opaque record trailer) from an
+    // existing command fetched as a template; IR synthesizes from the
+    // descriptor alone on the backend, so it needs no template.
+    this._addMode = false;
+    this._nameDraft = "";
+    this._addPreparing = false;
+    this.handleProntoInput = (event) => {
+      const input = event.currentTarget;
+      const text = input.value;
+      this.error = "";
+      if (this.tryForeignPaste(text)) return;
+      this.conversionSeq += 1;
+      this.converting = false;
+      const detected = detectIrPayloadFormat(text);
+      if (detected === "descriptor") {
+        if (bundleIsX2(this.host.bundle)) {
+          this.morphToDescriptor(text);
+          return;
+        }
+        this.prontoDraft = text;
+        this.formatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+        return;
+      }
+      if (detected === "sofabaton") {
+        try {
+          parseSofabatonBlob(text);
+          this.morphToHex(text, "sofabaton");
+          return;
+        } catch {
+        }
+      }
+      this.prontoDraft = text;
+      this.applyProntoDraft(text);
+    };
+    this.handleNameInput = (event) => {
+      const input = event.currentTarget;
+      const value = sanitizeBundleName(this.host.bundle, input.value);
+      input.value = value;
+      this.nameDraft = value;
+      this.error = "";
+    };
+    this.handleRawInput = (event) => {
+      const input = event.currentTarget;
+      const text = input.value;
+      this.error = "";
+      if (this.liveDeviceIsIr()) {
+        if (this.tryForeignPaste(text)) return;
+        this.conversionSeq += 1;
+        this.converting = false;
+        const detected = detectIrPayloadFormat(text);
+        if (detected === "pronto") {
+          this.morphToHex(text, "pronto");
+          return;
+        }
+        if (detected === "descriptor") {
+          if (bundleIsX2(this.host.bundle)) {
+            this.morphToDescriptor(text);
+            return;
+          }
+          this.rawDraft = text;
+          this.formatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
+          return;
+        }
+        this.rawDraft = text;
+        this.formatError = "";
+        this.syncProntoFromRaw();
+        return;
+      }
+      this.rawDraft = text;
+    };
+    this.handleDecodedFieldInput = (event, fieldKey) => {
+      const input = event.currentTarget;
+      if (fieldKey === "descriptor" && this.decodedSnapshot?.className === "ir") {
+        if (this.tryForeignPaste(input.value)) return;
+        const detected = detectIrPayloadFormat(input.value);
+        if (detected === "pronto") {
+          this.morphToHex(input.value, "pronto");
+          return;
+        }
+        if (detected === "sofabaton") {
+          try {
+            parseSofabatonBlob(input.value);
+            this.morphToHex(input.value, "sofabaton");
+            return;
+          } catch {
+          }
+        }
+      }
+      this.decodedDrafts = {
+        ...this.decodedDrafts,
+        [fieldKey]: input.value
+      };
+    };
+    this.close = () => {
+      this.host._learn.exit();
+      this.host._learn.sourceNote = "";
+      this.conversionSeq += 1;
+      this.converting = false;
+      this.open = false;
+      this.target = null;
+      this.decodedSnapshot = null;
+      this.decodedDrafts = {};
+      this.rawSnapshot = "";
+      this.rawDraft = "";
+      this.error = "";
+      this.liveFetched = null;
+      this.testStatus = "idle";
+      this.testError = "";
+      this.addMode = false;
+      this.nameDraft = "";
+      this.hexTab = "pronto";
+      this.prontoDraft = "";
+      this.prontoAvailable = true;
+      this.formatError = "";
+    };
+    this.apply = () => {
+      const target = this.target;
+      if (!target || !this.host.bundle) return;
+      if (this.formatError) {
+        this.error = this.formatError;
+        return;
+      }
+      if (this.converting) {
+        this.error = TOOLS_CARD_STRINGS.backup.ucHexConverting;
+        return;
+      }
+      if (this.addMode) {
+        this.applyAdd(target);
+        return;
+      }
+      if (this.host.mode === "live") {
+        this.applyLive(target);
+        return;
+      }
+      const snapshot = this.decodedSnapshot;
+      if (snapshot) {
+        const changedFields = this.collectChangedDecodedFields(snapshot);
+        if (changedFields) {
+          this.host._commitEditBundleEdit(updateCommandDecodedFields(
+            this.host.bundle,
+            target.deviceId,
+            target.commandId,
+            changedFields
+          ));
+        }
+        this.close();
+        return;
+      }
+      const normalized = normalizeCommandPayloadHex(this.rawDraft);
+      if (!normalized) {
+        this.error = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
+        return;
+      }
+      if (normalized !== normalizeCommandPayloadHex(this.rawSnapshot)) {
+        this.host._commitEditBundleEdit(updateCommandRawPayload(
+          this.host.bundle,
+          target.deviceId,
+          target.commandId,
+          normalized
+        ));
+      }
+      this.close();
+    };
+    host.addController(this);
+  }
+  get open() {
+    return this._open;
+  }
+  set open(value) {
+    if (value === this._open) return;
+    this._open = value;
+    this.host.requestUpdate();
+  }
+  get target() {
+    return this._target;
+  }
+  set target(value) {
+    if (value === this._target) return;
+    this._target = value;
+    this.host.requestUpdate();
+  }
+  get decodedDrafts() {
+    return this._decodedDrafts;
+  }
+  set decodedDrafts(value) {
+    if (value === this._decodedDrafts) return;
+    this._decodedDrafts = value;
+    this.host.requestUpdate();
+  }
+  get decodedSnapshot() {
+    return this._decodedSnapshot;
+  }
+  set decodedSnapshot(value) {
+    if (value === this._decodedSnapshot) return;
+    this._decodedSnapshot = value;
+    this.host.requestUpdate();
+  }
+  get rawDraft() {
+    return this._rawDraft;
+  }
+  set rawDraft(value) {
+    if (value === this._rawDraft) return;
+    this._rawDraft = value;
+    this.host.requestUpdate();
+  }
+  get hexTab() {
+    return this._hexTab;
+  }
+  set hexTab(value) {
+    if (value === this._hexTab) return;
+    this._hexTab = value;
+    this.host.requestUpdate();
+  }
+  get prontoDraft() {
+    return this._prontoDraft;
+  }
+  set prontoDraft(value) {
+    if (value === this._prontoDraft) return;
+    this._prontoDraft = value;
+    this.host.requestUpdate();
+  }
+  get prontoAvailable() {
+    return this._prontoAvailable;
+  }
+  set prontoAvailable(value) {
+    if (value === this._prontoAvailable) return;
+    this._prontoAvailable = value;
+    this.host.requestUpdate();
+  }
+  get formatError() {
+    return this._formatError;
+  }
+  set formatError(value) {
+    if (value === this._formatError) return;
+    this._formatError = value;
+    this.host.requestUpdate();
+  }
+  get error() {
+    return this._error;
+  }
+  set error(value) {
+    if (value === this._error) return;
+    this._error = value;
+    this.host.requestUpdate();
+  }
+  get converting() {
+    return this._converting;
+  }
+  set converting(value) {
+    if (value === this._converting) return;
+    this._converting = value;
+    this.host.requestUpdate();
+  }
+  get fetchingCommandId() {
+    return this._fetchingCommandId;
+  }
+  set fetchingCommandId(value) {
+    if (value === this._fetchingCommandId) return;
+    this._fetchingCommandId = value;
+    this.host.requestUpdate();
+  }
+  get fetchError() {
+    return this._fetchError;
+  }
+  set fetchError(value) {
+    if (value === this._fetchError) return;
+    this._fetchError = value;
+    this.host.requestUpdate();
+  }
+  get testStatus() {
+    return this._testStatus;
+  }
+  set testStatus(value) {
+    if (value === this._testStatus) return;
+    this._testStatus = value;
+    this.host.requestUpdate();
+  }
+  get testError() {
+    return this._testError;
+  }
+  set testError(value) {
+    if (value === this._testError) return;
+    this._testError = value;
+    this.host.requestUpdate();
+  }
+  get addMode() {
+    return this._addMode;
+  }
+  set addMode(value) {
+    if (value === this._addMode) return;
+    this._addMode = value;
+    this.host.requestUpdate();
+  }
+  get nameDraft() {
+    return this._nameDraft;
+  }
+  set nameDraft(value) {
+    if (value === this._nameDraft) return;
+    this._nameDraft = value;
+    this.host.requestUpdate();
+  }
+  get addPreparing() {
+    return this._addPreparing;
+  }
+  set addPreparing(value) {
+    if (value === this._addPreparing) return;
+    this._addPreparing = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  /**
+   * The payload popup: structured per-class form when the command has a
+   * decoded block, raw hex replacement otherwise. Every command with a
+   * captured payload (`restore_data.data_hex`) is editable — classes
+   * without a parser just get the raw bytes.
+   */
+  render() {
+    if (!this.open || !this.target) return A;
+    const decoded = this.decodedSnapshot;
+    const deviceClass = String(
+      bundleDeviceClass(this.host.bundle, this.target.deviceId) || ""
+    ).trim();
+    return b2`
+      <div class="modal-backdrop" @click=${this.close}>
+        <div class="dialog medium" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title-group">
+              <div class="dialog-title">${this.addMode ? TOOLS_CARD_STRINGS.backup.addCommandTitle : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
+              ${deviceClass ? b2`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>` : A}
+            </div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${this.addMode && this.host._learn.view === "off" ? b2`
+                  <label class="decoded-field">
+                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
+                    <input
+                      class="decoded-field-input"
+                      type="text"
+                      maxlength="20"
+                      spellcheck="false"
+                      .value=${this.nameDraft}
+                      @input=${this.handleNameInput}
+                      @change=${this.handleNameInput}
+                    />
+                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
+                  </label>
+                ` : A}
+            ${this.host._learn.view !== "off" ? this.host._learn.renderPanel() : decoded ? this.renderDecodedForm(decoded.className) : this.liveDeviceIsIr() ? this.renderIrHexForm() : this.renderRawForm()}
+            ${this.host._learn.view === "off" && this.host._learn.sourceNote ? b2`
+                  <div class="section-status payload-test-status success" role="status" aria-live="polite">
+                    <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                    <span>${this.host._learn.sourceNote}</span>
+                  </div>
+                ` : A}
+            ${this.host._learn.view === "off" && this.liveDeviceIsIr() ? b2`
+                  <div class="payload-test-note">
+                    <ha-icon icon="mdi:flash-outline"></ha-icon>
+                    <span>
+                      ${this.host.mode === "live" ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
+                    </span>
+                  </div>
+                ` : A}
+            ${this.host._learn.view === "off" && this.testStatus !== "idle" ? b2`
+                  <div class="section-status payload-test-status ${this.testStatus}" role="status" aria-live="polite">
+                    <ha-icon icon=${this.testStatus === "success" ? "mdi:check-circle-outline" : this.testStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
+                    <span>
+                      ${this.testStatus === "testing" ? TOOLS_CARD_STRINGS.backup.sendingToHub : this.testStatus === "success" ? TOOLS_CARD_STRINGS.backup.sentToHub : this.testError || TOOLS_CARD_STRINGS.backup.testFailed}
+                    </span>
+                  </div>
+                ` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note payload-dialog-note">
+              <a
+                class="payload-doc-link"
+                href=${DOC_URLS.commandPayloads}
+                target="_blank"
+                rel="noreferrer noopener"
+              >${TOOLS_CARD_STRINGS.backup.payloadDocsLink}</a>
+              ${this.host._learn.view === "off" && this.error ? b2`<span class="payload-dialog-error">${this.error}</span>` : A}
+            </div>
+            <div class="dialog-footer-actions">
+              ${this.host._learn.view !== "off" ? this.host._learn.renderFooterActions() : A}
+              ${this.host._learn.view === "off" && this.host.mode === "live" && this.liveDeviceIsIr() && this.host.testCommandPayload ? b2`
+                    <button
+                      class="dialog-btn payload-test-btn"
+                      ?disabled=${this.testStatus === "testing"}
+                      @click=${() => void this.runLiveTest()}
+                    >
+                      <ha-icon icon="mdi:flash-outline"></ha-icon>
+                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
+                    </button>
+                  ` : A}
+              ${this.host._learn.view === "off" ? b2`
+                    <button class="dialog-btn" @click=${this.close}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+                    <button class="dialog-btn dialog-btn-primary" @click=${this.apply}>${TOOLS_CARD_STRINGS.common.save}</button>
+                  ` : A}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  renderRawForm() {
+    return b2`
+      <div class="decoded-form">
+        <div class="decoded-form-head">
+          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
+          <div class="decoded-form-sub">
+            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+          </div>
+        </div>
+        <label class="decoded-field">
+          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
+          <textarea
+            class="decoded-field-input decoded-field-input--multiline"
+            rows="6"
+            spellcheck="false"
+            .value=${this.rawDraft}
+            @input=${this.handleRawInput}
+            @change=${this.handleRawInput}
+          ></textarea>
+          <span class="decoded-field-helper">
+            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
+          </span>
+        </label>
+      </div>
+    `;
+  }
+  /**
+   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
+   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
+   * `rawDraft` stay the source of truth for Test/Save;
+   * pronto edits write through via conversion. Pasting a descriptive
+   * `P:` payload morphs the dialog into descriptor mode (X2 only).
+   */
+  renderIrHexForm() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const tab = this.prontoAvailable ? this.hexTab : "sofabaton";
+    const prontoActive = tab === "pronto";
+    return b2`
+      <div class="decoded-form">
+        <div class="payload-format-tabs" role="tablist">
+          <button
+            class="payload-format-tab ${prontoActive ? "active" : ""}"
+            role="tab"
+            aria-selected=${prontoActive ? "true" : "false"}
+            ?disabled=${!this.prontoAvailable}
+            title=${this.prontoAvailable ? "" : S5.prontoUnavailable}
+            @click=${() => this.selectHexTab("pronto")}
+          >${S5.prontoHexTab}</button>
+          <button
+            class="payload-format-tab ${prontoActive ? "" : "active"}"
+            role="tab"
+            aria-selected=${prontoActive ? "false" : "true"}
+            @click=${() => this.selectHexTab("sofabaton")}
+          >${S5.sofabatonHexTab}</button>
+          ${this.host._learn.renderEntryButton()}
+        </div>
+        <label class="decoded-field">
+          <textarea
+            class="decoded-field-input decoded-field-input--multiline"
+            rows="6"
+            spellcheck="false"
+            .value=${prontoActive ? this.prontoDraft : this.rawDraft}
+            @input=${prontoActive ? this.handleProntoInput : this.handleRawInput}
+            @change=${prontoActive ? this.handleProntoInput : this.handleRawInput}
+          ></textarea>
+          <span class="decoded-field-helper ${this.formatError ? "payload-format-error" : ""}">
+            ${this.formatError || (this.converting ? S5.ucHexConverting : "") || (prontoActive ? S5.prontoHexHelper : S5.payloadHexHelper)}
+          </span>
+        </label>
+      </div>
+    `;
+  }
+  selectHexTab(tab) {
+    if (tab === "pronto" && !this.prontoAvailable) return;
+    this.hexTab = tab;
+    this.formatError = "";
+  }
+  /** Map an IrFormatError to a user string; anything else falls through. */
+  irFormatMessage(error, fallback) {
+    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
+    return fallback;
+  }
+  /**
+   * Re-derive the pronto projection after the sofabaton draft changed.
+   * Unparseable bytes are legal (passthrough for unknown variants); they
+   * only disable the pronto tab.
+   */
+  syncProntoFromRaw() {
+    try {
+      const signal = parseSofabatonBlob(this.rawDraft);
+      this.prontoDraft = renderProntoHex(signal);
+      this.prontoAvailable = true;
+    } catch {
+      this.prontoDraft = "";
+      this.prontoAvailable = false;
+    }
+  }
+  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
+  morphToDescriptor(text) {
+    this.decodedSnapshot = {
+      className: "ir",
+      fields: { descriptor: "" },
+      trailerHex: "",
+      edited: false
+    };
+    this.decodedDrafts = { descriptor: text.trim() };
+    this.formatError = "";
+  }
+  /** Morph the open dialog from descriptor mode to the hex tabs. */
+  morphToHex(text, format) {
+    this.decodedSnapshot = null;
+    this.decodedDrafts = {};
+    this.formatError = "";
+    if (format === "pronto") {
+      this.hexTab = "pronto";
+      this.prontoDraft = text.trim();
+      this.applyProntoDraft(text.trim());
+    } else {
+      this.hexTab = "sofabaton";
+      this.rawDraft = text.trim();
+      this.syncProntoFromRaw();
+    }
+  }
+  /**
+   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
+   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
+   * codes go to the backend, which renders them through infrared-protocols
+   * and returns both hex projections. Returns false when the text is not a
+   * UC paste so the caller continues with its own handling.
+   */
+  tryForeignPaste(text) {
+    const paste = resolveUcPaste(text);
+    if (!paste) return false;
+    if (paste.name && this.addMode && !this.nameDraft.trim()) {
+      this.nameDraft = sanitizeBundleName(this.host.bundle, paste.name);
+    }
+    if (paste.kind === "pronto") {
+      this.morphToHex(paste.code, "pronto");
+      return true;
+    }
+    void this.convertForeignCode(paste.code, "uc_hex");
+    return true;
+  }
+  async convertForeignCode(code, format) {
+    this.decodedSnapshot = null;
+    this.decodedDrafts = {};
+    this.hexTab = "pronto";
+    this.prontoAvailable = true;
+    this.prontoDraft = code;
+    this.formatError = "";
+    const seq = ++this.conversionSeq;
+    if (!this.host.convertForeignPayload) {
+      this.formatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
+      return;
+    }
+    this.converting = true;
+    try {
+      const result = await this.host.convertForeignPayload(code, format);
+      if (seq !== this.conversionSeq) return;
+      this.morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
+      this.hexTab = "pronto";
+    } catch (error) {
+      if (seq !== this.conversionSeq) return;
+      this.formatError = localizeBackendError(error, "ir_convert");
+    } finally {
+      if (seq === this.conversionSeq) this.converting = false;
+    }
+  }
+  /** Parse a pronto draft and write the sofabaton bytes through. */
+  applyProntoDraft(text) {
+    if (!text.trim()) {
+      this.formatError = "";
+      return;
+    }
+    try {
+      const signal = parseProntoHex(text);
+      this.rawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
+      this.prontoAvailable = true;
+      this.formatError = "";
+    } catch (error) {
+      this.formatError = this.irFormatMessage(
+        error,
+        TOOLS_CARD_STRINGS.backup.invalidProntoHex
+      );
+    }
+  }
+  renderDecodedForm(className) {
+    const spec = DECODED_CLASS_FORM_SPECS[className];
+    if (!spec) return A;
+    const head = className === "ir" ? b2`
+          <div class="payload-format-tabs" role="tablist">
+            <button class="payload-format-tab active" role="tab" aria-selected="true">
+              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
+            </button>
+            ${this.host._learn.renderEntryButton()}
+          </div>
+          ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+        ` : b2`
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${spec.title}</div>
+            ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+          </div>
+        `;
+    return b2`
+      <div class="decoded-form">
+        ${head}
+        ${spec.fields.map((field) => this.renderDecodedField(field))}
+      </div>
+    `;
+  }
+  renderDecodedField(field) {
+    const value = this.decodedDrafts[field.key] ?? "";
+    const onInput = (event) => this.handleDecodedFieldInput(event, field.key);
+    const multilineClass = field.escapedDisplay ? "decoded-field-input--multiline decoded-field-input--escaped" : "decoded-field-input--multiline";
+    return b2`
+      <label class="decoded-field">
+        <span class="decoded-field-label">${field.label}</span>
+        ${field.multiline ? b2`
+              <textarea
+                class="decoded-field-input ${multilineClass}"
+                rows="4"
+                spellcheck="false"
+                .value=${value}
+                @input=${onInput}
+                @change=${onInput}
+              ></textarea>
+            ` : b2`
+              <input
+                class="decoded-field-input"
+                type=${field.numeric ? "number" : "text"}
+                spellcheck="false"
+                .value=${value}
+                ?disabled=${Boolean(field.readonly)}
+                @input=${field.readonly ? null : onInput}
+                @change=${field.readonly ? null : onInput}
+              />
+            `}
+        ${field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A}
+      </label>
+    `;
+  }
+  /**
+   * Diff each spec field against the open-dialog snapshot. Returns a
+   * record of fields that changed (mapped back through the wire-format
+   * coercion in `_draftToFieldValue`), or `null` when nothing changed
+   * and the bundle should be left untouched.
+   */
+  collectChangedDecodedFields(snapshot) {
+    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
+    if (!spec) return null;
+    const changed = {};
+    let touched = false;
+    for (const field of spec.fields) {
+      const draft = this.decodedDrafts[field.key] ?? "";
+      const original = fieldValueToDraft(snapshot.fields[field.key], field);
+      if (draft === original) continue;
+      changed[field.key] = draftToFieldValue(draft, field);
+      touched = true;
+    }
+    return touched ? changed : null;
+  }
+  /**
+   * True for IR devices. Live payload *editing* is offered for all classes
+   * (raw hex, or the structured form where a parser exists), but the Test
+   * button — `playIrBlob` — is IR-only, so it gates on this.
+   */
+  liveDeviceIsIr() {
+    if (this.host.entityId == null || !this.host.bundle) return false;
+    return String(bundleDeviceClass(this.host.bundle, Number(this.host.entityId)) || "").trim().toLowerCase() === "ir";
+  }
+  /**
+   * Live "edit payload": fetch this one command's blob from the hub on
+   * demand (the structural bundle is blob-free), then open the same payload
+   * dialog backup uses — populated from the fetch, not the bundle, so the
+   * fetch itself never marks the bundle dirty. The host supplies the fetch.
+   */
+  async liveFetchAndOpen(commandId) {
+    if (this.host.mode !== "live" || this.host.entityId == null || !this.host.fetchCommandPayload) return;
+    if (this.fetchingCommandId != null) return;
+    const deviceId = Number(this.host.entityId);
+    const normalizedCommandId = Number(commandId);
+    this.fetchingCommandId = normalizedCommandId;
+    this.fetchError = "";
+    try {
+      const fetched = await this.host.fetchCommandPayload(deviceId, normalizedCommandId);
+      if (!fetched || !String(fetched.dataHex || "").trim()) {
+        this.fetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
+        return;
+      }
+      this.openLive(deviceId, normalizedCommandId, fetched);
+    } catch (error) {
+      this.fetchError = editorErrorMessage(error, "hub_request");
+    } finally {
+      this.fetchingCommandId = null;
+    }
+  }
+  openLive(deviceId, commandId, fetched) {
+    const decoded = decodedSnapshotFromFetch(fetched.decoded);
+    const rawHex = decoded ? "" : normalizeCommandPayloadHex(fetched.dataHex) ?? fetched.dataHex;
+    this.target = { deviceId, commandId };
+    this.liveFetched = fetched;
+    this.decodedSnapshot = decoded;
+    this.decodedDrafts = decoded ? this.initialDecodedDrafts(decoded) : {};
+    this.rawSnapshot = rawHex;
+    this.rawDraft = rawHex;
+    this.error = "";
+    this.testStatus = "idle";
+    this.testError = "";
+    this.resetIrHexTabState();
+    this.open = true;
+  }
+  /**
+   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
+   * the default view when the blob parses as raw timings (IR8).
+   */
+  resetIrHexTabState() {
+    this.formatError = "";
+    this.hexTab = "pronto";
+    this.prontoDraft = "";
+    this.prontoAvailable = true;
+    if (!this.liveDeviceIsIr()) return;
+    if (String(this.rawDraft ?? "").trim()) {
+      this.syncProntoFromRaw();
+      if (!this.prontoAvailable) this.hexTab = "sofabaton";
+    }
+  }
+  /**
+   * Open the payload dialog in add-command mode (live only). The controls
+   * mirror command edit for the device's class:
+   *
+   * * `ir` — blank descriptor form. The backend synthesizes the record
+   *   from the descriptor alone (`build_descriptive_ir_blob_body`), so no
+   *   template is needed and Test works before anything is saved.
+   * * decodable wifi classes — the structured form, seeded from an
+   *   existing command fetched as a template. The template supplies the
+   *   record's opaque trailer (a checksum region we cannot synthesize)
+   *   plus sensible defaults like host/port.
+   * * everything else — raw hex entry.
+   *
+   * Non-IR devices need at least one existing command: the template
+   * trailer and the codec (`library_type`) are both read from it.
+   */
+  async openAdd() {
+    if (this.host.mode !== "live" || this.host.entityId == null || !this.host.bundle) return;
+    if (this.addPreparing) return;
+    const deviceId = Number(this.host.entityId);
+    const deviceClass = String(bundleDeviceClass(this.host.bundle, deviceId) || "").trim().toLowerCase();
+    this.fetchError = "";
+    if (deviceClass === "ir") {
+      this.openAddWithSnapshot(
+        deviceId,
+        bundleIsX2(this.host.bundle) ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false } : null
+      );
+      return;
+    }
+    const existing = deviceCommandItems(this.host.bundle, deviceId);
+    if (!existing.length) {
+      this.openAddWithSnapshot(
+        deviceId,
+        defaultDecodedSnapshotForClass(deviceClass, {
+          deviceId,
+          commandId: nextFreeDeviceCommandId(this.host.bundle, deviceId)
+        })
+      );
+      return;
+    }
+    if (deviceClass in DECODED_CLASS_FORM_SPECS && this.host.fetchCommandPayload) {
+      this.addPreparing = true;
+      try {
+        const fetched = await this.host.fetchCommandPayload(deviceId, existing[0].commandId);
+        const decoded = decodedSnapshotFromFetch(fetched?.decoded ?? null);
+        if (decoded) {
+          this.openAddWithSnapshot(deviceId, decoded);
+          return;
+        }
+      } catch (error) {
+        this.fetchError = editorErrorMessage(error, "hub_request");
+        return;
+      } finally {
+        this.addPreparing = false;
+      }
+    }
+    this.openAddWithSnapshot(deviceId, null);
+  }
+  openAddWithSnapshot(deviceId, decoded) {
+    this.target = { deviceId, commandId: 0 };
+    this.addMode = true;
+    this.nameDraft = "";
+    this.liveFetched = null;
+    this.decodedSnapshot = decoded;
+    this.decodedDrafts = decoded ? this.initialDecodedDrafts(decoded) : {};
+    this.rawSnapshot = "";
+    this.rawDraft = "";
+    this.error = "";
+    this.testStatus = "idle";
+    this.testError = "";
+    this.resetIrHexTabState();
+    this.open = true;
+  }
+  /**
+   * Commit a new command from the add dialog: allocate the next free id on
+   * the device and append a row whose `restore_data` carries the
+   * `new: true` marker the device-sync planner turns into a `command_add`
+   * step. Decoded forms serialize every field (there is no pristine
+   * baseline to diff against); raw entry normalizes the hex.
+   */
+  applyAdd(target) {
+    if (!this.host.bundle) return;
+    const name = sanitizeBundleName(this.host.bundle, this.nameDraft).trim();
+    if (!name) {
+      this.error = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
+      return;
+    }
+    let restoreData;
+    const snapshot = this.decodedSnapshot;
+    if (snapshot) {
+      const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
+      const fields = {};
+      for (const field of spec.fields) {
+        fields[field.key] = draftToFieldValue(this.decodedDrafts[field.key] ?? "", field);
+      }
+      if (snapshot.className === "wifi_mqtt") {
+        fields["device_id"] = target.deviceId & 255;
+        fields["command_id"] = (nextFreeDeviceCommandId(this.host.bundle, target.deviceId) ?? (Number(fields["command_id"]) || 1)) & 255;
+      }
+      if (snapshot.className === "ir") {
+        const descriptor = String(fields["descriptor"] ?? "").trim();
+        if (!descriptor.startsWith("P:")) {
+          this.error = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
+          return;
+        }
+      }
+      restoreData = {
+        transport: "hub_code_record",
+        decoded: {
+          class: snapshot.className,
+          trailer_hex: snapshot.trailerHex,
+          fields,
+          edited: true
+        }
+      };
+    } else {
+      const normalized = normalizeCommandPayloadHex(this.rawDraft);
+      if (!normalized) {
+        this.error = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
+        return;
+      }
+      restoreData = { transport: "hub_code_record", data_hex: normalized };
+    }
+    const newId = nextFreeDeviceCommandId(this.host.bundle, target.deviceId);
+    if (newId == null) {
+      this.error = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
+      return;
+    }
+    this.host._commitEditBundleEdit(
+      addBundleDeviceCommand(this.host.bundle, target.deviceId, newId, name, restoreData)
+    );
+    this.close();
+  }
+  /**
+   * Commit a live payload edit. The working command has no restore_data yet
+   * (blob-free bundle), so build the whole block — carrying the `edited`
+   * marker the device-sync planner keys on — and set it via
+   * `setCommandRestoreData`. A pristine (unchanged) dialog commits nothing.
+   */
+  applyLive(target) {
+    if (!this.host.bundle) return;
+    const snapshot = this.decodedSnapshot;
+    if (snapshot) {
+      const changedFields = this.collectChangedDecodedFields(snapshot);
+      if (!changedFields) {
+        this.close();
+        return;
+      }
+      const restoreData2 = {
+        transport: "hub_code_record",
+        data_hex: this.liveFetched?.dataHex ?? "",
+        decoded: {
+          class: snapshot.className,
+          trailer_hex: snapshot.trailerHex,
+          fields: { ...snapshot.fields, ...changedFields },
+          edited: true
+        }
+      };
+      this.host._commitEditBundleEdit(setCommandRestoreData(this.host.bundle, target.deviceId, target.commandId, restoreData2));
+      this.close();
+      return;
+    }
+    const normalized = normalizeCommandPayloadHex(this.rawDraft);
+    if (!normalized) {
+      this.error = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
+      return;
+    }
+    if (normalized === normalizeCommandPayloadHex(this.rawSnapshot)) {
+      this.close();
+      return;
+    }
+    const restoreData = { transport: "hub_code_record", data_hex: normalized, edited: true };
+    this.host._commitEditBundleEdit(setCommandRestoreData(this.host.bundle, target.deviceId, target.commandId, restoreData));
+    this.close();
+  }
+  /** Test the current draft on the hub (IR only), via the host's callback. */
+  async runLiveTest() {
+    if (!this.host.testCommandPayload) return;
+    if (this.formatError) {
+      this.testStatus = "error";
+      this.testError = this.formatError;
+      return;
+    }
+    if (this.converting) {
+      this.testStatus = "error";
+      this.testError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
+      return;
+    }
+    const value = this.decodedSnapshot ? String(this.decodedDrafts["descriptor"] ?? "").trim() : String(this.rawDraft ?? "").trim();
+    if (!value) {
+      this.testStatus = "error";
+      this.testError = TOOLS_CARD_STRINGS.backup.nothingToTest;
+      return;
+    }
+    this.testStatus = "testing";
+    this.testError = "";
+    try {
+      await this.host.testCommandPayload(value);
+      this.testStatus = "success";
+    } catch (error) {
+      this.testStatus = "error";
+      this.testError = editorErrorMessage(error, "hub_request");
+    }
+  }
+  openFromBundle(commandId) {
+    if (this.host.mode === "live") return;
+    if (this.host.entityId == null) return;
+    const deviceId = Number(this.host.entityId);
+    const normalizedCommandId = Number(commandId);
+    const decoded = commandDecodedBlock(this.host.bundle, deviceId, normalizedCommandId);
+    const rawHex = decoded ? null : commandRawPayloadHex(this.host.bundle, deviceId, normalizedCommandId);
+    if (!decoded && !rawHex) return;
+    this.target = { deviceId, commandId: normalizedCommandId };
+    this.decodedSnapshot = decoded;
+    this.decodedDrafts = decoded ? this.initialDecodedDrafts(decoded) : {};
+    this.rawSnapshot = rawHex ?? "";
+    this.rawDraft = rawHex ?? "";
+    this.error = "";
+    this.resetIrHexTabState();
+    this.open = true;
+  }
+  initialDecodedDrafts(decoded) {
+    const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
+    if (!spec) return {};
+    const drafts = {};
+    for (const field of spec.fields) {
+      drafts[field.key] = fieldValueToDraft(decoded.fields[field.key], field);
+    }
+    return drafts;
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/wifi-event-targets.ts
+var WifiEventTargets = class {
+  constructor(host) {
+    this.host = host;
+    this._list = null;
+    this._busy = false;
+    this._primary = { mode: "new", slot: null, name: "" };
+    host.addController(this);
+  }
+  get list() {
+    return this._list;
+  }
+  set list(value) {
+    if (value === this._list) return;
+    this._list = value;
+    this.host.requestUpdate();
+  }
+  get busy() {
+    return this._busy;
+  }
+  set busy(value) {
+    if (value === this._busy) return;
+    this._busy = value;
+    this.host.requestUpdate();
+  }
+  get primary() {
+    return this._primary;
+  }
+  set primary(value) {
+    if (value === this._primary) return;
+    this._primary = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  // ── Wifi Event kind (shared by all three Add dialogs, live mode) ────
+  /** The Wifi Event kind is offered only in live activity-scope dialogs. */
+  available() {
+    return this.host.mode === "live" && this.host.wifiEvents != null;
+  }
+  deployed() {
+    return this.list ?? [];
+  }
+  /** Fire-and-forget refresh of the event list when a dialog opens. */
+  load() {
+    if (!this.available()) return;
+    void this.host.wifiEvents.list().then((events) => {
+      this.list = events;
+      const pristine = (sel) => sel.mode === "new" && sel.slot == null && sel.name === "";
+      if (pristine(this.primary)) this.primary = this.defaultSel();
+    }).catch(() => {
+      this.list = [];
+    });
+  }
+  defaultSel() {
+    const first = this.deployed()[0] ?? null;
+    return first ? { mode: "existing", slot: first.slot_index, name: "" } : { mode: "new", slot: null, name: "" };
+  }
+  renderTargetFields(params) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const events = this.deployed();
+    const sel = params.sel;
+    return b2`
+      ${events.length ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S5.wifiEventTargetLabel}</label>
+              <select
+                id=${`${params.idPrefix}-wifi-event`}
+                class="decoded-field-input"
+                @change=${(event) => {
+      const value = event.target.value;
+      params.onSelChange(
+        value === "__new__" ? { mode: "new", slot: null, name: sel.name } : { mode: "existing", slot: Number(value), name: sel.name }
+      );
+    }}
+              >
+                ${events.map((item) => b2`
+                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
+                `)}
+                <option value="__new__" ?selected=${sel.mode === "new"}>${S5.wifiEventTargetCreateNew}</option>
+              </select>
+            </div>
+          ` : b2`<div class="quick-access-empty">${S5.wifiEventNoneYet}</div>`}
+      ${sel.mode === "new" ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event-name`}>${S5.wifiEventNameLabel}</label>
+              <input
+                id=${`${params.idPrefix}-wifi-event-name`}
+                class="decoded-field-input"
+                maxlength="20"
+                .value=${sel.name}
+                ?disabled=${this.busy}
+                @input=${(event) => {
+      const input = event.target;
+      const name = sanitizeWifiName(this.host.bundle?.hub?.version, input.value);
+      if (name !== input.value) input.value = name;
+      params.onSelChange({ ...sel, name });
+    }}
+              />
+              <div class="decoded-field-helper">${S5.wifiEventNameHelper}</div>
+            </div>
+          ` : A}
+      ${this.busy ? b2`<div class="decoded-field-helper">${S5.wifiEventDeploying}</div>` : A}
+    `;
+  }
+  /**
+   * Resolve a Wifi Event target selection to its atomic ref: a single
+   * event carries BOTH a short and a long record (short = slot+1, long =
+   * short + slot_count). A reference always addresses the event as one
+   * unit — the short record — and the long record is derived from the
+   * same event when a binding's long-press leg needs it (there is no
+   * separate long-press *target*; short vs long is an action-config
+   * distinction made in the Events tab, per the Wifi Events model).
+   *
+   * Returns the (possibly grafted) working bundle to insert into. Creating
+   * a new event is an instant store allocation (W7) — no hub deploy here.
+   * `deviceId` is the host's positive placeholder id before the first-ever
+   * deploy; the Sync flow rewrites it. Throws a user-facing Error on failure.
+   */
+  async resolveRef(sel) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (!this.host.wifiEvents || !this.host.bundle) throw new Error(S5.bindingIncomplete);
+    if (sel.mode === "existing") {
+      const event = this.deployed().find((item) => item.slot_index === sel.slot);
+      if (!event || event.device_id == null) throw new Error(S5.bindingIncomplete);
+      const grafted = await this.host.wifiEvents.ensureGrafted();
+      return {
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
+        name: event.name,
+        bundle: grafted ?? this.host.bundle
+      };
+    }
+    const name = sel.name.trim();
+    if (!name) throw new Error(S5.wifiEventNameRequired);
+    this.busy = true;
+    try {
+      const created = await this.host.wifiEvents.create(name);
+      const event = created.event;
+      this.list = null;
+      if (event.device_id == null) throw new Error(S5.wifiEventCreateFailed);
+      return {
+        deviceId: event.device_id,
+        shortCommandId: event.command_id,
+        longCommandId: event.long_press_command_id,
+        slotIndex: event.slot_index,
+        name: event.name,
+        bundle: created.bundle ?? this.host.bundle
+      };
+    } finally {
+      this.busy = false;
+    }
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/binding-dialog-controller.ts
+var BindingDialogController = class {
+  constructor(host) {
+    this.host = host;
+    this._open = false;
+    this._scope = "activity";
+    this._editButtonId = null;
+    this._buttonId = null;
+    this._deviceId = null;
+    this._commandId = null;
+    this._longPressEnabled = false;
+    this._lpDeviceId = null;
+    this._lpCommandId = null;
+    this._targetKind = "command";
+    this._actionName = "";
+    this._macroMode = "new";
+    this._macroId = null;
+    this._lpTargetKind = "command";
+    this._lpMacroMode = "new";
+    this._lpMacroId = null;
+    this._lpActionName = "";
+    this._error = "";
+    this.close = () => {
+      this.open = false;
+      this.editButtonId = null;
+      this.buttonId = null;
+      this.deviceId = null;
+      this.commandId = null;
+      this.longPressEnabled = false;
+      this.lpDeviceId = null;
+      this.lpCommandId = null;
+      this.targetKind = "command";
+      this.actionName = "";
+      this.macroMode = "new";
+      this.macroId = null;
+      this.lpTargetKind = "command";
+      this.lpMacroMode = "new";
+      this.lpMacroId = null;
+      this.lpActionName = "";
+      this.error = "";
+    };
+    this.handleButtonChange = (event) => {
+      const value = Number(event.target.value);
+      this.buttonId = Number.isFinite(value) ? value : null;
+    };
+    this.handleDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this.deviceId = Number.isFinite(value) ? value : null;
+      this.commandId = this.commandOptions(this.deviceId)[0]?.value ?? null;
+    };
+    this.handleCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this.commandId = Number.isFinite(value) ? value : null;
+    };
+    this.handleTargetKindChange = (event) => {
+      const kind = event.target.value;
+      this.targetKind = kind;
+      this.error = "";
+      if (kind === "command") {
+        const devices = this.commandDeviceOptions();
+        if (!devices.some((device) => device.value === this.deviceId)) {
+          this.deviceId = devices[0]?.value ?? null;
+        }
+        this.commandId = this.commandOptions(this.deviceId)[0]?.value ?? null;
+        return;
+      }
+      if (kind === "wifi_event") {
+        this.host._events.primary = this.host._events.defaultSel();
+        return;
+      }
+      this.host._resetMacroTarget("binding");
+      this.actionName || (this.actionName = this.host._macroName(this.commandId));
+    };
+    this.handleActionNameInput = (event) => {
+      this.actionName = event.target.value;
+      this.error = "";
+    };
+    this.handleMacroTargetChange = (event) => {
+      const value = event.target.value;
+      if (value === "__new__") {
+        this.macroMode = "new";
+        this.macroId = null;
+      } else {
+        this.macroMode = "existing";
+        this.macroId = Number(value);
+      }
+      this.error = "";
+    };
+    this.handleLpTargetKindChange = (event) => {
+      const kind = event.target.value;
+      this.lpTargetKind = kind;
+      this.error = "";
+      if (kind === "command") {
+        const devices = this.commandDeviceOptions();
+        if (!devices.some((device) => device.value === this.lpDeviceId)) {
+          this.lpDeviceId = devices[0]?.value ?? null;
+        }
+        this.lpCommandId = this.commandOptions(this.lpDeviceId)[0]?.value ?? null;
+        return;
+      }
+      this.host._resetMacroTarget("bindingLp");
+      this.lpActionName || (this.lpActionName = this.host._macroName(this.lpCommandId));
+    };
+    this.handleLpActionNameInput = (event) => {
+      this.lpActionName = event.target.value;
+      this.error = "";
+    };
+    this.handleLpMacroTargetChange = (event) => {
+      const value = event.target.value;
+      if (value === "__new__") {
+        this.lpMacroMode = "new";
+        this.lpMacroId = null;
+      } else {
+        this.lpMacroMode = "existing";
+        this.lpMacroId = Number(value);
+      }
+      this.error = "";
+    };
+    this.handleLongPressToggle = (event) => {
+      const enabled = Boolean(event.target.checked);
+      this.longPressEnabled = enabled;
+      if (!enabled || !this.host.bundle) return;
+      this.lpTargetKind = "command";
+      if (this.scope === "activity") {
+        const devices = this.commandDeviceOptions();
+        if (!devices.some((device) => device.value === this.lpDeviceId)) {
+          this.lpDeviceId = devices[0]?.value ?? null;
+        }
+      } else if (this.lpDeviceId == null) {
+        this.lpDeviceId = Number(this.host.entityId);
+      }
+      const commands = this.commandOptions(this.lpDeviceId);
+      if (!commands.some((command) => command.value === this.lpCommandId)) {
+        this.lpCommandId = commands[0]?.value ?? null;
+      }
+    };
+    this.handleLpDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this.lpDeviceId = Number.isFinite(value) ? value : null;
+      this.lpCommandId = this.commandOptions(this.lpDeviceId)[0]?.value ?? null;
+    };
+    this.handleLpCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this.lpCommandId = Number.isFinite(value) ? value : null;
+    };
+    /**
+     * Async binding apply when the button targets a Wifi Event. The event
+     * is atomic: the short press fires its short record, and — when the
+     * long-press toggle is on — the *same* event's long record is wired to
+     * the button's long press (and the event's long-press action is enabled
+     * for configuration in the Events tab). There is no independent
+     * long-press target here; that would collide with the Wifi Events model
+     * where short/long are two actions of one event.
+     */
+    this.applyActivityWithWifiEvents = async () => {
+      const S5 = TOOLS_CARD_STRINGS.backup;
+      if (!this.host.bundle || this.host.entityId == null) return;
+      const activityId = Number(this.host.entityId);
+      const buttonId = Number(this.buttonId);
+      if (!buttonId) {
+        this.error = S5.bindingIncomplete;
+        return;
+      }
+      try {
+        const ref = await this.host._events.resolveRef(this.host._events.primary);
+        let longPress = null;
+        if (this.longPressEnabled) {
+          await this.host.wifiEvents.enableLongPress(ref.slotIndex);
+          this.host._events.list = null;
+          longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
+        }
+        this.host._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
+          buttonId,
+          deviceId: ref.deviceId,
+          commandId: ref.shortCommandId,
+          longPress
+        }));
+        this.close();
+      } catch (err) {
+        this.error = editorErrorMessage(err, "wifi_event");
+      }
+    };
+    this.apply = () => {
+      if (!this.host.bundle || this.host.entityId == null) return;
+      const buttonId = Number(this.buttonId);
+      const entityId = Number(this.host.entityId);
+      if (!buttonId) {
+        this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+        return;
+      }
+      if (this.scope === "activity" && this.targetKind === "wifi_event") {
+        void this.applyActivityWithWifiEvents();
+        return;
+      }
+      if (this.scope === "activity") {
+        const activityId = entityId;
+        let next = this.host.bundle;
+        let macroToOpen = null;
+        const longPressTarget = this.resolveActivityLongPressTarget(next, activityId);
+        if (!longPressTarget) return;
+        next = longPressTarget.bundle;
+        macroToOpen = longPressTarget.createdMacro;
+        const longPress = longPressTarget.longPress;
+        if (this.targetKind === "command") {
+          const commandId = Number(this.commandId);
+          if (!commandId || !this.deviceId) {
+            this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+            return;
+          }
+          this.host._commitEditBundleEdit(upsertActivityButtonBinding(next, activityId, {
+            buttonId,
+            deviceId: Number(this.deviceId),
+            commandId,
+            longPress
+          }));
+          this.close();
+          if (macroToOpen) this.host._steps.openEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+          return;
+        }
+        const resolved = this.resolveMacroTarget(
+          next,
+          activityId,
+          this.macroMode,
+          this.macroId,
+          this.actionName
+        );
+        if (!resolved) {
+          this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+          return;
+        }
+        next = upsertActivityButtonBinding(resolved.bundle, activityId, {
+          buttonId,
+          deviceId: activityId,
+          commandId: resolved.macroId,
+          longPress
+        });
+        this.host._commitEditBundleEdit(next);
+        this.close();
+        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
+        if (macroToOpen) this.host._steps.openEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+      } else {
+        const commandId = Number(this.commandId);
+        if (!commandId) {
+          this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+          return;
+        }
+        const longPressCommandId = this.longPressEnabled && this.lpCommandId ? Number(this.lpCommandId) : null;
+        this.host._commitEditBundleEdit(upsertDeviceButtonBinding(this.host.bundle, entityId, {
+          buttonId,
+          commandId,
+          longPressCommandId
+        }));
+        this.close();
+      }
+    };
+    host.addController(this);
+  }
+  get open() {
+    return this._open;
+  }
+  set open(value) {
+    if (value === this._open) return;
+    this._open = value;
+    this.host.requestUpdate();
+  }
+  get scope() {
+    return this._scope;
+  }
+  set scope(value) {
+    if (value === this._scope) return;
+    this._scope = value;
+    this.host.requestUpdate();
+  }
+  get editButtonId() {
+    return this._editButtonId;
+  }
+  set editButtonId(value) {
+    if (value === this._editButtonId) return;
+    this._editButtonId = value;
+    this.host.requestUpdate();
+  }
+  get buttonId() {
+    return this._buttonId;
+  }
+  set buttonId(value) {
+    if (value === this._buttonId) return;
+    this._buttonId = value;
+    this.host.requestUpdate();
+  }
+  get deviceId() {
+    return this._deviceId;
+  }
+  set deviceId(value) {
+    if (value === this._deviceId) return;
+    this._deviceId = value;
+    this.host.requestUpdate();
+  }
+  get commandId() {
+    return this._commandId;
+  }
+  set commandId(value) {
+    if (value === this._commandId) return;
+    this._commandId = value;
+    this.host.requestUpdate();
+  }
+  get longPressEnabled() {
+    return this._longPressEnabled;
+  }
+  set longPressEnabled(value) {
+    if (value === this._longPressEnabled) return;
+    this._longPressEnabled = value;
+    this.host.requestUpdate();
+  }
+  get lpDeviceId() {
+    return this._lpDeviceId;
+  }
+  set lpDeviceId(value) {
+    if (value === this._lpDeviceId) return;
+    this._lpDeviceId = value;
+    this.host.requestUpdate();
+  }
+  get lpCommandId() {
+    return this._lpCommandId;
+  }
+  set lpCommandId(value) {
+    if (value === this._lpCommandId) return;
+    this._lpCommandId = value;
+    this.host.requestUpdate();
+  }
+  get targetKind() {
+    return this._targetKind;
+  }
+  set targetKind(value) {
+    if (value === this._targetKind) return;
+    this._targetKind = value;
+    this.host.requestUpdate();
+  }
+  get actionName() {
+    return this._actionName;
+  }
+  set actionName(value) {
+    if (value === this._actionName) return;
+    this._actionName = value;
+    this.host.requestUpdate();
+  }
+  get macroMode() {
+    return this._macroMode;
+  }
+  set macroMode(value) {
+    if (value === this._macroMode) return;
+    this._macroMode = value;
+    this.host.requestUpdate();
+  }
+  get macroId() {
+    return this._macroId;
+  }
+  set macroId(value) {
+    if (value === this._macroId) return;
+    this._macroId = value;
+    this.host.requestUpdate();
+  }
+  get lpTargetKind() {
+    return this._lpTargetKind;
+  }
+  set lpTargetKind(value) {
+    if (value === this._lpTargetKind) return;
+    this._lpTargetKind = value;
+    this.host.requestUpdate();
+  }
+  get lpMacroMode() {
+    return this._lpMacroMode;
+  }
+  set lpMacroMode(value) {
+    if (value === this._lpMacroMode) return;
+    this._lpMacroMode = value;
+    this.host.requestUpdate();
+  }
+  get lpMacroId() {
+    return this._lpMacroId;
+  }
+  set lpMacroId(value) {
+    if (value === this._lpMacroId) return;
+    this._lpMacroId = value;
+    this.host.requestUpdate();
+  }
+  get lpActionName() {
+    return this._lpActionName;
+  }
+  set lpActionName(value) {
+    if (value === this._lpActionName) return;
+    this._lpActionName = value;
+    this.host.requestUpdate();
+  }
+  get error() {
+    return this._error;
+  }
+  set error(value) {
+    if (value === this._error) return;
+    this._error = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  // ── Button bindings (add / edit picker) ─────────────────────────────
+  commandDeviceOptions() {
+    if (!this.host.bundle) return [];
+    return this.host._editableDeviceOptions().map((device) => ({ value: device.id, label: device.label }));
+  }
+  targetKindFor(deviceId) {
+    if (!this.host.bundle || this.host.entityId == null) return "command";
+    const dId = Number(deviceId || 0);
+    if (dId === Number(this.host.entityId)) return "action";
+    if (this.host._events.available() && isWifiEventsBrand(bundleDeviceBrand(this.host.bundle, dId))) {
+      return "wifi_event";
+    }
+    return "command";
+  }
+  // Command options for a chosen target: the activity's own macros when the
+  // target is the activity itself, otherwise the target device's commands.
+  commandOptions(targetDeviceId) {
+    if (targetDeviceId == null || !this.host.bundle) return [];
+    if (this.scope === "activity" && this.host.entityId != null && targetDeviceId === Number(this.host.entityId)) {
+      return activityUserMacroSummaries(this.host.bundle, Number(this.host.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+    }
+    return deviceCommandItems(this.host.bundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+  openAdd(kind) {
+    if (this.host.entityId == null || !this.host.bundle) return;
+    const entityId = Number(this.host.entityId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this.host.bundle, entityId) : unboundButtonsForDevice(this.host.bundle, entityId);
+    if (!unbound.length) return;
+    this.scope = kind;
+    this.editButtonId = null;
+    this.buttonId = unbound[0].code;
+    this.targetKind = "command";
+    this.actionName = "";
+    this.host._resetMacroTarget("binding");
+    this.lpTargetKind = "command";
+    this.lpActionName = "";
+    this.host._resetMacroTarget("bindingLp");
+    if (kind === "activity") {
+      const devices = this.commandDeviceOptions();
+      this.deviceId = devices[0]?.value ?? null;
+    } else {
+      this.deviceId = entityId;
+    }
+    const commandDeviceId = kind === "activity" ? this.deviceId : entityId;
+    const commands = commandDeviceId != null ? deviceCommandItems(this.host.bundle, commandDeviceId) : [];
+    this.commandId = commands[0]?.commandId ?? null;
+    this.longPressEnabled = false;
+    this.lpDeviceId = this.deviceId;
+    this.lpCommandId = this.commandId;
+    this.error = "";
+    this.host._events.load();
+    this.open = true;
+  }
+  openEdit(kind, buttonId) {
+    if (this.host.entityId == null || !this.host.bundle) return;
+    const entityId = Number(this.host.entityId);
+    const items = kind === "activity" ? activityButtonBindingItems(this.host.bundle, entityId) : deviceButtonBindingItems(this.host.bundle, entityId);
+    const item = items.find((entry) => entry.buttonId === Number(buttonId));
+    if (!item) return;
+    this.scope = kind;
+    this.editButtonId = item.buttonId;
+    this.buttonId = item.buttonId;
+    this.deviceId = kind === "activity" ? item.deviceId ?? null : entityId;
+    this.commandId = item.commandId;
+    this.targetKind = kind === "activity" ? this.targetKindFor(item.deviceId) : "command";
+    if (this.targetKind === "wifi_event") {
+      this.host._events.primary = {
+        mode: "existing",
+        slot: Number(item.commandId) - 1,
+        name: ""
+      };
+      this.longPressEnabled = Boolean(item.longPress);
+      this.error = "";
+      this.host._events.load();
+      this.open = true;
+      return;
+    }
+    this.actionName = this.targetKind === "action" ? this.host._macroName(item.commandId) : "";
+    this.macroMode = this.targetKind === "action" ? "existing" : "new";
+    this.macroId = this.targetKind === "action" ? item.commandId : null;
+    this.longPressEnabled = Boolean(item.longPress);
+    this.lpDeviceId = kind === "activity" ? item.longPress?.deviceId ?? item.deviceId ?? null : entityId;
+    this.lpCommandId = item.longPress?.commandId ?? null;
+    this.lpTargetKind = kind === "activity" ? this.targetKindFor(this.lpDeviceId) : "command";
+    this.lpActionName = this.lpTargetKind === "action" ? this.host._macroName(this.lpCommandId) : "";
+    this.lpMacroMode = this.lpTargetKind === "action" ? "existing" : "new";
+    this.lpMacroId = this.lpTargetKind === "action" ? this.lpCommandId : null;
+    this.error = "";
+    this.host._events.load();
+    this.open = true;
+  }
+  resolveMacroTarget(bundle, activityId, mode, macroId, rawName) {
+    if (mode === "existing") {
+      const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(macroId));
+      return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
+    }
+    const name = sanitizeBundleName(bundle, rawName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
+    const next = addActivityUserMacro(bundle, activityId, name);
+    const summaries = activityUserMacroSummaries(next, activityId);
+    const created = summaries[summaries.length - 1];
+    return created ? { bundle: next, macroId: created.buttonId, name: created.name, created: true } : null;
+  }
+  resolveActivityLongPressTarget(bundle, activityId) {
+    if (!this.longPressEnabled) {
+      return { bundle, longPress: null, createdMacro: null };
+    }
+    if (this.lpTargetKind === "command") {
+      if (!this.lpDeviceId || !this.lpCommandId) {
+        this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+        return null;
+      }
+      return {
+        bundle,
+        longPress: {
+          deviceId: Number(this.lpDeviceId),
+          commandId: Number(this.lpCommandId)
+        },
+        createdMacro: null
+      };
+    }
+    const resolved = this.resolveMacroTarget(
+      bundle,
+      activityId,
+      this.lpMacroMode,
+      this.lpMacroId,
+      this.lpActionName
+    );
+    if (!resolved) {
+      this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+      return null;
+    }
+    return {
+      bundle: resolved.bundle,
+      longPress: { deviceId: activityId, commandId: resolved.macroId },
+      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null
+    };
+  }
+  renderMacroTargetFields(params) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const macros = this.host._macroOptions();
+    return b2`
+      ${macros.length ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S5.macroTargetLabel}</label>
+              <select
+                id=${`${params.idPrefix}-macro-target`}
+                class="decoded-field-input"
+                @change=${params.onMacroChange}
+              >
+                ${macros.map((macro) => b2`
+                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
+                `)}
+                <option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>
+              </select>
+            </div>
+          ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
+      ${params.mode === "new" ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-name`}>${S5.addShortcutActionName}</label>
+              <input
+                id=${`${params.idPrefix}-macro-name`}
+                class="decoded-field-input"
+                maxlength="20"
+                .value=${params.name}
+                @input=${params.onNameInput}
+              />
+              <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
+            </div>
+          ` : A}
+    `;
+  }
+  render() {
+    if (!this.open || !this.host.bundle || this.host.entityId == null) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const scope = this.scope;
+    const entityId = Number(this.host.entityId);
+    const isEdit = this.editButtonId != null;
+    const isActivity = scope === "activity";
+    const targetKind = isActivity ? this.targetKind : "command";
+    const lpTargetKind = isActivity ? this.lpTargetKind : "command";
+    const unbound = scope === "activity" ? unboundButtonsForActivity(this.host.bundle, entityId) : unboundButtonsForDevice(this.host.bundle, entityId);
+    const commandDeviceOptions = this.commandDeviceOptions();
+    const commandDeviceId = scope === "activity" && targetKind === "command" ? this.deviceId : entityId;
+    const commandOptions = this.commandOptions(commandDeviceId);
+    const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this.lpDeviceId : entityId;
+    const lpCommandOptions = this.commandOptions(lpDeviceId);
+    const wifiSelReady = (sel) => !this.host._events.busy && (sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0);
+    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
+    const canSave = this.buttonId != null && (scope === "device" ? this.commandId != null : targetKind === "command" ? this.deviceId != null && this.commandId != null : targetKind === "wifi_event" ? wifiSelReady(this.host._events.primary) : true);
+    const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this.buttonId))) : S5.bindingDialogAddTitle;
+    const commandFields = b2`
+      ${scope === "activity" ? this.host._renderBindingSelect({
+      id: "sb-binding-device",
+      label: S5.bindingTargetDevice,
+      value: this.deviceId,
+      options: commandDeviceOptions,
+      onChange: this.handleDeviceChange,
+      emptyText: S5.bindingNoDevices
+    }) : A}
+      ${this.host._renderBindingSelect({
+      id: "sb-binding-command",
+      label: S5.bindingCommand,
+      value: this.commandId,
+      options: commandOptions,
+      onChange: this.handleCommandChange,
+      emptyText: S5.bindingNoCommands
+    })}
+    `;
+    const actionFields = this.renderMacroTargetFields({
+      idPrefix: "sb-binding",
+      mode: this.macroMode,
+      macroId: this.macroId,
+      name: this.actionName,
+      onMacroChange: this.handleMacroTargetChange,
+      onNameInput: this.handleActionNameInput
+    });
+    const lpCommandFields = b2`
+      ${scope === "activity" ? this.host._renderBindingSelect({
+      id: "sb-binding-lp-device",
+      label: S5.bindingLongPressDevice,
+      value: this.lpDeviceId,
+      options: commandDeviceOptions,
+      onChange: this.handleLpDeviceChange,
+      emptyText: S5.bindingNoDevices
+    }) : A}
+      ${this.host._renderBindingSelect({
+      id: "sb-binding-lp-command",
+      label: S5.bindingLongPressCommand,
+      value: this.lpCommandId,
+      options: lpCommandOptions,
+      onChange: this.handleLpCommandChange,
+      emptyText: S5.bindingNoCommands
+    })}
+    `;
+    const lpActionFields = this.renderMacroTargetFields({
+      idPrefix: "sb-binding-lp",
+      mode: this.lpMacroMode,
+      macroId: this.lpMacroId,
+      name: this.lpActionName,
+      onMacroChange: this.handleLpMacroTargetChange,
+      onNameInput: this.handleLpActionNameInput
+    });
+    return b2`
+      <div class="modal-backdrop" @click=${this.close}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${title}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${isEdit ? b2`
+                  <div class="decoded-field">
+                    <span class="decoded-field-label">${S5.bindingButton}</span>
+                    <div class="binding-static-field">${buttonName2(Number(this.buttonId))}</div>
+                  </div>
+                ` : this.host._renderBindingSelect({
+      id: "sb-binding-button",
+      label: S5.bindingButton,
+      value: this.buttonId,
+      options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
+      onChange: this.handleButtonChange,
+      emptyText: S5.bindingNoButtons
+    })}
+            ${isActivity ? b2`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-binding-kind">${S5.addShortcutKindLabel}</label>
+                    <select
+                      id="sb-binding-kind"
+                      class="decoded-field-input"
+                      @change=${this.handleTargetKindChange}
+                    >
+                      <option value="command" ?selected=${targetKind === "command"}>${S5.shortcutKindCommand}</option>
+                      <option value="action" ?selected=${targetKind === "action"}>${S5.shortcutKindAction}</option>
+                      ${this.host._events.available() ? b2`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
+                    </select>
+                  </div>
+                ` : A}
+            ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this.host._events.renderTargetFields({
+      idPrefix: "sb-binding",
+      sel: this.host._events.primary,
+      onSelChange: (sel) => {
+        this.host._events.primary = sel;
+        this.error = "";
+      }
+    }) : actionFields}
+            <div class="binding-toggle-row">
+              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
+              <ha-switch
+                .checked=${this.longPressEnabled}
+                @change=${this.handleLongPressToggle}
+              ></ha-switch>
+            </div>
+            ${this.longPressEnabled ? primaryIsWifiEvent ? b2`
+                    <div class="decoded-field-helper">${S5.wifiEventBindingLongPressNote}</div>
+                  ` : b2`
+                    ${isActivity ? b2`
+                          <div class="decoded-field">
+                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
+                            <select
+                              id="sb-binding-lp-kind"
+                              class="decoded-field-input"
+                              @change=${this.handleLpTargetKindChange}
+                            >
+                              <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
+                              <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
+                            </select>
+                          </div>
+                        ` : A}
+                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
+                  ` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this.close}>${S5.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this.apply} ?disabled=${!canSave}>
+                ${isEdit ? S5.bindingSave : S5.bindingAdd}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/macro-step-editor.ts
+var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+var MacroStepEditorController = class {
+  constructor(host) {
+    this.host = host;
+    this._editor = null;
+    this._dialogOpen = false;
+    this._editIndex = null;
+    this._kind = "command";
+    this._deviceId = null;
+    this._commandId = null;
+    this._holdSeconds = "0";
+    this._error = "";
+    this.closeEditor = () => {
+      this.editor = null;
+      this.closeDialog();
+      if (this.host._bindingsView) this.host._restoreBindingsScroll();
+      else this.host._restoreMainScroll();
+    };
+    // Rename the macro currently open in the step editor. Reuses the shared
+    // rename dialog (kind "macro"); applying it also refreshes the editor's
+    // own title via the macro branch in _applyEditRenameDialog.
+    this.openNameRenameDialog = () => {
+      const editor = this.editor;
+      if (!editor || editor.scope !== "activity" || POWER_MACRO_BUTTON_IDS.has(editor.buttonId)) return;
+      this.host._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
+      this.host._editRenameDialogDraft = editor.name;
+      this.host._editRenameDialogError = "";
+      this.host._editRenameDialogOpen = true;
+    };
+    this.openAdd = () => {
+      const editor = this.editor;
+      if (!editor || !this.host.bundle) return;
+      this.editIndex = null;
+      this.kind = "command";
+      this.deviceId = editor.scope === "activity" ? this.host._editableDeviceOptions()[0]?.id ?? null : editor.entityId;
+      const commandDeviceId = editor.scope === "activity" ? this.deviceId : editor.entityId;
+      const commands = commandDeviceId != null ? deviceCommandItems(this.host.bundle, commandDeviceId) : [];
+      this.commandId = commands[0]?.commandId ?? null;
+      this.holdSeconds = "0";
+      this.error = "";
+      this.host._events.load();
+      this.dialogOpen = true;
+    };
+    this.closeDialog = () => {
+      this.dialogOpen = false;
+      this.editIndex = null;
+      this.kind = "command";
+      this.deviceId = null;
+      this.commandId = null;
+      this.holdSeconds = "0";
+      this.error = "";
+    };
+    this.handleDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this.deviceId = Number.isFinite(value) ? value : null;
+      const commands = this.deviceId != null && this.host.bundle ? deviceCommandItems(this.host.bundle, this.deviceId) : [];
+      this.commandId = commands[0]?.commandId ?? null;
+    };
+    this.handleCommandChange = (event) => {
+      const raw = event.target.value;
+      this.commandId = raw === "" ? null : Number(raw);
+    };
+    this.handleHoldInput = (event) => {
+      this.holdSeconds = event.target.value;
+    };
+    // Snap the dialog's hold field to the 0.5s grid when the user commits it
+    // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
+    this.handleHoldChange = (event) => {
+      this.holdSeconds = this.snapHalfSeconds(event.target.value);
+    };
+    // Inline per-row wait edit: the attached delay travels with its command.
+    this.handleWaitChange = (item, event) => {
+      const editor = this.editor;
+      if (!editor || !this.host.bundle) return;
+      const input = event.target;
+      const waitByte = secondsToByte(input.value);
+      input.value = byteToSeconds(waitByte);
+      const next = editor.scope === "device" ? setDeviceMacroStepWait(this.host.bundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this.host.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
+      this.host._commitEditBundleEdit(next);
+    };
+    this.applyWifiEvent = async () => {
+      const editor = this.editor;
+      if (!editor || !this.host.bundle) return;
+      const timeByte = secondsToByte(this.holdSeconds);
+      const editIndex = this.editIndex;
+      try {
+        const ref = await this.host._events.resolveRef(this.host._events.primary);
+        const next = editIndex === null ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte) : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
+          deviceId: ref.deviceId,
+          commandId: ref.shortCommandId,
+          hold: timeByte
+        });
+        this.host._commitEditBundleEdit(next);
+        this.closeDialog();
+      } catch (err) {
+        this.error = editorErrorMessage(err, "wifi_event");
+      }
+    };
+    this.apply = () => {
+      const editor = this.editor;
+      if (!editor || !this.host.bundle) return;
+      const timeByte = secondsToByte(this.holdSeconds);
+      const editIndex = this.editIndex;
+      const isDevice = editor.scope === "device";
+      if (this.kind === "wifi_event") {
+        void this.applyWifiEvent();
+        return;
+      }
+      if (this.kind === "input") {
+        const deviceId2 = Number(this.deviceId);
+        if (deviceId2 > 0) {
+          const next2 = this.commandId == null ? clearActivityDeviceInput(this.host.bundle, editor.entityId, deviceId2) : setActivityDeviceInput(this.host.bundle, editor.entityId, deviceId2, Number(this.commandId));
+          this.host._commitEditBundleEdit(next2);
+        }
+        this.closeDialog();
+        return;
+      }
+      const commandId = Number(this.commandId);
+      if (!commandId || !isDevice && !this.deviceId) {
+        this.error = TOOLS_CARD_STRINGS.backup.stepNoCommands;
+        return;
+      }
+      const deviceId = Number(this.deviceId);
+      let next;
+      if (editIndex === null) {
+        next = isDevice ? addDeviceMacroCommandStep(this.host.bundle, editor.entityId, editor.buttonId, commandId, timeByte) : addActivityMacroCommandStep(this.host.bundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
+      } else {
+        next = isDevice ? updateDeviceMacroStep(this.host.bundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte }) : updateActivityMacroStep(this.host.bundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
+      }
+      this.host._commitEditBundleEdit(next);
+      this.closeDialog();
+    };
+    this.handleReorder = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      const editor = this.editor;
+      if (!editor || !this.host.bundle) return;
+      const sortableEvent = event;
+      this.reorder(Number(sortableEvent.detail?.oldIndex), Number(sortableEvent.detail?.newIndex));
+    };
+    host.addController(this);
+  }
+  get editor() {
+    return this._editor;
+  }
+  set editor(value) {
+    if (value === this._editor) return;
+    this._editor = value;
+    this.host.requestUpdate();
+  }
+  get dialogOpen() {
+    return this._dialogOpen;
+  }
+  set dialogOpen(value) {
+    if (value === this._dialogOpen) return;
+    this._dialogOpen = value;
+    this.host.requestUpdate();
+  }
+  get editIndex() {
+    return this._editIndex;
+  }
+  set editIndex(value) {
+    if (value === this._editIndex) return;
+    this._editIndex = value;
+    this.host.requestUpdate();
+  }
+  get kind() {
+    return this._kind;
+  }
+  set kind(value) {
+    if (value === this._kind) return;
+    this._kind = value;
+    this.host.requestUpdate();
+  }
+  get deviceId() {
+    return this._deviceId;
+  }
+  set deviceId(value) {
+    if (value === this._deviceId) return;
+    this._deviceId = value;
+    this.host.requestUpdate();
+  }
+  get commandId() {
+    return this._commandId;
+  }
+  set commandId(value) {
+    if (value === this._commandId) return;
+    this._commandId = value;
+    this.host.requestUpdate();
+  }
+  get holdSeconds() {
+    return this._holdSeconds;
+  }
+  set holdSeconds(value) {
+    if (value === this._holdSeconds) return;
+    this._holdSeconds = value;
+    this.host.requestUpdate();
+  }
+  get error() {
+    return this._error;
+  }
+  set error(value) {
+    if (value === this._error) return;
+    this._error = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  // ── Macro step editor (device macros + activity user macros) ────────
+  openEditor(scope, entityId, buttonId, name) {
+    this.host._captureCurrentScrollPosition();
+    this.editor = { scope, entityId: Number(entityId), buttonId: Number(buttonId), name };
+  }
+  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
+  snapHalfSeconds(value) {
+    return byteToSeconds(secondsToByte(value));
+  }
+  currentItems() {
+    const editor = this.editor;
+    if (!editor || !this.host.bundle) return [];
+    return editor.scope === "device" ? deviceMacroStepItems(this.host.bundle, editor.entityId, editor.buttonId) : activityMacroStepItems(this.host.bundle, editor.entityId, editor.buttonId);
+  }
+  openEdit(item) {
+    const editor = this.editor;
+    if (!editor) return;
+    this.editIndex = item.index;
+    this.error = "";
+    this.dialogOpen = true;
+    if (item.kind === "input") {
+      this.kind = "input";
+      this.deviceId = item.deviceId ?? null;
+      this.commandId = item.commandId ?? null;
+      return;
+    }
+    if (this.host._events.available() && editor.scope === "activity" && item.deviceId != null && isWifiEventsBrand(bundleDeviceBrand(this.host.bundle, Number(item.deviceId)))) {
+      this.kind = "wifi_event";
+      this.deviceId = item.deviceId;
+      this.commandId = item.commandId ?? null;
+      this.holdSeconds = byteToSeconds(item.hold);
+      this.host._events.primary = {
+        mode: "existing",
+        slot: item.commandId != null ? Number(item.commandId) - 1 : null,
+        name: ""
+      };
+      this.host._events.load();
+      return;
+    }
+    this.kind = "command";
+    this.deviceId = editor.scope === "activity" ? item.deviceId ?? null : editor.entityId;
+    this.commandId = item.commandId ?? null;
+    this.holdSeconds = byteToSeconds(item.hold);
+  }
+  remove(index) {
+    const editor = this.editor;
+    if (!editor || !this.host.bundle) return;
+    const next = editor.scope === "device" ? removeDeviceMacroStep(this.host.bundle, editor.entityId, editor.buttonId, index) : removeActivityMacroStep(this.host.bundle, editor.entityId, editor.buttonId, index);
+    this.host._commitEditBundleEdit(next);
+  }
+  reorder(oldIndex, newIndex) {
+    const editor = this.editor;
+    if (!editor || !this.host.bundle) return;
+    const items = this.currentItems();
+    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+    if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
+    const order = items.map((_2, index) => index);
+    const [moved] = order.splice(oldIndex, 1);
+    order.splice(newIndex, 0, moved);
+    const next = editor.scope === "device" ? reorderDeviceMacroSteps(this.host.bundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this.host.bundle, editor.entityId, editor.buttonId, order);
+    this.host._commitEditBundleEdit(next);
+  }
+  render(editor) {
+    const items = this.currentItems();
+    const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
+    const sortable = this.host._haSortableReady && items.length > 1;
+    const renderRows = () => items.map((item, position) => this.renderRow(item, position, items.length));
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this.closeEditor}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title-stack">
+                  ${this.host._renderDetailCrumbs([
+      { label: this.host._entityKindCrumbLabel(editor.scope), onClick: this.host._requestClose },
+      { label: this.host._selectedEditTitle(), onClick: this.closeEditor }
+    ])}
+                  <div class="detail-title">${editor.name}</div>
+                </div>
+                ${this.host._renderDirtyChip()}
+                ${canRename ? b2`
+                      <div class="detail-title-actions">
+                        <button
+                          class="icon-btn"
+                          @click=${this.openNameRenameDialog}
+                          aria-label=${TOOLS_CARD_STRINGS.backup.renameMacroAria}
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      </div>
+                    ` : A}
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main">
+                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
+                  <div class="quick-access-sub">
+                    ${this.host._haSortableReady ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
+                  </div>
+                </div>
+                <div class="quick-access-head-actions">
+                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId) ? b2`
+                        <button class="quick-access-add-btn add-member-btn" @click=${this.host._openAddMemberDialog}>
+                          <ha-icon icon="mdi:plus"></ha-icon>
+                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
+                        </button>
+                      ` : A}
+                  <button class="quick-access-add-btn" @click=${this.openAdd}>
+                    <ha-icon icon="mdi:plus"></ha-icon>
+                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
+                  </button>
+                </div>
+              </div>
+              ${items.length ? b2`
+                    <div class="quick-access-list">
+                      ${sortable ? b2`
+                            <ha-sortable
+                              class="quick-access-sortable"
+                              draggable-selector=".quick-access-sortable-item"
+                              handle-selector=".quick-access-drag"
+                              animation="180"
+                              @item-moved=${this.handleReorder}
+                            >
+                              <div class="quick-access-sortable-container">${renderRows()}</div>
+                            </ha-sortable>
+                          ` : b2`<div class="quick-access-sortable-container">${renderRows()}</div>`}
+                    </div>
+                  ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noMacroSteps}</div>`}
+            </div>
+          </div>
+        </div>
+        ${this.renderDialog()}
+        ${this.host._renderEditRenameDialog()}
+        ${this.host._renderAddMemberDialog()}
+        ${this.host._renderDeleteConfirmDialog()}
+      </div>
+    `;
+  }
+  renderRow(item, position, count) {
+    const isLast = position === count - 1;
+    const isPower = item.kind === "power";
+    const isInput = item.kind === "input";
+    const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(byteToSeconds(item.hold)) : "";
+    const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
+    const editor = this.editor;
+    const memberDeviceId = isPower && editor?.scope === "activity" ? Number(item.deviceId ?? 0) : 0;
+    return b2`
+      <div class="quick-access-sortable-item" data-step-index=${item.index}>
+        <div class="quick-access-row">
+          ${count > 1 ? this.host._renderReorderHandle(item.label, position, count, (delta) => this.reorder(position, position + delta)) : b2`<span></span>`}
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.label}</div>
+              <div class="quick-access-chip">${chip}</div>
+            </div>
+            ${meta ? b2`<div class="quick-access-meta">${meta}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            ${isPower ? memberDeviceId > 0 ? b2`
+                      <button
+                        class="icon-btn icon-btn--danger"
+                        @click=${() => this.host._openMemberRemoveConfirm(
+      Number(editor?.entityId ?? 0),
+      memberDeviceId,
+      this.host._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId)
+    )}
+                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
+                      >
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                      </button>
+                    ` : A : b2`
+                  <button class="icon-btn" @click=${() => this.openEdit(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                  ${isInput ? A : b2`
+                        <button class="icon-btn icon-btn--danger" @click=${() => this.remove(item.index)} aria-label=${TOOLS_CARD_STRINGS.backup.deleteStepAria}>
+                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                        </button>
+                      `}
+                `}
+          </div>
+        </div>
+        ${isLast ? A : b2`
+              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
+                <span class="step-wait-field">
+                  <input
+                    class="step-wait-input"
+                    type="number"
+                    min="0"
+                    max="120"
+                    step="0.5"
+                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                    .value=${byteToSeconds(item.wait)}
+                    @change=${(event) => this.handleWaitChange(item, event)}
+                  />
+                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+                </span>
+              </label>
+            `}
+      </div>
+    `;
+  }
+  renderDialog() {
+    if (!this.dialogOpen || !this.host.bundle || !this.editor) return A;
+    const editor = this.editor;
+    const isEdit = this.editIndex !== null;
+    const isActivity = editor.scope === "activity";
+    const isInput = this.kind === "input";
+    const isWifiEvent = this.kind === "wifi_event";
+    const devices = this.host._editableDeviceOptions();
+    const commandDeviceId = isInput ? this.deviceId : isActivity ? this.deviceId : editor.entityId;
+    const commands = commandDeviceId != null ? deviceCommandItems(this.host.bundle, commandDeviceId) : [];
+    const canSave = isInput || (isWifiEvent ? !this.host._events.busy && (this.host._events.primary.mode === "existing" ? this.host._events.primary.slot != null : this.host._events.primary.name.trim().length > 0) : this.commandId != null && (!isActivity || this.deviceId != null));
+    const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
+    return b2`
+      <div class="modal-backdrop" @click=${this.closeDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${title}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.closeDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${isInput ? b2`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
+                    <select id="sb-step-input" class="decoded-field-input" @change=${this.handleCommandChange}>
+                      <option value="" ?selected=${this.commandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
+                      ${commands.map((command) => b2`
+                        <option value=${command.commandId} ?selected=${command.commandId === this.commandId}>${command.label}</option>
+                      `)}
+                    </select>
+                  </div>
+                ` : b2`
+                  ${isActivity && this.host._events.available() ? b2`
+                        <div class="decoded-field">
+                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
+                          <select
+                            id="sb-step-kind"
+                            class="decoded-field-input"
+                            @change=${(event) => {
+      const value = event.target.value;
+      this.kind = value;
+      if (value === "wifi_event") this.host._events.primary = this.host._events.defaultSel();
+      this.error = "";
+    }}
+                          >
+                            <option value="command" ?selected=${this.kind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
+                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
+                          </select>
+                        </div>
+                      ` : A}
+                  ${isWifiEvent ? this.host._events.renderTargetFields({
+      idPrefix: "sb-step",
+      sel: this.host._events.primary,
+      onSelChange: (sel) => {
+        this.host._events.primary = sel;
+        this.error = "";
+      }
+    }) : b2`
+                        ${isActivity ? this.host._renderBindingSelect({
+      id: "sb-step-device",
+      label: TOOLS_CARD_STRINGS.backup.stepDevice,
+      value: this.deviceId,
+      options: devices.map((device) => ({ value: device.id, label: device.label })),
+      onChange: this.handleDeviceChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
+    }) : A}
+                        ${this.host._renderBindingSelect({
+      id: "sb-step-command",
+      label: TOOLS_CARD_STRINGS.backup.stepCommand,
+      value: this.commandId,
+      options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+      onChange: this.handleCommandChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands
+    })}
+                      `}
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
+                    <input
+                      id="sb-step-hold"
+                      class="decoded-field-input"
+                      type="number"
+                      min="0"
+                      max="120"
+                      step="0.5"
+                      .value=${this.holdSeconds}
+                      @input=${this.handleHoldInput}
+                      @change=${this.handleHoldChange}
+                    />
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this.closeDialog}>${TOOLS_CARD_STRINGS.backup.stepCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this.apply} ?disabled=${!canSave}>
+                ${isEdit ? TOOLS_CARD_STRINGS.backup.stepSave : TOOLS_CARD_STRINGS.backup.stepAdd}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
+var SofabatonEditDetailView = class extends i4 {
+  constructor() {
+    super(...arguments);
+    // ── Host-owned props ───────────────────────────────────────────────
+    this.bundle = null;
+    this.kind = "activity";
+    this.entityId = null;
+    this.dirty = false;
+    this.mode = "backup";
+    // ── Transient view state (moved 1:1 from backup-tab) ──────────────
+    this._editDetailActiveSection = "power";
+    this._powerControlMenuOpen = false;
+    this._roleMenuOpen = null;
+    // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
+    // Captured at click time; not reactive — they change only together with
+    // the open-state fields above/below.
+    this._roleMenuAnchor = null;
+    this._roleConfirm = null;
+    // Full sub-view for individual button bindings (never an accordion).
+    this._bindingsView = false;
+    this._addShortcutKind = "command";
+    this._addShortcutActionName = "";
+    this._addShortcutMacroMode = "new";
+    this._addShortcutMacroId = null;
+    // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
+    // `_events.primary` serves whichever Add dialog is open (shortcut,
+    // step, or binding). A Wifi Event is atomic — a binding's long-press
+    // leg is the SAME event's long record, never an independent target — so
+    // one selection covers both legs.
+    this.wifiEvents = null;
+    /** The events device's slot count as the editor opened it (CR-F2-2): the
+     *  working bundle loses two records per paired delete. */
+    this._wifiEventsOpenedSlots = null;
+    this._editRenameDialogOpen = false;
+    this._editRenameDialogDraft = "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogTarget = null;
+    // ── Live payload editing (host-provided I/O) ───────────────────────
+    // The detail view is hass-free; the live Activities host injects these
+    // to fetch a command's blob on demand and to Test it on the hub. Absent
+    // in backup mode (the payload already lives in the bundle there).
+    this.fetchCommandPayload = null;
+    this.testCommandPayload = null;
+    // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
+    this.convertForeignPayload = null;
+    // ── Learn mode of the payload dialog (IR9, live IR devices only) ───
+    // Two capture sources with opposite shapes. The hub receiver is a
+    // *listener*: one armed window per attempt, countdown, cancel. The HA
+    // emitter is an *inbox*: the backend's intercept ring, replayed on
+    // subscribe and pushed on every send, so nothing has to stay alive in
+    // the browser while the user walks off to press a button elsewhere.
+    // "New" is judged against the ring as first seen when learn mode
+    // opened (payload -> timestamp), never against the browser clock.
+    this.irLearn = null;
+    this._learn = new IrLearnController(this);
+    this._payload = new PayloadDialogController(this);
+    this._events = new WifiEventTargets(this);
+    this._binding = new BindingDialogController(this);
+    this._steps = new MacroStepEditorController(this);
+    this._confirmDeleteTarget = null;
+    this._confirmDeleteLabel = "";
+    this._addFavoriteOpen = false;
+    this._addMemberOpen = false;
+    this._addMemberDeviceId = null;
+    this._addFavoriteDeviceId = null;
+    this._addFavoriteCommandId = null;
+    this._addFavoriteError = "";
+    this._detailScrollTop = 0;
+    this._bindingsScrollTop = 0;
+    this._haSortableReady = Boolean(customElements.get("ha-sortable"));
+    /** Ask the host to leave the detail view (back button, entity delete). */
+    this._requestClose = () => {
+      this.dispatchEvent(new CustomEvent("close"));
+    };
+    // ── Live-mode header (§4.3) ─────────────────────────────────────────
+    // The live header mirrors the Wifi command editor: Back (= discard, via the
+    // host's exit-confirm) on the left, rename/delete + a single stateful Sync
+    // button on the right. The element only signals sync intent; the host owns
+    // the write. In backup mode there is no Sync button and the chip reads
+    // "Unsaved".
+    this._requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
+    this._handleEditDetailScroll = (event) => {
+      const scrollEl = event.currentTarget;
+      if (!scrollEl) return;
+      if (this._roleMenuOpen !== null) {
+        this._roleMenuAnchor = null;
+        this._roleMenuOpen = null;
+      }
+      const sections = Array.from(
+        scrollEl.querySelectorAll("[data-edit-section]")
+      );
+      if (!sections.length) return;
+      if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2) {
+        const lastSection = sections[sections.length - 1];
+        const lastActive = String(lastSection.dataset.editSection || "power");
+        if (lastActive !== this._editDetailActiveSection) {
+          this._editDetailActiveSection = lastActive;
+        }
+        return;
+      }
+      const markerTop = scrollEl.getBoundingClientRect().top + 24;
+      let active = String(sections[0].dataset.editSection || "power");
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= markerTop) {
+          active = String(section.dataset.editSection || active);
+        }
+      }
+      if (active !== this._editDetailActiveSection) {
+        this._editDetailActiveSection = active;
+      }
+    };
+    this._closeBindingsView = () => {
+      this._bindingsView = false;
+      this._binding.close();
+      this._closeDeleteConfirm();
+      this._restoreMainScroll();
+    };
+    this._handleRoleAssign = (group, deviceId) => {
+      this._roleMenuOpen = null;
+      if (!this.bundle || this.entityId == null) return;
+      const current = activityRoleAssignments(this.bundle, Number(this.entityId)).find((role) => role.group === group);
+      if (current && current.deviceId === deviceId && current.state !== "customized" && deviceId != null) return;
+      if (current && (current.state === "customized" || current.state === "custom")) {
+        this._roleConfirm = { group, deviceId };
+        return;
+      }
+      this._applyRoleAssign(group, deviceId);
+    };
+    this._closeRoleConfirm = () => {
+      this._roleConfirm = null;
+    };
+    this._confirmRoleAssign = () => {
+      const pending = this._roleConfirm;
+      this._roleConfirm = null;
+      if (!pending) return;
+      this._applyRoleAssign(pending.group, pending.deviceId);
+    };
+    this._handleEditRenameDialogInput = (event) => {
+      const input = event.currentTarget;
+      if (this._editRenameDialogTarget?.kind === "device_ip") {
+        this._editRenameDialogDraft = input.value;
+      } else {
+        const value = sanitizeBundleName(this.bundle, input.value);
+        input.value = value;
+        this._editRenameDialogDraft = value;
+      }
+      this._editRenameDialogError = "";
+    };
+    this._openDetailRenameDialog = () => {
+      if (!this.kind || this.entityId == null) return;
+      this._editRenameDialogTarget = {
+        kind: "detail",
+        entityKind: this.kind,
+        entityId: this.entityId
+      };
+      this._editRenameDialogDraft = this._selectedEditTitle();
+      this._editRenameDialogError = "";
+      this._editRenameDialogOpen = true;
+    };
+    this._closeEditRenameDialog = () => {
+      this._editRenameDialogOpen = false;
+      this._editRenameDialogDraft = "";
+      this._editRenameDialogError = "";
+      this._editRenameDialogTarget = null;
+    };
+    // ── Delete (with cascade-aware confirm) ─────────────────────────────
+    this._openDetailDeleteConfirm = () => {
+      if (!this.kind || this.entityId == null) return;
+      const id = Number(this.entityId);
+      this._confirmDeleteTarget = this.kind === "activity" ? { kind: "activity", activityId: id } : { kind: "device", deviceId: id };
+      this._confirmDeleteLabel = this._selectedEditTitle();
+    };
+    this._closeDeleteConfirm = () => {
+      this._confirmDeleteTarget = null;
+      this._confirmDeleteLabel = "";
+    };
+    this._confirmDelete = () => {
+      const target = this._confirmDeleteTarget;
+      if (!target || !this.bundle) return;
+      if (this.mode === "live" && (target.kind === "activity" || target.kind === "device")) {
+        const entityId = target.kind === "activity" ? target.activityId : target.deviceId;
+        this._closeDeleteConfirm();
+        this.dispatchEvent(new CustomEvent("delete-request", {
+          detail: { kind: target.kind, entityId }
+        }));
+        return;
+      }
+      const deleteOptions = { reconcileMembership: this.mode !== "live" };
+      let next = applyBundleDelete(this.bundle, target, deleteOptions);
+      if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
+        const slotCount = this._wifiEventsSlotCount();
+        if (slotCount > 0 && Number(target.commandId) <= slotCount) {
+          next = applyBundleDelete(next, {
+            kind: "command",
+            deviceId: target.deviceId,
+            commandId: Number(target.commandId) + slotCount
+          }, deleteOptions);
+        }
+      }
+      this._commitEditBundleEdit(next);
+      if (target.kind === "activity" || target.kind === "device") {
+        this._requestClose();
+      }
+      this._closeDeleteConfirm();
+    };
+    // ── Add favorite (device → command picker) ──────────────────────────
+    // One entry point for everything that can land on the remote screen:
+    // a device command or a macro (existing or new). The kind selector
+    // swaps the dialog's fields.
+    this._openAddShortcutDialog = () => {
+      if (this.entityId == null || !this.bundle) return;
+      const devices = this._editableDeviceOptions();
+      const firstDeviceId = devices[0]?.id ?? null;
+      const commands = firstDeviceId != null ? deviceCommandItems(this.bundle, firstDeviceId) : [];
+      this._addShortcutKind = "command";
+      this._addFavoriteDeviceId = firstDeviceId;
+      this._addFavoriteCommandId = commands[0]?.commandId ?? null;
+      this._addFavoriteError = "";
+      this._addShortcutActionName = "";
+      this._resetMacroTarget("shortcut");
+      this._events.load();
+      this._addFavoriteOpen = true;
+    };
+    this._closeAddFavoriteDialog = () => {
+      this._addFavoriteOpen = false;
+      this._addFavoriteDeviceId = null;
+      this._addFavoriteCommandId = null;
+      this._addFavoriteError = "";
+      this._addShortcutKind = "command";
+      this._addShortcutActionName = "";
+      this._addShortcutMacroMode = "new";
+      this._addShortcutMacroId = null;
+    };
+    this._handleAddFavoriteDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this._addFavoriteDeviceId = Number.isFinite(value) ? value : null;
+      const commands = this._addFavoriteDeviceId != null && this.bundle ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
+      this._addFavoriteCommandId = commands[0]?.commandId ?? null;
+      this._addFavoriteError = "";
+    };
+    this._handleAddFavoriteCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
+      this._addFavoriteError = "";
+    };
+    this._applyAddFavorite = () => {
+      if (!this.bundle || this.entityId == null) return;
+      if (this._addFavoriteDeviceId == null || this._addFavoriteCommandId == null) {
+        this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
+        return;
+      }
+      const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
+      const name = sanitizeBundleName(this.bundle, command?.label ?? "");
+      this._commitEditBundleEdit(addBundleActivityFavorite(
+        this.bundle,
+        Number(this.entityId),
+        this._addFavoriteDeviceId,
+        this._addFavoriteCommandId,
+        name
+      ));
+      this._closeAddFavoriteDialog();
+    };
+    this._openAddMemberDialog = () => {
+      const options = this._addableMemberDevices();
+      this._addMemberDeviceId = options[0]?.id ?? null;
+      this._addMemberOpen = true;
+    };
+    this._closeAddMemberDialog = () => {
+      this._addMemberOpen = false;
+      this._addMemberDeviceId = null;
+    };
+    this._applyAddMember = () => {
+      if (!this.bundle || this.entityId == null || this._addMemberDeviceId == null) return;
+      this._commitEditBundleEdit(addActivityMemberDevice(
+        this.bundle,
+        Number(this.entityId),
+        this._addMemberDeviceId
+      ));
+      this._closeAddMemberDialog();
+    };
+    this._applyAddShortcutWifiEvent = async () => {
+      if (!this.bundle || this.entityId == null) return;
+      const activityId = Number(this.entityId);
+      try {
+        const ref = await this._events.resolveRef(this._events.primary);
+        this._commitEditBundleEdit(addBundleActivityFavorite(
+          ref.bundle,
+          activityId,
+          ref.deviceId,
+          ref.shortCommandId,
+          sanitizeBundleName(ref.bundle, ref.name)
+        ));
+        this._closeAddFavoriteDialog();
+      } catch (err) {
+        this._addFavoriteError = editorErrorMessage(err, "wifi_event");
+      }
+    };
+    this._applyAddShortcut = () => {
+      if (!this.bundle || this.entityId == null) return;
+      if (this._addShortcutKind === "command") {
+        this._applyAddFavorite();
+        return;
+      }
+      if (this._addShortcutKind === "wifi_event") {
+        void this._applyAddShortcutWifiEvent();
+        return;
+      }
+      const activityId = Number(this.entityId);
+      if (this._addShortcutMacroMode === "existing") {
+        const existing = activityUserMacroSummaries(this.bundle, activityId).find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
+        if (!existing) {
+          this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+          return;
+        }
+        this._closeAddFavoriteDialog();
+        this._steps.openEditor("activity", activityId, existing.buttonId, existing.name);
+        return;
+      }
+      const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
+      const next = addActivityUserMacro(this.bundle, activityId, name);
+      this._commitEditBundleEdit(next);
+      this._closeAddFavoriteDialog();
+      const summaries = activityUserMacroSummaries(next, activityId);
+      const created = summaries[summaries.length - 1];
+      if (created) this._steps.openEditor("activity", activityId, created.buttonId, created.name);
+    };
+    this._applyEditRenameDialog = () => {
+      const target = this._editRenameDialogTarget;
+      if (!target || !this.bundle) return;
+      if (target.kind === "device_ip") {
+        const draft = this._editRenameDialogDraft.trim();
+        if (draft && !IPV4_PATTERN.test(draft)) {
+          this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.ipv4Required;
+          return;
+        }
+        this._commitEditBundleEdit(updateBundleDeviceIp(this.bundle, target.deviceId, draft));
+        this._closeEditRenameDialog();
+        return;
+      }
+      const next = sanitizeBundleName(this.bundle, this._editRenameDialogDraft);
+      if (!next) {
+        this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.enterName;
+        return;
+      }
+      if (target.kind === "detail") {
+        if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
+        else this._applyDeviceRename(target.entityId, next);
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (target.kind === "macro") {
+        this._commitEditBundleEdit(renameBundleActivityMacro(this.bundle, target.activityId, target.buttonId, next));
+        if (this._steps.editor && this._steps.editor.scope === "activity" && this._steps.editor.entityId === target.activityId && this._steps.editor.buttonId === target.buttonId) {
+          this._steps.editor = { ...this._steps.editor, name: next };
+        }
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (target.kind === "command") {
+        this._commitEditBundleEdit(
+          renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next)
+        );
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (this.mode === "live") {
+        this._closeEditRenameDialog();
+        return;
+      }
+      this._commitEditBundleEdit(renameBundleActivityFavorite(this.bundle, target.activityId, target.buttonId, next));
+      this._closeEditRenameDialog();
+    };
+    this._handleActivityQuickAccessSort = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (!this.bundle || this.entityId == null) return;
+      const sortableEvent = event;
+      const oldIndex = Number(sortableEvent.detail?.oldIndex);
+      const newIndex = Number(sortableEvent.detail?.newIndex);
+      if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+      const items = activityQuickAccessItems(this.bundle, this.entityId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
+      const nextItems = [...items];
+      const [moved] = nextItems.splice(oldIndex, 1);
+      if (!moved) return;
+      nextItems.splice(newIndex, 0, moved);
+      this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
+        this.bundle,
+        this.entityId,
+        nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
+      ));
+    };
+    this._togglePowerControlMenu = () => {
+      this._powerControlMenuOpen = !this._powerControlMenuOpen;
+    };
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    if (!this._haSortableReady) {
+      void customElements.whenDefined("ha-sortable").then(() => {
+        this._haSortableReady = true;
+      });
+    }
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._learn.exit();
+  }
+  // Lit reuses the element instance when the host re-renders with a
+  // different entity, so all transient view state must reset exactly the
+  // way backup-tab's _openEditDetail/_closeEditDetail pair used to.
+  willUpdate(changed) {
+    if (changed.has("kind") || changed.has("entityId")) {
+      this._resetForEntity();
+    }
+  }
+  _resetForEntity() {
+    this._wifiEventsOpenedSlots = null;
+    if (this._isWifiEventsLiveDevice()) this._events.load();
+    this._editDetailActiveSection = "power";
+    this._powerControlMenuOpen = false;
+    this._roleMenuOpen = null;
+    this._roleMenuAnchor = null;
+    this._roleConfirm = null;
+    this._bindingsView = false;
+    this._closeEditRenameDialog();
+    this._payload.close();
+    this._payload.fetchingCommandId = null;
+    this._payload.fetchError = "";
+    this._payload.addPreparing = false;
+    this._closeDeleteConfirm();
+    this._closeAddFavoriteDialog();
+    this._closeAddMemberDialog();
+    this._binding.close();
+    this._steps.editor = null;
+    this._steps.closeDialog();
+  }
+  /**
+   * Commit a mutated bundle from any edit handler. The element updates its
+   * own prop synchronously (handlers read the fresh bundle in the same
+   * tick), then hands the result to the host, which owns dirty/persistence
+   * semantics.
+   */
+  _commitEditBundleEdit(next) {
+    this.bundle = next;
+    this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
+  }
+  _renderDirtyChip() {
+    if (this.mode === "live" || !this.dirty) return A;
+    return b2`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.backup.unsavedTooltip}>${TOOLS_CARD_STRINGS.backup.unsaved}</span>`;
+  }
+  _renderLiveSyncButton() {
+    const S5 = TOOLS_CARD_STRINGS.activities;
+    const dirty = this.dirty;
+    const label = dirty ? S5.syncToHub : S5.syncUpToDate;
+    const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
+    return b2`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
+  }
+  // Rename (pencil) + delete (trash) header buttons — shared by live and
+  // backup mode so both editors expose the identical affordance. In live
+  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
+  // delete executes immediately on the hub through the host (see
+  // _confirmDelete).
+  _renderDetailRenameDeleteButtons(kind) {
+    const managed = this._isManagedWifiLiveDevice();
+    return b2`
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
+        <ha-icon icon="mdi:pencil"></ha-icon>
+      </button>
+      ${managed ? A : b2`
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${this._openDetailDeleteConfirm}
+              aria-label=${kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
+          `}
+    `;
+  }
+  _renderManagedWifiLockNotice() {
+    return b2`
+      <div class="managed-wifi-lock">
+        <div class="managed-wifi-lock-chip">
+          <ha-icon icon="mdi:wifi-cog"></ha-icon>
+          <span>${TOOLS_CARD_STRINGS.backup.managedWifiTitle}</span>
+        </div>
+        <p class="managed-wifi-lock-copy">
+          ${TOOLS_CARD_STRINGS.backup.managedWifiIntro}
+          ${TOOLS_CARD_STRINGS.backup.managedWifiBody}
+        </p>
+        <p class="managed-wifi-lock-copy">
+          ${TOOLS_CARD_STRINGS.backup.managedWifiRename}
+        </p>
+      </div>
+    `;
+  }
+  render() {
+    if (!this.bundle || this.entityId == null) return A;
+    if (this._steps.editor) {
+      return this._steps.render(this._steps.editor);
+    }
+    if (this._bindingsView && this.kind === "activity") {
+      return this._renderActivityBindingsView();
+    }
+    const title = this._selectedEditTitle();
+    if (!title) return A;
+    return this._renderEditDetailView({ kind: this.kind, title });
+  }
+  _renderEditDetailView(params) {
+    const sectionItems = this._editDetailSectionItems(params.kind);
+    const activityQuickAccess = params.kind === "activity" && this.entityId != null ? activityQuickAccessItems(this.bundle, this.entityId) : [];
+    const deviceCommands2 = params.kind === "device" && this.entityId != null ? deviceCommandItems(this.bundle, this.entityId) : [];
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose }
+    ])}
+                  <div class="detail-title">${params.title}</div>
+                </div>
+                ${this._renderDirtyChip()}
+                <div class="detail-title-actions">
+                  ${this._renderDetailRenameDeleteButtons(params.kind)}
+                  ${this.mode === "live" ? this._renderLiveSyncButton() : A}
+                </div>
+              </div>
+            </div>
+            ${this._renderEditDetailSectionNav(sectionItems)}
+          </div>
+          <div class="detail-scroll" @scroll=${this._handleEditDetailScroll}>
+            ${params.kind === "activity" ? b2`
+                  ${this._renderPowerSetupSection("activity", Number(this.entityId))}
+                  ${this._renderButtonBindingsSection("activity")}
+                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
+                ` : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
+                    ${this._renderPowerSetupSection("device", Number(this.entityId))}
+                    ${this._renderDeviceNetworkSection()}
+                    ${this._renderDeviceCommandsSection(deviceCommands2)}
+                    ${this._renderButtonBindingsSection("device")}
+                  `}
+          </div>
+        </div>
+        ${this._renderEditRenameDialog()}
+        ${this._payload.render()}
+        ${this._renderDeleteConfirmDialog()}
+        ${this._renderAddFavoriteDialog()}
+        ${this._renderAddMemberDialog()}
+        ${this._binding.render()}
+        ${this._renderRoleConfirmDialog()}
+      </div>
+    `;
+  }
+  /**
+   * True when the LIVE editor is showing a managed Wifi Commands device.
+   * Such a device's records (commands, power, input, bindings) are owned by
+   * the Wifi Commands tab — editing them here would silently diverge and be
+   * overwritten on the next sync — so the live editor locks everything but
+   * the device name (renaming is coordinated with the Wifi Commands store).
+   * The offline Backup editor is unaffected (mode !== "live").
+   */
+  _isManagedWifiLiveDevice() {
+    const brand = this.entityId != null ? bundleDeviceBrand(this.bundle, Number(this.entityId)) : "";
+    return this.mode === "live" && this.kind === "device" && this.entityId != null && isManagedWifiBrand(brand) && !isWifiEventsBrand(brand);
+  }
+  /**
+   * Device options for pickers/dialogs. In LIVE mode the reserved Wifi
+   * Events device is filtered out — its commands are offered through the
+   * dedicated "Wifi Event" kind, so listing the device too would present
+   * every event twice. The offline Backup editor keeps showing everything.
+   */
+  _editableDeviceOptions() {
+    const options = bundleDeviceOptions(this.bundle);
+    if (this.mode !== "live") return options;
+    return options.filter(
+      (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id))
+    );
+  }
+  /** True when the live editor is showing the reserved Wifi Events device.
+   *  It is fully editable (unlike other managed wifi devices). Command
+   *  deletion is available on every live device (a `command_delete` step
+   *  in the sync); what is events-specific is the short+long record
+   *  pairing: deleting a short row takes its long record along and long
+   *  rows carry no delete of their own. */
+  _isWifiEventsLiveDevice() {
+    return this.mode === "live" && this.kind === "device" && this.entityId != null && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)));
+  }
+  /** The Wifi Events device's slot count (the long-record offset): from
+   *  HA's event records when loaded, else as the device was when the editor
+   *  opened. Never from the working bundle (see wifiEventsSlotCount). */
+  _wifiEventsSlotCount() {
+    if (this.entityId == null || !this.bundle) return 0;
+    if (this._wifiEventsOpenedSlots == null) {
+      const device = (this.bundle.devices ?? []).find(
+        (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId)
+      );
+      this._wifiEventsOpenedSlots = wifiEventsSlotCount(device);
+    }
+    return wifiEventsSlotCount(null, this._events.list) || this._wifiEventsOpenedSlots;
+  }
+  /** True when a command id is a long-press record (id > slot_count) on
+   *  the events device — long rows carry no independent delete; deleting
+   *  the short row removes the pair. */
+  _commandIsLongRecord(commandId) {
+    if (!this._isWifiEventsLiveDevice()) return false;
+    return isWifiEventsLongRecord(commandId, this._wifiEventsSlotCount());
+  }
+  _editDetailSectionItems(kind) {
+    if (kind === "activity") {
+      return [];
+    }
+    if (this._isManagedWifiLiveDevice()) {
+      return [];
+    }
+    const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
+    return [
+      { id: "power", icon: "mdi:power-plug-outline", label: TOOLS_CARD_STRINGS.backup.detailPower },
+      ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: TOOLS_CARD_STRINGS.backup.detailNetwork }] : [],
+      { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
+      { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons }
+    ];
+  }
+  _renderEditDetailSectionNav(items) {
+    if (items.length <= 1) return A;
+    const activeId = items.some((item) => item.id === this._editDetailActiveSection) ? this._editDetailActiveSection : items[0].id;
+    return b2`
+      <div class="detail-section-nav" role="tablist" aria-label=${TOOLS_CARD_STRINGS.backup.detailSectionsAria}>
+        ${items.map((item) => b2`
+          <button
+            class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected=${item.id === activeId ? "true" : "false"}
+            @click=${() => this._scrollEditDetailSection(item.id)}
+          >
+            <ha-icon icon=${item.icon}></ha-icon>
+            <span class="detail-section-nav-label">${item.label}</span>
+          </button>
+        `)}
+      </div>
+    `;
+  }
+  _scrollEditDetailSection(sectionId) {
+    const scrollEl = this.renderRoot.querySelector(".detail-scroll");
+    const sectionEl = scrollEl?.querySelector(`[data-edit-section="${sectionId}"]`);
+    if (!scrollEl || !sectionEl) return;
+    const targetTop = sectionEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+    scrollEl.scrollTop = Math.max(0, targetTop);
+    this._editDetailActiveSection = sectionId;
+  }
+  _renderBindingsListBody(kind) {
+    if (this.entityId == null || !this.bundle) return A;
+    const entityId = Number(this.entityId);
+    const items = kind === "activity" ? activityButtonBindingItems(this.bundle, entityId) : deviceButtonBindingItems(this.bundle, entityId);
+    if (!items.length) {
+      return b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`;
+    }
+    return b2`
+      <div class="quick-access-list">
+        <div class="quick-access-sortable-container">
+          ${items.map((item) => this._renderButtonBindingRow(item, kind))}
+        </div>
+      </div>
+    `;
+  }
+  _renderAddBindingButton(kind) {
+    if (this.entityId == null || !this.bundle) return A;
+    const entityId = Number(this.entityId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
+    return b2`
+      <button
+        class="quick-access-add-btn"
+        @click=${() => this._binding.openAdd(kind)}
+        ?disabled=${unbound.length === 0}
+      >
+        <ha-icon icon="mdi:plus"></ha-icon>
+        <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
+      </button>
+    `;
+  }
+  _renderButtonBindingsSection(kind) {
+    if (this.entityId == null || !this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isActivity = kind === "activity";
+    return b2`
+      <div class="quick-access-section" data-edit-section="bindings">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">
+              ${isActivity ? S5.activityRunningTitle : S5.buttonBindingsTitle}
+            </div>
+            <div class="quick-access-sub">
+              ${isActivity ? S5.activityRunningSub : S5.buttonBindingsDeviceSub}
+            </div>
+          </div>
+          ${isActivity ? A : this._renderAddBindingButton(kind)}
+        </div>
+        ${isActivity ? this._renderActivityRolesBlock() : this._renderBindingsListBody(kind)}
+      </div>
+    `;
+  }
+  // Sub-view for per-button customization — same navigation pattern as
+  // the step editor (breadcrumbs + back), never an inline accordion.
+  _renderActivityBindingsView() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeBindingsView}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel("activity"), onClick: this._requestClose },
+      { label: this._selectedEditTitle(), onClick: this._closeBindingsView }
+    ])}
+                  <div class="detail-title">${S5.bindingsViewTitle}</div>
+                </div>
+                ${this._renderDirtyChip()}
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main">
+                  <div class="quick-access-title">${S5.buttonBindingsTitle}</div>
+                  <div class="quick-access-sub">${S5.buttonBindingsActivitySub}</div>
+                </div>
+                ${this._renderAddBindingButton("activity")}
+              </div>
+              ${this._renderBindingsListBody("activity")}
+            </div>
+          </div>
+        </div>
+        ${this._binding.render()}
+        ${this._renderDeleteConfirmDialog()}
+      </div>
+    `;
+  }
+  // ── Role-based button assignment (activity) ──────────────────────────
+  _renderActivityRolesBlock() {
+    if (this.entityId == null || !this.bundle) return A;
+    const bundle = this.bundle;
+    const activityId = Number(this.entityId);
+    const deviceOptions = this._editableDeviceOptions().map((device) => ({
+      deviceId: device.id,
+      label: device.label
+    }));
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const bindingCount = activityButtonBindingItems(bundle, activityId).length;
+    return renderActivityRolesBlock({
+      roles: activityRoleAssignments(bundle, activityId),
+      optionsFor: (group) => deviceOptions.map((option) => ({
+        ...option,
+        mappable: roleMappableButtonCount(bundle, option.deviceId, group)
+      })),
+      openGroup: this._roleMenuOpen,
+      menuAnchor: this._roleMenuAnchor,
+      onToggleMenu: (group, anchor) => {
+        this._roleMenuAnchor = group == null ? null : anchor ?? null;
+        this._roleMenuOpen = group;
+      },
+      onAssign: this._handleRoleAssign,
+      customize: {
+        label: S5.customizeButtonsToggle,
+        meta: bindingCount > 0 ? S5.bindingsConfiguredCount(bindingCount) : S5.bindingsNoneConfigured,
+        onOpen: () => {
+          this._captureCurrentScrollPosition();
+          this._bindingsView = true;
+        }
+      }
+    });
+  }
+  _applyRoleAssign(group, deviceId) {
+    if (!this.bundle || this.entityId == null) return;
+    this._commitEditBundleEdit(
+      setActivityRoleDevice(this.bundle, Number(this.entityId), group, deviceId)
+    );
+  }
+  _renderRoleConfirmDialog() {
+    if (!this._roleConfirm) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeRoleConfirm}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.roleConfirmTitle}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeRoleConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="backup-drawer-sub">${S5.roleConfirmBody}</div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeRoleConfirm}>${S5.roleConfirmCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmRoleAssign}>${S5.roleConfirmReplace}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderButtonBindingRow(item, kind) {
+    return b2`
+      <div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
+        <div class="quick-access-row quick-access-row--no-drag">
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.buttonName}</div>
+              <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.buttonChip}</div>
+            </div>
+            <div class="quick-access-meta">${item.shortPressLabel}</div>
+            ${item.longPress ? b2`<div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            <button
+              class="icon-btn"
+              @click=${() => this._binding.openEdit(kind, item.buttonId)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.editBindingAria}
+            >
+              <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${() => this._openBindingDeleteConfirm(kind, item.buttonId, item.buttonName)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.deleteBindingAria}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  /**
+   * "Network" section shown above Commands in the Device detail view
+   * for hue / roku / sonos devices, where the IP address lives on the
+   * device head and the hub uses it to build Host headers / addressing
+   * at replay time. wifi_ip devices are deliberately excluded — their
+   * IP lives inside each command blob and is edited per-command via
+   * the structured-payload form.
+   */
+  _renderDeviceNetworkSection() {
+    if (this.entityId == null || !this.bundle) return A;
+    const deviceId = Number(this.entityId);
+    const deviceClass = bundleDeviceClass(this.bundle, deviceId) ?? "";
+    if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
+    const ip = deviceIpAddress(this.bundle, deviceId);
+    return b2`
+      <div class="quick-access-section" data-edit-section="network">
+        <div class="quick-access-head">
+          <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailNetwork}</div>
+          <div class="quick-access-sub">
+            ${TOOLS_CARD_STRINGS.backup.networkDescription}
+          </div>
+        </div>
+        <div class="quick-access-list">
+          <div class="quick-access-sortable-container">
+            <div class="quick-access-sortable-item">
+              <div class="quick-access-row quick-access-row--no-drag">
+                <div class="quick-access-main">
+                  <div class="quick-access-label-row">
+                    <div class="quick-access-label">${ip ?? TOOLS_CARD_STRINGS.backup.hubNameNotSet}</div>
+                    <div class="quick-access-chip">${TOOLS_CARD_STRINGS.backup.ipChip}</div>
+                  </div>
+                  <div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.ipv4Description}</div>
+                </div>
+                <div class="quick-access-actions">
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editIpAria}
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderDeviceCommandsSection(items) {
+    if (this.entityId == null) return A;
+    return b2`
+      <div class="quick-access-section" data-edit-section="commands">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
+            <div class="quick-access-sub">
+              ${this.mode === "live" ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
+            </div>
+          </div>
+          ${this.mode === "live" ? b2`
+                <div class="quick-access-head-actions">
+                  <button
+                    class="quick-access-add-btn"
+                    ?disabled=${this._payload.addPreparing}
+                    @click=${() => void this._payload.openAdd()}
+                  >
+                    <ha-icon
+                      icon=${this._payload.addPreparing ? "mdi:loading" : "mdi:plus"}
+                      class=${this._payload.addPreparing ? "sb-spin" : ""}
+                    ></ha-icon>
+                    <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
+                  </button>
+                </div>
+              ` : A}
+        </div>
+        ${this._payload.fetchError ? b2`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${this._payload.fetchError}</span>
+              </div>
+            ` : A}
+        ${items.length ? b2`
+              <div class="quick-access-list">
+                <div class="quick-access-sortable-container">
+                  ${items.map((item) => this._renderDeviceCommandRow(item))}
+                </div>
+              </div>
+            ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noDeviceCommands}</div>`}
+      </div>
+    `;
+  }
+  _renderDeviceCommandRow(item) {
+    const pendingAdd = this._commandIsPendingAdd(item.commandId);
+    return b2`
+      <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
+        <div class="quick-access-row quick-access-row--no-drag">
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.label}</div>
+              <div class="quick-access-chip">${pendingAdd ? TOOLS_CARD_STRINGS.backup.newCommandChip : TOOLS_CARD_STRINGS.backup.commandChip}</div>
+            </div>
+            <div class="quick-access-meta">
+              ${TOOLS_CARD_STRINGS.backup.commandId} ${item.commandId}
+            </div>
+          </div>
+          <div class="quick-access-actions">
+            <button
+              class="icon-btn"
+              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.renameCommandAria}
+            >
+              <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
+            ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId) ? b2`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._payload.openFromBundle(item.commandId)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                  >
+                    <ha-icon icon="mdi:code-braces"></ha-icon>
+                  </button>
+                ` : A}
+            ${this.mode === "live" && !pendingAdd ? b2`
+                  <button
+                    class="icon-btn"
+                    @click=${() => void this._payload.liveFetchAndOpen(item.commandId)}
+                    ?disabled=${this._payload.fetchingCommandId != null}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
+                    title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
+                  >
+                    <ha-icon
+                      icon=${this._payload.fetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
+                      class=${this._payload.fetchingCommandId === item.commandId ? "sb-spin" : ""}
+                    ></ha-icon>
+                  </button>
+                ` : A}
+            ${!this._commandIsLongRecord(item.commandId) ? b2`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                ` : A}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderActivityQuickAccessSection(items) {
+    if (this.entityId == null) return A;
+    const rows = items.map((item, position) => this._renderActivityQuickAccessRow(item, position, items.length));
+    return b2`
+      <div class="quick-access-section" data-edit-section="quick_access">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.activityShortcutsTitle}</div>
+            <div class="quick-access-sub">
+              ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.activityShortcutsSubSortable : TOOLS_CARD_STRINGS.backup.activityShortcutsSubStatic}
+            </div>
+          </div>
+          <div class="quick-access-head-actions">
+            <button class="quick-access-add-btn" @click=${this._openAddShortcutDialog}>
+              <ha-icon icon="mdi:plus"></ha-icon>
+              <span>${TOOLS_CARD_STRINGS.backup.addShortcutButton}</span>
+            </button>
+          </div>
+        </div>
+        ${items.length ? b2`
+              <div class="quick-access-list">
+                ${this._haSortableReady ? b2`
+                      <ha-sortable
+                        class="quick-access-sortable"
+                        draggable-selector=".quick-access-sortable-item"
+                        handle-selector=".quick-access-drag"
+                        animation="180"
+                        @item-moved=${this._handleActivityQuickAccessSort}
+                      >
+                        <div class="quick-access-sortable-container">
+                          ${rows}
+                        </div>
+                      </ha-sortable>
+                    ` : rows}
+              </div>
+            ` : b2`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.activityShortcutsEmpty}</div>`}
+      </div>
+    `;
+  }
+  // Narrative meta line: a custom action shows its step count; a command
+  // shortcut shows which device it plays on. Slot ids are storage detail.
+  _quickAccessRowMeta(item) {
+    if (item.kind === "macro") {
+      const summary = this.entityId != null ? activityUserMacroSummaries(this.bundle, Number(this.entityId)).find((macro) => macro.buttonId === item.buttonId) : void 0;
+      return TOOLS_CARD_STRINGS.backup.macroStepsCount(summary?.commandStepCount ?? 0);
+    }
+    const device = (this.bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
+    return String(device?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(item.deviceId ?? "?");
+  }
+  _renderActivityQuickAccessRow(item, position, count) {
+    return b2`
+      <div class="quick-access-sortable-item" data-kind=${item.kind} data-button-id=${item.buttonId}>
+        <div class="quick-access-row">
+          ${this._renderReorderHandle(item.label, position, count, (delta) => this._moveActivityQuickAccessItem(position, delta))}
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.label}</div>
+              <div class="quick-access-chip">
+                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
+              </div>
+            </div>
+            <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
+          </div>
+          <div class="quick-access-actions">
+            ${this._haSortableReady ? A : b2`
+              <button
+                class="icon-btn"
+                @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, -1)}
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveUpAria}
+              >
+                <ha-icon icon="mdi:chevron-up"></ha-icon>
+              </button>
+              <button
+                class="icon-btn"
+                @click=${() => this._moveQuickAccessByIdentity(item.kind, item.buttonId, 1)}
+                aria-label=${TOOLS_CARD_STRINGS.backup.moveDownAria}
+              >
+                <ha-icon icon="mdi:chevron-down"></ha-icon>
+              </button>
+            `}
+            ${item.kind === "macro" ? b2`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._steps.openEditor("activity", Number(this.entityId), item.buttonId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editStepsAria}
+                  >
+                    <ha-icon icon="mdi:playlist-edit"></ha-icon>
+                  </button>
+                ` : A}
+            ${this.mode === "live" && item.kind === "favorite" ? A : b2`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutDeleteAria(item.kind)}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderEditRenameDialog() {
+    if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return A;
+    const label = this._editRenameDialogLabel();
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${label}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${useLegacyTextField() ? b2`
+                  <ha-textfield
+                    id="sb-backup-edit-name"
+                    .label=${this._editRenameFieldLabel()}
+                    .maxLength=${this._editRenameFieldMaxLength()}
+                    .value=${this._editRenameDialogDraft}
+                    @input=${this._handleEditRenameDialogInput}
+                    @change=${this._handleEditRenameDialogInput}
+                    @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyEditRenameDialog();
+      }
+    }}
+                  ></ha-textfield>
+                ` : b2`
+                  <ha-input
+                    id="sb-backup-edit-name"
+                    type="text"
+                    .label=${this._editRenameFieldLabel()}
+                    .maxlength=${this._editRenameFieldMaxLength()}
+                    .value=${this._editRenameDialogDraft}
+                    @input=${this._handleEditRenameDialogInput}
+                    @change=${this._handleEditRenameDialogInput}
+                    @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyEditRenameDialog();
+      }
+    }}
+                  ></ha-input>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _editRenameDialogLabel() {
+    const target = this._editRenameDialogTarget;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (!target) return S5.rename;
+    if (target.kind === "detail") {
+      return target.entityKind === "activity" ? S5.renameActivity : S5.renameDevice;
+    }
+    if (target.kind === "macro") return S5.renameMacro;
+    if (target.kind === "favorite") return S5.renameFavorite;
+    if (target.kind === "device_ip") return S5.editIpAria;
+    return S5.renameCommand;
+  }
+  /** Per-target label & max length used by the dialog's primary text input. */
+  _editRenameFieldLabel() {
+    return this._editRenameDialogTarget?.kind === "device_ip" ? TOOLS_CARD_STRINGS.backup.ipAddress : TOOLS_CARD_STRINGS.backup.name;
+  }
+  _editRenameFieldMaxLength() {
+    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
+  }
+  _openDeviceIpRenameDialog(deviceId) {
+    const normalizedId = Number(deviceId);
+    this._editRenameDialogTarget = { kind: "device_ip", deviceId: normalizedId };
+    this._editRenameDialogDraft = deviceIpAddress(this.bundle, normalizedId) || "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogOpen = true;
+  }
+  _openDeviceCommandRenameDialog(commandId) {
+    if (this.entityId == null) return;
+    const deviceId = Number(this.entityId);
+    const normalizedCommandId = Number(commandId);
+    this._editRenameDialogTarget = { kind: "command", deviceId, commandId: normalizedCommandId };
+    const item = deviceCommandItems(this.bundle, deviceId).find(
+      (entry) => entry.commandId === normalizedCommandId
+    );
+    this._editRenameDialogDraft = item?.label || "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogOpen = true;
+  }
+  /**
+   * True when the command is a not-yet-synced addition (live mode): its
+   * bundle row carries the `restore_data.new` marker and there is nothing
+   * on the hub to fetch for it yet.
+   */
+  _commandIsPendingAdd(commandId) {
+    if (this.entityId == null || !this.bundle) return false;
+    const device = (this.bundle.devices ?? []).find(
+      (entry) => Number(entry?.device?.device_id || 0) === Number(this.entityId)
+    );
+    const command = (device?.commands ?? []).find(
+      (row) => Number(row?.command_id || 0) === Number(commandId)
+    );
+    return Boolean(command?.restore_data?.["new"]);
+  }
+  /** True when the command carries anything the payload dialog can edit. */
+  _commandHasEditablePayload(commandId) {
+    if (this.entityId == null) return false;
+    const deviceId = Number(this.entityId);
+    return Boolean(
+      commandDecodedBlock(this.bundle, deviceId, Number(commandId)) || commandRawPayloadHex(this.bundle, deviceId, Number(commandId))
+    );
+  }
+  // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
+  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
+  _learnAvailable() {
+    return this.mode === "live" && !!this.irLearn && this._payload.liveDeviceIsIr();
+  }
+  /**
+   * Drop a captured Sofabaton blob into the editor: hex mode (leaving a
+   * descriptor form if the dialog was in one), pronto view when the bytes
+   * parse as raw timings, Test/Save untouched and ready.
+   */
+  _adoptLearnedPayload(hex, note) {
+    this._learn.exit();
+    const normalized = normalizeCommandPayloadHex(hex) ?? hex;
+    this._payload.morphToHex(normalized, "sofabaton");
+    if (this._payload.prontoAvailable) this._payload.hexTab = "pronto";
+    this._payload.error = "";
+    this._payload.testStatus = "idle";
+    this._payload.testError = "";
+    this._learn.sourceNote = note;
+  }
+  _openQuickAccessRenameDialog(kind, buttonId) {
+    if (this.mode === "live" && kind === "favorite") return;
+    if (this.entityId == null) return;
+    this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this.entityId, buttonId } : { kind: "favorite", activityId: this.entityId, buttonId };
+    const item = activityQuickAccessItems(this.bundle, this.entityId).find(
+      (entry) => entry.kind === kind && entry.buttonId === Number(buttonId)
+    );
+    this._editRenameDialogDraft = item?.label || "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogOpen = true;
+  }
+  _openCommandDeleteConfirm(commandId, label) {
+    if (this.entityId == null) return;
+    this._confirmDeleteTarget = {
+      kind: "command",
+      deviceId: Number(this.entityId),
+      commandId: Number(commandId)
+    };
+    this._confirmDeleteLabel = label;
+  }
+  _openQuickAccessDeleteConfirm(kind, buttonId, label) {
+    if (this.entityId == null) return;
+    const activityId = Number(this.entityId);
+    this._confirmDeleteTarget = kind === "macro" ? { kind: "macro", activityId, buttonId: Number(buttonId) } : { kind: "favorite", activityId, buttonId: Number(buttonId) };
+    this._confirmDeleteLabel = label;
+  }
+  _deleteConfirmTitle(target, label) {
+    const name = label || TOOLS_CARD_STRINGS.backup.thisItem;
+    switch (target.kind) {
+      case "activity":
+        return TOOLS_CARD_STRINGS.backup.deleteActivityTitle(name);
+      case "device":
+        return TOOLS_CARD_STRINGS.backup.deleteDeviceTitle(name);
+      case "command":
+        return TOOLS_CARD_STRINGS.backup.deleteCommandTitle(name);
+      case "favorite":
+        return TOOLS_CARD_STRINGS.backup.deleteFavoriteTitle(name);
+      case "macro":
+        return TOOLS_CARD_STRINGS.backup.deleteMacroTitle(name);
+      case "activity_binding":
+      case "device_binding":
+        return TOOLS_CARD_STRINGS.backup.deleteBindingTitle(name);
+      case "activity_member":
+        return TOOLS_CARD_STRINGS.backup.activityRemoveDeviceTitle(name);
+    }
+  }
+  _openBindingDeleteConfirm(kind, buttonId, name) {
+    if (this.entityId == null) return;
+    const entityId = Number(this.entityId);
+    this._confirmDeleteTarget = kind === "activity" ? { kind: "activity_binding", activityId: entityId, buttonId: Number(buttonId) } : { kind: "device_binding", deviceId: entityId, buttonId: Number(buttonId) };
+    this._confirmDeleteLabel = name;
+  }
+  _renderDeleteConfirmDialog() {
+    const target = this._confirmDeleteTarget;
+    if (!target || !this.bundle) return A;
+    const impact = bundleDeleteImpact(this.bundle, target);
+    const hasCascade = backupDeleteHasCascade(impact);
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isLive = this.mode === "live";
+    const isImmediate = isLive && (target.kind === "activity" || target.kind === "device");
+    const intro = isLive ? hasCascade ? S5.deleteCascadeIntroLive : S5.deleteSimpleBodyLive : hasCascade ? S5.deleteCascadeIntro : S5.deleteSimpleBody;
+    const note = isLive ? isImmediate ? S5.deleteImmediateNote : S5.deleteSyncNote : S5.deleteReplaceNote;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${this._deleteConfirmTitle(target, this._confirmDeleteLabel)}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeDeleteConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="backup-drawer-sub">
+              ${intro}
+            </div>
+            ${hasCascade ? b2`
+                  <ul class="delete-impact-list">
+                    ${impact.activities > 0 ? b2`<li><ha-icon icon="mdi:link-variant"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                    ${impact.favorites > 0 ? b2`<li><ha-icon icon="mdi:star-outline"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                    ${impact.macroSteps > 0 ? b2`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                    ${impact.powerSteps > 0 ? b2`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
+                    ${impact.bindings > 0 ? b2`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                    ${impact.members > 0 ? b2`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMembers(impact.members)}</span></li>` : A}
+                  </ul>
+                ` : A}
+            <div class="delete-replace-note">
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+              <span>${note}</span>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeDeleteConfirm}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmDelete}>${TOOLS_CARD_STRINGS.backup.deleteConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // ── Activity member devices (power-only membership, issue #263) ─────
+  /**
+   * Devices offered by the "Add device" picker. In LIVE mode every
+   * managed Wifi Commands device (including the reserved Wifi Events
+   * device) is excluded: their activity membership is owned by the Wifi
+   * Commands deploy, and a manual add here would silently be undone by
+   * the next resync. The offline Backup editor keeps showing everything.
+   */
+  _addableMemberDevices() {
+    if (!this.bundle || this.entityId == null) return [];
+    const options = activityAddableDevices(this.bundle, Number(this.entityId));
+    if (this.mode !== "live") return options;
+    return options.filter(
+      (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id))
+    );
+  }
+  _openMemberRemoveConfirm(activityId, deviceId, deviceName) {
+    this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
+    this._confirmDeleteLabel = deviceName;
+  }
+  _memberDeviceName(activityId, deviceId) {
+    const member = activityMemberViews(this.bundle, activityId).find((candidate) => candidate.deviceId === deviceId);
+    return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
+  }
+  _renderAddMemberDialog() {
+    if (!this._addMemberOpen || !this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const options = this._addableMemberDevices();
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeAddMemberDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.addMemberTitle}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${options.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addMemberNoneLeft}</div>` : b2`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-member-device">${S5.addFavoriteDevice}</label>
+                    <select
+                      id="sb-add-member-device"
+                      class="decoded-field-input"
+                      @change=${(event) => {
+      const value = Number(event.target.value);
+      this._addMemberDeviceId = Number.isFinite(value) ? value : null;
+    }}
+                    >
+                      ${options.map((device) => b2`
+                        <option value=${device.id} ?selected=${device.id === this._addMemberDeviceId}>${device.label}</option>
+                      `)}
+                    </select>
+                    <div class="decoded-field-helper">${S5.addMemberHelper}</div>
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeAddMemberDialog}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
+              <button
+                class="dialog-btn dialog-btn-primary"
+                ?disabled=${options.length === 0 || this._addMemberDeviceId == null}
+                @click=${this._applyAddMember}
+              >${S5.addMemberConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderAddFavoriteDialog() {
+    if (!this._addFavoriteOpen || !this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const kind = this._addShortcutKind;
+    const devices = this._editableDeviceOptions();
+    const macros = this._macroOptions();
+    const commands = this._addFavoriteDeviceId != null ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
+    const canAdd = kind === "command" ? this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null : kind === "wifi_event" ? !this._events.busy && (this._events.primary.mode === "existing" ? this._events.primary.slot != null : this._events.primary.name.trim().length > 0) : true;
+    const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addFavoriteNoDevices}</div>` : b2`
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-device">${S5.addFavoriteDevice}</label>
+            <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
+              ${devices.map((device) => b2`
+                <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
+              `)}
+            </select>
+          </div>
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-command">${S5.addFavoriteCommand}</label>
+            ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.addFavoriteNoCommands}</div>` : b2`
+                  <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
+                    ${commands.map((command) => b2`
+                      <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
+                    `)}
+                  </select>
+                `}
+            <div class="decoded-field-helper">${S5.addShortcutCommandHelper}</div>
+          </div>
+        `;
+    const actionFields = b2`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-add-action-name">${S5.addShortcutActionName}</label>
+        <input
+          id="sb-add-action-name"
+          class="decoded-field-input"
+          maxlength="20"
+          .value=${this._addShortcutActionName}
+          @input=${(event) => {
+      this._addShortcutActionName = event.target.value;
+    }}
+        />
+        <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
+      </div>
+    `;
+    const macroFields = b2`
+      ${macros.length ? b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-macro-target">${S5.macroTargetLabel}</label>
+              <select
+                id="sb-add-macro-target"
+                class="decoded-field-input"
+                @change=${(event) => {
+      const value = event.target.value;
+      if (value === "__new__") {
+        this._addShortcutMacroMode = "new";
+        this._addShortcutMacroId = null;
+      } else {
+        this._addShortcutMacroMode = "existing";
+        this._addShortcutMacroId = Number(value);
+      }
+      this._addFavoriteError = "";
+    }}
+              >
+                ${macros.map((macro) => b2`
+                  <option value=${macro.value} ?selected=${this._addShortcutMacroMode === "existing" && macro.value === this._addShortcutMacroId}>${macro.label}</option>
+                `)}
+                <option value="__new__" ?selected=${this._addShortcutMacroMode === "new"}>${S5.macroTargetCreateNew}</option>
+              </select>
+            </div>
+          ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
+      ${this._addShortcutMacroMode === "new" ? actionFields : A}
+    `;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.addShortcutTitle}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-shortcut-kind">${S5.addShortcutKindLabel}</label>
+              <select
+                id="sb-add-shortcut-kind"
+                class="decoded-field-input"
+                @change=${(event) => {
+      this._addShortcutKind = event.target.value;
+      if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
+      if (this._addShortcutKind === "wifi_event") {
+        this._events.primary = this._events.defaultSel();
+      }
+      this._addFavoriteError = "";
+    }}
+              >
+                <option value="command" ?selected=${kind === "command"}>${S5.shortcutKindCommand}</option>
+                <option value="action" ?selected=${kind === "action"}>${S5.shortcutKindAction}</option>
+                ${this._events.available() ? b2`<option value="wifi_event" ?selected=${kind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
+              </select>
+            </div>
+            ${kind === "command" ? commandFields : kind === "wifi_event" ? this._events.renderTargetFields({
+      idPrefix: "sb-add-fav",
+      sel: this._events.primary,
+      onSelChange: (sel) => {
+        this._events.primary = sel;
+        this._addFavoriteError = "";
+      }
+    }) : macroFields}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._addFavoriteError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${S5.addFavoriteCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddShortcut} ?disabled=${!canAdd}>${S5.addFavoriteAdd}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _applyActivityRename(activityId, name) {
+    if (!this.bundle) return;
+    this._commitEditBundleEdit(renameBundleActivity(this.bundle, activityId, name));
+  }
+  _applyDeviceRename(deviceId, name) {
+    if (!this.bundle) return;
+    this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
+  }
+  _entityKindCrumbLabel(kind) {
+    return kind === "activity" ? TOOLS_CARD_STRINGS.backup.crumbActivities : TOOLS_CARD_STRINGS.backup.crumbDevices;
+  }
+  // Compact ancestor trail shown above the detail/editor title. Each crumb
+  // is a tappable button that pops back to that level; the trailing "›"
+  // leads the eye into the current page's big title beneath it.
+  _renderDetailCrumbs(crumbs) {
+    if (!crumbs.length) return A;
+    return b2`
+      <div class="detail-crumbs">
+        ${crumbs.map((crumb, index) => b2`
+          ${index > 0 ? b2`<span class="detail-crumb-sep" aria-hidden="true">›</span>` : A}
+          <button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button>
+        `)}
+        <span class="detail-crumb-sep" aria-hidden="true">›</span>
+      </div>
+    `;
+  }
+  _moveActivityQuickAccessItem(index, delta) {
+    if (!this.bundle || this.entityId == null) return;
+    const items = activityQuickAccessItems(this.bundle, this.entityId);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || index >= items.length || nextIndex >= items.length) return;
+    const nextItems = [...items];
+    const [moved] = nextItems.splice(index, 1);
+    nextItems.splice(nextIndex, 0, moved);
+    this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
+      this.bundle,
+      this.entityId,
+      nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
+    ));
+  }
+  _moveQuickAccessByIdentity(kind, buttonId, delta) {
+    if (!this.bundle || this.entityId == null) return;
+    const items = activityQuickAccessItems(this.bundle, this.entityId);
+    const index = items.findIndex((item) => item.kind === kind && item.buttonId === Number(buttonId));
+    if (index === -1) return;
+    this._moveActivityQuickAccessItem(index, delta);
+  }
+  _macroName(buttonId) {
+    if (!this.bundle || this.entityId == null) return "";
+    const bId = Number(buttonId || 0);
+    return activityUserMacroSummaries(this.bundle, Number(this.entityId)).find((macro) => macro.buttonId === bId)?.name ?? "";
+  }
+  _macroOptions() {
+    if (!this.bundle || this.entityId == null) return [];
+    return activityUserMacroSummaries(this.bundle, Number(this.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+  }
+  _resetMacroTarget(prefix) {
+    const firstMacro = this._macroOptions()[0] ?? null;
+    const mode = firstMacro ? "existing" : "new";
+    if (prefix === "shortcut") {
+      this._addShortcutMacroMode = mode;
+      this._addShortcutMacroId = firstMacro?.value ?? null;
+      return;
+    }
+    if (prefix === "binding") {
+      this._binding.macroMode = mode;
+      this._binding.macroId = firstMacro?.value ?? null;
+      return;
+    }
+    this._binding.lpMacroMode = mode;
+    this._binding.lpMacroId = firstMacro?.value ?? null;
+  }
+  _captureCurrentScrollPosition() {
+    const root = this.renderRoot;
+    const scrollEl = root?.querySelector(".detail-scroll");
+    if (!scrollEl) return;
+    if (this._bindingsView) this._bindingsScrollTop = scrollEl.scrollTop;
+    else this._detailScrollTop = scrollEl.scrollTop;
+  }
+  _restoreMainScroll() {
+    void this.updateComplete.then(() => {
+      const root = this.renderRoot;
+      const scrollEl = root?.querySelector(".detail-scroll");
+      if (scrollEl) scrollEl.scrollTop = this._detailScrollTop;
+    });
+  }
+  _restoreBindingsScroll() {
+    void this.updateComplete.then(() => {
+      const root = this.renderRoot;
+      const scrollEl = root?.querySelector(".detail-scroll");
+      if (scrollEl) scrollEl.scrollTop = this._bindingsScrollTop;
+    });
+  }
+  _renderBindingSelect(params) {
+    return b2`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for=${params.id}>${params.label}</label>
+        ${params.options.length === 0 ? b2`<div class="quick-access-empty">${params.emptyText ?? ""}</div>` : b2`
+              <select id=${params.id} class="decoded-field-input" @change=${params.onChange}>
+                ${params.options.map((option) => b2`
+                  <option value=${option.value} ?selected=${option.value === params.value}>${option.label}</option>
+                `)}
+              </select>
+            `}
+      </div>
+    `;
+  }
+  /** The drag handle doubles as the keyboard way to reorder: focus it and
+   *  press the up/down arrows (CR-F2-11). Focus follows the moved row. */
+  _renderReorderHandle(label, position, count, move) {
+    return b2`
+      <div
+        class="quick-access-drag"
+        role="button"
+        tabindex="0"
+        aria-label=${TOOLS_CARD_STRINGS.backup.reorderHandleAria(label)}
+        @keydown=${(event) => {
+      const delta = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (!delta) return;
+      event.preventDefault();
+      const target = position + delta;
+      if (target < 0 || target >= count) return;
+      const list = event.currentTarget.closest(".quick-access-list");
+      move(delta);
+      void this.updateComplete.then(() => {
+        list?.querySelectorAll(".quick-access-drag")[target]?.focus();
+      });
+    }}
+      >
+        <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
+      </div>
+    `;
+  }
+  // ── Power On/Off setup (shared by Device and Activity details) ──────
+  _powerSetupStepCount(scope, entityId, buttonId) {
+    if (!this.bundle) return 0;
+    return scope === "device" ? deviceMacroStepItems(this.bundle, entityId, buttonId).length : activityMacroStepItems(this.bundle, entityId, buttonId).length;
+  }
+  _renderPowerSetupRow(scope, entityId, buttonId, label, disabled) {
+    const count = this._powerSetupStepCount(scope, entityId, buttonId);
+    return b2`
+      <div class="quick-access-sortable-item">
+        <button
+          class="edit-selection-row"
+          aria-disabled=${disabled ? "true" : "false"}
+          tabindex=${disabled ? "-1" : "0"}
+          @click=${() => {
+      if (!disabled) this._steps.openEditor(scope, entityId, buttonId, label);
+    }}
+        >
+          <span class="selection-main">
+            <span class="selection-label">${label}</span>
+            <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
+          </span>
+          <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        </button>
+      </div>
+    `;
+  }
+  // The device Power section folds two concepts the hub keeps separate but
+  // the app presents together: the automatic-power / idle-behavior selector
+  // (one 0x0242 byte) and the POWER_ON/POWER_OFF command sequences. Choosing
+  // "Don't control power" makes the hub ignore the sequences, so they render
+  // inert. Activities have no idle behavior, so they get only the sequences.
+  _renderPowerSetupSection(scope, entityId) {
+    if (this.entityId == null || !this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isDevice = scope === "device";
+    const mode = isDevice ? deviceIdleBehavior(this.bundle, entityId) : null;
+    const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
+    return b2`
+      <div class="quick-access-section" data-edit-section="power">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">${S5.powerSetupTitle}</div>
+            <div class="quick-access-sub">
+              ${isDevice ? S5.powerSetupDeviceSub : S5.powerSetupActivitySub}
+            </div>
+          </div>
+        </div>
+        ${isDevice ? this._renderPowerControlDropdown(entityId, mode) : A}
+        <div class="quick-access-list">
+          ${sequencesDisabled ? b2`<div class="power-sequences-note">${S5.powerSequencesDisabledNote}</div>` : A}
+          <div
+            class="quick-access-sortable-container power-sequences"
+            data-disabled=${sequencesDisabled ? "true" : "false"}
+          >
+            ${this._renderPowerSetupRow(scope, entityId, 198, S5.powerOnLabel, sequencesDisabled)}
+            ${this._renderPowerSetupRow(scope, entityId, 199, S5.powerOffLabel, sequencesDisabled)}
+          </div>
+        </div>
+        ${isDevice ? A : this._renderActivityMemberBlock(entityId)}
+      </div>
+    `;
+  }
+  /**
+   * One-line member summary under the Activity power-sequence rows. The
+   * sequences themselves are the management surface (Add device beside
+   * Add step; deleting a power-ref row removes the device), so the
+   * section level keeps only the glanceable roster: device names with
+   * their configured input in parentheses.
+   */
+  _renderActivityMemberBlock(activityId) {
+    if (!this.bundle) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const members = activityMemberViews(this.bundle, activityId);
+    const names = members.map(
+      (member) => member.inputOrdinal > 0 && member.inputCommandName ? `${member.deviceName} (${member.inputCommandName})` : member.deviceName
+    ).join(", ");
+    return b2`
+      <div class="quick-access-sub power-members-summary" data-kind="member-summary">
+        ${members.length ? S5.memberSummary(names) : S5.memberSummaryEmpty}
+      </div>
+    `;
+  }
+  // ── Automatic power control selector (device only) ──────────────────
+  // One hub byte (the 0x0242 reply) encodes both the "Power On/Off Setup"
+  // toggle and the "Idle Behavior" choice, so it surfaces here as a single
+  // two-line dropdown. It lives in its own hub query, not the device
+  // record, so it is captured/restored separately.
+  _powerControlOptions() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return [
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S5.powerControlDisabled, sub: S5.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S5.powerControlAutoOff, sub: S5.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S5.powerControlStayOn, sub: S5.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S5.powerControlAlwaysOn, sub: S5.powerControlAlwaysOnSub }
+    ];
+  }
+  _selectPowerControl(deviceId, mode) {
+    this._powerControlMenuOpen = false;
+    if (!this.bundle) return;
+    if (deviceIdleBehavior(this.bundle, deviceId) === mode) return;
+    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this.bundle, deviceId, mode));
+  }
+  _renderPowerControlDropdown(deviceId, mode) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const options = this._powerControlOptions();
+    const selected = options.find((opt) => opt.mode === mode) ?? null;
+    const open = this._powerControlMenuOpen;
+    return b2`
+      <div class="power-control" data-open=${open ? "true" : "false"}>
+        <button
+          class="power-control-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          @click=${this._togglePowerControlMenu}
+        >
+          <span class="selection-main">
+            <span class="selection-label">${selected ? selected.label : S5.powerControlUnset}</span>
+            <span class="selection-sub">${selected ? selected.sub : S5.powerControlUnsetSub}</span>
+          </span>
+          <span class="selection-chevron"><ha-icon icon="mdi:chevron-down"></ha-icon></span>
+        </button>
+        ${open ? b2`
+              <button
+                class="power-control-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this._togglePowerControlMenu}
+              ></button>
+              <div class="power-control-menu" role="listbox" aria-label=${S5.powerControlTitle}>
+                ${options.map((opt) => {
+      const isSel = opt.mode === mode;
+      return b2`
+                    <button
+                      class="power-control-option"
+                      type="button"
+                      role="option"
+                      aria-selected=${isSel ? "true" : "false"}
+                      aria-checked=${isSel ? "true" : "false"}
+                      @click=${() => this._selectPowerControl(deviceId, opt.mode)}
+                    >
+                      <span class="selection-main">
+                        <span class="selection-label">${opt.label}</span>
+                        <span class="selection-sub">${opt.sub}</span>
+                      </span>
+                      <span class="selection-chevron">
+                        ${isSel ? b2`<ha-icon icon="mdi:check"></ha-icon>` : A}
+                      </span>
+                    </button>
+                  `;
+    })}
+              </div>
+            ` : A}
+      </div>
+    `;
+  }
+  _selectedEditTitle() {
+    if (!this.bundle || !this.kind || this.entityId == null) return "";
+    const options = this.kind === "activity" ? bundleActivityOptions(this.bundle) : bundleDeviceOptions(this.bundle);
+    return options.find((option) => option.id === this.entityId)?.label || "";
+  }
+};
+SofabatonEditDetailView.properties = {
+  bundle: { attribute: false },
+  kind: { attribute: false },
+  entityId: { attribute: false },
+  dirty: { type: Boolean },
+  mode: { type: String },
+  wifiEvents: { attribute: false },
+  _editDetailActiveSection: { state: true },
+  _editRenameDialogOpen: { state: true },
+  _editRenameDialogDraft: { state: true },
+  _editRenameDialogError: { state: true },
+  _editRenameDialogTarget: { state: true },
+  fetchCommandPayload: { attribute: false },
+  testCommandPayload: { attribute: false },
+  irLearn: { attribute: false },
+  _confirmDeleteTarget: { state: true },
+  _confirmDeleteLabel: { state: true },
+  _addFavoriteOpen: { state: true },
+  _addMemberOpen: { state: true },
+  _addMemberDeviceId: { state: true },
+  _addFavoriteDeviceId: { state: true },
+  _addFavoriteCommandId: { state: true },
+  _addFavoriteError: { state: true },
+  _haSortableReady: { state: true },
+  _powerControlMenuOpen: { state: true },
+  _roleMenuOpen: { state: true },
+  _roleConfirm: { state: true },
+  _bindingsView: { state: true },
+  _addShortcutKind: { state: true },
+  _addShortcutActionName: { state: true },
+  _addShortcutMacroMode: { state: true },
+  _addShortcutMacroId: { state: true }
+};
+// The whole backup-tab stylesheet ships to both shadow roots (see
+// backup-tab-styles.ts); the :host rule it carries gives this element
+// the same flex-fill layout the tab-panel had inside backup-tab.
+SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButtonStyles, editDetailViewStyles];
 if (!customElements.get("sofabaton-edit-detail-view")) {
   customElements.define("sofabaton-edit-detail-view", SofabatonEditDetailView);
 }
