@@ -32,6 +32,11 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     deviceKeymapMissing:
       "此设备的命令尚未缓存。请在 Sofabaton 控制面板的 Hub 标签页中刷新此设备，然后重新加载仪表板。",
     deviceKeymapError: "无法加载此设备的命令。",
+    deviceKeymapMissingServer:
+      "此设备不在 Hub 的目录中。请在 Sofabaton 控制面板中刷新 Hub，然后重新加载此页面。",
+    hubUnreachable: (detail: string) =>
+      `服务器无法连接到 Hub（${detail}）。`,
+    controlRefused: "Hub 未接受该命令。",
     poweredOff: "已关机",
     defaultLayout: "默认活动布局",
     activityFallback: (id: number | string) => `活动 ${id}`,

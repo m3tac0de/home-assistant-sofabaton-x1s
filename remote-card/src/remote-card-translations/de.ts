@@ -35,6 +35,11 @@ const REMOTE_CARD_STRINGS_DE = {
     deviceKeymapMissing:
       "Die Befehle dieses Geräts sind noch nicht im Cache. Aktualisiere das Gerät im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Geräts konnten nicht geladen werden.",
+    deviceKeymapMissingServer:
+      "Dieses Gerät ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
+    hubUnreachable: (detail: string) =>
+      `Der Server erreicht den Hub nicht (${detail}).`,
+    controlRefused: "Der Hub hat diesen Befehl nicht angenommen.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivitätslayout",
     activityFallback: (id: number | string) => `Aktivität ${id}`,

@@ -19,7 +19,6 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import {
   cacheGenerationSnapshot,
-  canRunHubActions,
   connectionFingerprint,
   didHubGenerationChange,
   entityForHub,

@@ -1,7 +1,4 @@
-import {
-  combinedFavoritesSignature,
-  macroFavoriteDisplayState,
-} from "./remote-card-runtime-display";
+import { macroFavoriteDisplayState } from "./remote-card-runtime-display";
 
 export function drawerVisibilityState({
   activeDrawer,
@@ -41,30 +38,5 @@ export function drawerVisibilityState({
     ...display,
     nextActiveDrawer,
     closedByVisibility: Boolean(activeDrawer && !nextActiveDrawer),
-  };
-}
-
-export function drawerRefreshState({
-  macroDataSig,
-  macroSig,
-  customFavoritesSig,
-  favoritesSig,
-  favoritesDataSig,
-}: {
-  macroDataSig: string | null | undefined;
-  macroSig: string;
-  customFavoritesSig: string;
-  favoritesSig: string;
-  favoritesDataSig: string | null | undefined;
-}) {
-  const nextFavoritesSig = combinedFavoritesSignature(
-    customFavoritesSig,
-    favoritesSig,
-  );
-  return {
-    refreshMacros: macroDataSig !== macroSig,
-    nextMacroSig: macroSig,
-    refreshFavorites: favoritesDataSig !== nextFavoritesSig,
-    nextFavoritesSig,
   };
 }

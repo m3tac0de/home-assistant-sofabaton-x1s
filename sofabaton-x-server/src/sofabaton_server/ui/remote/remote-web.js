@@ -6,6 +6,13 @@ function toNumber(value) {
   const n7 = Number(value);
   return Number.isFinite(n7) ? n7 : null;
 }
+var HttpError = class extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+};
+var CONTROL_REFUSED_BANNER_MS = 6e3;
 function errorText(err) {
   return err instanceof Error ? err.message : String(err);
 }
@@ -38,6 +45,8 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     /** The catalog has been read at least once (a disabled hub answers 409 to reads). */
     this.catalogLoaded = false;
     this._lastError = null;
+    /** When the server last refused a control request (for the host's banner). */
+    this._controlRefusedAt = null;
     /** True until the server has answered (or failed) once for this target. */
     this.firstAnswerPending = true;
     // Load ordering
@@ -47,6 +56,9 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     this.runningEpoch = 0;
     this.statusPromise = null;
     this.statusDirty = false;
+    // One page read per activity per load epoch: a reload supersedes the
+    // read in flight, which then discards its answer, so a new epoch must
+    // start its own read instead of waiting on the stale one (CR-F4a-4).
     this.pagePromises = {};
     // Retry of failed HTTP work (independent of the socket)
     this.retryTimer = null;
@@ -222,7 +234,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     const response = await this.fetchImpl(this.url(path), {
       headers: { accept: "application/json" }
     });
-    if (!response.ok) throw new Error(`GET ${path} -> ${response.status}`);
+    if (!response.ok) throw new HttpError(`GET ${path} -> ${response.status}`, response.status);
     return await response.json();
   }
   async post(path, body) {
@@ -231,7 +243,24 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       headers: body ? { accept: "application/json", "content-type": "application/json" } : { accept: "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
-    if (!response.ok) throw new Error(`POST ${path} -> ${response.status}`);
+    if (!response.ok) {
+      this.noteControlRefused();
+      throw new HttpError(`POST ${path} -> ${response.status}`, response.status);
+    }
+  }
+  /** The last control request the server refused, while it is recent. */
+  get controlRefused() {
+    return this._controlRefusedAt !== null;
+  }
+  noteControlRefused() {
+    const at = Date.now();
+    this._controlRefusedAt = at;
+    this.notify();
+    setTimeout(() => {
+      if (this._controlRefusedAt !== at) return;
+      this._controlRefusedAt = null;
+      this.notify();
+    }, CONTROL_REFUSED_BANNER_MS);
   }
   // ---------- loading ----------
   /** Load once; a load already in flight is shared. */
@@ -295,6 +324,10 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       this.cancelRetry();
     } catch (err) {
       if (!current()) return;
+      if (err instanceof HttpError && err.status === 404 && await this.relocateHub(hubId)) {
+        void this.reload();
+        return;
+      }
       this._lastError = errorText(err);
       this.hubStatus = null;
       this.firstAnswerPending = false;
@@ -304,6 +337,37 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     this.invalidate();
     this.notify();
     if (current() && this.running) await this.ensureActivityPages(this.running.activity_id);
+  }
+  /**
+   * A hub opened by host is re-keyed to its MAC on its first sync. The
+   * stream announces that (hub_rekeyed), but a page whose socket was down
+   * at the time (a server restart, a sleeping phone tab) only sees the old
+   * id answer 404. The host stays in the hub's config, so look it up there
+   * and follow it (CR-X3-2). True when the target moved.
+   */
+  async relocateHub(oldId) {
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}${SERVER_API_PREFIX}/hubs`, {
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok || oldId !== this.hubId) return false;
+      const hubs = await response.json();
+      const moved = Array.isArray(hubs) ? hubs.find((row) => row?.hub_id && row.hub_id !== oldId && row.config?.host === oldId) : null;
+      if (!moved?.hub_id || oldId !== this.hubId) return false;
+      this.moveTarget(String(moved.hub_id));
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+  /** Follow the hub to its new id; the socket re-narrows to it. */
+  moveTarget(nextId) {
+    this.hubId = nextId;
+    this.pagePromises = {};
+    const wasStreaming = this.streaming;
+    this.closeSocket();
+    if (wasStreaming) this.openSocket();
+    this.notify();
   }
   /** Re-read /status (and the running activity); one in flight, one pending. */
   refreshStatus() {
@@ -332,6 +396,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       this.hubStatus = status;
       this.firstAnswerPending = false;
       this._lastError = null;
+      this.retryDelay = this.retryBaseMs;
       if (_ServerRemoteBackend.readable(status)) {
         if (!this.catalogLoaded) {
           void this.reload();
@@ -356,12 +421,13 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
   ensureActivityPages(activityId) {
     const key = String(activityId);
     if (this.activityPages[key]) return Promise.resolve();
-    if (!this.pagePromises[key]) {
-      this.pagePromises[key] = this.loadActivityPages(activityId).finally(() => {
-        delete this.pagePromises[key];
-      });
-    }
-    return this.pagePromises[key];
+    const inFlight = this.pagePromises[key];
+    if (inFlight && inFlight.epoch === this.loadEpoch) return inFlight.promise;
+    const promise = this.loadActivityPages(activityId).finally(() => {
+      if (this.pagePromises[key]?.promise === promise) delete this.pagePromises[key];
+    });
+    this.pagePromises[key] = { epoch: this.loadEpoch, promise };
+    return promise;
   }
   async loadActivityPages(activityId) {
     const hubId = this.hubId;
@@ -375,6 +441,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       ]);
       if (!current()) return;
       this.activityPages[String(activityId)] = { buttons, macros, favorites };
+      this.retryDelay = this.retryBaseMs;
     } catch (err) {
       if (!current()) return;
       this._lastError = errorText(err);
@@ -503,6 +570,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       case "server_event":
         if (message.kind === "hub_rekeyed" && message.hub_id && message.hub_id !== this.hubId) {
           this.hubId = String(message.hub_id);
+          this.notify();
           void this.reload();
           return;
         }
@@ -1821,7 +1889,10 @@ var REMOTE_CARD_STRINGS_EN = {
     switchToDeviceMode: "Switch to device mode",
     switchToActivityMode: "Switch to activity mode",
     deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapMissingServer: "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
+    hubUnreachable: (detail) => `The server cannot reach the hub (${detail}).`,
+    controlRefused: "The hub did not take that command.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
@@ -2023,8 +2094,14 @@ function deepMerge(base, overlay) {
   }
   return out;
 }
+var REMOTE_CARD_LOCALE_ALIASES = {
+  "zh": "zh-hans",
+  "zh-cn": "zh-hans",
+  "zh-sg": "zh-hans"
+};
 function resolveTranslation(language) {
-  const lang = String(language || "").toLowerCase();
+  const raw = String(language || "").toLowerCase().replaceAll("_", "-");
+  const lang = REMOTE_CARD_LOCALE_ALIASES[raw] ?? (raw.startsWith("zh-hans-") ? "zh-hans" : raw);
   if (!lang) return null;
   if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
   const base = lang.split(/[-_]/)[0];
@@ -4481,6 +4558,9 @@ var RemoteCardStore = class {
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
+      // A binding-only edit changes only this; the keys' long-press arming
+      // is computed at render time from it (CR-F4a-3).
+      stableJsonSignature(attrs?.long_press_keys),
       stableJsonSignature(this._config?.background_override),
       themeName,
       themeMode,
@@ -4956,6 +5036,17 @@ var RemoteCardStore = class {
       }
     }, 6e4);
   }
+  /**
+   * A control request was refused (the server answers 409/404, HA raises).
+   * The card must not keep waiting for an activity switch that will not
+   * happen; the rejection itself stops here (CR-F4a-7). The server backend
+   * shows it on the host's banner.
+   */
+  controlFailed() {
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.stopActivityLoading();
+  }
   stopActivityLoading(notify = true) {
     if (!this.activityLoadActive) return;
     this.activityLoadActive = false;
@@ -5349,7 +5440,7 @@ var RemoteCardStore = class {
     const deviceModeAvailable = this.deviceModeAvailable() && deviceToggleEnabled(layoutConfig);
     const layoutKey = mode === "device" ? deviceLayoutKey(deviceId) : activityId;
     const commands = keymapEntry?.status === "ready" ? this.filterAndSortCommands(keymapEntry.commands) : [];
-    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
+    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? this._backend?.kind === "server" ? str().card.deviceKeymapMissingServer : str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
     return {
       remote,
       isUnavailable,
@@ -5394,6 +5485,11 @@ var RemoteCardStore = class {
 };
 
 // remote-card/src/remote-card-assist-yaml.ts
+function yamlScalar(value) {
+  const text = String(value ?? "");
+  const plain = text !== "" && text === text.trim() && !/^[-?:,[\]{}#&*!|>'"%@`]/.test(text) && !/: |:$| #/.test(text) && !/^(?:y|yes|n|no|true|false|on|off|null|~)$/i.test(text) && !/^[-+]?(?:\d|\.\d)/.test(text) && !/[\u0000-\u001f]/.test(text);
+  return plain ? text : JSON.stringify(text);
+}
 function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
@@ -5415,7 +5511,7 @@ function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
       "target:",
       `  entity_id: ${entityId}`,
       "data:",
-      `  activity: ${capture.activityName}`
+      `  activity: ${yamlScalar(capture.activityName)}`
     ].join("\n");
   }
   if (kind === "power") {
@@ -5468,7 +5564,7 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
-    `name: ${label}`,
+    `name: ${yamlScalar(label)}`,
     `icon: ${icon}`,
     "tap_action:",
     "  action: perform-action",
@@ -5548,6 +5644,11 @@ var AutomationAssistController = class {
     this.hubMacDetecting = false;
     this.mqttUnsub = null;
     this.mqttTopic = null;
+    // The current subscription, set BEFORE subscribeMessage resolves (HA acks
+    // it a round trip later). A render in that window must not subscribe
+    // again, and a subscription that resolves after being superseded is
+    // cancelled on arrival and never delivers (CR-F4a-2).
+    this.mqttToken = null;
     this.mqttLookupId = 0;
     this.mqttDeviceNames = /* @__PURE__ */ new Map();
     this.mqttDeviceCommands = /* @__PURE__ */ new Map();
@@ -5875,21 +5976,29 @@ var AutomationAssistController = class {
     const mac = this.hubMac;
     if (!mac) return;
     const topic = `${mac}/up`;
-    if (this.mqttTopic === topic && this.mqttUnsub) return;
+    if (this.mqttTopic === topic && this.mqttToken) return;
     this.unsubscribeMqtt();
     const hass = this.host.getHass();
     if (!hass?.connection?.subscribeMessage) return;
     this.mqttTopic = topic;
-    hass.connection.subscribeMessage((msg) => this.handleMqtt(msg), {
+    const token = /* @__PURE__ */ Symbol("mqtt-subscription");
+    this.mqttToken = token;
+    hass.connection.subscribeMessage((msg) => {
+      if (this.mqttToken === token) this.handleMqtt(msg);
+    }, {
       type: "mqtt/subscribe",
       topic
     }).then((unsub) => {
-      this.mqttUnsub = unsub;
+      if (this.mqttToken === token) this.mqttUnsub = unsub;
+      else this.safeUnsubscribe(unsub);
     }).catch(() => {
-      this.mqttUnsub = null;
+      if (this.mqttToken !== token) return;
+      this.mqttToken = null;
+      this.mqttTopic = null;
     });
   }
   unsubscribeMqtt() {
+    this.mqttToken = null;
     if (this.mqttUnsub) {
       const unsubscribe = this.mqttUnsub;
       this.mqttUnsub = null;
@@ -7681,9 +7790,12 @@ var SofabatonRemoteCard = class extends i4 {
     this._lastSelectedActivityValue = String(value);
     this._lastSelectedActivityAt = now;
     this._fireEvent("haptic", "light");
-    Promise.resolve(this._store.setActivity(value)).catch((err) => {
-      console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
-    });
+    this._control(this._store.setActivity(value));
+  }
+  /** Run a control request: a refusal ends any activity wait instead of
+   *  escaping as an unhandled rejection (CR-F4a-7). */
+  _control(request) {
+    request.catch(() => this._store.controlFailed());
   }
   /**
    * Single stable entry point for the activity/device dropdown. The select's
@@ -8037,7 +8149,7 @@ var SofabatonRemoteCard = class extends i4 {
           icon: model.icon
         });
         store.triggerCommandPulse();
-        void store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem);
+        this._control(store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem));
       },
       onCustomFavorite: ({ model, rawFavorite }) => {
         if (this._assist.active) {
@@ -8051,7 +8163,7 @@ var SofabatonRemoteCard = class extends i4 {
           return;
         }
         store.triggerCommandPulse();
-        void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
+        this._control(store.sendCustomFavoriteCommand(model.commandId, model.deviceId));
       }
     };
     const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && (this._editMode || store.devicePowerConfigured());
@@ -8060,7 +8172,7 @@ var SofabatonRemoteCard = class extends i4 {
       disabled: disableAll,
       label: str().card.powerButton,
       onToggle: () => {
-        void store.toggleDevicePower();
+        this._control(store.toggleDevicePower());
       }
     };
     const shortcutConfigs = deviceMode ? deviceShortcutsFromConfig(store.config, derived.deviceId) : {};
@@ -8248,7 +8360,7 @@ var SofabatonRemoteCard = class extends i4 {
         this._assist.setStatus(str().assist.notCaptured);
       }
       this._store.triggerCommandPulse();
-      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      this._control(this._store.sendLongPress(spec.cmd, targetDeviceId));
       return;
     }
     if (holdRepeatIndexOf(ev) <= 1) {
@@ -8263,7 +8375,7 @@ var SofabatonRemoteCard = class extends i4 {
       });
     }
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(spec.cmd, targetDeviceId);
+    this._control(this._store.sendCommand(spec.cmd, targetDeviceId));
   }
   _onShortcutPress(slot) {
     if (slot.commandId == null) return;
@@ -8279,7 +8391,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(slot.commandId, deviceId);
+    this._control(this._store.sendCommand(slot.commandId, deviceId));
   }
   _onCommandItem(command) {
     const deviceId = this._store.currentDeviceId();
@@ -8294,7 +8406,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(command.command_id, deviceId);
+    this._control(this._store.sendCommand(command.command_id, deviceId));
   }
   updated(_changed) {
     const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
@@ -8453,10 +8565,11 @@ async function loadStoredDocument(serverBase, hubId, fetchImpl) {
     return null;
   }
 }
-function unavailableBannerText(snapshot, lastError) {
+function unavailableBannerText(snapshot, lastError, controlRefused = false) {
   const unavailable = !snapshot || snapshot.state === "unavailable";
-  if (!unavailable) return null;
-  return lastError ? `The server cannot reach the hub (${lastError}).` : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected).";
+  if (unavailable && lastError) return str().card.hubUnreachable(lastError);
+  if (controlRefused) return str().card.controlRefused;
+  return null;
 }
 
 // remote-card/src/shims/ha-card.ts
@@ -9697,6 +9810,9 @@ var REMOTE_CARD_STRINGS_AR = {
     switchToActivityMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
     deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
+    deviceKeymapMissingServer: `\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0643\u062A\u0627\u0644\u0648\u062C ${isolate("Hub")}. \u062D\u062F\u0650\u0651\u062B ${isolate("Hub")} \u0641\u064A \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 ${SOFABATON}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062D\u0629.`,
+    hubUnreachable: (detail) => `\u0644\u0627 \u064A\u0633\u062A\u0637\u064A\u0639 \u0627\u0644\u062E\u0627\u062F\u0645 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 ${isolate("Hub")} (${isolate(detail)}).`,
+    controlRefused: `\u0644\u0645 \u064A\u0642\u0628\u0644 ${isolate("Hub")} \u0647\u0630\u0627 \u0627\u0644\u0623\u0645\u0631.`,
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`,
@@ -9916,6 +10032,9 @@ var REMOTE_CARD_STRINGS_DE = {
     switchToActivityMode: "In den Aktivit\xE4tsmodus wechseln",
     deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
+    deviceKeymapMissingServer: "Dieses Ger\xE4t ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
+    hubUnreachable: (detail) => `Der Server erreicht den Hub nicht (${detail}).`,
+    controlRefused: "Der Hub hat diesen Befehl nicht angenommen.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivit\xE4tslayout",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
@@ -10115,6 +10234,9 @@ var REMOTE_CARD_STRINGS_ES = {
     switchToActivityMode: "Cambiar al modo de actividad",
     deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
+    deviceKeymapMissingServer: "Este dispositivo no est\xE1 en el cat\xE1logo del hub. Actualiza el hub en el panel de control de Sofabaton y vuelve a cargar esta p\xE1gina.",
+    hubUnreachable: (detail) => `El servidor no puede comunicarse con el hub (${detail}).`,
+    controlRefused: "El hub no acept\xF3 ese comando.",
     poweredOff: "Apagado",
     defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
@@ -10314,6 +10436,9 @@ var REMOTE_CARD_STRINGS_FR = {
     switchToActivityMode: "Passer en mode activit\xE9",
     deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
+    deviceKeymapMissingServer: "Cet appareil ne figure pas dans le catalogue du hub. Actualisez le hub dans le panneau de contr\xF4le Sofabaton, puis rechargez cette page.",
+    hubUnreachable: (detail) => `Le serveur ne parvient pas \xE0 joindre le hub (${detail}).`,
+    controlRefused: "Le hub n\u2019a pas accept\xE9 cette commande.",
     poweredOff: "\xC9teinte",
     defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
     activityFallback: (id) => `Activit\xE9 ${id}`,
@@ -10512,6 +10637,9 @@ var REMOTE_CARD_STRINGS_NL = {
     switchToActivityMode: "Naar activiteitsmodus schakelen",
     deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
+    deviceKeymapMissingServer: "Dit apparaat staat niet in de catalogus van de hub. Vernieuw de hub in het Sofabaton-bedieningspaneel en laad deze pagina daarna opnieuw.",
+    hubUnreachable: (detail) => `De server kan de hub niet bereiken (${detail}).`,
+    controlRefused: "De hub heeft dat commando niet aangenomen.",
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
@@ -10710,6 +10838,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     switchToActivityMode: "\u5207\u6362\u5230\u6D3B\u52A8\u6A21\u5F0F",
     deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
     deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
+    deviceKeymapMissingServer: "\u6B64\u8BBE\u5907\u4E0D\u5728 Hub \u7684\u76EE\u5F55\u4E2D\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u4E2D\u5237\u65B0 Hub\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u6B64\u9875\u9762\u3002",
+    hubUnreachable: (detail) => `\u670D\u52A1\u5668\u65E0\u6CD5\u8FDE\u63A5\u5230 Hub\uFF08${detail}\uFF09\u3002`,
+    controlRefused: "Hub \u672A\u63A5\u53D7\u8BE5\u547D\u4EE4\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
     defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
@@ -10992,7 +11123,7 @@ var SofabatonRemoteWeb = class extends HTMLElement {
   _syncBanner() {
     const banner = this._shadow.getElementById("banner");
     if (!banner || !this._backend) return;
-    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError);
+    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError, this._backend.controlRefused);
     if (text === this._lastBanner) return;
     this._lastBanner = text;
     banner.hidden = !text;

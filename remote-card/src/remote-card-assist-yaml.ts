@@ -22,6 +22,25 @@ export interface AutomationAssistCapture {
   deviceName?: string;
 }
 
+/**
+ * A user-named value (activity, macro, favorite or command name) as a YAML
+ * scalar. Plain names stay as typed; anything YAML would read differently
+ * (": ", a leading indicator such as # or *, a YAML 1.1 boolean like "On",
+ * a number) is emitted double-quoted, which JSON escaping makes valid YAML
+ * (CR-F4a-6).
+ */
+export function yamlScalar(value: unknown): string {
+  const text = String(value ?? "");
+  const plain = text !== ""
+    && text === text.trim()
+    && !/^[-?:,[\]{}#&*!|>'"%@`]/.test(text)
+    && !/: |:$| #/.test(text)
+    && !/^(?:y|yes|n|no|true|false|on|off|null|~)$/i.test(text)
+    && !/^[-+]?(?:\d|\.\d)/.test(text)
+    && !/[\u0000-\u001f]/.test(text);
+  return plain ? text : JSON.stringify(text);
+}
+
 export function automationAssistRemoteYaml(
   capture: AutomationAssistCapture | null | undefined,
   entityId: unknown,
@@ -50,7 +69,7 @@ export function automationAssistRemoteYaml(
       "target:",
       `  entity_id: ${entityId}`,
       "data:",
-      `  activity: ${capture.activityName}`,
+      `  activity: ${yamlScalar(capture.activityName)}`,
     ].join("\n");
   }
 
@@ -135,7 +154,7 @@ export function automationAssistButtonYaml(
 
   return [
     "type: button",
-    `name: ${label}`,
+    `name: ${yamlScalar(label)}`,
     `icon: ${icon}`,
     "tap_action:",
     "  action: perform-action",

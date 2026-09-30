@@ -156,12 +156,3 @@ export function hubLongPressBinding(
   if (!Number.isFinite(command) || command < 1) return null;
   return { device_id: device, command_id: command };
 }
-
-/** True when this hard button carries a hub long-press binding on the scope. */
-export function hubLongPressAvailable(
-  attributes: { long_press_keys?: unknown } | null | undefined,
-  scopeId: unknown,
-  buttonId: unknown,
-): boolean {
-  return hubLongPressBinding(attributes, scopeId, buttonId) !== null;
-}

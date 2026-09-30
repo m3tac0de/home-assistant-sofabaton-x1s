@@ -153,11 +153,22 @@ async def delete_remote_card_document(request: Request, hub_id: str) -> Response
 # -- the page ---------------------------------------------------------------
 
 
+# The bundles are immutable per release, and every page load revalidates
+# them (no-cache), so hash each file once per (path, mtime, size).
+_ETAGS: dict[tuple[str, int, int], str] = {}
+
+
 def _etag(path: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(__version__.encode("utf-8"))
-    digest.update(path.read_bytes())
-    return f'"{digest.hexdigest()[:24]}"'
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    cached = _ETAGS.get(key)
+    if cached is None:
+        digest = hashlib.sha256()
+        digest.update(__version__.encode("utf-8"))
+        digest.update(path.read_bytes())
+        cached = f'"{digest.hexdigest()[:24]}"'
+        _ETAGS[key] = cached
+    return cached
 
 
 def _asset_response(request: Request, directory: Path, assets: dict[str, str], name: str,

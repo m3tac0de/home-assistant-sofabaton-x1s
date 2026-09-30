@@ -14,14 +14,14 @@ import type {
   WifiSectionId,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
+import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import {
   findRunningWifiDevice,
   selectedDeviceOwnsPendingSync,
   shouldFinalizeWifiHubLoad,
 } from "./wifi-commands-state";
-import { hubSupportsUnicodeNames, sanitizeWifiName } from "../shared/hub-names";
+import { sanitizeWifiName } from "../shared/hub-names";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const SLOT_COUNT = 10;
@@ -2441,10 +2441,6 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _hubVersion() {
     return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
-  }
-
-  private _supportsUnicodeCommandNames() {
-    return hubSupportsUnicodeNames(this._hubVersion());
   }
 
   private _supportsPowerInputConfig() {

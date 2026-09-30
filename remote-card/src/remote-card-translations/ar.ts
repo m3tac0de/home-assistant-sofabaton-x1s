@@ -44,6 +44,11 @@ export const REMOTE_CARD_STRINGS_AR = {
     deviceKeymapMissing:
       `أوامر هذا الجهاز غير مخزّنة مؤقتًا بعد. حدِّث الجهاز من تبويب ${isolate("Hub")} في ${isolate("Sofabaton Control Panel")}، ثم أعد تحميل لوحة المعلومات.`,
     deviceKeymapError: "تعذّر تحميل أوامر هذا الجهاز.",
+    deviceKeymapMissingServer:
+      `هذا الجهاز غير موجود في كتالوج ${isolate("Hub")}. حدِّث ${isolate("Hub")} في لوحة تحكم ${SOFABATON}، ثم أعد تحميل هذه الصفحة.`,
+    hubUnreachable: (detail: string) =>
+      `لا يستطيع الخادم الوصول إلى ${isolate("Hub")} (${isolate(detail)}).`,
+    controlRefused: `لم يقبل ${isolate("Hub")} هذا الأمر.`,
     poweredOff: "مُطفأ",
     defaultLayout: "التخطيط الافتراضي للأنشطة",
     activityFallback: (id: number | string) => `النشاط ${isolate(id)}`,

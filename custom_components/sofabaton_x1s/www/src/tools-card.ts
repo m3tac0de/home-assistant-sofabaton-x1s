@@ -963,7 +963,6 @@ class SofabatonControlPanelCard extends LitElement {
       return this.renderBackendUnavailable(height);
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
-    const activeBackupOperation = hub?.active_backup_operation;
     const runtimeState = resolveRuntimeState(this._snapshot);
     const runtimeOperationBusy = runtimeState?.kind === "operation_running";
     const hubEntryId = hub?.entry_id ?? null;
@@ -975,10 +974,6 @@ class SofabatonControlPanelCard extends LitElement {
       hubExternalLabel !== null ||
       this._snapshot.pendingActionKey,
     );
-    const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
-      || hubExternalLabel
-      || (hubRefreshing ? TOOLS_CARD_STRINGS.backend.refreshingCache : null)
-      || (this._snapshot.pendingActionKey ? TOOLS_CARD_STRINGS.backend.hubCommandInProgress : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,

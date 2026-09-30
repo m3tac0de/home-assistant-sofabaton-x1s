@@ -36,7 +36,11 @@ export const REMOTE_CARD_STRINGS_EN = {
     switchToActivityMode: "Switch to activity mode",
     deviceKeymapMissing:
       "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapMissingServer:
+      "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
+    hubUnreachable: (detail: string) => `The server cannot reach the hub (${detail}).`,
+    controlRefused: "The hub did not take that command.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id: number | string) => `Activity ${id}`,
@@ -282,8 +286,22 @@ function deepMerge<T>(base: T, overlay: DeepPartial<T> | undefined): T {
   return out;
 }
 
+/**
+ * Browser and HA language codes served by another catalogue. Browsers
+ * report Simplified Chinese as zh-CN (or zh-SG, or bare zh), while the
+ * catalogue is zh-hans; the web remote and the embed read navigator.language
+ * (CR-X7-3). The tools card keeps the same table (TOOLS_CARD_LOCALE_ALIASES);
+ * a test holds the two equal. zh-TW / zh-Hant stay on English.
+ */
+export const REMOTE_CARD_LOCALE_ALIASES: Readonly<Record<string, string>> = {
+  "zh": "zh-hans",
+  "zh-cn": "zh-hans",
+  "zh-sg": "zh-hans",
+};
+
 function resolveTranslation(language: string): RemoteCardTranslation | null {
-  const lang = String(language || "").toLowerCase();
+  const raw = String(language || "").toLowerCase().replaceAll("_", "-");
+  const lang = REMOTE_CARD_LOCALE_ALIASES[raw] ?? (raw.startsWith("zh-hans-") ? "zh-hans" : raw);
   if (!lang) return null;
   if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
   const base = lang.split(/[-_]/)[0];

@@ -509,10 +509,13 @@ export class SofabatonRemoteCard extends LitElement {
     this._lastSelectedActivityValue = String(value);
     this._lastSelectedActivityAt = now;
     this._fireEvent("haptic", "light");
-    Promise.resolve(this._store.setActivity(value)).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
-    });
+    this._control(this._store.setActivity(value));
+  }
+
+  /** Run a control request: a refusal ends any activity wait instead of
+   *  escaping as an unhandled rejection (CR-F4a-7). */
+  private _control(request: Promise<void>): void {
+    request.catch(() => this._store.controlFailed());
   }
 
   /**
@@ -999,7 +1002,7 @@ export class SofabatonRemoteCard extends LitElement {
           icon: model.icon,
         });
         store.triggerCommandPulse();
-        void store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem);
+        this._control(store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem));
       },
       onCustomFavorite: ({ model, rawFavorite }) => {
         if (this._assist.active) {
@@ -1013,7 +1016,7 @@ export class SofabatonRemoteCard extends LitElement {
           return;
         }
         store.triggerCommandPulse();
-        void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
+        this._control(store.sendCustomFavoriteCommand(model.commandId, model.deviceId));
       },
     };
 
@@ -1034,7 +1037,7 @@ export class SofabatonRemoteCard extends LitElement {
       disabled: disableAll,
       label: str().card.powerButton,
       onToggle: () => {
-        void store.toggleDevicePower();
+        this._control(store.toggleDevicePower());
       },
     };
 
@@ -1305,7 +1308,7 @@ export class SofabatonRemoteCard extends LitElement {
         this._assist.setStatus(str().assist.notCaptured);
       }
       this._store.triggerCommandPulse();
-      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      this._control(this._store.sendLongPress(spec.cmd, targetDeviceId));
       return;
     }
     // A hold is one press for Key capture: record it on the first repeat
@@ -1326,7 +1329,7 @@ export class SofabatonRemoteCard extends LitElement {
       });
     }
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(spec.cmd, targetDeviceId);
+    this._control(this._store.sendCommand(spec.cmd, targetDeviceId));
   }
 
   private _onShortcutPress(slot: ShortcutsRowSlot): void {
@@ -1343,7 +1346,7 @@ export class SofabatonRemoteCard extends LitElement {
       deviceName: this._store.deviceNameForId(deviceId),
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(slot.commandId, deviceId);
+    this._control(this._store.sendCommand(slot.commandId, deviceId));
   }
 
   private _onCommandItem(command: { command_id: number; name: string }): void {
@@ -1359,7 +1362,7 @@ export class SofabatonRemoteCard extends LitElement {
       deviceName: this._store.deviceNameForId(deviceId),
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(command.command_id, deviceId);
+    this._control(this._store.sendCommand(command.command_id, deviceId));
   }
 
   protected updated(_changed: PropertyValues): void {

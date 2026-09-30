@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  REMOTE_CARD_LOCALE_ALIASES,
   REMOTE_CARD_STRINGS_EN,
   isLocalizedPoweredOffLabel,
   registerRemoteCardTranslation,
@@ -11,7 +12,7 @@ import {
 } from "../../remote-card/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../remote-card/src/remote-card-state";
 import { drawerTabChevronIcon } from "../../remote-card/src/sections/macro-favorites";
-import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_LOCALE_ALIASES, TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import TOOLS_CARD_STRINGS_DE from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
 import TOOLS_CARD_STRINGS_ES from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
 import TOOLS_CARD_STRINGS_FR from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
@@ -417,4 +418,18 @@ test("powered-off detection matches localized and protocol labels", () => {
 
   setRemoteCardLanguage("en");
   assert.equal(isPoweredOffLabel("Uitgeschakeld"), false);
+});
+
+test("zh-CN and friends resolve to the Simplified Chinese catalogue (CR-X7-3)", () => {
+  for (const language of ["zh-CN", "zh_cn", "zh", "zh-SG", "zh-Hans-CN"]) {
+    setRemoteCardLanguage(language);
+    assert.equal(str().card.powerButton, "切换电源", language);
+  }
+  setRemoteCardLanguage("zh-TW");
+  assert.equal(str().card.powerButton, "Toggle power");
+  setRemoteCardLanguage("en");
+});
+
+test("the remote card and the tools card alias the same locales", () => {
+  assert.deepEqual({ ...REMOTE_CARD_LOCALE_ALIASES }, { ...TOOLS_CARD_LOCALE_ALIASES });
 });

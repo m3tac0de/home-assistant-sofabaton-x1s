@@ -33,6 +33,11 @@ const REMOTE_CARD_STRINGS_NL = {
     deviceKeymapMissing:
       "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
+    deviceKeymapMissingServer:
+      "Dit apparaat staat niet in de catalogus van de hub. Vernieuw de hub in het Sofabaton-bedieningspaneel en laad deze pagina daarna opnieuw.",
+    hubUnreachable: (detail: string) =>
+      `De server kan de hub niet bereiken (${detail}).`,
+    controlRefused: "De hub heeft dat commando niet aangenomen.",
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id: number | string) => `Activiteit ${id}`,

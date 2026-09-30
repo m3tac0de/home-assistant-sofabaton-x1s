@@ -17966,9 +17966,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _hubVersion() {
     return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
   }
-  _supportsUnicodeCommandNames() {
-    return hubSupportsUnicodeNames(this._hubVersion());
-  }
   _supportsPowerInputConfig() {
     const version = this._hubVersion();
     return !(version.includes("X1") && !version.includes("X1S"));
@@ -21203,7 +21200,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       return this.renderBackendUnavailable(height);
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
-    const activeBackupOperation = hub?.active_backup_operation;
     const runtimeState = resolveRuntimeState(this._snapshot);
     const runtimeOperationBusy = runtimeState?.kind === "operation_running";
     const hubEntryId = hub?.entry_id ?? null;
@@ -21212,7 +21208,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     const sharedHubCommandBusy = Boolean(
       runtimeOperationBusy || hubRefreshing || hubExternalLabel !== null || this._snapshot.pendingActionKey
     );
-    const sharedHubCommandLabel = (runtimeOperationBusy ? runtimeState.detail || runtimeState.label : null) || hubExternalLabel || (hubRefreshing ? TOOLS_CARD_STRINGS.backend.refreshingCache : null) || (this._snapshot.pendingActionKey ? TOOLS_CARD_STRINGS.backend.hubCommandInProgress : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,

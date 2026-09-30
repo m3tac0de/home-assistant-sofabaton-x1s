@@ -199,9 +199,11 @@ export class SofabatonRemote extends HTMLElement {
       this._setOrRemove("config", value);
       return;
     }
-    this._configOverride = value && typeof value === "object" && !Array.isArray(value) ? { ...value } : null;
+    // Drop a config attribute first: its removal runs
+    // attributeChangedCallback, which resets the override (CR-F4a-5).
     if (this.hasAttribute("config")) this.removeAttribute("config");
-    else this._scheduleBoot();
+    this._configOverride = value && typeof value === "object" && !Array.isArray(value) ? { ...value } : null;
+    this._scheduleBoot();
   }
 
   /** The hub as the server spells it, once loaded. */
@@ -330,8 +332,15 @@ export class SofabatonRemote extends HTMLElement {
     this._hub = hub;
     if (this._notice) this._notice.hidden = true;
     this._stage?.replaceChildren(card);
-    this._unsubscribe = backend.subscribe(() => this._syncBanner());
+    this._unsubscribe = backend.subscribe(() => {
+      this._followTarget();
+      this._syncBanner();
+    });
     this._syncBanner();
+    this._dispatchReady(hub);
+  }
+
+  private _dispatchReady(hub: HubSummary): void {
     this.dispatchEvent(
       new CustomEvent("sofabaton-remote-ready", {
         detail: { hub: hub.hub_id, name: hub.config?.name ?? null },
@@ -339,6 +348,15 @@ export class SofabatonRemote extends HTMLElement {
         composed: true,
       }),
     );
+  }
+
+  /** A hub opened by host is re-keyed to its MAC on its first sync; the
+   *  backend follows it, and so do hubId and a fresh ready event (CR-X3-2). */
+  private _followTarget(): void {
+    const target = this._backend?.target;
+    if (!this._hub || !target || target === this._hub.hub_id) return;
+    this._hub = { ...this._hub, hub_id: target };
+    this._dispatchReady(this._hub);
   }
 
   private _teardown(): void {
@@ -400,7 +418,7 @@ export class SofabatonRemote extends HTMLElement {
 
   private _syncBanner(): void {
     if (!this._banner || !this._backend) return;
-    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError);
+    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError, this._backend.controlRefused);
     if (text === this._lastBanner) return;
     this._lastBanner = text;
     this._banner.hidden = !text;

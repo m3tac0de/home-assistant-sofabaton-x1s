@@ -385,6 +385,9 @@ export class RemoteCardStore {
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
+      // A binding-only edit changes only this; the keys' long-press arming
+      // is computed at render time from it (CR-F4a-3).
+      stableJsonSignature(attrs?.long_press_keys),
       stableJsonSignature(this._config?.background_override),
       themeName,
       themeMode,
@@ -966,6 +969,18 @@ export class RemoteCardStore {
         this.onChange();
       }
     }, 60000);
+  }
+
+  /**
+   * A control request was refused (the server answers 409/404, HA raises).
+   * The card must not keep waiting for an activity switch that will not
+   * happen; the rejection itself stops here (CR-F4a-7). The server backend
+   * shows it on the host's banner.
+   */
+  controlFailed(): void {
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.stopActivityLoading();
   }
 
   stopActivityLoading(notify = true): void {
@@ -1562,7 +1577,11 @@ export class RemoteCardStore {
       mode !== "device"
         ? ""
         : keymapEntry?.status === "cache_miss"
-          ? str().card.deviceKeymapMissing
+          // The HA advice (tools card, dashboard) means nothing on the
+          // server-backed remote (CR-X7-5).
+          ? this._backend?.kind === "server"
+            ? str().card.deviceKeymapMissingServer
+            : str().card.deviceKeymapMissing
           : keymapEntry?.status === "error"
             ? str().card.deviceKeymapError
             : "";

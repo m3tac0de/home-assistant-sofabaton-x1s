@@ -1,7 +1,6 @@
 import type {
   BackupBundleActivityPayload,
   BackupBundleButtonBinding,
-  BackupBundleCommandRow,
   BackupBundleDeviceBlock,
   BackupBundleDevicePayload,
   BackupBundleFavoriteSlot,
@@ -13,7 +12,7 @@ import type {
   CacheHubState,
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
-import { hubActivities, hubDevices } from "../shared/utils/control-panel-selectors";
+import { hubDevices } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 export interface BackupSelectionOption {

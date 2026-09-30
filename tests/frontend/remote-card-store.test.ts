@@ -5,6 +5,7 @@ import {
   normalizeRemoteCardConfig,
 } from "../../remote-card/src/state/remote-card-store";
 import type { HassLike, RemoteCardConfig } from "../../remote-card/src/remote-card-types";
+import { str } from "../../remote-card/src/remote-card-strings";
 
 const ENTITY = "remote.living_room";
 
@@ -159,6 +160,21 @@ test("identical hass states notify only once; attribute changes notify again", a
   store.setHass(createHass({ state: switched }));
   await flush();
   assert.equal(changeCount(), before + 2);
+});
+
+test("a long_press_keys-only change notifies, so hub long-press arming follows it (CR-F4a-3)", async () => {
+  const state = activeState();
+  const { store, changeCount } = createStore();
+  store.setHass(createHass({ state }));
+  await flush();
+  const before = changeCount();
+
+  // A binding-only edit republishes long_press_keys with identical assigned_keys.
+  const withLongPress = JSON.parse(JSON.stringify(state));
+  withLongPress.attributes.long_press_keys = { "101": [0xb6] };
+  store.setHass(createHass({ state: withLongPress }));
+  await flush();
+  assert.equal(changeCount(), before + 1);
 });
 
 // ---------- activity / preview state ----------
@@ -455,4 +471,9 @@ test("key style and tinted panels resolve independently, with legacy panel fallb
   // Released key_style:"panel" configs read as flat keys + panels on.
   assert.equal(keyStyleFromConfig({ key_style: "panel" }), "flat");
   assert.equal(tintedPanelsFromConfig({ key_style: "panel" }), true);
+});
+
+test("the server-backed remote gives server advice for a device cache miss (CR-X7-5)", () => {
+  assert.notEqual(str().card.deviceKeymapMissingServer, str().card.deviceKeymapMissing);
+  assert.equal(str().card.deviceKeymapMissingServer.includes("dashboard"), false);
 });

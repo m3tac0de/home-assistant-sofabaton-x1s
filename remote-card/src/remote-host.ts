@@ -6,6 +6,7 @@
 // the DOM glue stays in the two hosts.
 
 import { SERVER_API_PREFIX } from "./backend/server-backend";
+import { str } from "./remote-card-strings";
 import { normalizeHubId } from "./remote-web-config";
 
 /** One row of `GET /hubs`, as far as a host needs it. */
@@ -296,10 +297,13 @@ export function embedHtmlSnippet(options: {
 export function unavailableBannerText(
   snapshot: { state?: string } | undefined,
   lastError: string | null,
+  controlRefused = false,
 ): string | null {
+  // The card shows its own localized notice for an unavailable hub; the
+  // banner only adds what the card cannot know: the server's error, or a
+  // command the hub just refused (CR-X7-6, CR-F4a-7).
   const unavailable = !snapshot || snapshot.state === "unavailable";
-  if (!unavailable) return null;
-  return lastError
-    ? `The server cannot reach the hub (${lastError}).`
-    : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected).";
+  if (unavailable && lastError) return str().card.hubUnreachable(lastError);
+  if (controlRefused) return str().card.controlRefused;
+  return null;
 }

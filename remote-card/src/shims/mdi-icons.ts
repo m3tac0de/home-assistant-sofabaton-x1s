@@ -687,7 +687,6 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "dots-horizontal",
   "drag-vertical-variant",
   "fast-forward",
-  "gesture-tap-button",
   "help-circle-outline",
   "home",
   "home-outline",

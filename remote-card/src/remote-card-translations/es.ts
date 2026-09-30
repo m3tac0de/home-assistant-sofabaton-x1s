@@ -36,6 +36,11 @@ export const REMOTE_CARD_STRINGS_ES = {
     deviceKeymapMissing:
       "Los comandos de este dispositivo aún no están en caché. Actualiza el dispositivo en la pestaña Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
+    deviceKeymapMissingServer:
+      "Este dispositivo no está en el catálogo del hub. Actualiza el hub en el panel de control de Sofabaton y vuelve a cargar esta página.",
+    hubUnreachable: (detail: string) =>
+      `El servidor no puede comunicarse con el hub (${detail}).`,
+    controlRefused: "El hub no aceptó ese comando.",
     poweredOff: "Apagado",
     defaultLayout: "Diseño predeterminado de actividades",
     activityFallback: (id: number | string) => `Actividad ${id}`,

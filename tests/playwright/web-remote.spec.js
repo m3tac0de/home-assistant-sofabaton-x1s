@@ -347,7 +347,7 @@ test.describe("web remote page", () => {
     await expect.poll(() => calls.some((c) => c.key === `GET /hubs/${HUB}/status`)).toBe(true);
   });
 
-  test("the hub going away shows the banner and dark theme applies", async ({ page }) => {
+  test("the hub going away shows the card's notice and dark theme applies", async ({ page }) => {
     const state = { document: null, running: STATUS.status.running_activity };
     const { sockets } = await mockServer(page, state);
     await page.goto(`${PAGE}?hub=${encodeURIComponent(HUB)}&theme=dark`);
@@ -360,8 +360,10 @@ test.describe("web remote page", () => {
     STATUS.status.controllable = false;
     STATUS.status.mode = "observe";
     sockets[0].send(JSON.stringify({ type: "hub_event", hub_id: HUB, event: { seq: 3, kind: "status_changed", payload: { mode: "observe", previous_mode: "control" } } }));
-    await expect(page.locator("sofabaton-remote-web .banner")).toBeVisible();
-    await expect(page.locator("sofabaton-remote-web .banner")).toContainText("not controllable");
+    // The card shows its own (localized) notice; the host adds no duplicate
+    // banner for a plain unavailable hub (CR-X7-6).
+    await expect(card(page)).toContainText("Remote is unavailable");
+    await expect(page.locator("sofabaton-remote-web .banner")).toBeHidden();
     STATUS.status.controllable = true;
     STATUS.status.mode = "control";
   });

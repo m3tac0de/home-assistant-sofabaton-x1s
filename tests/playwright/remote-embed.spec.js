@@ -212,6 +212,17 @@ test.describe("embeddable remote", () => {
     expect(calls.some((c) => c.key === `GET /hubs/${HUB}/ui/remote-card`)).toBe(true);
   });
 
+  test("an object assigned to config replaces a config attribute (CR-F4a-5)", async ({ page }) => {
+    const { calls } = await mockServer(page, { document: { show_dpad: true }, running: STATUS.status.running_activity });
+    const config = encodeURIComponent(JSON.stringify({ show_dpad: true }));
+    await page.goto(`${PAGE}?hub=${encodeURIComponent(HUB)}&config=${config}`);
+    await expect(card(page).locator(".dpad >> visible=true").first()).toBeVisible();
+    await element(page).evaluate((el) => { el.config = { show_dpad: false }; });
+    await expect(card(page).locator(".dpad >> visible=true")).toHaveCount(0);
+    expect(await element(page).evaluate((el) => el.hasAttribute("config"))).toBe(false);
+    expect(calls.some((c) => c.key === `GET /hubs/${HUB}/ui/remote-card`)).toBe(false);
+  });
+
   test("an unknown hub shows a compact notice and fires the error event; fixing the attribute recovers", async ({ page }) => {
     await mockServer(page, { document: null, running: STATUS.status.running_activity });
     await page.goto(`${PAGE}?hub=nope`);

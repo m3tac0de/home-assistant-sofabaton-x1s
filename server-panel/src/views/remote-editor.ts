@@ -381,7 +381,7 @@ export class SbPanelRemoteEditor extends LitElement {
     const status = keymap?.status ?? "loading";
     if (status !== "ready") {
       const note = status === "loading" ? e.shortcutsCommandsLoading
-        : status === "cache_miss" ? "This device's commands are not cached yet. Refresh this device in the Hub tab, then retry."
+        : status === "cache_miss" ? str().card.deviceKeymapMissingServer
         : "Could not load this device's commands. Retry when the hub is available.";
       return html`<div class="shortcut-panel"><div class="shortcut-note">${note}</div>
         ${status === "loading" ? nothing : html`<div class="shortcut-panel-footer"><button type="button" @click=${() => { this._keymaps.delete(id); void this._loadCommands(id); }}>Retry</button></div>`}</div>`;

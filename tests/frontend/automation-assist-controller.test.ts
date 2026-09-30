@@ -337,3 +337,37 @@ test("garbage MQTT payloads are ignored", async () => {
   assert.equal(changeCount(), before);
   controller.setActive(false);
 });
+
+test("renders while HA has not acked the subscribe leave exactly one subscription (CR-F4a-2)", async () => {
+  resetSession();
+  const pending: Array<{ resolve: (unsub: () => void) => void; callback: (msg: unknown) => void; unsubscribed: boolean }> = [];
+  const hass: HassLike = {
+    states: {},
+    async callWS<T>() { return {} as T; },
+    connection: {
+      subscribeMessage: <T>(callback: (message: T) => void) => new Promise<() => void>((resolve) => {
+        const entry = { resolve, callback: callback as (msg: unknown) => void, unsubscribed: false };
+        pending.push(entry);
+      }),
+    },
+  };
+  const { controller } = createController({ getHass: () => hass });
+
+  controller.setActive(true);
+  // Lit renders call syncMqtt again before HA acks the first subscribe.
+  controller.syncMqtt();
+  controller.syncMqtt();
+  assert.equal(pending.length, 1);
+
+  // Capture stops while the subscribe is still pending...
+  controller.setActive(false);
+  let cancelled = 0;
+  pending[0].resolve(() => { cancelled += 1; });
+  await flush();
+  // ...so the late subscription is cancelled on arrival and never delivers.
+  assert.equal(cancelled, 1);
+  let modalOpened = false;
+  (controller as unknown as { openMqttModal: () => void }).openMqttModal = () => { modalOpened = true; };
+  pending[0].callback({ payload: JSON.stringify({ device_id: 3, key_id: 5 }) });
+  assert.equal(modalOpened, false);
+});
