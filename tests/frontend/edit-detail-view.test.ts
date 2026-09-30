@@ -8,6 +8,7 @@ import {
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { secondsToByte } from "../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
+import { draftToFieldValue, fieldValueToDraft } from "../../custom_components/sofabaton_x1s/www/src/tabs/edit-detail/payload-drafts";
 import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
@@ -294,12 +295,13 @@ test("raw payload Save does not emit when only formatting changed", () => {
 });
 
 test("decoded-field drafts preserve numeric, escaped, and CRLF wire shapes", () => {
-  const element = createEditor("X1S", "device");
-  assert.equal(element._draftToFieldValue("42", { numeric: true }), 42);
-  assert.equal(element._draftToFieldValue("not-a-number", { numeric: true }), 0);
-  assert.equal(element._draftToFieldValue("line\\nnext\\r", { escapedDisplay: true }), "line\nnext\r");
-  assert.equal(element._draftToFieldValue("one\ntwo\r\nthree", { crlfOnWire: true }), "one\r\ntwo\r\nthree");
-  assert.equal(element._fieldValueToDraft("one\r\ntwo", { escapedDisplay: true }), "one\\r\\ntwo");
+  // Pure functions since the edit-detail split (R6, CR-F2-14).
+  const field = (spec: Record<string, unknown>) => spec as never;
+  assert.equal(draftToFieldValue("42", field({ numeric: true })), 42);
+  assert.equal(draftToFieldValue("not-a-number", field({ numeric: true })), 0);
+  assert.equal(draftToFieldValue("line\\nnext\\r", field({ escapedDisplay: true })), "line\nnext\r");
+  assert.equal(draftToFieldValue("one\ntwo\r\nthree", field({ crlfOnWire: true })), "one\r\ntwo\r\nthree");
+  assert.equal(fieldValueToDraft("one\r\ntwo", field({ escapedDisplay: true })), "one\\r\\ntwo");
 });
 
 test("macro timing conversion covers invalid, boundary, rounding, and saturation cases", () => {
