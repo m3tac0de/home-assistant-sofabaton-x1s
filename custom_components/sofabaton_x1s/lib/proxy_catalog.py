@@ -77,7 +77,16 @@ class CatalogMixin:
 
         return ({}, False)
 
-    def get_devices(self, *, force_refresh: bool = False) -> tuple[dict[int, dict], bool]:
+    def get_devices(
+        self, *, force_refresh: bool = False, fetch_if_missing: bool = True
+    ) -> tuple[dict[int, dict], bool]:
+        """The device catalog and whether it is complete.
+
+        Without a complete catalog this requests one, unless
+        ``fetch_if_missing`` is False (a burst listener reading what just
+        landed must not turn a failed read into a retry loop).
+        """
+
         to_export_view = _to_export_view()
         if force_refresh:
             if self.can_issue_commands():
@@ -88,7 +97,7 @@ class CatalogMixin:
         if self._devices_catalog_ready:
             return ({k: to_export_view(v) for k, v in devices_view.items()}, True)
 
-        if self.can_issue_commands():
+        if fetch_if_missing and self.can_issue_commands():
             self.enqueue_cmd(OP_REQ_DEVICES, expects_burst=True, burst_kind="devices")
         return ({}, False)
 

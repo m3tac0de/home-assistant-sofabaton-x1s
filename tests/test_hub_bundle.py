@@ -1130,6 +1130,48 @@ def test_async_restore_backup_rejects_structural_before_erase() -> None:
     hub._proxy.restore_hub_bundle.assert_not_called()
 
 
+def test_async_restore_backup_runs_the_bundle_preflight_before_erase() -> None:
+    """CR-L4a-1: a bundle the restore would refuse (a chain to a missing
+    activity, an unknown class, ...) fails before the replace-mode erase."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.preflight_restore_bundle = MagicMock(
+        side_effect=ValueError("activity 0x66 chains to an activity missing from the bundle")
+    )
+    hub._proxy.erase_configuration = MagicMock(
+        side_effect=AssertionError("erase must not run for a bundle the preflight refuses")
+    )
+    hub._proxy.restore_hub_bundle = MagicMock(
+        side_effect=AssertionError("restore must not run for a bundle the preflight refuses")
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    with pytest.raises(ValueError, match="missing from the bundle"):
+        _run(hub.async_restore_backup(bundle))
+
+    hub._proxy.preflight_restore_bundle.assert_called_once_with(bundle)
+    hub._proxy.erase_configuration.assert_not_called()
+    hub._proxy.restore_hub_bundle.assert_not_called()
+
+
 def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> None:
     """Successful erase unblocks the bundle orchestrator."""
 

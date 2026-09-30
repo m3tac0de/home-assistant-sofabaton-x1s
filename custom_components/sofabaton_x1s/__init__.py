@@ -90,6 +90,7 @@ from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
 from .lib.device_class_profiles import MAX_DEVICE_NAME_LEN, supported_create_classes
 from .lib.protocol_const import normalize_device_class
+from .lib.wifi_inplace_plan import REFERENCED_RECORD_STEP_KINDS
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -3173,15 +3174,7 @@ async def _run_entity_sync_operation(
             # refreshing only the device would leave those stale until an
             # unrelated activity re-read.
             counters = (result or {}).get("counters") or {}
-            if any(
-                counters.get(kind)
-                for kind in (
-                    "command_add",
-                    "command_rename",
-                    "command_payload",
-                    "command_delete",
-                )
-            ):
+            if any(counters.get(kind) for kind in REFERENCED_RECORD_STEP_KINDS):
                 await hub.async_refresh_activities_referencing_device(entity_id)
         store = await _async_get_persistent_cache_store(hass)
         if store.enabled:

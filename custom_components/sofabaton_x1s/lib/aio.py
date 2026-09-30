@@ -53,7 +53,12 @@ from .hub_versions import (
     firmware_is_unsupported,
 )
 from .commands import hub_command_label
-from .wifi_inplace_plan import baseline_snapshot_from_bundle, build_wifi_inplace_plan
+from .wifi_inplace_plan import (
+    REFERENCED_RECORD_STEP_KINDS,
+    baseline_snapshot_from_bundle,
+    build_wifi_inplace_plan,
+    classify_live_slots,
+)
 from .wifi_device import (
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
@@ -258,11 +263,8 @@ class _FacadeBatch:
     force: bool = False
 
 
-# Sync step kinds that rewrite or remove a command record. Every activity
-# naming the device holds resolved copies of those records (labels, codes,
-# the rows a delete cascades into), so they are read back after the write.
-# A command_add is left out: nothing references a command that is new.
-_COMMAND_RECORD_STEP_KINDS = frozenset({"command_rename", "command_payload", "command_delete"})
+# Sync step kinds after which every activity naming the device is read back.
+_COMMAND_RECORD_STEP_KINDS = REFERENCED_RECORD_STEP_KINDS
 
 
 def _sync_succeeded(result: Any) -> bool:
@@ -2336,25 +2338,13 @@ class AsyncXProxy:
             cid: slot.label for cid, slot in deployed.slots.items()
         }
 
-        missing = sorted(cid for cid in expected if cid not in baseline.slots)
-        if missing:
-            raise WifiUpdateDeclined("missing", command_ids=missing)
-        drift: list[int] = []
-        resumed: list[int] = []
-        for cid, live_slot in baseline.slots.items():
-            live = project(live_slot.label)
-            expected_label = expected.get(cid)
-            if expected_label is not None and project(expected_label) == live:
-                continue
-            desired_slot = desired.slots.get(cid)
-            if desired_slot is not None and project(desired_slot.label) == live:
-                resumed.append(cid)
-                continue
-            drift.append(cid)
-        if drift:
-            raise WifiUpdateDeclined("drift", command_ids=sorted(drift))
-        if resumed:
-            _LOG.info("%s: resuming an interrupted update (command ids %s)", what, sorted(resumed))
+        live = classify_live_slots(baseline.slots, expected, desired.slots, label_key=project)
+        if live.missing:
+            raise WifiUpdateDeclined("missing", command_ids=list(live.missing))
+        if live.drift:
+            raise WifiUpdateDeclined("drift", command_ids=list(live.drift))
+        if live.resumed:
+            _LOG.info("%s: resuming an interrupted update (command ids %s)", what, list(live.resumed))
 
         plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed, label_key=project)
         if plan.is_fallback:

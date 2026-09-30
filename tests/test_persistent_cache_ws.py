@@ -85,7 +85,6 @@ class _Hub:
             "devices": {"1": {"name": "TV"}},
             "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
             "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
-            "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
             "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
         }
 
@@ -226,7 +225,6 @@ def test_ws_get_persistent_cache_contents_returns_derived_activity_data(monkeypa
                     "devices": {"1": {"name": "TV"}},
                     "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
                     "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
-                    "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
                     "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
                 }
             ],
