@@ -177,6 +177,9 @@ def hub_disabled(hub_id: str) -> ApiProblem:
 def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
     """The ``ApiProblem`` for one of the library's typed errors, else None."""
 
+    if isinstance(err, ApiProblem):
+        # A coded refusal raised inside a job body keeps its code (CR-S2-8).
+        return err
     if isinstance(err, HubBusyError):
         return ApiProblem(409, "hub_busy", "An app client holds the hub", detail=str(err), hub_id=hub_id, mode="observe")
     if isinstance(err, HubNotConnectedError):
@@ -249,6 +252,6 @@ async def hub_errors(hub_id: str) -> AsyncIterator[None]:
         yield
     except Exception as err:  # noqa: BLE001
         mapped = problem_for(err, hub_id)
-        if mapped is None:
+        if mapped is None or mapped is err:
             raise
         raise mapped from err

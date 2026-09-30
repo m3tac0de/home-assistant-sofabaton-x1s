@@ -96,3 +96,23 @@ def test_cancel_is_idempotent_while_the_job_drains() -> None:
         assert job.status == "cancelled" and runner.active("hub") is None
 
     asyncio.run(main())
+
+
+def test_a_coded_refusal_inside_a_job_keeps_its_code() -> None:
+    """CR-S2-8: clients switch on job.error.type."""
+    from sofabaton_server.problems import ApiProblem
+
+    async def main():
+        runner = JobRunner(problem_for=problem_body)
+
+        async def body(progress):
+            raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail="the server has no MQTT broker", hub_id="hub-a")
+
+        view = runner.start("hub-a", "deploy", body, cancellable=False)
+        await asyncio.sleep(0.01)
+        return view
+
+    view = asyncio.run(main())
+    assert view.status == "failed"
+    assert view.error.type == "mqtt_unavailable" and view.error.status == 409
