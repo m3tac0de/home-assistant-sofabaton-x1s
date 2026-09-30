@@ -6061,16 +6061,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -6212,16 +6202,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -6361,16 +6341,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -6679,16 +6649,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -6845,16 +6805,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -7100,16 +7050,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -7259,16 +7199,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -7427,16 +7357,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -7795,16 +7715,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -9245,16 +9155,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -9396,16 +9296,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -9545,16 +9435,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -10415,16 +10295,6 @@
             },
             "description": "Validation error"
           },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -10574,16 +10444,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -10939,16 +10799,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {
@@ -12201,16 +12051,6 @@
               }
             },
             "description": "Validation error"
-          },
-          "428": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Precondition Required"
           },
           "503": {
             "content": {

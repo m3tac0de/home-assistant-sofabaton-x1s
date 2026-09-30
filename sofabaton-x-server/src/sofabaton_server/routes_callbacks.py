@@ -26,13 +26,11 @@ from . import API_PREFIX
 from .callbacks import (
     DEFAULT_DEVICE_KEY,
     MAX_WIFI_DEVICES,
-    TRANSPORT_HTTP,
     TRANSPORT_MQTT,
     CallbackDeviceExists,
     CallbackDeviceMissing,
     CallbackDeviceNotStale,
     CallbackDeviceUnverifiable,
-    CallbackDeviceStale,
     CallbackPortRefused,
     CallbackService,
     ListenerState,
