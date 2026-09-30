@@ -5197,7 +5197,7 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
         hub._proxy._activities_commit_serial += 1
 
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub_fetch.async_dispatcher_send", lambda *_: None)
 
     loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.2))
 
