@@ -14,6 +14,7 @@ from urllib.parse import unquote
 from homeassistant.components import persistent_notification
 from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
@@ -43,6 +44,7 @@ from .const import (
     signal_hub_events,
     signal_ip_commands,
     signal_ir_intercept,
+    signal_settings,
     signal_wifi_device,
     signal_buttons,
     signal_client,
@@ -166,6 +168,23 @@ def get_hub_model(entry: ConfigEntry) -> str:
         return model
 
     return "X1"
+
+
+def hub_device_info(hub: "SofabatonHub", entry: ConfigEntry) -> DeviceInfo:
+    """The hub's device-registry record, the same from every platform.
+
+    The model is the hub model alone: a platform adding "via proxy" made
+    the registry model flip with platform setup order (CR-H3-12).
+    """
+
+    firmware = getattr(hub, "hub_firmware_version", None)
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.data[CONF_MAC])},
+        name=get_hub_display_name(hub, entry),
+        manufacturer="Sofabaton",
+        model=get_hub_model(entry),
+        sw_version=str(firmware) if firmware is not None else None,
+    )
 
 
 def get_hub_display_name(hub: "SofabatonHub", entry: ConfigEntry | None = None) -> str:
@@ -650,6 +669,10 @@ class SofabatonHub:
         proxy_udp_port: int | str,
         hub_listen_base: int | str,
     ) -> None:
+        if self.hass.data.get(DOMAIN, {}).get(self.entry_id) is not self:
+            # Unloaded (or replaced by a reload) while the update listener
+            # was queued: starting a proxy here would orphan it.
+            return
         changed = (
             str(host) != str(self.host)
             or str(port) != str(self.port)
@@ -3714,12 +3737,15 @@ class SofabatonHub:
                 if isinstance(action_config.get("target"), dict)
                 else None
             )
+            # Not blocking: the hub waits for the callback's answer, and a
+            # long script (delays) held it back and invited a re-delivery
+            # that ran the action twice (CR-H3-9).
             await self.hass.services.async_call(
                 domain,
                 service,
                 service_data,
                 target=target,
-                blocking=True,
+                blocking=False,
             )
 
     async def _async_run_wifi_slot_action(
@@ -5420,6 +5446,7 @@ class SofabatonHub:
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_PROXY_ENABLED, enable
         )
+        async_dispatcher_send(self.hass, signal_settings(self.entry_id))
 
 
     async def async_set_roku_server_enabled(self, enable: bool) -> None:
@@ -5445,6 +5472,7 @@ class SofabatonHub:
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_HEX_LOGGING_ENABLED, enable
         )
+        async_dispatcher_send(self.hass, signal_settings(self.entry_id))
 
     def get_buttons_for_current(self) -> tuple[list[int], bool]:
         # entities call this often; keep it cheap

@@ -25,7 +25,7 @@ from .const import (
     signal_ir_intercept,
     signal_wifi_device,
 )
-from .hub import SofabatonHub, get_hub_display_name, get_hub_model
+from .hub import SofabatonHub, hub_device_info
 
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
@@ -47,6 +47,9 @@ class SofabatonIndexSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "index"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # The whole cached catalog: far past the recorder's attribute limit,
+    # and the tools card reads it over WS anyway (CR-H3-13).
+    _unrecorded_attributes = frozenset({"activities", "devices"})
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -55,11 +58,7 @@ class SofabatonIndexSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         for sig in (
@@ -81,22 +80,6 @@ class SofabatonIndexSensor(SensorEntity):
     @property
     def state(self) -> str | None:
         return self._hub.get_index_state()
-
-    def _label_for_ent(self, ent_id: int) -> str:
-        """Return something like '3 (Playstation 5)' or '102 (Watch TV)'."""
-        name = None
-        if getattr(self._hub, "devices", None):
-            dev = self._hub.devices.get(ent_id)
-            if dev:
-                name = dev.get("name")
-        if name is None and self._hub.activities:
-            act = self._hub.activities.get(ent_id)
-            if act:
-                name = act.get("name")
-
-        if name:
-            return f"{ent_id} ({name})"
-        return str(ent_id)
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -170,21 +153,13 @@ class SofabatonActivitySensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
-        # Update when the activity changes
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                signal_activity(self._hub.entry_id),
-                self._handle_update,
-            )
-        )
+        # Update when the activity changes, and when the hub drops or comes
+        # back (a disconnect sends only signal_hub, CR-H3-7).
+        for sig in (signal_activity(self._hub.entry_id), signal_hub(self._hub.entry_id)):
+            self.async_on_remove(async_dispatcher_connect(self.hass, sig, self._handle_update))
 
     @callback
     def _handle_update(self) -> None:
@@ -226,11 +201,7 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         self._last_activation = self._get_latest_activation()
@@ -379,11 +350,7 @@ class SofabatonIpCommandsSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
@@ -497,11 +464,7 @@ class SofabatonIrInterceptSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(

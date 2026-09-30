@@ -446,3 +446,25 @@ def test_handle_client_ignores_small_body(monkeypatch) -> None:
         assert writer.closed
 
     asyncio.run(_run())
+
+
+def test_the_source_allowlist_follows_the_hubs_current_host() -> None:
+    """CR-H3-2: a rediscovered hub reconnects on a new address; its presses
+    must not be answered 403 until a restart."""
+
+    async def _run() -> None:
+        manager = RokuListenerManager(_FakeHass())
+        hub = _FakeHub(entry_id="e1", action_id="abc123", host="10.0.0.12")
+        await manager.async_register_hub(hub, enabled=True)
+        hub.host = "10.0.0.50"  # zeroconf moved it; no re-registration
+
+        moved, _ = await manager.async_handle_post(
+            method="POST", path="/launch/abc123/7/0/short", headers={}, body=b"", source_ip="10.0.0.50"
+        )
+        old, _ = await manager.async_handle_post(
+            method="POST", path="/launch/abc123/7/0/short", headers={}, body=b"", source_ip="10.0.0.12"
+        )
+        assert (moved, old) == (200, 403)
+        await manager.async_remove_hub("e1")
+
+    asyncio.run(_run())

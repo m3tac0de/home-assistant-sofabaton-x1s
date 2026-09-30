@@ -15,12 +15,12 @@
         "data": {
           "hub_listen_base": "Hub TCP listener port",
           "proxy_udp_port": "App UDP listener port",
-          "roku_listen_port": "Wi-Fi command HTTP listener port"
+          "roku_listen_port": "Wifi command HTTP listener port"
         },
         "data_description": {
           "hub_listen_base": "TCP port used by physical hubs to connect to the integration.",
           "proxy_udp_port": "UDP port used for official app discovery and connections. Keep port 8102 for iOS compatibility unless another service already uses it.",
-          "roku_listen_port": "HTTP port used to receive Wi-Fi device button presses. Changing it breaks X1 compatibility and requires existing Wi-Fi devices and commands to be synchronized again."
+          "roku_listen_port": "HTTP port used to receive Wifi device button presses. Changing it breaks X1 compatibility and requires existing Wifi devices and commands to be synchronized again."
         }
       },
       "zeroconf_confirm": {
@@ -33,6 +33,9 @@
       "not_x1_hub": "The discovered device is not a supported Sofabaton hub.",
       "unknown": "An unknown error occurred.",
       "x2_disabled": "Sofabaton X2 discovery is disabled in `configuration.yaml`. To enable it, remove `enable_x2_discovery: false` from the `sofabaton_x1s:` section (or set it to `true`) and restart Home Assistant."
+    },
+    "error": {
+      "invalid_host": "Enter the hub's IPv4 address, for example 192.168.1.20."
     }
   },
   "options": {
@@ -43,12 +46,12 @@
         "data": {
           "hub_listen_base": "Hub TCP listener port",
           "proxy_udp_port": "App UDP listener port",
-          "roku_listen_port": "Wi-Fi command HTTP listener port"
+          "roku_listen_port": "Wifi command HTTP listener port"
         },
         "data_description": {
           "hub_listen_base": "TCP port used by physical hubs to connect to the integration.",
           "proxy_udp_port": "UDP port used for official app discovery and connections. Keep port 8102 for iOS compatibility unless another service already uses it.",
-          "roku_listen_port": "HTTP port used to receive Wi-Fi device button presses. Changing it breaks X1 compatibility and requires existing Wi-Fi devices and commands to be synchronized again."
+          "roku_listen_port": "HTTP port used to receive Wifi device button presses. Changing it breaks X1 compatibility and requires existing Wifi devices and commands to be synchronized again."
         }
       }
     }
@@ -276,8 +279,8 @@
       }
     },
     "create_wifi_device": {
-      "name": "Create Wi-Fi device",
-      "description": "Creates a Wi-Fi device on the selected hub.",
+      "name": "Create Wifi device",
+      "description": "Creates a Wifi device on the selected hub.",
       "fields": {
         "device": {
           "name": "Sofabaton hub",
@@ -285,7 +288,7 @@
         },
         "device_name": {
           "name": "Device name",
-          "description": "Name to assign to the Wi-Fi device on the hub."
+          "description": "Name to assign to the Wifi device on the hub."
         },
         "commands": {
           "name": "Custom commands",
@@ -541,7 +544,7 @@
     },
     "sync_command_config": {
       "name": "Synchronize command configuration",
-      "description": "Deploys the saved command-slot configuration by recreating the managed Wi-Fi device and applying activity mappings.",
+      "description": "Deploys the saved command-slot configuration by recreating the managed Wifi device and applying activity mappings.",
       "fields": {
         "device": {
           "name": "Sofabaton hub",

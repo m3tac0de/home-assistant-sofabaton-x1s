@@ -4,6 +4,7 @@ import logging
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
@@ -18,7 +19,7 @@ from .const import (
     signal_client,
     signal_hub,
 )
-from .hub import SofabatonHub, get_hub_display_name, get_hub_model
+from .hub import SofabatonHub, hub_device_info
 from .lib.protocol_const import BUTTONNAME_BY_CODE, ButtonName  # your proxy enum
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,11 +104,7 @@ class SofabatonFindRemoteButton(ButtonEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         for sig in (
@@ -149,11 +146,7 @@ class SofabatonResyncRemoteButton(ButtonEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         for sig in (
@@ -175,6 +168,13 @@ class SofabatonResyncRemoteButton(ButtonEntity):
     async def async_press(self) -> None:
         if not self.available:
             return
+        if self._hub.is_long_running_task_active():
+            # A trigger in the middle of a restore or sync restarts the
+            # remote's rebuild (L-H3, L-P8): refused, like the tools card's
+            # tile and the server's 409 (CR-X1-5).
+            raise HomeAssistantError(
+                "The hub is busy with a backup, restore or sync; resync the remote when it has finished"
+            )
         await self._hub.async_resync_remote()
 
 
@@ -200,11 +200,7 @@ class SofabatonDynamicButton(ButtonEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         # we just listen — hub will prime buttons
@@ -222,13 +218,10 @@ class SofabatonDynamicButton(ButtonEntity):
                 self._handle_update,
             )
         )
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                signal_client(self._hub.entry_id),
-                self._handle_update,
+        for sig in (signal_client(self._hub.entry_id), signal_hub(self._hub.entry_id)):
+            self.async_on_remove(
+                async_dispatcher_connect(self.hass, sig, self._handle_update)
             )
-        )
 
     @callback
     def _handle_update(self) -> None:
@@ -237,8 +230,8 @@ class SofabatonDynamicButton(ButtonEntity):
 
     @property
     def available(self) -> bool:
-        # 1) app connected → we go unavailable
-        if self._hub.client_connected:
+        # 1) hub offline or app connected → we go unavailable (CR-H3-7)
+        if not self._hub.hub_connected or self._hub.client_connected:
             return False
 
         # 2) no current activity → unavailable

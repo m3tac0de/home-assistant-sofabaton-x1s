@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock
 
+from custom_components.sofabaton_x1s.const import DOMAIN
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 
 from tests.test_hub_commands import FakeHass
@@ -10,7 +11,9 @@ from tests.test_hub_commands import FakeHass
 
 def _hub(loop):
     hass = FakeHass(loop)
-    return SofabatonHub(hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    hub = SofabatonHub(hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    hass.data = {DOMAIN: {"entry-id": hub}}
+    return hub
 
 
 def test_a_host_change_keeps_the_engine_cache(monkeypatch):
@@ -148,5 +151,48 @@ def test_an_ota_announcement_pauses_reconnects_once_and_notifies(monkeypatch):
         assert pauses == [hub._ota_pause_seconds]
         assert notices == ["sofabaton_x1s_ota_entry-id"]
         assert hub._ota_in_progress is True
+    finally:
+        loop.close()
+
+
+def test_a_settings_change_for_an_unloaded_hub_does_nothing(monkeypatch):
+    """CR-H3-5: an update listener that runs after the unload must not start
+    a proxy for a hub that is no longer live."""
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+        hub.hass.data = {DOMAIN: {}}  # unloaded
+        old_proxy = hub._proxy
+        monkeypatch.setattr(hub, "async_stop", AsyncMock())
+        monkeypatch.setattr(hub, "async_start", AsyncMock())
+
+        loop.run_until_complete(
+            hub.async_apply_new_settings(host="127.0.0.2", port=1234, proxy_udp_port=9999, hub_listen_base=10000)
+        )
+
+        assert hub._proxy is old_proxy
+        hub.async_start.assert_not_called()
+    finally:
+        loop.close()
+
+
+def test_a_wifi_press_action_does_not_hold_the_hubs_callback(monkeypatch):
+    """CR-H3-9: the hub waits for the callback's answer; a blocking service
+    call held it for a whole script and invited a re-delivery."""
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+        calls: list = []
+
+        async def _async_call(domain, service, data, target=None, blocking=None):
+            calls.append((domain, service, blocking))
+
+        hub.hass.services = type("S", (), {"async_call": staticmethod(_async_call)})()
+        loop.run_until_complete(
+            hub._async_execute_action_config({"action": "perform-action", "perform_action": "script.movie_night"})
+        )
+        assert calls == [("script", "movie_night", False)]
     finally:
         loop.close()

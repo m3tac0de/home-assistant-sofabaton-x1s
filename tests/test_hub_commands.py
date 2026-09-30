@@ -2292,7 +2292,7 @@ def test_roku_http_post_runs_configured_short_press_action():
             "turn_on",
             {},
             {"entity_id": "light.living_room"},
-            True,
+            False,
         )
     ]
 
@@ -2366,7 +2366,7 @@ def test_roku_http_post_runs_configured_long_press_action():
             "turn_on",
             {},
             {"entity_id": "light.long_press_target"},
-            True,
+            False,
         )
     ]
 
@@ -2454,7 +2454,7 @@ def test_roku_http_post_resolves_slot_callback_from_migrated_single_device_store
             "turn_on",
             {},
             {"entity_id": "light.live_target"},
-            True,
+            False,
         )
     ]
 

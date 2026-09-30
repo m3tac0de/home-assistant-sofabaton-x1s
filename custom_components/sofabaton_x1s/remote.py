@@ -22,7 +22,7 @@ from .const import (
     signal_devices,
     signal_macros,
 )
-from .hub import get_hub_display_name, get_hub_model
+from .hub import get_hub_model, hub_device_info
 
 # Home Assistant leaves ``delay_secs`` unset when the caller omits it, so the
 # integration picks its own default. We keep sending back-to-back like we always
@@ -183,14 +183,7 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        firmware = getattr(self._hub, "hub_firmware_version", None)
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            manufacturer="Sofabaton",
-            model=get_hub_model(self._entry),
-            sw_version=str(firmware) if firmware is not None else None,
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(

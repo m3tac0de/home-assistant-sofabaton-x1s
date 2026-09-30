@@ -177,6 +177,19 @@ def _install_homeassistant_stubs() -> None:
     event.async_track_time_interval = lambda hass, action, interval: None
     sys.modules.setdefault("homeassistant.helpers.event", event)
 
+    util = types.ModuleType("homeassistant.util")
+    util_dt = types.ModuleType("homeassistant.util.dt")
+
+    def _utcnow():  # pragma: no cover - only used as stub
+        import datetime as _datetime
+
+        return _datetime.datetime.now(_datetime.timezone.utc)
+
+    util_dt.utcnow = _utcnow
+    util.dt = util_dt
+    sys.modules.setdefault("homeassistant.util", util)
+    sys.modules.setdefault("homeassistant.util.dt", util_dt)
+
     entity = types.ModuleType("homeassistant.helpers.entity")
 
     class DeviceInfo(dict):  # pragma: no cover - only used as stub
@@ -293,6 +306,30 @@ def _install_homeassistant_stubs() -> None:
     sensor.SensorDeviceClass = SensorDeviceClass
     sensor.SensorStateClass = SensorStateClass
     sys.modules.setdefault("homeassistant.components.sensor", sensor)
+
+    button = types.ModuleType("homeassistant.components.button")
+
+    class ButtonEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    button.ButtonEntity = ButtonEntity
+    sys.modules.setdefault("homeassistant.components.button", button)
+
+    text = types.ModuleType("homeassistant.components.text")
+
+    class TextEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    text.TextEntity = TextEntity
+    sys.modules.setdefault("homeassistant.components.text", text)
 
     frontend = types.ModuleType("homeassistant.components.frontend")
     frontend.add_extra_js_url = lambda *args, **kwargs: None

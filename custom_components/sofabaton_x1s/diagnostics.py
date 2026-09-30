@@ -10,7 +10,7 @@ from typing import Any, Callable, Iterable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
-from .const import CONF_HOST, CONF_MAC, DOMAIN
+from .const import CONF_BANNER_MAC, CONF_HOST, CONF_MAC, DOMAIN
 from .logging_utils import extract_hub_log_entry_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -188,7 +188,8 @@ def _redact_data_structure(data: Any) -> Any:
                 redacted[key] = "[REDACTED_IP]"
                 continue
 
-            if key_lower in _MAC_KEYS:
+            if key_lower in _MAC_KEYS or key_lower.endswith("mac"):
+                # banner_mac included (CR-H3-10)
                 redacted[key] = "[REDACTED_MAC]"
                 continue
 
@@ -349,6 +350,12 @@ def _sanitize_log_lines(lines: Iterable[str], entry: ConfigEntry) -> list[str]:
 
     if isinstance(host, str) and host:
         patterns.append((re.compile(re.escape(host), re.IGNORECASE), "[REDACTED_HOST]"))
+    # The hub's own MACs also appear bare, in MQTT topics and Wifi
+    # callback paths ("A1B2C3D4E5F6/up", "/launch/a1b2c3d4e5f6/...").
+    for known in (entry.data.get(CONF_MAC), entry.data.get(CONF_BANNER_MAC)):
+        bare = re.sub(r"[^0-9a-f]", "", str(known or "").lower())
+        if len(bare) == 12:
+            patterns.append((re.compile(bare, re.IGNORECASE), "[REDACTED_MAC]"))
     if hostname:
         patterns.append((re.compile(re.escape(hostname), re.IGNORECASE), "[REDACTED_HOSTNAME]"))
 
@@ -366,8 +373,6 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-
-    handler = _get_handler(hass)
 
     entry_dict = {
         "data": _redact_data_structure(dict(entry.data)),

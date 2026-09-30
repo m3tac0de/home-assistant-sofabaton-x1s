@@ -70,3 +70,24 @@ def test_teardown_restores_logger_state_and_removes_the_forwarder():
     finally:
         root.removeHandler(root_handler)
         root.setLevel(old_level)
+
+
+def test_the_hub_mac_is_redacted_in_every_spelling():
+    """CR-H3-10: banner_mac and the bare MAC in MQTT topics and callback
+    paths no longer leak into a diagnostics download."""
+    entry = SimpleNamespace(data={"host": "192.168.2.40", "mac": "e2:6a:44:86:1b:45", "banner_mac": "E26A44861B45"})
+
+    data = diagnostics._redact_data_structure(dict(entry.data))
+    assert data["banner_mac"] == "[REDACTED_MAC]"
+
+    lines = diagnostics._sanitize_log_lines(
+        [
+            "[WIFI_MQTT] subscribed to E26A44861B45/up",
+            "[WIFI_HTTP] POST /launch/e26a44861b45/3/0/short",
+            "hash 0123456789ab stays",
+        ],
+        entry,
+    )
+    assert lines[0].endswith("[REDACTED_MAC]/up")
+    assert "e26a44861b45" not in lines[1]
+    assert lines[2] == "hash 0123456789ab stays"
