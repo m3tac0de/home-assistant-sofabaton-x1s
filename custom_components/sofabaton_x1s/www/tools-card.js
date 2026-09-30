@@ -10504,8 +10504,7 @@ var editDetailViewStyles = i`
     .managed-wifi-lock-copy { margin: 0; color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 46ch; }
   `;
 
-// custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
-var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/ir-learn-controller.ts
 var LEARN_TIMEOUT_S = 60;
 function formatCarrierKhz(carrierHz) {
   const locale = toolsCardLanguage() || "en";
@@ -10518,6 +10517,526 @@ function formatCarrierKhz(carrierHz) {
     return (carrierHz / 1e3).toFixed(1);
   }
 }
+var IrLearnController = class {
+  constructor(host) {
+    this.host = host;
+    // "New" is judged against the ring as first seen when learn mode
+    // opened (payload -> timestamp), never against the browser clock.
+    this._view = "off";
+    this._hubState = "arming";
+    this._hubEvent = null;
+    this.hubDeadline = 0;
+    this._secondsLeft = 0;
+    this.hubCancel = null;
+    this.hubAttempt = 0;
+    this.ticker = null;
+    this._emissions = [];
+    this.emissionsUnsub = null;
+    this._emissionsError = null;
+    this.baseline = null;
+    this._haAvailable = null;
+    this._consumers = [];
+    this._sourceNote = "";
+    this._now = Date.now();
+    host.addController(this);
+  }
+  get view() {
+    return this._view;
+  }
+  set view(value) {
+    if (value === this._view) return;
+    this._view = value;
+    this.host.requestUpdate();
+  }
+  get hubState() {
+    return this._hubState;
+  }
+  set hubState(value) {
+    if (value === this._hubState) return;
+    this._hubState = value;
+    this.host.requestUpdate();
+  }
+  get hubEvent() {
+    return this._hubEvent;
+  }
+  set hubEvent(value) {
+    if (value === this._hubEvent) return;
+    this._hubEvent = value;
+    this.host.requestUpdate();
+  }
+  get secondsLeft() {
+    return this._secondsLeft;
+  }
+  set secondsLeft(value) {
+    if (value === this._secondsLeft) return;
+    this._secondsLeft = value;
+    this.host.requestUpdate();
+  }
+  get emissions() {
+    return this._emissions;
+  }
+  set emissions(value) {
+    if (value === this._emissions) return;
+    this._emissions = value;
+    this.host.requestUpdate();
+  }
+  get emissionsError() {
+    return this._emissionsError;
+  }
+  set emissionsError(value) {
+    if (value === this._emissionsError) return;
+    this._emissionsError = value;
+    this.host.requestUpdate();
+  }
+  get haAvailable() {
+    return this._haAvailable;
+  }
+  set haAvailable(value) {
+    if (value === this._haAvailable) return;
+    this._haAvailable = value;
+    this.host.requestUpdate();
+  }
+  get consumers() {
+    return this._consumers;
+  }
+  set consumers(value) {
+    if (value === this._consumers) return;
+    this._consumers = value;
+    this.host.requestUpdate();
+  }
+  get sourceNote() {
+    return this._sourceNote;
+  }
+  set sourceNote(value) {
+    if (value === this._sourceNote) return;
+    this._sourceNote = value;
+    this.host.requestUpdate();
+  }
+  get now() {
+    return this._now;
+  }
+  set now(value) {
+    if (value === this._now) return;
+    this._now = value;
+    this.host.requestUpdate();
+  }
+  hostConnected() {
+  }
+  // ── Rendering ─────────────────────────────────────────────────────
+  renderEntryButton() {
+    if (!this.host._learnAvailable()) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <button
+        class="payload-learn-btn"
+        type="button"
+        title=${S5.learnAria}
+        aria-label=${S5.learnAria}
+        @click=${() => void this.enter()}
+      >
+        <ha-icon icon="mdi:import"></ha-icon>
+        <span>${S5.learn}</span>
+      </button>
+    `;
+  }
+  renderPanel() {
+    switch (this.view) {
+      case "menu":
+        return this.renderMenu();
+      case "hub":
+        return this.renderHub();
+      case "ha":
+        return this.renderInbox();
+      default:
+        return A;
+    }
+  }
+  renderMenu() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="learn-panel" data-learn-view="menu">
+        <button class="learn-option" type="button" @click=${() => void this.startHubLearn()}>
+          <ha-icon icon="mdi:remote"></ha-icon>
+          <span class="learn-option-body">
+            <span class="learn-option-title">${S5.learnFromHub}</span>
+            <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
+          </span>
+          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>
+        ${this.haOptionVisible() ? b2`
+              <button class="learn-option" type="button" @click=${() => this.openInbox()}>
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+                <span class="learn-option-body">
+                  <span class="learn-option-title">${S5.learnFromHa}</span>
+                  <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
+                </span>
+                <ha-icon icon="mdi:chevron-right"></ha-icon>
+              </button>
+            ` : this.haAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
+      </div>
+    `;
+  }
+  renderHub() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const state = this.hubState;
+    const event = this.hubEvent;
+    let icon = "mdi:remote";
+    let title = "";
+    let detail = "";
+    switch (state) {
+      case "arming":
+        icon = "mdi:progress-clock";
+        title = S5.learnHubArming;
+        break;
+      case "listening":
+        title = S5.learnHubListening;
+        detail = S5.learnHubCountdown(this.formatCountdown(this.secondsLeft));
+        break;
+      case "timed_out":
+        icon = "mdi:timer-off-outline";
+        title = S5.learnHubTimedOut;
+        break;
+      case "interrupted":
+        icon = "mdi:alert-circle-outline";
+        title = S5.learnHubInterrupted(String(event?.interrupted_by || "?"));
+        break;
+      case "cancelled":
+        icon = "mdi:cancel";
+        title = S5.learnHubCancelled;
+        break;
+      case "refused":
+        icon = "mdi:alert-circle-outline";
+        title = localizeBackendError(event, "ir_learn");
+        break;
+      case "error":
+        icon = "mdi:alert-circle-outline";
+        title = localizeBackendError(event, "ir_learn");
+        break;
+      default:
+        title = S5.learnHubListening;
+    }
+    return b2`
+      <div class="learn-panel" data-learn-view="hub">
+        <div class="learn-stage ${state}" role="status" aria-live="polite">
+          <ha-icon icon=${icon}></ha-icon>
+          <div class="learn-stage-copy">
+            <div class="learn-stage-title">${title}</div>
+            ${detail ? b2`<div class="learn-stage-detail">${detail}</div>` : A}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  renderInbox() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const chips = this.consumers.map((consumer) => ({
+      name: consumer.title || consumer.domain,
+      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain
+    }));
+    const emissions = [...this.emissions].reverse();
+    return b2`
+      <div class="learn-panel" data-learn-view="ha">
+        <div class="learn-inbox-help">${S5.learnHaHelper}</div>
+        ${chips.length ? b2`
+              <div class="learn-consumers">
+                <span class="learn-consumers-label">${S5.learnHaConsumers}</span>
+                <div class="learn-chips">
+                  ${chips.map((chip) => b2`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
+                </div>
+              </div>
+            ` : A}
+        ${this.emissionsError ? b2`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${localizeBackendError(this.emissionsError, "ir_emissions")}</span>
+              </div>
+            ` : A}
+        <div class="learn-inbox-list" role="list">
+          ${emissions.length ? emissions.map((rec) => this.renderInboxRow(rec)) : b2`
+                <div class="learn-inbox-empty">
+                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
+                  <span>${S5.learnHaEmpty}</span>
+                </div>
+              `}
+        </div>
+      </div>
+    `;
+  }
+  renderInboxRow(rec) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const isNew = this.emissionIsNew(rec);
+    const meta = [this.timeAgo(rec.when)];
+    if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
+    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
+    return b2`
+      <button
+        class="learn-inbox-row ${isNew ? "is-new" : ""}"
+        type="button"
+        role="listitem"
+        @click=${() => this.useEmission(rec)}
+      >
+        <span class="learn-inbox-main">
+          <span class="learn-inbox-label">${this.emissionDisplayName(rec)}</span>
+          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" \xB7 ")}</span>
+        </span>
+        ${isNew ? b2`<span class="learn-badge">${S5.learnHaNew}</span>` : A}
+        <span class="learn-inbox-use">${S5.learnHaUse}</span>
+      </button>
+    `;
+  }
+  renderFooterActions() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    if (this.view === "menu") {
+      return b2`<button class="dialog-btn" @click=${() => this.exit()}>${S5.learnBack}</button>`;
+    }
+    if (this.view === "hub") {
+      const terminal = this.hubLearnIsTerminal();
+      return b2`
+        ${terminal ? b2`<button class="dialog-btn dialog-btn-primary" @click=${() => void this.startHubLearn()}>${S5.learnTryAgain}</button>` : A}
+        <button class="dialog-btn" @click=${() => this.backToMenu()}>
+          ${terminal ? S5.learnBack : TOOLS_CARD_STRINGS.common.cancel}
+        </button>
+      `;
+    }
+    return b2`<button class="dialog-btn" @click=${() => this.backToMenu()}>${S5.learnBack}</button>`;
+  }
+  // ── Logic ─────────────────────────────────────────────────────────
+  /**
+   * Open the source menu. The HA option is gated on the emitter existing
+   * AND either a consumer config entry or a non-empty intercept ring, so
+   * the inbox subscription is opened right away (it also feeds the inbox
+   * view later) while the consumer lookup runs alongside it.
+   */
+  async enter() {
+    const host = this.host.irLearn;
+    if (!host || !this.host._learnAvailable()) return;
+    this.view = "menu";
+    this.sourceNote = "";
+    this.haAvailable = null;
+    this.consumers = [];
+    this.startTicker();
+    void this.openEmissionInbox(host);
+    try {
+      const response = await host.consumers();
+      if (this.left()) return;
+      this.consumers = Array.isArray(response?.consumers) ? response.consumers : [];
+      this.haAvailable = !!response?.available;
+    } catch {
+      if (this.left()) return;
+      this.haAvailable = false;
+    }
+  }
+  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
+  left() {
+    return this.view === "off";
+  }
+  haOptionVisible() {
+    return this.haAvailable === true && (this.consumers.length > 0 || this.emissions.length > 0);
+  }
+  async openEmissionInbox(host) {
+    if (this.emissionsUnsub) return;
+    this.emissionsError = null;
+    try {
+      const unsubscribe = await host.subscribeEmissions((emissions) => {
+        if (this.view === "off") return;
+        const next = Array.isArray(emissions) ? emissions : [];
+        if (!this.baseline) {
+          this.baseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
+        }
+        this.emissions = next;
+      });
+      if (this.view === "off") {
+        unsubscribe();
+        return;
+      }
+      this.emissionsUnsub = unsubscribe;
+    } catch (error) {
+      if (this.view === "off") return;
+      this.emissionsError = {
+        error_code: backendErrorCode(error) ?? "ir_emissions_failed"
+      };
+    }
+  }
+  /**
+   * Row name: the command's own repr when its class defines one (it
+   * carries address/command), otherwise the backend label, which is the
+   * class name plus a per-code digest. Repr-less classes (live finding:
+   * SonyX700Command) would otherwise make every code read identically.
+   */
+  emissionDisplayName(rec) {
+    const repr = String(rec.command_repr ?? "").trim();
+    const label = String(rec.label ?? "").trim();
+    if (!repr) return label;
+    const className = label.replace(/\s*\(.*$/, "");
+    return repr === className ? label : repr;
+  }
+  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
+  emissionIsNew(rec) {
+    const baseline = this.baseline;
+    if (!baseline) return false;
+    return baseline.get(rec.payload_hex) !== rec.when;
+  }
+  openInbox() {
+    this.cancelHubLearn();
+    this.view = "ha";
+    if (this.host.irLearn) void this.openEmissionInbox(this.host.irLearn);
+  }
+  backToMenu() {
+    this.cancelHubLearn();
+    this.view = "menu";
+  }
+  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
+  exit() {
+    this.cancelHubLearn();
+    const unsubscribe = this.emissionsUnsub;
+    this.emissionsUnsub = null;
+    if (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch {
+      }
+    }
+    this.stopTicker();
+    this.view = "off";
+    this.hubState = "arming";
+    this.hubEvent = null;
+    this.hubDeadline = 0;
+    this.secondsLeft = 0;
+    this.emissions = [];
+    this.emissionsError = null;
+    this.baseline = null;
+    this.haAvailable = null;
+    this.consumers = [];
+  }
+  async startHubLearn() {
+    const host = this.host.irLearn;
+    if (!host) return;
+    this.cancelHubLearn();
+    const attempt = ++this.hubAttempt;
+    this.view = "hub";
+    this.hubState = "arming";
+    this.hubEvent = null;
+    this.hubDeadline = 0;
+    this.secondsLeft = 0;
+    this.startTicker();
+    try {
+      const cancel = await host.learnFromHub((event) => {
+        if (attempt !== this.hubAttempt) return;
+        this.handleHubLearnEvent(event);
+      }, LEARN_TIMEOUT_S);
+      if (attempt !== this.hubAttempt || this.view !== "hub") {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      if (this.hubLearnIsTerminal()) {
+        try {
+          cancel();
+        } catch {
+        }
+        return;
+      }
+      this.hubCancel = cancel;
+    } catch (error) {
+      if (attempt !== this.hubAttempt) return;
+      this.hubState = "error";
+      this.hubEvent = {
+        state: "error",
+        error_code: backendErrorCode(error) ?? "ir_learn_failed"
+      };
+    }
+  }
+  handleHubLearnEvent(event) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    this.hubEvent = event;
+    this.hubState = event.state;
+    if (event.state === "listening") {
+      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
+      this.hubDeadline = Date.now() + timeout * 1e3;
+      this.secondsLeft = Math.ceil(timeout);
+      return;
+    }
+    this.releaseHubLearn();
+    if (event.state !== "learned") return;
+    const hex = String(event.payload_hex ?? "").trim();
+    if (!hex) {
+      this.hubState = "error";
+      this.hubEvent = { state: "error", error_code: "ir_learn_no_payload" };
+      return;
+    }
+    const timings = Number(event.duration_count) || 0;
+    const carrier = Number(event.carrier_hz) || 0;
+    const note = timings && carrier ? S5.learnHubLearned(timings, formatCarrierKhz(carrier)) : S5.learnHubLearnedRaw;
+    this.host._adoptLearnedPayload(hex, note);
+  }
+  useEmission(rec) {
+    const hex = String(rec.payload_hex ?? "").trim();
+    if (!hex) return;
+    this.host._adoptLearnedPayload(
+      hex,
+      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this.emissionDisplayName(rec))
+    );
+  }
+  hubLearnIsTerminal() {
+    return this.hubState !== "arming" && this.hubState !== "listening";
+  }
+  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
+  cancelHubLearn() {
+    this.hubAttempt++;
+    this.releaseHubLearn();
+  }
+  releaseHubLearn() {
+    const cancel = this.hubCancel;
+    this.hubCancel = null;
+    if (cancel) {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+  }
+  startTicker() {
+    if (this.ticker) return;
+    this.now = Date.now();
+    this.ticker = setInterval(() => this.tick(), 1e3);
+  }
+  stopTicker() {
+    if (this.ticker) clearInterval(this.ticker);
+    this.ticker = null;
+  }
+  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
+  tick() {
+    this.now = Date.now();
+    if (this.view === "hub" && this.hubState === "listening" && this.hubDeadline) {
+      this.secondsLeft = Math.max(
+        0,
+        Math.ceil((this.hubDeadline - this.now) / 1e3)
+      );
+    }
+  }
+  formatCountdown(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
+  }
+  timeAgo(when) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const ts = Date.parse(String(when ?? ""));
+    if (!Number.isFinite(ts)) return "";
+    const secs = Math.max(0, Math.round((this.now - ts) / 1e3));
+    if (secs < 5) return S5.learnJustNow;
+    if (secs < 60) return S5.learnSecondsAgo(secs);
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return S5.learnMinutesAgo(mins);
+    return S5.learnHoursAgo(Math.round(mins / 60));
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
+var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var SofabatonEditDetailView = class extends i4 {
   constructor() {
     super(...arguments);
@@ -10617,22 +11136,7 @@ var SofabatonEditDetailView = class extends i4 {
     // "New" is judged against the ring as first seen when learn mode
     // opened (payload -> timestamp), never against the browser clock.
     this.irLearn = null;
-    this._payloadLearnView = "off";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._payloadLearnHubCancel = null;
-    this._payloadLearnHubAttempt = 0;
-    this._payloadLearnTicker = null;
-    this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsUnsub = null;
-    this._payloadLearnEmissionsError = null;
-    this._payloadLearnBaseline = null;
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-    this._payloadLearnSourceNote = "";
-    this._payloadLearnNow = Date.now();
+    this._learn = new IrLearnController(this);
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -10847,8 +11351,8 @@ var SofabatonEditDetailView = class extends i4 {
       this._editRenameDialogOpen = true;
     };
     this._closeCommandPayloadDialog = () => {
-      this._exitLearnMode();
-      this._payloadLearnSourceNote = "";
+      this._learn.exit();
+      this._learn.sourceNote = "";
       this._payloadConversionSeq += 1;
       this._payloadDialogConverting = false;
       this._payloadDialogOpen = false;
@@ -11524,7 +12028,7 @@ var SofabatonEditDetailView = class extends i4 {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
-    this._exitLearnMode();
+    this._learn.exit();
   }
   // Lit reuses the element instance when the host re-renders with a
   // different entity, so all transient view state must reset exactly the
@@ -12304,7 +12808,7 @@ var SofabatonEditDetailView = class extends i4 {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${this._payloadDialogAddMode && this._payloadLearnView === "off" ? b2`
+            ${this._payloadDialogAddMode && this._learn.view === "off" ? b2`
                   <label class="decoded-field">
                     <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
                     <input
@@ -12319,14 +12823,14 @@ var SofabatonEditDetailView = class extends i4 {
                     <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
                   </label>
                 ` : A}
-            ${this._payloadLearnView !== "off" ? this._renderLearnPanel() : decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
-            ${this._payloadLearnView === "off" && this._payloadLearnSourceNote ? b2`
+            ${this._learn.view !== "off" ? this._learn.renderPanel() : decoded ? this._renderDecodedPayloadForm(decoded.className) : this._liveDeviceIsIr() ? this._renderIrHexPayloadForm() : this._renderRawPayloadForm()}
+            ${this._learn.view === "off" && this._learn.sourceNote ? b2`
                   <div class="section-status payload-test-status success" role="status" aria-live="polite">
                     <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                    <span>${this._payloadLearnSourceNote}</span>
+                    <span>${this._learn.sourceNote}</span>
                   </div>
                 ` : A}
-            ${this._payloadLearnView === "off" && this._liveDeviceIsIr() ? b2`
+            ${this._learn.view === "off" && this._liveDeviceIsIr() ? b2`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
@@ -12334,7 +12838,7 @@ var SofabatonEditDetailView = class extends i4 {
                     </span>
                   </div>
                 ` : A}
-            ${this._payloadLearnView === "off" && this._payloadDialogTestStatus !== "idle" ? b2`
+            ${this._learn.view === "off" && this._payloadDialogTestStatus !== "idle" ? b2`
                   <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
                     <ha-icon icon=${this._payloadDialogTestStatus === "success" ? "mdi:check-circle-outline" : this._payloadDialogTestStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
                     <span>
@@ -12351,11 +12855,11 @@ var SofabatonEditDetailView = class extends i4 {
                 target="_blank"
                 rel="noreferrer noopener"
               >${TOOLS_CARD_STRINGS.backup.payloadDocsLink}</a>
-              ${this._payloadLearnView === "off" && this._payloadDialogError ? b2`<span class="payload-dialog-error">${this._payloadDialogError}</span>` : A}
+              ${this._learn.view === "off" && this._payloadDialogError ? b2`<span class="payload-dialog-error">${this._payloadDialogError}</span>` : A}
             </div>
             <div class="dialog-footer-actions">
-              ${this._payloadLearnView !== "off" ? this._renderLearnFooterActions() : A}
-              ${this._payloadLearnView === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
+              ${this._learn.view !== "off" ? this._learn.renderFooterActions() : A}
+              ${this._learn.view === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? b2`
                     <button
                       class="dialog-btn payload-test-btn"
                       ?disabled=${this._payloadDialogTestStatus === "testing"}
@@ -12365,7 +12869,7 @@ var SofabatonEditDetailView = class extends i4 {
                       <span>${TOOLS_CARD_STRINGS.backup.test}</span>
                     </button>
                   ` : A}
-              ${this._payloadLearnView === "off" ? b2`
+              ${this._learn.view === "off" ? b2`
                     <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
                     <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
                   ` : A}
@@ -12374,184 +12878,6 @@ var SofabatonEditDetailView = class extends i4 {
         </div>
       </div>
     `;
-  }
-  // ── Learn mode rendering (IR9) ─────────────────────────────────────
-  _renderLearnEntryButton() {
-    if (!this._learnAvailable()) return A;
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return b2`
-      <button
-        class="payload-learn-btn"
-        type="button"
-        title=${S5.learnAria}
-        aria-label=${S5.learnAria}
-        @click=${() => void this._enterLearnMode()}
-      >
-        <ha-icon icon="mdi:import"></ha-icon>
-        <span>${S5.learn}</span>
-      </button>
-    `;
-  }
-  _renderLearnPanel() {
-    switch (this._payloadLearnView) {
-      case "menu":
-        return this._renderLearnMenu();
-      case "hub":
-        return this._renderLearnHub();
-      case "ha":
-        return this._renderLearnInbox();
-      default:
-        return A;
-    }
-  }
-  _renderLearnMenu() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    return b2`
-      <div class="learn-panel" data-learn-view="menu">
-        <button class="learn-option" type="button" @click=${() => void this._startHubLearn()}>
-          <ha-icon icon="mdi:remote"></ha-icon>
-          <span class="learn-option-body">
-            <span class="learn-option-title">${S5.learnFromHub}</span>
-            <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
-          </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
-        </button>
-        ${this._learnHaOptionVisible() ? b2`
-              <button class="learn-option" type="button" @click=${() => this._openLearnInbox()}>
-                <ha-icon icon="mdi:home-assistant"></ha-icon>
-                <span class="learn-option-body">
-                  <span class="learn-option-title">${S5.learnFromHa}</span>
-                  <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
-                </span>
-                <ha-icon icon="mdi:chevron-right"></ha-icon>
-              </button>
-            ` : this._payloadLearnHaAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
-      </div>
-    `;
-  }
-  _renderLearnHub() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const state = this._payloadLearnHubState;
-    const event = this._payloadLearnHubEvent;
-    let icon = "mdi:remote";
-    let title = "";
-    let detail = "";
-    switch (state) {
-      case "arming":
-        icon = "mdi:progress-clock";
-        title = S5.learnHubArming;
-        break;
-      case "listening":
-        title = S5.learnHubListening;
-        detail = S5.learnHubCountdown(this._formatCountdown(this._payloadLearnSecondsLeft));
-        break;
-      case "timed_out":
-        icon = "mdi:timer-off-outline";
-        title = S5.learnHubTimedOut;
-        break;
-      case "interrupted":
-        icon = "mdi:alert-circle-outline";
-        title = S5.learnHubInterrupted(String(event?.interrupted_by || "?"));
-        break;
-      case "cancelled":
-        icon = "mdi:cancel";
-        title = S5.learnHubCancelled;
-        break;
-      case "refused":
-        icon = "mdi:alert-circle-outline";
-        title = localizeBackendError(event, "ir_learn");
-        break;
-      case "error":
-        icon = "mdi:alert-circle-outline";
-        title = localizeBackendError(event, "ir_learn");
-        break;
-      default:
-        title = S5.learnHubListening;
-    }
-    return b2`
-      <div class="learn-panel" data-learn-view="hub">
-        <div class="learn-stage ${state}" role="status" aria-live="polite">
-          <ha-icon icon=${icon}></ha-icon>
-          <div class="learn-stage-copy">
-            <div class="learn-stage-title">${title}</div>
-            ${detail ? b2`<div class="learn-stage-detail">${detail}</div>` : A}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  _renderLearnInbox() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const chips = this._payloadLearnConsumers.map((consumer) => ({
-      name: consumer.title || consumer.domain,
-      entity_id: consumer.entities.map((entity) => entity.entity_id).join(", ") || consumer.domain
-    }));
-    const emissions = [...this._payloadLearnEmissions].reverse();
-    return b2`
-      <div class="learn-panel" data-learn-view="ha">
-        <div class="learn-inbox-help">${S5.learnHaHelper}</div>
-        ${chips.length ? b2`
-              <div class="learn-consumers">
-                <span class="learn-consumers-label">${S5.learnHaConsumers}</span>
-                <div class="learn-chips">
-                  ${chips.map((chip) => b2`<span class="learn-chip" title=${chip.entity_id}>${chip.name}</span>`)}
-                </div>
-              </div>
-            ` : A}
-        ${this._payloadLearnEmissionsError ? b2`
-              <div class="section-status error" role="alert">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${localizeBackendError(this._payloadLearnEmissionsError, "ir_emissions")}</span>
-              </div>
-            ` : A}
-        <div class="learn-inbox-list" role="list">
-          ${emissions.length ? emissions.map((rec) => this._renderInboxRow(rec)) : b2`
-                <div class="learn-inbox-empty">
-                  <ha-icon icon="mdi:tray-arrow-down"></ha-icon>
-                  <span>${S5.learnHaEmpty}</span>
-                </div>
-              `}
-        </div>
-      </div>
-    `;
-  }
-  _renderInboxRow(rec) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const isNew = this._emissionIsNew(rec);
-    const meta = [this._learnTimeAgo(rec.when)];
-    if (Number(rec.count) > 1) meta.push(S5.learnHaSentCount(Number(rec.count)));
-    if (Number(rec.carrier_hz) > 0) meta.push(`${formatCarrierKhz(Number(rec.carrier_hz))} kHz`);
-    return b2`
-      <button
-        class="learn-inbox-row ${isNew ? "is-new" : ""}"
-        type="button"
-        role="listitem"
-        @click=${() => this._useEmission(rec)}
-      >
-        <span class="learn-inbox-main">
-          <span class="learn-inbox-label">${this._emissionDisplayName(rec)}</span>
-          <span class="learn-inbox-meta">${meta.filter(Boolean).join(" \xB7 ")}</span>
-        </span>
-        ${isNew ? b2`<span class="learn-badge">${S5.learnHaNew}</span>` : A}
-        <span class="learn-inbox-use">${S5.learnHaUse}</span>
-      </button>
-    `;
-  }
-  _renderLearnFooterActions() {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    if (this._payloadLearnView === "menu") {
-      return b2`<button class="dialog-btn" @click=${() => this._exitLearnMode()}>${S5.learnBack}</button>`;
-    }
-    if (this._payloadLearnView === "hub") {
-      const terminal = this._hubLearnIsTerminal();
-      return b2`
-        ${terminal ? b2`<button class="dialog-btn dialog-btn-primary" @click=${() => void this._startHubLearn()}>${S5.learnTryAgain}</button>` : A}
-        <button class="dialog-btn" @click=${() => this._backToLearnMenu()}>
-          ${terminal ? S5.learnBack : TOOLS_CARD_STRINGS.common.cancel}
-        </button>
-      `;
-    }
-    return b2`<button class="dialog-btn" @click=${() => this._backToLearnMenu()}>${S5.learnBack}</button>`;
   }
   _renderRawPayloadForm() {
     return b2`
@@ -12607,7 +12933,7 @@ var SofabatonEditDetailView = class extends i4 {
             aria-selected=${prontoActive ? "false" : "true"}
             @click=${() => this._selectHexTab("sofabaton")}
           >${S5.sofabatonHexTab}</button>
-          ${this._renderLearnEntryButton()}
+          ${this._learn.renderEntryButton()}
         </div>
         <label class="decoded-field">
           <textarea
@@ -12747,7 +13073,7 @@ var SofabatonEditDetailView = class extends i4 {
             <button class="payload-format-tab active" role="tab" aria-selected="true">
               ${TOOLS_CARD_STRINGS.backup.descriptorTab}
             </button>
-            ${this._renderLearnEntryButton()}
+            ${this._learn.renderEntryButton()}
           </div>
           ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
         ` : b2`
@@ -13161,188 +13487,10 @@ var SofabatonEditDetailView = class extends i4 {
     this._resetIrHexTabState();
     this._payloadDialogOpen = true;
   }
-  // ── Learn mode logic (IR9) ─────────────────────────────────────────
+  // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
   /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
   _learnAvailable() {
     return this.mode === "live" && !!this.irLearn && this._liveDeviceIsIr();
-  }
-  /**
-   * Open the source menu. The HA option is gated on the emitter existing
-   * AND either a consumer config entry or a non-empty intercept ring, so
-   * the inbox subscription is opened right away (it also feeds the inbox
-   * view later) while the consumer lookup runs alongside it.
-   */
-  async _enterLearnMode() {
-    const host = this.irLearn;
-    if (!host || !this._learnAvailable()) return;
-    this._payloadLearnView = "menu";
-    this._payloadLearnSourceNote = "";
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-    this._startLearnTicker();
-    void this._openEmissionInbox(host);
-    try {
-      const response = await host.consumers();
-      if (this._learnModeLeft()) return;
-      this._payloadLearnConsumers = Array.isArray(response?.consumers) ? response.consumers : [];
-      this._payloadLearnHaAvailable = !!response?.available;
-    } catch {
-      if (this._learnModeLeft()) return;
-      this._payloadLearnHaAvailable = false;
-    }
-  }
-  /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
-  _learnModeLeft() {
-    return this._payloadLearnView === "off";
-  }
-  _learnHaOptionVisible() {
-    return this._payloadLearnHaAvailable === true && (this._payloadLearnConsumers.length > 0 || this._payloadLearnEmissions.length > 0);
-  }
-  async _openEmissionInbox(host) {
-    if (this._payloadLearnEmissionsUnsub) return;
-    this._payloadLearnEmissionsError = null;
-    try {
-      const unsubscribe = await host.subscribeEmissions((emissions) => {
-        if (this._payloadLearnView === "off") return;
-        const next = Array.isArray(emissions) ? emissions : [];
-        if (!this._payloadLearnBaseline) {
-          this._payloadLearnBaseline = new Map(next.map((rec) => [rec.payload_hex, rec.when]));
-        }
-        this._payloadLearnEmissions = next;
-      });
-      if (this._payloadLearnView === "off") {
-        unsubscribe();
-        return;
-      }
-      this._payloadLearnEmissionsUnsub = unsubscribe;
-    } catch (error) {
-      if (this._payloadLearnView === "off") return;
-      this._payloadLearnEmissionsError = {
-        error_code: backendErrorCode(error) ?? "ir_emissions_failed"
-      };
-    }
-  }
-  /**
-   * Row name: the command's own repr when its class defines one (it
-   * carries address/command), otherwise the backend label, which is the
-   * class name plus a per-code digest. Repr-less classes (live finding:
-   * SonyX700Command) would otherwise make every code read identically.
-   */
-  _emissionDisplayName(rec) {
-    const repr = String(rec.command_repr ?? "").trim();
-    const label = String(rec.label ?? "").trim();
-    if (!repr) return label;
-    const className = label.replace(/\s*\(.*$/, "");
-    return repr === className ? label : repr;
-  }
-  /** New = not in the ring as first seen, or re-sent since (count bump refreshes `when`). */
-  _emissionIsNew(rec) {
-    const baseline = this._payloadLearnBaseline;
-    if (!baseline) return false;
-    return baseline.get(rec.payload_hex) !== rec.when;
-  }
-  _openLearnInbox() {
-    this._cancelHubLearn();
-    this._payloadLearnView = "ha";
-    if (this.irLearn) void this._openEmissionInbox(this.irLearn);
-  }
-  _backToLearnMenu() {
-    this._cancelHubLearn();
-    this._payloadLearnView = "menu";
-  }
-  /** Leave learn mode entirely: cancel any hub window, drop the inbox, reset. */
-  _exitLearnMode() {
-    this._cancelHubLearn();
-    const unsubscribe = this._payloadLearnEmissionsUnsub;
-    this._payloadLearnEmissionsUnsub = null;
-    if (unsubscribe) {
-      try {
-        unsubscribe();
-      } catch {
-      }
-    }
-    this._stopLearnTicker();
-    this._payloadLearnView = "off";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._payloadLearnEmissions = [];
-    this._payloadLearnEmissionsError = null;
-    this._payloadLearnBaseline = null;
-    this._payloadLearnHaAvailable = null;
-    this._payloadLearnConsumers = [];
-  }
-  async _startHubLearn() {
-    const host = this.irLearn;
-    if (!host) return;
-    this._cancelHubLearn();
-    const attempt = ++this._payloadLearnHubAttempt;
-    this._payloadLearnView = "hub";
-    this._payloadLearnHubState = "arming";
-    this._payloadLearnHubEvent = null;
-    this._payloadLearnHubDeadline = 0;
-    this._payloadLearnSecondsLeft = 0;
-    this._startLearnTicker();
-    try {
-      const cancel = await host.learnFromHub((event) => {
-        if (attempt !== this._payloadLearnHubAttempt) return;
-        this._handleHubLearnEvent(event);
-      }, LEARN_TIMEOUT_S);
-      if (attempt !== this._payloadLearnHubAttempt || this._payloadLearnView !== "hub") {
-        try {
-          cancel();
-        } catch {
-        }
-        return;
-      }
-      if (this._hubLearnIsTerminal()) {
-        try {
-          cancel();
-        } catch {
-        }
-        return;
-      }
-      this._payloadLearnHubCancel = cancel;
-    } catch (error) {
-      if (attempt !== this._payloadLearnHubAttempt) return;
-      this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = {
-        state: "error",
-        error_code: backendErrorCode(error) ?? "ir_learn_failed"
-      };
-    }
-  }
-  _handleHubLearnEvent(event) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    this._payloadLearnHubEvent = event;
-    this._payloadLearnHubState = event.state;
-    if (event.state === "listening") {
-      const timeout = Number(event.timeout_s) > 0 ? Number(event.timeout_s) : LEARN_TIMEOUT_S;
-      this._payloadLearnHubDeadline = Date.now() + timeout * 1e3;
-      this._payloadLearnSecondsLeft = Math.ceil(timeout);
-      return;
-    }
-    this._releaseHubLearn();
-    if (event.state !== "learned") return;
-    const hex = String(event.payload_hex ?? "").trim();
-    if (!hex) {
-      this._payloadLearnHubState = "error";
-      this._payloadLearnHubEvent = { state: "error", error_code: "ir_learn_no_payload" };
-      return;
-    }
-    const timings = Number(event.duration_count) || 0;
-    const carrier = Number(event.carrier_hz) || 0;
-    const note = timings && carrier ? S5.learnHubLearned(timings, formatCarrierKhz(carrier)) : S5.learnHubLearnedRaw;
-    this._adoptLearnedPayload(hex, note);
-  }
-  _useEmission(rec) {
-    const hex = String(rec.payload_hex ?? "").trim();
-    if (!hex) return;
-    this._adoptLearnedPayload(
-      hex,
-      TOOLS_CARD_STRINGS.backup.learnHaCaptured(this._emissionDisplayName(rec))
-    );
   }
   /**
    * Drop a captured Sofabaton blob into the editor: hex mode (leaving a
@@ -13350,68 +13498,14 @@ var SofabatonEditDetailView = class extends i4 {
    * parse as raw timings, Test/Save untouched and ready.
    */
   _adoptLearnedPayload(hex, note) {
-    this._exitLearnMode();
+    this._learn.exit();
     const normalized = normalizeCommandPayloadHex(hex) ?? hex;
     this._morphToHex(normalized, "sofabaton");
     if (this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "pronto";
     this._payloadDialogError = "";
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
-    this._payloadLearnSourceNote = note;
-  }
-  _hubLearnIsTerminal() {
-    return this._payloadLearnHubState !== "arming" && this._payloadLearnHubState !== "listening";
-  }
-  /** Cancel an in-flight hub window (unsubscribe => backend disarms) and orphan its callbacks. */
-  _cancelHubLearn() {
-    this._payloadLearnHubAttempt++;
-    this._releaseHubLearn();
-  }
-  _releaseHubLearn() {
-    const cancel = this._payloadLearnHubCancel;
-    this._payloadLearnHubCancel = null;
-    if (cancel) {
-      try {
-        cancel();
-      } catch {
-      }
-    }
-  }
-  _startLearnTicker() {
-    if (this._payloadLearnTicker) return;
-    this._payloadLearnNow = Date.now();
-    this._payloadLearnTicker = setInterval(() => this._learnTick(), 1e3);
-  }
-  _stopLearnTicker() {
-    if (this._payloadLearnTicker) clearInterval(this._payloadLearnTicker);
-    this._payloadLearnTicker = null;
-  }
-  /** One-second tick: drives the hub countdown and the inbox "ago" labels. */
-  _learnTick() {
-    this._payloadLearnNow = Date.now();
-    if (this._payloadLearnView === "hub" && this._payloadLearnHubState === "listening" && this._payloadLearnHubDeadline) {
-      this._payloadLearnSecondsLeft = Math.max(
-        0,
-        Math.ceil((this._payloadLearnHubDeadline - this._payloadLearnNow) / 1e3)
-      );
-    }
-  }
-  _formatCountdown(seconds) {
-    const total = Math.max(0, Math.floor(seconds));
-    const minutes = Math.floor(total / 60);
-    const rest = total % 60;
-    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
-  }
-  _learnTimeAgo(when) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const ts = Date.parse(String(when ?? ""));
-    if (!Number.isFinite(ts)) return "";
-    const secs = Math.max(0, Math.round((this._payloadLearnNow - ts) / 1e3));
-    if (secs < 5) return S5.learnJustNow;
-    if (secs < 60) return S5.learnSecondsAgo(secs);
-    const mins = Math.round(secs / 60);
-    if (mins < 60) return S5.learnMinutesAgo(mins);
-    return S5.learnHoursAgo(Math.round(mins / 60));
+    this._learn.sourceNote = note;
   }
   _initialDecodedDrafts(decoded) {
     const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
@@ -14799,16 +14893,6 @@ SofabatonEditDetailView.properties = {
   _payloadDialogNameDraft: { state: true },
   _addCommandPreparing: { state: true },
   irLearn: { attribute: false },
-  _payloadLearnView: { state: true },
-  _payloadLearnHubState: { state: true },
-  _payloadLearnHubEvent: { state: true },
-  _payloadLearnSecondsLeft: { state: true },
-  _payloadLearnEmissions: { state: true },
-  _payloadLearnEmissionsError: { state: true },
-  _payloadLearnHaAvailable: { state: true },
-  _payloadLearnConsumers: { state: true },
-  _payloadLearnSourceNote: { state: true },
-  _payloadLearnNow: { state: true },
   _confirmDeleteTarget: { state: true },
   _confirmDeleteLabel: { state: true },
   _addFavoriteOpen: { state: true },

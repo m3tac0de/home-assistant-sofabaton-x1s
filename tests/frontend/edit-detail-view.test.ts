@@ -1034,17 +1034,17 @@ test("entering learn mode opens the menu, subscribes the inbox and gates the HA 
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
 
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
 
-  assert.equal(element._payloadLearnView, "menu");
+  assert.equal(element._learn.view, "menu");
   assert.equal(calls.consumersCalls, 1);
   assert.ok(calls.emissionSink, "inbox subscription opened with the menu");
-  assert.equal(element._payloadLearnHaAvailable, true);
-  assert.equal(element._learnHaOptionVisible(), true); // a consumer exists
+  assert.equal(element._learn.haAvailable, true);
+  assert.equal(element._learn.haOptionVisible(), true); // a consumer exists
 
   element._closeCommandPayloadDialog();
-  assert.equal(element._payloadLearnView, "off");
+  assert.equal(element._learn.view, "off");
   assert.equal(calls.emissionsUnsubscribed, 1);
 });
 
@@ -1052,27 +1052,27 @@ test("the HA option needs the emitter plus a consumer or a non-empty inbox", asy
   {
     const { host } = learnHost({ available: false });
     const element = openLearnEditor(host);
-    await element._enterLearnMode();
+    await element._learn.enter();
     await settle();
-    assert.equal(element._learnHaOptionVisible(), false);
+    assert.equal(element._learn.haOptionVisible(), false);
     element._closeCommandPayloadDialog();
   }
   {
     const { host, calls } = learnHost({ consumers: [] });
     const element = openLearnEditor(host);
-    await element._enterLearnMode();
+    await element._learn.enter();
     await settle();
-    assert.equal(element._learnHaOptionVisible(), false);
+    assert.equal(element._learn.haOptionVisible(), false);
     calls.emissionSink!([{ label: "ProntoHexCommand (abcd1234)", payload_hex: "aabb", when: "2026-09-02T10:00:00+00:00", count: 1 }]);
-    assert.equal(element._learnHaOptionVisible(), true);
+    assert.equal(element._learn.haOptionVisible(), true);
     element._closeCommandPayloadDialog();
   }
   {
     const { host } = learnHost({ consumersFails: true });
     const element = openLearnEditor(host);
-    await element._enterLearnMode();
+    await element._learn.enter();
     await settle();
-    assert.equal(element._payloadLearnHaAvailable, false);
+    assert.equal(element._learn.haAvailable, false);
     element._closeCommandPayloadDialog();
   }
 });
@@ -1080,62 +1080,62 @@ test("the HA option needs the emitter plus a consumer or a non-empty inbox", asy
 test("removing the editor releases the hub window, the inbox and the ticker (CR-F2-4)", async () => {
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
-  await element._startHubLearn();
+  await element._learn.startHubLearn();
   calls.learnEvents!({ state: "listening", timeout_s: 30 });
-  assert.notEqual(element._payloadLearnTicker, null);
+  assert.notEqual(element._learn.ticker, null);
 
   element.disconnectedCallback();
 
   assert.equal(calls.learnCancelled, 1);
   assert.equal(calls.emissionsUnsubscribed, 1);
-  assert.equal(element._payloadLearnTicker, null);
-  assert.equal(element._payloadLearnView, "off");
+  assert.equal(element._learn.ticker, null);
+  assert.equal(element._learn.view, "off");
 });
 
 test("hub learn: listening countdown, then a learned payload lands in the hex editor", async () => {
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
 
-  await element._startHubLearn();
-  assert.equal(element._payloadLearnView, "hub");
-  assert.equal(element._payloadLearnHubState, "arming");
+  await element._learn.startHubLearn();
+  assert.equal(element._learn.view, "hub");
+  assert.equal(element._learn.hubState, "arming");
   assert.equal(calls.learnTimeout, 60);
 
   calls.learnEvents!({ state: "listening", timeout_s: 30 });
-  assert.equal(element._payloadLearnHubState, "listening");
-  assert.equal(element._payloadLearnSecondsLeft, 30);
-  assert.equal(element._hubLearnIsTerminal(), false);
-  assert.equal(element._formatCountdown(element._payloadLearnSecondsLeft), "0:30");
+  assert.equal(element._learn.hubState, "listening");
+  assert.equal(element._learn.secondsLeft, 30);
+  assert.equal(element._learn.hubLearnIsTerminal(), false);
+  assert.equal(element._learn.formatCountdown(element._learn.secondsLeft), "0:30");
 
   calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
-  assert.equal(element._payloadLearnView, "off");
+  assert.equal(element._learn.view, "off");
   assert.equal(element._payloadDialogOpen, true);
   assert.equal(element._payloadDialogRawDraft, "0a 4f 22");
   assert.equal(element._payloadDialogDecodedSnapshot, null);
-  assert.match(element._payloadLearnSourceNote, /136 timing values at 38\.4 kHz/);
+  assert.match(element._learn.sourceNote, /136 timing values at 38\.4 kHz/);
   // The finished subscription is released exactly once.
   assert.equal(calls.learnCancelled, 1);
   // Inbox subscription is dropped with learn mode.
   assert.equal(calls.emissionsUnsubscribed, 1);
 
   element._closeCommandPayloadDialog();
-  assert.equal(element._payloadLearnSourceNote, "");
+  assert.equal(element._learn.sourceNote, "");
 });
 
 test("hub learn: carrier frequency follows the active locale", async () => {
   setToolsCardLanguage("de");
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
 
-  await element._startHubLearn();
+  await element._learn.startHubLearn();
   calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
-  assert.match(element._payloadLearnSourceNote, /136 IR-Zeitwerte bei 38,4 kHz/);
+  assert.match(element._learn.sourceNote, /136 IR-Zeitwerte bei 38,4 kHz/);
 
   element._closeCommandPayloadDialog();
   setToolsCardLanguage("en");
@@ -1144,50 +1144,50 @@ test("hub learn: carrier frequency follows the active locale", async () => {
 test("hub learn: terminal outcomes stay on the hub view with a retry; cancel unsubscribes", async () => {
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
 
-  await element._startHubLearn();
+  await element._learn.startHubLearn();
   calls.learnEvents!({ state: "listening", timeout_s: 60 });
   calls.learnEvents!({ state: "interrupted", interrupted_by: "ACK_READY (0x0160)" });
-  assert.equal(element._payloadLearnView, "hub");
-  assert.equal(element._payloadLearnHubState, "interrupted");
-  assert.equal(element._hubLearnIsTerminal(), true);
+  assert.equal(element._learn.view, "hub");
+  assert.equal(element._learn.hubState, "interrupted");
+  assert.equal(element._learn.hubLearnIsTerminal(), true);
   assert.equal(calls.learnCancelled, 1);
 
   // Try again: a fresh window; a late event from the old one is ignored.
   const staleEvents = calls.learnEvents!;
-  await element._startHubLearn();
-  assert.equal(element._payloadLearnHubState, "arming");
+  await element._learn.startHubLearn();
+  assert.equal(element._learn.hubState, "arming");
   staleEvents({ state: "learned", payload_hex: "ff" });
-  assert.equal(element._payloadLearnHubState, "arming");
+  assert.equal(element._learn.hubState, "arming");
   assert.equal(element._payloadDialogRawDraft, "");
 
   calls.learnEvents!({ state: "listening", timeout_s: 60 });
-  element._backToLearnMenu();
-  assert.equal(element._payloadLearnView, "menu");
+  element._learn.backToMenu();
+  assert.equal(element._learn.view, "menu");
   assert.equal(calls.learnCancelled, 2); // cancelled the live window
 
   // A refused arm reads as its own structured state.
-  await element._startHubLearn();
+  await element._learn.startHubLearn();
   calls.learnEvents!({ state: "refused", error_code: "ir_learn_refused" });
-  assert.equal(element._payloadLearnHubState, "refused");
-  assert.equal(element._payloadLearnHubEvent.error_code, "ir_learn_refused");
+  assert.equal(element._learn.hubState, "refused");
+  assert.equal(element._learn.hubEvent.error_code, "ir_learn_refused");
 
   element._closeCommandPayloadDialog();
-  assert.equal(element._payloadLearnView, "off");
+  assert.equal(element._learn.view, "off");
 });
 
 test("hub learn: a subscribe failure surfaces as an error state", async () => {
   const { host } = learnHost();
   host.learnFromHub = async () => { throw new Error("no socket"); };
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
 
-  await element._startHubLearn();
-  assert.equal(element._payloadLearnHubState, "error");
-  assert.equal(element._payloadLearnHubEvent.error_code, "ir_learn_failed");
+  await element._learn.startHubLearn();
+  assert.equal(element._learn.hubState, "error");
+  assert.equal(element._learn.hubEvent.error_code, "ir_learn_failed");
   element._closeCommandPayloadDialog();
 });
 
@@ -1195,23 +1195,23 @@ test("localized learn views never render backend exception messages", async () =
   setToolsCardLanguage("de");
   const { host } = learnHost({ emissionsFails: true });
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
-  assert.deepEqual(element._payloadLearnEmissionsError, { error_code: "ir_emissions_failed" });
+  assert.deepEqual(element._learn.emissionsError, { error_code: "ir_emissions_failed" });
 
-  element._payloadLearnView = "hub";
-  element._payloadLearnHubState = "error";
-  element._payloadLearnHubEvent = {
+  element._learn.view = "hub";
+  element._learn.hubState = "error";
+  element._learn.hubEvent = {
     state: "error",
     error_code: "ir_learn_failed",
     message: "backend transport gone",
   };
-  const hubText = templateText(element._renderLearnHub());
+  const hubText = templateText(element._learn.renderHub());
   assert.match(hubText, /Anlernen fehlgeschlagen/);
   assert.doesNotMatch(hubText, /backend transport gone/);
 
-  element._payloadLearnView = "ha";
-  const inboxText = templateText(element._renderLearnInbox());
+  element._learn.view = "ha";
+  const inboxText = templateText(element._learn.renderInbox());
   assert.match(inboxText, /Zuletzt gesendete IR-Befehle konnten nicht geladen werden/);
   assert.doesNotMatch(inboxText, /backend transport gone/);
 
@@ -1222,27 +1222,27 @@ test("localized learn views never render backend exception messages", async () =
 test("inbox: new sends are judged against the ring as first seen, and Use adopts the payload", async () => {
   const { host, calls } = learnHost();
   const element = openLearnEditor(host);
-  await element._enterLearnMode();
+  await element._learn.enter();
   await settle();
 
   const first = { label: "Samsung32Command (0123abcd)", command_repr: "Samsung32Command(address=7, command=2)", payload_hex: "aabb", when: "2026-09-02T10:00:00+00:00", count: 1, carrier_hz: 38000 };
   calls.emissionSink!([first]);
-  assert.equal(element._emissionIsNew(first), false); // already there when learn mode opened
+  assert.equal(element._learn.emissionIsNew(first), false); // already there when learn mode opened
 
-  element._openLearnInbox();
-  assert.equal(element._payloadLearnView, "ha");
+  element._learn.openInbox();
+  assert.equal(element._learn.view, "ha");
 
   const resent = { ...first, when: "2026-09-02T10:00:30+00:00", count: 2 };
   const fresh = { label: "ProntoHexCommand (deadbeef)", command_repr: "ProntoHexCommand(68 timings, 38000 Hz)", payload_hex: "ccdd", when: "2026-09-02T10:00:31+00:00", count: 1 };
   calls.emissionSink!([resent, fresh]);
-  assert.equal(element._emissionIsNew(resent), true); // count bump refreshed `when`
-  assert.equal(element._emissionIsNew(fresh), true);
-  assert.equal(element._payloadLearnEmissions.length, 2);
+  assert.equal(element._learn.emissionIsNew(resent), true); // count bump refreshed `when`
+  assert.equal(element._learn.emissionIsNew(fresh), true);
+  assert.equal(element._learn.emissions.length, 2);
 
-  element._useEmission(fresh);
-  assert.equal(element._payloadLearnView, "off");
+  element._learn.useEmission(fresh);
+  assert.equal(element._learn.view, "off");
   assert.equal(element._payloadDialogRawDraft, "cc dd");
-  assert.match(element._payloadLearnSourceNote, /ProntoHexCommand\(68 timings, 38000 Hz\)/);
+  assert.match(element._learn.sourceNote, /ProntoHexCommand\(68 timings, 38000 Hz\)/);
   assert.equal(calls.emissionsUnsubscribed, 1);
 
   // Adopting into the add dialog leaves Save's own checks intact: a
@@ -1255,29 +1255,29 @@ test("inbox: new sends are judged against the ring as first seen, and Use adopts
 
 test("inbox: time-ago labels follow the ticker clock", () => {
   const element = createLiveDeviceEditor();
-  element._payloadLearnNow = Date.parse("2026-09-02T10:10:00Z");
-  assert.equal(element._learnTimeAgo("2026-09-02T10:09:58+00:00"), "just now");
-  assert.equal(element._learnTimeAgo("2026-09-02T10:09:20+00:00"), "40 s ago");
-  assert.equal(element._learnTimeAgo("2026-09-02T09:58:00+00:00"), "12 min ago");
-  assert.equal(element._learnTimeAgo("2026-09-02T07:10:00+00:00"), "3 h ago");
-  assert.equal(element._learnTimeAgo("not a date"), "");
+  element._learn.now = Date.parse("2026-09-02T10:10:00Z");
+  assert.equal(element._learn.timeAgo("2026-09-02T10:09:58+00:00"), "just now");
+  assert.equal(element._learn.timeAgo("2026-09-02T10:09:20+00:00"), "40 s ago");
+  assert.equal(element._learn.timeAgo("2026-09-02T09:58:00+00:00"), "12 min ago");
+  assert.equal(element._learn.timeAgo("2026-09-02T07:10:00+00:00"), "3 h ago");
+  assert.equal(element._learn.timeAgo("not a date"), "");
 });
 
 test("inbox: repr-less command classes fall back to the digest label so codes stay distinguishable", () => {
   const element = createLiveDeviceEditor();
   // Class with its own repr: the repr wins (carries address/command).
   assert.equal(
-    element._emissionDisplayName({ label: "Samsung32Command (0123abcd)", command_repr: "Samsung32Command(address=7, command=2)", payload_hex: "aa", when: "t", count: 1 }),
+    element._learn.emissionDisplayName({ label: "Samsung32Command (0123abcd)", command_repr: "Samsung32Command(address=7, command=2)", payload_hex: "aa", when: "t", count: 1 }),
     "Samsung32Command(address=7, command=2)",
   );
   // No repr (backend sends the bare class name): show class + digest.
   assert.equal(
-    element._emissionDisplayName({ label: "SonyX700Command (9f1e2d3c)", command_repr: "SonyX700Command", payload_hex: "bb", when: "t", count: 1 }),
+    element._learn.emissionDisplayName({ label: "SonyX700Command (9f1e2d3c)", command_repr: "SonyX700Command", payload_hex: "bb", when: "t", count: 1 }),
     "SonyX700Command (9f1e2d3c)",
   );
   // Missing repr entirely.
   assert.equal(
-    element._emissionDisplayName({ label: "ProntoHexCommand (deadbeef)", payload_hex: "cc", when: "t", count: 1 }),
+    element._learn.emissionDisplayName({ label: "ProntoHexCommand (deadbeef)", payload_hex: "cc", when: "t", count: 1 }),
     "ProntoHexCommand (deadbeef)",
   );
 });
