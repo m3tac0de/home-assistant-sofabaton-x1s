@@ -46,13 +46,20 @@ from urllib.parse import urlsplit
 from sofabaton import (
     WIFI_SLOT_COUNT,
     AsyncXProxy,
+    FetchTimeoutError,
+    HubBusyError,
     HubEvent,
+    HubNotConnectedError,
     WifiDeployment,
     WifiDeviceSpec,
     WifiSlotSpec,
     WifiTarget,
 )
 from sofabaton.wifi_device import DEFAULT_WIFI_BRAND
+
+# The hub could not be asked: an identity check that meets one of these
+# proved nothing either way (CR-S2-3).
+_UNVERIFIABLE = (HubNotConnectedError, HubBusyError, FetchTimeoutError)
 
 from .config import Settings
 from .manager import HubDisabled, HubManager, HubNotFound
@@ -616,6 +623,9 @@ class CallbackService:
         self.ring = ring or PressRing()
         self._press_listeners: list[Callable[[Press], Any]] = []
         self._verify_tasks: dict[str, asyncio.Task] = {}
+        # Pending creates the boot pass could not verify, retried per hub once
+        # it is ready.
+        self._reconcile_tasks: dict[str, asyncio.Task] = {}
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
         # The broker: the command line / environment when they set any of it,
         # else what the control panel stored in mqtt.json (mqtt_config.py).
@@ -679,13 +689,15 @@ class CallbackService:
                     log.info("hub %s: pending callback %s left for later (hub not running)", hub_id, record.pending.get("op"))
                     break
                 try:
-                    await self.reconcile(hub_id, proxy, key=record.key)
+                    # The hub has not dialled back yet: an identity it cannot
+                    # confirm keeps the intent for the retry after catalog_ready.
+                    await self.reconcile(hub_id, proxy, key=record.key, defer_unverifiable=True)
                 except Exception:  # noqa: BLE001
                     log.exception("hub %s: callback reconciliation at boot failed; left pending", hub_id)
         await self.ensure_listener()
 
     async def stop(self) -> None:
-        for task in list(self._verify_tasks.values()):
+        for task in [*self._verify_tasks.values(), *self._reconcile_tasks.values()]:
             task.cancel()
         await self.listener.stop()
         await self.mqtt.stop()
@@ -1174,11 +1186,16 @@ class CallbackService:
     # -- reconciliation and identity ------------------------------------------------
 
     async def reconcile(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY,
-                        spec_hint: Optional[WifiDeviceSpec] = None) -> Optional[CallbackRecord]:
+                        spec_hint: Optional[WifiDeviceSpec] = None,
+                        defer_unverifiable: bool = False) -> Optional[CallbackRecord]:
         """Settle a pending intent, or adopt an orphan the server forgot.
 
         Returns the record after reconciliation (None when there is none).
-        Runs inside a job, before every deploy and at boot.
+        Runs inside a job, before every deploy and at boot. A pending create
+        whose identity the hub cannot be asked about is never dropped: with
+        ``defer_unverifiable`` it stays pending (boot, the ready retry),
+        otherwise the hub's error propagates (a deploy must not create a
+        second device next to one that may have landed).
         """
 
         record = self.record(hub_id, key)
@@ -1198,8 +1215,14 @@ class CallbackService:
         op = str(pending.get("op") or "")
         if op == "create":
             spec = WifiDeviceSpec.from_dict(pending.get("spec") or record.spec).normalized()
-            adopted = await self._adopt(hub_id, proxy, action_id, name=spec.name, spec=spec,
-                                        key=key, transport=record.transport)
+            try:
+                adopted = await self._adopt(hub_id, proxy, action_id, name=spec.name, spec=spec,
+                                            key=key, transport=record.transport)
+            except _UNVERIFIABLE as err:
+                if not defer_unverifiable:
+                    raise
+                log.info("hub %s: pending callback create %s left for later (%s)", hub_id, key, err)
+                return record
             if adopted is None:
                 log.info("hub %s: the pending callback create never landed; dropping it", hub_id)
                 self.save(hub_id, None, key)
@@ -1286,6 +1309,8 @@ class CallbackService:
 
         try:
             payload = await proxy.read_payload(device_id, 1)
+        except _UNVERIFIABLE:
+            raise
         except Exception as err:  # noqa: BLE001
             log.info("identity check of device %s failed to read its first record: %s", device_id, err)
             return None
@@ -1344,6 +1369,8 @@ class CallbackService:
     # -- stale detection ---------------------------------------------------------------
 
     def _on_hub_event(self, hub_id: str, event: HubEvent) -> None:
+        if event.kind in ("catalog_ready", "snapshot_changed"):
+            self._retry_pending_creates(hub_id)
         if event.kind != "snapshot_changed":
             return
         if not any(row.device_id is not None and row.pending is None for row in self.records(hub_id)):
@@ -1356,6 +1383,32 @@ class CallbackService:
         if task is not None and not task.done():
             return
         self._verify_tasks[hub_id] = asyncio.create_task(self._check_stale(hub_id, proxy), name=f"callback-stale:{hub_id}")
+
+    def _retry_pending_creates(self, hub_id: str) -> None:
+        """Settle the pending creates the boot pass could not verify."""
+
+        if not any((row.pending or {}).get("op") == "create" for row in self.records(hub_id)):
+            return
+        try:
+            proxy = self._manager.proxy(hub_id)
+        except (HubNotFound, HubDisabled):
+            return
+        task = self._reconcile_tasks.get(hub_id)
+        if task is not None and not task.done():
+            return
+
+        async def retry() -> None:
+            for row in self.records(hub_id):
+                if (row.pending or {}).get("op") != "create":
+                    continue
+                try:
+                    await self.reconcile(hub_id, proxy, key=row.key, defer_unverifiable=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001
+                    log.exception("hub %s: pending callback create %s: reconciliation failed", hub_id, row.key)
+
+        self._reconcile_tasks[hub_id] = asyncio.create_task(retry(), name=f"callback-reconcile:{hub_id}")
 
     async def _check_stale(self, hub_id: str, proxy: AsyncXProxy) -> None:
         for row in self.records(hub_id):

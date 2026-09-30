@@ -22,6 +22,7 @@ from sofabaton import (
     Device,
     Favorite,
     HubBusyError,
+    HubNotConnectedError,
     HubConfig,
     HubEvent,
     HubInfo,
@@ -536,6 +537,9 @@ class FakeProxy:
         self._maybe_fail()
         if self.refuse:
             raise HubBusyError("an app client holds the hub")
+        if getattr(self, "offline_until_ready", False) and not self.catalog_ready:
+            # The real boot order: the hub dials back after the server starts.
+            raise HubNotConnectedError("the hub has not connected yet")
         return self.payloads.get((device_id, command_id))
 
     async def play(self, payload):

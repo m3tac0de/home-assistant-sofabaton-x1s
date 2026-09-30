@@ -424,6 +424,32 @@ def test_boot_adopts_a_pending_create_that_landed(tmp_path: Path) -> None:
         assert factory.latest(LOOPBACK).wifi_deploys == []                  # no second device
 
 
+def test_boot_keeps_a_pending_create_it_cannot_verify_yet(tmp_path: Path) -> None:
+    """CR-S2-3: at boot the hub has not dialled back, so the identity read
+    fails; the landed create stays pending and is adopted once ready."""
+    client, factory = _rig(tmp_path)
+    with client:
+        _hub(client, factory)
+    _write_pending(tmp_path, {"device_id": None, "spec": _spec_dict(), "target": {"host": "192.168.1.10", "port": 8060, "action_id": HUB_ID},
+                              "pending": {"op": "create", "started_at": "2026-09-11T00:00:00+00:00"}})
+
+    def on_build(proxy):
+        from sofabaton import WifiDeviceSpec
+        proxy.mac = MAC
+        proxy.offline_until_ready = True
+        proxy.place_wifi_device(7, WifiDeviceSpec.from_dict(_spec_dict()), host="192.168.1.10", port=8060)
+
+    client, factory = _rig(tmp_path, on_build=on_build)
+    with client:
+        record = client.get(f"{HUBS}/{HUB_ID}/callback-device").json()
+        assert record["device_id"] is None and record["pending"]["op"] == "create"
+        client.portal.call(factory.latest(LOOPBACK).ready, MAC)
+        _until(lambda: client.get(f"{HUBS}/{HUB_ID}/callback-device").json()["device_id"] == 7)
+        record = client.get(f"{HUBS}/{HUB_ID}/callback-device").json()
+        assert record["adopted"] is True and record["pending"] is None
+        assert factory.latest(LOOPBACK).wifi_deploys == []
+
+
 def test_boot_drops_a_pending_create_that_never_landed(tmp_path: Path) -> None:
     client, factory = _rig(tmp_path)
     with client:
