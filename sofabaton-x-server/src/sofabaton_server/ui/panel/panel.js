@@ -15489,7 +15489,7 @@ var TOOLS_CARD_STRINGS_EN = {
     addCommand: "Add command",
     addCommandTitle: "Add command",
     editPayloadTitle: "Edit payload",
-    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit.",
+    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. The bin removes a command with the next Sync.",
     commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
     newCommandChip: "new command",
     commandChip: "command",

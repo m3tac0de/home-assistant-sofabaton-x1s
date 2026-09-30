@@ -592,7 +592,7 @@ var TOOLS_CARD_STRINGS_ES = {
     addCommand: "A\xF1adir comando",
     addCommandTitle: "A\xF1adir comando",
     editPayloadTitle: "Editar carga \xFAtil",
-    commandsLiveHelp: "Usa el l\xE1piz para cambiar el nombre de un comando y las llaves para obtener su carga \xFAtil del hub y editarla. La eliminaci\xF3n de comandos permanece en Backup \u2192 Editar.",
+    commandsLiveHelp: "Usa el l\xE1piz para cambiar el nombre de un comando y las llaves para obtener su carga \xFAtil del hub y editarla. La papelera elimina un comando con la pr\xF3xima sincronizaci\xF3n.",
     commandsBackupHelp: "Usa el l\xE1piz para cambiar el nombre de un comando (los nombres se actualizan en todas sus referencias) y las llaves para editar su carga \xFAtil.",
     newCommandChip: "comando nuevo",
     commandChip: "comando",

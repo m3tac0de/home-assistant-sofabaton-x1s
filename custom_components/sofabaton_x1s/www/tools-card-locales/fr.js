@@ -593,7 +593,7 @@ var TOOLS_CARD_STRINGS_FR = {
     addCommand: "Ajouter une commande",
     addCommandTitle: "Ajouter une commande",
     editPayloadTitle: "Modifier les donn\xE9es utiles",
-    commandsLiveHelp: "Utilisez le crayon pour renommer une commande et les accolades pour r\xE9cup\xE9rer ses donn\xE9es utiles depuis le hub et les modifier. La suppression des commandes reste dans Sauvegarde \u2192 Modifier.",
+    commandsLiveHelp: "Utilisez le crayon pour renommer une commande et les accolades pour r\xE9cup\xE9rer ses donn\xE9es utiles depuis le hub et les modifier. La corbeille supprime une commande \xE0 la prochaine synchronisation.",
     commandsBackupHelp: "Utilisez le crayon pour renommer une commande (les noms sont mis \xE0 jour partout o\xF9 ils sont r\xE9f\xE9renc\xE9s) et les accolades pour modifier ses donn\xE9es utiles.",
     newCommandChip: "nouvelle commande",
     commandChip: "commande",

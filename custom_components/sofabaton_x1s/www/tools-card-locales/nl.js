@@ -596,7 +596,7 @@ var TOOLS_CARD_STRINGS_NL = {
     addCommand: "Commando toevoegen",
     addCommandTitle: "Commando toevoegen",
     editPayloadTitle: "Payload bewerken",
-    commandsLiveHelp: "Gebruik het potlood om een commando te hernoemen en de accolades om de payload van de hub op te halen en te bewerken. Commando's verwijderen blijft onder Back-up \u2192 Bewerken.",
+    commandsLiveHelp: "Gebruik het potlood om een commando te hernoemen en de accolades om de payload van de hub op te halen en te bewerken. De prullenbak verwijdert een commando bij de volgende synchronisatie.",
     commandsBackupHelp: "Gebruik het potlood om een commando te hernoemen (namen worden overal bijgewerkt waarnaar wordt verwezen) en de accolades om de payload te bewerken.",
     newCommandChip: "nieuw commando",
     commandChip: "commando",

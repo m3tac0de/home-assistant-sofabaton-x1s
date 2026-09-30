@@ -593,7 +593,7 @@ var TOOLS_CARD_STRINGS_DE = {
     addCommand: "Befehl hinzuf\xFCgen",
     addCommandTitle: "Befehl hinzuf\xFCgen",
     editPayloadTitle: "Nutzdaten bearbeiten",
-    commandsLiveHelp: "Verwende den Stift, um einen Befehl umzubenennen, und die geschweiften Klammern, um seine Nutzdaten vom Hub abzurufen und zu bearbeiten. Befehle werden weiterhin unter Backup \u2192 \xC4ndern gel\xF6scht.",
+    commandsLiveHelp: "Verwende den Stift, um einen Befehl umzubenennen, und die geschweiften Klammern, um seine Nutzdaten vom Hub abzurufen und zu bearbeiten. Der Papierkorb entfernt einen Befehl mit der n\xE4chsten Synchronisierung.",
     commandsBackupHelp: "Verwende den Stift, um einen Befehl umzubenennen (Namen werden \xFCberall aktualisiert, wo sie referenziert werden), und die geschweiften Klammern, um seine Nutzdaten zu bearbeiten.",
     newCommandChip: "neuer Befehl",
     commandChip: "Befehl",

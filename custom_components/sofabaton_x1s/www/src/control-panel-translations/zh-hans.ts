@@ -294,7 +294,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     detailPower: "电源", detailNetwork: "网络", detailCommands: "命令", detailButtons: "按键", detailSectionsAria: "详细信息分区", editBindingAria: "编辑分配", editIpAria: "编辑 IP 地址",
     networkDescription: "设备 IP 地址保存在设备记录中。Hub 执行命令时会用它定位设备（Hue/Sonos 使用 Host 标头，Roku 使用基础 URL）。",
     ipv4Description: "点分十进制 IPv4 地址", addCommand: "添加命令", addCommandTitle: "添加命令", editPayloadTitle: "编辑有效载荷",
-    commandsLiveHelp: "使用铅笔图标重命名命令；使用大括号图标从 Hub 获取并编辑有效载荷。删除命令仍在“备份 → 编辑”中进行。",
+    commandsLiveHelp: "使用铅笔图标重命名命令；使用大括号图标从 Hub 获取并编辑有效载荷。垃圾桶图标会在下次同步时删除命令。",
     commandsBackupHelp: "使用铅笔图标重命名命令（所有引用处的名称都会更新），使用大括号图标编辑有效载荷。",
     newCommandChip: "新命令", commandChip: "命令", requiredStepChip: "必需", buttonChip: "按键", ipChip: "IP", thisItem: "此项目", noDeviceCommands: "此设备目前没有命令。",
     renameCommandAria: "重命名命令", commandId: "命令 ID", editPayloadAria: "编辑有效载荷", fetchEditCommandAria: "获取并编辑此命令的有效载荷",

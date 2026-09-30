@@ -296,7 +296,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     detailPower: "Aan/uit", detailNetwork: "Netwerk", detailCommands: "Commando's", detailButtons: "Knoppen", detailSectionsAria: "Detailsecties", editBindingAria: "Toewijzing bewerken", editIpAria: "IP-adres bewerken",
     networkDescription: "Het IP-adres van het apparaat staat in het apparaatrecord. De hub gebruikt het bij het afspelen om het apparaat te adresseren (Host-header voor Hue/Sonos, basis-URL voor Roku).",
     ipv4Description: "IPv4-adres in puntnotatie", addCommand: "Commando toevoegen", addCommandTitle: "Commando toevoegen", editPayloadTitle: "Payload bewerken",
-    commandsLiveHelp: "Gebruik het potlood om een commando te hernoemen en de accolades om de payload van de hub op te halen en te bewerken. Commando's verwijderen blijft onder Back-up → Bewerken.",
+    commandsLiveHelp: "Gebruik het potlood om een commando te hernoemen en de accolades om de payload van de hub op te halen en te bewerken. De prullenbak verwijdert een commando bij de volgende synchronisatie.",
     commandsBackupHelp: "Gebruik het potlood om een commando te hernoemen (namen worden overal bijgewerkt waarnaar wordt verwezen) en de accolades om de payload te bewerken.",
     newCommandChip: "nieuw commando", commandChip: "commando", requiredStepChip: "vereist", buttonChip: "knop", ipChip: "ip", thisItem: "dit item", noDeviceCommands: "Dit apparaat heeft momenteel geen commando's.",
     renameCommandAria: "Commando hernoemen", commandId: "Commando-ID", editPayloadAria: "Payload bewerken", fetchEditCommandAria: "Payload van dit commando ophalen en bewerken",
