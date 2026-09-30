@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .blob_decoders import (
     X2_PARSER_RESET_CARRIER_HZ,
@@ -54,6 +54,9 @@ from .protocol_const import (
     opcode_family_name,
 )
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
 
 def _run_create_sequence(*args, **kwargs):
     from . import x1_proxy as _xp
@@ -69,7 +72,7 @@ def x2_parser_reset_blob() -> bytes:
     )
 
 
-class IrBlobMixin:
+class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing IR playback and single-command persist writes."""
 
     def play_ir_blob(

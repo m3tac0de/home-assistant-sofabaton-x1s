@@ -17,7 +17,7 @@ an existing schema-driven builder (``build_device_create_step``,
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .hub_versions import (
     ACTIVITY_BACKUP_SCHEMA_VERSION,
@@ -59,6 +59,9 @@ from .protocol_const import (
     known_public_device_classes,
     normalize_device_class,
 )
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 # The hub's shared 8-bit entity-id space: devices are 0x01-0x63,
 # activities 0x65-0xFF (see docs/protocol/data-structures.md). An id at
@@ -184,7 +187,7 @@ class _DeviceReplayParts:
     skipped_button_bindings: int = 0
 
 
-class RestoreMixin:
+class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing device/activity restore orchestration."""
 
     def _restore_device_class(self, device_block: dict[str, Any]) -> str | None:

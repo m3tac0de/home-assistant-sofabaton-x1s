@@ -92,6 +92,10 @@ include = [
     "sofabaton-x-server/src",
 ]
 typeCheckingMode = "basic"
+# The mixins subclass _ProxyHost for the type checker (CR-L3a-17): these
+# make a drifted member an error at its definition.
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
 pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv-py313"

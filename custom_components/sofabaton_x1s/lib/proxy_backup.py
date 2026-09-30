@@ -15,12 +15,15 @@ The mixin owns no state of its own; all reads and writes go through
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .backup_export import now_iso
 from .macros import MacroKeyEntry, MacroRecord
 from .protocol_const import OP_ERASE_CONFIGURATION, OP_STATUS_ACK
 from .state_helpers import normalize_device_entry, one_slot_per_fav_id, reads_live_state
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 
 def _entry_with_raw_body_hex(entry: dict[str, Any]) -> dict[str, Any]:
@@ -50,7 +53,7 @@ def _entry_restore_raw_body(entry: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
-class CacheBackupMixin:
+class CacheBackupMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing cache export/import, catalog clearing and the
     snapshot provenance bookkeeping (generation, stale flags)."""
 

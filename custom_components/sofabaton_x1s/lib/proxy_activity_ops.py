@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Collection
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .hub_versions import (
     ACTIVITY_BACKUP_SCHEMA_VERSION,
@@ -47,6 +47,9 @@ from .protocol_const import (
     OP_REQ_MACRO_LABELS,
 )
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
 log = logging.getLogger("x1proxy")
 
 # The 0x0210 key delete acks after a hub-side consistency sweep whose latency
@@ -70,14 +73,13 @@ _ACTIVITY_ROW_NAME_OFFSET = 32
 _ACTIVITY_ROW_NAME_ASCII_LEN = 60
 
 
-
 # The highest command id the X1S accepts as a favorite: 199 is taken, 200
 # and above get STATUS_ACK 0x09 (bench_285, 2026-09-30). The X2 shares the
 # wide layout; the X1 path writes a fixed code and was not probed.
 MAX_FAVORITE_COMMAND_ID = 0xC7
 
 
-class ActivityOpsMixin:
+class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing activity-edit orchestration."""
 
     def _wait_for_activity_map_burst(self, act_id: int, *, timeout: float = 5.0) -> bool:

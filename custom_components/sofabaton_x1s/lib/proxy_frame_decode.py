@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TYPE_CHECKING
 
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import (
@@ -22,12 +22,15 @@ from .protocol_const import (
     opcode_family_name,
 )
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
 
 def _hexdump(data: bytes) -> str:
     return data.hex(" ")
 
 
-class FrameDecodeMixin:
+class FrameDecodeMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing deframer feed hooks and structured frame logs."""
 
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
