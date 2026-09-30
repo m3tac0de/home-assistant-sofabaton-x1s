@@ -119,7 +119,6 @@ test("bundled complete control-panel translations select regional locales and pr
 
 test("Spanish power section labels describe both on and off behavior", () => {
   setToolsCardLanguage("es-ES");
-  assert.equal(TOOLS_CARD_STRINGS.activities.deviceReview.sectionPower, "Encendido y apagado");
   assert.equal(TOOLS_CARD_STRINGS.backup.detailPower, "Encendido y apagado");
   setToolsCardLanguage("en");
 });
@@ -246,7 +245,6 @@ test("French zero counts use the singular category", () => {
       TOOLS_CARD_STRINGS.wifiCommands.inActivities(0),
       TOOLS_CARD_STRINGS.wifiCommands.eventsConfiguredPill(0, 3),
       TOOLS_CARD_STRINGS.wifiCommands.eventsShowUnconfigured(0),
-      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(0, 0, 0),
     ],
     [
       "0 sélectionné",
@@ -264,7 +262,6 @@ test("French zero counts use the singular category", () => {
       "dans 0 activité",
       "0 sur 3 configuré",
       "Afficher 0 non configuré…",
-      "Le hub supprimera aussi 0 raccourci et 0 attribution de touche qui y font référence ; l’étape est retirée de 0 macro (une macro sans étapes est supprimée).",
     ],
   );
 
@@ -291,10 +288,6 @@ test("bundled Simplified Chinese control-panel translation supports zh-Hans", ()
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.action, "动作");
   assert.equal(TOOLS_CARD_STRINGS.hubClick.lovelaceHint, "复制到仪表板 YAML：");
   assert.equal(TOOLS_CARD_STRINGS.backendState.restoreDevice(8), "正在恢复设备 8…");
-  assert.equal(
-    TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(1, 2, 3),
-    "Hub 还会移除引用此事件的 1 个快捷项和 2 个按键分配，并从 3 个宏中移除此步骤（没有步骤的宏会被删除）。",
-  );
 
   setToolsCardLanguage("en");
 });
@@ -388,8 +381,8 @@ test("compact navigation and button copy stays clear in translated UI", () => {
       `${item.locale} Automation actions`,
     );
     assert.deepEqual(
-      [TOOLS_CARD_STRINGS.activities.syncRetry, TOOLS_CARD_STRINGS.wifiCommands.wifiEventRetrySync],
-      [item.retrySync, item.retrySync],
+      [TOOLS_CARD_STRINGS.activities.syncRetry],
+      [item.retrySync],
       `${item.locale} retry-sync actions`,
     );
   }
@@ -611,8 +604,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 of 2 buttons mapped",
         "1 configured",
         "2 configured",
-        "The hub will also remove 1 shortcut and 0 button assignments that reference it, and the step is removed from 1 macro (a macro left with no steps is removed).",
-        "The hub will also remove 2 shortcuts and 2 button assignments that reference it, and the step is removed from 2 macros (a macro left with no steps is removed).",
       ],
     },
     {
@@ -627,8 +618,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 of 2 buttons mapped",
         "1 configured",
         "2 configured",
-        "The hub will also remove 1 shortcut and 0 button assignments that reference it, and the step is removed from 1 macro (a macro left with no steps is removed).",
-        "The hub will also remove 2 shortcuts and 2 button assignments that reference it, and the step is removed from 2 macros (a macro left with no steps is removed).",
       ],
     },
     {
@@ -643,8 +632,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 van 2 knoppen gekoppeld",
         "1 geconfigureerd",
         "2 geconfigureerd",
-        "De hub verwijdert ook 1 snelkoppeling en 0 knoptoewijzingen die ernaar verwijzen; de stap wordt uit 1 macro verwijderd (een macro zonder stappen wordt verwijderd).",
-        "De hub verwijdert ook 2 snelkoppelingen en 2 knoptoewijzingen die ernaar verwijzen; de stap wordt uit 2 macro's verwijderd (een macro zonder stappen wordt verwijderd).",
       ],
     },
     {
@@ -659,8 +646,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 von 2 Tasten belegt",
         "1 konfiguriert",
         "2 konfiguriert",
-        "Der Hub entfernt außerdem 1 Verknüpfung und 0 Tastenbelegungen, die darauf verweisen; der Schritt wird aus 1 Makro entfernt (ein Makro ohne Schritte wird gelöscht).",
-        "Der Hub entfernt außerdem 2 Verknüpfungen und 2 Tastenbelegungen, die darauf verweisen; der Schritt wird aus 2 Makros entfernt (ein Makro ohne Schritte wird gelöscht).",
       ],
     },
     {
@@ -675,8 +660,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 touche attribuée sur 2",
         "1 configurée",
         "2 configurées",
-        "Le hub supprimera aussi 1 raccourci et 0 attribution de touche qui y font référence ; l’étape est retirée de 1 macro (une macro sans étapes est supprimée).",
-        "Le hub supprimera aussi 2 raccourcis et 2 attributions de touches qui y font référence ; l’étape est retirée de 2 macros (une macro sans étapes est supprimée).",
       ],
     },
     {
@@ -691,8 +674,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
         "1 de 2 botones asignados",
         "1 configurado",
         "2 configurados",
-        "El hub también eliminará 1 acceso directo y 0 asignaciones de botones que hacen referencia al evento; el paso se elimina de 1 macro (una macro sin pasos se elimina).",
-        "El hub también eliminará 2 accesos directos y 2 asignaciones de botones que hacen referencia al evento; el paso se elimina de 2 macros (una macro sin pasos se elimina).",
       ],
     },
   ];
@@ -709,8 +690,6 @@ test("control-panel count copy uses real singular and plural forms", () => {
       TOOLS_CARD_STRINGS.backup.roleMappedNote(1, 2),
       TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(1),
       TOOLS_CARD_STRINGS.backup.bindingsConfiguredCount(2),
-      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(1, 0, 1),
-      TOOLS_CARD_STRINGS.wifiCommands.wifiEventDeleteRefs(2, 2, 2),
     ];
     assert.deepEqual(actual, item.expected, item.locale);
   }

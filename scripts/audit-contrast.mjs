@@ -114,6 +114,8 @@ const DEFAULT_SCENARIOS = [
   "26",                   // Power-flagged + input slots
   "29",                   // Firmware update available nag chip
   "30",                   // Unsupported firmware: backup blocked
+  "dock-completion",      // Bottom dock: error completion line
+  "dock-completion-success", // Bottom dock: success completion line
 ];
 
 function parseArgs(argv) {

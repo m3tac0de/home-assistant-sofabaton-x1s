@@ -12,7 +12,7 @@ import { setMaxListeners } from "node:events";
 // noisy fake failure) go away.
 setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
-import { deviceClassIcon, resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
+import { deviceClassIcon, isBackendUnavailableError, resolveCardGateState, resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { HassConnectionLike, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
@@ -734,6 +734,7 @@ test("deviceClassIcon maps known cache device classes to the expected icons", ()
   assert.equal(deviceClassIcon("wifi_hue"), "mdi:wifi");
   assert.equal(deviceClassIcon("wifi_mqtt"), "mdi:wifi");
   assert.equal(deviceClassIcon("wifi_ip"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_sonos"), "mdi:wifi");   // CR-F1-16
   assert.equal(deviceClassIcon("something_else"), "mdi:radio-tower");
   assert.equal(deviceClassIcon(undefined), "mdi:radio-tower");
 });
@@ -793,4 +794,153 @@ test("dock reports a failed Wifi deploy per device key", async () => {
     { ...IDLE, last_operation: null, last_wifi_deploys: { livingroom: "failed", other: "success" } },
   );
   assert.equal(notice?.tone, "error");
+});
+
+// ── R5 batch 3.1: failure paths ─────────────────────────────────────────
+
+function stateWithOperation(operation: Record<string, unknown> | null) {
+  return {
+    ...baseState,
+    hubs: [{ ...baseState.hubs[0], hub_connected: true, active_backup_operation: operation }],
+  };
+}
+
+test("refresh all settles when its operation vanishes without a terminal event (CR-F1-3)", async () => {
+  let current: Record<string, unknown> = stateWithOperation(null);
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => current,
+        "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "op-1" }),
+      },
+      // HA restarted: the progress subscription never delivers anything.
+      subscribe: async () => () => undefined,
+    }),
+  );
+  await store.loadState();
+
+  const done = store.refreshAllForHub();
+  await flush();
+  current = stateWithOperation({ operation_id: "op-1", status: "running", kind: "cache_refresh" });
+  await store.loadControlPanelState();
+  assert.ok("hub-1" in store.snapshot.refreshBusyByHub, "still running");
+
+  current = stateWithOperation(null);   // the operation is gone after the restart
+  await store.loadControlPanelState();
+  const outcome = await Promise.race([done, new Promise((resolve) => setTimeout(() => resolve("hung"), 2000))]);
+  assert.notEqual(outcome, "hung", "refresh all never settled");
+  assert.equal(outcome, null);          // unknown outcome: no failure reported
+  assert.equal("hub-1" in store.snapshot.refreshBusyByHub, false);
+});
+
+test("a failed per-entry refresh is shown, and a create still opens its editor (CR-F1-2)", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => stateWithOperation(null),
+        "sofabaton_x1s/activity/create": () => ({ status: "success", activity_id: 105 }),
+        "sofabaton_x1s/persistent_cache/refresh": () => { throw { code: "timeout", message: "the hub did not answer" }; },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const result = await store.createActivity("Movie");
+  assert.deepEqual(result, { activityId: 105 });
+  const runtime = store.snapshot.runtimeCompletionNoticeByHub?.["hub-1"] ?? null;
+  assert.ok(runtime && runtime.tone === "error", "the failed refresh is reported");
+  assert.equal("hub-1" in store.snapshot.refreshBusyByHub, false);
+});
+
+test("Hub-tab send refuses while the Sofabaton app holds the hub (CR-F1-4)", async () => {
+  const sent: unknown[] = [];
+  const { store } = createStore();
+  store.connected();
+  const hass = createHass({
+    states: {
+      "remote.living_room": { state: "unavailable", attributes: { entry_id: "hub-1", proxy_client_connected: true } },
+    },
+  });
+  (hass as HassLike & { callService: unknown }).callService = async (...args: unknown[]) => { sent.push(args); };
+  store.setHass(hass);
+  await store.loadState();
+
+  await store.sendHubClickCommand({ commandId: 10, targetId: 1, label: "Power", contextLabel: "Television" } as never);
+  assert.equal(sent.length, 0);
+  assert.equal(store.snapshot.lastCommandSend ?? null, null);
+});
+
+test("a hub action that fails says so in the dock (CR-F1-8)", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/run_action": () => { throw { code: "busy", message: "busy" }; },
+      },
+    }),
+  );
+  await store.loadState();
+  await store.runAction("find_remote" as never);
+  const runtime = store.snapshot.runtimeCompletionNoticeByHub?.["hub-1"] ?? null;
+  assert.ok(runtime && runtime.tone === "error");
+  assert.equal(store.snapshot.pendingActionKey, null);
+});
+
+
+test("a hub whose remote entity is disabled still passes the card gate (CR-X2-2)", async () => {
+  const { store } = createStore();
+  store.connected();
+  // No remote.* entity in hass.states at all: the user disabled it.
+  store.setHass(createHass({ handlers: { "sofabaton_x1s/control_panel/state": () => stateWithOperation(null) } }));
+  await store.loadState();
+  assert.equal(resolveCardGateState(store.snapshot).kind, "pass");
+
+  store.setHass(createHass({
+    handlers: {
+      "sofabaton_x1s/control_panel/state": () => ({
+        ...baseState, hubs: [{ ...baseState.hubs[0], hub_connected: false }],
+      }),
+    },
+  }));
+  await store.loadState();
+  assert.equal(resolveCardGateState(store.snapshot).kind, "hub_unavailable");
+});
+
+test("not_found is one hub, not a missing integration (CR-X2-8)", () => {
+  assert.equal(isBackendUnavailableError({ code: "not_found" }, null), false);
+  assert.equal(isBackendUnavailableError({ code: "unknown_command" }, null), true);
+});
+
+test("two state loads racing on one operation leave one subscription (CR-F1-6)", async () => {
+  let subscribed = 0;
+  let released = 0;
+  let current: Record<string, unknown> = stateWithOperation(null);
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => current,
+      },
+      subscribe: async (_callback, message) => {
+        // Only the backup-progress feed: the press and event feeds share the socket.
+        if (message.type !== "sofabaton_x1s/backup/progress_subscribe") return () => undefined;
+        subscribed += 1;
+        await flush();
+        return () => { released += 1; };
+      },
+    }),
+  );
+  await store.loadState();
+  // The operation starts; two loads land within one round trip.
+  current = stateWithOperation({ operation_id: "op-7", status: "running", kind: "backup_restore" });
+  await Promise.all([store.loadControlPanelState(), store.loadControlPanelState()]);
+  await flush();
+  assert.ok(subscribed >= 1);
+  assert.equal(subscribed - released, 1, "exactly one live subscription");
 });

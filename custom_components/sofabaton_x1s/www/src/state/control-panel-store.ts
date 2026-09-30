@@ -24,20 +24,24 @@ import {
   didHubGenerationChange,
   entityForHub,
   formatError,
-  formatLogEntry,
   hassFingerprint,
   hubClickAction,
   isBackendUnavailableError,
   persistentCacheEnabled,
   proxyClientConnected,
+  remoteAvailableForHub,
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
 import { buildHubClickNotification } from "../shared/utils/hub-click-notification";
-import { backendErrorCode } from "../shared/utils/backend-state-localization";
+import { backendErrorCode, localizeBackendError } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
+
+// A refresh-all whose operation never shows up in the polled state (it ended
+// before the first poll saw it, and its event was lost) settles after this.
+const REFRESH_ALL_UNSEEN_MS = 30_000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache", "logs"]);
@@ -188,6 +192,15 @@ export class ControlPanelStore {
   private _backendRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private _backendRetryDelay = BACKEND_RETRY_MIN_MS;
   private _backupOpUnsub: (() => void) | null = null;
+  private _backupOpSubscribeSeq = 0;
+  // Refresh-all runs waiting for their terminal event, per hub: settled from
+  // the polled state when the operation vanishes without one (CR-F1-3).
+  private _refreshAllWaits = new Map<string, {
+    operationId: string;
+    seenRunning: boolean;
+    startedAt: number;
+    settle: (failure: string | null | undefined) => void;
+  }>();
   private _backupOpEntryId: string | null = null;
   private _backupOpId: string | null = null;
   private _runtimeStatePollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -626,11 +639,12 @@ export class ControlPanelStore {
       } else {
         await this.loadControlPanelState();
       }
-    } catch (_error) {
+    } catch (error) {
       this.applyOptimisticSetting(
         setting,
         setting === "persistent_cache" ? previousPersistentCacheEnabled : !enabled,
       );
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
@@ -652,8 +666,9 @@ export class ControlPanelStore {
     try {
       await this.api().setHubClickAction(hub.entry_id, value);
       await this.loadControlPanelState();
-    } catch (_error) {
+    } catch (error) {
       this._applyOptimisticHubClickAction(previous);
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
@@ -676,7 +691,16 @@ export class ControlPanelStore {
     const hass = this._snapshot.hass;
     if (!hub || !hass?.callService) return;
     const entityId = entityForHub(hass, hub);
-    if (!entityId) {
+    if (proxyClientConnected(hass, hub)) {
+      // The remote entity is unavailable while the app holds the hub, and
+      // the service would send nothing (CR-F1-4).
+      this.showRuntimeCompletion(
+        { tone: "error", label: TOOLS_CARD_STRINGS.activities.appConnectedTitle },
+        hub.entry_id,
+      );
+      return;
+    }
+    if (!entityId || !remoteAvailableForHub(hass, hub)) {
       this.showRuntimeCompletion(
         { tone: "error", label: TOOLS_CARD_STRINGS.hubClick.noRemoteEntity },
         hub.entry_id,
@@ -742,6 +766,8 @@ export class ControlPanelStore {
     try {
       await this.api().runAction(hub.entry_id, action);
       await this.loadControlPanelState();
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
     } finally {
       this._snapshot = { ...this._snapshot, pendingActionKey: null };
       this.emit();
@@ -806,7 +832,15 @@ export class ControlPanelStore {
       const start = await this.api().startCacheRefresh(hub.entry_id);
       // Pull runtime_state promptly so the dock picks up the running operation.
       void this.loadControlPanelState().catch(() => undefined);
-      const failure = await new Promise<string | null>((resolve) => {
+      // undefined: the operation ended without a terminal event reaching us
+      // (HA restarted under it); the outcome is unknown, so nothing is said.
+      const failure = await new Promise<string | null | undefined>((resolve) => {
+        this._refreshAllWaits.set(hub.entry_id, {
+          operationId: String(start.operation_id || ""),
+          seenRunning: false,
+          startedAt: Date.now(),
+          settle: resolve,
+        });
         this.api()
           .subscribeBackupProgress(start.operation_id, (payload: BackupProgressEvent) => {
             if (payload.status === "success") resolve(null);
@@ -817,15 +851,19 @@ export class ControlPanelStore {
           .then((unsub) => { unsubscribe = unsub; })
           .catch((error) => resolve(formatError(error)));
       });
-      this.showRuntimeCompletion(
-        failure
-          ? { tone: "error", label: failure }
-          : { tone: "success", label: TOOLS_CARD_STRINGS.cacheRefresh.done },
-        hub.entry_id,
-      );
+      this._refreshAllWaits.delete(hub.entry_id);
+      if (failure !== undefined) {
+        this.showRuntimeCompletion(
+          failure
+            ? { tone: "error", label: failure }
+            : { tone: "success", label: TOOLS_CARD_STRINGS.cacheRefresh.done },
+          hub.entry_id,
+        );
+      }
       await this.loadState({ silent: true });
-      return failure;
+      return failure ?? null;
     } catch (error) {
+      this._refreshAllWaits.delete(hub.entry_id);
       const failure = formatError(error);
       this.showRuntimeCompletion({ tone: "error", label: failure }, hub.entry_id);
       return failure;
@@ -850,7 +888,7 @@ export class ControlPanelStore {
     try {
       await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
-      return formatError(error);
+      return localizeBackendError(error, "catalog_write");
     } finally {
       this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
@@ -871,7 +909,7 @@ export class ControlPanelStore {
     try {
       await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
-      return formatError(error);
+      return localizeBackendError(error, "catalog_write");
     } finally {
       this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
@@ -895,7 +933,7 @@ export class ControlPanelStore {
       activityId = Number(result?.activity_id || 0);
       if (!activityId) return { error: TOOLS_CARD_STRINGS.errors.activityIdMissing };
     } catch (error) {
-      return { error: formatError(error) };
+      return { error: localizeBackendError(error, "activity_create") };
     } finally {
       this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
@@ -934,10 +972,13 @@ export class ControlPanelStore {
     return { deviceId };
   }
 
-  async refreshForHub(kind: RefreshKind, targetId: number, key: string) {
-    if (this._isHubCommandBusy()) return;
+  /** Resolves false when the refresh failed; the failure is shown in the
+   *  dock, never thrown (a create's follow-up refresh must not strand its
+   *  dialog, CR-F1-2). */
+  async refreshForHub(kind: RefreshKind, targetId: number, key: string): Promise<boolean> {
+    if (this._isHubCommandBusy()) return false;
     const hub = selectedHub(this._snapshot);
-    if (!hub) return;
+    if (!hub) return false;
     this._setRefreshBusy(hub.entry_id, key);
     try {
       await this.api().refreshCacheEntry({
@@ -947,6 +988,10 @@ export class ControlPanelStore {
         targetId,
       });
       await this.loadState({ silent: true });
+      return true;
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+      return false;
     } finally {
       // Scroll-to-entry only makes sense if the user is still on the hub
       // whose entry was refreshed.
@@ -1066,14 +1111,12 @@ export class ControlPanelStore {
       logger: String(message.logger ?? ""),
       entry_id: String(message.entry_id ?? ""),
     };
-    const _formatted = formatLogEntry(line);
     this._snapshot = {
       ...this._snapshot,
       logsError: null,
       logsLoadedEntryId: entryId,
       logsLines: [...this._snapshot.logsLines, line].slice(-400),
     };
-    void _formatted;
     this.emit();
   }
 
@@ -1087,6 +1130,22 @@ export class ControlPanelStore {
       await unsub();
     } catch {
       /* ignore — the backend may already be gone */
+    }
+  }
+
+  /** Settle refresh-all waits whose operation left the polled state. */
+  private _checkRefreshAllWaits() {
+    for (const [entryId, wait] of this._refreshAllWaits) {
+      const hub = (this._snapshot.state?.hubs ?? []).find((row) => row.entry_id === entryId);
+      const active = hub?.active_backup_operation;
+      const running = !!active
+        && String(active.operation_id || "") === wait.operationId
+        && ["pending", "running"].includes(String(active.status || ""));
+      if (running) {
+        wait.seenRunning = true;
+      } else if (wait.seenRunning || Date.now() - wait.startedAt > REFRESH_ALL_UNSEEN_MS) {
+        wait.settle(undefined);
+      }
     }
   }
 
@@ -1137,6 +1196,7 @@ export class ControlPanelStore {
       }
     }
     this._scheduleRuntimeStatePoll();
+    this._checkRefreshAllWaits();
   }
 
   private applyOptimisticSetting(setting: SettingKey, enabled: boolean) {
@@ -1279,23 +1339,28 @@ export class ControlPanelStore {
     }
 
     await this._teardownBackupOperationFeed();
+    const subscribeSeq = ++this._backupOpSubscribeSeq;
     this._backupOpEntryId = entryId;
     this._backupOpId = operationId;
 
     try {
       const unsubscribe = await this.api().subscribeBackupProgress(operationId, (payload) => {
+        if (subscribeSeq !== this._backupOpSubscribeSeq) return;
         if (this._backupOpId !== operationId || this._backupOpEntryId !== entryId) return;
         this._applyBackupProgressToSnapshot(entryId, payload);
         if (!["pending", "running"].includes(String(payload.status || ""))) {
           void this._teardownBackupOperationFeed();
         }
       });
-      if (this._backupOpId !== operationId || this._backupOpEntryId !== entryId) {
+      // A second load that raced this one owns the feed now (CR-F1-6).
+      if (subscribeSeq !== this._backupOpSubscribeSeq
+          || this._backupOpId !== operationId || this._backupOpEntryId !== entryId) {
         try { unsubscribe(); } catch { /* ignore */ }
         return;
       }
       this._backupOpUnsub = unsubscribe;
     } catch {
+      if (subscribeSeq !== this._backupOpSubscribeSeq) return;
       this._backupOpEntryId = null;
       this._backupOpId = null;
       this._backupOpUnsub = null;
@@ -1324,6 +1389,7 @@ export class ControlPanelStore {
   }
 
   private async _teardownBackupOperationFeed() {
+    this._backupOpSubscribeSeq++;
     const unsub = this._backupOpUnsub;
     this._backupOpUnsub = null;
     this._backupOpEntryId = null;

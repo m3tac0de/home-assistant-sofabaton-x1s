@@ -26,7 +26,6 @@ var TOOLS_CARD_STRINGS_EN_GB = {
     }
   },
   backup: {
-    powerNoDevices: "No devices yet. Add a favourite, assignment, or macro that uses one.",
     activityMeta: (favourites, macros) => `${favourites} ${favourites === 1 ? "favourite" : "favourites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
@@ -38,7 +37,7 @@ var TOOLS_CARD_STRINGS_EN_GB = {
   },
   wifiCommands: {
     colorGroup: "Colour",
-    favorite: "Set as Favourite"
+    favorite: "Set as favourite"
   }
 };
 var en_gb_default = TOOLS_CARD_STRINGS_EN_GB;

@@ -137,3 +137,14 @@ test("locale URL builders receive the canonical emitted filename", async () => {
     locale: "en-gb",
   }]);
 });
+
+
+test("an alias language activates the catalogue it loads (CR-F1-13)", async () => {
+  const loader = new ToolsCardLocaleLoader(
+    async () => ({ default: { tabs: { cache: "中文缓存" } } }),
+    (locale) => `/locales/${locale}.js`,
+  );
+  setToolsCardLanguage("zh-CN");
+  assert.equal(await loader.ensure("zh-CN"), true);
+  assert.equal(toolsStr().tabs.cache, "中文缓存");
+});

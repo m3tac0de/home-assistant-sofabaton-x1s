@@ -11,11 +11,12 @@ import {
   selectedDeviceOwnsPendingSync,
   shouldFinalizeWifiHubLoad,
 } from "./wifi-commands-state";
+import { DOC_URLS } from "../shared/doc-links";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
-const WIFI_COMMANDS_DOCS_URL = TOOLS_CARD_STRINGS.wifiCommands.docsUrl;
+const WIFI_COMMANDS_DOCS_URL = DOC_URLS.wifiCommands;
 
 const ID = {
   UP: 174,
@@ -1349,14 +1350,14 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private async _loadHubEventActions(force = false) {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass?.callWS) return;
     if (this._hubEventActionsLoading && !force) return;
     this._hubEventActionsLoading = true;
     try {
       const result = await this.hass.callWS<{ actions?: Record<string, unknown>; activity_actions?: Record<string, unknown> }>({
         type: "sofabaton_x1s/hub_event_actions/get",
-        entity_id: entityId,
+        entry_id: hubEntryId,
       });
       this._applyHubEventActionsResult(result);
     } catch (_error) {
@@ -1417,13 +1418,13 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private async _loadWifiEventsRows(): Promise<void> {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS || this._wifiEventsLoading) return;
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass?.callWS || this._wifiEventsLoading) return;
     this._wifiEventsLoading = true;
     try {
       const result = await this.hass.callWS<{ events?: WifiEvent[]; device_id?: number | null }>({
         type: "sofabaton_x1s/wifi_event/list",
-        entity_id: entityId,
+        entry_id: hubEntryId,
       });
       this._applyWifiEventsState(result);
     } catch (_error) {
@@ -1443,14 +1444,14 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private async _removeWifiEventsConfig(): Promise<void> {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS || this._wifiEventsStaleBusy) return;
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass?.callWS || this._wifiEventsStaleBusy) return;
     this._wifiEventsStaleBusy = true;
     this._wifiEventsStaleError = "";
     try {
       const result = await this.hass.callWS<{ events?: WifiEvent[]; device_id?: number | null }>({
         type: "sofabaton_x1s/wifi_event/clear_all",
-        entity_id: entityId,
+        entry_id: hubEntryId,
       });
       this._applyWifiEventsState(result);
       this._wifiEventsStaleConfirm = false;
@@ -1475,15 +1476,15 @@ class SofabatonWifiCommandsTab extends LitElement {
   /** Persist one hub/activity event action. Always ships both maps so the
    *  backend can normalize (and prune stale activity ids) atomically. */
   private async _writeHubEventAction(target: HubEventEditorTarget, action: WifiCommandAction): Promise<boolean> {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return false;
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass?.callWS) return false;
     if (target.kind === "wifi_event") {
       // Narrow endpoint — a wholesale command_config write from this UI
       // could corrupt slot order. No re-deploy: the callback runtime
       // reads the staged slot.
       const result = await this.hass.callWS<{ events?: WifiEvent[]; device_id?: number | null }>({
         type: "sofabaton_x1s/wifi_event/set_action",
-        entity_id: entityId,
+        entry_id: hubEntryId,
         slot_index: target.slotIndex,
         press_type: target.pressType,
         action: this._normalizeCommandAction(action),
@@ -1504,7 +1505,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     const result = await this.hass.callWS<{ actions?: Record<string, unknown>; activity_actions?: Record<string, unknown> }>({
       type: "sofabaton_x1s/hub_event_actions/set",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       actions: nextActions,
       activity_actions: nextActivityActions,
     });
@@ -2333,9 +2334,9 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._wifiEventsStaleError = "";
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceListLoaded = await this._loadWifiDevices(true);
-    if (!shouldFinalizeWifiHubLoad({ entryId, entityId, deviceListLoaded })) return;
+    if (!shouldFinalizeWifiHubLoad({ entryId, deviceListLoaded })) return;
     await this._loadHubEventActions(true);
     await this._loadWifiEventsRows();
     if (!this._deviceSessionRestoreTried && !this._selectedDeviceKey) {
@@ -2640,17 +2641,17 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private async _loadCommandConfigFromBackend(force = false) {
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const entryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
-    if (!entityId || !entryId || !this.hass?.callWS) return;
+    if (!hubEntryId || !entryId || !this.hass?.callWS) return;
     if (this._commandConfigLoading && !force) return;
     if (!deviceKey) return;
     this._commandConfigLoading = true;
     try {
       const result = await this.hass.callWS<{ commands?: unknown[]; power_on_command_id?: number | null; power_off_command_id?: number | null }>({
         type: "sofabaton_x1s/command_config/get",
-        entity_id: entityId,
+        entry_id: hubEntryId,
         device_key: deviceKey,
       });
       this._commandsData = this._normalizeCommandsForStorage(
@@ -2667,16 +2668,16 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private async _loadCommandSyncProgress(force = false) {
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
+    if (!hubEntryId || !this.hass?.callWS) return;
     if (!deviceKey) return;
     if (this._commandSyncLoading && !force) return;
     this._commandSyncLoading = true;
     try {
       const result = await this.hass.callWS<Partial<SyncState>>({
         type: "sofabaton_x1s/command_sync/progress",
-        entity_id: entityId,
+        entry_id: hubEntryId,
         device_key: deviceKey,
       });
       this._syncState = {
@@ -2714,8 +2715,8 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private async _loadWifiDevices(force = false) {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return false;
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass?.callWS) return false;
     if (this._deviceListLoading && !force) return false;
     this._deviceListLoading = true;
     try {
@@ -2725,7 +2726,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         mqtt_available?: boolean;
       }>({
         type: "sofabaton_x1s/command_devices/list",
-        entity_id: entityId,
+        entry_id: hubEntryId,
       });
       this._mqttAvailable = Boolean(result?.mqtt_available);
       this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
@@ -2757,13 +2758,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(nextCommands);
     const normalized = this._normalizeCommandsForStorage(nextCommands, powerOnCommandId, powerOffCommandId);
     this._commandsData = normalized;
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
-    if (entityId && this.hass?.callWS) {
+    if (hubEntryId && this.hass?.callWS) {
       try {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_config/set",
-          entity_id: entityId,
+          entry_id: hubEntryId,
           device_key: deviceKey,
           commands: normalized,
           power_on_command_id: powerOnCommandId ?? undefined,
@@ -3297,8 +3298,8 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private async _clearButtonFromOtherDevices(buttonId: string, currentDeviceKey: string) {
     if (!buttonId || !this.hass?.callWS) return;
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId) return;
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId) return;
     for (const device of this._wifiDevices) {
       if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
       const conflictIdx = device.commands.findIndex((cmd) => String(cmd?.hard_button || "").trim() === buttonId);
@@ -3312,7 +3313,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       try {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_config/set",
-          entity_id: entityId,
+          entry_id: hubEntryId,
           device_key: device.device_key,
           commands: normalized,
           power_on_command_id: powerOnCommandId ?? undefined,
@@ -3471,9 +3472,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   };
 
   private async _createWifiDevice() {
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceName = this._sanitizeWifiDeviceName(this._newDeviceName);
-    if (!entityId || !this.hass?.callWS) return;
+    if (!hubEntryId || !this.hass?.callWS) return;
     if (this._hubCommandLocked()) return;
     if (!deviceName) {
       this._deviceMutationError = TOOLS_CARD_STRINGS.wifiCommands.createDeviceNameRequired;
@@ -3485,7 +3486,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     try {
       const payload = await this.hass.callWS<{ device_key?: string }>({
         type: "sofabaton_x1s/command_device/create",
-        entity_id: entityId,
+        entry_id: hubEntryId,
         device_name: deviceName,
         ...(this._mqttAvailable ? { transport: this._newDeviceTransport } : {}),
       });
@@ -3514,9 +3515,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   };
 
   private _deleteWifiDevice = async () => {
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._deleteDeviceKey || "").trim();
-    if (!entityId || !deviceKey || !this.hass?.callWS) return;
+    if (!hubEntryId || !deviceKey || !this.hass?.callWS) return;
     if (this._hubCommandLocked()) return;
     this._closeDeleteDeviceModal();
     this._deletingDeviceKey = deviceKey;
@@ -3525,7 +3526,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     try {
       await this.hass.callWS({
         type: "sofabaton_x1s/command_device/delete",
-        entity_id: entityId,
+        entry_id: hubEntryId,
         device_key: deviceKey,
       });
       if (this._selectedDeviceKey === deviceKey) this._goBackToDeviceList();
@@ -3542,17 +3543,17 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _runCommandConfigSync = async () => {
     if (this._commandSyncRunning || this._hubCommandLocked()) return;
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
-    if (!entityId) return;
+    if (!hubEntryId) return;
     if (!deviceKey) return;
     await this._startCommandConfigSync();
   };
 
   private async _startCommandConfigSync() {
-    const entityId = String(this._entityId() || "").trim();
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
-    if (!entityId || !this.hass?.callService) return;
+    if (!hubEntryId || !this.hass?.callService) return;
     this._syncState = {
       ...this._syncState,
       status: "running",
@@ -3581,7 +3582,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     const busyEntryId = String(this.hub?.entry_id || "").trim();
     this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
-      await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
+      await this.hass.callService("sofabaton_x1s", "sync_command_config", { entry_id: hubEntryId, device_key: deviceKey });
       await this._refreshControlPanelState();
     } catch (error) {
       this._syncState = {

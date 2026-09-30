@@ -50,7 +50,8 @@ function roundHalfEven(value: number): number {
 export function parseProntoHex(text: string): IrSignal {
   const tokens = text.trim().split(/\s+/).filter((t) => t.length > 0);
   const words = tokens.map((token) => {
-    const value = /^[0-9a-fA-F]+$/.test(token) ? parseInt(token, 16) : NaN;
+    // An optional 0x prefix, as the send_pronto action (Python int(token, 16)) accepts.
+    const value = /^(?:0[xX])?[0-9a-fA-F]+$/.test(token) ? parseInt(token.replace(/^0[xX]/, ""), 16) : NaN;
     if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
     return value;
   });

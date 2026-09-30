@@ -22,7 +22,7 @@ import type {
   WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { entityForHub, formatError } from "../shared/utils/control-panel-selectors";
+import { formatError } from "../shared/utils/control-panel-selectors";
 import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import {
@@ -389,8 +389,10 @@ class SofabatonActivitiesTab extends LitElement {
   // deployed events-device block — review diff + the sync validator's
   // baseline grandfathering depend on it).
 
-  private _wifiEventsEntityId(): string {
-    return String(entityForHub(this.hass, this.hub) || "").trim();
+  /** The hub the Wifi Events calls address: its config entry, never the
+   *  remote entity (a disabled remote entity must not hide the events). */
+  private _wifiEventsHubId(): string {
+    return String(this.hub?.entry_id || "").trim();
   }
 
   /** A stable positive device id for the not-yet-deployed events device
@@ -456,7 +458,7 @@ class SofabatonActivitiesTab extends LitElement {
         || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId,
     );
     if (present && !options.forceRefresh) return this._working;
-    const entityId = this._wifiEventsEntityId();
+    const entityId = this._wifiEventsHubId();
     const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
     const blockId = state.device_id ?? this._placeholderDeviceId();
     const entry = this._syntheticEventsBlock(state.events ?? [], blockId);
@@ -467,7 +469,7 @@ class SofabatonActivitiesTab extends LitElement {
 
   private _wifiEventsFacade: WifiEventsHost = {
     list: async (): Promise<WifiEvent[]> => {
-      const entityId = this._wifiEventsEntityId();
+      const entityId = this._wifiEventsHubId();
       if (!entityId) return [];
       const res = await this.api().listWifiEvents(entityId);
       return this._withEventDeviceIds(res.events ?? [], res.device_id ?? null);
@@ -475,7 +477,7 @@ class SofabatonActivitiesTab extends LitElement {
     create: async (name: string) => {
       // W7 full deferral: a pure store allocation — instant, no deploy.
       // The Sync press runs the events-record deploy as phase 1.
-      const entityId = this._wifiEventsEntityId();
+      const entityId = this._wifiEventsHubId();
       if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
       const res = await this.api().createWifiEvent(entityId, name);
       const filled = this._withEventDeviceIds(res?.events ?? [], res?.device_id ?? null);
@@ -486,7 +488,7 @@ class SofabatonActivitiesTab extends LitElement {
     },
     ensureGrafted: async () => this._graftWifiEventsDevice(),
     enableLongPress: async (slotIndex: number) => {
-      const entityId = this._wifiEventsEntityId();
+      const entityId = this._wifiEventsHubId();
       if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
       await this.api().setWifiEventLongpress(entityId, slotIndex, true);
     },
@@ -497,7 +499,7 @@ class SofabatonActivitiesTab extends LitElement {
    *  swap the synthetic block for the deployed one in both bundles.
    *  Returns false (with `_syncProgress` set) when phase 1 fails. */
   private async _syncWifiEventsPhase(): Promise<boolean> {
-    const entityId = this._wifiEventsEntityId();
+    const entityId = this._wifiEventsHubId();
     if (!entityId || this._entityId == null || !this.hub) return true;
     const placeholderId = this._wifiEventsPlaceholderId;
     const referencesEvents = (bundle: BackupBundlePayload | null): boolean => {
@@ -907,7 +909,6 @@ class SofabatonActivitiesTab extends LitElement {
           <div class="guard-sub">${S.needsRefreshBody(this.kind)}</div>
           <div class="action-row">
             <sofabaton-refresh-cache-button
-              .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               .runRefresh=${this.startRefreshAll ?? null}
               @refreshed=${() => { if (this._entityId != null) void this._startCapture(this._entityId); }}
@@ -992,7 +993,6 @@ class SofabatonActivitiesTab extends LitElement {
               ? nothing
               : html`<button class="btn btn-primary" @click=${this._retrySync}>${S.syncRetry}</button>`}
             <sofabaton-refresh-cache-button
-              .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               .runRefresh=${this.startRefreshAll ?? null}
               .label=${S.syncReload}

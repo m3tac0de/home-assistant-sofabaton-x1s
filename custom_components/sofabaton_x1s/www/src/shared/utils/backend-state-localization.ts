@@ -8,7 +8,8 @@ type BackendOperation =
   | "entity_sync"
   | "wifi_deploy";
 
-export type BackendErrorSurface = "device_create" | "ir_learn" | "ir_emissions" | "ir_convert";
+export type BackendErrorSurface =
+  | "device_create" | "activity_create" | "catalog_write" | "ir_learn" | "ir_emissions" | "ir_convert";
 
 /**
  * The `ir_payload/convert` rejection carries the refused protocol as its
@@ -56,9 +57,25 @@ export function backendErrorCode(value: unknown): string | null {
  * use localized generic copy rather than leaking their English `message`.
  */
 export function localizeBackendError(value: unknown, surface: BackendErrorSurface): string {
+  if (surface === "activity_create" || surface === "catalog_write") {
+    // The Add Activity dialog and the reorders share one backend guard with
+    // Add Device, so they speak its codes too (CR-X7-4).
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "unavailable" || code === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
+    if (code === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (surface === "activity_create") {
+      if (code === "invalid_name") return TOOLS_CARD_STRINGS.errors.activityNameInvalid;
+      return TOOLS_CARD_STRINGS.errors.activityCreateFailed;
+    }
+    return TOOLS_CARD_STRINGS.errors.reorderFailed;
+  }
   if (surface === "device_create") {
     const code = backendErrorCode(value);
-    if (code === "busy" || code === "another_operation") {
+    // "unavailable" is the same guard refusing (CR-X2-11).
+    if (code === "busy" || code === "unavailable" || code === "another_operation") {
       return TOOLS_CARD_STRINGS.errors.anotherOperation;
     }
     if (code === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
@@ -90,7 +107,6 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
     || code === "ir_learn_refused"
     || code === "unavailable"
     || code === "busy"
-    || code === "operation_locked"
   ) {
     return S.learnHubRefused;
   }

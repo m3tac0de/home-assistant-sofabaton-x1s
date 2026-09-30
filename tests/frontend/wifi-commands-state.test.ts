@@ -31,24 +31,11 @@ test("findRunningWifiDevice falls back to the selected device while sync status 
   });
 });
 
-test("shouldFinalizeWifiHubLoad waits for a resolvable hub entity", () => {
-  assert.equal(
-    shouldFinalizeWifiHubLoad({
-      entryId: "hub-2",
-      entityId: "",
-      deviceListLoaded: false,
-    }),
-    false,
-  );
-
-  assert.equal(
-    shouldFinalizeWifiHubLoad({
-      entryId: "hub-2",
-      entityId: "remote.bedroom",
-      deviceListLoaded: true,
-    }),
-    true,
-  );
+test("shouldFinalizeWifiHubLoad needs the hub entry and the device list, not the remote entity", () => {
+  assert.equal(shouldFinalizeWifiHubLoad({ entryId: "hub-2", deviceListLoaded: false }), false);
+  assert.equal(shouldFinalizeWifiHubLoad({ entryId: "", deviceListLoaded: true }), false);
+  // CR-X2-2: a hub whose remote entity is disabled still loads.
+  assert.equal(shouldFinalizeWifiHubLoad({ entryId: "hub-2", deviceListLoaded: true }), true);
 });
 
 test("selectedDeviceOwnsPendingSync only unlocks the device that started the sync", () => {

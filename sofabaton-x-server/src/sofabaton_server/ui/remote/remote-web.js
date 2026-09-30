@@ -1831,7 +1831,6 @@ var REMOTE_CARD_STRINGS_EN = {
   },
   assist: {
     label: "Key capture",
-    start: "Start",
     waiting: "Waiting for keypress",
     exitEditMode: "Exit Edit mode to begin",
     captured: (label) => `Captured: ${label}`,
@@ -1880,18 +1879,8 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select background color",
-      show_activity: "Activity/device selector",
-      show_dpad: "Direction pad",
-      show_nav: "Back/Home/Menu keys",
-      show_mid: "Volume/Channel rockers",
-      show_media: "Playback",
-      show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C buttons",
-      show_macros_button: "Macros button",
-      show_favorites_button: "Favorites button",
       max_width: "Maximum card width (px)",
-      key_style: "Button style",
-      group_order: "Group order"
+      key_style: "Button style"
     },
     generalOptionsTitle: "General options",
     keyCapture: "Key capture",
@@ -9717,7 +9706,6 @@ var REMOTE_CARD_STRINGS_AR = {
   },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    start: "\u0628\u062F\u0621",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
     exitEditMode: "\u063A\u0627\u062F\u0631 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
     captured: (label) => `\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
@@ -9766,18 +9754,8 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
-      show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
-      show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
-      show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
-      show_media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
-      show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
-      show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
-      show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
-      show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
-      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-      group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -9904,8 +9882,7 @@ registerRemoteCardTranslation("en-gb", {
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select background colour",
-      show_favorites_button: "Favourites button"
+      background_override: "Select background colour"
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows"
@@ -9948,7 +9925,6 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   assist: {
     label: "Tastendr\xFCcke erfassen",
-    start: "Starten",
     waiting: "Warten auf Tastendruck",
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label) => `Erfasst: ${label}`,
@@ -9997,18 +9973,8 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
-      show_dpad: "Steuerkreuz",
-      show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
-      show_mid: "Lautst\xE4rke- und Kanalwippen",
-      show_media: "Wiedergabe",
-      show_colors: "Rot/Gr\xFCn/Gelb/Blau",
-      show_abc: "A/B/C-Tasten",
-      show_macros_button: "Makrotaste",
-      show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
-      key_style: "Tastenstil",
-      group_order: "Gruppenreihenfolge"
+      key_style: "Tastenstil"
     },
     generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
@@ -10158,7 +10124,6 @@ var REMOTE_CARD_STRINGS_ES = {
   },
   assist: {
     label: "Captura de botones",
-    start: "Iniciar",
     waiting: "Esperando a que se pulse un bot\xF3n",
     exitEditMode: "Sal del modo de edici\xF3n para comenzar",
     captured: (label) => `Capturado: ${label}`,
@@ -10207,18 +10172,8 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad/dispositivo",
-      show_dpad: "Control direccional",
-      show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
-      show_mid: "Controles de volumen y canal",
-      show_media: "Reproducci\xF3n",
-      show_colors: "Rojo/Verde/Amarillo/Azul",
-      show_abc: "Botones A/B/C",
-      show_macros_button: "Bot\xF3n de macros",
-      show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
-      key_style: "Estilo de los botones",
-      group_order: "Orden de los grupos"
+      key_style: "Estilo de los botones"
     },
     generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
@@ -10368,7 +10323,6 @@ var REMOTE_CARD_STRINGS_FR = {
   },
   assist: {
     label: "Capture de touches",
-    start: "D\xE9marrer",
     waiting: "En attente d\u2019une pression sur une touche",
     exitEditMode: "Quittez le mode d\u2019\xE9dition pour commencer",
     captured: (label) => `Capture\xA0: ${label}`,
@@ -10417,18 +10371,8 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
-      show_dpad: "Pav\xE9 directionnel",
-      show_nav: "Touches Retour/Accueil/Menu",
-      show_mid: "Touches de volume et de cha\xEEne",
-      show_media: "Lecture",
-      show_colors: "Rouge/Vert/Jaune/Bleu",
-      show_abc: "Touches A/B/C",
-      show_macros_button: "Bouton des macros",
-      show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
-      key_style: "Style des touches",
-      group_order: "Ordre des groupes"
+      key_style: "Style des touches"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
@@ -10577,7 +10521,6 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   assist: {
     label: "Knopdrukken registreren",
-    start: "Starten",
     waiting: "Wachten op een knopdruk",
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label) => `Vastgelegd: ${label}`,
@@ -10626,18 +10569,8 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteits-/apparaatkiezer",
-      show_dpad: "Richtingsknoppen",
-      show_nav: "Terug/Home/Menu-knoppen",
-      show_mid: "Volume-/kanaalknoppen",
-      show_media: "Afspelen",
-      show_colors: "Rood/groen/geel/blauw",
-      show_abc: "A/B/C-knoppen",
-      show_macros_button: "Macroknop",
-      show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
-      key_style: "Knopstijl",
-      group_order: "Groepsvolgorde"
+      key_style: "Knopstijl"
     },
     generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
@@ -10786,7 +10719,6 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",
-    start: "\u5F00\u59CB",
     waiting: "\u7B49\u5F85\u6309\u952E",
     exitEditMode: "\u9000\u51FA\u7F16\u8F91\u6A21\u5F0F\u540E\u5373\u53EF\u5F00\u59CB",
     captured: (label) => `\u5DF2\u6355\u83B7\uFF1A${label}`,
@@ -10835,18 +10767,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
-      show_dpad: "\u65B9\u5411\u952E",
-      show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
-      show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
-      show_media: "\u64AD\u653E",
-      show_colors: "\u7EA2/\u7EFF/\u9EC4/\u84DD",
-      show_abc: "A/B/C \u6309\u952E",
-      show_macros_button: "\u5B8F\u6309\u94AE",
-      show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
-      key_style: "\u6309\u952E\u6837\u5F0F",
-      group_order: "\u5206\u7EC4\u987A\u5E8F"
+      key_style: "\u6309\u952E\u6837\u5F0F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",

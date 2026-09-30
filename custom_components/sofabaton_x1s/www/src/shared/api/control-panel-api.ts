@@ -277,65 +277,65 @@ export class ControlPanelApi {
     });
   }
 
-  getWifiCommandDevices(entityId: string) {
+  getWifiCommandDevices(hubEntryId: string) {
     return this.hass.callWS<{ devices?: Array<Record<string, unknown>>; max_devices?: number }>({
       type: "sofabaton_x1s/command_devices/list",
-      entity_id: entityId,
+      entry_id: hubEntryId,
     });
   }
 
   // ── Wifi Events (reserved haevents record) ────────────────────────────
 
-  listWifiEvents(entityId: string) {
+  listWifiEvents(hubEntryId: string) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/list",
-      entity_id: entityId,
+      entry_id: hubEntryId,
     });
   }
 
-  createWifiEvent(entityId: string, name: string) {
+  createWifiEvent(hubEntryId: string, name: string) {
     return this.hass.callWS<WifiEventCreateResponse>({
       type: "sofabaton_x1s/wifi_event/create",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       name,
     });
   }
 
   /** W7 phase 1: deploy the events record without store changes. */
-  syncWifiEvents(entityId: string) {
+  syncWifiEvents(hubEntryId: string) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/sync",
-      entity_id: entityId,
+      entry_id: hubEntryId,
     });
   }
 
-  deleteWifiEvent(entityId: string, slotIndex: number) {
+  deleteWifiEvent(hubEntryId: string, slotIndex: number) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/delete",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       slot_index: slotIndex,
     });
   }
 
   setWifiEventAction(
-    entityId: string,
+    hubEntryId: string,
     slotIndex: number,
     pressType: "short" | "long",
     action: Record<string, unknown>,
   ) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/set_action",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       slot_index: slotIndex,
       press_type: pressType,
       action,
     });
   }
 
-  setWifiEventLongpress(entityId: string, slotIndex: number, enabled: boolean) {
+  setWifiEventLongpress(hubEntryId: string, slotIndex: number, enabled: boolean) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/set_longpress",
-      entity_id: entityId,
+      entry_id: hubEntryId,
       slot_index: slotIndex,
       enabled,
     });

@@ -1230,7 +1230,6 @@ var REMOTE_CARD_STRINGS_EN = {
   },
   assist: {
     label: "Key capture",
-    start: "Start",
     waiting: "Waiting for keypress",
     exitEditMode: "Exit Edit mode to begin",
     captured: (label) => `Captured: ${label}`,
@@ -1279,18 +1278,8 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select background color",
-      show_activity: "Activity/device selector",
-      show_dpad: "Direction pad",
-      show_nav: "Back/Home/Menu keys",
-      show_mid: "Volume/Channel rockers",
-      show_media: "Playback",
-      show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C buttons",
-      show_macros_button: "Macros button",
-      show_favorites_button: "Favorites button",
       max_width: "Maximum card width (px)",
-      key_style: "Button style",
-      group_order: "Group order"
+      key_style: "Button style"
     },
     generalOptionsTitle: "General options",
     keyCapture: "Key capture",
@@ -9034,7 +9023,6 @@ var REMOTE_CARD_STRINGS_AR = {
   },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    start: "\u0628\u062F\u0621",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
     exitEditMode: "\u063A\u0627\u062F\u0631 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
     captured: (label) => `\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
@@ -9083,18 +9071,8 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
-      show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
-      show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
-      show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
-      show_media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
-      show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
-      show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
-      show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
-      show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
-      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-      group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -9221,8 +9199,7 @@ registerRemoteCardTranslation("en-gb", {
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select background colour",
-      show_favorites_button: "Favourites button"
+      background_override: "Select background colour"
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows"
@@ -9265,7 +9242,6 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   assist: {
     label: "Tastendr\xFCcke erfassen",
-    start: "Starten",
     waiting: "Warten auf Tastendruck",
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label) => `Erfasst: ${label}`,
@@ -9314,18 +9290,8 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
-      show_dpad: "Steuerkreuz",
-      show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
-      show_mid: "Lautst\xE4rke- und Kanalwippen",
-      show_media: "Wiedergabe",
-      show_colors: "Rot/Gr\xFCn/Gelb/Blau",
-      show_abc: "A/B/C-Tasten",
-      show_macros_button: "Makrotaste",
-      show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
-      key_style: "Tastenstil",
-      group_order: "Gruppenreihenfolge"
+      key_style: "Tastenstil"
     },
     generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
@@ -9475,7 +9441,6 @@ var REMOTE_CARD_STRINGS_ES = {
   },
   assist: {
     label: "Captura de botones",
-    start: "Iniciar",
     waiting: "Esperando a que se pulse un bot\xF3n",
     exitEditMode: "Sal del modo de edici\xF3n para comenzar",
     captured: (label) => `Capturado: ${label}`,
@@ -9524,18 +9489,8 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad/dispositivo",
-      show_dpad: "Control direccional",
-      show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
-      show_mid: "Controles de volumen y canal",
-      show_media: "Reproducci\xF3n",
-      show_colors: "Rojo/Verde/Amarillo/Azul",
-      show_abc: "Botones A/B/C",
-      show_macros_button: "Bot\xF3n de macros",
-      show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
-      key_style: "Estilo de los botones",
-      group_order: "Orden de los grupos"
+      key_style: "Estilo de los botones"
     },
     generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
@@ -9685,7 +9640,6 @@ var REMOTE_CARD_STRINGS_FR = {
   },
   assist: {
     label: "Capture de touches",
-    start: "D\xE9marrer",
     waiting: "En attente d\u2019une pression sur une touche",
     exitEditMode: "Quittez le mode d\u2019\xE9dition pour commencer",
     captured: (label) => `Capture\xA0: ${label}`,
@@ -9734,18 +9688,8 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
-      show_dpad: "Pav\xE9 directionnel",
-      show_nav: "Touches Retour/Accueil/Menu",
-      show_mid: "Touches de volume et de cha\xEEne",
-      show_media: "Lecture",
-      show_colors: "Rouge/Vert/Jaune/Bleu",
-      show_abc: "Touches A/B/C",
-      show_macros_button: "Bouton des macros",
-      show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
-      key_style: "Style des touches",
-      group_order: "Ordre des groupes"
+      key_style: "Style des touches"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
@@ -9894,7 +9838,6 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   assist: {
     label: "Knopdrukken registreren",
-    start: "Starten",
     waiting: "Wachten op een knopdruk",
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label) => `Vastgelegd: ${label}`,
@@ -9943,18 +9886,8 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteits-/apparaatkiezer",
-      show_dpad: "Richtingsknoppen",
-      show_nav: "Terug/Home/Menu-knoppen",
-      show_mid: "Volume-/kanaalknoppen",
-      show_media: "Afspelen",
-      show_colors: "Rood/groen/geel/blauw",
-      show_abc: "A/B/C-knoppen",
-      show_macros_button: "Macroknop",
-      show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
-      key_style: "Knopstijl",
-      group_order: "Groepsvolgorde"
+      key_style: "Knopstijl"
     },
     generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
@@ -10103,7 +10036,6 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",
-    start: "\u5F00\u59CB",
     waiting: "\u7B49\u5F85\u6309\u952E",
     exitEditMode: "\u9000\u51FA\u7F16\u8F91\u6A21\u5F0F\u540E\u5373\u53EF\u5F00\u59CB",
     captured: (label) => `\u5DF2\u6355\u83B7\uFF1A${label}`,
@@ -10152,18 +10084,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
-      show_dpad: "\u65B9\u5411\u952E",
-      show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
-      show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
-      show_media: "\u64AD\u653E",
-      show_colors: "\u7EA2/\u7EFF/\u9EC4/\u84DD",
-      show_abc: "A/B/C \u6309\u952E",
-      show_macros_button: "\u5B8F\u6309\u94AE",
-      show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
-      key_style: "\u6309\u952E\u6837\u5F0F",
-      group_order: "\u5206\u7EC4\u987A\u5E8F"
+      key_style: "\u6309\u952E\u6837\u5F0F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",
@@ -14622,6 +14544,7 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   card: {
     connectivityAria: "Connectivity",
+    toolsMenuAria: "Settings and logs",
     hubShort: "HUB",
     appShort: "APP",
     brand: (version) => `SOFABATON CONTROL PANEL - v${version}`,
@@ -14632,13 +14555,10 @@ var TOOLS_CARD_STRINGS_EN = {
     previewDescription: "Tools, cache, backups, logs & automations for your hub",
     editorHeight: "Card height",
     editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
+    editorAdminOnly: "Only Home Assistant admins can use this card",
+    editorAdminOnlyHint: "Other users see a notice instead of the control panel. This hides the card; it does not restrict the integration's actions.",
     pickerName: "Sofabaton Control Panel",
     pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi Commands."
-  },
-  docs: {
-    wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
-    commandPayloadsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md"
   },
   tabs: {
     cache: "Hub",
@@ -14665,6 +14585,10 @@ var TOOLS_CARD_STRINGS_EN = {
     unknownVersion: "unknown",
     refreshingCache: "Refreshing cache\u2026",
     hubCommandInProgress: "Hub command in progress\u2026"
+  },
+  adminOnly: {
+    title: "Admins only",
+    copy: "This control panel is limited to Home Assistant administrators."
   },
   hubUnavailable: {
     title: "Hub unavailable",
@@ -14741,6 +14665,9 @@ var TOOLS_CARD_STRINGS_EN = {
     activityIdMissing: "The hub did not return the new activity id.",
     deviceIdMissing: "The hub did not return the new device id.",
     deviceCreateFailed: "The device could not be created on the hub.",
+    activityCreateFailed: "The activity could not be created on the hub.",
+    activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
+    reorderFailed: "The hub did not confirm the new order.",
     deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
     deviceTypeUnsupported: "This device type cannot be created on this hub.",
     selectedHubUnavailable: "The selected hub is no longer available."
@@ -14968,12 +14895,7 @@ var TOOLS_CARD_STRINGS_EN = {
     firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    // Capture flow (§4.2).
-    captureTitle: "Reading your hub",
-    captureMessage: "Reading your hub's configuration\u2026",
-    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
     captureFailedTitle: "Couldn't read the hub",
-    captureFailedBody: "The hub stopped responding before we finished reading it.",
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
@@ -14993,7 +14915,6 @@ var TOOLS_CARD_STRINGS_EN = {
     syncingMessage: "Writing your changes to the hub\u2026",
     wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first\u2026 this can take a minute the first time.",
     syncSuccess: "Synced to hub.",
-    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
     syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
@@ -15009,12 +14930,6 @@ var TOOLS_CARD_STRINGS_EN = {
     discardConfirmCancel: "Keep editing",
     // Review-list section titles + entry templates (activity-diff.ts).
     review: {
-      sectionDevices: "Devices",
-      sectionStart: "When it starts",
-      sectionButtons: "Buttons",
-      sectionShortcuts: "Shortcuts",
-      sectionEnd: "When it ends",
-      sectionDeviceWide: "Device-wide changes",
       deviceAdded: (name) => `Added "${name}" to this activity.`,
       deviceRemoved: (name) => `Removed "${name}" from this activity.`,
       inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
@@ -15047,10 +14962,6 @@ var TOOLS_CARD_STRINGS_EN = {
     // Review-list section titles + entry templates for the live *device*
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
-      sectionPower: "On/Off",
-      sectionNetwork: "Network",
-      sectionButtons: "Buttons",
-      sectionMacros: "Macros",
       powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
       powerOnChanged: "Power-on sequence updated.",
       powerOffChanged: "Power-off sequence updated.",
@@ -15096,8 +15007,6 @@ var TOOLS_CARD_STRINGS_EN = {
     startingRestore: "Starting restore\u2026",
     backupFailed: "Backup failed.",
     restoreFailed: "Restore failed.",
-    backupInProgress: "Backup in progress\u2026",
-    restoreInProgress: "Restore in progress\u2026",
     failedPrepareDownload: "Failed to prepare edited backup for download.",
     enterName: "Enter a name to continue.",
     renameDialogTitle: "Rename hub",
@@ -15150,7 +15059,6 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteActivityAria: "Delete activity",
     deleteDeviceAria: "Delete device",
     deleteCommandAria: "Delete command",
-    addFavoriteTitle: "Add command shortcut",
     addFavoriteDevice: "Device",
     addFavoriteCommand: "Command",
     addFavoriteAdd: "Add",
@@ -15181,9 +15089,6 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteBindingTitle: (name) => `Delete ${name} assignment?`,
     deleteBindingAria: "Delete assignment",
     deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
-    macrosTitle: "Macros",
-    macrosDeviceSub: "Edit the command sequences this device plays, including its power on/off.",
-    macroPowerChip: "on/off",
     // These headings name the hub's switching *behaviour*, not the electrical
     // supply. Translating the bare noun "Power" led every catalogue to the
     // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
@@ -15247,16 +15152,6 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutChipAction: "macro",
     shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
     shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
-    powerSectionTitle: "Power control",
-    powerActivitySub: "Each device the activity uses powers on here. Pick its input and adjust the timing.",
-    powerInputLabel: "Input",
-    powerInputNone: "\u2014 none \u2014",
-    powerDelayLabel: "Delay (s)",
-    powerNoDevices: "No devices yet. Add a favorite, assignment, or macro that uses one.",
-    powerOnSequence: "Power-on sequence",
-    powerOffSequence: "Power-off sequence",
-    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
-    macroRenameAria: "Rename macro",
     editStepsAria: "Edit steps",
     crumbActivities: "Activities",
     crumbDevices: "Devices",
@@ -15304,7 +15199,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation \u2192 Events.",
     wifiEventDeploying: "Staging the Wifi Event\u2026",
     wifiEventNoneYet: "No Wifi Events yet. Create one below.",
-    wifiEventNeedsSync: (name) => `${name} (needs sync)`,
     wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
     wifiEventNameRequired: "Enter a name for the new Wifi Event.",
     wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation \u2192 Events.",
@@ -15415,7 +15309,6 @@ var TOOLS_CARD_STRINGS_EN = {
     renameCommand: "Rename command",
     ipAddress: "IP address",
     noPayloadReturned: "The hub returned no payload for this command.",
-    noTemplateCommand: "This device has no commands to use as a template \u2014 add its first command with the Sofabaton app.",
     newCommandNameRequired: "Enter a name for the new command.",
     descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
     payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
@@ -15475,18 +15368,6 @@ var TOOLS_CARD_STRINGS_EN = {
     macroTargetLabelText: (name) => `Macro \xB7 ${name}`
   },
   hub: {
-    loading: "Loading\u2026",
-    unknown: "Unknown",
-    connectionStatusAria: "Hub connection status",
-    hubConnected: "Hub connected",
-    hubNotConnected: "Hub not connected",
-    appConnected: "App connected",
-    appNotConnected: "App not connected",
-    version: "Version",
-    ipAddress: "IP address",
-    activities: "Activities",
-    devices: "Devices",
-    integrationVersion: "Integration version",
     firmwareVersion: (version) => `FW: v${version}`,
     productVersion: (version) => `Sofabaton ${version}`,
     firmwareUpdateRequired: "Firmware update required",
@@ -15540,8 +15421,6 @@ var TOOLS_CARD_STRINGS_EN = {
     incompatibleModels: (source, destination) => `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`
   },
   wifiCommands: {
-    docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    sectionLabel: "Wifi Devices",
     deployingTitle: "Deploying Wifi Commands",
     sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
     addDeviceButton: "Add",
@@ -15575,7 +15454,6 @@ var TOOLS_CARD_STRINGS_EN = {
     commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
     syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
-    syncInProgress: "Sync in progress",
     // Status line while the sync spins up — not the Sync button label.
     startSync: "Starting sync",
     syncFailedToStart: "Sync failed to start",
@@ -15659,9 +15537,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventRowLongPress: "and when it's pressed and held",
     wifiEventModalTitle: (name) => `When ${name} is pressed`,
     wifiEventLongModalTitle: (name) => `When ${name} is pressed and held`,
-    wifiEventLongPressToggleTitle: "Enable long press",
     wifiEventNeedsSyncBadge: "needs sync",
-    wifiEventRetrySync: "Retry sync",
     // Orphaned-config notice, split around the clickable phrase so locales
     // can place it anywhere in the sentence.
     wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
@@ -15670,13 +15546,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
     wifiEventsStaleConfirmRemove: "Remove",
     wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
-    wifiEventDeleteTitle: "Delete Wifi Event",
-    wifiEventDeleteConfirmTitle: (name) => `Delete "${name}"?`,
-    wifiEventDeleteScanning: "Checking what references this event\u2026",
-    wifiEventDeleteNoRefs: "Nothing on the hub references this event.",
-    wifiEventDeleteRefs: (favorites, bindings, steps) => `The hub will also remove ${favorites} shortcut${favorites === 1 ? "" : "s"} and ${bindings} button assignment${bindings === 1 ? "" : "s"} that reference it, and the step is removed from ${steps} macro${steps === 1 ? "" : "s"} (a macro left with no steps is removed).`,
-    wifiEventDeleteConfirm: "Delete",
-    wifiEventDeleteFailed: "Deleting the Wifi Event failed.",
     activityEventsTitle: "Activity Events",
     activityEventsSubtitle: "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
     activityEventStarts: (name) => `When ${name} starts`,
@@ -22980,7 +22849,7 @@ function roundHalfEven(value) {
 function parseProntoHex(text) {
   const tokens = text.trim().split(/\s+/).filter((t5) => t5.length > 0);
   const words = tokens.map((token) => {
-    const value = /^[0-9a-fA-F]+$/.test(token) ? parseInt(token, 16) : NaN;
+    const value = /^(?:0[xX])?[0-9a-fA-F]+$/.test(token) ? parseInt(token.replace(/^0[xX]/, ""), 16) : NaN;
     if (!Number.isInteger(value)) throw new IrFormatError("ir-format/not-hex");
     return value;
   });

@@ -37,6 +37,7 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
+import { DOC_URLS } from "./shared/doc-links";
 import { setToolsCardLanguage, TOOLS_CARD_STRINGS } from "./strings";
 import { toolsCardLocaleLoader } from "./control-panel-language-loader";
 import "./tabs/backup-tab";
@@ -63,11 +64,11 @@ const TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
 function docLinks(): Partial<Record<TabId, { href: string; label: string }>> {
   return {
     wifi_commands: {
-      href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
+      href: DOC_URLS.wifiCommands,
       label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands,
     },
     backup: {
-      href: TOOLS_CARD_STRINGS.docs.backupUrl,
+      href: DOC_URLS.backup,
       label: TOOLS_CARD_STRINGS.tabDocs.backup,
     },
   };
@@ -239,6 +240,7 @@ class SofabatonControlPanelCard extends LitElement {
   // text colour and card surface. Read after every render.
   private _themeProbe: HTMLElement | null = null;
   private _lastThemesRef: unknown = undefined;
+  private _userIsAdmin: boolean | null = null;
 
   constructor() {
     super();
@@ -254,6 +256,7 @@ class SofabatonControlPanelCard extends LitElement {
 
   setConfig(config: Record<string, unknown>) {
     this._config = config || {};
+    this.requestUpdate();
     // When created from a hub-specific entity (card picker), pre-select that hub.
     const hub = typeof this._config.hub === "string" ? this._config.hub.trim() : "";
     this._store.setPreferredHub(hub || null);
@@ -263,6 +266,12 @@ class SofabatonControlPanelCard extends LitElement {
     const languageChanged = this.selectLanguage(
       value?.locale?.language ?? value?.language,
     );
+    const isAdmin = value?.user ? value.user.is_admin === true : null;
+    const adminChanged = isAdmin !== this._userIsAdmin;
+    this._userIsAdmin = isAdmin;
+    if (adminChanged) this.requestUpdate();
+    // An admins-only card never starts its hub traffic for other users.
+    if (this.adminOnlyBlocked()) return;
     this._store.setHass(value);
     // A theme or dark-mode switch replaces hass.themes without touching any
     // store state; re-render so the polarity probe sees the new variables.
@@ -427,6 +436,12 @@ class SofabatonControlPanelCard extends LitElement {
   private toggleToolsMenu() {
     this._toolsMenuOpen = !this._toolsMenuOpen;
     if (this._toolsMenuOpen) this._hubPickerOpen = false;
+    this.requestUpdate();
+  }
+
+  private closeToolsMenu() {
+    if (!this._toolsMenuOpen) return;
+    this._toolsMenuOpen = false;
     this.requestUpdate();
   }
 
@@ -675,7 +690,7 @@ class SofabatonControlPanelCard extends LitElement {
   private scrollEntityToTop(key: string) {
     const entity = this.renderRoot.querySelector<HTMLElement>(`#entity-${key}`);
     if (!entity) return;
-    const body = entity.closest(".cache-panel-body, .secondary-panel-body, .acc-body") as HTMLElement | null;
+    const body = entity.closest(".cache-panel-body, .secondary-panel-body") as HTMLElement | null;
     if (!body) return;
     const entityTop = entity.getBoundingClientRect().top;
     const bodyTop = body.getBoundingClientRect().top;
@@ -802,6 +817,28 @@ class SofabatonControlPanelCard extends LitElement {
       : TOOLS_CARD_STRINGS.card.irPress(device, command);
   }
 
+  /** The editor's "Only Home Assistant admins" option (CR-X2-1). This is a
+   *  UI gate: the integration's services and WS commands stay open. */
+  private adminOnlyBlocked(): boolean {
+    return this._config.admin_only === true && this._userIsAdmin !== true;
+  }
+
+  private renderAdminOnly(height: number) {
+    return html`
+      <ha-card>
+        <div class="card-inner" style=${`height:${height}px`}>
+          <div class="card-body">
+            <div class="backend-unavailable-state">
+              <div class="backend-unavailable-icon"><ha-icon icon="mdi:shield-account-outline"></ha-icon></div>
+              <div class="backend-unavailable-title">${TOOLS_CARD_STRINGS.adminOnly.title}</div>
+              <div class="backend-unavailable-copy">${TOOLS_CARD_STRINGS.adminOnly.copy}</div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
   private renderBackendUnavailable(height: number) {
     return html`
       <ha-card>
@@ -913,6 +950,7 @@ class SofabatonControlPanelCard extends LitElement {
       `;
     }
     if (this._preview) return this.renderPreview();
+    if (this.adminOnlyBlocked()) return this.renderAdminOnly(height);
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
@@ -1132,6 +1170,7 @@ class SofabatonControlPanelCard extends LitElement {
             toolsMenuOpen: this._toolsMenuOpen,
             onSelect: (tabId) => this.handleTabSelect(tabId),
             onToggleToolsMenu: () => this.toggleToolsMenu(),
+            onCloseToolsMenu: () => this.closeToolsMenu(),
           })}
           ${selectedHubConnected ? html`<div class="card-body">${activeTab}</div>` : this.renderHubUnavailable()}
           ${this.renderBottomDock(hub)}
@@ -1182,6 +1221,7 @@ class SofabatonControlPanelEditor extends HTMLElement {
       return;
     }
     const height = Number(this._config.card_height ?? 600);
+    const adminOnly = this._config.admin_only === true;
     this.innerHTML = `
       <style>
         .editor-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
@@ -1194,7 +1234,22 @@ class SofabatonControlPanelEditor extends HTMLElement {
         <input id="tools-card-height" type="number" min="240" step="10" value="${height}" />
       </div>
       <div class="editor-hint">${TOOLS_CARD_STRINGS.card.editorHeightHint}</div>
+      <div class="editor-row">
+        <label for="tools-card-admin-only">${TOOLS_CARD_STRINGS.card.editorAdminOnly}</label>
+        <input id="tools-card-admin-only" type="checkbox" ${adminOnly ? "checked" : ""} />
+      </div>
+      <div class="editor-hint">${TOOLS_CARD_STRINGS.card.editorAdminOnlyHint}</div>
     `;
+    this.querySelector<HTMLInputElement>("#tools-card-admin-only")?.addEventListener("change", (event) => {
+      const config = { ...this._config };
+      if ((event.currentTarget as HTMLInputElement).checked) config.admin_only = true;
+      else delete config.admin_only;
+      this.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      }));
+    });
     this.querySelector<HTMLInputElement>("#tools-card-height")?.addEventListener("change", (event) => {
       const value = Number((event.currentTarget as HTMLInputElement).value || 600);
       this.dispatchEvent(new CustomEvent("config-changed", {
@@ -1240,8 +1295,10 @@ window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TOOLS_TYPE)) {
   window.customCards.push({
     type: TOOLS_TYPE,
-    name: TOOLS_CARD_STRINGS.card.pickerName,
-    description: TOOLS_CARD_STRINGS.card.pickerDescription,
+    // Getters, so the picker shows the active language rather than the
+    // English the module saw at load time (CR-X7-2).
+    get name() { return TOOLS_CARD_STRINGS.card.pickerName; },
+    get description() { return TOOLS_CARD_STRINGS.card.pickerDescription; },
     // No `preview: true`: the "By card" grid renders the *real* card (squished),
     // not renderPreview() — it only honours `preview` in the by-entity flow.
     // Card picker (HA 2026.6+): recommend this card for the hub-control

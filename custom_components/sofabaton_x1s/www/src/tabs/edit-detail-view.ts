@@ -19,6 +19,7 @@
  * different write backend behind the same events.
  */
 import { LitElement, css, html, nothing } from "lit";
+import { DOC_URLS } from "../shared/doc-links";
 import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../strings";
 import {
   activityEditorStyles,
@@ -1758,7 +1759,7 @@ export class SofabatonEditDetailView extends LitElement {
             <div class="dialog-footer-note payload-dialog-note">
               <a
                 class="payload-doc-link"
-                href=${TOOLS_CARD_STRINGS.docs.commandPayloadsUrl}
+                href=${DOC_URLS.commandPayloads}
                 target="_blank"
                 rel="noreferrer noopener"
               >${TOOLS_CARD_STRINGS.backup.payloadDocsLink}</a>

@@ -30,6 +30,7 @@ export interface HassLike {
   states: Record<string, HassEntityState>;
   locale?: { language?: string };
   language?: string;
+  user?: { is_admin?: boolean } | null;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,
@@ -56,7 +57,11 @@ export interface ControlPanelHubState {
   ip_address?: string;
   activity_count?: number;
   device_count?: number;
+  /** The hub's TCP session, as the backend sees it (no HA entity needed). */
+  hub_connected?: boolean;
   proxy_client_connected?: boolean;
+  /** Backend-computed: the hub is connected and no app client holds it. */
+  actions?: { can_find_remote?: boolean; can_sync_remote?: boolean };
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
   activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{

@@ -159,6 +159,7 @@ export function renderSettingsTab(params: {
               classes: `action${canAct ? "" : " disabled"}`,
               control: html`<ha-icon class="setting-icon" icon="mdi:bell-ring-outline"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("find_remote") : undefined,
+              button: true,
             })}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.syncRemoteTitle,
@@ -166,6 +167,7 @@ export function renderSettingsTab(params: {
               classes: `action${canAct ? "" : " disabled"}`,
               control: html`<ha-icon class="setting-icon" icon="mdi:sync"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("sync_remote") : undefined,
+              button: true,
             })}
           </div>
         </div>
