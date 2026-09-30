@@ -14,8 +14,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import custom_components.sofabaton_x1s as integration
+import importlib
 from custom_components.sofabaton_x1s.const import DOMAIN
+
+# The package's __init__ module itself: a test module collected earlier may
+# have installed a bare stub for the package (tests._stub_packages), whose
+# namespace holds no handlers.
+integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_ROOTS = (
