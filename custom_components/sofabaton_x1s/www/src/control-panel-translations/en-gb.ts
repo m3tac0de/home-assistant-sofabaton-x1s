@@ -28,10 +28,6 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
     },
   },
   activities: {
-    review: {
-      roleCustomized: (group: string) => `${group} customised.`,
-      idleChanged: (device: string, label: string) => `"${device}" idle behaviour → ${label}.`,
-    },
   },
   backup: {
     activityMeta: (favourites: number, macros: number) =>

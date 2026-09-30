@@ -21,7 +21,9 @@ var TOOLS_CARD_STRINGS_NL = {
     macroFallback: (id) => `Macro ${id}`,
     favoriteFallback: (id) => `Favoriet ${id}`,
     inputFallback: (id) => `Ingang ${id}`,
-    noInput: "geen ingang"
+    noInput: "geen ingang",
+    backAria: "Terug",
+    closeAria: "Sluiten"
   },
   card: {
     connectivityAria: "Verbindingsstatus",
@@ -134,6 +136,15 @@ var TOOLS_CARD_STRINGS_NL = {
     activityCreateFailed: "De activiteit kon niet op de hub worden aangemaakt.",
     activityNameInvalid: "Voer een activiteitsnaam van 1 tot 30 tekens in.",
     reorderFailed: "De hub heeft de nieuwe volgorde niet bevestigd.",
+    hubNotReady: "De hub is niet gereed. Sluit de Sofabaton-app of wacht tot de lopende bewerking klaar is en probeer het opnieuw.",
+    hubNoResponse: "De hub reageerde niet. Probeer het opnieuw.",
+    hubRequestFailed: "De hub kon dit verzoek niet uitvoeren.",
+    payloadInvalid: "De hub kan deze payload niet gebruiken.",
+    wifiEventsFull: "Alle Wifi-eventplaatsen zijn in gebruik.",
+    wifiEventPendingDelete: "Een verwijderd Wifi-event wordt nog van de hub verwijderd. Synchroniseer de hub en probeer het opnieuw.",
+    wifiEventNameTaken: "Er bestaat al een Wifi-event met deze naam.",
+    wifiEventNameInvalid: "Voer een Wifi-eventnaam in die de hub kan opslaan.",
+    wifiEventFailed: "Het Wifi-event kon niet worden opgeslagen.",
     deviceNameInvalid: "Voer een apparaatnaam van 1 tot 30 tekens in.",
     deviceTypeUnsupported: "Dit apparaattype kan niet op deze hub worden aangemaakt.",
     selectedHubUnavailable: "De geselecteerde hub is niet meer beschikbaar."
@@ -347,38 +358,7 @@ var TOOLS_CARD_STRINGS_NL = {
     exitUnsyncedBody: (kind) => `${dezeDit(kind)} ${soort(kind)} bevat wijzigingen die niet met de hub zijn gesynchroniseerd. Synchroniseer ze nu of verlaat de editor zonder te synchroniseren en verwijder de lokale wijzigingen.`,
     exitSyncNow: "Nu synchroniseren",
     exitWithoutSync: "Verlaten zonder synchroniseren",
-    discardConfirmCancel: "Doorgaan met bewerken",
-    review: {
-      deviceAdded: (name) => `"${name}" aan deze activiteit toegevoegd.`,
-      deviceRemoved: (name) => `"${name}" uit deze activiteit verwijderd.`,
-      inputChanged: (device, input) => `Ingang van "${device}" gewijzigd in ${input}.`,
-      inputCleared: (device) => `Ingang van "${device}" gewist.`,
-      startReordered: "Startvolgorde opnieuw geordend.",
-      roleNowControls: (group, device) => `${group} bedienen nu "${device}".`,
-      roleCustomized: (group) => `${group} aangepast.`,
-      roleCleared: (group) => `${group} niet meer toegewezen.`,
-      shortcutAdded: (name) => `"${name}" toegevoegd.`,
-      shortcutRemoved: (name) => `"${name}" verwijderd.`,
-      shortcutRenamed: (oldName, newName) => `"${oldName}" hernoemd naar "${newName}".`,
-      shortcutsReordered: "Snelkoppelingen opnieuw geordend.",
-      idleChanged: (device, label) => `Inactief gedrag van "${device}" \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Commando "${oldName}" op "${device}" hernoemd naar "${newName}".`,
-      roleGroups: { volume: "Volumeknoppen", navigation: "Navigatieknoppen", playback: "Afspeelknoppen", channels: "Kanaalknoppen", numpad: "Cijfertoetsen" },
-      idleShort: { 0: "niet ingesteld", 1: "schakelt uit bij inactiviteit", 2: "schakelt nooit uit", 3: "blijft aan", 4: "niet beheerd door de hub" }
-    },
-    deviceReview: {
-      powerControlChanged: (label) => `Automatisch in- en uitschakelen \u2192 ${label}.`,
-      powerOnChanged: "Acties bij inschakelen bijgewerkt.",
-      powerOffChanged: "Acties bij uitschakelen bijgewerkt.",
-      macroAdded: (name) => `Macro "${name}" toegevoegd.`,
-      macroRemoved: (name) => `Macro "${name}" verwijderd.`,
-      macroRenamed: (oldName, newName) => `Macro "${oldName}" hernoemd naar "${newName}".`,
-      macroChanged: (name) => `Macro "${name}" bewerkt.`,
-      bindingBound: (button, command) => `"${button}" stuurt nu "${command}".`,
-      bindingCleared: (button) => `"${button}" is niet langer toegewezen.`,
-      ipChanged: (ip) => `IP-adres \u2192 ${ip}.`,
-      ipCleared: "IP-adres gewist."
-    }
+    discardConfirmCancel: "Doorgaan met bewerken"
   },
   backup: {
     sectionMake: "Maken",
@@ -618,6 +598,7 @@ var TOOLS_CARD_STRINGS_NL = {
     commandsBackupHelp: "Gebruik het potlood om een commando te hernoemen (namen worden overal bijgewerkt waarnaar wordt verwezen) en de accolades om de payload te bewerken.",
     newCommandChip: "nieuw commando",
     commandChip: "commando",
+    requiredStepChip: "vereist",
     buttonChip: "knop",
     ipChip: "ip",
     thisItem: "dit item",
@@ -628,6 +609,7 @@ var TOOLS_CARD_STRINGS_NL = {
     fetchEditCommandAria: "Payload van dit commando ophalen en bewerken",
     moveUpAria: "Omhoog verplaatsen",
     moveDownAria: "Omlaag verplaatsen",
+    reorderHandleAria: (label) => `${label} verplaatsen (pijltjestoetsen)`,
     deviceClass: "Apparaatklasse",
     name: "Naam",
     nameHelper: "Wordt weergegeven op de afstandsbediening en in elke commandokiezer.",

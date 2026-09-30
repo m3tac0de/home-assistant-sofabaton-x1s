@@ -608,3 +608,119 @@ test("activity editor does not announce dirty while the bundle matches the basel
   element._notifyDirtyDock();
   assert.deepEqual(events, []);
 });
+
+// ── W7 phase 1 of the Sync press (CR-F2-3, CR-F2-13) ─────────────────
+
+const EVENTS_BRAND = "m3-haevents-hub1";
+
+function eventsActivityBundle(eventsDeviceId: number | null, refDeviceId: number | null): BackupBundlePayload {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: eventsDeviceId == null ? [] : [{ device: { device_id: eventsDeviceId, name: "Wifi Events", brand: EVENTS_BRAND }, commands: [] }],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV" },
+      favorite_slots: refDeviceId == null ? [] : [{ button_id: 1, device_id: refDeviceId, command_id: 1 }],
+      button_bindings: [],
+      macros: [],
+    }],
+  } as unknown as BackupBundlePayload;
+}
+
+function phaseHass(handlers: Record<string, (message: Record<string, unknown>) => unknown>) {
+  const calls: Array<Record<string, unknown>> = [];
+  const hass: HassLike = {
+    states: {},
+    async callWS<T>(message: Record<string, unknown>) {
+      calls.push(message);
+      const handler = handlers[String(message.type ?? "")];
+      if (!handler) throw new Error(`Unexpected WS call: ${String(message.type)}`);
+      return await handler(message) as T;
+    },
+    connection: null,
+  };
+  return { hass, calls };
+}
+
+function syncingEditor(hass: HassLike, baseline: BackupBundlePayload, working: BackupBundlePayload) {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hass = hass;
+  element.kind = "activity";
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element._entityId = 101;
+  element._baseline = baseline;
+  element._working = working;
+  element._dirty = true;
+  element._stage = "editing";
+  return element;
+}
+
+const types = (calls: Array<Record<string, unknown>>) => calls.map((call) => String(call.type).replace("sofabaton_x1s/", ""));
+
+test("a failing Wifi Events list lands in sync_failed instead of hanging on Syncing", async () => {
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/wifi_event/list": () => { throw { code: "not_found", message: "Could not resolve Sofabaton hub" }; },
+  });
+  const element = syncingEditor(hass, eventsActivityBundle(9, null), eventsActivityBundle(9, 9));
+
+  await element._requestSync();
+
+  assert.equal(element._stage, "sync_failed");
+  assert.ok(element._syncError);
+  assert.equal(element._syncProgress, null);
+  assert.deepEqual(types(calls), ["wifi_event/list"]);
+});
+
+test("an activity without Wifi Event references skips phase 1", async () => {
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/activity/sync": () => { throw new Error("stop here"); },
+  });
+  const baseline = eventsActivityBundle(9, null);
+  const working = structuredClone(baseline);
+  (working as any).activities[0].device.name = "Movies";
+  const element = syncingEditor(hass, baseline, working);
+
+  await element._requestSync();
+
+  assert.deepEqual(types(calls), ["activity/sync"]);
+  assert.equal(element._stage, "sync_failed");
+});
+
+test("an out-of-step events record is deployed before the activity sync", async () => {
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/wifi_event/list": () => ({ device_id: 9, record_needs_sync: true, events: [] }),
+    "sofabaton_x1s/wifi_event/sync": () => ({ device_id: 9, record_needs_sync: false, events: [] }),
+    "sofabaton_x1s/activity/sync": () => { throw new Error("stop here"); },
+  });
+  const element = syncingEditor(hass, eventsActivityBundle(9, null), eventsActivityBundle(9, 9));
+
+  await element._requestSync();
+
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync"]);
+});
+
+test("a first-ever event deploy rewrites the placeholder to the hub's device id", async () => {
+  const deployed = eventsActivityBundle(42, null);
+  let edited: BackupBundlePayload | null = null;
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/wifi_event/list": () => ({ device_id: null, record_needs_sync: true, events: [] }),
+    "sofabaton_x1s/wifi_event/sync": () => ({ device_id: 42, record_needs_sync: false, events: [] }),
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: deployed, generation: 1 }),
+    "sofabaton_x1s/activity/sync": (message) => {
+      edited = message.edited as BackupBundlePayload;
+      throw new Error("stop here");
+    },
+  });
+  // Placeholder id 1 stands in for the events device until phase 1 deploys it.
+  const element = syncingEditor(hass, eventsActivityBundle(null, null), eventsActivityBundle(1, 1));
+  element._wifiEventsPlaceholderId = 1;
+
+  await element._requestSync();
+
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync"]);
+  const activity = (edited as any).activities[0];
+  assert.equal(activity.favorite_slots[0].device_id, 42);
+  assert.deepEqual((edited as any).devices.map((entry: any) => entry.device.device_id), [42]);
+  assert.equal(element._wifiEventsPlaceholderId, null);
+});

@@ -14540,7 +14540,9 @@ var TOOLS_CARD_STRINGS_EN = {
     macroFallback: (id) => `Macro ${id}`,
     favoriteFallback: (id) => `Favorite ${id}`,
     inputFallback: (id) => `Input ${id}`,
-    noInput: "no input"
+    noInput: "no input",
+    backAria: "Back",
+    closeAria: "Close"
   },
   card: {
     connectivityAria: "Connectivity",
@@ -14668,6 +14670,15 @@ var TOOLS_CARD_STRINGS_EN = {
     activityCreateFailed: "The activity could not be created on the hub.",
     activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
     reorderFailed: "The hub did not confirm the new order.",
+    hubNotReady: "The hub is not ready. Close the Sofabaton app or wait for the running operation, then try again.",
+    hubNoResponse: "The hub did not respond. Try again.",
+    hubRequestFailed: "The hub could not complete this request.",
+    payloadInvalid: "The hub cannot use this payload.",
+    wifiEventsFull: "All Wifi Event slots are in use.",
+    wifiEventPendingDelete: "A deleted Wifi Event is still being removed from the hub. Sync the hub, then try again.",
+    wifiEventNameTaken: "A Wifi Event with this name already exists.",
+    wifiEventNameInvalid: "Enter a Wifi Event name the hub can store.",
+    wifiEventFailed: "The Wifi Event could not be saved.",
     deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
     deviceTypeUnsupported: "This device type cannot be created on this hub.",
     selectedHubUnavailable: "The selected hub is no longer available."
@@ -14902,7 +14913,6 @@ var TOOLS_CARD_STRINGS_EN = {
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
     syncToHub: "Sync to Hub",
@@ -14927,53 +14937,7 @@ var TOOLS_CARD_STRINGS_EN = {
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Dismiss label reused by the sync-success / delete-error banners.
-    discardConfirmCancel: "Keep editing",
-    // Review-list section titles + entry templates (activity-diff.ts).
-    review: {
-      deviceAdded: (name) => `Added "${name}" to this activity.`,
-      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
-      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
-      inputCleared: (device) => `"${device}" input cleared.`,
-      startReordered: "Start sequence reordered.",
-      roleNowControls: (group, device) => `${group} now control "${device}".`,
-      roleCustomized: (group) => `${group} customized.`,
-      roleCleared: (group) => `${group} no longer assigned.`,
-      shortcutAdded: (name) => `Added "${name}".`,
-      shortcutRemoved: (name) => `Removed "${name}".`,
-      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
-      shortcutsReordered: "Reordered shortcuts.",
-      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
-      roleGroups: {
-        volume: "Volume buttons",
-        navigation: "Navigation buttons",
-        playback: "Playback buttons",
-        channels: "Channel buttons",
-        numpad: "Number pad buttons"
-      },
-      idleShort: {
-        0: "not set",
-        1: "turns off when idle",
-        2: "never switches off",
-        3: "stays on",
-        4: "not managed by the hub"
-      }
-    },
-    // Review-list section titles + entry templates for the live *device*
-    // editor (activity-diff.ts, diffDeviceForReview).
-    deviceReview: {
-      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
-      powerOnChanged: "Power-on sequence updated.",
-      powerOffChanged: "Power-off sequence updated.",
-      macroAdded: (name) => `Added macro "${name}".`,
-      macroRemoved: (name) => `Removed macro "${name}".`,
-      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
-      macroChanged: (name) => `Edited macro "${name}".`,
-      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" is no longer assigned.`,
-      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
-      ipCleared: "IP address cleared."
-    }
+    discardConfirmCancel: "Keep editing"
   },
   backup: {
     sectionMake: "Make",
@@ -15228,6 +15192,7 @@ var TOOLS_CARD_STRINGS_EN = {
     commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
     newCommandChip: "new command",
     commandChip: "command",
+    requiredStepChip: "required",
     buttonChip: "button",
     ipChip: "ip",
     thisItem: "this item",
@@ -15238,6 +15203,7 @@ var TOOLS_CARD_STRINGS_EN = {
     fetchEditCommandAria: "Fetch and edit this command's payload",
     moveUpAria: "Move up",
     moveDownAria: "Move down",
+    reorderHandleAria: (label) => `Reorder ${label} (arrow keys)`,
     deviceClass: "Device class",
     name: "Name",
     nameHelper: "Shown on the remote and in every command picker.",
@@ -18053,6 +18019,24 @@ function editedFilename(filename) {
   return `${base}_edited.json`;
 }
 
+// custom_components/sofabaton_x1s/www/src/shared/hub-names.ts
+var WIFI_NAME_MAX = 20;
+var ENTITY_NAME_MAX = 30;
+function hubSupportsUnicodeNames(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return version.includes("X2") || version.includes("X1S");
+}
+function stripUnstorableNameChars(hubVersion, value) {
+  const pattern = hubSupportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "");
+}
+function sanitizeWifiName(hubVersion, value) {
+  return stripUnstorableNameChars(hubVersion, value).slice(0, WIFI_NAME_MAX);
+}
+function sanitizeEntityName(hubVersion, value) {
+  return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
+}
+
 // server-panel/src/views/entity-editor-state.ts
 function rowsOf(bundle, kind) {
   return (kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
@@ -18114,14 +18098,8 @@ function snapshotAsBundle(snapshot) {
 function elementsEqual(a4, b3) {
   return JSON.stringify(a4) === JSON.stringify(b3);
 }
-function supportsUnicodeNames(hubVersion) {
-  const version = String(hubVersion ?? "").toUpperCase();
-  return version.includes("X2") || version.includes("X1S");
-}
-function sanitizeName(hubVersion, value) {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 30);
-}
+var supportsUnicodeNames = hubSupportsUnicodeNames;
+var sanitizeName = sanitizeEntityName;
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function wifiEventsSlotCount2(openedElement) {
@@ -19810,12 +19788,6 @@ var activityEditorStyles = i`
   }
   .member-add-option:hover {
     background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
-  }
-  .member-add-empty {
-    padding: 8px 10px;
-    font-size: 0.85rem;
-    color: var(--secondary-text-color);
-    line-height: 1.4;
   }
   .role-row {
     display: flex;
@@ -25559,7 +25531,7 @@ function defineServerView() {
 
 // server-panel/src/views/wifi-devices-state.ts
 var WIFI_SLOT_COUNT = 10;
-var WIFI_NAME_MAX = 20;
+var WIFI_NAME_MAX2 = 20;
 var PRESS_FLASH_MS = 720;
 function defaultSlotLabel(slot) {
   return `Button ${slot}`;
@@ -25644,10 +25616,6 @@ function configuredCount(draft) {
 }
 function supportsPowerInput(hubVersion) {
   return supportsUnicodeNames(hubVersion);
-}
-function sanitizeWifiName(hubVersion, value) {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, WIFI_NAME_MAX);
 }
 function nameProblem(value, messages) {
   if (!value.trim()) return messages.required;
@@ -26479,7 +26447,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <label class="wifi-field">
         <span class="wifi-field-label">${label}</span>
-        <input class="wifi-input" id=${id} type="text" autocomplete="off" maxlength=${WIFI_NAME_MAX} .value=${value} ?disabled=${disabled}
+        <input class="wifi-input" id=${id} type="text" autocomplete="off" maxlength=${WIFI_NAME_MAX2} .value=${value} ?disabled=${disabled}
           @input=${(event) => {
       const input = event.currentTarget;
       const clean = sanitizeWifiName(this._hubVersion, input.value);

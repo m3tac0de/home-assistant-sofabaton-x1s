@@ -17,7 +17,9 @@ var TOOLS_CARD_STRINGS_ES = {
     macroFallback: (id) => `Macro ${id}`,
     favoriteFallback: (id) => `Favorito ${id}`,
     inputFallback: (id) => `Entrada ${id}`,
-    noInput: "sin entrada"
+    noInput: "sin entrada",
+    backAria: "Atr\xE1s",
+    closeAria: "Cerrar"
   },
   card: {
     connectivityAria: "Conectividad",
@@ -130,6 +132,15 @@ var TOOLS_CARD_STRINGS_ES = {
     activityCreateFailed: "No se pudo crear la actividad en el hub.",
     activityNameInvalid: "Introduce un nombre de actividad de entre 1 y 30 caracteres.",
     reorderFailed: "El hub no confirm\xF3 el nuevo orden.",
+    hubNotReady: "El hub no est\xE1 listo. Cierra la app de Sofabaton o espera a que termine la operaci\xF3n en curso y vuelve a intentarlo.",
+    hubNoResponse: "El hub no respondi\xF3. Vuelve a intentarlo.",
+    hubRequestFailed: "El hub no pudo completar esta solicitud.",
+    payloadInvalid: "El hub no puede usar esta carga \xFAtil.",
+    wifiEventsFull: "Todas las ranuras de eventos Wifi est\xE1n en uso.",
+    wifiEventPendingDelete: "Un evento Wifi eliminado a\xFAn se est\xE1 quitando del hub. Sincroniza el hub y vuelve a intentarlo.",
+    wifiEventNameTaken: "Ya existe un evento Wifi con este nombre.",
+    wifiEventNameInvalid: "Introduce un nombre de evento Wifi que el hub pueda guardar.",
+    wifiEventFailed: "No se pudo guardar el evento Wifi.",
     deviceNameInvalid: "Introduce un nombre de dispositivo de entre 1 y 30 caracteres.",
     deviceTypeUnsupported: "Este tipo de dispositivo no se puede crear en este hub.",
     selectedHubUnavailable: "El hub seleccionado ya no est\xE1 disponible."
@@ -343,38 +354,7 @@ var TOOLS_CARD_STRINGS_ES = {
     exitUnsyncedBody: (kind) => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} tiene cambios que no se han sincronizado con el hub. Sincron\xEDzalos ahora o sal sin sincronizar y descarta la edici\xF3n local.`,
     exitSyncNow: "Sincronizar ahora",
     exitWithoutSync: "Salir sin sincronizar",
-    discardConfirmCancel: "Seguir editando",
-    review: {
-      deviceAdded: (name) => `Se a\xF1adi\xF3 \xAB${name}\xBB a esta actividad.`,
-      deviceRemoved: (name) => `Se elimin\xF3 \xAB${name}\xBB de esta actividad.`,
-      inputChanged: (device, input) => `La entrada de \xAB${device}\xBB cambi\xF3 a ${input}.`,
-      inputCleared: (device) => `Se borr\xF3 la entrada de \xAB${device}\xBB.`,
-      startReordered: "Se reorden\xF3 la secuencia de inicio.",
-      roleNowControls: (group, device) => `${group} ahora controlan \xAB${device}\xBB.`,
-      roleCustomized: (group) => `${group} personalizados.`,
-      roleCleared: (group) => `${group} ya no est\xE1n asignados.`,
-      shortcutAdded: (name) => `Se a\xF1adi\xF3 \xAB${name}\xBB.`,
-      shortcutRemoved: (name) => `Se elimin\xF3 \xAB${name}\xBB.`,
-      shortcutRenamed: (oldName, newName) => `Se cambi\xF3 el nombre de \xAB${oldName}\xBB a \xAB${newName}\xBB.`,
-      shortcutsReordered: "Se reordenaron los accesos directos.",
-      idleChanged: (device, label) => `Comportamiento en inactividad de \xAB${device}\xBB \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `El comando \xAB${oldName}\xBB de \xAB${device}\xBB cambi\xF3 de nombre a \xAB${newName}\xBB.`,
-      roleGroups: { volume: "Botones de volumen", navigation: "Botones de navegaci\xF3n", playback: "Botones de reproducci\xF3n", channels: "Botones de canal", numpad: "Botones del teclado num\xE9rico" },
-      idleShort: { 0: "sin definir", 1: "se apaga cuando est\xE1 inactivo", 2: "nunca se apaga", 3: "permanece encendido", 4: "no gestionado por el hub" }
-    },
-    deviceReview: {
-      powerControlChanged: (label) => `Encendido y apagado autom\xE1tico \u2192 ${label}.`,
-      powerOnChanged: "Secuencia de encendido actualizada.",
-      powerOffChanged: "Secuencia de apagado actualizada.",
-      macroAdded: (name) => `Se a\xF1adi\xF3 la macro \xAB${name}\xBB.`,
-      macroRemoved: (name) => `Se elimin\xF3 la macro \xAB${name}\xBB.`,
-      macroRenamed: (oldName, newName) => `La macro \xAB${oldName}\xBB cambi\xF3 de nombre a \xAB${newName}\xBB.`,
-      macroChanged: (name) => `Se edit\xF3 la macro \xAB${name}\xBB.`,
-      bindingBound: (button, command) => `\xAB${button}\xBB ahora env\xEDa \xAB${command}\xBB.`,
-      bindingCleared: (button) => `\xAB${button}\xBB ya no est\xE1 asignado.`,
-      ipChanged: (ip) => `Direcci\xF3n IP \u2192 ${ip}.`,
-      ipCleared: "Direcci\xF3n IP borrada."
-    }
+    discardConfirmCancel: "Seguir editando"
   },
   backup: {
     sectionMake: "Crear",
@@ -614,6 +594,7 @@ var TOOLS_CARD_STRINGS_ES = {
     commandsBackupHelp: "Usa el l\xE1piz para cambiar el nombre de un comando (los nombres se actualizan en todas sus referencias) y las llaves para editar su carga \xFAtil.",
     newCommandChip: "comando nuevo",
     commandChip: "comando",
+    requiredStepChip: "obligatorio",
     buttonChip: "bot\xF3n",
     ipChip: "IP",
     thisItem: "este elemento",
@@ -624,6 +605,7 @@ var TOOLS_CARD_STRINGS_ES = {
     fetchEditCommandAria: "Obtener y editar la carga \xFAtil de este comando",
     moveUpAria: "Mover hacia arriba",
     moveDownAria: "Mover hacia abajo",
+    reorderHandleAria: (label) => `Reordenar ${label} (teclas de flecha)`,
     deviceClass: "Clase de dispositivo",
     name: "Nombre",
     nameHelper: "Se muestra en el mando a distancia y en todos los selectores de comandos.",

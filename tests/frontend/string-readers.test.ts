@@ -59,7 +59,6 @@ test("every tools-card English string has a production reader (CR-X7-1)", () => 
     // Indexed by keymap button names.
     "buttonNames",
     "wifiCommands.keyLabels",
-    "activities.review.roleGroups",
   ];
   assert.deepEqual(unreadLeaves(TOOLS_CARD_STRINGS_EN, source, dynamicTables), []);
 });

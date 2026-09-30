@@ -18,7 +18,9 @@ var TOOLS_CARD_STRINGS_FR = {
     macroFallback: (id) => `Macro ${id}`,
     favoriteFallback: (id) => `Favori ${id}`,
     inputFallback: (id) => `Entr\xE9e ${id}`,
-    noInput: "aucune entr\xE9e"
+    noInput: "aucune entr\xE9e",
+    backAria: "Retour",
+    closeAria: "Fermer"
   },
   card: {
     connectivityAria: "Connectivit\xE9",
@@ -131,6 +133,15 @@ var TOOLS_CARD_STRINGS_FR = {
     activityCreateFailed: "Impossible de cr\xE9er l\u2019activit\xE9 sur le hub.",
     activityNameInvalid: "Saisissez un nom d\u2019activit\xE9 comportant entre 1 et 30 caract\xE8res.",
     reorderFailed: "Le hub n\u2019a pas confirm\xE9 le nouvel ordre.",
+    hubNotReady: "Le hub n\u2019est pas pr\xEAt. Fermez l\u2019app Sofabaton ou attendez la fin de l\u2019op\xE9ration en cours, puis r\xE9essayez.",
+    hubNoResponse: "Le hub n\u2019a pas r\xE9pondu. R\xE9essayez.",
+    hubRequestFailed: "Le hub n\u2019a pas pu traiter cette demande.",
+    payloadInvalid: "Le hub ne peut pas utiliser cette charge utile.",
+    wifiEventsFull: "Tous les emplacements d\u2019\xE9v\xE9nements Wifi sont utilis\xE9s.",
+    wifiEventPendingDelete: "Un \xE9v\xE9nement Wifi supprim\xE9 est encore en cours de retrait du hub. Synchronisez le hub, puis r\xE9essayez.",
+    wifiEventNameTaken: "Un \xE9v\xE9nement Wifi porte d\xE9j\xE0 ce nom.",
+    wifiEventNameInvalid: "Saisissez un nom d\u2019\xE9v\xE9nement Wifi que le hub peut enregistrer.",
+    wifiEventFailed: "Impossible d\u2019enregistrer l\u2019\xE9v\xE9nement Wifi.",
     deviceNameInvalid: "Saisissez un nom d\u2019appareil comportant entre 1 et 30 caract\xE8res.",
     deviceTypeUnsupported: "Ce type d\u2019appareil ne peut pas \xEAtre cr\xE9\xE9 sur ce hub.",
     selectedHubUnavailable: "Le hub s\xE9lectionn\xE9 n\u2019est plus disponible."
@@ -344,38 +355,7 @@ var TOOLS_CARD_STRINGS_FR = {
     exitUnsyncedBody: (kind) => `${kind === "activity" ? "Cette activit\xE9" : "Cet appareil"} comporte des modifications qui n\u2019ont pas \xE9t\xE9 synchronis\xE9es avec le hub. Synchronisez-les maintenant, ou quittez sans synchroniser et abandonnez la modification locale.`,
     exitSyncNow: "Synchroniser maintenant",
     exitWithoutSync: "Quitter sans synchroniser",
-    discardConfirmCancel: "Continuer la modification",
-    review: {
-      deviceAdded: (name) => `\xAB\xA0${name}\xA0\xBB a \xE9t\xE9 ajout\xE9 \xE0 cette activit\xE9.`,
-      deviceRemoved: (name) => `\xAB\xA0${name}\xA0\xBB a \xE9t\xE9 retir\xE9 de cette activit\xE9.`,
-      inputChanged: (device, input) => `L\u2019entr\xE9e de \xAB\xA0${device}\xA0\xBB a \xE9t\xE9 remplac\xE9e par ${input}.`,
-      inputCleared: (device) => `L\u2019entr\xE9e de \xAB\xA0${device}\xA0\xBB a \xE9t\xE9 effac\xE9e.`,
-      startReordered: "La s\xE9quence de d\xE9marrage a \xE9t\xE9 r\xE9organis\xE9e.",
-      roleNowControls: (group, device) => `${group} contr\xF4lent maintenant \xAB\xA0${device}\xA0\xBB.`,
-      roleCustomized: (group) => `${group} personnalis\xE9es.`,
-      roleCleared: (group) => `${group} ne sont plus attribu\xE9es.`,
-      shortcutAdded: (name) => `\xAB\xA0${name}\xA0\xBB ajout\xE9.`,
-      shortcutRemoved: (name) => `\xAB\xA0${name}\xA0\xBB supprim\xE9.`,
-      shortcutRenamed: (oldName, newName) => `\xAB\xA0${oldName}\xA0\xBB renomm\xE9 en \xAB\xA0${newName}\xA0\xBB.`,
-      shortcutsReordered: "Raccourcis r\xE9organis\xE9s.",
-      idleChanged: (device, label) => `Comportement d\u2019inactivit\xE9 de \xAB\xA0${device}\xA0\xBB \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Commande \xAB\xA0${oldName}\xA0\xBB renomm\xE9e en \xAB\xA0${newName}\xA0\xBB sur \xAB\xA0${device}\xA0\xBB.`,
-      roleGroups: { volume: "Touches de volume", navigation: "Touches de navigation", playback: "Touches de lecture", channels: "Touches de cha\xEEne", numpad: "Touches du pav\xE9 num\xE9rique" },
-      idleShort: { 0: "non d\xE9fini", 1: "s\u2019\xE9teint en cas d\u2019inactivit\xE9", 2: "ne s\u2019\xE9teint jamais", 3: "reste allum\xE9", 4: "non g\xE9r\xE9 par le hub" }
-    },
-    deviceReview: {
-      powerControlChanged: (label) => `Marche/arr\xEAt automatique \u2192 ${label}.`,
-      powerOnChanged: "S\xE9quence d\u2019allumage mise \xE0 jour.",
-      powerOffChanged: "S\xE9quence d\u2019extinction mise \xE0 jour.",
-      macroAdded: (name) => `Macro \xAB\xA0${name}\xA0\xBB ajout\xE9e.`,
-      macroRemoved: (name) => `Macro \xAB\xA0${name}\xA0\xBB supprim\xE9e.`,
-      macroRenamed: (oldName, newName) => `Macro \xAB\xA0${oldName}\xA0\xBB renomm\xE9e en \xAB\xA0${newName}\xA0\xBB.`,
-      macroChanged: (name) => `Macro \xAB\xA0${name}\xA0\xBB modifi\xE9e.`,
-      bindingBound: (button, command) => `\xAB\xA0${button}\xA0\xBB envoie maintenant \xAB\xA0${command}\xA0\xBB.`,
-      bindingCleared: (button) => `\xAB\xA0${button}\xA0\xBB n\u2019est plus attribu\xE9e.`,
-      ipChanged: (ip) => `Adresse IP \u2192 ${ip}.`,
-      ipCleared: "Adresse IP effac\xE9e."
-    }
+    discardConfirmCancel: "Continuer la modification"
   },
   backup: {
     sectionMake: "Cr\xE9er",
@@ -615,6 +595,7 @@ var TOOLS_CARD_STRINGS_FR = {
     commandsBackupHelp: "Utilisez le crayon pour renommer une commande (les noms sont mis \xE0 jour partout o\xF9 ils sont r\xE9f\xE9renc\xE9s) et les accolades pour modifier ses donn\xE9es utiles.",
     newCommandChip: "nouvelle commande",
     commandChip: "commande",
+    requiredStepChip: "obligatoire",
     buttonChip: "touche",
     ipChip: "IP",
     thisItem: "cet \xE9l\xE9ment",
@@ -625,6 +606,7 @@ var TOOLS_CARD_STRINGS_FR = {
     fetchEditCommandAria: "R\xE9cup\xE9rer et modifier les donn\xE9es utiles de cette commande",
     moveUpAria: "D\xE9placer vers le haut",
     moveDownAria: "D\xE9placer vers le bas",
+    reorderHandleAria: (label) => `R\xE9ordonner ${label} (touches fl\xE9ch\xE9es)`,
     deviceClass: "Classe d\u2019appareil",
     name: "Nom",
     nameHelper: "Affich\xE9 sur la t\xE9l\xE9commande et dans chaque s\xE9lecteur de commande.",

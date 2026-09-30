@@ -339,10 +339,10 @@ export interface BackupBundleDeviceBlock {
   // One byte encodes the whole "Power On/Off Setup" + "Idle Behavior"
   // story. Lives in its own hub query, captured/restored separately from
   // the device record. Absent on backups that predate idle-behavior
-  // capture, which fall back to `power_mode`.
+  // capture; the editor then shows the mode as unknown.
   idle_behavior?: number | null;
-  // Legacy device-record power byte; retained for fallback on older
-  // backups that lack `idle_behavior`.
+  // The device record's tail byte. A different value from idle_behavior
+  // (it sits at 1 on real hubs) and never stands in for it.
   power_mode?: number | null;
 }
 

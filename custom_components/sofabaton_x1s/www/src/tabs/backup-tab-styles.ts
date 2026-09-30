@@ -930,6 +930,10 @@ export const backupTabStyles = css`
       cursor: grab;
       touch-action: none;
     }
+    .quick-access-drag:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 1px;
+    }
     .quick-access-drag:active {
       cursor: grabbing;
     }

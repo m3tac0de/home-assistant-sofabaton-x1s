@@ -9,6 +9,7 @@
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import type { Draft } from "../panel-store";
 import type { SnapshotDocument } from "../panel-api";
+import { hubSupportsUnicodeNames, sanitizeEntityName } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-names";
 import { entityDraftData, entityDraftScope, entityElement, withEntityElement } from "./entity-editor-state";
 import {
   isWifiEventsLongRecord,
@@ -58,18 +59,10 @@ export function draftElementFor(draft: Draft | null | undefined, deviceId: numbe
 // -- names ---------------------------------------------------------------------------------
 
 /** X1S and X2 store UTF-16 names; the X1 only `[A-Za-z0-9 ]` (the card's rule). */
-export function supportsUnicodeNames(hubVersion: string | null | undefined): boolean {
-  const version = String(hubVersion ?? "").toUpperCase();
-  return version.includes("X2") || version.includes("X1S");
-}
+export const supportsUnicodeNames = hubSupportsUnicodeNames;
 
 /** The card's `sanitizeBundleName`: strip what the hub cannot store, cap at the 30-code-unit slot. */
-export function sanitizeName(hubVersion: string | null | undefined, value: unknown): string {
-  const pattern = supportsUnicodeNames(hubVersion)
-    ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu
-    : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 30);
-}
+export const sanitizeName = sanitizeEntityName;
 
 /** Device classes whose IP lives in the device head (the card's Network section); wifi_ip keeps it per command. */
 export const IP_HEAD_DEVICE_CLASSES = new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);

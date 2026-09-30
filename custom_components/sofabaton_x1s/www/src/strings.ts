@@ -28,6 +28,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     favoriteFallback: (id: number | string) => `Favorite ${id}`,
     inputFallback: (id: number | string) => `Input ${id}`,
     noInput: "no input",
+    backAria: "Back",
+    closeAria: "Close",
   },
   card: {
     connectivityAria: "Connectivity",
@@ -160,6 +162,15 @@ export const TOOLS_CARD_STRINGS_EN = {
     activityCreateFailed: "The activity could not be created on the hub.",
     activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
     reorderFailed: "The hub did not confirm the new order.",
+    hubNotReady: "The hub is not ready. Close the Sofabaton app or wait for the running operation, then try again.",
+    hubNoResponse: "The hub did not respond. Try again.",
+    hubRequestFailed: "The hub could not complete this request.",
+    payloadInvalid: "The hub cannot use this payload.",
+    wifiEventsFull: "All Wifi Event slots are in use.",
+    wifiEventPendingDelete: "A deleted Wifi Event is still being removed from the hub. Sync the hub, then try again.",
+    wifiEventNameTaken: "A Wifi Event with this name already exists.",
+    wifiEventNameInvalid: "Enter a Wifi Event name the hub can store.",
+    wifiEventFailed: "The Wifi Event could not be saved.",
     deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
     deviceTypeUnsupported: "This device type cannot be created on this hub.",
     selectedHubUnavailable: "The selected hub is no longer available.",
@@ -400,7 +411,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind: "activity" | "device") =>
       `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
     syncToHub: "Sync to Hub",
@@ -428,53 +438,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     exitWithoutSync: "Leave without syncing",
     // Dismiss label reused by the sync-success / delete-error banners.
     discardConfirmCancel: "Keep editing",
-    // Review-list section titles + entry templates (activity-diff.ts).
-    review: {
-      deviceAdded: (name: string) => `Added "${name}" to this activity.`,
-      deviceRemoved: (name: string) => `Removed "${name}" from this activity.`,
-      inputChanged: (device: string, input: string) => `"${device}" input changed to ${input}.`,
-      inputCleared: (device: string) => `"${device}" input cleared.`,
-      startReordered: "Start sequence reordered.",
-      roleNowControls: (group: string, device: string) => `${group} now control "${device}".`,
-      roleCustomized: (group: string) => `${group} customized.`,
-      roleCleared: (group: string) => `${group} no longer assigned.`,
-      shortcutAdded: (name: string) => `Added "${name}".`,
-      shortcutRemoved: (name: string) => `Removed "${name}".`,
-      shortcutRenamed: (oldName: string, newName: string) => `Renamed "${oldName}" → "${newName}".`,
-      shortcutsReordered: "Reordered shortcuts.",
-      idleChanged: (device: string, label: string) => `"${device}" idle behavior → ${label}.`,
-      commandRenamed: (oldName: string, newName: string, device: string) =>
-        `Renamed command "${oldName}" → "${newName}" on "${device}".`,
-      roleGroups: {
-        volume: "Volume buttons",
-        navigation: "Navigation buttons",
-        playback: "Playback buttons",
-        channels: "Channel buttons",
-        numpad: "Number pad buttons",
-      } as Record<string, string>,
-      idleShort: {
-        0: "not set",
-        1: "turns off when idle",
-        2: "never switches off",
-        3: "stays on",
-        4: "not managed by the hub",
-      } as Record<number, string>,
-    },
-    // Review-list section titles + entry templates for the live *device*
-    // editor (activity-diff.ts, diffDeviceForReview).
-    deviceReview: {
-      powerControlChanged: (label: string) => `Automatic power control → ${label}.`,
-      powerOnChanged: "Power-on sequence updated.",
-      powerOffChanged: "Power-off sequence updated.",
-      macroAdded: (name: string) => `Added macro "${name}".`,
-      macroRemoved: (name: string) => `Removed macro "${name}".`,
-      macroRenamed: (oldName: string, newName: string) => `Renamed macro "${oldName}" → "${newName}".`,
-      macroChanged: (name: string) => `Edited macro "${name}".`,
-      bindingBound: (button: string, command: string) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button: string) => `"${button}" is no longer assigned.`,
-      ipChanged: (ip: string) => `IP address → ${ip}.`,
-      ipCleared: "IP address cleared.",
-    },
   },
   backup: {
     sectionMake: "Make",
@@ -754,6 +717,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
     newCommandChip: "new command",
     commandChip: "command",
+    requiredStepChip: "required",
     buttonChip: "button",
     ipChip: "ip",
     thisItem: "this item",
@@ -764,6 +728,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     fetchEditCommandAria: "Fetch and edit this command's payload",
     moveUpAria: "Move up",
     moveDownAria: "Move down",
+    reorderHandleAria: (label: string) => `Reorder ${label} (arrow keys)`,
     deviceClass: "Device class",
     name: "Name",
     nameHelper: "Shown on the remote and in every command picker.",

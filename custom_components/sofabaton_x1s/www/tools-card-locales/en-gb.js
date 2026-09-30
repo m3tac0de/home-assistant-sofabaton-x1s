@@ -19,12 +19,7 @@ var TOOLS_CARD_STRINGS_EN_GB = {
       favorite: "Favourite"
     }
   },
-  activities: {
-    review: {
-      roleCustomized: (group) => `${group} customised.`,
-      idleChanged: (device, label) => `"${device}" idle behaviour \u2192 ${label}.`
-    }
-  },
+  activities: {},
   backup: {
     activityMeta: (favourites, macros) => `${favourites} ${favourites === 1 ? "favourite" : "favourites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name) => `${name} (customised)`,

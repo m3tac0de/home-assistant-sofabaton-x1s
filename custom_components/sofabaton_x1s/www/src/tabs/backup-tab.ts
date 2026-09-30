@@ -746,9 +746,8 @@ class SofabatonBackupTab extends LitElement {
   };
 
   private _handleDetailBundleChange = (event: CustomEvent<{ bundle: BackupBundlePayload }>) => {
-    // The element already ran the HA-action prune sweep; this host owns
-    // the "counts as a user edit" semantics (dirty flag + persistence
-    // via updated()).
+    // This host owns the "counts as a user edit" semantics (dirty flag +
+    // persistence via updated()).
     this._editBundle = event.detail.bundle;
     this._editBundleDirty = true;
   };

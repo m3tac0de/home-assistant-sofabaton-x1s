@@ -1,6 +1,6 @@
 /**
- * The live entity editor session (Phase L2 of
- * docs/internal/live-activity-editor-plan.md, extended to devices).
+ * The live entity editor session (docs/internal/live-activity-editor-plan.md,
+ * extended to devices).
  *
  * Opened from the Hub tab's Activities or Devices list (wrench button) with
  * `kind` + `entityId` set: it captures that entity's bundle from the
@@ -59,7 +59,6 @@ class SofabatonActivitiesTab extends LitElement {
     _entityId: { state: true },
     _baseline: { state: true },
     _working: { state: true },
-    _captureProgress: { state: true },
     _captureError: { state: true },
     _dirty: { state: true },
     _deleteError: { state: true },
@@ -150,7 +149,7 @@ class SofabatonActivitiesTab extends LitElement {
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
-    /* Review / discard / sync dialogs (§4.4). */
+    /* Exit-confirm and delete dialogs (§4.4). */
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
     .dialog {
       width: min(640px, calc(100vw - 36px));
@@ -177,14 +176,6 @@ class SofabatonActivitiesTab extends LitElement {
     .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
     .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
     .dialog-footer-actions { display: flex; gap: 8px; }
-    .review-group { display: flex; flex-direction: column; gap: 6px; }
-    .review-group-title {
-      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color);
-    }
-    .review-entry-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
-    .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
-    .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
-    .review-empty { font-size: 14px; color: var(--secondary-text-color); }
     /* Viewport, not container: these dialogs are position: fixed over the
        whole window, so a narrow card on a wide screen should still get the
        centered floating dialog rather than the full-bleed phone sheet. */
@@ -216,7 +207,6 @@ class SofabatonActivitiesTab extends LitElement {
   private _entityId: number | null = null;
   private _baseline: BackupBundlePayload | null = null;
   private _working: BackupBundlePayload | null = null;
-  private _captureProgress: BackupProgressEvent | null = null;
   private _captureError: string | null = null;
   private _dirty = false;
   private _deleteError: string | null = null;
@@ -225,10 +215,7 @@ class SofabatonActivitiesTab extends LitElement {
   private _syncError: string | null = null;
   private _syncFailedAt: string | null = null;
 
-  private _captureOperationId: string | null = null;
-  private _syncOperationId: string | null = null;
   private _progressUnsub: (() => void) | null = null;
-  private _syncStateHydratedFor: string | null = null;
   private _exitAfterSync = false;
   // Which requested activityId we already auto-opened, so returning to the
   // idle stage (close) doesn't immediately re-capture the same activity.
@@ -257,13 +244,8 @@ class SofabatonActivitiesTab extends LitElement {
       if (this._hubEntryId !== null && nextEntryId !== this._hubEntryId) {
         this._teardownProgressSubscription();
         this._resetToList();
-        this._syncStateHydratedFor = null;
       }
       this._hubEntryId = nextEntryId;
-    }
-    if (this.hub && this._syncStateHydratedFor !== this.hub.entry_id) {
-      this._syncStateHydratedFor = this.hub.entry_id;
-      void this._hydrateRunningSync();
     }
     this._maybeAutoOpen();
     this._notifyDirtyDock();
@@ -300,25 +282,6 @@ class SofabatonActivitiesTab extends LitElement {
     return !!this.hub?.firmware_unsupported
       || this.selectedHubProxyConnected
       || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
-  }
-
-  // Card reloaded mid-sync: pick up a running sync op for this kind from the
-  // shared backup/state registry and resubscribe to its progress.
-  private async _hydrateRunningSync() {
-    if (!this.hub || !this.hass) return;
-    try {
-      const state = await this.api().getBackupState(this.hub.entry_id);
-      const op = (this.kind === "device" ? state?.device_sync : state?.activity_sync) ?? null;
-      const running = !!op && ["pending", "running"].includes(String(op.status || ""));
-      if (running && op?.operation_id) {
-        this._syncOperationId = op.operation_id;
-        this._syncProgress = op;
-        this._stage = "syncing";
-        await this._subscribeSync(op.operation_id);
-      }
-    } catch {
-      // Best-effort; a fresh sync can still be started.
-    }
   }
 
   private api() {
@@ -386,8 +349,8 @@ class SofabatonActivitiesTab extends LitElement {
   // ── Wifi Events facade for the Add dialogs (plan §4) ────────────────
   // The detail view is hass-free; this host owns the WS calls AND the
   // bundle grafting (both `_baseline` and `_working` must gain the
-  // deployed events-device block — review diff + the sync validator's
-  // baseline grandfathering depend on it).
+  // deployed events-device block: the sync validator's baseline
+  // grandfathering depends on it).
 
   /** The hub the Wifi Events calls address: its config entry, never the
    *  remote entity (a disabled remote entity must not hide the events). */
@@ -571,7 +534,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._entityId = entityId;
     this._wifiEventsPlaceholderId = null;
     this._captureError = null;
-    this._captureProgress = null;
     this._stage = "capturing";
     try {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -605,11 +567,11 @@ class SofabatonActivitiesTab extends LitElement {
     return !!progress && ["pending", "running"].includes(String(progress.status || ""));
   }
 
-  // ── Editing (§4.3) — interactive but ephemeral in L2 ───────────────
+  // ── Editing (§4.3) ───────────────────────────────────────────────────
 
   private _handleBundleChange = (event: CustomEvent<{ bundle: BackupBundlePayload }>) => {
-    // The detail element already ran its HA-action prune sweep. Store the
-    // edited bundle and recompute dirty against the captured baseline.
+    // Store the edited bundle and recompute dirty against the captured
+    // baseline.
     this._working = event.detail.bundle;
     this._recomputeDirty();
   };
@@ -631,23 +593,24 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncFailedAt = null;
     this._syncProgress = null;
     this._stage = "syncing";
-    // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
-    // refs) BEFORE the entity sync, so every referenced record exists on
-    // the hub when the activity writes land.
-    if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
-      this._exitAfterSync = false;
-      return;
-    }
     try {
+      // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
+      // refs) BEFORE the entity sync, so every referenced record exists on
+      // the hub when the activity writes land. A rejection here lands in
+      // sync_failed like any other (CR-F2-3).
+      if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
+        this._exitAfterSync = false;
+        return;
+      }
       const start = this.kind === "device"
         ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working)
         : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
-      this._syncOperationId = start.operation_id;
       await this.refreshControlPanelState?.();
       await this._subscribeSync(start.operation_id);
     } catch (error) {
       this._syncError = formatError(error);
       this._syncFailedAt = null;
+      this._syncProgress = null;
       this._exitAfterSync = false;
       this._stage = "sync_failed";
     }
@@ -677,7 +640,6 @@ class SofabatonActivitiesTab extends LitElement {
 
   private async _onSyncSuccess(operationId: string) {
     this._syncProgress = null;
-    this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
     try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
@@ -776,16 +738,13 @@ class SofabatonActivitiesTab extends LitElement {
     this._entityId = null;
     this._baseline = null;
     this._working = null;
-    this._captureProgress = null;
     this._captureError = null;
-    this._captureOperationId = null;
     this._dirty = false;
     this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
-    this._syncOperationId = null;
     this._exitAfterSync = false;
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
@@ -1012,7 +971,7 @@ class SofabatonActivitiesTab extends LitElement {
         <div class="dialog dialog--small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${S.exitUnsyncedTitle}</div>
-            <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body"><div class="dialog-text">${S.exitUnsyncedBody(this.kind)}</div></div>
           <div class="dialog-footer">

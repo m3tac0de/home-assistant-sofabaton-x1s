@@ -9,7 +9,8 @@ type BackendOperation =
   | "wifi_deploy";
 
 export type BackendErrorSurface =
-  | "device_create" | "activity_create" | "catalog_write" | "ir_learn" | "ir_emissions" | "ir_convert";
+  | "device_create" | "activity_create" | "catalog_write" | "ir_learn" | "ir_emissions" | "ir_convert"
+  | "hub_request" | "wifi_event";
 
 /**
  * The `ir_payload/convert` rejection carries the refused protocol as its
@@ -57,6 +58,25 @@ export function backendErrorCode(value: unknown): string | null {
  * use localized generic copy rather than leaking their English `message`.
  */
 export function localizeBackendError(value: unknown, surface: BackendErrorSurface): string {
+  if (surface === "hub_request" || surface === "wifi_event") {
+    // Payload fetch/test and the Wifi Event writes in the editors (CR-F2-1).
+    const E = TOOLS_CARD_STRINGS.errors;
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "another_operation") return E.anotherOperation;
+    if (code === "not_found" && surface === "hub_request") return E.selectedHubUnavailable;
+    if (surface === "hub_request") {
+      if (code === "unavailable") return E.hubNotReady;
+      if (code === "no_response") return E.hubNoResponse;
+      if (code === "invalid_blob") return E.payloadInvalid;
+      return E.hubRequestFailed;
+    }
+    if (code === "wifi_events_full") return E.wifiEventsFull;
+    if (code === "wifi_events_pending_delete") return E.wifiEventPendingDelete;
+    if (code === "duplicate_name") return E.wifiEventNameTaken;
+    if (code === "empty_name" || code === "invalid_format") return E.wifiEventNameInvalid;
+    if (code === "not_found") return E.selectedHubUnavailable;
+    return E.wifiEventFailed;
+  }
   if (surface === "activity_create" || surface === "catalog_write") {
     // The Add Activity dialog and the reorders share one backend guard with
     // Add Device, so they speak its codes too (CR-X7-4).

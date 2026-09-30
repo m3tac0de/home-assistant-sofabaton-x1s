@@ -12,6 +12,7 @@ import {
   shouldFinalizeWifiHubLoad,
 } from "./wifi-commands-state";
 import { DOC_URLS } from "../shared/doc-links";
+import { hubSupportsUnicodeNames, sanitizeWifiName } from "../shared/hub-names";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const SLOT_COUNT = 10;
@@ -2423,8 +2424,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _supportsUnicodeCommandNames() {
-    const version = this._hubVersion();
-    return version.includes("X2") || version.includes("X1S");
+    return hubSupportsUnicodeNames(this._hubVersion());
   }
 
   private _supportsPowerInputConfig() {
@@ -2437,10 +2437,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _sanitizeCommandName(value: unknown) {
-    const pattern = this._supportsUnicodeCommandNames()
-      ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu
-      : /[^A-Za-z0-9 ]+/g;
-    return String(value ?? "").replace(pattern, "").slice(0, 20);
+    return sanitizeWifiName(this._hubVersion(), value);
   }
 
   private _sanitizeWifiDeviceName(value: unknown) {

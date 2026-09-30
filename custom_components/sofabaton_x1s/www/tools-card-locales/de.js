@@ -18,7 +18,9 @@ var TOOLS_CARD_STRINGS_DE = {
     macroFallback: (id) => `Makro ${id}`,
     favoriteFallback: (id) => `Favorit ${id}`,
     inputFallback: (id) => `Eingang ${id}`,
-    noInput: "kein Eingang"
+    noInput: "kein Eingang",
+    backAria: "Zur\xFCck",
+    closeAria: "Schlie\xDFen"
   },
   card: {
     connectivityAria: "Verbindungsstatus",
@@ -131,6 +133,15 @@ var TOOLS_CARD_STRINGS_DE = {
     activityCreateFailed: "Die Aktivit\xE4t konnte auf dem Hub nicht erstellt werden.",
     activityNameInvalid: "Gib einen Aktivit\xE4tsnamen mit 1 bis 30 Zeichen ein.",
     reorderFailed: "Der Hub hat die neue Reihenfolge nicht best\xE4tigt.",
+    hubNotReady: "Der Hub ist nicht bereit. Schlie\xDFe die Sofabaton-App oder warte, bis der laufende Vorgang abgeschlossen ist, und versuche es dann erneut.",
+    hubNoResponse: "Der Hub hat nicht geantwortet. Versuche es erneut.",
+    hubRequestFailed: "Der Hub konnte diese Anfrage nicht ausf\xFChren.",
+    payloadInvalid: "Der Hub kann diese Nutzlast nicht verwenden.",
+    wifiEventsFull: "Alle Wifi-Event-Pl\xE4tze sind belegt.",
+    wifiEventPendingDelete: "Ein gel\xF6schtes Wifi-Event wird noch vom Hub entfernt. Synchronisiere den Hub und versuche es dann erneut.",
+    wifiEventNameTaken: "Es gibt bereits ein Wifi-Event mit diesem Namen.",
+    wifiEventNameInvalid: "Gib einen Wifi-Event-Namen ein, den der Hub speichern kann.",
+    wifiEventFailed: "Das Wifi-Event konnte nicht gespeichert werden.",
     deviceNameInvalid: "Gib einen Ger\xE4tenamen mit 1 bis 30 Zeichen ein.",
     deviceTypeUnsupported: "Dieser Ger\xE4tetyp kann auf diesem Hub nicht erstellt werden.",
     selectedHubUnavailable: "Der ausgew\xE4hlte Hub ist nicht mehr verf\xFCgbar."
@@ -344,38 +355,7 @@ var TOOLS_CARD_STRINGS_DE = {
     exitUnsyncedBody: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} enth\xE4lt \xC4nderungen, die nicht mit dem Hub synchronisiert wurden. Synchronisiere sie jetzt oder verlasse den Editor ohne Synchronisierung und verwirf die lokale Bearbeitung.`,
     exitSyncNow: "Jetzt synchronisieren",
     exitWithoutSync: "Ohne Synchronisierung verlassen",
-    discardConfirmCancel: "Weiter bearbeiten",
-    review: {
-      deviceAdded: (name) => `"${name}" wurde dieser Aktivit\xE4t hinzugef\xFCgt.`,
-      deviceRemoved: (name) => `"${name}" wurde aus dieser Aktivit\xE4t entfernt.`,
-      inputChanged: (device, input) => `Eingang von "${device}" wurde auf ${input} ge\xE4ndert.`,
-      inputCleared: (device) => `Eingang von "${device}" wurde gel\xF6scht.`,
-      startReordered: "Startsequenz wurde neu geordnet.",
-      roleNowControls: (group, device) => `${group} steuern jetzt "${device}".`,
-      roleCustomized: (group) => `${group} angepasst.`,
-      roleCleared: (group) => `${group} nicht mehr zugewiesen.`,
-      shortcutAdded: (name) => `"${name}" hinzugef\xFCgt.`,
-      shortcutRemoved: (name) => `"${name}" entfernt.`,
-      shortcutRenamed: (oldName, newName) => `"${oldName}" in "${newName}" umbenannt.`,
-      shortcutsReordered: "Verkn\xFCpfungen neu geordnet.",
-      idleChanged: (device, label) => `Leerlaufverhalten von "${device}" \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Befehl "${oldName}" auf "${device}" in "${newName}" umbenannt.`,
-      roleGroups: { volume: "Lautst\xE4rketasten", navigation: "Navigationstasten", playback: "Wiedergabetasten", channels: "Kanaltasten", numpad: "Ziffernblocktasten" },
-      idleShort: { 0: "nicht festgelegt", 1: "schaltet sich im Leerlauf aus", 2: "schaltet sich nie aus", 3: "bleibt eingeschaltet", 4: "wird nicht vom Hub verwaltet" }
-    },
-    deviceReview: {
-      powerControlChanged: (label) => `Automatisches Ein- und Ausschalten \u2192 ${label}.`,
-      powerOnChanged: "Aktionen beim Einschalten aktualisiert.",
-      powerOffChanged: "Aktionen beim Ausschalten aktualisiert.",
-      macroAdded: (name) => `Makro "${name}" hinzugef\xFCgt.`,
-      macroRemoved: (name) => `Makro "${name}" entfernt.`,
-      macroRenamed: (oldName, newName) => `Makro "${oldName}" in "${newName}" umbenannt.`,
-      macroChanged: (name) => `Makro "${name}" bearbeitet.`,
-      bindingBound: (button, command) => `"${button}" sendet jetzt "${command}".`,
-      bindingCleared: (button) => `"${button}" ist nicht mehr belegt.`,
-      ipChanged: (ip) => `IP-Adresse \u2192 ${ip}.`,
-      ipCleared: "IP-Adresse gel\xF6scht."
-    }
+    discardConfirmCancel: "Weiter bearbeiten"
   },
   backup: {
     sectionMake: "Sichern",
@@ -615,6 +595,7 @@ var TOOLS_CARD_STRINGS_DE = {
     commandsBackupHelp: "Verwende den Stift, um einen Befehl umzubenennen (Namen werden \xFCberall aktualisiert, wo sie referenziert werden), und die geschweiften Klammern, um seine Nutzdaten zu bearbeiten.",
     newCommandChip: "neuer Befehl",
     commandChip: "Befehl",
+    requiredStepChip: "erforderlich",
     buttonChip: "Taste",
     ipChip: "IP",
     thisItem: "dieses Element",
@@ -625,6 +606,7 @@ var TOOLS_CARD_STRINGS_DE = {
     fetchEditCommandAria: "Nutzdaten dieses Befehls abrufen und bearbeiten",
     moveUpAria: "Nach oben verschieben",
     moveDownAria: "Nach unten verschieben",
+    reorderHandleAria: (label) => `${label} verschieben (Pfeiltasten)`,
     deviceClass: "Ger\xE4teklasse",
     name: "Name",
     nameHelper: "Wird auf der Fernbedienung und in jeder Befehlsauswahl angezeigt.",

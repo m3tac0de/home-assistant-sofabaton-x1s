@@ -1679,7 +1679,9 @@ var TOOLS_CARD_STRINGS_EN = {
     macroFallback: (id) => `Macro ${id}`,
     favoriteFallback: (id) => `Favorite ${id}`,
     inputFallback: (id) => `Input ${id}`,
-    noInput: "no input"
+    noInput: "no input",
+    backAria: "Back",
+    closeAria: "Close"
   },
   card: {
     connectivityAria: "Connectivity",
@@ -1807,6 +1809,15 @@ var TOOLS_CARD_STRINGS_EN = {
     activityCreateFailed: "The activity could not be created on the hub.",
     activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
     reorderFailed: "The hub did not confirm the new order.",
+    hubNotReady: "The hub is not ready. Close the Sofabaton app or wait for the running operation, then try again.",
+    hubNoResponse: "The hub did not respond. Try again.",
+    hubRequestFailed: "The hub could not complete this request.",
+    payloadInvalid: "The hub cannot use this payload.",
+    wifiEventsFull: "All Wifi Event slots are in use.",
+    wifiEventPendingDelete: "A deleted Wifi Event is still being removed from the hub. Sync the hub, then try again.",
+    wifiEventNameTaken: "A Wifi Event with this name already exists.",
+    wifiEventNameInvalid: "Enter a Wifi Event name the hub can store.",
+    wifiEventFailed: "The Wifi Event could not be saved.",
     deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
     deviceTypeUnsupported: "This device type cannot be created on this hub.",
     selectedHubUnavailable: "The selected hub is no longer available."
@@ -2041,7 +2052,6 @@ var TOOLS_CARD_STRINGS_EN = {
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Session restore banner (§4.6).
     // Live-mode edit header (§4.3). The header mirrors the Wifi command
     // editor: a single stateful Sync button (no dirty chip, no review/discard).
     syncToHub: "Sync to Hub",
@@ -2066,53 +2076,7 @@ var TOOLS_CARD_STRINGS_EN = {
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Dismiss label reused by the sync-success / delete-error banners.
-    discardConfirmCancel: "Keep editing",
-    // Review-list section titles + entry templates (activity-diff.ts).
-    review: {
-      deviceAdded: (name) => `Added "${name}" to this activity.`,
-      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
-      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
-      inputCleared: (device) => `"${device}" input cleared.`,
-      startReordered: "Start sequence reordered.",
-      roleNowControls: (group, device) => `${group} now control "${device}".`,
-      roleCustomized: (group) => `${group} customized.`,
-      roleCleared: (group) => `${group} no longer assigned.`,
-      shortcutAdded: (name) => `Added "${name}".`,
-      shortcutRemoved: (name) => `Removed "${name}".`,
-      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
-      shortcutsReordered: "Reordered shortcuts.",
-      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
-      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
-      roleGroups: {
-        volume: "Volume buttons",
-        navigation: "Navigation buttons",
-        playback: "Playback buttons",
-        channels: "Channel buttons",
-        numpad: "Number pad buttons"
-      },
-      idleShort: {
-        0: "not set",
-        1: "turns off when idle",
-        2: "never switches off",
-        3: "stays on",
-        4: "not managed by the hub"
-      }
-    },
-    // Review-list section titles + entry templates for the live *device*
-    // editor (activity-diff.ts, diffDeviceForReview).
-    deviceReview: {
-      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
-      powerOnChanged: "Power-on sequence updated.",
-      powerOffChanged: "Power-off sequence updated.",
-      macroAdded: (name) => `Added macro "${name}".`,
-      macroRemoved: (name) => `Removed macro "${name}".`,
-      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
-      macroChanged: (name) => `Edited macro "${name}".`,
-      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" is no longer assigned.`,
-      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
-      ipCleared: "IP address cleared."
-    }
+    discardConfirmCancel: "Keep editing"
   },
   backup: {
     sectionMake: "Make",
@@ -2367,6 +2331,7 @@ var TOOLS_CARD_STRINGS_EN = {
     commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
     newCommandChip: "new command",
     commandChip: "command",
+    requiredStepChip: "required",
     buttonChip: "button",
     ipChip: "ip",
     thisItem: "this item",
@@ -2377,6 +2342,7 @@ var TOOLS_CARD_STRINGS_EN = {
     fetchEditCommandAria: "Fetch and edit this command's payload",
     moveUpAria: "Move up",
     moveDownAria: "Move down",
+    reorderHandleAria: (label) => `Reorder ${label} (arrow keys)`,
     deviceClass: "Device class",
     name: "Name",
     nameHelper: "Shown on the remote and in every command picker.",
@@ -3190,6 +3156,24 @@ function backendErrorCode(value) {
   return error.error && error.error !== value ? backendErrorCode(error.error) : null;
 }
 function localizeBackendError(value, surface) {
+  if (surface === "hub_request" || surface === "wifi_event") {
+    const E2 = TOOLS_CARD_STRINGS.errors;
+    const code2 = backendErrorCode(value);
+    if (code2 === "busy" || code2 === "another_operation") return E2.anotherOperation;
+    if (code2 === "not_found" && surface === "hub_request") return E2.selectedHubUnavailable;
+    if (surface === "hub_request") {
+      if (code2 === "unavailable") return E2.hubNotReady;
+      if (code2 === "no_response") return E2.hubNoResponse;
+      if (code2 === "invalid_blob") return E2.payloadInvalid;
+      return E2.hubRequestFailed;
+    }
+    if (code2 === "wifi_events_full") return E2.wifiEventsFull;
+    if (code2 === "wifi_events_pending_delete") return E2.wifiEventPendingDelete;
+    if (code2 === "duplicate_name") return E2.wifiEventNameTaken;
+    if (code2 === "empty_name" || code2 === "invalid_format") return E2.wifiEventNameInvalid;
+    if (code2 === "not_found") return E2.selectedHubUnavailable;
+    return E2.wifiEventFailed;
+  }
   if (surface === "activity_create" || surface === "catalog_write") {
     const code2 = backendErrorCode(value);
     if (code2 === "busy" || code2 === "unavailable" || code2 === "another_operation") {
@@ -7014,6 +6998,10 @@ var backupTabStyles = i`
       cursor: grab;
       touch-action: none;
     }
+    .quick-access-drag:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 1px;
+    }
     .quick-access-drag:active {
       cursor: grabbing;
     }
@@ -7595,6 +7583,24 @@ var backupTabStyles = i`
     }
 `;
 
+// custom_components/sofabaton_x1s/www/src/shared/hub-names.ts
+var WIFI_NAME_MAX = 20;
+var ENTITY_NAME_MAX = 30;
+function hubSupportsUnicodeNames(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return version.includes("X2") || version.includes("X1S");
+}
+function stripUnstorableNameChars(hubVersion, value) {
+  const pattern = hubSupportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "");
+}
+function sanitizeWifiName(hubVersion, value) {
+  return stripUnstorableNameChars(hubVersion, value).slice(0, WIFI_NAME_MAX);
+}
+function sanitizeEntityName(hubVersion, value) {
+  return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
 var S3 = TOOLS_CARD_STRINGS.backup;
 var OVERLAY_MENU_MAX_HEIGHT = 240;
@@ -7774,12 +7780,6 @@ var activityEditorStyles = i`
   }
   .member-add-option:hover {
     background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
-  }
-  .member-add-empty {
-    padding: 8px 10px;
-    font-size: 0.85rem;
-    color: var(--secondary-text-color);
-    line-height: 1.4;
   }
   .role-row {
     display: flex;
@@ -10302,16 +10302,15 @@ function formatCarrierKhz(carrierHz) {
 }
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function bundleSupportsUnicodeNames(bundle) {
-  const version = String(bundle?.hub?.version || "").toUpperCase();
-  return version.includes("X2") || version.includes("X1S");
-}
 function bundleIsX2(bundle) {
   return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
 }
 function sanitizeBundleName(bundle, value) {
-  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 30);
+  return sanitizeEntityName(bundle?.hub?.version, value);
+}
+function editorErrorMessage(error, surface) {
+  if (error instanceof Error) return error.message;
+  return localizeBackendError(error, surface);
 }
 function useLegacyTextField() {
   return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
@@ -10352,7 +10351,6 @@ var SofabatonEditDetailView = class extends i4 {
     this._wifiEventsOpenedSlots = null;
     this._wifiEventBusy = false;
     this._wifiEventPrimary = { mode: "new", slot: null, name: "" };
-    this._editDetailNameDraft = "";
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
@@ -10645,13 +10643,6 @@ var SofabatonEditDetailView = class extends i4 {
       this._editRenameDialogError = "";
       this._editRenameDialogOpen = true;
     };
-    this._openHubNameRenameDialog = () => {
-      if (!this.bundle) return;
-      this._editRenameDialogTarget = { kind: "hub_name" };
-      this._editRenameDialogDraft = sanitizeBundleName(this.bundle, String(this.bundle.hub?.name ?? ""));
-      this._editRenameDialogError = "";
-      this._editRenameDialogOpen = true;
-    };
     this._closeCommandPayloadDialog = () => {
       this._exitLearnMode();
       this._payloadLearnSourceNote = "";
@@ -10857,7 +10848,7 @@ var SofabatonEditDetailView = class extends i4 {
         ));
         this._closeAddFavoriteDialog();
       } catch (err) {
-        this._addFavoriteError = err instanceof Error ? err.message : String(err);
+        this._addFavoriteError = editorErrorMessage(err, "wifi_event");
       }
     };
     this._applyAddShortcut = () => {
@@ -10908,14 +10899,8 @@ var SofabatonEditDetailView = class extends i4 {
         return;
       }
       if (target.kind === "detail") {
-        this._editDetailNameDraft = next;
         if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
         else this._applyDeviceRename(target.entityId, next);
-        this._closeEditRenameDialog();
-        return;
-      }
-      if (target.kind === "hub_name") {
-        this._commitEditBundleEdit(renameBundleHub(this.bundle, next));
         this._closeEditRenameDialog();
         return;
       }
@@ -11118,7 +11103,7 @@ var SofabatonEditDetailView = class extends i4 {
         }));
         this._closeBindingDialog();
       } catch (err) {
-        this._bindingError = err instanceof Error ? err.message : String(err);
+        this._bindingError = editorErrorMessage(err, "wifi_event");
       }
     };
     this._applyBinding = () => {
@@ -11277,7 +11262,7 @@ var SofabatonEditDetailView = class extends i4 {
         this._commitEditBundleEdit(next);
         this._closeStepDialog();
       } catch (err) {
-        this._stepError = err instanceof Error ? err.message : String(err);
+        this._stepError = editorErrorMessage(err, "wifi_event");
       }
     };
     this._applyStep = () => {
@@ -11320,16 +11305,7 @@ var SofabatonEditDetailView = class extends i4 {
       const editor = this._macroEditor;
       if (!editor || !this.bundle) return;
       const sortableEvent = event;
-      const oldIndex = Number(sortableEvent.detail?.oldIndex);
-      const newIndex = Number(sortableEvent.detail?.newIndex);
-      const items = this._currentMacroStepItems();
-      if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-      if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
-      const order = items.map((_2, index) => index);
-      const [moved] = order.splice(oldIndex, 1);
-      order.splice(newIndex, 0, moved);
-      const next = editor.scope === "device" ? reorderDeviceMacroSteps(this.bundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this.bundle, editor.entityId, editor.buttonId, order);
-      this._commitEditBundleEdit(next);
+      this._reorderSteps(Number(sortableEvent.detail?.oldIndex), Number(sortableEvent.detail?.newIndex));
     };
     this._togglePowerControlMenu = () => {
       this._powerControlMenuOpen = !this._powerControlMenuOpen;
@@ -11342,6 +11318,10 @@ var SofabatonEditDetailView = class extends i4 {
         this._haSortableReady = true;
       });
     }
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._exitLearnMode();
   }
   // Lit reuses the element instance when the host re-renders with a
   // different entity, so all transient view state must reset exactly the
@@ -11360,7 +11340,6 @@ var SofabatonEditDetailView = class extends i4 {
     this._roleMenuAnchor = null;
     this._roleConfirm = null;
     this._bindingsView = false;
-    this._editDetailNameDraft = sanitizeBundleName(this.bundle, this._selectedEditTitle());
     this._closeEditRenameDialog();
     this._closeCommandPayloadDialog();
     this._payloadFetchingCommandId = null;
@@ -11455,7 +11434,7 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" @click=${this._requestClose}>
+                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
@@ -11654,7 +11633,7 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" @click=${this._closeBindingsView}>
+                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeBindingsView}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
@@ -11734,7 +11713,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${S5.roleConfirmTitle}</div>
-            <button class="dialog-close" @click=${this._closeRoleConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeRoleConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">${S5.roleConfirmBody}</div>
@@ -11936,7 +11915,7 @@ var SofabatonEditDetailView = class extends i4 {
   }
   _renderActivityQuickAccessSection(items) {
     if (this.entityId == null) return A;
-    const rows = items.map((item) => this._renderActivityQuickAccessRow(item));
+    const rows = items.map((item, position) => this._renderActivityQuickAccessRow(item, position, items.length));
     return b2`
       <div class="quick-access-section" data-edit-section="quick_access">
         <div class="quick-access-head">
@@ -11983,13 +11962,11 @@ var SofabatonEditDetailView = class extends i4 {
     const device = (this.bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
     return String(device?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(item.deviceId ?? "?");
   }
-  _renderActivityQuickAccessRow(item) {
+  _renderActivityQuickAccessRow(item, position, count) {
     return b2`
       <div class="quick-access-sortable-item" data-kind=${item.kind} data-button-id=${item.buttonId}>
         <div class="quick-access-row">
-          <div class="quick-access-drag" aria-hidden="true">
-            <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-          </div>
+          ${this._renderReorderHandle(item.label, position, count, (delta) => this._moveActivityQuickAccessItem(position, delta))}
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
@@ -12054,7 +12031,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${label}</div>
-            <button class="dialog-close" @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${useLegacyTextField() ? b2`
@@ -12121,7 +12098,7 @@ var SofabatonEditDetailView = class extends i4 {
               <div class="dialog-title">${this._payloadDialogAddMode ? TOOLS_CARD_STRINGS.backup.addCommandTitle : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
               ${deviceClass ? b2`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>` : A}
             </div>
-            <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${this._payloadDialogAddMode && this._payloadLearnView === "off" ? b2`
@@ -12624,7 +12601,6 @@ var SofabatonEditDetailView = class extends i4 {
     if (target.kind === "macro") return S5.renameMacro;
     if (target.kind === "favorite") return S5.renameFavorite;
     if (target.kind === "device_ip") return S5.editIpAria;
-    if (target.kind === "hub_name") return S5.renameDialogTitle;
     return S5.renameCommand;
   }
   /** Per-target label & max length used by the dialog's primary text input. */
@@ -12747,7 +12723,7 @@ var SofabatonEditDetailView = class extends i4 {
       }
       this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
     } catch (error) {
-      this._payloadFetchError = error instanceof Error ? error.message : String(error);
+      this._payloadFetchError = editorErrorMessage(error, "hub_request");
     } finally {
       this._payloadFetchingCommandId = null;
     }
@@ -12832,7 +12808,7 @@ var SofabatonEditDetailView = class extends i4 {
           return;
         }
       } catch (error) {
-        this._payloadFetchError = error instanceof Error ? error.message : String(error);
+        this._payloadFetchError = editorErrorMessage(error, "hub_request");
         return;
       } finally {
         this._addCommandPreparing = false;
@@ -12879,7 +12855,7 @@ var SofabatonEditDetailView = class extends i4 {
       }
       if (snapshot.className === "wifi_mqtt") {
         fields["device_id"] = target.deviceId & 255;
-        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? Number(fields["command_id"]) ?? 1) & 255;
+        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? (Number(fields["command_id"]) || 1)) & 255;
       }
       if (snapshot.className === "ir") {
         const descriptor = String(fields["descriptor"] ?? "").trim();
@@ -12995,7 +12971,7 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadDialogTestStatus = "success";
     } catch (error) {
       this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = error instanceof Error ? error.message : String(error);
+      this._payloadDialogTestError = editorErrorMessage(error, "hub_request");
     }
   }
   _openCommandPayloadDialog(commandId) {
@@ -13352,7 +13328,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${this._deleteConfirmTitle(target, this._confirmDeleteLabel)}</div>
-            <button class="dialog-close" @click=${this._closeDeleteConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeDeleteConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">
@@ -13416,7 +13392,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${S5.addMemberTitle}</div>
-            <button class="dialog-close" @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddMemberDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${options.length === 0 ? b2`<div class="backup-drawer-sub">${S5.addMemberNoneLeft}</div>` : b2`
@@ -13530,7 +13506,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${S5.addShortcutTitle}</div>
-            <button class="dialog-close" @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             <div class="decoded-field">
@@ -13597,13 +13573,6 @@ var SofabatonEditDetailView = class extends i4 {
         <span class="detail-crumb-sep" aria-hidden="true">›</span>
       </div>
     `;
-  }
-  _applyEditDetailRename() {
-    const next = sanitizeBundleName(this.bundle, this._editDetailNameDraft);
-    if (!next || !this.kind || this.entityId == null) return;
-    if (this.kind === "activity") this._applyActivityRename(this.entityId, next);
-    else this._applyDeviceRename(this.entityId, next);
-    this._editDetailNameDraft = next;
   }
   _moveActivityQuickAccessItem(index, delta) {
     if (!this.bundle || this.entityId == null) return;
@@ -13707,7 +13676,10 @@ var SofabatonEditDetailView = class extends i4 {
                 .value=${sel.name}
                 ?disabled=${this._wifiEventBusy}
                 @input=${(event) => {
-      params.onSelChange({ ...sel, name: event.target.value });
+      const input = event.target;
+      const name = sanitizeWifiName(this.bundle?.hub?.version, input.value);
+      if (name !== input.value) input.value = name;
+      params.onSelChange({ ...sel, name });
     }}
               />
               <div class="decoded-field-helper">${S5.wifiEventNameHelper}</div>
@@ -13727,8 +13699,8 @@ var SofabatonEditDetailView = class extends i4 {
    *
    * Returns the (possibly grafted) working bundle to insert into. Creating
    * a new event is an instant store allocation (W7) — no hub deploy here.
-   * `deviceId` is the placeholder id 0 before the first-ever deploy; the
-   * Sync flow rewrites it. Throws a user-facing Error on failure.
+   * `deviceId` is the host's positive placeholder id before the first-ever
+   * deploy; the Sync flow rewrites it. Throws a user-facing Error on failure.
    */
   async _resolveWifiEventRef(sel) {
     const S5 = TOOLS_CARD_STRINGS.backup;
@@ -14050,7 +14022,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${title}</div>
-            <button class="dialog-close" @click=${this._closeBindingDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeBindingDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${isEdit ? b2`
@@ -14187,18 +14159,56 @@ var SofabatonEditDetailView = class extends i4 {
     const next = editor.scope === "device" ? removeDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, index) : removeActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, index);
     this._commitEditBundleEdit(next);
   }
+  _reorderSteps(oldIndex, newIndex) {
+    const editor = this._macroEditor;
+    if (!editor || !this.bundle) return;
+    const items = this._currentMacroStepItems();
+    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+    if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
+    const order = items.map((_2, index) => index);
+    const [moved] = order.splice(oldIndex, 1);
+    order.splice(newIndex, 0, moved);
+    const next = editor.scope === "device" ? reorderDeviceMacroSteps(this.bundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this.bundle, editor.entityId, editor.buttonId, order);
+    this._commitEditBundleEdit(next);
+  }
+  /** The drag handle doubles as the keyboard way to reorder: focus it and
+   *  press the up/down arrows (CR-F2-11). Focus follows the moved row. */
+  _renderReorderHandle(label, position, count, move) {
+    return b2`
+      <div
+        class="quick-access-drag"
+        role="button"
+        tabindex="0"
+        aria-label=${TOOLS_CARD_STRINGS.backup.reorderHandleAria(label)}
+        @keydown=${(event) => {
+      const delta = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (!delta) return;
+      event.preventDefault();
+      const target = position + delta;
+      if (target < 0 || target >= count) return;
+      const list = event.currentTarget.closest(".quick-access-list");
+      move(delta);
+      void this.updateComplete.then(() => {
+        list?.querySelectorAll(".quick-access-drag")[target]?.focus();
+      });
+    }}
+      >
+        <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
+      </div>
+    `;
+  }
   _renderMacroStepEditorView(editor) {
     const items = this._currentMacroStepItems();
     const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
     const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () => items.map((item, position) => this._renderMacroStepRow(item, sortable, position === items.length - 1));
+    const renderRows = () => items.map((item, position) => this._renderMacroStepRow(item, position, items.length));
     return b2`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" @click=${this._closeMacroEditor}>
+                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeMacroEditor}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
@@ -14270,17 +14280,18 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
-  _renderMacroStepRow(item, sortable, isLast) {
+  _renderMacroStepRow(item, position, count) {
+    const isLast = position === count - 1;
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
     const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
-    const chip = isPower || isInput ? "required" : "command";
+    const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
     const editor = this._macroEditor;
     const memberDeviceId = isPower && editor?.scope === "activity" ? Number(item.deviceId ?? 0) : 0;
     return b2`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
-          ${sortable ? b2`<div class="quick-access-drag" aria-hidden="true"><ha-icon icon="mdi:drag-vertical-variant"></ha-icon></div>` : b2`<span></span>`}
+          ${count > 1 ? this._renderReorderHandle(item.label, position, count, (delta) => this._reorderSteps(position, position + delta)) : b2`<span></span>`}
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
@@ -14351,7 +14362,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${title}</div>
-            <button class="dialog-close" @click=${this._closeStepDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeStepDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${isInput ? b2`
@@ -14611,7 +14622,6 @@ SofabatonEditDetailView.properties = {
   _wifiEventBusy: { state: true },
   _wifiEventPrimary: { state: true },
   _editDetailActiveSection: { state: true },
-  _editDetailNameDraft: { state: true },
   _editRenameDialogOpen: { state: true },
   _editRenameDialogDraft: { state: true },
   _editRenameDialogError: { state: true },
@@ -14731,7 +14741,7 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
     .detail-sync-btn.detail-sync-btn--state-ok:disabled {
       border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
       background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
-      color: #2e7d32;
+      color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color));
       opacity: 1;
     }
     /* Spinner used on the live "fetch payload" command-row button. */
@@ -14757,7 +14767,7 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
       background: color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)));
     }
     .payload-test-status.success {
-      color: #2e7d32;
+      color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color));
       border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
       background: color-mix(in srgb, #2e7d32 6%, var(--ha-card-background, var(--card-background-color)));
     }
@@ -14857,7 +14867,7 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, addButt
     .learn-inbox-meta { font-size: 12px; color: var(--secondary-text-color); }
     .learn-badge {
       flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-      padding: 2px 7px; border-radius: 999px; color: #2e7d32;
+      padding: 2px 7px; border-radius: 999px; color: color-mix(in srgb, #2e7d32 40%, var(--primary-text-color));
       border: 1px solid color-mix(in srgb, #2e7d32 45%, transparent);
     }
     .learn-inbox-use { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--sb-accent-text, var(--primary-color)); }
@@ -17930,16 +17940,14 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
   }
   _supportsUnicodeCommandNames() {
-    const version = this._hubVersion();
-    return version.includes("X2") || version.includes("X1S");
+    return hubSupportsUnicodeNames(this._hubVersion());
   }
   _supportsPowerInputConfig() {
     const version = this._hubVersion();
     return !(version.includes("X1") && !version.includes("X1S"));
   }
   _sanitizeCommandName(value) {
-    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-    return String(value ?? "").replace(pattern, "").slice(0, 20);
+    return sanitizeWifiName(this._hubVersion(), value);
   }
   _sanitizeWifiDeviceName(value) {
     return this._sanitizeCommandName(value);
@@ -19631,7 +19639,6 @@ var SofabatonActivitiesTab = class extends i4 {
     this._entityId = null;
     this._baseline = null;
     this._working = null;
-    this._captureProgress = null;
     this._captureError = null;
     this._dirty = false;
     this._deleteError = null;
@@ -19639,10 +19646,7 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
-    this._captureOperationId = null;
-    this._syncOperationId = null;
     this._progressUnsub = null;
-    this._syncStateHydratedFor = null;
     this._exitAfterSync = false;
     // Which requested activityId we already auto-opened, so returning to the
     // idle stage (close) doesn't immediately re-capture the same activity.
@@ -19732,7 +19736,6 @@ var SofabatonActivitiesTab = class extends i4 {
       this._entityId = entityId;
       this._wifiEventsPlaceholderId = null;
       this._captureError = null;
-      this._captureProgress = null;
       this._stage = "capturing";
       try {
         const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -19753,7 +19756,7 @@ var SofabatonActivitiesTab = class extends i4 {
         this._captureError = formatError(error);
       }
     };
-    // ── Editing (§4.3) — interactive but ephemeral in L2 ───────────────
+    // ── Editing (§4.3) ───────────────────────────────────────────────────
     this._handleBundleChange = (event) => {
       this._working = event.detail.bundle;
       this._recomputeDirty();
@@ -19768,18 +19771,18 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncFailedAt = null;
       this._syncProgress = null;
       this._stage = "syncing";
-      if (this.kind === "activity" && !await this._syncWifiEventsPhase()) {
-        this._exitAfterSync = false;
-        return;
-      }
       try {
+        if (this.kind === "activity" && !await this._syncWifiEventsPhase()) {
+          this._exitAfterSync = false;
+          return;
+        }
         const start = this.kind === "device" ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working) : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
-        this._syncOperationId = start.operation_id;
         await this.refreshControlPanelState?.();
         await this._subscribeSync(start.operation_id);
       } catch (error) {
         this._syncError = formatError(error);
         this._syncFailedAt = null;
+        this._syncProgress = null;
         this._exitAfterSync = false;
         this._stage = "sync_failed";
       }
@@ -19844,13 +19847,8 @@ var SofabatonActivitiesTab = class extends i4 {
       if (this._hubEntryId !== null && nextEntryId !== this._hubEntryId) {
         this._teardownProgressSubscription();
         this._resetToList();
-        this._syncStateHydratedFor = null;
       }
       this._hubEntryId = nextEntryId;
-    }
-    if (this.hub && this._syncStateHydratedFor !== this.hub.entry_id) {
-      this._syncStateHydratedFor = this.hub.entry_id;
-      void this._hydrateRunningSync();
     }
     this._maybeAutoOpen();
     this._notifyDirtyDock();
@@ -19883,23 +19881,6 @@ var SofabatonActivitiesTab = class extends i4 {
   _openBlocked() {
     return !!this.hub?.firmware_unsupported || this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
-  // Card reloaded mid-sync: pick up a running sync op for this kind from the
-  // shared backup/state registry and resubscribe to its progress.
-  async _hydrateRunningSync() {
-    if (!this.hub || !this.hass) return;
-    try {
-      const state = await this.api().getBackupState(this.hub.entry_id);
-      const op = (this.kind === "device" ? state?.device_sync : state?.activity_sync) ?? null;
-      const running = !!op && ["pending", "running"].includes(String(op.status || ""));
-      if (running && op?.operation_id) {
-        this._syncOperationId = op.operation_id;
-        this._syncProgress = op;
-        this._stage = "syncing";
-        await this._subscribeSync(op.operation_id);
-      }
-    } catch {
-    }
-  }
   api() {
     if (!this.hass) throw new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable);
     return new ControlPanelApi(this.hass);
@@ -19916,8 +19897,8 @@ var SofabatonActivitiesTab = class extends i4 {
   // ── Wifi Events facade for the Add dialogs (plan §4) ────────────────
   // The detail view is hass-free; this host owns the WS calls AND the
   // bundle grafting (both `_baseline` and `_working` must gain the
-  // deployed events-device block — review diff + the sync validator's
-  // baseline grandfathering depend on it).
+  // deployed events-device block: the sync validator's baseline
+  // grandfathering depends on it).
   /** The hub the Wifi Events calls address: its config entry, never the
    *  remote entity (a disabled remote entity must not hide the events). */
   _wifiEventsHubId() {
@@ -20090,7 +20071,6 @@ var SofabatonActivitiesTab = class extends i4 {
   }
   async _onSyncSuccess(operationId) {
     this._syncProgress = null;
-    this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
     try {
@@ -20131,16 +20111,13 @@ var SofabatonActivitiesTab = class extends i4 {
     this._entityId = null;
     this._baseline = null;
     this._working = null;
-    this._captureProgress = null;
     this._captureError = null;
-    this._captureOperationId = null;
     this._dirty = false;
     this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
-    this._syncOperationId = null;
     this._exitAfterSync = false;
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
@@ -20357,7 +20334,7 @@ var SofabatonActivitiesTab = class extends i4 {
         <div class="dialog dialog--small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${S5.exitUnsyncedTitle}</div>
-            <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body"><div class="dialog-text">${S5.exitUnsyncedBody(this.kind)}</div></div>
           <div class="dialog-footer">
@@ -20388,7 +20365,6 @@ SofabatonActivitiesTab.properties = {
   _entityId: { state: true },
   _baseline: { state: true },
   _working: { state: true },
-  _captureProgress: { state: true },
   _captureError: { state: true },
   _dirty: { state: true },
   _deleteError: { state: true },
@@ -20478,7 +20454,7 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
-    /* Review / discard / sync dialogs (§4.4). */
+    /* Exit-confirm and delete dialogs (§4.4). */
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
     .dialog {
       width: min(640px, calc(100vw - 36px));
@@ -20505,14 +20481,6 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
     .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
     .dialog-footer-actions { display: flex; gap: 8px; }
-    .review-group { display: flex; flex-direction: column; gap: 6px; }
-    .review-group-title {
-      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color);
-    }
-    .review-entry-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
-    .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
-    .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
-    .review-empty { font-size: 14px; color: var(--secondary-text-color); }
     /* Viewport, not container: these dialogs are position: fixed over the
        whole window, so a narrow card on a wide screen should still get the
        centered floating dialog rather than the full-bleed phone sheet. */

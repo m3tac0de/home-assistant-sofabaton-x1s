@@ -56,7 +56,6 @@ test("bundled English (en-GB) uses proper English spelling and American English 
 
   assert.equal(TOOLS_CARD_STRINGS.cache.favorites, "Favourites");
   assert.equal(TOOLS_CARD_STRINGS.common.favoriteFallback(3), "Favourite 3");
-  assert.equal(TOOLS_CARD_STRINGS.activities.review.idleChanged("TV", "on"), '"TV" idle behaviour → on.');
   assert.equal(TOOLS_CARD_STRINGS.backup.customizeButtonsToggle, "Customise individual buttons");
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.colorGroup, "Colour");
   assert.equal(TOOLS_CARD_STRINGS.tabs.backup, TOOLS_CARD_STRINGS_EN.tabs.backup);

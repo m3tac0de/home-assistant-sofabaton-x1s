@@ -18,7 +18,9 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     macroFallback: (id) => `\u5B8F ${id}`,
     favoriteFallback: (id) => `\u6536\u85CF ${id}`,
     inputFallback: (id) => `\u4FE1\u6E90 ${id}`,
-    noInput: "\u65E0\u4FE1\u6E90"
+    noInput: "\u65E0\u4FE1\u6E90",
+    backAria: "\u8FD4\u56DE",
+    closeAria: "\u5173\u95ED"
   },
   card: {
     connectivityAria: "\u8FDE\u63A5\u72B6\u6001",
@@ -131,6 +133,15 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     activityCreateFailed: "\u65E0\u6CD5\u5728 Hub \u4E0A\u521B\u5EFA\u6D3B\u52A8\u3002",
     activityNameInvalid: "\u8BF7\u8F93\u5165 1 \u81F3 30 \u4E2A\u5B57\u7B26\u7684\u6D3B\u52A8\u540D\u79F0\u3002",
     reorderFailed: "Hub \u672A\u786E\u8BA4\u65B0\u7684\u987A\u5E8F\u3002",
+    hubNotReady: "Hub \u5C1A\u672A\u5C31\u7EEA\u3002\u8BF7\u5173\u95ED Sofabaton \u5E94\u7528\u6216\u7B49\u5F85\u5F53\u524D\u64CD\u4F5C\u5B8C\u6210\u540E\u91CD\u8BD5\u3002",
+    hubNoResponse: "Hub \u6CA1\u6709\u54CD\u5E94\u3002\u8BF7\u91CD\u8BD5\u3002",
+    hubRequestFailed: "Hub \u65E0\u6CD5\u5B8C\u6210\u6B64\u8BF7\u6C42\u3002",
+    payloadInvalid: "Hub \u65E0\u6CD5\u4F7F\u7528\u6B64\u8F7D\u8377\u3002",
+    wifiEventsFull: "\u6240\u6709 Wifi \u4E8B\u4EF6\u69FD\u4F4D\u5747\u5DF2\u5360\u7528\u3002",
+    wifiEventPendingDelete: "\u5DF2\u5220\u9664\u7684 Wifi \u4E8B\u4EF6\u4ECD\u5728\u4ECE Hub \u4E2D\u79FB\u9664\u3002\u8BF7\u540C\u6B65 Hub \u540E\u91CD\u8BD5\u3002",
+    wifiEventNameTaken: "\u5DF2\u5B58\u5728\u540C\u540D\u7684 Wifi \u4E8B\u4EF6\u3002",
+    wifiEventNameInvalid: "\u8BF7\u8F93\u5165 Hub \u53EF\u4EE5\u4FDD\u5B58\u7684 Wifi \u4E8B\u4EF6\u540D\u79F0\u3002",
+    wifiEventFailed: "\u65E0\u6CD5\u4FDD\u5B58 Wifi \u4E8B\u4EF6\u3002",
     deviceNameInvalid: "\u8BF7\u8F93\u5165 1 \u81F3 30 \u4E2A\u5B57\u7B26\u7684\u8BBE\u5907\u540D\u79F0\u3002",
     deviceTypeUnsupported: "\u65E0\u6CD5\u5728\u6B64 Hub \u4E0A\u521B\u5EFA\u8BE5\u8BBE\u5907\u7C7B\u578B\u3002",
     selectedHubUnavailable: "\u6240\u9009 Hub \u5DF2\u4E0D\u53EF\u7528\u3002"
@@ -344,38 +355,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     exitUnsyncedBody: (kind) => `\u6B64${kindLabel(kind)}\u5305\u542B\u5C1A\u672A\u540C\u6B65\u5230 Hub \u7684\u66F4\u6539\u3002\u4F60\u53EF\u4EE5\u7ACB\u5373\u540C\u6B65\uFF0C\u4E5F\u53EF\u4EE5\u9000\u51FA\u7F16\u8F91\u5668\u5E76\u653E\u5F03\u672C\u5730\u66F4\u6539\u3002`,
     exitSyncNow: "\u7ACB\u5373\u540C\u6B65",
     exitWithoutSync: "\u4E0D\u540C\u6B65\u5E76\u9000\u51FA",
-    discardConfirmCancel: "\u7EE7\u7EED\u7F16\u8F91",
-    review: {
-      deviceAdded: (name) => `\u5DF2\u5C06\u201C${name}\u201D\u6DFB\u52A0\u5230\u6B64\u6D3B\u52A8\u3002`,
-      deviceRemoved: (name) => `\u5DF2\u4ECE\u6B64\u6D3B\u52A8\u79FB\u9664\u201C${name}\u201D\u3002`,
-      inputChanged: (device, input) => `\u5DF2\u5C06\u201C${device}\u201D\u7684\u4FE1\u6E90\u6539\u4E3A ${input}\u3002`,
-      inputCleared: (device) => `\u5DF2\u6E05\u9664\u201C${device}\u201D\u7684\u4FE1\u6E90\u3002`,
-      startReordered: "\u5DF2\u8C03\u6574\u542F\u52A8\u987A\u5E8F\u3002",
-      roleNowControls: (group, device) => `${group}\u73B0\u5728\u63A7\u5236\u201C${device}\u201D\u3002`,
-      roleCustomized: (group) => `\u5DF2\u81EA\u5B9A\u4E49${group}\u3002`,
-      roleCleared: (group) => `${group}\u5DF2\u53D6\u6D88\u5206\u914D\u3002`,
-      shortcutAdded: (name) => `\u5DF2\u6DFB\u52A0\u201C${name}\u201D\u3002`,
-      shortcutRemoved: (name) => `\u5DF2\u79FB\u9664\u201C${name}\u201D\u3002`,
-      shortcutRenamed: (oldName, newName) => `\u5DF2\u5C06\u201C${oldName}\u201D\u91CD\u547D\u540D\u4E3A\u201C${newName}\u201D\u3002`,
-      shortcutsReordered: "\u5DF2\u8C03\u6574\u5FEB\u6377\u9879\u987A\u5E8F\u3002",
-      idleChanged: (device, label) => `\u201C${device}\u201D\u7684\u95F2\u7F6E\u884C\u4E3A \u2192 ${label}\u3002`,
-      commandRenamed: (oldName, newName, device) => `\u5DF2\u5C06\u201C${device}\u201D\u4E0A\u7684\u547D\u4EE4\u201C${oldName}\u201D\u91CD\u547D\u540D\u4E3A\u201C${newName}\u201D\u3002`,
-      roleGroups: { volume: "\u97F3\u91CF\u6309\u952E", navigation: "\u5BFC\u822A\u6309\u952E", playback: "\u64AD\u653E\u6309\u952E", channels: "\u9891\u9053\u6309\u952E", numpad: "\u6570\u5B57\u952E\u76D8\u6309\u952E" },
-      idleShort: { 0: "\u672A\u8BBE\u7F6E", 1: "\u95F2\u7F6E\u65F6\u5173\u95ED", 2: "\u6C38\u4E0D\u5173\u95ED", 3: "\u4FDD\u6301\u5F00\u542F", 4: "\u4E0D\u7531 Hub \u7BA1\u7406" }
-    },
-    deviceReview: {
-      powerControlChanged: (label) => `\u81EA\u52A8\u7535\u6E90\u63A7\u5236 \u2192 ${label}\u3002`,
-      powerOnChanged: "\u5DF2\u66F4\u65B0\u5F00\u673A\u64CD\u4F5C\u3002",
-      powerOffChanged: "\u5DF2\u66F4\u65B0\u5173\u673A\u64CD\u4F5C\u3002",
-      macroAdded: (name) => `\u5DF2\u6DFB\u52A0\u5B8F\u201C${name}\u201D\u3002`,
-      macroRemoved: (name) => `\u5DF2\u79FB\u9664\u5B8F\u201C${name}\u201D\u3002`,
-      macroRenamed: (oldName, newName) => `\u5DF2\u5C06\u5B8F\u201C${oldName}\u201D\u91CD\u547D\u540D\u4E3A\u201C${newName}\u201D\u3002`,
-      macroChanged: (name) => `\u5DF2\u7F16\u8F91\u5B8F\u201C${name}\u201D\u3002`,
-      bindingBound: (button, command) => `\u201C${button}\u201D\u73B0\u5728\u53D1\u9001\u201C${command}\u201D\u3002`,
-      bindingCleared: (button) => `\u201C${button}\u201D\u5DF2\u53D6\u6D88\u5206\u914D\u3002`,
-      ipChanged: (ip) => `IP \u5730\u5740 \u2192 ${ip}\u3002`,
-      ipCleared: "\u5DF2\u6E05\u9664 IP \u5730\u5740\u3002"
-    }
+    discardConfirmCancel: "\u7EE7\u7EED\u7F16\u8F91"
   },
   backup: {
     sectionMake: "\u521B\u5EFA",
@@ -615,6 +595,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     commandsBackupHelp: "\u4F7F\u7528\u94C5\u7B14\u56FE\u6807\u91CD\u547D\u540D\u547D\u4EE4\uFF08\u6240\u6709\u5F15\u7528\u5904\u7684\u540D\u79F0\u90FD\u4F1A\u66F4\u65B0\uFF09\uFF0C\u4F7F\u7528\u5927\u62EC\u53F7\u56FE\u6807\u7F16\u8F91\u6709\u6548\u8F7D\u8377\u3002",
     newCommandChip: "\u65B0\u547D\u4EE4",
     commandChip: "\u547D\u4EE4",
+    requiredStepChip: "\u5FC5\u9700",
     buttonChip: "\u6309\u952E",
     ipChip: "IP",
     thisItem: "\u6B64\u9879\u76EE",
@@ -625,6 +606,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     fetchEditCommandAria: "\u83B7\u53D6\u5E76\u7F16\u8F91\u6B64\u547D\u4EE4\u7684\u6709\u6548\u8F7D\u8377",
     moveUpAria: "\u4E0A\u79FB",
     moveDownAria: "\u4E0B\u79FB",
+    reorderHandleAria: (label) => `\u8C03\u6574 ${label} \u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     deviceClass: "\u8BBE\u5907\u7C7B\u522B",
     name: "\u540D\u79F0",
     nameHelper: "\u663E\u793A\u5728\u9065\u63A7\u5668\u53CA\u6240\u6709\u547D\u4EE4\u9009\u62E9\u5668\u4E2D\u3002",

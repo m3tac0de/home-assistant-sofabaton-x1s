@@ -309,9 +309,10 @@ test("backup edit detail rename updates the selected device name in the bundle",
   };
   element.kind = "device";
   element.entityId = 7;
-  element._editDetailNameDraft = "Media Center";
+  element._openDetailRenameDialog();
+  element._editRenameDialogDraft = "Media Center";
 
-  element._applyEditDetailRename();
+  element._applyEditRenameDialog();
 
   assert.equal(element._selectedEditTitle(), "Media Center");
   assert.equal((element.bundle as { devices: Array<{ device?: { name?: string } }> }).devices[0].device?.name, "Media Center");
@@ -338,9 +339,10 @@ test("edit detail element reports edits through bundle-change", () => {
   (element as unknown as EventTarget).addEventListener("bundle-change", (event) => {
     emitted = (event as CustomEvent<{ bundle: typeof emitted }>).detail.bundle;
   });
-  element._editDetailNameDraft = "Media Center";
+  element._openDetailRenameDialog();
+  element._editRenameDialogDraft = "Media Center";
 
-  element._applyEditDetailRename();
+  element._applyEditRenameDialog();
 
   assert.ok(emitted, "bundle-change should fire on commit");
   assert.equal(emitted!.devices[0].device?.name, "Media Center");

@@ -260,12 +260,6 @@ export const activityEditorStyles = css`
   .member-add-option:hover {
     background: var(--sb-overlay-hover, color-mix(in srgb, var(--primary-text-color) 10%, transparent));
   }
-  .member-add-empty {
-    padding: 8px 10px;
-    font-size: 0.85rem;
-    color: var(--secondary-text-color);
-    line-height: 1.4;
-  }
   .role-row {
     display: flex;
     align-items: center;

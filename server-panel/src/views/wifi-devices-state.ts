@@ -8,6 +8,7 @@
 
 import type { WifiDeviceSpec, WifiDeviceView, WifiSlot } from "../panel-api";
 import type { PressEvent } from "../panel-store";
+import { sanitizeWifiName } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-names";
 import { supportsUnicodeNames } from "./device-editor-state";
 
 /** The library's `WIFI_SLOT_COUNT`: shorts are commands 1..10, longs 11..20. */
@@ -144,11 +145,8 @@ export function supportsPowerInput(hubVersion: string | null | undefined): boole
   return supportsUnicodeNames(hubVersion);
 }
 
-/** The card's `_sanitizeCommandName`: what the hub can store, 20 wide. */
-export function sanitizeWifiName(hubVersion: string | null | undefined, value: unknown): string {
-  const pattern = supportsUnicodeNames(hubVersion) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, WIFI_NAME_MAX);
-}
+/** The card's rule (shared/hub-names.ts): what the hub can store, 20 wide. */
+export { sanitizeWifiName };
 
 /** Why a name cannot be saved, or null. `leadingSpace` is the card's message. */
 export function nameProblem(value: string, messages: { required: string; leadingSpace: string }): string | null {
