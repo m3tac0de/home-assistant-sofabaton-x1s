@@ -67,6 +67,11 @@ def test_row_edit_requires_and_checks_if_match_then_syncs(tmp_path: Path) -> Non
         wrong = copy.deepcopy(activity)
         wrong["device"]["device_id"] = 102
         assert client.put(f"{H}/activities/101", json=wrong, headers={"If-Match": etag}).status_code == 422
+        # Not a number at all: the same 422, never a bare 500 (CR-S2-9).
+        for junk in ("abc", None):
+            wrong["device"]["device_id"] = junk
+            r = client.put(f"{H}/activities/101", json=wrong, headers={"If-Match": etag})
+            assert r.status_code == 422 and r.json()["type"] == "invalid_request", r.text
 
         # Preview first: the planner names the binding write.
         plan = client.post(f"{H}/activities/101/plan", json=activity).json()
