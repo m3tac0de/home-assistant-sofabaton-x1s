@@ -22,8 +22,9 @@ commands plan, section 7). ``http``: the hub calls the listener above.
 ``mqtt`` (X2 only): the device's records are inert and the hub publishes
 ``{"device_id", "key_id"}`` to ``<MAC>/up`` on the broker set in the
 Sofabaton app; the server subscribes there (``mqtt_client``) while a
-device uses it, with the broker settings taken from the command line or
-the environment only. Both end in the same ``press``.
+device uses it. The broker settings come from the command line or the
+environment, or else from the control panel (``mqtt.json``, PUT
+/server/mqtt/config). Both end in the same ``press``.
 
 The service never touches the engine; every hub operation goes through
 the library's facade (``deploy_wifi_device``, ``update_wifi_device``,

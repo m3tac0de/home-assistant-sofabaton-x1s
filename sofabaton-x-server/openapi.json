@@ -2866,7 +2866,7 @@
         "type": "object"
       },
       "MqttView": {
-        "description": "The server's broker connection. The settings come from the command line or the\nenvironment only, and the password is not part of any answer. ``wanted`` is true\nwhile a device uses the transport; the connection exists only then.",
+        "description": "The server's broker connection. The settings come from the command line or the\nenvironment, or else from the control panel (PUT /server/mqtt/config); the password\nis not part of any answer. ``wanted`` is true while a device uses the transport; the\nconnection exists only then.",
         "properties": {
           "configured": {
             "title": "Configured",

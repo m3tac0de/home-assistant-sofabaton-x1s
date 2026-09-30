@@ -202,8 +202,9 @@ class PressPage(BaseModel):
 
 class MqttView(BaseModel):
     """The server's broker connection. The settings come from the command line or the
-    environment only, and the password is not part of any answer. ``wanted`` is true
-    while a device uses the transport; the connection exists only then."""
+    environment, or else from the control panel (PUT /server/mqtt/config); the password
+    is not part of any answer. ``wanted`` is true while a device uses the transport; the
+    connection exists only then."""
 
     configured: bool
     wanted: bool

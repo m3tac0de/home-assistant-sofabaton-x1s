@@ -1,6 +1,7 @@
 """The mqtt transport (server panel wifi commands plan, section 7): the
-broker settings come from the command line and the environment only and
-the password shows up nowhere; the small MQTT client against a fake
+broker settings from the command line and the environment (the panel's
+own path has its tests in test_mqtt_config), and the password shows up
+nowhere; the small MQTT client against a fake
 broker that speaks the real protocol (credentials, subscribe, keepalive,
 reconnect); and the service end to end: an X2 is offered the transport, a
 deploy names no address and needs no listener, the hub's publish on
