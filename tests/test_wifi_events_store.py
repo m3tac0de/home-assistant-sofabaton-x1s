@@ -43,17 +43,16 @@ def test_is_wifi_events_device_key() -> None:
     assert not is_wifi_events_device_key(None)
 
 
-def test_get_or_create_wifi_events_device() -> None:
+def test_allocating_an_event_creates_the_events_record_once() -> None:
     store = _store()
-    payload = _run(store.async_get_or_create_wifi_events_device("hub-1"))
+    _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
+    payload = _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))
     assert payload["device_key"] == WIFI_EVENTS_DEVICE_KEY
     assert payload["device_name"] == WIFI_EVENTS_DEVICE_NAME
     assert payload["slot_count"] == WIFI_EVENTS_SLOT_COUNT
     assert len(payload["commands"]) == WIFI_EVENTS_SLOT_COUNT
 
-    # idempotent
-    again = _run(store.async_get_or_create_wifi_events_device("hub-1"))
-    assert again["device_key"] == WIFI_EVENTS_DEVICE_KEY
+    _run(store.async_allocate_wifi_event("hub-1", "Bedtime"))
     devices = _run(store.async_list_hub_devices("hub-1"))
     assert [d["device_key"] for d in devices].count(WIFI_EVENTS_DEVICE_KEY) == 1
 
@@ -62,7 +61,7 @@ def test_store_list_always_includes_reserved_record() -> None:
     # §8 test 5 (store half): async_list_hub_devices must NEVER filter the
     # reserved record — the listener guard iterates this list.
     store = _store()
-    _run(store.async_get_or_create_wifi_events_device("hub-1"))
+    _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
     _run(store.async_create_hub_device("hub-1", "User Device"))
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("hub-1"))]
     assert WIFI_EVENTS_DEVICE_KEY in keys
@@ -70,7 +69,7 @@ def test_store_list_always_includes_reserved_record() -> None:
 
 def test_events_record_is_cap_exempt() -> None:
     store = _store()
-    _run(store.async_get_or_create_wifi_events_device("hub-1"))
+    _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
     for idx in range(MAX_WIFI_DEVICES):
         _run(store.async_create_hub_device("hub-1", f"Device {idx + 1}"))
     # 5 user devices + the events record coexist…
@@ -90,7 +89,7 @@ def test_events_record_is_cap_exempt() -> None:
 
 def test_no_key_fallback_skips_reserved_record() -> None:
     store = _store()
-    _run(store.async_get_or_create_wifi_events_device("hub-1"))
+    _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
     payload = _run(store.async_get_hub_config("hub-1"))
     assert payload["device_key"] != WIFI_EVENTS_DEVICE_KEY
 

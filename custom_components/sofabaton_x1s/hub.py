@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections import deque
 from time import monotonic
 from datetime import datetime, timezone
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 from urllib.parse import unquote
 
 from homeassistant.components import persistent_notification
@@ -275,6 +276,13 @@ class SofabatonHub:
         self._last_hub_event: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
+        # Hub work in flight: registry operations, immediate writes and the
+        # write services all run inside async_hub_work. The busy guard, the
+        # CALL_ME gate and the on-demand reads consult it, and unload waits
+        # for it to drain (the HA side of the facade's hub hold).
+        self._hub_work = 0
+        self._hub_idle = asyncio.Event()
+        self._hub_idle.set()
         self._command_sync_progress: dict[str, dict[str, Any]] = {}
         self._log = get_hub_logger(_LOGGER, self.entry_id)
 
@@ -2604,7 +2612,7 @@ class SofabatonHub:
         )
 
     async def async_refresh_activities_referencing_device(
-        self, device_id: int
+        self, device_id: int, *, also: Iterable[int] = ()
     ) -> list[int]:
         """Re-warm every cached activity that references *device_id*.
 
@@ -2613,12 +2621,18 @@ class SofabatonHub:
         holding pre-edit values (they are resolved copies, not references
         into the device catalog). Callers that just rewrote a device's
         records use this to mirror the full-refresh behaviour for exactly
-        the referencing activities. Returns the activity ids re-warmed.
+        the referencing activities. ``also`` adds activities scanned before
+        the write (a delete may have cascaded their references away).
+        Returns the activity ids re-warmed.
         """
 
-        impacted = await self.hass.async_add_executor_job(
-            self._proxy.activities_referencing_device, device_id
+        impacted = set(
+            await self.hass.async_add_executor_job(
+                self._proxy.activities_referencing_device, device_id
+            )
         )
+        impacted.update(int(act) for act in also)
+        impacted = sorted(impacted)
         for act_id in impacted:
             try:
                 await self._async_fetch_activity_commands(int(act_id))
@@ -2853,6 +2867,13 @@ class SofabatonHub:
         return ready
 
     async def _async_prime_buttons_for(self, act_id: int) -> None:
+        if self.is_long_running_task_active():
+            # Its REQ_BUTTONS would land between a running operation's page
+            # writes; that operation re-warms what it touches (CR-X1-3).
+            self._log.debug(
+                "[%s] prime_buttons_for(%s): hub busy, skipping", self.entry_id, act_id
+            )
+            return
         # dedupe here
         if act_id in self._pending_button_fetch:
             self._log.debug(
@@ -3280,14 +3301,49 @@ class SofabatonHub:
     def is_sync_in_progress(self) -> bool:
         return self._command_sync_lock.locked()
 
+    @contextlib.asynccontextmanager
+    async def async_hub_work(self):
+        """Mark the hub busy for one operation, write or write service."""
+
+        self._hub_work += 1
+        self._hub_idle.clear()
+        try:
+            yield
+        finally:
+            self._hub_work -= 1
+            if self._hub_work == 0:
+                self._hub_idle.set()
+
+    @property
+    def hub_work_active(self) -> bool:
+        """True while hub work or a Wifi Command sync is running."""
+
+        return self._hub_work > 0 or self._command_sync_lock.locked()
+
+    async def async_wait_until_idle(self, timeout: float) -> bool:
+        """Wait up to ``timeout`` s for running hub work to finish."""
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while self.hub_work_active:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return False
+            if self._hub_work > 0:
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._hub_idle.wait(), min(remaining, 1.0))
+            else:
+                await asyncio.sleep(min(remaining, 0.25))
+        return True
+
     def is_long_running_task_active(self) -> bool:
-        """True while a backup, restore, or command-config sync is running.
+        """True while a backup, restore, sync or other hub work is running.
 
         Wired into the transport bridge as the CALL_ME busy gate so proxy
         clients are ignored without tearing down mDNS/broadcast discovery.
         """
 
-        if self._command_sync_lock.locked():
+        if self.hub_work_active:
             return True
         try:
             from . import _backup_operation_registry  # local import to avoid cycle
@@ -4152,6 +4208,41 @@ class SofabatonHub:
                 )
             return ok
 
+    async def _async_rewarm_after_inplace(
+        self, plan: Any, dev_id: int, referencing_before: set[int]
+    ) -> list[int]:
+        """Re-read what an in-place plan wrote; returns the touched activities."""
+
+        touched_acts = sorted(
+            {
+                int(step.payload.get("activity_id"))
+                for step in plan.steps
+                if step.payload.get("activity_id") is not None
+            }
+        )
+        favorite_acts = {
+            int(step.payload.get("activity_id"))
+            for step in plan.steps
+            if step.kind in ("favorite_add", "favorite_delete")
+        }
+        refresh_acts: set[int] = set(touched_acts)
+        if any(step.kind in COMMAND_RECORD_STEP_KINDS for step in plan.steps):
+            await self.async_fetch_device_commands(dev_id)
+        if any(step.kind in REFERENCED_RECORD_STEP_KINDS for step in plan.steps):
+            # Record rewrites change labels that other activities' cached
+            # favorite label maps still hold (they are resolved
+            # copies, not references into the device catalog). Re-warm
+            # every activity referencing the managed device, not just the
+            # ones the plan wrote to directly — mirroring what a full
+            # cache refresh would do for them.
+            refresh_acts.update(referencing_before)
+            refresh_acts.update(self._proxy.activities_referencing_device(dev_id))
+        for act_id in sorted(refresh_acts):
+            await self._async_fetch_activity_commands(act_id)
+            if act_id in favorite_acts:
+                await self.async_request_favorites_order(act_id)
+        return touched_acts
+
     async def _async_try_inplace_command_sync(
         self,
         *,
@@ -4342,6 +4433,13 @@ class SofabatonHub:
             return None
 
         total_steps = len(plan.steps) + 2
+        # Scanned before the write: a failed record delete may already have
+        # cascaded the references a later scan would miss.
+        referencing_before: set[int] = (
+            set(self._proxy.activities_referencing_device(dev_id))
+            if any(step.kind in REFERENCED_RECORD_STEP_KINDS for step in plan.steps)
+            else set()
+        )
         if plan.steps:
 
             def _progress(**data: Any) -> None:
@@ -4378,36 +4476,22 @@ class SofabatonHub:
                 # replace path on top of a half-applied edit; the brand hash is
                 # unwritten so the device reads out-of-step and re-offers sync.
                 message = str((result or {}).get("message") or "The hub rejected an in-place write")
+                # The steps before the rejection landed: read back what the
+                # plan touched so the cache shows the hub, not what the
+                # aborted run left cleared (CR-X1-1).
+                try:
+                    await self._async_rewarm_after_inplace(plan, dev_id, referencing_before)
+                    await self._async_persist_cache_if_enabled()
+                except Exception:  # noqa: BLE001 - the read-back is best-effort
+                    self._log.warning(
+                        "[%s] read-back after a failed in-place sync failed",
+                        self.entry_id,
+                        exc_info=True,
+                    )
                 raise HomeAssistantError(f"In-place sync failed: {message}")
 
         # Post-write cache refresh, mirroring the replace path's epilogue.
-        touched_acts = sorted(
-            {
-                int(step.payload.get("activity_id"))
-                for step in plan.steps
-                if step.payload.get("activity_id") is not None
-            }
-        )
-        favorite_acts = {
-            int(step.payload.get("activity_id"))
-            for step in plan.steps
-            if step.kind in ("favorite_add", "favorite_delete")
-        }
-        refresh_acts: set[int] = set(touched_acts)
-        if any(step.kind in COMMAND_RECORD_STEP_KINDS for step in plan.steps):
-            await self.async_fetch_device_commands(dev_id)
-        if any(step.kind in REFERENCED_RECORD_STEP_KINDS for step in plan.steps):
-            # Record rewrites change labels that other activities' cached
-            # favorite label maps still hold (they are resolved
-            # copies, not references into the device catalog). Re-warm
-            # every activity referencing the managed device, not just the
-            # ones the plan wrote to directly — mirroring what a full
-            # cache refresh would do for them.
-            refresh_acts.update(self._proxy.activities_referencing_device(dev_id))
-        for act_id in sorted(refresh_acts):
-            await self._async_fetch_activity_commands(act_id)
-            if act_id in favorite_acts:
-                await self.async_request_favorites_order(act_id)
+        touched_acts = await self._async_rewarm_after_inplace(plan, dev_id, referencing_before)
         if plan.steps:
             await self._async_warm_devices_snapshot()
             self._bump_cache_generation()

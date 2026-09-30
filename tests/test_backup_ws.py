@@ -76,7 +76,7 @@ def test_ws_backup_export_starts_operation(monkeypatch):
 
     hass = SimpleNamespace(async_create_task=fake_create_task, data={integration.DOMAIN: {}})
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -147,7 +147,7 @@ def test_ws_backup_restore_starts_merge_operation(monkeypatch):
 
     hass = SimpleNamespace(async_create_task=fake_create_task, data={integration.DOMAIN: {}})
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -399,10 +399,12 @@ def test_run_backup_restore_operation_dismisses_preflight_failures():
     finally:
         loop.close()
 
-    # The op gets the failed-status update so any live subscriber
-    # sees the error message, then is immediately dismissed from the
-    # registry so no card refresh can snap a stale failure view back.
-    assert registry.get(op_id) is None
+    # The op gets the failed-status update and stays briefly, so a
+    # subscriber that arrives after the failure still receives it
+    # (CR-H2-3); backup/state never surfaces it, so no card refresh can
+    # snap a stale failure view back.
+    state = (registry.get(op_id) or {}).get("state") or {}
+    assert state.get("status") == "failed" and state.get("transient") is True
     assert registry.latest_for_entry("entry-1", kind="backup_restore") is None
 
 

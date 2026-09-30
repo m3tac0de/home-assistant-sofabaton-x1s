@@ -547,9 +547,17 @@
           "name": "Sofabaton hub",
           "description": "Hub to synchronize."
         },
+        "wifi_device": {
+          "name": "Wifi Device",
+          "description": "Name of the Wifi Device to deploy, as shown in the Wifi Commands tab. Required when the hub has more than one Wifi Device."
+        },
         "device_name": {
           "name": "Device name",
-          "description": "Optional Wi-Fi device name. The default is Home Assistant."
+          "description": "Optional new name for the Wifi Device on the hub. The default is its saved name."
+        },
+        "device_key": {
+          "name": "Wifi Device key",
+          "description": "Internal key of the Wifi Device to deploy. The card sends it; automations use Wifi Device instead."
         }
       }
     },

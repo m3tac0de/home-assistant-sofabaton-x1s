@@ -324,9 +324,10 @@ def test_sync_from_snapshot_drives_hub_async_sync_device_and_returns_result(monk
     assert sync_calls[0][1]["device_id"] == 1
     assert sync_calls[0][1]["baseline"] == baseline
     assert sync_calls[0][1]["edited"] == edited
-    # Success tail runs the same post-sync cache refresh the WS path gets.
+    # Success tail runs the same post-sync cache refresh the WS path gets;
+    # the entity itself was already read back by the engine (CR-X1-8).
     assert ("request_catalog", {"kind": "devices"}) in hub.calls
-    assert ("refresh_entity_structure", {"kind": "device", "ent_id": 1}) in hub.calls
+    assert ("refresh_entity_structure", {"kind": "device", "ent_id": 1}) not in hub.calls
 
 
 def test_sync_from_snapshot_drives_hub_async_sync_activity_for_activity_kind(monkeypatch) -> None:

@@ -743,7 +743,9 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
         entity_kind="activity", entity_id=101,
     ))
 
-    assert tail_statuses == [("catalog", "running"), ("refresh", "running")]
+    # The engine's settle loop already read the entity back; the tail only
+    # re-reads the catalog (CR-X1-8).
+    assert tail_statuses == [("catalog", "running")]
     assert _status() == "success"
 
 
@@ -909,12 +911,13 @@ def test_device_sync_rename_of_unmanaged_device_leaves_store_alone(monkeypatch):
 def test_ws_entity_delete_blocked_when_locked(monkeypatch):
     conn = _Conn()
     hub = _DeletingHub({"status": "success"})
-    _patch(monkeypatch, hub=hub, locked=True)
+    hub.is_sync_in_progress = True  # a Wifi Command sync holds the hub
+    _patch(monkeypatch, hub=hub)
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
     _run(integration._ws_activity_delete(hass, conn, {
         "id": 44, "entry_id": "entry-1", "activity_id": 104,
     }))
-    assert conn.error[1] == "unavailable"
+    assert conn.error[1] == "busy"
     assert hub.deleted is None
 
 
@@ -1016,10 +1019,11 @@ def test_ws_device_create_busy(monkeypatch):
 def test_ws_device_create_blocked_when_locked(monkeypatch):
     conn = _Conn()
     hub = _CreatingHub({"status": "success", "device_id": 7})
-    _patch(monkeypatch, hub=hub, locked=True)
+    hub.hub_work_active = True  # another immediate write is running
+    _patch(monkeypatch, hub=hub)
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
     _run(integration._ws_device_create(hass, conn, {
         "id": 56, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
     }))
-    assert conn.error[1] == "unavailable"
+    assert conn.error[1] == "busy"
     assert hub.created is None

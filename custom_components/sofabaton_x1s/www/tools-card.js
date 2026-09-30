@@ -3030,27 +3030,9 @@ var ControlPanelApi = class {
       edited
     });
   }
-  activitySyncPlan(entryId, activityId, baseline, edited) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/activity/sync_plan",
-      entry_id: entryId,
-      activity_id: activityId,
-      baseline,
-      edited
-    });
-  }
   startDeviceSync(entryId, deviceId, baseline, edited) {
     return this.hass.callWS({
       type: "sofabaton_x1s/device/sync",
-      entry_id: entryId,
-      device_id: deviceId,
-      baseline,
-      edited
-    });
-  }
-  deviceSyncPlan(entryId, deviceId, baseline, edited) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/device/sync_plan",
       entry_id: entryId,
       device_id: deviceId,
       baseline,
@@ -15307,7 +15289,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     const isRunning = this._isProgressRunning(this._backupProgress);
     const isSuccess = String(this._backupProgress?.status || "") === "success";
     const allDevicesSelected = devices.length > 0 && this._backupDeviceIds.length === devices.length;
-    const summary = this._backupResultSummary(this._backupProgress?.backup);
+    const summary = this._backupResultSummary(this._backupProgress);
     return b2`
       ${renderSecondaryTabContent({
       connected: true,
@@ -15319,7 +15301,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
             ${!this.persistentCacheEnabled || !this.cacheHub ? this._renderStatus("warning", "mdi:database-off-outline", TOOLS_CARD_STRINGS.backup.enablePersistentCache) : A}
             ${this._backupError ? this._renderStatus("error", "mdi:alert-circle-outline", this._backupError) : A}
             ${isRunning && this._backupProgress ? this._renderProgressCard(this._backupProgress, "backup") : isSuccess ? (() => {
-        const hasBundle = !!this._backupProgress?.backup;
+        const hasBundle = !!(this._backupProgress?.backup || this._backupProgress?.has_backup);
         const wasDownloaded = !!this._backupProgress?.backup_downloaded;
         const expired = !!this._backupProgress?.backup_expired;
         return b2`
@@ -16044,9 +16026,11 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     anchor.dispatchEvent(new MouseEvent("click"));
     document.body.removeChild(anchor);
   }
-  _backupResultSummary(bundle) {
-    const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : 0;
-    const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : 0;
+  _backupResultSummary(progress) {
+    const bundle = progress?.backup;
+    const counts = progress?.backup_summary;
+    const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : Number(counts?.activities || 0);
+    const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : Number(counts?.devices || 0);
     return TOOLS_CARD_STRINGS.backup.backupResultSummary(activityCount, deviceCount);
   }
   async _completeBackupResult() {
