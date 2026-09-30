@@ -9,6 +9,7 @@ import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
@@ -34,7 +35,7 @@ class _Hub:
 def _bundle(activity_favs):
     return {
         "kind": "hub_bundle",
-        "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+        "schema_version": entity_sync_module.HUB_BUNDLE_SCHEMA_VERSION,
         "hub": {"name": "Living Room", "version": "X1S"},
         "devices": [{
             "device": {"device_id": 1, "name": "TV"},
@@ -400,7 +401,7 @@ def test_ws_activity_sync_plan_returns_step_summary(monkeypatch):
 def _device_bundle(bindings):
     return {
         "kind": "hub_bundle",
-        "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+        "schema_version": entity_sync_module.HUB_BUNDLE_SCHEMA_VERSION,
         "hub": {"name": "Living Room", "version": "X1S"},
         "devices": [
             {
@@ -618,7 +619,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
     )
-    result = _run(integration._run_entity_sync_operation(
+    result = _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=_device_bundle_with_commands([10, 11]),
         edited=_device_bundle_with_commands([10]),
@@ -739,7 +740,7 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
 
     monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=_SyncingHub(),
         baseline=_bundle([]), edited=_bundle([]),
         entity_kind="activity", entity_id=101,
@@ -794,7 +795,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
 
     dispatched = []
     monkeypatch.setattr(
-        integration, "async_dispatcher_send",
+        entity_sync_module, "async_dispatcher_send",
         lambda _hass, signal, *args: dispatched.append(signal),
     )
 
@@ -803,7 +804,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     def _dev_bundle(name):
         return {
             "kind": "hub_bundle",
-            "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+            "schema_version": entity_sync_module.HUB_BUNDLE_SCHEMA_VERSION,
             "hub": {"name": "Living Room", "version": "X1S"},
             "devices": [{
                 "device": {"device_id": 5, "name": name, "brand": brand},
@@ -841,7 +842,7 @@ def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypat
         initial_state={"status": "pending", "phase": "queued"},
     )
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=baseline, edited=edited,
         entity_kind="device", entity_id=5,
@@ -870,7 +871,7 @@ def test_device_sync_rename_of_out_of_sync_record_updates_name_only(monkeypatch)
         initial_state={"status": "pending", "phase": "queued"},
     )
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=baseline, edited=edited,
         entity_kind="device", entity_id=5,
@@ -899,7 +900,7 @@ def test_device_sync_rename_of_unmanaged_device_leaves_store_alone(monkeypatch):
         initial_state={"status": "pending", "phase": "queued"},
     )
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=baseline, edited=edited,
         entity_kind="device", entity_id=9,

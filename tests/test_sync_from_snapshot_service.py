@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
@@ -425,7 +426,7 @@ def test_ws_and_service_share_the_prepare_entity_sync_helper(monkeypatch) -> Non
         )
         return f"op-{len(prepare_calls)}", canned_baseline, canned_edited, 101
 
-    monkeypatch.setattr(integration, "_async_prepare_entity_sync", fake_prepare)
+    monkeypatch.setattr(entity_sync_module, "_async_prepare_entity_sync", fake_prepare)
 
     hub = _wire_hub(monkeypatch)
 

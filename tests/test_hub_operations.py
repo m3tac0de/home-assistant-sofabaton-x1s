@@ -16,6 +16,7 @@ from homeassistant.exceptions import HomeAssistantError
 from tests.hub_fakes import FakeHass
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 from custom_components.sofabaton_x1s.hub import SofabatonHub  # noqa: E402
@@ -346,7 +347,7 @@ def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
         op = registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
 
         result = loop.run_until_complete(
-            integration._run_entity_sync_operation(
+            entity_sync_module._run_entity_sync_operation(
                 hass, op, hub=hub, baseline={}, edited={}, entity_kind="activity", entity_id=101
             )
         )

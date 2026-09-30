@@ -13,6 +13,7 @@ from custom_components.sofabaton_x1s.command_config import (
 )
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
@@ -445,16 +446,16 @@ def _events_bundle(entity_id: int, names: dict[int, str], *, brand: str = "m3-ha
 
 def test_bundle_device_is_wifi_events():
     bundle = _events_bundle(10, {1: "Movie Night"})
-    assert integration._bundle_device_is_wifi_events(bundle, 10) is True
+    assert entity_sync_module._bundle_device_is_wifi_events(bundle, 10) is True
     user = _events_bundle(10, {1: "Cmd"}, brand="m3-a1b2c3d4-xyz")
-    assert integration._bundle_device_is_wifi_events(user, 10) is False
-    assert integration._bundle_device_is_wifi_events({"devices": []}, 10) is False
+    assert entity_sync_module._bundle_device_is_wifi_events(user, 10) is False
+    assert entity_sync_module._bundle_device_is_wifi_events({"devices": []}, 10) is False
 
 
 def test_collect_short_command_renames():
     baseline = _events_bundle(10, {1: "Movie Night", 2: "Lights", 51: "Movie Night Long Press"})
     edited = _events_bundle(10, {1: "Film Night", 2: "Lights", 51: "Renamed Long"})
-    renames = integration._collect_short_command_renames(baseline, edited, 10)
+    renames = entity_sync_module._collect_short_command_renames(baseline, edited, 10)
     assert renames == {1: "Film Night", 51: "Renamed Long"}
 
 
