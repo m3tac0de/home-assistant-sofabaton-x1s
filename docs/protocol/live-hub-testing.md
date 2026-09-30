@@ -2573,3 +2573,33 @@ Bench program BP3 of the code review (`bench_289`, read-only).
   needs the vendor app, the OTA pause (CR-X5-6) a firmware announcement,
   and the NOTIFY_ME subnet broadcast (CR-L3b-7) a LAN that is not a /24;
   all three stay covered by unit tests.
+
+## ◇ Validated: the HA path after wave 2, code review bench BP4 (X1 via HA, 2026-09-30)
+
+Bench program BP4 of the code review (`bench_290_ha_path.py`), run against
+the deployed integration through HA's own REST and WebSocket APIs; the X1's
+entry stayed enabled throughout.
+
+- **Presses are never part of the one-operation rule.** Ten
+  `remote.send_command` presses with no delay reached the wire within one
+  second on an idle hub, and five more did the same while a whole-hub backup
+  ran.
+- **While a registry operation runs (a whole-hub backup, 13 devices and 6
+  activities):**
+  - `device/power_state` answers unknown at once (CR-X1-3).
+  - A guarded hub read (`blobs/fetch`) answers `busy` (CR-X1-6).
+  - A hub service (`get_favorites`) is refused with `hub_busy` (CR-H2-2).
+    HA's REST API reports a service's `HomeAssistantError` as a bare 500;
+    the reason is in the log.
+  - The Resync remote button is refused (CR-X1-5).
+  - `backup/state` carries `has_backup` and the entity counts, not the
+    bundle (CR-X2-5).
+  - Afterwards the power-state read and the button work again.
+- **Wifi deploy (replace path).** The X1 accepts a binding for the X2-only
+  button A (0x99), so a refused binding (CR-H1-4) cannot be forced on an X1;
+  that fix stays suite-proven. A cleanup that landed while the deploy still
+  ran was refused `busy`, as the new rule intends.
+- **Wifi callback answer (CR-H3-9).** A press on the deployed device with a
+  slow action (`homeassistant.check_config`) was answered 6 ms after the
+  callback arrived, with the action dispatched rather than awaited, and the
+  hub delivered it once.

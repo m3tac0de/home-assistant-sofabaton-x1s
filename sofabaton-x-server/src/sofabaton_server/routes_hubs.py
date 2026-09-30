@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response, status
 
 from . import API_PREFIX
-from .manager import HubConflict, HubManager, HubNotFound, HubStartFailed
+from .manager import HubBusy, HubConflict, HubManager, HubNotFound, HubStartFailed
 from .models import HubCreate, HubView, Problem
 from .problems import ApiProblem, hub_not_found, hub_start_failed
 
@@ -16,20 +16,18 @@ def manager_of(request: Request) -> HubManager:
     return request.app.state.hub_manager
 
 
-def _refuse_while_job_runs(request: Request, hub_id: str) -> None:
+def _job_running(hub_id: str, active) -> ApiProblem:
     """A disable or remove must not pull the proxy from under a running
     job (a restore keeps writing in its executor thread; review of
-    635ecfe, finding 3). Cancel or wait for the job first."""
+    635ecfe, finding 3). Cancel or wait for the job first. The manager
+    checks under its transition lock (CR-X5-3)."""
 
-    runner = getattr(request.app.state, "job_runner", None)
-    active = runner.active(hub_id) if runner is not None else None
-    if active is not None and active.status in ("queued", "running"):
-        raise ApiProblem(
-            409, "hub_job_running", "A job holds the hub",
-            detail=f"job {active.job_id} ({active.kind}) is {active.status}; "
-                   f"{'cancel it or ' if active.cancellable else ''}wait for it to finish",
-            hub_id=hub_id,
-        )
+    return ApiProblem(
+        409, "hub_job_running", "A job holds the hub",
+        detail=f"job {active.job_id} ({active.kind}) is {active.status}; "
+               f"{'cancel it or ' if active.cancellable else ''}wait for it to finish",
+        hub_id=hub_id,
+    )
 
 
 @router.get("", operation_id="listHubs", response_model=list[HubView], summary="List configured hubs")
@@ -74,11 +72,12 @@ async def get_hub(request: Request, hub_id: str) -> HubView:
 @router.delete("/{hub_id}", operation_id="removeHub", status_code=status.HTTP_204_NO_CONTENT,
                summary="Forget a hub (stops and releases it first)", responses={404: {"model": Problem}, 409: {"model": Problem}})
 async def remove_hub(request: Request, hub_id: str) -> Response:
-    _refuse_while_job_runs(request, hub_id)
     try:
         await manager_of(request).remove(hub_id)
     except HubNotFound:
         raise hub_not_found(hub_id) from None
+    except HubBusy as err:
+        raise _job_running(hub_id, err.active) from err
     return Response(status_code=204)
 
 
@@ -122,10 +121,11 @@ async def _set_proxy(request: Request, hub_id: str, enabled: bool) -> HubView:
              summary="Disconnect a hub but keep its configuration",
              responses={404: {"model": Problem}, 409: {"model": Problem}})
 async def disable_hub(request: Request, hub_id: str) -> HubView:
-    _refuse_while_job_runs(request, hub_id)
     manager = manager_of(request)
     try:
         await manager.disable(hub_id)
         return await manager.view(hub_id)
     except HubNotFound:
         raise hub_not_found(hub_id) from None
+    except HubBusy as err:
+        raise _job_running(hub_id, err.active) from err

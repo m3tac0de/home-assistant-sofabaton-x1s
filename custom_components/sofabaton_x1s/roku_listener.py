@@ -24,7 +24,13 @@ class _HubRegistration:
     hub: Any
     action_id: str
     enabled: bool
-    allowed_ips: set[str]
+
+    @property
+    def allowed_ips(self) -> set[str]:
+        # Read per request: a rediscovered hub gets a new host, and a
+        # snapshot taken at setup answered its presses 403 (CR-H3-2).
+        host = str(getattr(self.hub, "host", "") or "").strip()
+        return {host} if host else set()
 
 
 class RokuListenerManager:
@@ -66,12 +72,10 @@ class RokuListenerManager:
 
     async def async_register_hub(self, hub: Any, *, enabled: bool) -> None:
         action_id = hub.get_roku_action_id()
-        allowed_ips = {str(hub.host)} if getattr(hub, "host", None) else set()
         self._hubs[hub.entry_id] = _HubRegistration(
             hub=hub,
             action_id=action_id,
             enabled=enabled,
-            allowed_ips=allowed_ips,
         )
         await self._async_ensure_server_state()
 

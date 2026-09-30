@@ -231,8 +231,10 @@ Server release checklist (after the library it depends on is on PyPI):
 2. `npm run build:frontend` and commit the bundles (the web remote,
    embeddable remote and control panel ship inside the wheel; frontend CI
    checks for drift).
-3. `python -m sofabaton_server.openapi` after any API or server version change; commit
-   `openapi.json`. Server README links must be absolute GitHub URLs (PyPI
+3. `PYTHONPATH=sofabaton-x-server/src python -m sofabaton_server.openapi sofabaton-x-server/openapi.json`
+   after any API or server version change; commit `openapi.json`. (Without
+   a path it writes next to the package, and refuses when that is an
+   installed copy rather than the checkout.) Server README links must be absolute GitHub URLs (PyPI
    renders it outside the repository).
 4. `pytest sofabaton-x-server/tests -q`, `npm run test:frontend`, and the
    Playwright specs `server-panel.spec.js` and `web-remote.spec.js`.

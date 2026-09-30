@@ -181,6 +181,29 @@ def test_idempotency_key_returns_the_existing_apply(tmp_path: Path) -> None:
         assert len(proxy.applies) == 1
 
 
+def test_an_idempotent_replay_of_an_interrupted_apply_is_not_done(tmp_path: Path) -> None:
+    """CR-S2-6: a restart left the record running and no job knows it; the
+    replay must not report the edit as applied."""
+    client, factory = _rig(tmp_path)
+    with client:
+        _ready(client, factory)
+        doc, etag = _snapshot(client)
+        desired = _edited(doc)
+        first = client.put(f"{H}/snapshot", json=desired, headers={"If-Match": etag, "Idempotency-Key": "k1"})
+        _wait(client, first.json()["job_id"])
+        doc2, etag2 = _snapshot(client)
+
+        store = client.app.state.apply_store
+        record = store.find_by_key(HOST, "k1")
+        record.state["status"] = "running"          # the server went down mid-run
+        store.save(record)
+        client.app.state.job_runner._jobs.clear()   # a fresh process knows no jobs
+
+        again = client.put(f"{H}/snapshot", json=desired, headers={"If-Match": etag2, "Idempotency-Key": "k1"})
+        assert again.status_code == 200
+        assert again.json()["status"] == "failed" and again.json()["error"]["type"] == "apply_interrupted"
+
+
 def test_stopped_apply_fails_the_job_and_resumes(tmp_path: Path) -> None:
     client, factory = _rig(tmp_path)
     with client:

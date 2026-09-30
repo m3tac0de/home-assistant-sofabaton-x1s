@@ -62,7 +62,11 @@ __all__ = [
     "WifiActivityRefs",
     "ManagedWifiSnapshot",
     "WifiInplacePlan",
+    "LiveSlotClassification",
+    "COMMAND_RECORD_STEP_KINDS",
+    "REFERENCED_RECORD_STEP_KINDS",
     "build_wifi_inplace_plan",
+    "classify_live_slots",
     "derive_device_level_bindings",
     "desired_snapshot_from_config",
     "baseline_snapshot_from_bundle",
@@ -72,6 +76,17 @@ __all__ = [
 # kept local so this module stays pure and import-light).
 WIFI_COMMAND_SLOT_COUNT = 10
 WIFI_COMMAND_LONG_PRESS_OFFSET = 10
+
+# Step kinds that write the device's command table: its commands are read
+# back after any of them.
+COMMAND_RECORD_STEP_KINDS = frozenset(
+    {"command_add", "command_rename", "command_payload", "command_delete"}
+)
+# The ones that change or remove a record something else may name. Every
+# activity naming the device holds resolved copies of those records (labels,
+# codes, the rows a delete cascades into), so those activities are read back
+# too. A command_add is left out: nothing references a command that is new.
+REFERENCED_RECORD_STEP_KINDS = frozenset({"command_rename", "command_payload", "command_delete"})
 
 
 @dataclass(frozen=True)
@@ -170,6 +185,53 @@ class WifiInplacePlan:
     @property
     def is_fallback(self) -> bool:
         return self.fallback_reason is not None
+
+
+@dataclass(frozen=True)
+class LiveSlotClassification:
+    """How the live command records compare with the last deploy.
+
+    ``drift``: records matching neither the deployed nor the desired label
+    (a foreign edit, e.g. the Sofabaton app). ``resumed``: records already
+    matching the desired label (an interrupted run of our own; the planner
+    diffs against the live read, so re-running resumes it). ``missing``:
+    deployed records absent on the hub. Each caller sets its own policy for
+    ``missing`` (the HA path lets the planner re-add them).
+    """
+
+    drift: tuple[int, ...]
+    resumed: tuple[int, ...]
+    missing: tuple[int, ...]
+
+
+def classify_live_slots(
+    live_slots: Mapping[int, WifiCommandSlot],
+    expected_labels: Mapping[int, str],
+    desired_slots: Mapping[int, WifiCommandSlot],
+    *,
+    label_key: Callable[[str], str],
+) -> LiveSlotClassification:
+    """Classify every live record against the deployed expansion.
+
+    Labels are compared through ``label_key`` (how the hub stores them: a
+    "<20-char name> Long Press" label reads back cut to the slot and is not
+    drift).
+    """
+
+    drift: list[int] = []
+    resumed: list[int] = []
+    for cid, slot in live_slots.items():
+        live = label_key(slot.label)
+        expected = expected_labels.get(cid)
+        if expected is not None and label_key(expected) == live:
+            continue
+        desired = desired_slots.get(cid)
+        if desired is not None and label_key(desired.label) == live:
+            resumed.append(cid)
+            continue
+        drift.append(cid)
+    missing = sorted(cid for cid in expected_labels if cid not in live_slots)
+    return LiveSlotClassification(tuple(sorted(drift)), tuple(sorted(resumed)), tuple(missing))
 
 
 def _fallback(reason: str) -> WifiInplacePlan:

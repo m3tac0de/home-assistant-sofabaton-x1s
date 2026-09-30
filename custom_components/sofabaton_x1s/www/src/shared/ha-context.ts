@@ -482,6 +482,9 @@ export interface BackupProgressEvent {
   failed_at?: string | null;
   filename?: string | null;
   backup?: BackupBundlePayload | null;
+  /** backup/state sends these instead of the bundle itself. */
+  has_backup?: boolean | null;
+  backup_summary?: { devices: number; activities: number } | null;
   backup_downloaded?: boolean | null;
   backup_expired?: boolean | null;
   result?: BackupRestoreResult | null;

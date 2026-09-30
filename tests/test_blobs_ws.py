@@ -62,7 +62,7 @@ def test_ws_fetch_blob_returns_normalized_payload(monkeypatch):
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -89,7 +89,7 @@ def test_ws_play_ir_blob_accepts_hex_blob(monkeypatch):
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -122,7 +122,7 @@ def test_ws_play_ir_blob_accepts_descriptor(monkeypatch):
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -156,7 +156,7 @@ def test_ws_play_ir_blob_reports_invalid_blob(monkeypatch):
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -184,7 +184,7 @@ def test_ws_play_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:

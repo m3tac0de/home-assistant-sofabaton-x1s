@@ -424,6 +424,32 @@ def test_boot_adopts_a_pending_create_that_landed(tmp_path: Path) -> None:
         assert factory.latest(LOOPBACK).wifi_deploys == []                  # no second device
 
 
+def test_boot_keeps_a_pending_create_it_cannot_verify_yet(tmp_path: Path) -> None:
+    """CR-S2-3: at boot the hub has not dialled back, so the identity read
+    fails; the landed create stays pending and is adopted once ready."""
+    client, factory = _rig(tmp_path)
+    with client:
+        _hub(client, factory)
+    _write_pending(tmp_path, {"device_id": None, "spec": _spec_dict(), "target": {"host": "192.168.1.10", "port": 8060, "action_id": HUB_ID},
+                              "pending": {"op": "create", "started_at": "2026-09-11T00:00:00+00:00"}})
+
+    def on_build(proxy):
+        from sofabaton import WifiDeviceSpec
+        proxy.mac = MAC
+        proxy.offline_until_ready = True
+        proxy.place_wifi_device(7, WifiDeviceSpec.from_dict(_spec_dict()), host="192.168.1.10", port=8060)
+
+    client, factory = _rig(tmp_path, on_build=on_build)
+    with client:
+        record = client.get(f"{HUBS}/{HUB_ID}/callback-device").json()
+        assert record["device_id"] is None and record["pending"]["op"] == "create"
+        client.portal.call(factory.latest(LOOPBACK).ready, MAC)
+        _until(lambda: client.get(f"{HUBS}/{HUB_ID}/callback-device").json()["device_id"] == 7)
+        record = client.get(f"{HUBS}/{HUB_ID}/callback-device").json()
+        assert record["adopted"] is True and record["pending"] is None
+        assert factory.latest(LOOPBACK).wifi_deploys == []
+
+
 def test_boot_drops_a_pending_create_that_never_landed(tmp_path: Path) -> None:
     client, factory = _rig(tmp_path)
     with client:
@@ -541,3 +567,82 @@ def test_listener_backoff_binds_on_its_own(tmp_path: Path, monkeypatch) -> None:
             blocker.close()
         except OSError:
             pass
+
+
+def _stage_pending_create(client, factory, *, landed: bool):
+    """A deploy that failed after (or before) the hub took the device."""
+    import functools
+
+    from sofabaton import WifiDeviceSpec
+    from sofabaton_server.callbacks import CallbackRecord
+
+    _, proxy = _hub(client, factory)
+    service = client.app.state.callbacks
+    if landed:
+        proxy.place_wifi_device(7, WifiDeviceSpec.from_dict(_spec_dict()), host="192.168.1.10", port=8060)
+    record = CallbackRecord(device_id=None, spec=_spec_dict(),
+                            target={"host": "192.168.1.10", "port": 8060, "action_id": HUB_ID},
+                            pending={"op": "create", "started_at": "2026-09-11T00:00:00+00:00"})
+    client.portal.call(functools.partial(service.save, HUB_ID, record))
+    return proxy, service
+
+
+def test_deleting_a_pending_create_that_landed_deletes_the_device(tmp_path: Path) -> None:
+    """CR-S2-4: the device the hub took goes with the record."""
+    client, factory = _rig(tmp_path)
+    with client:
+        proxy, service = _stage_pending_create(client, factory, landed=True)
+        r = client.delete(f"{HUBS}/{HUB_ID}/callback-device")
+        job = _wait(client, HUB_ID, r.json()["job_id"])
+        assert job["status"] == "done" and job["result"]["hub_device_removed"] is True
+        assert ("remove_device", (7,)) in proxy.intents
+        assert service.record(HUB_ID) is None
+
+
+def test_deleting_a_pending_create_the_hub_cannot_confirm_is_refused(tmp_path: Path) -> None:
+    """CR-S2-4: not verifiable is not 'never landed'; the record stays."""
+    from sofabaton import HubNotConnectedError
+
+    client, factory = _rig(tmp_path)
+    with client:
+        proxy, service = _stage_pending_create(client, factory, landed=True)
+
+        async def offline(*_args, **_kwargs):
+            raise HubNotConnectedError("the hub dropped")
+
+        proxy.read_payload = offline
+        r = client.delete(f"{HUBS}/{HUB_ID}/callback-device")
+        job = _wait(client, HUB_ID, r.json()["job_id"])
+        assert job["status"] == "failed" and job["error"]["type"] == "callback_device_unverifiable"
+        assert service.record(HUB_ID) is not None
+        assert ("remove_device", (7,)) not in proxy.intents
+
+
+def test_server_events_keep_their_listener_runs_and_log_failures(tmp_path: Path, caplog) -> None:
+    """CR-S2-11: the ensure_listener a hub event starts is referenced until it
+    ends, and a failure is logged when it happens, not at garbage collection."""
+    import asyncio
+    import logging
+
+    client, factory = _rig(tmp_path)
+    with client:
+        service = client.app.state.callbacks
+
+        async def main():
+            gate = asyncio.Event()
+
+            async def failing_ensure():
+                await gate.wait()
+                raise RuntimeError("broker unreachable")
+
+            service.ensure_listener = failing_ensure
+            service._on_server_event(HUB_ID, "hub_added")
+            held = len(service._ensure_tasks)
+            gate.set()
+            await asyncio.sleep(0.01)
+            return held, len(service._ensure_tasks)
+
+        with caplog.at_level(logging.ERROR, logger="sofabaton_server.callbacks"):
+            held, after = client.portal.call(main)
+        assert (held, after) == (1, 0)
+        assert "broker unreachable" in caplog.text

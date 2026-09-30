@@ -846,19 +846,13 @@ class CommandConfigStore:
         await self._store.async_save(self._data)
         return True
 
-    async def async_set_deployed_device_id(
-        self,
-        entry_id: str,
-        device_key: str,
-        deployed_device_id: int | None,
-    ) -> bool:
-        """Persist the deployed hub-device id for an existing Wifi Device record."""
+    async def async_remove_hub(self, entry_id: str) -> bool:
+        """Drop everything stored for a removed hub (CR-H2-7)."""
 
-        hub_device = self._find_hub_device_record(entry_id, device_key)
-        normalized_device_id = int(deployed_device_id) if isinstance(deployed_device_id, int) else None
-        if hub_device.get("deployed_device_id") == normalized_device_id:
+        hubs = self._data.setdefault("hubs", {})
+        if entry_id not in hubs:
             return False
-        hub_device["deployed_device_id"] = normalized_device_id
+        hubs.pop(entry_id, None)
         await self._store.async_save(self._data)
         return True
 
@@ -1107,25 +1101,6 @@ class CommandConfigStore:
             record.get("commands"), slot_count=slot_count, standalone_long_press=True
         )
         return commands, slot_count
-
-    async def async_get_or_create_wifi_events_device(
-        self,
-        entry_id: str,
-        *,
-        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
-    ) -> dict[str, Any]:
-        """Return the Wifi Events record payload, creating the (cap-exempt)
-        record on first use."""
-
-        record = self._wifi_events_record(entry_id)
-        if record is None:
-            record = _default_device_payload(
-                device_key=WIFI_EVENTS_DEVICE_KEY,
-                device_name=WIFI_EVENTS_DEVICE_NAME,
-            )
-            self._hub_device_records(entry_id).append(record)
-            await self._store.async_save(self._data)
-        return self._payload_for_device(record, roku_listen_port=roku_listen_port)
 
     def list_wifi_events(self, entry_id: str) -> list[dict[str, Any]]:
         """Configured slots of the Wifi Events record, with their hub ids.

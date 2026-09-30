@@ -216,6 +216,8 @@ class MqttSubscriber:
         self._next_retry_at: Optional[str] = None
         self._packet_id = 0
         self._changed = asyncio.Event()
+        # Set by close(): a replaced subscriber never starts again.
+        self._closed = False
 
     # -- state -----------------------------------------------------------------
 
@@ -238,6 +240,8 @@ class MqttSubscriber:
     async def set_topics(self, topics: set[str]) -> None:
         """The topics to be subscribed to from now on; none means no connection."""
 
+        if self._closed:
+            return
         self._wanted = set(topics)
         if not self.configured:
             return
@@ -247,6 +251,12 @@ class MqttSubscriber:
             await self.stop()
             return
         self._changed.set()
+
+    async def close(self) -> None:
+        """Stop for good: later set_topics calls are ignored (CR-S2-5)."""
+
+        self._closed = True
+        await self.stop()
 
     async def stop(self) -> None:
         task, self._task = self._task, None

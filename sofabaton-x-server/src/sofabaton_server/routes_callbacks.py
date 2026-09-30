@@ -26,12 +26,11 @@ from . import API_PREFIX
 from .callbacks import (
     DEFAULT_DEVICE_KEY,
     MAX_WIFI_DEVICES,
-    TRANSPORT_HTTP,
     TRANSPORT_MQTT,
     CallbackDeviceExists,
     CallbackDeviceMissing,
     CallbackDeviceNotStale,
-    CallbackDeviceStale,
+    CallbackDeviceUnverifiable,
     CallbackPortRefused,
     CallbackService,
     ListenerState,
@@ -203,8 +202,9 @@ class PressPage(BaseModel):
 
 class MqttView(BaseModel):
     """The server's broker connection. The settings come from the command line or the
-    environment only, and the password is not part of any answer. ``wanted`` is true
-    while a device uses the transport; the connection exists only then."""
+    environment, or else from the control panel (PUT /server/mqtt/config); the password
+    is not part of any answer. ``wanted`` is true while a device uses the transport; the
+    connection exists only then."""
 
     configured: bool
     wanted: bool
@@ -386,13 +386,21 @@ async def _remove(request: Request, hub_id: str, *, key: str, force: bool, kind:
             own_spec = None
         references = service.references(await proxy.snapshot(), record.device_id, spec=own_spec)
         if references:
-            names = ", ".join(f"{r['activity_id']} ({', '.join(r['kinds'])})" for r in references)
+            names = ", ".join(
+                f"{r['activity_id']} ({'not read yet' if r['kinds'] == ['unscanned'] else ', '.join(r['kinds'])})"
+                for r in references
+            )
             raise ApiProblem(409, "callback_device_referenced", "Activities still reference the callback device",
                              detail=f"referenced by activity {names}; clear them or pass ?force=true", hub_id=hub_id)
     await _require_control(proxy, hub_id)
 
     async def run(progress) -> dict[str, Any]:
-        return await service.remove(hub_id, proxy, key=key)
+        try:
+            return await service.remove(hub_id, proxy, key=key)
+        except CallbackDeviceUnverifiable as err:
+            raise ApiProblem(409, "callback_device_unverifiable",
+                             "The hub could not confirm whether the pending device landed",
+                             detail=f"{err}; try again when the hub is connected", hub_id=hub_id) from err
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -406,12 +414,18 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
     if not record.stale:
         raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
                          detail="it is still on the hub; update it instead", hub_id=hub_id)
+    hub_version = (await proxy.status()).hub_version
     try:
         if record.transport != TRANSPORT_MQTT:
-            service.check_port((await proxy.status()).hub_version)
+            service.check_port(hub_version)
     except CallbackPortRefused as err:
         raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
                          detail=str(err), hub_id=hub_id) from err
+    if record.transport == TRANSPORT_MQTT:
+        reason = service.mqtt_unavailable_reason(hub_id, hub_version)
+        if reason is not None:
+            raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail=reason, hub_id=hub_id)
     await _require_control(proxy, hub_id)
 
     async def run(progress) -> dict[str, Any]:
@@ -419,6 +433,9 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
             fresh = await service.redeploy(hub_id, proxy, key=key)
         except MqttUnavailable as err:
             raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail=str(err), hub_id=hub_id) from err
+        except CallbackPortRefused as err:
+            raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
                              detail=str(err), hub_id=hub_id) from err
         except CallbackDeviceNotStale as err:
             raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",

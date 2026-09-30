@@ -326,3 +326,69 @@ def test_options_flow_syncs_shared_ports_to_all_hubs() -> None:
     assert entry_one.options["other"] == "one"
     assert entry_two.options["other"] == "two"
     assert {entry_id for entry_id, _ in updates} == {"entry-1", "entry-2"}
+
+
+def test_manual_flow_refuses_a_host_that_is_not_an_ipv4_address() -> None:
+    """CR-H3-3: the hub listener matches the dial-back by exact IP."""
+    flow = _flow_with_x2_enabled(False)
+
+    result = _run(flow.async_step_manual({"host": "sofabaton.lan"}))
+    assert result["type"] == "form" and result["errors"] == {"host": "invalid_host"}
+
+    _run(flow.async_step_manual({"host": " 192.168.2.40 "}))
+    assert flow._chosen_hub["host"] == "192.168.2.40"
+
+
+def test_the_same_hub_is_never_configured_twice() -> None:
+    """CR-H3-4: a manual entry (synthetic MAC) and a discovered one (real
+    MAC) of one hub are matched by host or by the banner MAC."""
+    existing = SimpleNamespace(
+        unique_id="02:11:22:33:44:55",  # synthetic manual id
+        data={"host": "192.168.2.40", "port": 8102, "banner_mac": "E26A44861B45"},
+        options={},
+    )
+    updated: list = []
+
+    flow = _flow_with_x2_enabled(True)
+    flow._async_current_entries = lambda: [existing]  # type: ignore[assignment]
+    assert _run(flow.async_step_manual({"host": "192.168.2.40"}))["reason"] == "already_configured"
+
+    flow = _flow_with_x2_enabled(True)
+    flow._async_current_entries = lambda: [existing]  # type: ignore[assignment]
+    flow.hass.config_entries = SimpleNamespace(
+        async_update_entry=lambda entry, *, data=None: updated.append(data["host"])
+    )
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(
+                MDNS_SERVICE_TYPES[0],
+                host="192.168.2.77",
+                properties={"NAME": b"Hub", "MAC": b"e2:6a:44:86:1b:45", "HVER": b"2", "AVER": b"8"},
+            )
+        )
+    )
+    assert result["reason"] == "already_configured"
+    assert updated == ["192.168.2.77"]
+
+
+def test_an_aborted_add_leaves_the_other_hubs_ports_alone() -> None:
+    """CR-H3-11: the duplicate check runs before the shared ports are
+    pushed to every entry."""
+    existing = SimpleNamespace(unique_id="x", data={"host": "10.0.0.9"}, options={"proxy_udp_port": 8102})
+    updated: list = []
+    flow = _flow_with_x2_enabled(False)
+    flow._async_current_entries = lambda: [existing]  # type: ignore[assignment]
+    flow.hass.config_entries = SimpleNamespace(
+        async_update_entry=lambda entry, *, options=None: updated.append(options)
+    )
+
+    def _already(*_args, **_kwargs):
+        raise RuntimeError("already_configured")
+
+    flow._abort_if_unique_id_configured = _already  # type: ignore[assignment]
+    _run(flow.async_step_manual({"host": "10.0.0.10"}))
+    try:
+        _run(flow.async_step_ports({"proxy_udp_port": 9000, "hub_listen_base": 8200}))
+    except RuntimeError:
+        pass
+    assert updated == []

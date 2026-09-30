@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -100,6 +101,9 @@ class Advertiser:
     def __init__(self) -> None:
         self._zc: Any = None
         self._info: Any = None
+        # Only the newest update publishes, one publisher at a time.
+        self._generation = 0
+        self._publish_lock = threading.Lock()
 
     @staticmethod
     def _service_info(settings: Settings, hub_count: int, auth_claimed: bool = False) -> Any:
@@ -122,16 +126,34 @@ class Advertiser:
         log.info("advertising %s on port %d", SERVICE_TYPE, settings.port)
 
     def update(self, settings: Settings, hub_count: int, *, auth_claimed: bool = False) -> None:
-        """Re-publish the record with a new TXT (``ServiceInfo`` is immutable)."""
+        """Re-publish the record with a new TXT (``ServiceInfo`` is immutable).
+
+        ``update_service`` waits for the whole announcement (about 450 ms),
+        so on the event loop it runs in the executor (CR-S1-5); only the
+        newest TXT is published when updates overlap.
+        """
 
         if self._zc is None or self._info is None:
             return
+        self._generation += 1
+        args = (self._generation, settings, hub_count, auth_claimed)
         try:
-            info = self._service_info(settings, hub_count, auth_claimed)
-            self._zc.update_service(info)
-            self._info = info
-        except Exception:  # noqa: BLE001
-            log.warning("advertisement update failed", exc_info=True)
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._publish(*args)
+            return
+        loop.run_in_executor(None, self._publish, *args)
+
+    def _publish(self, generation: int, settings: Settings, hub_count: int, auth_claimed: bool) -> None:
+        with self._publish_lock:
+            if generation != self._generation or self._zc is None:
+                return
+            try:
+                info = self._service_info(settings, hub_count, auth_claimed)
+                self._zc.update_service(info)
+                self._info = info
+            except Exception:  # noqa: BLE001
+                log.warning("advertisement update failed", exc_info=True)
 
     def stop(self) -> None:
         if self._zc is not None and self._info is not None:

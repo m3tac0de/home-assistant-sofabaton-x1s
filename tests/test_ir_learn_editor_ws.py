@@ -258,10 +258,7 @@ def test_learn_subscribe_refuses_while_the_hub_is_busy(monkeypatch) -> None:
     conn = _Conn()
     _wire(monkeypatch, hub)
 
-    def locked(*_args, **_kwargs):
-        raise HomeAssistantError("device sync in progress")
-
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", locked)
+    monkeypatch.setattr(integration, "_hub_is_busy", lambda *_args, **_kwargs: True)
 
     _run(
         integration._ws_ir_learn_subscribe(
@@ -269,7 +266,7 @@ def test_learn_subscribe_refuses_while_the_hub_is_busy(monkeypatch) -> None:
         )
     )
 
-    assert conn.error == (1, "unavailable", "device sync in progress")
+    assert conn.error == (1, "busy", integration._HUB_BUSY_MESSAGE)
     assert hub.learn_calls == []
     assert conn.messages == []
 

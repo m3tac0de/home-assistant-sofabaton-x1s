@@ -420,7 +420,7 @@ class SofabatonBackupTab extends LitElement {
     const isRunning = this._isProgressRunning(this._backupProgress);
     const isSuccess = String(this._backupProgress?.status || "") === "success";
     const allDevicesSelected = devices.length > 0 && this._backupDeviceIds.length === devices.length;
-    const summary = this._backupResultSummary(this._backupProgress?.backup);
+    const summary = this._backupResultSummary(this._backupProgress);
 
     return html`
       ${renderSecondaryTabContent({
@@ -444,7 +444,7 @@ class SofabatonBackupTab extends LitElement {
               ? this._renderProgressCard(this._backupProgress, "backup")
               : isSuccess
                 ? (() => {
-                    const hasBundle = !!this._backupProgress?.backup;
+                    const hasBundle = !!(this._backupProgress?.backup || this._backupProgress?.has_backup);
                     const wasDownloaded = !!this._backupProgress?.backup_downloaded;
                     const expired = !!this._backupProgress?.backup_expired;
                     return html`
@@ -1450,9 +1450,12 @@ class SofabatonBackupTab extends LitElement {
     // _backupProgress.backup_downloaded for us when that happens.
   }
 
-  private _backupResultSummary(bundle: BackupBundlePayload | null | undefined) {
-    const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : 0;
-    const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : 0;
+  private _backupResultSummary(progress: BackupProgressEvent | null | undefined) {
+    // The progress event carries the bundle; backup/state sends only counts.
+    const bundle = progress?.backup;
+    const counts = progress?.backup_summary;
+    const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : Number(counts?.activities || 0);
+    const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : Number(counts?.devices || 0);
     return TOOLS_CARD_STRINGS.backup.backupResultSummary(activityCount, deviceCount);
   }
 

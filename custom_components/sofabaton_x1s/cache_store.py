@@ -19,9 +19,10 @@ class _MigratingStore(Store[dict[str, Any]]):
         old_minor_version: int,
         old_data: dict[str, Any],
     ) -> dict[str, Any]:
-        # Phase 6 reshaped cached state; discard any pre-v2 payload.
+        # A major bump means the cached state was reshaped: discard the hub
+        # payloads, but keep the user's opt-in (CR-H2-6).
         if old_major_version < CACHE_STORE_VERSION:
-            return {"enabled": False, "hubs": {}}
+            return {"enabled": bool((old_data or {}).get("enabled", False)), "hubs": {}}
         if old_minor_version < 2:
             # 2.2 dropped the separately-persisted structural bundles: they
             # are assembled on demand from the canonical hub cache now. The

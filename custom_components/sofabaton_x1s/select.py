@@ -12,8 +12,9 @@ from .const import (
     CONF_MAC,
     signal_activity,
     signal_client,
+    signal_hub,
 )
-from .hub import SofabatonHub, get_hub_display_name, get_hub_model
+from .hub import SofabatonHub, hub_device_info
 
 POWERED_OFF = "Powered Off"
 
@@ -37,16 +38,10 @@ class SofabatonActivitySelect(SelectEntity):
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_activity"
         self._attr_options = [POWERED_OFF]
-        self._attr_available = True
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            manufacturer="Sofabaton",
-            model=f"{get_hub_model(self._entry)} via proxy",
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
@@ -56,13 +51,10 @@ class SofabatonActivitySelect(SelectEntity):
                 self._handle_update,
             )
         )
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                signal_client(self._hub.entry_id),
-                self._handle_client_state,
+        for sig in (signal_client(self._hub.entry_id), signal_hub(self._hub.entry_id)):
+            self.async_on_remove(
+                async_dispatcher_connect(self.hass, sig, self._handle_client_state)
             )
-        )
         self._rebuild_options()
         self._handle_client_state()
 
@@ -82,8 +74,13 @@ class SofabatonActivitySelect(SelectEntity):
 
     @callback
     def _handle_client_state(self) -> None:
-        self._attr_available = not self._hub.client_connected
         self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        # The remote's gate: a hub that is offline or held by the app
+        # cannot switch activities (CR-H3-7).
+        return self._hub.hub_connected and not self._hub.client_connected
 
     @property
     def current_option(self) -> str | None:

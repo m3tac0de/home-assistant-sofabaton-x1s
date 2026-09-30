@@ -35,9 +35,9 @@ filter by `sofabaton_x1s`.
 | `sofabaton_x1s.backup_bundle` | Read a `hub_bundle` JSON payload covering devices and (optionally) all activities | Yes |
 | `sofabaton_x1s.restore_backup` | Restore a `hub_bundle` payload onto the live hub | Yes |
 
-> **Sync guard:** several actions that modify the hub raise an error if a
-> `sync_command_config` is currently in progress.
-> Wait for the sync to complete before running other write actions.
+> **Busy guard:** every action that talks to the hub raises an error while
+> another backup, restore, sync or hub write is running for that hub (from an
+> action or from the Control Panel card). Wait for it to finish, then retry.
 
 ---
 
@@ -515,12 +515,14 @@ Wifi Commands tab, but can also be called directly from automations or scripts.
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |
 | `device` | HA Device | Yes | Your Sofabaton hub. |
-| `device_name` | string | No | Optional override for the Wifi Device name. Default `Home Assistant`. |
+| `wifi_device` | string | When the hub has more than one Wifi Device | The Wifi Device to deploy, by the name the Wifi Commands tab shows. |
+| `device_name` | string | No | Optional new name for the Wifi Device on the hub. Default: its saved name. |
 
 ```yaml
 action: sofabaton_x1s.sync_command_config
 data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
+  wifi_device: Home Assistant
 ```
 
 ---

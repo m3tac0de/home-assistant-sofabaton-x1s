@@ -402,7 +402,7 @@ def test_build_hub_code_record_restore_data_no_decoded_for_unsupported_class():
     assert "decoded" not in restore_data
 
 
-def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypatch):
+def test_backup_activity_filters_internal_power_macro_device_255(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     hass = FakeHass(loop)
@@ -463,7 +463,7 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
         ],
     )
 
-    result = loop.run_until_complete(hub.async_backup_activity(activity_id=act_id))
+    result = hub._proxy.backup_activity(act_id)
 
     assert result is not None
     assert result["complete"] is True
@@ -1633,7 +1633,7 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
             }
         ]
     }
-    assert payload["activity_keybindings"] == {}
+    assert "activity_keybindings" not in payload
     assert payload["devices_list"] == [
         {
             "id": dev_id,
@@ -1701,7 +1701,7 @@ def test_cache_generation_increments_for_cache_visible_updates(monkeypatch):
 
     assert hub.cache_generation == 0
 
-    monkeypatch.setattr(hub._proxy, "get_devices", lambda: ({0x01: {"name": "TV"}}, True))
+    monkeypatch.setattr(hub._proxy, "get_devices", lambda **_k: ({0x01: {"name": "TV"}}, True))
     hub._on_devices_burst("devices")
     loop.run_until_complete(asyncio.sleep(0))
     assert hub.cache_generation == 1
@@ -1913,7 +1913,7 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
         calls.append(f"activities:{force_refresh}")
         return ({}, False)
 
-    def _get_devices(*, force_refresh=False):
+    def _get_devices(*, force_refresh=False, **_k):
         calls.append(f"devices:{force_refresh}")
         return ({}, False)
 
@@ -2292,7 +2292,7 @@ def test_roku_http_post_runs_configured_short_press_action():
             "turn_on",
             {},
             {"entity_id": "light.living_room"},
-            True,
+            False,
         )
     ]
 
@@ -2366,7 +2366,7 @@ def test_roku_http_post_runs_configured_long_press_action():
             "turn_on",
             {},
             {"entity_id": "light.long_press_target"},
-            True,
+            False,
         )
     ]
 
@@ -2454,7 +2454,7 @@ def test_roku_http_post_resolves_slot_callback_from_migrated_single_device_store
             "turn_on",
             {},
             {"entity_id": "light.live_target"},
-            True,
+            False,
         )
     ]
 
@@ -2614,51 +2614,6 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
 
 
 
-
-def test_clear_cache_for_executor_job_uses_partial_not_kwargs(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    class StrictHass(FakeHass):
-        async def async_add_executor_job(self, func, *args):  # no kwargs on purpose
-            return func(*args)
-
-    hass = StrictHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-    )
-
-    cleared: list[tuple[int, str]] = []
-
-    def _clear_cached_entity_detail(ent_id, *, kind):
-        cleared.append((ent_id, kind))
-
-    hub._proxy.clear_cached_entity_detail = _clear_cached_entity_detail  # type: ignore[method-assign]
-    hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
-
-    sent_signals: list[tuple[str, str]] = []
-
-    def _fake_dispatcher_send(_hass, signal):
-        sent_signals.append(("signal", signal))
-
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", _fake_dispatcher_send)
-
-    loop.run_until_complete(hub.async_clear_cache_for(kind="activity", ent_id=42))
-
-    assert cleared == [(42, "activity")]
-    assert sent_signals
-
-    loop.close()
 
 def test_on_activities_burst_syncs_current_activity_from_active_flag(monkeypatch):
     loop = asyncio.new_event_loop()
@@ -2905,6 +2860,11 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
         "async_request_favorites_order",
         lambda *_a, **_k: asyncio.sleep(0, result=[(1, 1)]),
     )
+    monkeypatch.setattr(
+        hub,
+        "async_reorder_favorites",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
 
     payload = {
         "commands": [
@@ -3072,7 +3032,7 @@ def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favor
     assert call_order.index("request_activity_mapping") < call_order.index(
         "ensure_commands_for_activity"
     )
-    assert hub.get_activity_favorites_for(101) == [
+    assert hub._proxy.state.get_activity_favorite_labels(101) == [
         {"name": "Scene Lights", "device_id": 9, "command_id": 1}
     ]
 
@@ -3496,7 +3456,7 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
     }
     ready = {"value": False}
 
-    monkeypatch.setattr(hub._proxy, "get_devices", lambda: (snapshot, ready["value"]))
+    monkeypatch.setattr(hub._proxy, "get_devices", lambda **_k: (snapshot, ready["value"]))
 
     request_calls = {"count": 0}
 
@@ -3681,6 +3641,88 @@ def test_sync_command_config_rolls_back_created_device_when_managed_delete_fails
         )
 
     assert call_order == ["create", "add:101:9", "delete:11", "delete:9"]
+
+    loop.close()
+
+
+def test_sync_command_config_rolls_back_when_joining_an_activity_fails(monkeypatch):
+    """CR-H1-7: a replacement device that cannot join every activity is
+    deleted again before the old managed device is touched."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    async def _add_activity(act_id, dev_id, **_kwargs):
+        call_order.append(f"add:{act_id}:{dev_id}")
+        return None
+
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+
+    with pytest.raises(Exception, match="Failed adding Wifi Device to all activities"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(
+                command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+            )
+        )
+
+    assert call_order == ["create", "add:101:9", "delete:9"]
+
+    loop.close()
+
+
+def test_sync_command_config_replace_path_fails_on_a_refused_binding(monkeypatch):
+    """CR-H1-4: a binding write the hub refuses no longer ends in 'Sync
+    complete'. The deploy finishes (the new device is recorded), but the
+    record reads as out of date and the sync fails, so the user re-syncs."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    async def _refused(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(hub, "async_command_to_button", _refused)
+
+    saved: list[dict] = []
+
+    class _Store:
+        async def async_list_hub_devices(self, *_args, **_kwargs):
+            return None
+
+        def get_deployed_wifi_commands(self, *_args, **_kwargs):
+            return []
+
+        async def async_save_deployed_wifi_commands(self, entry_id, device_key, commands, **kwargs):
+            saved.append(kwargs)
+
+        def __getattr__(self, name):
+            async def _noop(*_args, **_kwargs):
+                return None
+
+            return _noop
+
+    async def _fake_get_store(_hass):
+        return _Store()
+
+    monkeypatch.setattr(hub_module, "async_get_command_config_store", _fake_get_store)
+
+    with pytest.raises(Exception, match=r"Failed applying 2 hub write\(s\)"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(
+                command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+            )
+        )
+
+    assert "backup:9" in call_order  # the tail still ran
+    assert saved and saved[-1]["deployed_device_id"] == 9
+    assert saved[-1]["commands_hash"] == ""
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "failed"
+    assert "button ok in activity 101" in progress["message"]
 
     loop.close()
 
@@ -4606,7 +4648,7 @@ def test_on_devices_burst_does_not_override_mdns_hub_version() -> None:
     )
 
     hub._proxy.hub_version = "X1S"
-    hub._proxy.get_devices = lambda: ({1: {"name": "TV", "brand": "Sony"}}, True)
+    hub._proxy.get_devices = lambda **_k: ({1: {"name": "TV", "brand": "Sony"}}, True)
 
     hub._on_devices_burst("devices")
     loop.run_until_complete(asyncio.sleep(0))
@@ -4667,7 +4709,7 @@ def test_on_devices_burst_reconciles_legacy_managed_wifi_device_id(monkeypatch) 
         version="X1",
     )
 
-    hub._proxy.get_devices = lambda: ({11: {"name": "Managed Device", "brand": "m3tac0de-abc"}}, True)
+    hub._proxy.get_devices = lambda **_k: ({11: {"name": "Managed Device", "brand": "m3tac0de-abc"}}, True)
 
     hub._on_devices_burst("devices")
     loop.run_until_complete(asyncio.sleep(0))
@@ -4742,7 +4784,7 @@ def test_on_devices_burst_reconciles_hash_only_wifi_devices_by_unique_hash(monke
         version="X1",
     )
 
-    hub._proxy.get_devices = lambda: (
+    hub._proxy.get_devices = lambda **_k: (
         {
             11: {"name": "Managed Device", "brand": "m3tac0de-abc"},
             22: {"name": "Other Managed Device", "brand": "m3tac0de-def"},
@@ -4826,7 +4868,7 @@ def test_on_devices_burst_repairs_duplicate_deployed_device_claims_by_unique_has
         version="X1",
     )
 
-    hub._proxy.get_devices = lambda: (
+    hub._proxy.get_devices = lambda **_k: (
         {
             3: {"name": "Managed Device", "brand": "m3tac0de-lghash"},
         },
@@ -4958,44 +5000,6 @@ def test_restore_persistent_cache_primes_hub_trackers():
     assert 104 in hub._command_entities
     assert 104 in hub._proxy._activity_map_complete
     assert hub.devices.get(104, {}).get("name") == "Xbox"
-
-    loop.close()
-
-
-def test_clear_cache_for_device_requests_fresh_devices(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    hass = FakeHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-    )
-
-    refreshed = {"called": False}
-
-    async def _fake_refresh_devices_snapshot(timeout_seconds: float = 15.0):
-        refreshed["called"] = True
-        return {}
-
-    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _fake_refresh_devices_snapshot)
-
-    hub._proxy.clear_cached_entity_detail = lambda ent_id, *, kind: None  # type: ignore[method-assign]
-    hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
-
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
-
-    loop.run_until_complete(hub.async_clear_cache_for(kind="device", ent_id=9))
-
-    assert refreshed["called"] is True
 
     loop.close()
 
@@ -6178,7 +6182,6 @@ def _make_mqtt_ingress_fake(dispatched):
         hass=None,
         entry_id="entry-id",
         devices={11: {"name": "Lights"}},
-        _last_wifi_mqtt_press_at=None,
     )
     fake._get_cached_device_name = lambda device_id: None
 
@@ -6230,22 +6233,18 @@ def test_mqtt_ingress_handler_guards_and_dispatch(monkeypatch):
         run = loop.run_until_complete
 
         # Retained messages are dropped before anything else (restart
-        # replay must never run an Action) and do not even count as a
-        # liveness signal.
+        # replay must never run an Action).
         run(handler(fake, _mqtt_msg('{"device_id": 11, "key_id": 1}', retain=True)))
         assert dispatched == []
-        assert fake._last_wifi_mqtt_press_at is None
 
         # Malformed payloads are dropped silently.
         run(handler(fake, _mqtt_msg("not json")))
         run(handler(fake, _mqtt_msg('{"device_id": "x", "key_id": 1}')))
         assert dispatched == []
 
-        # Unmanaged device ids never fire (app-created MQTT devices), but
-        # DO update the passive liveness timestamp.
+        # Unmanaged device ids never fire (app-created MQTT devices).
         run(handler(fake, _mqtt_msg('{"device_id": 99, "key_id": 1}')))
         assert dispatched == []
-        assert fake._last_wifi_mqtt_press_at is not None
 
         # A device deployed over HTTP is not routable via MQTT either.
         run(handler(fake, _mqtt_msg('{"device_id": 12, "key_id": 1}')))
@@ -6481,7 +6480,7 @@ def test_cache_reset_and_hub_drop_release_button_waiters(monkeypatch):
     async def main():
         waiting = asyncio.ensure_future(hub._async_wait_for_buttons_ready(0x65, timeout=30))
         await asyncio.sleep(0)
-        hub._reset_entity_cache(0x65, clear_buttons=True, clear_favorites=False, clear_macros=False)
+        hub._reset_entity_cache(0x65)
         await asyncio.wait_for(waiting, 2)
 
         waiting = asyncio.ensure_future(hub._async_wait_for_buttons_ready(0x66, timeout=30))

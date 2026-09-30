@@ -5,13 +5,14 @@ import logging
 
 from homeassistant.components.text import TextEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_HOST, CONF_MAC, DOMAIN
-from .hub import SofabatonHub, get_hub_display_name, get_hub_model
+from .const import CONF_HOST, CONF_MAC, DOMAIN, signal_hub
+from .hub import SofabatonHub, hub_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,13 +43,19 @@ class SofabatonHubIpText(TextEntity):
     def native_value(self) -> str | None:
         return self._hub.host
 
+    async def async_added_to_hass(self) -> None:
+        # A rediscovered or edited host shows once the hub reconnects on it.
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, signal_hub(self._hub.entry_id), self._handle_hub)
+        )
+
+    @callback
+    def _handle_hub(self) -> None:
+        self.async_write_ha_state()
+
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_set_value(self, value: str) -> None:
         new_host = value.strip()
@@ -68,7 +75,9 @@ class SofabatonHubIpText(TextEntity):
             return
 
         _LOGGER.debug("[%s] Updating hub IP to %s via text entity", entry.entry_id, new_host)
+        # The entry's update listener applies the new host (and keeps the
+        # engine cache); a reload on top raced it and could leave an
+        # orphaned proxy holding the hub (CR-H3-5).
         self.hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_HOST: new_host}
         )
-        await self.hass.config_entries.async_reload(entry.entry_id)

@@ -59,6 +59,9 @@ class _FakeHub:
         self.play_calls.append(blob)
         return self.play_return
 
+    def record_ir_emission(self, **_kwargs):
+        return None
+
 
 def _make_entity(hub=None):
     hub = hub or _FakeHub()

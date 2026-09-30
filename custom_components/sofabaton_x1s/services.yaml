@@ -321,9 +321,17 @@ sync_command_config:
       selector:
         device:
           integration: sofabaton_x1s
+    wifi_device:
+      required: false
+      selector:
+        text:
     device_name:
       required: false
-      default: Home Assistant
+      selector:
+        text:
+    device_key:
+      required: false
+      advanced: true
       selector:
         text:
 

@@ -11,8 +11,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN, CONF_MAC
-from .const import signal_wifi_device
-from .hub import SofabatonHub, get_hub_display_name, get_hub_model
+from .const import signal_settings, signal_wifi_device
+from .hub import SofabatonHub, hub_device_info
 
 
 async def async_setup_entry(
@@ -45,11 +45,19 @@ class SofabatonProxySwitch(SwitchEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
+        return hub_device_info(self._hub, self._entry)
+
+    async def async_added_to_hass(self) -> None:
+        # Toggled from the tools card too (CR-H3-6).
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, signal_settings(self._hub.entry_id), self._handle_settings
+            )
         )
+
+    @callback
+    def _handle_settings(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:
@@ -76,11 +84,19 @@ class SofabatonHexLoggingSwitch(SwitchEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
+        return hub_device_info(self._hub, self._entry)
+
+    async def async_added_to_hass(self) -> None:
+        # Toggled from the tools card too (CR-H3-6).
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, signal_settings(self._hub.entry_id), self._handle_settings
+            )
         )
+
+    @callback
+    def _handle_settings(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:
@@ -107,11 +123,7 @@ class SofabatonWifiDeviceSwitch(SwitchEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            model=get_hub_model(self._entry),
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(

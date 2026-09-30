@@ -21,7 +21,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 from sofabaton import WriteProgress
 
-from .models import JobStatus, JobView, Problem, now_iso
+from .models import JobView, Problem, now_iso
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +108,31 @@ class JobRunner:
             if view.status not in ACTIVE:
                 return view
         return None
+
+    def rekey(self, old_hub_id: str, new_hub_id: str) -> None:
+        """Follow the manager's re-key from host to MAC (CR-S1-1): the
+        running job and the history move to the new id, so the one-job
+        rule, the disable guard and GET /jobs still see them."""
+
+        moved = self._by_hub.pop(old_hub_id, None)
+        if moved is not None:
+            target = self._by_hub.setdefault(new_hub_id, deque(maxlen=self._keep + 1))
+            for job_id in reversed(moved):
+                target.appendleft(job_id)
+        active = self._active.pop(old_hub_id, None)
+        if active is not None:
+            self._active[new_hub_id] = active
+        for job in self._jobs.values():
+            if job.view.hub_id == old_hub_id:
+                job.view.hub_id = new_hub_id
+
+    def forget_hub(self, hub_id: str) -> None:
+        """Drop a removed hub's finished jobs (CR-S1-6)."""
+
+        for job_id in list(self._by_hub.pop(hub_id, ())):
+            job = self._jobs.get(job_id)
+            if job is not None and job.view.status not in ACTIVE:
+                self._jobs.pop(job_id, None)
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -200,7 +225,13 @@ class JobRunner:
             if job.task is None or job.task.done():
                 continue
             if job.view.cancellable:
-                job.task.cancel()
+                # Through cancel(): its on_cancel hook tells the engine to
+                # stop (an IR learn keeps its executor thread otherwise,
+                # and process exit waits for it; CR-S1-2).
+                try:
+                    await self.cancel(job.view.hub_id, job.view.job_id)
+                except (JobNotFound, JobNotCancellable):
+                    pass
             else:
                 log.info("shutdown: waiting for job %s (%s) on hub %s to finish",
                          job.view.job_id, job.view.kind, job.view.hub_id)

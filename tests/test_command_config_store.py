@@ -328,32 +328,6 @@ def test_get_live_wifi_command_slot_falls_back_for_migrated_single_device_store(
     }
 
 
-def test_async_set_deployed_device_id_updates_existing_device_record() -> None:
-    store = CommandConfigStore(SimpleNamespace())
-    _run(store.async_load())
-    store._data = {  # type: ignore[attr-defined]
-        "hubs": {
-            "hub-1": {
-                "devices": [
-                    {
-                        "device_key": "default",
-                        "device_name": "Home Assistant",
-                        "commands": default_commands(),
-                        "deployed_commands": [{"name": "Legacy Slot"}],
-                        "deployed_device_id": None,
-                    }
-                ]
-            }
-        }
-    }
-
-    changed = _run(store.async_set_deployed_device_id("hub-1", "default", 77))
-    payload = _run(store.async_get_hub_config("hub-1", device_key="default"))
-
-    assert changed is True
-    assert payload["deployed_device_id"] == 77
-
-
 def test_get_deployed_wifi_commands_returns_empty_when_multiple_records_claim_same_device_id() -> None:
     store = CommandConfigStore(SimpleNamespace())
     _run(store.async_load())
@@ -851,3 +825,17 @@ def test_save_deployed_wifi_commands_transport_semantics() -> None:
     record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
     assert record["deployed_transport"] == "mqtt"
     assert record["deployed_commands_hash"] == "hash2"
+
+
+def test_removing_a_hub_drops_its_records() -> None:
+    """CR-H2-7: a removed hub leaves nothing in the command config store."""
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._store = SimpleNamespace(async_save=lambda _data: asyncio.sleep(0))  # type: ignore[attr-defined]
+    _run(store.async_create_hub_device("hub-1", "Lights"))
+    _run(store.async_create_hub_device("hub-2", "Blinds"))
+
+    assert _run(store.async_remove_hub("hub-1")) is True
+    assert _run(store.async_remove_hub("hub-1")) is False
+    assert "hub-1" not in store._data["hubs"]  # type: ignore[attr-defined]
+    assert "hub-2" in store._data["hubs"]  # type: ignore[attr-defined]

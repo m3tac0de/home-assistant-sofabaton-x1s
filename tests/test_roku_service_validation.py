@@ -810,7 +810,7 @@ def test_play_ir_blob_accepts_hex_blob_body(monkeypatch) -> None:
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_play_ir_blob(
@@ -831,7 +831,7 @@ def test_play_ir_blob_accepts_descriptor_string(monkeypatch) -> None:
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     descriptor = "P:Sony12 R:40000 D:1 F:18 MUL:2"
     result = asyncio.run(
@@ -967,7 +967,7 @@ def test_reorder_favorites_requires_explicit_fav_ids(monkeypatch) -> None:
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_reorder_favorites(
@@ -986,7 +986,7 @@ def test_reorder_favorites_accepts_legacy_order_alias(monkeypatch) -> None:
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_reorder_favorites(
@@ -1005,7 +1005,7 @@ def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_delete_favorite(
@@ -1024,7 +1024,7 @@ def test_delete_favorite_accepts_legacy_button_id_alias(monkeypatch) -> None:
         return hub
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     result = asyncio.run(
         integration._async_handle_delete_favorite(

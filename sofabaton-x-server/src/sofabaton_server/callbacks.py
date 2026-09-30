@@ -22,8 +22,9 @@ commands plan, section 7). ``http``: the hub calls the listener above.
 ``mqtt`` (X2 only): the device's records are inert and the hub publishes
 ``{"device_id", "key_id"}`` to ``<MAC>/up`` on the broker set in the
 Sofabaton app; the server subscribes there (``mqtt_client``) while a
-device uses it, with the broker settings taken from the command line or
-the environment only. Both end in the same ``press``.
+device uses it. The broker settings come from the command line or the
+environment, or else from the control panel (``mqtt.json``, PUT
+/server/mqtt/config). Both end in the same ``press``.
 
 The service never touches the engine; every hub operation goes through
 the library's facade (``deploy_wifi_device``, ``update_wifi_device``,
@@ -46,13 +47,20 @@ from urllib.parse import urlsplit
 from sofabaton import (
     WIFI_SLOT_COUNT,
     AsyncXProxy,
+    FetchTimeoutError,
+    HubBusyError,
     HubEvent,
+    HubNotConnectedError,
     WifiDeployment,
     WifiDeviceSpec,
     WifiSlotSpec,
     WifiTarget,
 )
 from sofabaton.wifi_device import DEFAULT_WIFI_BRAND
+
+# The hub could not be asked: an identity check that meets one of these
+# proved nothing either way (CR-S2-3).
+_UNVERIFIABLE = (HubNotConnectedError, HubBusyError, FetchTimeoutError)
 
 from .config import Settings
 from .manager import HubDisabled, HubManager, HubNotFound
@@ -601,6 +609,11 @@ class WifiDeviceLimit(RuntimeError):
     """The hub already holds ``MAX_WIFI_DEVICES`` records."""
 
 
+class CallbackDeviceUnverifiable(RuntimeError):
+    """A pending create cannot be settled: the hub could not be asked
+    whether the device landed."""
+
+
 class MqttUnavailable(RuntimeError):
     """The mqtt transport was asked for where it cannot work; the message says why."""
 
@@ -616,6 +629,12 @@ class CallbackService:
         self.ring = ring or PressRing()
         self._press_listeners: list[Callable[[Press], Any]] = []
         self._verify_tasks: dict[str, asyncio.Task] = {}
+        # Pending creates the boot pass could not verify, retried per hub once
+        # it is ready.
+        self._reconcile_tasks: dict[str, asyncio.Task] = {}
+        # ensure_listener runs started by server events, kept so they are not
+        # collected mid-run and are cancelled at stop (CR-S2-11).
+        self._ensure_tasks: set[asyncio.Task] = set()
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
         # The broker: the command line / environment when they set any of it,
         # else what the control panel stored in mqtt.json (mqtt_config.py).
@@ -629,6 +648,9 @@ class CallbackService:
             self.mqtt_source = "panel" if stored is not None and stored.configured else "none"
             self.mqtt_config = stored if stored is not None and stored.configured else MqttConfig()
         self.mqtt = self._subscriber(self.mqtt_config)
+        # apply_mqtt_config and ensure_listener change the subscriber one at a
+        # time: a subscription set across a swap restarted the old one (CR-S2-5).
+        self._mqtt_lock = asyncio.Lock()
         manager.on_hub_event(self._on_hub_event)
         manager.on_server_event(self._on_server_event)
 
@@ -656,9 +678,11 @@ class CallbackService:
         else:
             self.mqtt_store.save(config)
             self.mqtt_config, self.mqtt_source = config, "panel"
-        await self.mqtt.stop()
-        self.mqtt = self._subscriber(self.mqtt_config)
-        await self.mqtt.set_topics(set(self._mqtt_topics()))
+        async with self._mqtt_lock:
+            # Swap first, then close the old one: nothing can reach it after.
+            old, self.mqtt = self.mqtt, self._subscriber(self.mqtt_config)
+            await old.close()
+            await self.mqtt.set_topics(set(self._mqtt_topics()))
 
     def mqtt_device_count(self) -> int:
         return sum(1 for hub_id in self._manager.ids() for record in self.records(hub_id)
@@ -679,16 +703,18 @@ class CallbackService:
                     log.info("hub %s: pending callback %s left for later (hub not running)", hub_id, record.pending.get("op"))
                     break
                 try:
-                    await self.reconcile(hub_id, proxy, key=record.key)
+                    # The hub has not dialled back yet: an identity it cannot
+                    # confirm keeps the intent for the retry after catalog_ready.
+                    await self.reconcile(hub_id, proxy, key=record.key, defer_unverifiable=True)
                 except Exception:  # noqa: BLE001
                     log.exception("hub %s: callback reconciliation at boot failed; left pending", hub_id)
         await self.ensure_listener()
 
     async def stop(self) -> None:
-        for task in list(self._verify_tasks.values()):
+        for task in [*self._verify_tasks.values(), *self._reconcile_tasks.values(), *self._ensure_tasks]:
             task.cancel()
         await self.listener.stop()
-        await self.mqtt.stop()
+        await self.mqtt.close()
 
     def on_press(self, listener: Callable[[Press], Any]) -> None:
         self._press_listeners.append(listener)
@@ -752,7 +778,8 @@ class CallbackService:
         """Bring both ingresses in line with the records: the listener, and the broker subscriptions."""
 
         await self.listener.set_wanted(self.wanted())
-        await self.mqtt.set_topics(set(self._mqtt_topics()))
+        async with self._mqtt_lock:
+            await self.mqtt.set_topics(set(self._mqtt_topics()))
 
     # -- mqtt ---------------------------------------------------------------------
 
@@ -1053,7 +1080,10 @@ class CallbackService:
         updated = CallbackRecord.from_deployment(deployment, key=key, transport=record.transport)
         updated.deployed_at = record.deployed_at
         updated.adopted = record.adopted
-        updated.last_press = record.last_press
+        # Presses kept arriving during the write: the record as it is now,
+        # not the copy read at the start (CR-S2-10).
+        latest = self.record(hub_id, key)
+        updated.last_press = (latest or record).last_press
         self.save(hub_id, updated)
         return updated
 
@@ -1080,8 +1110,10 @@ class CallbackService:
 
     def references(self, snapshot: Any, device_id: int, *, spec: Optional[WifiDeviceSpec] = None) -> list[dict[str, Any]]:
         """Activities in the snapshot that name the device: membership,
-        favorites, bindings, macro steps. Unfetched activities cannot be
-        scanned and are reported as ``complete: False``.
+        favorites, bindings, macro steps. An activity whose detail was
+        never read cannot be scanned: it is reported too, as
+        ``kinds: ["unscanned"]`` with ``complete: False``, since it may
+        hold a reference the delete would cascade away (CR-S2-7).
 
         The steps a membership itself puts into an activity's power macros
         (power on, input, power off) are the membership, not a macro
@@ -1092,6 +1124,7 @@ class CallbackService:
         owned = self.owned_references(spec)
         power_macros = (0xC6, 0xC7)
         found: list[dict[str, Any]] = []
+        scanned: set[int] = set()
         for payload in (snapshot.bundle.get("activities") or []):
             if not isinstance(payload, dict):
                 continue
@@ -1114,15 +1147,40 @@ class CallbackService:
                    if int(macro.get("button_id", macro.get("key_id", 0)) or 0) not in power_macros
                    for step in macro.get("steps") or []):
                 kinds.append("macro")
+            complete = bool(payload.get("complete", False))
+            if complete:
+                scanned.add(activity_id)
+            elif not kinds:
+                kinds.append("unscanned")
             if kinds:
                 found.append({"activity_id": activity_id, "name": block.get("name"),
-                              "kinds": kinds, "complete": bool(payload.get("complete", False))})
+                              "kinds": kinds, "complete": complete})
+        reported = {row["activity_id"] for row in found}
+        for entity in getattr(snapshot, "activities", None) or []:
+            activity_id = int(entity.entity_id)
+            if activity_id in scanned or activity_id in reported or entity.complete:
+                continue
+            found.append({"activity_id": activity_id, "name": None, "kinds": ["unscanned"], "complete": False})
         return found
 
     async def remove(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY) -> dict[str, Any]:
         record = self.record(hub_id, key)
         if record is None:
             raise CallbackDeviceMissing(hub_id)
+        if record.device_id is None and (record.pending or {}).get("op") == "create":
+            # The create may have landed although the deploy failed: settle it
+            # first, so a device the hub took is deleted with the record
+            # instead of left behind as an orphan nothing adopts (CR-S2-4).
+            try:
+                settled = await self.reconcile(hub_id, proxy, key=key)
+            except _UNVERIFIABLE as err:
+                raise CallbackDeviceUnverifiable(str(err)) from err
+            if settled is None:
+                if not self.records(hub_id):
+                    self.ring.forget(hub_id)
+                await self.ensure_listener()
+                return {"key": key, "device_id": None, "hub_device_removed": False}
+            record = settled
         device_id = record.device_id
         removed: dict[str, Any] = {"key": key, "device_id": device_id, "hub_device_removed": False}
         if device_id is not None and record.stale:
@@ -1158,17 +1216,32 @@ class CallbackService:
             record.stale = False
             self.save(hub_id, record)
             return record
+        # The record is forgotten only once the new deploy can run: a broker
+        # that went away (or the X1 port rule) used to cost the device its
+        # stored spec when the deploy then refused (CR-S2-2).
+        hub_version = (await proxy.status()).hub_version
+        if record.transport == TRANSPORT_MQTT:
+            reason = self.mqtt_unavailable_reason(hub_id, hub_version)
+            if reason is not None:
+                raise MqttUnavailable(reason)
+        else:
+            self.check_port(hub_version)
         self.save(hub_id, None, key)
         return await self.deploy(hub_id, proxy, spec, key=key, transport=record.transport)
 
     # -- reconciliation and identity ------------------------------------------------
 
     async def reconcile(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY,
-                        spec_hint: Optional[WifiDeviceSpec] = None) -> Optional[CallbackRecord]:
+                        spec_hint: Optional[WifiDeviceSpec] = None,
+                        defer_unverifiable: bool = False) -> Optional[CallbackRecord]:
         """Settle a pending intent, or adopt an orphan the server forgot.
 
         Returns the record after reconciliation (None when there is none).
-        Runs inside a job, before every deploy and at boot.
+        Runs inside a job, before every deploy and at boot. A pending create
+        whose identity the hub cannot be asked about is never dropped: with
+        ``defer_unverifiable`` it stays pending (boot, the ready retry),
+        otherwise the hub's error propagates (a deploy must not create a
+        second device next to one that may have landed).
         """
 
         record = self.record(hub_id, key)
@@ -1188,8 +1261,14 @@ class CallbackService:
         op = str(pending.get("op") or "")
         if op == "create":
             spec = WifiDeviceSpec.from_dict(pending.get("spec") or record.spec).normalized()
-            adopted = await self._adopt(hub_id, proxy, action_id, name=spec.name, spec=spec,
-                                        key=key, transport=record.transport)
+            try:
+                adopted = await self._adopt(hub_id, proxy, action_id, name=spec.name, spec=spec,
+                                            key=key, transport=record.transport)
+            except _UNVERIFIABLE as err:
+                if not defer_unverifiable:
+                    raise
+                log.info("hub %s: pending callback create %s left for later (%s)", hub_id, key, err)
+                return record
             if adopted is None:
                 log.info("hub %s: the pending callback create never landed; dropping it", hub_id)
                 self.save(hub_id, None, key)
@@ -1276,6 +1355,8 @@ class CallbackService:
 
         try:
             payload = await proxy.read_payload(device_id, 1)
+        except _UNVERIFIABLE:
+            raise
         except Exception as err:  # noqa: BLE001
             log.info("identity check of device %s failed to read its first record: %s", device_id, err)
             return None
@@ -1334,6 +1415,8 @@ class CallbackService:
     # -- stale detection ---------------------------------------------------------------
 
     def _on_hub_event(self, hub_id: str, event: HubEvent) -> None:
+        if event.kind in ("catalog_ready", "snapshot_changed"):
+            self._retry_pending_creates(hub_id)
         if event.kind != "snapshot_changed":
             return
         if not any(row.device_id is not None and row.pending is None for row in self.records(hub_id)):
@@ -1346,6 +1429,32 @@ class CallbackService:
         if task is not None and not task.done():
             return
         self._verify_tasks[hub_id] = asyncio.create_task(self._check_stale(hub_id, proxy), name=f"callback-stale:{hub_id}")
+
+    def _retry_pending_creates(self, hub_id: str) -> None:
+        """Settle the pending creates the boot pass could not verify."""
+
+        if not any((row.pending or {}).get("op") == "create" for row in self.records(hub_id)):
+            return
+        try:
+            proxy = self._manager.proxy(hub_id)
+        except (HubNotFound, HubDisabled):
+            return
+        task = self._reconcile_tasks.get(hub_id)
+        if task is not None and not task.done():
+            return
+
+        async def retry() -> None:
+            for row in self.records(hub_id):
+                if (row.pending or {}).get("op") != "create":
+                    continue
+                try:
+                    await self.reconcile(hub_id, proxy, key=row.key, defer_unverifiable=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001
+                    log.exception("hub %s: pending callback create %s: reconciliation failed", hub_id, row.key)
+
+        self._reconcile_tasks[hub_id] = asyncio.create_task(retry(), name=f"callback-reconcile:{hub_id}")
 
     async def _check_stale(self, hub_id: str, proxy: AsyncXProxy) -> None:
         for row in self.records(hub_id):
@@ -1389,7 +1498,14 @@ class CallbackService:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        loop.create_task(self.ensure_listener(), name="callback-listener-ensure")
+        task = loop.create_task(self.ensure_listener(), name="callback-listener-ensure")
+        self._ensure_tasks.add(task)
+        task.add_done_callback(self._ensure_done)
+
+    def _ensure_done(self, task: asyncio.Task) -> None:
+        self._ensure_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            log.error("bringing the callback ingresses in line failed", exc_info=task.exception())
 
     def _on_listener_state(self, kind: str) -> None:
         for hub_id in self._manager.ids():
