@@ -441,6 +441,10 @@ class DeviceCreateRequest:
     inputs: list[dict[str, Any]] = field(default_factory=list)
     input_record: dict[str, Any] | None = None
     favorites: list[dict[str, Any]] = field(default_factory=list)
+    #: The activity's quick-access display order (source ids of favorites
+    #: and macro shortcuts, the backup's ``favorites_order``). The X1 keeps
+    #: both in one order table, which the activity restore writes from it.
+    favorites_order: list[int] = field(default_factory=list)
     key_sort: dict[str, Any] | None = None
     network_callback_profile: dict[str, Any] | None = None
     entity_kind: Literal["device", "activity"] = "device"

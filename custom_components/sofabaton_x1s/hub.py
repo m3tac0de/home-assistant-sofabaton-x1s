@@ -2443,6 +2443,7 @@ class SofabatonHub:
         *,
         slot_id: int | None = None,
         refresh_after_write: bool = True,
+        repair_order: bool = True,
     ) -> dict[str, Any] | None:
         """Replay the favorite write sequence on the selected hub."""
 
@@ -2451,6 +2452,8 @@ class SofabatonHub:
             kwargs["slot_id"] = slot_id
         if not refresh_after_write:
             kwargs["refresh_after_write"] = False
+        if not repair_order:
+            kwargs["repair_order"] = False
 
         return await self.hass.async_add_executor_job(
             partial(
@@ -4516,9 +4519,14 @@ class SofabatonHub:
                     )
                 raise HomeAssistantError(f"In-place sync failed: {message}")
 
+        # X1: heal order tables that leave a live favorite or macro out
+        # (see _async_repair_x1_quick_access), before the re-warm reads them.
+        repaired_order = await self._async_repair_x1_quick_access(
+            set(desired.activities) | set(referencing_before or ())
+        )
         # Post-write cache refresh, mirroring the replace path's epilogue.
         touched_acts = await self._async_rewarm_after_inplace(plan, dev_id, referencing_before)
-        if plan.steps:
+        if plan.steps or repaired_order:
             await self._async_warm_devices_snapshot()
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
@@ -5091,6 +5099,10 @@ class SofabatonHub:
                             wifi_device_id,
                             command_id,
                             refresh_after_write=False,
+                            # The reorder below rewrites each activity's
+                            # order once and puts back any record it left
+                            # out (X1); one read per activity, not per add.
+                            repair_order=False,
                         )
                         activities_with_favorites.add(act_id)
                         if result and result.get("fav_id") is not None:
@@ -5234,6 +5246,13 @@ class SofabatonHub:
                 # invalidate parts of the per-activity cache, and a partial
                 # refetch here used to leave favorites and buttons cold after
                 # every deploy.
+                # X1: heal order tables that leave a live favorite or macro
+                # out (see _async_repair_x1_quick_access), before the re-warm
+                # reads them; the remote resync below carries the result.
+                await self._async_repair_x1_quick_access(
+                    [act for act in activity_ids if add_results.get(act, False)]
+                    + [act for act in delete_confirmed_acts if act in self.activities]
+                )
                 warmed_act_los: set[int] = set()
                 for act_id in sorted(activity_ids):
                     if not add_results.get(act_id, False):
@@ -5427,6 +5446,34 @@ class SofabatonHub:
     async def async_resync_remote(self) -> None:
         self._log.debug("[%s] Triggering remote resync", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
+
+    async def _async_repair_x1_quick_access(self, activity_ids: Iterable[int]) -> bool:
+        """X1: rewrite each activity's quick-access order that leaves out a
+        live favorite or macro (an older restore wrote such tables; the
+        remote then covers an entry and shows an empty row). Runs at the end
+        of a Wifi Commands sync, so affected setups heal on their next sync.
+        Best effort; True when any activity was rewritten."""
+
+        if self.version != HUB_VERSION_X1:
+            return False
+        repaired = False
+        for act_id in sorted({int(act) & 0xFF for act in activity_ids}):
+            if act_id not in self.activities:
+                continue
+            try:
+                result = await self.hass.async_add_executor_job(
+                    self._proxy.repair_x1_quick_access_order, act_id
+                )
+            except Exception:  # noqa: BLE001 - the repair never fails a sync
+                self._log.warning(
+                    "[%s] quick-access order repair failed for activity %s",
+                    self.entry_id,
+                    act_id,
+                    exc_info=True,
+                )
+                continue
+            repaired = repaired or result is True
+        return repaired
 
     def _async_update_options(self, key: str, value: Any) -> None:
         """Update a key in the ConfigEntry options."""

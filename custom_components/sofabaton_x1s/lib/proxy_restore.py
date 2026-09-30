@@ -55,6 +55,7 @@ from .protocol_const import (
     DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
+    ButtonName,
     known_public_device_classes,
     normalize_device_class,
 )
@@ -1429,6 +1430,11 @@ class RestoreMixin:
                 button_bindings=list(payload.get("button_bindings") or []),
                 macros=list(payload.get("macros") or []),
                 favorites=list(payload.get("favorite_slots") or []),
+                favorites_order=[
+                    int(fav_id) & 0xFF
+                    for fav_id in (payload.get("favorites_order") or [])
+                    if isinstance(fav_id, int) and not isinstance(fav_id, bool)
+                ],
                 device_id_map=remap_lookup,
                 activity_id_map={
                     int(k) & 0xFF: int(v) & 0xFF
@@ -2094,6 +2100,24 @@ class RestoreMixin:
                 slot += 1
             return slot
 
+        # X1: favorites and macro shortcuts share one id space and one
+        # family-0x61 order table, and every favorite write stages that
+        # whole table. Each write used to stage only its own id (no read
+        # back on a fresh activity), so the last favorite replaced the
+        # others and no macro was ever listed; a record the table leaves
+        # out still takes a row on the remote, covering another entry
+        # (Marcel's X1, 2026-09-30). The replay now stages the table as it
+        # stands and ends with one write of the captured display order.
+        x1 = self.hub_version == HUB_VERSION_X1
+        x1_order: list[int] = sorted(
+            int(row.get("button_id", 0)) & 0xFF
+            for row in request.macros
+            if isinstance(row, dict)
+            and (int(row.get("button_id", 0)) & 0xFF) not in (0, ButtonName.POWER_ON, ButtonName.POWER_OFF)
+        )
+        x1_macro_ids = set(x1_order)
+        x1_new_id_by_source: dict[int, int] = {macro_id: macro_id for macro_id in x1_macro_ids}
+
         next_slot = 0
         for row in sorted(
             (item for item in request.favorites if isinstance(item, dict)),
@@ -2119,6 +2143,8 @@ class RestoreMixin:
                 slot_id=slot_id,
                 refresh_after_write=False,
                 query_existing_order=False,
+                existing_order_ids=list(x1_order) if x1 else None,
+                repair_order=False,
             )
             if not written:
                 self._log.warning(
@@ -2130,6 +2156,20 @@ class RestoreMixin:
                 skipped_favorites += 1
                 continue
             restored_favorites += 1
+            if x1 and written.get("fav_id") is not None:
+                new_fav_id = int(written["fav_id"]) & 0xFF
+                x1_order = [fav_id for fav_id in x1_order if fav_id != new_fav_id] + [new_fav_id]
+                x1_new_id_by_source[int(row.get("button_id", 0)) & 0xFF] = new_fav_id
+
+        if x1 and x1_order and not self._restore_x1_quick_access_order(
+            new_activity_id, x1_order, x1_new_id_by_source, request.favorites_order
+        ):
+            # The records are all written; only their display order is off.
+            # Like a refused favorite, it does not fail the restore.
+            self._log.warning(
+                "[RESTORE] activity 0x%02X: the quick-access order could not be written",
+                new_activity_id,
+            )
 
         # Materialise the activity entry in local state so other
         # readers see it before the next catalog refresh.
@@ -2166,6 +2206,51 @@ class RestoreMixin:
             skipped_macro_steps=skipped_macro_steps,
             skipped_input_ordinals=skipped_input_ordinals,
         )
+
+    def _restore_x1_quick_access_order(
+        self,
+        activity_id: int,
+        staged: list[int],
+        new_id_by_source: dict[int, int],
+        captured_order: list[int],
+    ) -> bool:
+        """Write an X1 activity's quick-access order as the backup captured it.
+
+        *staged* is the table the favorites replay left on the hub (every
+        record listed, in write order); *new_id_by_source* maps each source
+        favorite / macro id to its id on this hub; *captured_order* is the
+        backup's ``favorites_order`` (source ids). Captured entries keep their
+        rank, the rest follow in source-id order (an older backup without an
+        order restores the pure id order). One 0x61 write and one 0x65
+        commit, only when the result differs from what is staged.
+        """
+
+        desired: list[int] = []
+        for source_id in [*captured_order, *sorted(new_id_by_source)]:
+            new_id = new_id_by_source.get(int(source_id) & 0xFF)
+            if new_id is not None and new_id in staged and new_id not in desired:
+                desired.append(new_id)
+        desired += [fav_id for fav_id in staged if fav_id not in desired]
+        if desired == staged:
+            return True
+
+        act_lo = activity_id & 0xFF
+        self.reset_ack_queues()
+        step = self._send_step(
+            step_name=f"restore-fav-order-61[act=0x{act_lo:02X}]",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, desired),
+            ack_opcode=0x0103,
+        )
+        if not step.ok:
+            return False
+        step = self._send_step(
+            step_name=f"restore-fav-order-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        )
+        return bool(step.ok)
 
     @staticmethod
     def _collect_referenced_entity_ids(payload: dict[str, Any]) -> set[int]:

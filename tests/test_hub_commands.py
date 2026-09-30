@@ -2907,7 +2907,9 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
             "send_remote_sync": False,
         }
     ]
-    assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
+    # The deploy's closing reorder repairs each activity's order once
+    # (X1), so the adds skip their own live read.
+    assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False, "repair_order": False})]
     assert requested_maps == [101]
     assert requested_buttons == [(101, True)]
     # The post-deploy warm now runs the full per-activity refresh, which
@@ -6503,3 +6505,33 @@ def test_prime_does_not_stay_pending_when_nothing_was_requested(monkeypatch):
     monkeypatch.setattr(hub, "_activity_map_cached", lambda *_a: True)
     loop.run_until_complete(asyncio.wait_for(hub._async_prime_buttons_for(0x65), 2))
     assert 0x65 not in hub._pending_button_fetch
+
+
+def test_wifi_sync_repairs_x1_quick_access_order_per_known_activity():
+    """The Wifi Commands sync ends with the X1 quick-access check for every
+    activity it touched (the heal for tables an older restore left short)."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    hub.activities = {0x65: {"name": "Watch Apple TV"}, 0x67: {"name": "play xbox"}}
+    calls: list[int] = []
+
+    def _repair(act_id):
+        calls.append(act_id)
+        return act_id == 0x67
+
+    hub._proxy.repair_x1_quick_access_order = _repair
+    try:
+        hub.version = hub_module.HUB_VERSION_X1
+        # 0x69 is not an activity on the hub (purged): skipped.
+        assert loop.run_until_complete(hub._async_repair_x1_quick_access([0x67, 0x65, 0x69, 0x65])) is True
+        assert calls == [0x65, 0x67]
+
+        calls.clear()
+        hub.version = "X1S"
+        assert loop.run_until_complete(hub._async_repair_x1_quick_access([0x65])) is False
+        assert calls == []
+    finally:
+        loop.close()

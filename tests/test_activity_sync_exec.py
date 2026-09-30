@@ -30,6 +30,8 @@ class FakeProxy(ActivitySyncMixin):
         # library_type back from, plus the command label map.
         self.state = SimpleNamespace(command_metadata={})
         self.command_labels: dict[int, str] = {}
+        # The X1 quick-access order check a sync runs after its plan.
+        self.quick_access_repairs: list[int] = []
 
     # Environment
     def can_issue_commands(self) -> bool:
@@ -75,6 +77,10 @@ class FakeProxy(ActivitySyncMixin):
     def request_activity_mapping(self, act):
         self.calls.append(("remote_sync", (act,), {}))
         return True
+
+    def repair_x1_quick_access_order(self, activity_id):
+        self.quick_access_repairs.append(activity_id)
+        return False
 
     # Low-level primitives (stubbed so wire bytes aren't exercised here).
     def _activity_sync_delete_key(self, activity_id, button_id):
@@ -1420,3 +1426,43 @@ def test_channel_for_head_ip_helper():
     assert _channel_for_head_ip("", 99) == 0
     assert _channel_for_head_ip("not-an-ip", 99) == 99
     assert _channel_for_head_ip("1.2.x.4", 99) == 99
+
+
+def test_a_sync_checks_the_x1_quick_access_order_after_its_plan():
+    # An order table an older restore left without a live record shows as a
+    # covered entry and an empty row on the X1 remote; the plan only rewrites
+    # the table when the order changed, so every successful sync checks it.
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    assert proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)["status"] == "success"
+    assert proxy.quick_access_repairs == [ACTIVITY_ID]
+
+    # Not on a no-op sync (no writes at all), nor after a rejected write.
+    noop = FakeProxy(fresh_activity=_activity(base))
+    noop.sync_activity(baseline=base, edited=copy.deepcopy(base), activity_id=ACTIVITY_ID)
+    assert noop.quick_access_repairs == []
+    failing = FakeProxy(fresh_activity=_activity(base), fail_kind="favorite_add")
+    assert failing.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)["status"] == "failed"
+    assert failing.quick_access_repairs == []
+
+
+def test_a_failing_quick_access_check_does_not_fail_the_sync(caplog):
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+
+    def _boom(activity_id):
+        raise RuntimeError("keymap read failed")
+
+    proxy.repair_x1_quick_access_order = _boom
+
+    assert proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)["status"] == "success"
+    assert "quick-access order repair failed" in caplog.text
