@@ -90,7 +90,6 @@ import {
   isWifiEventsBrand,
   isWifiEventsLongRecord,
   wifiEventsSlotCount,
-  bundleEditableDeviceOptions,
   bundleDeviceOptions,
   buttonName,
   clearActivityDeviceInput,
@@ -943,7 +942,7 @@ export class SofabatonEditDetailView extends LitElement {
    * every event twice. The offline Backup editor keeps showing everything.
    */
   private _editableDeviceOptions() {
-    const options = bundleEditableDeviceOptions(this.bundle);
+    const options = bundleDeviceOptions(this.bundle);
     if (this.mode !== "live") return options;
     return options.filter(
       (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id)),
@@ -3413,6 +3412,9 @@ export class SofabatonEditDetailView extends LitElement {
                       : nothing}
                     ${impact.bindings > 0
                       ? html`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>`
+                      : nothing}
+                    ${impact.members > 0
+                      ? html`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMembers(impact.members)}</span></li>`
                       : nothing}
                   </ul>
                 `

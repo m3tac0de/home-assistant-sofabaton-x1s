@@ -230,6 +230,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
+    refreshAllAria: "Refresh the whole hub cache",
+    refreshListAria: "Refresh this list",
+    refreshEntryAria: (name: string) => `Refresh ${name}`,
     editActivity: "Edit activity",
     editDevice: "Edit device",
     changeOrder: "Change order",
@@ -457,7 +460,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     complete: "Complete",
     restoreCompletedTitle: "Restore completed",
     restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
-    restoreCompletedStatus: "Restore completed.",
     restoreCompletedSuccessfully: "Restore completed successfully.",
     backupCompletedSuccessfully: "Backup completed successfully.",
     wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
@@ -483,8 +485,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     selectedCount: (count: number) => `${count} selected`,
     backupResultSummary: (activities: number, devices: number) =>
       `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
-    activityMeta: (favorites: number, macros: number) =>
-      `${favorites} ${favorites === 1 ? "favorite" : "favorites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count: number) =>
       `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
@@ -522,6 +522,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count: number) =>
       `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteImpactMembers: (count: number) =>
+      `${count} ${count === 1 ? "device no longer powers" : "devices no longer power"} on and off with this activity`,
     deleteReplaceNote:
       'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
@@ -954,6 +956,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     maximumDevices: "Maximum number of devices reached",
     configuredSlots: (count: number) => `${count} slot${count === 1 ? "" : "s"}`,
     unableSaveAction: "Unable to save Action",
+    hubEventActionsLoadFailed: "The event actions could not be loaded, so they cannot be changed right now.",
+    hubEventResetFailed: "The action was not cleared. Try again.",
+    commandsLoadFailed: "This device's commands could not be loaded, so they cannot be changed right now.",
+    commandsSaveFailed: "The change was not saved. Try again.",
+    retryLoad: "Try again",
     hubCommandInProgress: "Hub command in progress…",
     idle: "Idle",
     unableLoadSyncStatus: "Unable to load sync status",
@@ -983,20 +990,12 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Status line while the sync spins up — not the Sync button label.
     startSync: "Starting sync",
     syncFailedToStart: "Sync failed to start",
-    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
     syncMessageFailed: "Last sync failed.",
-    syncMessageNeeded: "Command config changes need to be synced to the hub.",
-    syncMessageUpToDate: "Hub command configuration is up to date.",
-    syncMessageIdle: "No sync needed.",
-    syncShortUnavailable: "Unavailable",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",
-    syncShortUpToDate: "Up to date",
-    syncShortIdle: "Idle",
     deviceDeleting: "Deleting…",
     deviceSynced: "Synced",
-    seeDocumentation: "See documentation",
     actionButtonUnavailable: "Unavailable",
     actionButtonSyncing: "Syncing…",
     actionButtonBusy: "Busy",

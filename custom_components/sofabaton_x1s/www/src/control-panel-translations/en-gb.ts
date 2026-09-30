@@ -30,8 +30,6 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
   activities: {
   },
   backup: {
-    activityMeta: (favourites: number, macros: number) =>
-      `${favourites} ${favourites === 1 ? "favourite" : "favourites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name: string) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",

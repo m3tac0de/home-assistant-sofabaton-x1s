@@ -6,13 +6,12 @@ import {
   activityQuickAccessItems,
   activityChainDependencyIds,
   activityRoleAssignments,
-  bundleEditableDeviceOptions,
+  bundleDeviceOptions,
   roleMappableButtonCount,
   setActivityRoleDevice,
   activityMacroStepItems,
   activityMemberRemovalImpact,
   activityMemberViews,
-  activityPowerDevices,
   addActivityMemberDevice,
   removeActivityMemberDevice,
   addActivityMacroCommandStep,
@@ -38,8 +37,8 @@ import {
   wifiEventsSlotCount,
   isWifiEventsLongRecord,
   assertBackupBundleRestoreCompatible,
-  backupUsesWholeHub,
   bundleButtonCatalog,
+  backupDeleteHasCascade,
   bundleDeleteImpact,
   bundleDeviceBrand,
   isManagedWifiBrand,
@@ -86,11 +85,6 @@ const bundle = {
     { device: { device_id: 102, name: "Game", entity_type: "activity" }, referenced_source_device_ids: [2, 3] },
   ],
 };
-
-test("backupUsesWholeHub switches on when any activity is selected", () => {
-  assert.equal(backupUsesWholeHub([]), false);
-  assert.equal(backupUsesWholeHub([101]), true);
-});
 
 test("forcedRestoreDeviceIds unions linked devices for selected activities", () => {
   assert.deepEqual(forcedRestoreDeviceIds(bundle, [101]), [1, 2]);
@@ -317,7 +311,7 @@ test("deleteBundleDeviceCommand also removes the deleted command's trailing dela
   // Impact reflects both removed rows (command + its trailing delay).
   assert.deepEqual(
     bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 10 }),
-    { favorites: 0, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 0 },
+    { favorites: 0, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 0, members: 0 },
   );
 });
 
@@ -356,7 +350,7 @@ test("deleteBundleDeviceCommand prunes the device's own power-macro steps", () =
   // the 1 user-macro step.
   assert.deepEqual(
     bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 2 }),
-    { favorites: 0, macroSteps: 1, powerSteps: 2, activities: 0, bindings: 0 },
+    { favorites: 0, macroSteps: 1, powerSteps: 2, activities: 0, bindings: 0, members: 0 },
   );
 });
 
@@ -426,9 +420,9 @@ test("addBundleActivityFavorite appends at the next editable slot", () => {
 test("bundleDeleteImpact counts cascade references", () => {
   const b = editableBundle();
   // device 1 is used by a Combo step (cmd 11) and the POWER_ON macro step (cmd 10) → 2 steps.
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 1, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 1, bindings: 0, members: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 0, members: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 });
 });
 
 test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
@@ -628,6 +622,29 @@ test("deleting a macro drops a button bound to it and clears a long-press to it"
   assert.equal(survivor.long_press_device_id ?? null, null);
 });
 
+test("deleting a macro reports the buttons it takes with it (CR-F3-3)", () => {
+  let b = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 0xAE, deviceId: 101, commandId: 5 });
+  b = upsertActivityButtonBinding(b, 101, {
+    buttonId: 0xB2, deviceId: 1, commandId: 10, longPress: { deviceId: 101, commandId: 5 },
+  });
+  const impact = bundleDeleteImpact(b, { kind: "macro", activityId: 101, buttonId: 5 });
+  // One binding dropped (0xAE) and one long press cleared (0xB2).
+  assert.equal(impact.bindings, 2);
+  assert.equal(backupDeleteHasCascade(impact), true);
+});
+
+test("deleting a device's last use in an activity reports its power rows (CR-F3-3)", () => {
+  // Without the Combo macro, the AVR shortcut is the AVR's only use.
+  const bundle = deleteBundleActivityQuickAccess(editableBundle(), 101, "macro", 3);
+  const impact = bundleDeleteImpact(bundle, { kind: "favorite", activityId: 101, buttonId: 2 });
+  assert.equal(impact.members, 1);
+  const after = activity101(deleteBundleActivityQuickAccess(bundle, 101, "favorite", 2))!.referenced_source_device_ids ?? [];
+  assert.deepEqual(after, [1]);
+  // A delete that leaves every member in place reports none.
+  const unbound = bundleDeleteImpact(bundle, { kind: "activity_binding", activityId: 101, buttonId: 0x01 });
+  assert.equal(unbound.members, 0);
+});
+
 test("deviceButtonBindingItems resolves own-command labels", () => {
   const items = deviceButtonBindingItems(bindingBundle(), 1);
   assert.equal(items.length, 1);
@@ -763,8 +780,8 @@ function realPowerActivity() {
   };
 }
 
-test("activityPowerDevices reads each device's input from its own 0xC5 step (flat, interleaved)", () => {
-  const devices = activityPowerDevices(realPowerActivity(), 101);
+test("activityMemberViews reads each device's input from its own 0xC5 step (flat, interleaved)", () => {
+  const devices = activityMemberViews(realPowerActivity(), 101);
   // Device 9's input (ordinal 1) must resolve even though its 0xC5 step is
   // interleaved before device 3's — the bug the X2 backup exposed.
   assert.deepEqual(devices.map((d) => [d.deviceId, d.inputOrdinal, d.inputCommandId]), [
@@ -855,8 +872,8 @@ test("synthesizeCommandCode mirrors the X1 formula", () => {
   assert.equal(synthesizeCommandCode(18), 0x4E32);
 });
 
-test("activityPowerDevices lists members with their input", () => {
-  const devices = activityPowerDevices(powerEditorBundle(), 101);
+test("activityMemberViews lists members with their input", () => {
+  const devices = activityMemberViews(powerEditorBundle(), 101);
   assert.deepEqual(devices.map((d) => [d.deviceId, d.inputOrdinal]), [[1, 0], [2, 0]]);
 });
 
@@ -864,7 +881,7 @@ test("setActivityDeviceInput reuses an existing device input", () => {
   const next = setActivityDeviceInput(powerEditorBundle(), 101, 1, 12);
   // Device 1 already has command 12 at ordinal 1 → reused, no new entry.
   assert.equal(next.devices.find((d) => d.device?.device_id === 1)!.input_record!.entries!.length, 1);
-  const view = activityPowerDevices(next, 101).find((d) => d.deviceId === 1)!;
+  const view = activityMemberViews(next, 101).find((d) => d.deviceId === 1)!;
   assert.equal(view.inputOrdinal, 1);
   assert.equal(view.inputCommandId, 12);
   assert.equal(view.inputCommandName, "HDMI 1");
@@ -877,13 +894,13 @@ test("setActivityDeviceInput appends a new device input when absent", () => {
     dev2.input_record!.entries!.map((e) => [e.command_id, e.input_index, e.fid]),
     [[20, 1, synthesizeCommandCode(20)]],
   );
-  assert.equal(activityPowerDevices(next, 101).find((d) => d.deviceId === 2)!.inputOrdinal, 1);
+  assert.equal(activityMemberViews(next, 101).find((d) => d.deviceId === 2)!.inputOrdinal, 1);
 });
 
 test("clearActivityDeviceInput resets the input ordinal to 0", () => {
   const set = setActivityDeviceInput(powerEditorBundle(), 101, 1, 12);
   const cleared = clearActivityDeviceInput(set, 101, 1);
-  assert.equal(activityPowerDevices(cleared, 101).find((d) => d.deviceId === 1)!.inputOrdinal, 0);
+  assert.equal(activityMemberViews(cleared, 101).find((d) => d.deviceId === 1)!.inputOrdinal, 0);
 });
 
 function deviceMacroBundle() {
@@ -1243,13 +1260,13 @@ test("activityMemberRemovalImpact counts scoped user-visible references only", (
   // Device 2: volume binding dropped + OK long-press cleared + one Combo step.
   assert.deepEqual(
     activityMemberRemovalImpact(b, 101, 2),
-    { favorites: 0, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 2 },
+    { favorites: 0, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 2, members: 0 },
   );
   // Device 1: favorite + OK short-press binding + Combo step (with its wait
   // row consumed) — power-ref rows are managed detail and never counted.
   assert.deepEqual(
     activityMemberRemovalImpact(b, 101, 1),
-    { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 1 },
+    { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 1, members: 0 },
   );
 });
 

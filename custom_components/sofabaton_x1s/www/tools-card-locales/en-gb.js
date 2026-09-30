@@ -21,7 +21,6 @@ var TOOLS_CARD_STRINGS_EN_GB = {
   },
   activities: {},
   backup: {
-    activityMeta: (favourites, macros) => `${favourites} ${favourites === 1 ? "favourite" : "favourites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",

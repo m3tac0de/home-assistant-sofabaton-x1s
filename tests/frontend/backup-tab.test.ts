@@ -137,7 +137,6 @@ test("backup tab rehydrates a stale running restore when the hub no longer repor
   assert.equal(backupStateCalls, 1);
   assert.equal(unsubscribed, true);
   assert.equal((element._restoreProgress as any)?.status, "success");
-  assert.equal(element._restoreSuccess, "Restore completed.");
 });
 
 test("backup tab rejects restore files from newer hub generations", async () => {
@@ -172,6 +171,31 @@ test("backup tab rejects restore files from newer hub generations", async () => 
   assert.equal(element._restoreFilename, "");
   assert.match(String(element._restoreError || ""), /cannot be restored onto a Sofabaton X1S hub/i);
   assert.equal(input.value, "");
+});
+
+test("the state poll does not wipe a local restore error (CR-F3-1)", async () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
+  let backupStateCalls = 0;
+  element.hass = {
+    states: {},
+    callWS: async () => { backupStateCalls += 1; return { backup_export: null, backup_restore: null, active_operation: null }; },
+  };
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(backupStateCalls, 1);
+
+  element._restoreError = "This backup cannot be restored onto a Sofabaton X1S hub.";
+  // The poll hands over a new hub object with nothing changed.
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  assert.equal(backupStateCalls, 1);
+  assert.ok(element._restoreError);
+
+  // A running operation appearing is a real change and re-hydrates.
+  element.hub = { entry_id: "hub-1", version: "X1S", active_backup_operation: { operation_id: "op-1", status: "running" } };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  assert.equal(backupStateCalls, 2);
 });
 
 test("backup tab drops a loaded restore bundle when the hub picker switches hubs", () => {

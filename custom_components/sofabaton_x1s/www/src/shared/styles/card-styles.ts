@@ -580,6 +580,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
   .inner-row:hover { background: var(--sb-overlay-hover); }
   .inner-row--clickable { cursor: pointer; }
+  .entity-summary[role="button"]:focus-visible, .inner-row--clickable:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
   .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
   .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
   .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

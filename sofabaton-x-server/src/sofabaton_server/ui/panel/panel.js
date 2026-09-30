@@ -14734,6 +14734,9 @@ var TOOLS_CARD_STRINGS_EN = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
+    refreshAllAria: "Refresh the whole hub cache",
+    refreshListAria: "Refresh this list",
+    refreshEntryAria: (name) => `Refresh ${name}`,
     editActivity: "Edit activity",
     editDevice: "Edit device",
     changeOrder: "Change order",
@@ -14957,7 +14960,6 @@ var TOOLS_CARD_STRINGS_EN = {
     complete: "Complete",
     restoreCompletedTitle: "Restore completed",
     restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
-    restoreCompletedStatus: "Restore completed.",
     restoreCompletedSuccessfully: "Restore completed successfully.",
     backupCompletedSuccessfully: "Backup completed successfully.",
     wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
@@ -14981,7 +14983,6 @@ var TOOLS_CARD_STRINGS_EN = {
     devicesToInclude: "Devices to include",
     selectedCount: (count) => `${count} selected`,
     backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
-    activityMeta: (favorites, macros) => `${favorites} ${favorites === 1 ? "favorite" : "favorites"} \xB7 ${macros} ${macros === 1 ? "macro" : "macros"}`,
     linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
     deselectAll: "Deselect all",
     selectAll: "Select all",
@@ -15012,6 +15013,7 @@ var TOOLS_CARD_STRINGS_EN = {
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteImpactMembers: (count) => `${count} ${count === 1 ? "device no longer powers" : "devices no longer power"} on and off with this activity`,
     deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -15396,6 +15398,11 @@ var TOOLS_CARD_STRINGS_EN = {
     maximumDevices: "Maximum number of devices reached",
     configuredSlots: (count) => `${count} slot${count === 1 ? "" : "s"}`,
     unableSaveAction: "Unable to save Action",
+    hubEventActionsLoadFailed: "The event actions could not be loaded, so they cannot be changed right now.",
+    hubEventResetFailed: "The action was not cleared. Try again.",
+    commandsLoadFailed: "This device's commands could not be loaded, so they cannot be changed right now.",
+    commandsSaveFailed: "The change was not saved. Try again.",
+    retryLoad: "Try again",
     hubCommandInProgress: "Hub command in progress\u2026",
     idle: "Idle",
     unableLoadSyncStatus: "Unable to load sync status",
@@ -15423,20 +15430,12 @@ var TOOLS_CARD_STRINGS_EN = {
     // Status line while the sync spins up — not the Sync button label.
     startSync: "Starting sync",
     syncFailedToStart: "Sync failed to start",
-    syncMessageRemoteUnavailable: "Remote entity unavailable. Is the app connected?",
     syncMessageFailed: "Last sync failed.",
-    syncMessageNeeded: "Command config changes need to be synced to the hub.",
-    syncMessageUpToDate: "Hub command configuration is up to date.",
-    syncMessageIdle: "No sync needed.",
-    syncShortUnavailable: "Unavailable",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",
-    syncShortUpToDate: "Up to date",
-    syncShortIdle: "Idle",
     deviceDeleting: "Deleting\u2026",
     deviceSynced: "Synced",
-    seeDocumentation: "See documentation",
     actionButtonUnavailable: "Unavailable",
     actionButtonSyncing: "Syncing\u2026",
     actionButtonBusy: "Busy",
@@ -16521,7 +16520,7 @@ function countAffectedBindings(bindings, transform) {
   return count;
 }
 function bundleDeleteImpact(bundle, target) {
-  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -16544,7 +16543,7 @@ function bundleDeleteImpact(bundle, target) {
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
       );
     }
-    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings, members: 0 };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -16577,15 +16576,37 @@ function bundleDeleteImpact(bundle, target) {
       if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
       else macroSteps += removed;
     }
-    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings, members: 0 };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
   }
+  if (target.kind === "favorite" || target.kind === "macro" || target.kind === "activity_binding") {
+    return activityEntryDeleteImpact(bundle, target);
+  }
   return empty;
 }
+function activityEntryDeleteImpact(bundle, target) {
+  const activityId = Number(target.activityId);
+  const before = findBundleActivity(bundle, activityId);
+  const after = findBundleActivity(applyBundleDelete(bundle, target), activityId);
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
+  if (!before || !after) return empty;
+  const afterBindings = new Map(
+    (after.button_bindings ?? []).map((row) => [Number(row?.button_id ?? -1), JSON.stringify(row)])
+  );
+  const deletedButton = target.kind === "activity_binding" ? Number(target.buttonId) : null;
+  const bindings = (before.button_bindings ?? []).filter((row) => {
+    const buttonId = Number(row?.button_id ?? -1);
+    if (buttonId === deletedButton) return false;
+    return afterBindings.get(buttonId) !== JSON.stringify(row);
+  }).length;
+  const remaining = new Set((after.referenced_source_device_ids ?? []).map(Number));
+  const members = (before.referenced_source_device_ids ?? []).filter((id) => !remaining.has(Number(id))).length;
+  return { ...empty, bindings, members };
+}
 function backupDeleteHasCascade(impact) {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0 || impact.members > 0;
 }
 function deleteBundleActivity(bundle, activityId) {
   const id = Number(activityId);
@@ -17007,7 +17028,7 @@ function removeActivityMemberDevice(bundle, activityId, deviceId) {
   return reconcileActivityPowerMacros(next, aId);
 }
 function activityMemberRemovalImpact(bundle, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0, members: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -17031,7 +17052,7 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId)
   );
-  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings, members: 0 };
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -17733,9 +17754,6 @@ function setActivityRoleDevice(bundle, activityId, group, deviceId) {
     return { ...activity, button_bindings: rows };
   });
   return reconcileActivityMembershipChange(bundle, next, aId);
-}
-function bundleEditableDeviceOptions(bundle) {
-  return bundleDeviceOptions(bundle);
 }
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
@@ -18758,7 +18776,7 @@ var SbPanelBackup = class extends i4 {
   }
   _renderEditOverview(bundle, picker) {
     const activities = bundleActivityOptions(bundle);
-    const devices = bundleEditableDeviceOptions(bundle);
+    const devices = bundleDeviceOptions(bundle);
     const hubName = String(bundle.hub?.name ?? "").trim();
     const sorting = Boolean(this._activitySorter.state || this._deviceSorter.state);
     const rows = (kind, options, sorter) => {
@@ -20938,7 +20956,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     return !WIFI_EVENTS_ENABLED || option.id !== this._callbackDeviceId;
   }
   _deviceOptions() {
-    return bundleEditableDeviceOptions(this._working).filter((option) => this._pickable(option));
+    return bundleDeviceOptions(this._working).filter((option) => this._pickable(option));
   }
   _addableMembers() {
     if (!this._working || this.activityId == null) return [];
@@ -21557,6 +21575,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             ${impact.macroSteps > 0 ? b2`<li>${icon4(mdiFormatListNumbered)}<span>${B2.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
             ${impact.powerSteps > 0 ? b2`<li>${icon4(mdiPower)}<span>${B2.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
             ${impact.bindings > 0 ? b2`<li>${icon4(mdiGestureTapButton)}<span>${B2.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+            ${impact.members > 0 ? b2`<li>${icon4(mdiPower)}<span>${B2.deleteImpactMembers(impact.members)}</span></li>` : A}
           </ul>` : A}
       <div class="delete-replace-note">${icon4(mdiInformationOutline)}<span>${this._offline ? B2.deleteReplaceNote : immediate ? B2.deleteImmediateNote : B2.deleteSyncNote}</span></div>`, b2`
       <button class="dialog-btn" type="button" @click=${this._closeDeleteConfirm}>${B2.deleteCancel}</button>

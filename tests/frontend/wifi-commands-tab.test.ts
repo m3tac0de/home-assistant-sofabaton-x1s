@@ -389,3 +389,150 @@ test("wifi commands does not announce dirty from the Events section or guard sta
   (element as any)._notifyDirtyDock();
   assert.deepEqual(events, []);
 });
+
+// ── Load and save failures, stale replies, re-entry (CR-F3-4/5/6/7/11/18) ──
+
+function fakeWsHass(handlers: Record<string, (message: Record<string, unknown>) => unknown>) {
+  const calls: Array<Record<string, unknown>> = [];
+  return {
+    calls,
+    hass: {
+      states: {},
+      callWS: async (message: Record<string, unknown>) => {
+        calls.push(message);
+        const handler = handlers[String(message.type).replace("sofabaton_x1s/", "")];
+        if (!handler) throw new Error(`Unexpected WS call: ${String(message.type)}`);
+        return await handler(message);
+      },
+    },
+  };
+}
+
+test("a failed event-actions load blocks saves that would erase the stored maps", async () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  const { hass, calls } = fakeWsHass({
+    "hub_event_actions/get": () => { throw { code: "not_found", message: "gone" }; },
+    "hub_event_actions/set": () => ({}),
+  });
+  element.hass = hass;
+
+  await element._loadHubEventActions(true);
+  assert.equal(element._hubEventActionsLoadFailed, true);
+
+  await assert.rejects(element._writeHubEventAction({ kind: "hub", key: "power_off" }, { action: "perform-action", perform_action: "scene.x" }));
+  assert.deepEqual(calls.map((call) => call.type), ["sofabaton_x1s/hub_event_actions/get"]);
+
+  // A cleared action that fails says so instead of doing nothing (CR-F3-18).
+  await element._resetHubEventAction({ kind: "hub", key: "power_off" });
+  assert.ok(element._hubEventResetError);
+});
+
+test("a failed slot save keeps the stored slots and reports the error", async () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  element._selectedDeviceKey = "dev-1";
+  const before = element._commandsData;
+  const { hass } = fakeWsHass({
+    "command_config/set": () => { throw { code: "not_found", message: "gone" }; },
+  });
+  element.hass = hass;
+  const next = element._commandsList();
+  next[0] = { ...next[0], name: "Lights on" };
+
+  assert.equal(await element._setCommands(next), false);
+  assert.equal(element._commandsData, before);
+  assert.ok(element._commandsSaveError);
+});
+
+test("a failed command-config load refuses to save empty slots over the stored ones", async () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  element._selectedDeviceKey = "dev-1";
+  const { hass, calls } = fakeWsHass({
+    "command_config/get": () => { throw { code: "not_found", message: "gone" }; },
+    "command_config/set": () => ({}),
+  });
+  element.hass = hass;
+
+  await element._loadCommandConfigFromBackend(true);
+  assert.equal(element._commandConfigLoadFailed, true);
+  assert.equal(await element._setCommands(element._commandsList()), false);
+  assert.deepEqual(calls.map((call) => call.type), ["sofabaton_x1s/command_config/get"]);
+});
+
+test("a late command-config reply for the previous device is dropped", async () => {
+  // Proves CR-F3-6: without the guard, device A's slots land under B.
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  let releaseA: (value: unknown) => void = () => {};
+  const { hass } = fakeWsHass({
+    "command_config/get": (message) => message.device_key === "dev-a"
+      ? new Promise((resolve) => { releaseA = resolve; })
+      : { commands: [{ name: "B slot" }] },
+  });
+  element.hass = hass;
+
+  element._selectedDeviceKey = "dev-a";
+  const loadA = element._loadCommandConfigFromBackend(true);
+  element._selectedDeviceKey = "dev-b";
+  await element._loadCommandConfigFromBackend(true);
+  releaseA({ commands: [{ name: "A slot" }] });
+  await loadA;
+
+  assert.equal(element._commandsData[0].name, "B slot");
+});
+
+test("re-entrant hub loads join the running chain instead of restarting it", async () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  let release: (value: unknown) => void = () => {};
+  const { hass, calls } = fakeWsHass({
+    "command_devices/list": () => new Promise((resolve) => { release = resolve; }),
+    "hub_event_actions/get": () => ({ actions: {}, activity_actions: {} }),
+    "wifi_event/list": () => ({ events: [], device_id: null }),
+  });
+  element.hass = hass;
+
+  const first = element._ensureLoadedForCurrentHub();
+  const second = element._ensureLoadedForCurrentHub();
+  assert.equal(first, second);
+  release({ devices: [], max_devices: 5 });
+  await first;
+  assert.equal(calls.filter((call) => call.type === "sofabaton_x1s/command_devices/list").length, 1);
+});
+
+test("the Wifi device card leaves Enter on its delete button to the button", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  element._wifiDevices = [{ device_key: "dev-1", device_name: "TV", configured_slot_count: 0 }];
+  let opened = 0;
+  element._selectWifiDevice = () => { opened += 1; };
+  const handler = findHandler(element._renderDeviceListView(), "@keydown=");
+  let prevented = false;
+  const card = {};
+  handler({ key: "Enter", target: {}, currentTarget: card, preventDefault: () => { prevented = true; } });
+  assert.equal(opened, 0);
+  assert.equal(prevented, false);
+  handler({ key: "Enter", target: card, currentTarget: card, preventDefault: () => { prevented = true; } });
+  assert.equal(opened, 1);
+});
+
+function findHandler(template: unknown, binding: string): (event: unknown) => void {
+  const stack = [template];
+  while (stack.length) {
+    const node = stack.pop() as { strings?: string[]; values?: unknown[] } | unknown[] | null;
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) { stack.push(...node); continue; }
+    const { strings, values } = node as { strings?: string[]; values?: unknown[] };
+    if (strings && values) {
+      for (let index = 0; index < values.length; index += 1) {
+        if (strings[index].trimEnd().endsWith(binding) && typeof values[index] === "function") {
+          return values[index] as (event: unknown) => void;
+        }
+      }
+      stack.push(...values);
+    }
+  }
+  throw new Error(`no ${binding} handler rendered`);
+}

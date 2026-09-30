@@ -11,6 +11,7 @@ import {
   hubActivities,
   hubDevices,
 } from "../shared/utils/control-panel-selectors";
+import { sanitizeEntityName } from "../shared/hub-names";
 import { localizeBackendError } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
@@ -80,6 +81,9 @@ export function renderCacheTab(params: {
   addDeviceBusy: boolean;
   addDeviceError: { error_code: string } | null;
   addDeviceClasses: string[];
+  /** The selected hub's line (X1 / X1S / X2): the Add dialogs keep only
+   *  what that hub can store in a name (CR-X4-2). */
+  hubVersion: string;
   addDeviceClass: string;
   onOpenAddDevice: () => void;
   onCloseAddDevice: () => void;
@@ -113,10 +117,20 @@ export function renderCacheTab(params: {
   const rowTooltip = params.clickAction === "send"
     ? TOOLS_CARD_STRINGS.hubClick.sendTooltip
     : TOOLS_CARD_STRINGS.hubClick.copyTooltip;
+  const activateOnKey = (run: () => void) => (event: KeyboardEvent) => {
+    // Only the element itself: a nested button's Enter/Space is its own.
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    run();
+  };
   const innerRow = (label: unknown, badges: unknown, item: HubClickItem) => html`<div
     class="inner-row${rowsClickable ? " inner-row--clickable" : ""}"
     title=${rowsClickable ? rowTooltip : nothing}
+    role=${rowsClickable ? "button" : nothing}
+    tabindex=${rowsClickable ? "0" : nothing}
     @click=${rowsClickable ? () => params.onItemClick(item) : null}
+    @keydown=${rowsClickable ? activateOnKey(() => params.onItemClick(item)) : null}
   ><span class="inner-label">${label}</span><span class="inner-badges">${badges}</span></div>`;
 
   const renderActivity = (activity: { id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }) => {
@@ -132,7 +146,14 @@ export function renderCacheTab(params: {
     const activityName = String(activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id));
     return html`
       <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-activity-id=${id}>
-        <div class="entity-summary" @click=${reorder ? null : () => params.onToggleEntity(key)}>
+        <div
+          class="entity-summary"
+          role=${reorder ? nothing : "button"}
+          tabindex=${reorder ? nothing : "0"}
+          aria-expanded=${reorder ? nothing : String(isOpen)}
+          @click=${reorder ? null : () => params.onToggleEntity(key)}
+          @keydown=${reorder ? null : activateOnKey(() => params.onToggleEntity(key))}
+        >
           <span class="entity-name">
             <span class="entity-name-icon">
               <ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>
@@ -145,7 +166,7 @@ export function renderCacheTab(params: {
           <span class="entity-meta">
             ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditActivity(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
-            <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
+            <button class="icon-btn${isSpinning ? " spinning" : ""}" title=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(activityName)} aria-label=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(activityName)} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             ${reorder ? null : html`<span class="entity-chevron">▼</span>`}
           </span>
         </div>
@@ -194,7 +215,14 @@ export function renderCacheTab(params: {
     const deviceName = String(device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id));
     return html`
       <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-device-id=${id}>
-        <div class="entity-summary" @click=${reorder ? null : () => params.onToggleEntity(key)}>
+        <div
+          class="entity-summary"
+          role=${reorder ? nothing : "button"}
+          tabindex=${reorder ? nothing : "0"}
+          aria-expanded=${reorder ? nothing : String(isOpen)}
+          @click=${reorder ? null : () => params.onToggleEntity(key)}
+          @keydown=${reorder ? null : activateOnKey(() => params.onToggleEntity(key))}
+        >
           <span class="entity-name">
             <span class="entity-name-icon"><ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon></span>
             <span class="entity-name-copy">
@@ -205,7 +233,7 @@ export function renderCacheTab(params: {
           <span class="entity-meta">
             ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditDevice(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
-            <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
+            <button class="icon-btn${isSpinning ? " spinning" : ""}" title=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(deviceName)} aria-label=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(deviceName)} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             ${reorder ? null : html`<span class="entity-chevron">▼</span>`}
           </span>
         </div>
@@ -365,6 +393,14 @@ export function renderCacheTab(params: {
     ? html`${activitiesList}${activitiesFooter}`
     : html`${devicesList}${devicesFooter}`;
 
+  // Drop what the hub cannot store as the user types, like the editor's
+  // rename dialog, so what they see is the name that gets created.
+  const sanitizeNameInput = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const clean = sanitizeEntityName(params.hubVersion, input.value);
+    if (clean !== input.value) input.value = clean;
+  };
+
   const confirmAddActivity = (event: Event) => {
     const dialog = (event.currentTarget as HTMLElement).closest(".cache-dialog");
     const input = dialog?.querySelector<HTMLInputElement>(".cache-dialog-input");
@@ -387,6 +423,7 @@ export function renderCacheTab(params: {
               maxlength="30"
               placeholder=${S.addActivityPlaceholder}
               ?disabled=${params.addActivityBusy}
+              @input=${sanitizeNameInput}
               @keydown=${(event: KeyboardEvent) => {
                 if (event.key !== "Enter") return;
                 event.preventDefault();
@@ -439,6 +476,7 @@ export function renderCacheTab(params: {
               maxlength="30"
               placeholder=${S.addDevicePlaceholder}
               ?disabled=${params.addDeviceBusy}
+              @input=${sanitizeNameInput}
               @keydown=${(event: KeyboardEvent) => {
                 if (event.key !== "Enter") return;
                 event.preventDefault();
@@ -504,7 +542,7 @@ export function renderCacheTab(params: {
                 @click=${locked ? null : params.onRefreshAll}
                 @keydown=${locked ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); params.onRefreshAll(); } }}
               >${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
-              <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${params.onRefreshAll}>
+              <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" aria-label=${TOOLS_CARD_STRINGS.cache.refreshAllAria} ?disabled=${locked} @click=${params.onRefreshAll}>
                 <ha-icon icon="mdi:refresh"></ha-icon>
               </button>
             </span>
@@ -517,7 +555,7 @@ export function renderCacheTab(params: {
                 @click=${locked ? null : () => params.onRefreshSection(selectedSection)}
                 @keydown=${locked ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); params.onRefreshSection(selectedSection); } }}
               >${TOOLS_CARD_STRINGS.cache.refreshList}</span>
-              <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
+              <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" aria-label=${TOOLS_CARD_STRINGS.cache.refreshListAria} ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
                 <ha-icon icon="mdi:refresh"></ha-icon>
               </button>
             </span>

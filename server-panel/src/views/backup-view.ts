@@ -34,7 +34,6 @@ import {
   assertBackupBundleRestoreCompatible,
   bundleActivityOptions,
   bundleDeviceOptions,
-  bundleEditableDeviceOptions,
   pruneBackupBundle,
   reconcileRestoreSelection,
   renameBundleHub,
@@ -960,7 +959,7 @@ export class SbPanelBackup extends LitElement {
 
   private _renderEditOverview(bundle: BackupBundlePayload, picker: TemplateResult): TemplateResult {
     const activities = bundleActivityOptions(bundle);
-    const devices = bundleEditableDeviceOptions(bundle);
+    const devices = bundleDeviceOptions(bundle);
     const hubName = String(bundle.hub?.name ?? "").trim();
     const sorting = Boolean(this._activitySorter.state || this._deviceSorter.state);
     const rows = (kind: BackupEditTargetKind, options: BackupSelectionOption[], sorter: PointerReorder) => {

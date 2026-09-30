@@ -85,7 +85,7 @@ from . import ir_uc_hex
 from .cache_store import PersistentCacheStore
 from .ui_settings_store import HUB_CLICK_ACTIONS, UiSettingsStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
-from .lib.bundle_validation import validate_hub_bundle_for_model
+from .lib.bundle_validation import validate_hub_bundle_for_model, validate_new_entity_name
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
@@ -546,6 +546,25 @@ def _validate_wifi_name_for_hub(hub: SofabatonHub, value: Any, *, field_name: st
             )
         raise ValueError(f"{field_name} must contain only letters, numbers, and spaces")
     return raw[:_WIFI_NAME_MAX_LEN].strip()
+
+
+def _new_entity_name_storable(hub: SofabatonHub, name: str) -> bool:
+    """A new activity/device name the hub stores as given (CR-X4-2)."""
+
+    try:
+        validate_new_entity_name(name, hub_version=_hub_model_for_names(hub))
+    except ValueError:
+        return False
+    return True
+
+
+def _hub_model_for_names(hub: SofabatonHub) -> str:
+    version = str(getattr(hub, "version", "") or "").upper()
+    if "X2" in version:
+        return "X2"
+    if "X1S" in version:
+        return "X1S"
+    return "X1"
 
 
 def _validate_ir_command_name(value: Any) -> str:
@@ -3607,6 +3626,13 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
     )
     if hub is None:
         return
+    if not _new_entity_name_storable(hub, name):
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            "The hub cannot store this activity name",
+        )
+        return
 
     result = await hub.async_create_activity(name)
     if not result or str(result.get("status")) != "success":
@@ -3646,6 +3672,13 @@ async def _ws_device_create(hass: HomeAssistant, connection, msg: dict[str, Any]
         hass, connection, msg, op_name="_ws_device_create"
     )
     if hub is None:
+        return
+    if not _new_entity_name_storable(hub, name):
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            "The hub cannot store this device name",
+        )
         return
 
     device_class = normalize_device_class(msg.get("device_class"))

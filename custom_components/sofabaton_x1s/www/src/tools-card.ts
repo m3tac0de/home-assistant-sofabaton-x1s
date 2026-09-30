@@ -1011,7 +1011,6 @@ class SofabatonControlPanelCard extends LitElement {
           .hub=${hub}
           .hass=${this._snapshot.hass}
           .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .lastHubEvent=${this._snapshot.lastHubEvent}
           .selectedSection=${this._snapshot.selectedWifiSection}
@@ -1033,9 +1032,7 @@ class SofabatonControlPanelCard extends LitElement {
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
           .persistentCacheEnabled=${cacheEnabled}
-          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
           .selectedSection=${this._snapshot.selectedBackupSection}
           .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
@@ -1121,6 +1118,7 @@ class SofabatonControlPanelCard extends LitElement {
           addDeviceBusy: this._addDeviceBusy,
           addDeviceError: this._addDeviceError,
           addDeviceClasses: creatableDeviceClasses(hubLineFor(this._snapshot.hass, hub)),
+          hubVersion: hubLineFor(this._snapshot.hass, hub),
           addDeviceClass: this._addDeviceClass,
           onOpenAddDevice: () => this.openAddDevice(),
           onCloseAddDevice: () => this.closeAddDevice(),
