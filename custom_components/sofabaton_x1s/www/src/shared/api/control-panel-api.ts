@@ -339,12 +339,12 @@ export class ControlPanelApi {
     });
   }
 
-  /** Deploy one Wifi Device's staged config (the sync_command_config action). */
+  /** Deploy one Wifi Device's staged config. A WS command rather than the
+   *  sync_command_config action: a failure comes back as a code the card
+   *  shows in its dock, never as Home Assistant's error toast. */
   syncWifiCommandConfig(hubEntryId: string, deviceKey: string) {
-    if (!this.hass.callService) {
-      return Promise.reject(new Error(TOOLS_CARD_STRINGS.common.homeAssistantUnavailable));
-    }
-    return this.hass.callService("sofabaton_x1s", "sync_command_config", {
+    return this.hass.callWS<Record<string, unknown>>({
+      type: "sofabaton_x1s/command_sync/run",
       entry_id: hubEntryId,
       device_key: deviceKey,
     });

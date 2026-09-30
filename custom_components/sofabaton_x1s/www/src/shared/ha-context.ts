@@ -37,6 +37,9 @@ export interface HassLike {
     service: string,
     serviceData?: Record<string, unknown>,
     target?: Record<string, unknown>,
+    /** Home Assistant shows its own error toast unless this is false: the
+     *  card passes false and reports failures in its dock. */
+    notifyOnError?: boolean,
   ): Promise<unknown>;
   connection?: HassConnectionLike | null;
 }
@@ -119,6 +122,8 @@ export interface ControlPanelRuntimeState {
   last_operation?: { operation_id?: string | null; status: "success" | "failed" } | null;
   /** When nothing runs: last Wifi deploy outcome per device key. */
   last_wifi_deploys?: Record<string, "success" | "failed"> | null;
+  /** The failure code of each failed deploy (see localizeWifiSyncFailure). */
+  last_wifi_deploy_errors?: Record<string, string> | null;
 }
 
 export interface CacheHubState {
@@ -197,6 +202,8 @@ export interface WifiCommandSyncState {
   step_kind?: string | null;
   step_name?: string | null;
   message: string;
+  /** Why the last sync failed (status "failed"); see localizeWifiSyncFailure. */
+  error_code?: string | null;
   commands_hash: string;
   managed_command_hashes: string[];
   sync_needed: boolean;

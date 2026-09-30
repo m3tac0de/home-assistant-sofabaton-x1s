@@ -11,6 +11,7 @@ import { setMaxListeners } from "node:events";
 // signal's allowed listener count to unlimited makes the warning (and the
 // noisy fake failure) go away.
 setMaxListeners(0);
+import { TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
 import { deviceClassIcon, isBackendUnavailableError, resolveCardGateState, resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { HassConnectionLike, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
@@ -796,6 +797,20 @@ test("dock reports a failed Wifi deploy per device key", async () => {
   assert.equal(notice?.tone, "error");
 });
 
+test("dock names why a Wifi deploy failed", async () => {
+  const notice = await runTransition(
+    { kind: "operation_running", operation: "wifi_deploy", device_key: "livingroom" },
+    {
+      ...IDLE,
+      last_operation: null,
+      last_wifi_deploys: { livingroom: "failed" },
+      last_wifi_deploy_errors: { livingroom: "activities_changed" },
+    },
+  );
+  assert.equal(notice?.tone, "error");
+  assert.equal(notice?.label, TOOLS_CARD_STRINGS.wifiCommands.syncFailedActivitiesChanged);
+});
+
 // ── R5 batch 3.1: failure paths ─────────────────────────────────────────
 
 function stateWithOperation(operation: Record<string, unknown> | null) {
@@ -943,4 +958,44 @@ test("two state loads racing on one operation leave one subscription (CR-F1-6)",
   await flush();
   assert.ok(subscribed >= 1);
   assert.equal(subscribed - released, 1, "exactly one live subscription");
+});
+
+test("the Hub tab's send reports in the dock, never as Home Assistant's error toast", async () => {
+  const { store } = createStore();
+  const calls: unknown[][] = [];
+  const hass = createHass({
+    states: {
+      "remote.living_room": { state: "on", attributes: { entry_id: "hub-1", proxy_client_connected: false } },
+    },
+  });
+  (hass as HassLike & { callService: unknown }).callService = async (...args: unknown[]) => {
+    calls.push(args);
+    throw { code: "home_assistant_error", message: "Hub not connected" };
+  };
+  store.connected();
+  store.setHass(hass);
+  await store.loadState();
+
+  await store.sendHubClickCommand({ kind: "command", label: "Power", contextLabel: "Television", targetId: 1, commandId: 10 });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][4], false, "notifyOnError must be false");
+  assert.equal(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]?.tone, "error");
+});
+
+test("dock errors stay 8 seconds, successes 6", () => {
+  const delays: number[] = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    delays.push(Number(ms));
+    return realSetTimeout(() => undefined, 0);
+  }) as typeof setTimeout;
+  try {
+    const { store } = createStore();
+    store.showRuntimeCompletion({ tone: "error", label: "The hub did not answer. Sync again." }, "hub-1");
+    store.showRuntimeCompletion({ tone: "success", label: "Done" }, "hub-2");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  assert.deepEqual(delays, [8000, 6000]);
 });

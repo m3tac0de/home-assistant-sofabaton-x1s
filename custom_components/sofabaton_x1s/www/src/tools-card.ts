@@ -1010,6 +1010,7 @@ class SofabatonControlPanelCard extends LitElement {
           .lastHubEvent=${this._snapshot.lastHubEvent}
           .selectedSection=${this._snapshot.selectedWifiSection}
           .setSelectedSection=${(section: WifiSectionId) => this._store.setSelectedWifiSection(section)}
+          .showCompletion=${(notice: { tone: "success" | "error"; label: string }, entryId: string) => this._store.showRuntimeCompletion(notice, entryId)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
           @editor-dirty-changed=${this._handleEditorDirtyChanged}

@@ -12,6 +12,7 @@ import {
   localizeBackendError,
   localizeBackendOperationDetail,
   localizeBackendProgress,
+  localizeWifiSyncFailure,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
 import { resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
@@ -545,4 +546,30 @@ test("every Wifi deploy phase the hub emits has frontend copy", () => {
 
   const dead = Object.keys(WIFI_DEPLOY_PHASES).filter((phase) => !emitted.has(phase)).sort();
   assert.deepEqual(dead, [], `frontend strings for phases the hub never sends: ${dead.join(", ")}`);
+});
+
+test("a failed Wifi sync is named by its code, never by the backend's English", () => {
+  const S = TOOLS_CARD_STRINGS.wifiCommands;
+  assert.equal(localizeWifiSyncFailure("activities_changed"), S.syncFailedActivitiesChanged);
+  // Home Assistant's WS rejection shape: the code decides, the prose is ignored.
+  assert.equal(localizeWifiSyncFailure({ code: "busy", message: "Another hub operation is running" }), S.syncFailedHubBusy);
+  assert.equal(
+    localizeWifiSyncFailure({ code: "writes_refused", message: "Failed applying 2 hub write(s) (binding 0x66/0xB0, ...)" }),
+    S.syncFailedWritesRefused,
+  );
+  assert.equal(localizeWifiSyncFailure({ message: "Failed Activity validation: Activity 101 was ..." }), S.syncFailedGeneric);
+  assert.equal(localizeWifiSyncFailure("a_code_this_card_does_not_know"), S.syncFailedGeneric);
+});
+
+test("every Wifi sync failure code the deploy raises has its own dock text", () => {
+  // The codes live in wifi_deploy.py (WIFI_SYNC_FAILURE_MESSAGES); a code
+  // added there and not here would degrade to the generic sentence.
+  const source = readFileSync(path.resolve("custom_components/sofabaton_x1s/wifi_deploy.py"), "utf8").replace(/\r\n/g, "\n");
+  const start = source.indexOf("WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {");
+  const block = source.slice(start, source.indexOf("\n}\n", start));
+  const codes = [...block.matchAll(/^\s{4}"([a-z_]+)":/gm)].map((m) => m[1]);
+  assert.ok(codes.length >= 12, `expected the deploy's failure codes, saw ${codes.length}`);
+  const generic = TOOLS_CARD_STRINGS.wifiCommands.syncFailedGeneric;
+  const unmapped = codes.filter((code) => code !== "sync_failed" && localizeWifiSyncFailure(code) === generic);
+  assert.deepEqual(unmapped, []);
 });

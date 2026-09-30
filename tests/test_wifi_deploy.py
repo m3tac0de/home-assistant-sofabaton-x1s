@@ -828,7 +828,9 @@ def test_sync_command_config_replace_path_fails_on_a_refused_binding(monkeypatch
     assert saved[-1]["commands_hash"] == ""
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
-    assert "button ok in activity 101" in progress["message"]
+    # The panel gets a code and one sentence; the detail stays in the log.
+    assert progress["error_code"] == "writes_refused"
+    assert "button ok" not in progress["message"]
 
     loop.close()
 
@@ -1122,7 +1124,8 @@ def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
     assert "Unable to enable Wifi Device" in str(err.value)
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
-    assert progress["message"] == "Wifi Device could not be enabled on port 8060."
+    assert progress["error_code"] == "port_in_use"
+    assert progress["message"] == "The Wifi Device could not be enabled: its port is in use."
 
     loop.close()
 
@@ -1164,7 +1167,8 @@ def test_sync_command_config_reports_failed_progress_for_unexpected_errors(monke
 
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
-    assert progress["message"] == "Sync failed"
+    assert progress["error_code"] == "sync_failed"
+    assert progress["message"] == "The sync stopped. Sync again."
 
     loop.close()
 
@@ -1885,9 +1889,9 @@ def test_sync_command_config_aborts_on_activity_label_mismatch(monkeypatch):
 
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
-    assert "Failed Activity validation" in progress["message"]
-    assert '"TV"' in progress["message"]
-    assert '"Movie Night"' in progress["message"]
+    assert progress["error_code"] == "activities_changed"
+    assert "Re-select" in progress["message"]
+    assert '"Movie Night"' not in progress["message"]  # the detail stays in the log
 
     loop.close()
 

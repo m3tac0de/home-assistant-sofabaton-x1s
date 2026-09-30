@@ -209,7 +209,7 @@ def test_runtime_payload_reports_how_the_last_operation_ended(monkeypatch):
     async def _store(_hass):
         return _Devices()
 
-    progress = {"livingroom": {"status": "failed"}, "kitchen": {"status": "idle"}}
+    progress = {"livingroom": {"status": "failed", "error_code": "activities_changed"}, "kitchen": {"status": "idle"}}
     hub = SimpleNamespace(
         entry_id="entry-1",
         client_connected=False,
@@ -227,3 +227,5 @@ def test_runtime_payload_reports_how_the_last_operation_ended(monkeypatch):
     assert idle["kind"] == "idle"
     assert idle["last_operation"] == {"operation_id": operation_id, "status": "failed"}
     assert idle["last_wifi_deploys"] == {"livingroom": "failed"}
+    # Why it failed, for the dock (the code, never the backend prose).
+    assert idle["last_wifi_deploy_errors"] == {"livingroom": "activities_changed"}
