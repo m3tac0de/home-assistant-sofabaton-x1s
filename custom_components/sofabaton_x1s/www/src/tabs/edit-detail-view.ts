@@ -19,7 +19,6 @@
  * edits to the hub behind the same events.
  */
 import { LitElement, html, nothing } from "lit";
-import { DOC_URLS } from "../shared/doc-links";
 import { sanitizeWifiName } from "../shared/hub-names";
 import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN, byteToSeconds, secondsToByte } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
@@ -29,25 +28,12 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
-import {
-  IrFormatError,
-  buildSofabatonBlob,
-  detectIrPayloadFormat,
-  formatHexForDisplay,
-  parseProntoHex,
-  parseSofabatonBlob,
-  renderProntoHex,
-  resolveUcPaste,
-} from "../shared/ir-format";
 import type {
   BackupBundlePayload,
   IrPayloadConvertResponse,
   IrPayloadForeignFormat,
   WifiEvent,
 } from "../shared/ha-context";
-import {
-  localizeBackendError,
-} from "../shared/utils/backend-state-localization";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -62,20 +48,16 @@ import {
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
-  addBundleDeviceCommand,
   addDeviceMacroCommandStep,
   applyBundleDelete,
   activityQuickAccessItems,
   backupDeleteHasCascade,
   type BackupButtonBindingItem,
-  type BackupCommandDecodedBlock,
   type BackupDeleteTarget,
   type BundleDeleteOptions,
   type BackupDeviceCommandItem,
   type BackupMacroStepItem,
   type ButtonCatalogEntry,
-  type DecodableCommandClass,
-  type DecodedFieldSpec,
   bundleDeleteImpact,
   bundleActivityOptions,
   bundleDeviceBrand,
@@ -90,16 +72,11 @@ import {
   commandDecodedBlock,
   commandRawPayloadHex,
   normalizeCommandPayloadHex,
-  setCommandRestoreData,
-  updateCommandRawPayload,
-  DECODED_CLASS_FORM_SPECS,
   deviceButtonBindingItems,
-  defaultDecodedSnapshotForClass,
   deviceCommandItems,
   deviceMacroStepItems,
   deviceIpAddress,
   deviceIdleBehavior,
-  nextFreeDeviceCommandId,
   updateBundleDeviceIdleBehavior,
   IDLE_BEHAVIOR_AUTO_OFF,
   IDLE_BEHAVIOR_ALWAYS_ON,
@@ -122,7 +99,6 @@ import {
   unboundButtonsForDevice,
   updateActivityMacroStep,
   updateBundleDeviceIp,
-  updateCommandDecodedFields,
   updateDeviceMacroStep,
   upsertActivityButtonBinding,
   upsertDeviceButtonBinding,
@@ -140,10 +116,10 @@ import type {
   WifiEventsHost,
   WifiEventTargetSel,
 } from "./edit-detail/host-types";
-import { bundleIsX2, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
-import { decodedSnapshotFromFetch, draftToFieldValue, fieldValueToDraft } from "./edit-detail/payload-drafts";
+import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
+import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
 
 // The element's public names, kept here for its importers (R6, CR-F2-14).
 export type { BackupEditTargetKind, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
@@ -170,26 +146,8 @@ export class SofabatonEditDetailView extends LitElement {
     _editRenameDialogDraft: { state: true },
     _editRenameDialogError: { state: true },
     _editRenameDialogTarget: { state: true },
-    _payloadDialogOpen: { state: true },
-    _payloadDialogTarget: { state: true },
-    _payloadDialogDecodedDrafts: { state: true },
-    _payloadDialogDecodedSnapshot: { state: true },
-    _payloadDialogRawDraft: { state: true },
-    _payloadDialogHexTab: { state: true },
-    _payloadDialogProntoDraft: { state: true },
-    _payloadDialogProntoAvailable: { state: true },
-    _payloadDialogConverting: { state: true },
-    _payloadDialogFormatError: { state: true },
-    _payloadDialogError: { state: true },
     fetchCommandPayload: { attribute: false },
     testCommandPayload: { attribute: false },
-    _payloadFetchingCommandId: { state: true },
-    _payloadFetchError: { state: true },
-    _payloadDialogTestStatus: { state: true },
-    _payloadDialogTestError: { state: true },
-    _payloadDialogAddMode: { state: true },
-    _payloadDialogNameDraft: { state: true },
-    _addCommandPreparing: { state: true },
     irLearn: { attribute: false },
     _confirmDeleteTarget: { state: true },
     _confirmDeleteLabel: { state: true },
@@ -279,35 +237,19 @@ export class SofabatonEditDetailView extends LitElement {
   private _editRenameDialogDraft = "";
   private _editRenameDialogError = "";
   private _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
-  // ── Payload dialog (structured decoded form OR raw hex) ────────────
-  // Separate from the rename dialog: renaming is the common case and
-  // stays a compact name-only form; payload editing has its own button
-  // and popup on each command row.
-  private _payloadDialogOpen = false;
-  private _payloadDialogTarget: { deviceId: number; commandId: number } | null = null;
-  private _payloadDialogDecodedDrafts: Record<string, string> = {};
-  private _payloadDialogDecodedSnapshot: BackupCommandDecodedBlock | null = null;
-  private _payloadDialogRawSnapshot = "";
-  private _payloadDialogRawDraft = "";
-  // ── IR hex format tabs (IR8) ───────────────────────────────────────
-  // For IR devices the raw-payload textarea carries two projections of
-  // one canonical signal: the Sofabaton blob (always the byte source of
-  // truth for Test/Save via _payloadDialogRawDraft) and its pronto hex
-  // rendering. Pronto is the default view; it is unavailable when the
-  // stored bytes do not parse as raw timings (descriptive payloads,
-  // unknown variants) and the sofabaton tab then acts as passthrough.
-  private _payloadDialogHexTab: "pronto" | "sofabaton" = "pronto";
-  private _payloadDialogProntoDraft = "";
-  private _payloadDialogProntoAvailable = true;
-  private _payloadDialogFormatError = "";
-  private _payloadDialogError = "";
-  // ── Foreign IR codes (Unfolded Circle HEX) ─────────────────────────
-  // Detection is local (the shape is exact); rendering needs protocol
-  // knowledge and runs on the backend through the host callback. While a
-  // conversion is in flight the sofabaton bytes are stale, so Test/Save
-  // wait for it; a newer paste supersedes an older one via the sequence.
-  private _payloadDialogConverting = false;
-  private _payloadConversionSeq = 0;
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
   // to fetch a command's blob on demand and to Test it on the hub. Absent
@@ -318,19 +260,14 @@ export class SofabatonEditDetailView extends LitElement {
   convertForeignPayload:
     | ((text: string, format: IrPayloadForeignFormat) => Promise<IrPayloadConvertResponse>)
     | null = null;
-  private _payloadFetchingCommandId: number | null = null;
-  private _payloadFetchError = "";
-  private _payloadLiveFetched: FetchedCommandPayload | null = null;
-  private _payloadDialogTestStatus: "idle" | "testing" | "success" | "error" = "idle";
-  private _payloadDialogTestError = "";
-  // ── Add-command mode of the payload dialog (live mode only) ────────
-  // Same payload controls as command edit, plus a Name field. Decodable
-  // wifi classes seed their form (and the opaque record trailer) from an
-  // existing command fetched as a template; IR synthesizes from the
-  // descriptor alone on the backend, so it needs no template.
-  private _payloadDialogAddMode = false;
-  private _payloadDialogNameDraft = "";
-  private _addCommandPreparing = false;
+  
+  
+  
+  
+  
+  
+  
+  
   // ── Learn mode of the payload dialog (IR9, live IR devices only) ───
   // Two capture sources with opposite shapes. The hub receiver is a
   // *listener*: one armed window per attempt, countdown, cancel. The HA
@@ -341,6 +278,7 @@ export class SofabatonEditDetailView extends LitElement {
   // opened (payload -> timestamp), never against the browser clock.
   irLearn: IrLearnHost | null = null;
   readonly _learn = new IrLearnController(this);
+  readonly _payload = new PayloadDialogController(this);
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;
@@ -416,10 +354,10 @@ export class SofabatonEditDetailView extends LitElement {
     this._roleConfirm = null;
     this._bindingsView = false;
     this._closeEditRenameDialog();
-    this._closeCommandPayloadDialog();
-    this._payloadFetchingCommandId = null;
-    this._payloadFetchError = "";
-    this._addCommandPreparing = false;
+    this._payload.close();
+    this._payload.fetchingCommandId = null;
+    this._payload.fetchError = "";
+    this._payload.addPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeAddMemberDialog();
@@ -434,7 +372,7 @@ export class SofabatonEditDetailView extends LitElement {
    * tick), then hands the result to the host, which owns dirty/persistence
    * semantics.
    */
-  private _commitEditBundleEdit(next: BackupBundlePayload) {
+  _commitEditBundleEdit(next: BackupBundlePayload) {
     this.bundle = next;
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
@@ -581,7 +519,7 @@ export class SofabatonEditDetailView extends LitElement {
           </div>
         </div>
         ${this._renderEditRenameDialog()}
-        ${this._renderCommandPayloadDialog()}
+        ${this._payload.render()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
         ${this._renderAddMemberDialog()}
@@ -1070,12 +1008,12 @@ export class SofabatonEditDetailView extends LitElement {
                 <div class="quick-access-head-actions">
                   <button
                     class="quick-access-add-btn"
-                    ?disabled=${this._addCommandPreparing}
-                    @click=${() => void this._openAddCommandDialog()}
+                    ?disabled=${this._payload.addPreparing}
+                    @click=${() => void this._payload.openAdd()}
                   >
                     <ha-icon
-                      icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
-                      class=${this._addCommandPreparing ? "sb-spin" : ""}
+                      icon=${this._payload.addPreparing ? "mdi:loading" : "mdi:plus"}
+                      class=${this._payload.addPreparing ? "sb-spin" : ""}
                     ></ha-icon>
                     <span>${TOOLS_CARD_STRINGS.backup.addCommand}</span>
                   </button>
@@ -1083,11 +1021,11 @@ export class SofabatonEditDetailView extends LitElement {
               `
             : nothing}
         </div>
-        ${this._payloadFetchError
+        ${this._payload.fetchError
           ? html`
               <div class="section-status error" role="alert">
                 <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${this._payloadFetchError}</span>
+                <span>${this._payload.fetchError}</span>
               </div>
             `
           : nothing}
@@ -1132,7 +1070,7 @@ export class SofabatonEditDetailView extends LitElement {
               ? html`
                   <button
                     class="icon-btn"
-                    @click=${() => this._openCommandPayloadDialog(item.commandId)}
+                    @click=${() => this._payload.openFromBundle(item.commandId)}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                     title=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                   >
@@ -1144,14 +1082,14 @@ export class SofabatonEditDetailView extends LitElement {
               ? html`
                   <button
                     class="icon-btn"
-                    @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
-                    ?disabled=${this._payloadFetchingCommandId != null}
+                    @click=${() => void this._payload.liveFetchAndOpen(item.commandId)}
+                    ?disabled=${this._payload.fetchingCommandId != null}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editPayloadAria}
                     title=${TOOLS_CARD_STRINGS.backup.fetchEditCommandAria}
                   >
                     <ha-icon
-                      icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
-                      class=${this._payloadFetchingCommandId === item.commandId ? "sb-spin" : ""}
+                      icon=${this._payload.fetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
+                      class=${this._payload.fetchingCommandId === item.commandId ? "sb-spin" : ""}
                     ></ha-icon>
                   </button>
                 `
@@ -1355,475 +1293,37 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  /**
-   * The payload popup: structured per-class form when the command has a
-   * decoded block, raw hex replacement otherwise. Every command with a
-   * captured payload (`restore_data.data_hex`) is editable — classes
-   * without a parser just get the raw bytes.
-   */
-  private _renderCommandPayloadDialog() {
-    if (!this._payloadDialogOpen || !this._payloadDialogTarget) return nothing;
-    const decoded = this._payloadDialogDecodedSnapshot;
-    const deviceClass = String(
-      bundleDeviceClass(this.bundle, this._payloadDialogTarget.deviceId) || "",
-    ).trim();
-    return html`
-      <div class="modal-backdrop" @click=${this._closeCommandPayloadDialog}>
-        <div class="dialog medium" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title-group">
-              <div class="dialog-title">${this._payloadDialogAddMode
-                ? TOOLS_CARD_STRINGS.backup.addCommandTitle
-                : TOOLS_CARD_STRINGS.backup.editPayloadTitle}</div>
-              ${deviceClass
-                ? html`<span class="payload-class-badge" title=${TOOLS_CARD_STRINGS.backup.deviceClass}>${deviceClass}</span>`
-                : nothing}
-            </div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${this._payloadDialogAddMode && this._learn.view === "off"
-              ? html`
-                  <label class="decoded-field">
-                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.name}</span>
-                    <input
-                      class="decoded-field-input"
-                      type="text"
-                      maxlength="20"
-                      spellcheck="false"
-                      .value=${this._payloadDialogNameDraft}
-                      @input=${this._handleAddCommandNameInput}
-                      @change=${this._handleAddCommandNameInput}
-                    />
-                    <span class="decoded-field-helper">${TOOLS_CARD_STRINGS.backup.nameHelper}</span>
-                  </label>
-                `
-              : nothing}
-            ${this._learn.view !== "off"
-              ? this._learn.renderPanel()
-              : decoded
-                ? this._renderDecodedPayloadForm(decoded.className)
-                : this._liveDeviceIsIr()
-                  ? this._renderIrHexPayloadForm()
-                  : this._renderRawPayloadForm()}
-            ${this._learn.view === "off" && this._learn.sourceNote
-              ? html`
-                  <div class="section-status payload-test-status success" role="status" aria-live="polite">
-                    <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                    <span>${this._learn.sourceNote}</span>
-                  </div>
-                `
-              : nothing}
-            ${this._learn.view === "off" && this._liveDeviceIsIr()
-              ? html`
-                  <div class="payload-test-note">
-                    <ha-icon icon="mdi:flash-outline"></ha-icon>
-                    <span>
-                      ${this.mode === "live"
-                        ? TOOLS_CARD_STRINGS.backup.verifyPayloadLive
-                        : TOOLS_CARD_STRINGS.backup.verifyPayloadBackup}
-                    </span>
-                  </div>
-                `
-              : nothing}
-            ${this._learn.view === "off" && this._payloadDialogTestStatus !== "idle"
-              ? html`
-                  <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
-                    <ha-icon icon=${this._payloadDialogTestStatus === "success"
-                      ? "mdi:check-circle-outline"
-                      : this._payloadDialogTestStatus === "error"
-                        ? "mdi:alert-circle-outline"
-                        : "mdi:progress-clock"}></ha-icon>
-                    <span>
-                      ${this._payloadDialogTestStatus === "testing"
-                        ? TOOLS_CARD_STRINGS.backup.sendingToHub
-                        : this._payloadDialogTestStatus === "success"
-                          ? TOOLS_CARD_STRINGS.backup.sentToHub
-                          : this._payloadDialogTestError || TOOLS_CARD_STRINGS.backup.testFailed}
-                    </span>
-                  </div>
-                `
-              : nothing}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note payload-dialog-note">
-              <a
-                class="payload-doc-link"
-                href=${DOC_URLS.commandPayloads}
-                target="_blank"
-                rel="noreferrer noopener"
-              >${TOOLS_CARD_STRINGS.backup.payloadDocsLink}</a>
-              ${this._learn.view === "off" && this._payloadDialogError
-                ? html`<span class="payload-dialog-error">${this._payloadDialogError}</span>`
-                : nothing}
-            </div>
-            <div class="dialog-footer-actions">
-              ${this._learn.view !== "off"
-                ? this._learn.renderFooterActions()
-                : nothing}
-              ${this._learn.view === "off" && this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload
-                ? html`
-                    <button
-                      class="dialog-btn payload-test-btn"
-                      ?disabled=${this._payloadDialogTestStatus === "testing"}
-                      @click=${() => void this._runLivePayloadTest()}
-                    >
-                      <ha-icon icon="mdi:flash-outline"></ha-icon>
-                      <span>${TOOLS_CARD_STRINGS.backup.test}</span>
-                    </button>
-                  `
-                : nothing}
-              ${this._learn.view === "off"
-                ? html`
-                    <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-                    <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
-                  `
-                : nothing}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+  
 
-  private _renderRawPayloadForm() {
-    return html`
-      <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
-          <div class="decoded-form-sub">
-            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
-          </div>
-        </div>
-        <label class="decoded-field">
-          <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
-          <textarea
-            class="decoded-field-input decoded-field-input--multiline"
-            rows="6"
-            spellcheck="false"
-            .value=${this._payloadDialogRawDraft}
-            @input=${this._handleRawPayloadInput}
-            @change=${this._handleRawPayloadInput}
-          ></textarea>
-          <span class="decoded-field-helper">
-            ${TOOLS_CARD_STRINGS.backup.payloadHexHelper}
-          </span>
-        </label>
-      </div>
-    `;
-  }
+  
 
-  /**
-   * IR payload entry with format tabs (IR8): PRONTO HEX (default) and
-   * SOFABATON HEX are two views of the same signal. Sofabaton bytes in
-   * `_payloadDialogRawDraft` stay the source of truth for Test/Save;
-   * pronto edits write through via conversion. Pasting a descriptive
-   * `P:` payload morphs the dialog into descriptor mode (X2 only).
-   */
-  private _renderIrHexPayloadForm() {
-    const S = TOOLS_CARD_STRINGS.backup;
-    const tab = this._payloadDialogProntoAvailable ? this._payloadDialogHexTab : "sofabaton";
-    const prontoActive = tab === "pronto";
-    return html`
-      <div class="decoded-form">
-        <div class="payload-format-tabs" role="tablist">
-          <button
-            class="payload-format-tab ${prontoActive ? "active" : ""}"
-            role="tab"
-            aria-selected=${prontoActive ? "true" : "false"}
-            ?disabled=${!this._payloadDialogProntoAvailable}
-            title=${this._payloadDialogProntoAvailable ? "" : S.prontoUnavailable}
-            @click=${() => this._selectHexTab("pronto")}
-          >${S.prontoHexTab}</button>
-          <button
-            class="payload-format-tab ${prontoActive ? "" : "active"}"
-            role="tab"
-            aria-selected=${prontoActive ? "false" : "true"}
-            @click=${() => this._selectHexTab("sofabaton")}
-          >${S.sofabatonHexTab}</button>
-          ${this._learn.renderEntryButton()}
-        </div>
-        <label class="decoded-field">
-          <textarea
-            class="decoded-field-input decoded-field-input--multiline"
-            rows="6"
-            spellcheck="false"
-            .value=${prontoActive ? this._payloadDialogProntoDraft : this._payloadDialogRawDraft}
-            @input=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
-            @change=${prontoActive ? this._handleProntoPayloadInput : this._handleRawPayloadInput}
-          ></textarea>
-          <span class="decoded-field-helper ${this._payloadDialogFormatError ? "payload-format-error" : ""}">
-            ${this._payloadDialogFormatError
-              || (this._payloadDialogConverting ? S.ucHexConverting : "")
-              || (prontoActive ? S.prontoHexHelper : S.payloadHexHelper)}
-          </span>
-        </label>
-      </div>
-    `;
-  }
+  
 
-  private _selectHexTab(tab: "pronto" | "sofabaton") {
-    if (tab === "pronto" && !this._payloadDialogProntoAvailable) return;
-    this._payloadDialogHexTab = tab;
-    this._payloadDialogFormatError = "";
-  }
+  
 
-  /** Map an IrFormatError to a user string; anything else falls through. */
-  private _irFormatMessage(error: unknown, fallback: string): string {
-    if (error instanceof IrFormatError) return `${fallback} (${error.code})`;
-    return fallback;
-  }
+  
 
-  /**
-   * Re-derive the pronto projection after the sofabaton draft changed.
-   * Unparseable bytes are legal (passthrough for unknown variants); they
-   * only disable the pronto tab.
-   */
-  private _syncProntoFromRaw() {
-    try {
-      const signal = parseSofabatonBlob(this._payloadDialogRawDraft);
-      this._payloadDialogProntoDraft = renderProntoHex(signal);
-      this._payloadDialogProntoAvailable = true;
-    } catch {
-      this._payloadDialogProntoDraft = "";
-      this._payloadDialogProntoAvailable = false;
-    }
-  }
+  
 
-  /** Morph the open dialog to descriptor mode from pasted `P:` text. */
-  private _morphToDescriptor(text: string) {
-    this._payloadDialogDecodedSnapshot = {
-      className: "ir",
-      fields: { descriptor: "" },
-      trailerHex: "",
-      edited: false,
-    };
-    this._payloadDialogDecodedDrafts = { descriptor: text.trim() };
-    this._payloadDialogFormatError = "";
-  }
+  
 
-  /** Morph the open dialog from descriptor mode to the hex tabs. */
-  private _morphToHex(text: string, format: "pronto" | "sofabaton") {
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogFormatError = "";
-    if (format === "pronto") {
-      this._payloadDialogHexTab = "pronto";
-      this._payloadDialogProntoDraft = text.trim();
-      this._applyProntoDraft(text.trim());
-    } else {
-      this._payloadDialogHexTab = "sofabaton";
-      this._payloadDialogRawDraft = text.trim();
-      this._syncProntoFromRaw();
-    }
-  }
+  
 
-  /**
-   * Unfolded Circle paste (IR10): a bare `<protocol>;<0xvalue>;<bits>;<repeat>`
-   * HEX code or a whole codeset CSV row. PRONTO rows unwrap locally; HEX
-   * codes go to the backend, which renders them through infrared-protocols
-   * and returns both hex projections. Returns false when the text is not a
-   * UC paste so the caller continues with its own handling.
-   */
-  private _tryForeignPaste(text: string): boolean {
-    const paste = resolveUcPaste(text);
-    if (!paste) return false;
-    if (paste.name && this._payloadDialogAddMode && !this._payloadDialogNameDraft.trim()) {
-      this._payloadDialogNameDraft = sanitizeBundleName(this.bundle, paste.name);
-    }
-    if (paste.kind === "pronto") {
-      this._morphToHex(paste.code, "pronto");
-      return true;
-    }
-    void this._convertForeignCode(paste.code, "uc_hex");
-    return true;
-  }
+  
 
-  private async _convertForeignCode(code: string, format: IrPayloadForeignFormat) {
-    // Show the pasted code on the pronto tab while the backend works; the
-    // stale sofabaton bytes underneath are fenced off by `_converting`.
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoAvailable = true;
-    this._payloadDialogProntoDraft = code;
-    this._payloadDialogFormatError = "";
-    const seq = ++this._payloadConversionSeq;
-    if (!this.convertForeignPayload) {
-      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.ucHexNoHost;
-      return;
-    }
-    this._payloadDialogConverting = true;
-    try {
-      const result = await this.convertForeignPayload(code, format);
-      if (seq !== this._payloadConversionSeq) return;
-      // The backend's sofabaton bytes are the truth (they are what the
-      // emitter would send); the pronto view is re-derived from them.
-      this._morphToHex(formatHexForDisplay(result.sofabaton_hex), "sofabaton");
-      this._payloadDialogHexTab = "pronto";
-    } catch (error) {
-      if (seq !== this._payloadConversionSeq) return;
-      this._payloadDialogFormatError = localizeBackendError(error, "ir_convert");
-    } finally {
-      if (seq === this._payloadConversionSeq) this._payloadDialogConverting = false;
-    }
-  }
+  
 
-  /** Parse a pronto draft and write the sofabaton bytes through. */
-  private _applyProntoDraft(text: string) {
-    if (!text.trim()) {
-      this._payloadDialogFormatError = "";
-      return;
-    }
-    try {
-      const signal = parseProntoHex(text);
-      this._payloadDialogRawDraft = formatHexForDisplay(buildSofabatonBlob(signal));
-      this._payloadDialogProntoAvailable = true;
-      this._payloadDialogFormatError = "";
-    } catch (error) {
-      this._payloadDialogFormatError = this._irFormatMessage(
-        error,
-        TOOLS_CARD_STRINGS.backup.invalidProntoHex,
-      );
-    }
-  }
+  
 
-  private _handleProntoPayloadInput = (event: Event) => {
-    const input = event.currentTarget as HTMLTextAreaElement;
-    const text = input.value;
-    this._payloadDialogError = "";
-    if (this._tryForeignPaste(text)) return;
-    // Any further typing supersedes an in-flight conversion.
-    this._payloadConversionSeq += 1;
-    this._payloadDialogConverting = false;
-    const detected = detectIrPayloadFormat(text);
-    if (detected === "descriptor") {
-      if (bundleIsX2(this.bundle)) {
-        this._morphToDescriptor(text);
-        return;
-      }
-      this._payloadDialogProntoDraft = text;
-      this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
-      return;
-    }
-    if (detected === "sofabaton") {
-      // Only steal the paste when it is a complete, parseable blob -
-      // partial pronto typing also looks hex-ish and must stay put.
-      try {
-        parseSofabatonBlob(text);
-        this._morphToHex(text, "sofabaton");
-        return;
-      } catch {
-        // fall through: treat as in-progress pronto input
-      }
-    }
-    this._payloadDialogProntoDraft = text;
-    this._applyProntoDraft(text);
-  };
+  
 
-  private _handleAddCommandNameInput = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement;
-    const value = sanitizeBundleName(this.bundle, input.value);
-    input.value = value;
-    this._payloadDialogNameDraft = value;
-    this._payloadDialogError = "";
-  };
+  
 
-  private _handleRawPayloadInput = (event: Event) => {
-    const input = event.currentTarget as HTMLTextAreaElement;
-    const text = input.value;
-    this._payloadDialogError = "";
-    if (this._liveDeviceIsIr()) {
-      if (this._tryForeignPaste(text)) return;
-      this._payloadConversionSeq += 1;
-      this._payloadDialogConverting = false;
-      const detected = detectIrPayloadFormat(text);
-      if (detected === "pronto") {
-        this._morphToHex(text, "pronto");
-        return;
-      }
-      if (detected === "descriptor") {
-        if (bundleIsX2(this.bundle)) {
-          this._morphToDescriptor(text);
-          return;
-        }
-        this._payloadDialogRawDraft = text;
-        this._payloadDialogFormatError = TOOLS_CARD_STRINGS.backup.descriptorX2Only;
-        return;
-      }
-      this._payloadDialogRawDraft = text;
-      this._payloadDialogFormatError = "";
-      this._syncProntoFromRaw();
-      return;
-    }
-    this._payloadDialogRawDraft = text;
-  };
+  
 
-  private _renderDecodedPayloadForm(className: DecodableCommandClass) {
-    const spec = DECODED_CLASS_FORM_SPECS[className];
-    if (!spec) return nothing;
-    // IR descriptor mode shows a single DESCRIPTOR tab in place of the
-    // form title, mirroring the hex-mode tab row (IR8); pasting hex into
-    // the field switches back to the hex tabs.
-    const head = className === "ir"
-      ? html`
-          <div class="payload-format-tabs" role="tablist">
-            <button class="payload-format-tab active" role="tab" aria-selected="true">
-              ${TOOLS_CARD_STRINGS.backup.descriptorTab}
-            </button>
-            ${this._learn.renderEntryButton()}
-          </div>
-          ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
-        `
-      : html`
-          <div class="decoded-form-head">
-            <div class="decoded-form-title">${spec.title}</div>
-            ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
-          </div>
-        `;
-    return html`
-      <div class="decoded-form">
-        ${head}
-        ${spec.fields.map((field) => this._renderDecodedField(field))}
-      </div>
-    `;
-  }
+  
 
-  private _renderDecodedField(field: DecodedFieldSpec) {
-    const value = this._payloadDialogDecodedDrafts[field.key] ?? "";
-    const onInput = (event: Event) => this._handleDecodedFieldInput(event, field.key);
-    const multilineClass = field.escapedDisplay
-      ? "decoded-field-input--multiline decoded-field-input--escaped"
-      : "decoded-field-input--multiline";
-    return html`
-      <label class="decoded-field">
-        <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline
-          ? html`
-              <textarea
-                class="decoded-field-input ${multilineClass}"
-                rows="4"
-                spellcheck="false"
-                .value=${value}
-                @input=${onInput}
-                @change=${onInput}
-              ></textarea>
-            `
-          : html`
-              <input
-                class="decoded-field-input"
-                type=${field.numeric ? "number" : "text"}
-                spellcheck="false"
-                .value=${value}
-                ?disabled=${Boolean(field.readonly)}
-                @input=${field.readonly ? null : onInput}
-                @change=${field.readonly ? null : onInput}
-              />
-            `}
-        ${field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
-      </label>
-    `;
-  }
+  
 
   private _editRenameDialogLabel() {
     const target = this._editRenameDialogTarget;
@@ -1851,61 +1351,11 @@ export class SofabatonEditDetailView extends LitElement {
     return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
   }
 
-  /**
-   * Diff each spec field against the open-dialog snapshot. Returns a
-   * record of fields that changed (mapped back through the wire-format
-   * coercion in `_draftToFieldValue`), or `null` when nothing changed
-   * and the bundle should be left untouched.
-   */
-  private _collectChangedDecodedFields(
-    snapshot: BackupCommandDecodedBlock,
-  ): Record<string, unknown> | null {
-    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-    if (!spec) return null;
-    const changed: Record<string, unknown> = {};
-    let touched = false;
-    for (const field of spec.fields) {
-      const draft = this._payloadDialogDecodedDrafts[field.key] ?? "";
-      const original = fieldValueToDraft(snapshot.fields[field.key], field);
-      if (draft === original) continue;
-      changed[field.key] = draftToFieldValue(draft, field);
-      touched = true;
-    }
-    return touched ? changed : null;
-  }
+  
 
   
 
-  private _handleDecodedFieldInput = (event: Event, fieldKey: string) => {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
-    // IR descriptor field: pasting hex flips the dialog to the hex tabs
-    // (IR8 format auto-recognition). Complete blobs only, so typing a
-    // descriptor with digits never gets hijacked.
-    if (
-      fieldKey === "descriptor" &&
-      this._payloadDialogDecodedSnapshot?.className === "ir"
-    ) {
-      if (this._tryForeignPaste(input.value)) return;
-      const detected = detectIrPayloadFormat(input.value);
-      if (detected === "pronto") {
-        this._morphToHex(input.value, "pronto");
-        return;
-      }
-      if (detected === "sofabaton") {
-        try {
-          parseSofabatonBlob(input.value);
-          this._morphToHex(input.value, "sofabaton");
-          return;
-        } catch {
-          // not a complete blob: keep treating it as descriptor text
-        }
-      }
-    }
-    this._payloadDialogDecodedDrafts = {
-      ...this._payloadDialogDecodedDrafts,
-      [fieldKey]: input.value,
-    };
-  };
+  
 
   private _handleEditRenameDialogInput = (event: Event) => {
     const input = event.currentTarget as HTMLElement & { value: string };
@@ -1982,358 +1432,34 @@ export class SofabatonEditDetailView extends LitElement {
     );
   }
 
-  /**
-   * True for IR devices. Live payload *editing* is offered for all classes
-   * (raw hex, or the structured form where a parser exists), but the Test
-   * button — `playIrBlob` — is IR-only, so it gates on this.
-   */
-  private _liveDeviceIsIr(): boolean {
-    if (this.entityId == null || !this.bundle) return false;
-    return String(bundleDeviceClass(this.bundle, Number(this.entityId)) || "")
-      .trim()
-      .toLowerCase() === "ir";
-  }
-
-  /**
-   * Live "edit payload": fetch this one command's blob from the hub on
-   * demand (the structural bundle is blob-free), then open the same payload
-   * dialog backup uses — populated from the fetch, not the bundle, so the
-   * fetch itself never marks the bundle dirty. The host supplies the fetch.
-   */
-  private async _liveFetchAndOpenPayload(commandId: number) {
-    if (this.mode !== "live" || this.entityId == null || !this.fetchCommandPayload) return;
-    if (this._payloadFetchingCommandId != null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    this._payloadFetchingCommandId = normalizedCommandId;
-    this._payloadFetchError = "";
-    try {
-      const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
-      if (!fetched || !String(fetched.dataHex || "").trim()) {
-        this._payloadFetchError = TOOLS_CARD_STRINGS.backup.noPayloadReturned;
-        return;
-      }
-      this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
-    } catch (error) {
-      this._payloadFetchError = editorErrorMessage(error, "hub_request");
-    } finally {
-      this._payloadFetchingCommandId = null;
-    }
-  }
-
-  private _openLivePayloadDialog(deviceId: number, commandId: number, fetched: FetchedCommandPayload) {
-    const decoded = decodedSnapshotFromFetch(fetched.decoded);
-    const rawHex = decoded ? "" : (normalizeCommandPayloadHex(fetched.dataHex) ?? fetched.dataHex);
-    this._payloadDialogTarget = { deviceId, commandId };
-    this._payloadLiveFetched = fetched;
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = rawHex;
-    this._payloadDialogRawDraft = rawHex;
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-
-  /**
-   * Seed the IR hex-tab state after the raw draft was (re)set: pronto is
-   * the default view when the blob parses as raw timings (IR8).
-   */
-  private _resetIrHexTabState() {
-    this._payloadDialogFormatError = "";
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoDraft = "";
-    this._payloadDialogProntoAvailable = true;
-    if (!this._liveDeviceIsIr()) return;
-    if (String(this._payloadDialogRawDraft ?? "").trim()) {
-      this._syncProntoFromRaw();
-      if (!this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "sofabaton";
-    }
-  }
-
-  /**
-   * Open the payload dialog in add-command mode (live only). The controls
-   * mirror command edit for the device's class:
-   *
-   * * `ir` — blank descriptor form. The backend synthesizes the record
-   *   from the descriptor alone (`build_descriptive_ir_blob_body`), so no
-   *   template is needed and Test works before anything is saved.
-   * * decodable wifi classes — the structured form, seeded from an
-   *   existing command fetched as a template. The template supplies the
-   *   record's opaque trailer (a checksum region we cannot synthesize)
-   *   plus sensible defaults like host/port.
-   * * everything else — raw hex entry.
-   *
-   * Non-IR devices need at least one existing command: the template
-   * trailer and the codec (`library_type`) are both read from it.
-   */
-  private async _openAddCommandDialog() {
-    if (this.mode !== "live" || this.entityId == null || !this.bundle) return;
-    if (this._addCommandPreparing) return;
-    const deviceId = Number(this.entityId);
-    const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
-    this._payloadFetchError = "";
-
-    if (deviceClass === "ir") {
-      // Descriptive synthesis is X2-only (IR8 decision 5); other hubs
-      // open straight in the hex tabs, pronto view, empty.
-      this._openAddDialogWithSnapshot(
-        deviceId,
-        bundleIsX2(this.bundle)
-          ? { className: "ir", fields: { descriptor: "" }, trailerHex: "", edited: false }
-          : null,
-      );
-      return;
-    }
-
-    const existing = deviceCommandItems(this.bundle, deviceId);
-    if (!existing.length) {
-      // A device created empty (Hub tab "Add device") has no template
-      // command to clone a decoded snapshot from: open the class's form
-      // with neutral defaults, or raw hex for classes without a form.
-      this._openAddDialogWithSnapshot(
-        deviceId,
-        defaultDecodedSnapshotForClass(deviceClass, {
-          deviceId,
-          commandId: nextFreeDeviceCommandId(this.bundle, deviceId),
-        }),
-      );
-      return;
-    }
-
-    if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
-      this._addCommandPreparing = true;
-      try {
-        const fetched = await this.fetchCommandPayload(deviceId, existing[0].commandId);
-        const decoded = decodedSnapshotFromFetch(fetched?.decoded ?? null);
-        if (decoded) {
-          this._openAddDialogWithSnapshot(deviceId, decoded);
-          return;
-        }
-      } catch (error) {
-        this._payloadFetchError = editorErrorMessage(error, "hub_request");
-        return;
-      } finally {
-        this._addCommandPreparing = false;
-      }
-    }
-
-    // Non-decodable class (BT / RF / learned-IR style records) or the
-    // template did not decode: raw hex entry.
-    this._openAddDialogWithSnapshot(deviceId, null);
-  }
-
-  private _openAddDialogWithSnapshot(deviceId: number, decoded: BackupCommandDecodedBlock | null) {
-    this._payloadDialogTarget = { deviceId, commandId: 0 };
-    this._payloadDialogAddMode = true;
-    this._payloadDialogNameDraft = "";
-    this._payloadLiveFetched = null;
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = "";
-    this._payloadDialogRawDraft = "";
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
-
-  /**
-   * Commit a new command from the add dialog: allocate the next free id on
-   * the device and append a row whose `restore_data` carries the
-   * `new: true` marker the device-sync planner turns into a `command_add`
-   * step. Decoded forms serialize every field (there is no pristine
-   * baseline to diff against); raw entry normalizes the hex.
-   */
-  private _applyAddCommandDialog(target: { deviceId: number; commandId: number }) {
-    if (!this.bundle) return;
-    const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
-    if (!name) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.newCommandNameRequired;
-      return;
-    }
-    let restoreData: Record<string, unknown>;
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-      const fields: Record<string, unknown> = {};
-      for (const field of spec.fields) {
-        fields[field.key] = draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
-      }
-      if (snapshot.className === "wifi_mqtt") {
-        // Read-only ids: keep them equal to this device and the id the
-        // commit is about to allocate (the hub ignores both bytes anyway).
-        fields["device_id"] = target.deviceId & 0xff;
-        fields["command_id"] = (nextFreeDeviceCommandId(this.bundle, target.deviceId) ?? (Number(fields["command_id"]) || 1)) & 0xff;
-      }
-      if (snapshot.className === "ir") {
-        const descriptor = String(fields["descriptor"] ?? "").trim();
-        if (!descriptor.startsWith("P:")) {
-          this._payloadDialogError = TOOLS_CARD_STRINGS.backup.descriptiveIrRequired;
-          return;
-        }
-      }
-      restoreData = {
-        transport: "hub_code_record",
-        decoded: {
-          class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields,
-          edited: true,
-        },
-      };
-    } else {
-      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-      if (!normalized) {
-        this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-        return;
-      }
-      restoreData = { transport: "hub_code_record", data_hex: normalized };
-    }
-    const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
-    if (newId == null) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.noFreeCommandSlot;
-      return;
-    }
-    this._commitEditBundleEdit(
-      addBundleDeviceCommand(this.bundle, target.deviceId, newId, name, restoreData),
-    );
-    this._closeCommandPayloadDialog();
-  }
+  
 
   
 
-  /**
-   * Commit a live payload edit. The working command has no restore_data yet
-   * (blob-free bundle), so build the whole block — carrying the `edited`
-   * marker the device-sync planner keys on — and set it via
-   * `setCommandRestoreData`. A pristine (unchanged) dialog commits nothing.
-   */
-  private _applyLivePayloadDialog(target: { deviceId: number; commandId: number }) {
-    if (!this.bundle) return;
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      const changedFields = this._collectChangedDecodedFields(snapshot);
-      if (!changedFields) {
-        this._closeCommandPayloadDialog();
-        return;
-      }
-      const restoreData = {
-        transport: "hub_code_record",
-        data_hex: this._payloadLiveFetched?.dataHex ?? "",
-        decoded: {
-          class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields: { ...snapshot.fields, ...changedFields },
-          edited: true,
-        },
-      };
-      this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-    if (!normalized) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-      return;
-    }
-    if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const restoreData = { transport: "hub_code_record", data_hex: normalized, edited: true };
-    this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
-    this._closeCommandPayloadDialog();
-  }
+  
 
-  /** Test the current draft on the hub (IR only), via the host's callback. */
-  private async _runLivePayloadTest() {
-    if (!this.testCommandPayload) return;
-    if (this._payloadDialogFormatError) {
-      // The active hex tab holds unparseable text; the sofabaton bytes
-      // behind Test/Save would be stale.
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = this._payloadDialogFormatError;
-      return;
-    }
-    if (this._payloadDialogConverting) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
-      return;
-    }
-    const value = this._payloadDialogDecodedSnapshot
-      ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim()
-      : String(this._payloadDialogRawDraft ?? "").trim();
-    if (!value) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = TOOLS_CARD_STRINGS.backup.nothingToTest;
-      return;
-    }
-    this._payloadDialogTestStatus = "testing";
-    this._payloadDialogTestError = "";
-    try {
-      await this.testCommandPayload(value);
-      this._payloadDialogTestStatus = "success";
-    } catch (error) {
-      this._payloadDialogTestStatus = "error";
-      this._payloadDialogTestError = editorErrorMessage(error, "hub_request");
-    }
-  }
+  
 
-  private _openCommandPayloadDialog(commandId: number) {
-    if (this.mode === "live") return;
-    if (this.entityId == null) return;
-    const deviceId = Number(this.entityId);
-    const normalizedCommandId = Number(commandId);
-    // A decoded block gets the structured per-class form; anything else
-    // with a captured payload gets the raw hex editor. Commands with no
-    // restore_data at all never reach here (the row hides the button).
-    const decoded = commandDecodedBlock(this.bundle, deviceId, normalizedCommandId);
-    const rawHex = decoded
-      ? null
-      : commandRawPayloadHex(this.bundle, deviceId, normalizedCommandId);
-    if (!decoded && !rawHex) return;
-    this._payloadDialogTarget = { deviceId, commandId: normalizedCommandId };
-    this._payloadDialogDecodedSnapshot = decoded;
-    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._payloadDialogRawSnapshot = rawHex ?? "";
-    this._payloadDialogRawDraft = rawHex ?? "";
-    this._payloadDialogError = "";
-    this._resetIrHexTabState();
-    this._payloadDialogOpen = true;
-  }
+  
 
-  private _closeCommandPayloadDialog = () => {
-    this._learn.exit();
-    this._learn.sourceNote = "";
-    // A conversion still in flight must not land in the next dialog.
-    this._payloadConversionSeq += 1;
-    this._payloadDialogConverting = false;
-    this._payloadDialogOpen = false;
-    this._payloadDialogTarget = null;
-    this._payloadDialogDecodedSnapshot = null;
-    this._payloadDialogDecodedDrafts = {};
-    this._payloadDialogRawSnapshot = "";
-    this._payloadDialogRawDraft = "";
-    this._payloadDialogError = "";
-    this._payloadLiveFetched = null;
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
-    this._payloadDialogAddMode = false;
-    this._payloadDialogNameDraft = "";
-    this._payloadDialogHexTab = "pronto";
-    this._payloadDialogProntoDraft = "";
-    this._payloadDialogProntoAvailable = true;
-    this._payloadDialogFormatError = "";
-  };
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
 
   // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
   /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
   _learnAvailable(): boolean {
-    return this.mode === "live" && !!this.irLearn && this._liveDeviceIsIr();
+    return this.mode === "live" && !!this.irLearn && this._payload.liveDeviceIsIr();
   }
 
   /**
@@ -2344,75 +1470,16 @@ export class SofabatonEditDetailView extends LitElement {
   _adoptLearnedPayload(hex: string, note: string) {
     this._learn.exit();
     const normalized = normalizeCommandPayloadHex(hex) ?? hex;
-    this._morphToHex(normalized, "sofabaton");
-    if (this._payloadDialogProntoAvailable) this._payloadDialogHexTab = "pronto";
-    this._payloadDialogError = "";
-    this._payloadDialogTestStatus = "idle";
-    this._payloadDialogTestError = "";
+    this._payload.morphToHex(normalized, "sofabaton");
+    if (this._payload.prontoAvailable) this._payload.hexTab = "pronto";
+    this._payload.error = "";
+    this._payload.testStatus = "idle";
+    this._payload.testError = "";
     this._learn.sourceNote = note;
   }
-  private _applyCommandPayloadDialog = () => {
-    const target = this._payloadDialogTarget;
-    if (!target || !this.bundle) return;
-    if (this._payloadDialogFormatError) {
-      this._payloadDialogError = this._payloadDialogFormatError;
-      return;
-    }
-    if (this._payloadDialogConverting) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.ucHexConverting;
-      return;
-    }
-    if (this._payloadDialogAddMode) {
-      this._applyAddCommandDialog(target);
-      return;
-    }
-    if (this.mode === "live") {
-      this._applyLivePayloadDialog(target);
-      return;
-    }
-    const snapshot = this._payloadDialogDecodedSnapshot;
-    if (snapshot) {
-      // Structured form: diff against the open-dialog snapshot and only
-      // push a bundle update when something changed, so `edited: true`
-      // stays off pristine rows (which would otherwise force restore
-      // through a re-encode + round-trip verify for no reason).
-      const changedFields = this._collectChangedDecodedFields(snapshot);
-      if (changedFields) {
-        this._commitEditBundleEdit(updateCommandDecodedFields(
-          this.bundle,
-          target.deviceId,
-          target.commandId,
-          changedFields,
-        ));
-      }
-      this._closeCommandPayloadDialog();
-      return;
-    }
-    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
-    if (!normalized) {
-      this._payloadDialogError = TOOLS_CARD_STRINGS.backup.payloadHexRequired;
-      return;
-    }
-    if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
-      this._commitEditBundleEdit(updateCommandRawPayload(
-        this.bundle,
-        target.deviceId,
-        target.commandId,
-        normalized,
-      ));
-    }
-    this._closeCommandPayloadDialog();
-  };
+  
 
-  private _initialDecodedDrafts(decoded: BackupCommandDecodedBlock): Record<string, string> {
-    const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
-    if (!spec) return {};
-    const drafts: Record<string, string> = {};
-    for (const field of spec.fields) {
-      drafts[field.key] = fieldValueToDraft(decoded.fields[field.key], field);
-    }
-    return drafts;
-  }
+  
 
   
 

@@ -238,42 +238,42 @@ test("clearing the device IP is a valid committed edit", () => {
 test("raw payload Save blocks invalid hex and normalizes tolerant valid input", () => {
   const element = createEditor("X1S", "device");
   const changes = collectBundleChanges(element);
-  element._payloadDialogOpen = true;
-  element._payloadDialogTarget = { deviceId: 1, commandId: 10 };
-  element._payloadDialogDecodedSnapshot = null;
-  element._payloadDialogRawSnapshot = "aa bb cc";
-  element._payloadDialogRawDraft = "abc";
+  element._payload.open = true;
+  element._payload.target = { deviceId: 1, commandId: 10 };
+  element._payload.decodedSnapshot = null;
+  element._payload.rawSnapshot = "aa bb cc";
+  element._payload.rawDraft = "abc";
 
-  element._applyCommandPayloadDialog();
+  element._payload.apply();
   assert.equal(changes.length, 0);
-  assert.match(element._payloadDialogError, /even number of hex digits/i);
-  assert.equal(element._payloadDialogOpen, true);
+  assert.match(element._payload.error, /even number of hex digits/i);
+  assert.equal(element._payload.open, true);
 
-  element._handleRawPayloadInput(controlEvent("0xDE ad\nBE,ef"));
-  assert.equal(element._payloadDialogError, "");
-  element._applyCommandPayloadDialog();
+  element._payload.handleRawInput(controlEvent("0xDE ad\nBE,ef"));
+  assert.equal(element._payload.error, "");
+  element._payload.apply();
   assert.equal(changes.length, 1);
   const command = changes[0].devices[0].commands?.find((row) => row.command_id === 10);
   assert.equal((command?.restore_data as Record<string, unknown>)?.data_hex, "de ad be ef");
-  assert.equal(element._payloadDialogOpen, false);
+  assert.equal(element._payload.open, false);
 });
 
 test("payload dialog footer links the command payload documentation beside the error note", () => {
   const element = createEditor("X1S", "device");
-  element._payloadDialogOpen = true;
-  element._payloadDialogTarget = { deviceId: 1, commandId: 10 };
-  element._payloadDialogDecodedSnapshot = null;
-  element._payloadDialogRawSnapshot = "aa bb cc";
-  element._payloadDialogRawDraft = "abc";
+  element._payload.open = true;
+  element._payload.target = { deviceId: 1, commandId: 10 };
+  element._payload.decodedSnapshot = null;
+  element._payload.rawSnapshot = "aa bb cc";
+  element._payload.rawDraft = "abc";
 
-  let text = templateText(element._renderCommandPayloadDialog());
+  let text = templateText(element._payload.render());
   assert.ok(text.includes("payload-doc-link"));
   assert.ok(text.includes("docs/command_payloads.md"));
   assert.ok(text.includes("Payload documentation"));
   assert.ok(!text.includes("payload-dialog-error"));
 
-  element._applyCommandPayloadDialog();
-  text = templateText(element._renderCommandPayloadDialog());
+  element._payload.apply();
+  text = templateText(element._payload.render());
   assert.ok(text.includes("payload-doc-link"));
   assert.ok(text.includes("payload-dialog-error"));
   assert.match(text, /even number of hex digits/i);
@@ -282,16 +282,16 @@ test("payload dialog footer links the command payload documentation beside the e
 test("raw payload Save does not emit when only formatting changed", () => {
   const element = createEditor("X1S", "device");
   const changes = collectBundleChanges(element);
-  element._payloadDialogOpen = true;
-  element._payloadDialogTarget = { deviceId: 1, commandId: 10 };
-  element._payloadDialogDecodedSnapshot = null;
-  element._payloadDialogRawSnapshot = "aa bb cc";
-  element._payloadDialogRawDraft = "0xAA 0xBB 0xCC";
+  element._payload.open = true;
+  element._payload.target = { deviceId: 1, commandId: 10 };
+  element._payload.decodedSnapshot = null;
+  element._payload.rawSnapshot = "aa bb cc";
+  element._payload.rawDraft = "0xAA 0xBB 0xCC";
 
-  element._applyCommandPayloadDialog();
+  element._payload.apply();
 
   assert.equal(changes.length, 0);
-  assert.equal(element._payloadDialogOpen, false);
+  assert.equal(element._payload.open, false);
 });
 
 test("decoded-field drafts preserve numeric, escaped, and CRLF wire shapes", () => {
@@ -453,9 +453,9 @@ test("the Test button gates on IR; editing is offered for all classes", () => {
   const element = createEditor("X1S", "device");
   element.mode = "live";
   element.entityId = 1;
-  assert.equal(element._liveDeviceIsIr(), true); // IR → Test available
+  assert.equal(element._payload.liveDeviceIsIr(), true); // IR → Test available
   element.entityId = 2; // wifi_roku → no Test, but editing still works (below)
-  assert.equal(element._liveDeviceIsIr(), false);
+  assert.equal(element._payload.liveDeviceIsIr(), false);
 });
 
 test("live command rename commits a name change", () => {
@@ -481,12 +481,12 @@ test("live payload editing works for a non-IR device via the structured form", a
     decoded: { class: "wifi_roku", trailer_hex: "", fields: { path: "launch/1234" } },
   });
 
-  await element._liveFetchAndOpenPayload(20);
-  assert.equal(element._payloadDialogOpen, true);
-  assert.equal(element._payloadDialogDecodedSnapshot.className, "wifi_roku");
+  await element._payload.liveFetchAndOpen(20);
+  assert.equal(element._payload.open, true);
+  assert.equal(element._payload.decodedSnapshot.className, "wifi_roku");
 
-  element._payloadDialogDecodedDrafts = { ...element._payloadDialogDecodedDrafts, path: "launch/9999" };
-  element._applyCommandPayloadDialog();
+  element._payload.decodedDrafts = { ...element._payload.decodedDrafts, path: "launch/9999" };
+  element._payload.apply();
 
   assert.equal(changes.length, 1);
   const command = (changes[0] as any).devices[1].commands[0];
@@ -503,20 +503,20 @@ test("live payload edit fetches on demand, edits, and commits the edited marker"
     return { dataHex: "0a 4f 22", decoded: null };
   };
 
-  await element._liveFetchAndOpenPayload(10);
+  await element._payload.liveFetchAndOpen(10);
   assert.deepEqual(fetchArgs, { deviceId: 1, commandId: 10 });
-  assert.equal(element._payloadDialogOpen, true);
-  assert.equal(element._payloadDialogRawDraft, "0a 4f 22");
+  assert.equal(element._payload.open, true);
+  assert.equal(element._payload.rawDraft, "0a 4f 22");
   // Merely fetching must not mark the bundle dirty.
   assert.equal(changes.length, 0);
 
-  element._payloadDialogRawDraft = "de ad be ef";
-  element._applyCommandPayloadDialog();
+  element._payload.rawDraft = "de ad be ef";
+  element._payload.apply();
   assert.equal(changes.length, 1);
   const command = (changes[0] as any).devices[0].commands[0];
   assert.equal(command.restore_data.data_hex, "de ad be ef");
   assert.equal(command.restore_data.edited, true);
-  assert.equal(element._payloadDialogOpen, false);
+  assert.equal(element._payload.open, false);
 });
 
 test("live payload edit with no change commits nothing", async () => {
@@ -524,10 +524,10 @@ test("live payload edit with no change commits nothing", async () => {
   const changes = collectBundleChanges(element);
   element.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
 
-  await element._liveFetchAndOpenPayload(10);
-  element._applyCommandPayloadDialog(); // draft === snapshot
+  await element._payload.liveFetchAndOpen(10);
+  element._payload.apply(); // draft === snapshot
   assert.equal(changes.length, 0);
-  assert.equal(element._payloadDialogOpen, false);
+  assert.equal(element._payload.open, false);
 });
 
 test("live payload Test plays the current draft via the host callback", async () => {
@@ -536,36 +536,36 @@ test("live payload Test plays the current draft via the host callback", async ()
   element.testCommandPayload = async (hex: string) => { played = hex; };
   element.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
 
-  await element._liveFetchAndOpenPayload(10);
-  element._payloadDialogRawDraft = "de ad be ef";
-  await element._runLivePayloadTest();
+  await element._payload.liveFetchAndOpen(10);
+  element._payload.rawDraft = "de ad be ef";
+  await element._payload.runLiveTest();
 
   assert.equal(played, "de ad be ef");
-  assert.equal(element._payloadDialogTestStatus, "success");
+  assert.equal(element._payload.testStatus, "success");
 });
 
 test("live payload fetch failure surfaces an error and opens nothing", async () => {
   const element = createLiveDeviceEditor();
   element.fetchCommandPayload = async () => { throw new Error("hub busy"); };
 
-  await element._liveFetchAndOpenPayload(10);
-  assert.equal(element._payloadDialogOpen, false);
-  assert.equal(element._payloadFetchError, "hub busy");
-  assert.equal(element._payloadFetchingCommandId, null);
+  await element._payload.liveFetchAndOpen(10);
+  assert.equal(element._payload.open, false);
+  assert.equal(element._payload.fetchError, "hub busy");
+  assert.equal(element._payload.fetchingCommandId, null);
 });
 
 test("hub refusals in the live editor show localized copy, never [object Object] (CR-F2-1)", async () => {
   const E = TOOLS_CARD_STRINGS.errors;
   const element = createLiveDeviceEditor();
   element.fetchCommandPayload = async () => { throw { code: "no_response", message: "Hub did not respond" }; };
-  await element._liveFetchAndOpenPayload(10);
-  assert.equal(element._payloadFetchError, E.hubNoResponse);
+  await element._payload.liveFetchAndOpen(10);
+  assert.equal(element._payload.fetchError, E.hubNoResponse);
 
   element.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
   element.testCommandPayload = async () => { throw { code: "unavailable", message: "proxy client connected?" }; };
-  await element._liveFetchAndOpenPayload(10);
-  await element._runLivePayloadTest();
-  assert.equal(element._payloadDialogTestError, E.hubNotReady);
+  await element._payload.liveFetchAndOpen(10);
+  await element._payload.runLiveTest();
+  assert.equal(element._payload.testError, E.hubNotReady);
 
   assert.equal(editorErrorMessage({ code: "duplicate_name", message: "exists" }, "wifi_event"), E.wifiEventNameTaken);
   assert.equal(editorErrorMessage({ code: "busy", message: "Hub is busy" }, "wifi_event"), E.anotherOperation);
@@ -604,17 +604,17 @@ test("delete confirm copy matches the mode and delete kind", () => {
 
 test("payload test hint shows only when editing an IR command", () => {
   const element = createLiveDeviceEditor(); // device 1 = ir
-  element._payloadDialogOpen = true;
-  element._payloadDialogTarget = { deviceId: 1, commandId: 10 };
-  element._payloadDialogDecodedSnapshot = null;
-  element._payloadDialogRawDraft = "0a 4f 22";
-  let text = templateText(element._renderCommandPayloadDialog());
+  element._payload.open = true;
+  element._payload.target = { deviceId: 1, commandId: 10 };
+  element._payload.decodedSnapshot = null;
+  element._payload.rawDraft = "0a 4f 22";
+  let text = templateText(element._payload.render());
   assert.ok(text.includes("Verify a changed payload"));
 
   // Non-IR device (2 = wifi_roku): no Test, so the test hint is hidden.
   element.entityId = 2;
-  element._payloadDialogTarget = { deviceId: 2, commandId: 20 };
-  text = templateText(element._renderCommandPayloadDialog());
+  element._payload.target = { deviceId: 2, commandId: 20 };
+  text = templateText(element._payload.render());
   assert.ok(!text.includes("Verify a changed payload"));
 });
 
@@ -729,70 +729,70 @@ const IR_BLOB_HEX = "0010 000000009470 0000232800001194000002300000069a 00000000
 
 test("IR payload opens on the pronto tab and renders pronto text", () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  assert.equal(element._payloadDialogProntoAvailable, true);
-  assert.equal(element._payloadDialogHexTab, "pronto");
-  assert.match(element._payloadDialogProntoDraft, /^0000 /);
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  assert.equal(element._payload.prontoAvailable, true);
+  assert.equal(element._payload.hexTab, "pronto");
+  assert.match(element._payload.prontoDraft, /^0000 /);
   // sofabaton bytes remain the source of truth for Test/Save
-  assert.match(element._payloadDialogRawDraft.replace(/\s/g, ""), /^0010000000009470/);
+  assert.match(element._payload.rawDraft.replace(/\s/g, ""), /^0010000000009470/);
 });
 
 test("editing pronto writes through to the sofabaton bytes", () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  const pronto = element._payloadDialogProntoDraft;
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  const pronto = element._payload.prontoDraft;
   // round-trip: feed the same pronto back through the pronto handler
-  element._handleProntoPayloadInput(controlEvent(pronto));
-  assert.equal(element._payloadDialogFormatError, "");
+  element._payload.handleProntoInput(controlEvent(pronto));
+  assert.equal(element._payload.formatError, "");
   // declared length (0010) + zero format field survive; the carrier
   // re-quantizes through the pronto frequency word (38000 -> 38029), so
   // assert the structural prefix, not the exact carrier bytes.
-  assert.match(element._payloadDialogRawDraft.replace(/\s/g, ""), /^001000000000[0-9a-f]{4}/);
+  assert.match(element._payload.rawDraft.replace(/\s/g, ""), /^001000000000[0-9a-f]{4}/);
 });
 
 test("invalid pronto sets a format error and blocks save", () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  element._handleProntoPayloadInput(controlEvent("0000 006D 0002 0000 00AB"));
-  assert.notEqual(element._payloadDialogFormatError, "");
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.handleProntoInput(controlEvent("0000 006D 0002 0000 00AB"));
+  assert.notEqual(element._payload.formatError, "");
   const changes = collectBundleChanges(element);
-  element._applyCommandPayloadDialog();
+  element._payload.apply();
   assert.equal(changes.length, 0); // save refused while format error stands
 });
 
 test("pasting pronto into the sofabaton tab morphs to the pronto tab", () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  element._payloadDialogHexTab = "sofabaton";
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.hexTab = "sofabaton";
   const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
-  element._handleRawPayloadInput(controlEvent(pronto));
-  assert.equal(element._payloadDialogHexTab, "pronto");
-  assert.equal(element._payloadDialogProntoDraft, pronto);
+  element._payload.handleRawInput(controlEvent(pronto));
+  assert.equal(element._payload.hexTab, "pronto");
+  assert.equal(element._payload.prontoDraft, pronto);
 });
 
 test("a non-timing blob disables the pronto tab (sofabaton passthrough)", () => {
   const element = irLiveEditor();
   // descriptive P: blob body -> parseSofabatonBlob throws -> pronto off
-  element._openLivePayloadDialog(1, 10, { dataHex: "00 11", decoded: null });
-  assert.equal(element._payloadDialogProntoAvailable, false);
-  assert.equal(element._payloadDialogHexTab, "sofabaton");
+  element._payload.openLive(1, 10, { dataHex: "00 11", decoded: null });
+  assert.equal(element._payload.prontoAvailable, false);
+  assert.equal(element._payload.hexTab, "sofabaton");
 });
 
 test("pasting a descriptor into an X2 IR payload morphs to descriptor mode", () => {
   const element = irLiveEditor("X2");
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
-  assert.ok(element._payloadDialogDecodedSnapshot);
-  assert.equal(element._payloadDialogDecodedSnapshot.className, "ir");
-  assert.equal(element._payloadDialogDecodedDrafts.descriptor, "P:Sony12 R:40000 D:1 F:18 MUL:2");
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.handleProntoInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
+  assert.ok(element._payload.decodedSnapshot);
+  assert.equal(element._payload.decodedSnapshot.className, "ir");
+  assert.equal(element._payload.decodedDrafts.descriptor, "P:Sony12 R:40000 D:1 F:18 MUL:2");
 });
 
 test("a descriptor paste on a non-X2 hub is rejected, not applied", () => {
   const element = irLiveEditor("X1S");
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  element._handleProntoPayloadInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
-  assert.equal(element._payloadDialogDecodedSnapshot, null); // stayed in hex mode
-  assert.notEqual(element._payloadDialogFormatError, "");
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.handleProntoInput(controlEvent("P:Sony12 R:40000 D:1 F:18 MUL:2"));
+  assert.equal(element._payload.decodedSnapshot, null); // stayed in hex mode
+  assert.notEqual(element._payload.formatError, "");
 });
 
 // ── IR10: Unfolded Circle pastes ───────────────────────────────────────
@@ -815,148 +815,148 @@ const UC_RESPONSE = {
 
 test("pasting a UC HEX code converts through the host and lands on the pronto tab", async () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
   const calls: string[] = [];
   element.convertForeignPayload = async (text: string) => {
     calls.push(text);
     return UC_RESPONSE;
   };
-  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
+  element._payload.handleProntoInput(controlEvent(UC_ONKYO));
   // pending: the pasted code stays visible, Test/Save are fenced off
-  assert.equal(element._payloadDialogConverting, true);
-  assert.equal(element._payloadDialogProntoDraft, UC_ONKYO);
+  assert.equal(element._payload.converting, true);
+  assert.equal(element._payload.prontoDraft, UC_ONKYO);
   const changes = collectBundleChanges(element);
-  element._applyCommandPayloadDialog();
+  element._payload.apply();
   assert.equal(changes.length, 0);
-  assert.equal(element._payloadDialogError, TOOLS_CARD_STRINGS.backup.ucHexConverting);
+  assert.equal(element._payload.error, TOOLS_CARD_STRINGS.backup.ucHexConverting);
   await settle();
   assert.deepEqual(calls, [UC_ONKYO]);
-  assert.equal(element._payloadDialogConverting, false);
-  assert.equal(element._payloadDialogFormatError, "");
-  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.equal(element._payload.converting, false);
+  assert.equal(element._payload.formatError, "");
+  assert.equal(element._payload.hexTab, "pronto");
   // the backend's sofabaton bytes are the truth; pronto is re-derived from them
-  assert.equal(element._payloadDialogRawDraft.replace(/\s/g, ""), IR_BLOB_HEX);
-  assert.match(element._payloadDialogProntoDraft, /^0000 /);
+  assert.equal(element._payload.rawDraft.replace(/\s/g, ""), IR_BLOB_HEX);
+  assert.match(element._payload.prontoDraft, /^0000 /);
 });
 
 test("a UC HEX row on the sofabaton tab converts too and names a new command", async () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
-  element._payloadDialogAddMode = true;
-  element._payloadDialogNameDraft = "";
-  element._payloadDialogHexTab = "sofabaton";
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.addMode = true;
+  element._payload.nameDraft = "";
+  element._payload.hexTab = "sofabaton";
   const calls: string[] = [];
   element.convertForeignPayload = async (text: string) => {
     calls.push(text);
     return UC_RESPONSE;
   };
-  element._handleRawPayloadInput(controlEvent('"Volume-Up","HEX","3;0x4BB640BF;32;0"'));
+  element._payload.handleRawInput(controlEvent('"Volume-Up","HEX","3;0x4BB640BF;32;0"'));
   await settle();
   assert.deepEqual(calls, ["3;0x4BB640BF;32;0"]);
-  assert.match(element._payloadDialogNameDraft, /^Volume.Up$/);
-  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.match(element._payload.nameDraft, /^Volume.Up$/);
+  assert.equal(element._payload.hexTab, "pronto");
 });
 
 test("a UC codeset row with a PRONTO code unwraps locally without the host", () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
   element.convertForeignPayload = null;
   const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
-  element._handleProntoPayloadInput(controlEvent(`"Power_Toggle","PRONTO","${pronto}"`));
-  assert.equal(element._payloadDialogConverting, false);
-  assert.equal(element._payloadDialogFormatError, "");
-  assert.equal(element._payloadDialogHexTab, "pronto");
-  assert.equal(element._payloadDialogProntoDraft, pronto);
+  element._payload.handleProntoInput(controlEvent(`"Power_Toggle","PRONTO","${pronto}"`));
+  assert.equal(element._payload.converting, false);
+  assert.equal(element._payload.formatError, "");
+  assert.equal(element._payload.hexTab, "pronto");
+  assert.equal(element._payload.prontoDraft, pronto);
 });
 
 test("a UC code the backend refuses stays in the box with the refusal", async () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
   element.convertForeignPayload = async () => {
     throw { code: "uc_hex_unsupported_protocol", message: "JVC (6)" };
   };
-  element._handleProntoPayloadInput(controlEvent("6;0x1234;16;0"));
+  element._payload.handleProntoInput(controlEvent("6;0x1234;16;0"));
   await settle();
-  assert.equal(element._payloadDialogConverting, false);
-  assert.equal(element._payloadDialogProntoDraft, "6;0x1234;16;0");
+  assert.equal(element._payload.converting, false);
+  assert.equal(element._payload.prontoDraft, "6;0x1234;16;0");
   assert.equal(
-    element._payloadDialogFormatError,
+    element._payload.formatError,
     TOOLS_CARD_STRINGS.backup.ucHexUnsupported("JVC (6)"),
   );
   const changes = collectBundleChanges(element);
-  element._applyCommandPayloadDialog();
+  element._payload.apply();
   assert.equal(changes.length, 0); // save refused while the error stands
 });
 
 test("a refusal message that is not a protocol label is not shown", async () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
   element.convertForeignPayload = async () => {
     throw { code: "uc_hex_unsupported_bits", message: "Traceback: something exploded!" };
   };
-  element._handleProntoPayloadInput(controlEvent("3;0x1234;16;0"));
+  element._payload.handleProntoInput(controlEvent("3;0x1234;16;0"));
   await settle();
   assert.equal(
-    element._payloadDialogFormatError,
+    element._payload.formatError,
     TOOLS_CARD_STRINGS.backup.ucHexUnsupported(TOOLS_CARD_STRINGS.backup.ucHexUnknownProtocol),
   );
 });
 
 test("without a host converter a UC HEX code is refused, not applied", () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
   element.convertForeignPayload = null;
-  const before = element._payloadDialogRawDraft;
-  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
-  assert.equal(element._payloadDialogConverting, false);
-  assert.equal(element._payloadDialogFormatError, TOOLS_CARD_STRINGS.backup.ucHexNoHost);
-  assert.equal(element._payloadDialogRawDraft, before);
+  const before = element._payload.rawDraft;
+  element._payload.handleProntoInput(controlEvent(UC_ONKYO));
+  assert.equal(element._payload.converting, false);
+  assert.equal(element._payload.formatError, TOOLS_CARD_STRINGS.backup.ucHexNoHost);
+  assert.equal(element._payload.rawDraft, before);
 });
 
 test("typing over an in-flight conversion supersedes it", async () => {
   const element = irLiveEditor();
-  element._openLivePayloadDialog(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
+  element._payload.openLive(1, 10, { dataHex: IR_BLOB_HEX, decoded: null });
   let release: (value: typeof UC_RESPONSE) => void = () => {};
   element.convertForeignPayload = () => new Promise((resolve) => { release = resolve; });
-  element._handleProntoPayloadInput(controlEvent(UC_ONKYO));
-  assert.equal(element._payloadDialogConverting, true);
+  element._payload.handleProntoInput(controlEvent(UC_ONKYO));
+  assert.equal(element._payload.converting, true);
   const pronto = "0000 006D 0002 0000 00AB 00AB 0015 06AE";
-  element._handleProntoPayloadInput(controlEvent(pronto));
-  assert.equal(element._payloadDialogConverting, false);
+  element._payload.handleProntoInput(controlEvent(pronto));
+  assert.equal(element._payload.converting, false);
   release(UC_RESPONSE);
   await settle();
   // the late result must not overwrite what the user typed afterwards
-  assert.equal(element._payloadDialogProntoDraft, pronto);
+  assert.equal(element._payload.prontoDraft, pronto);
 });
 
 test("a UC HEX paste into the X2 descriptor field converts as well", async () => {
   const element = irLiveEditor("X2");
-  await element._openAddCommandDialog(); // descriptor form
+  await element._payload.openAdd(); // descriptor form
   const calls: string[] = [];
   element.convertForeignPayload = async (text: string) => {
     calls.push(text);
     return UC_RESPONSE;
   };
-  element._handleDecodedFieldInput(controlEvent(UC_ONKYO), "descriptor");
+  element._payload.handleDecodedFieldInput(controlEvent(UC_ONKYO), "descriptor");
   await settle();
   assert.deepEqual(calls, [UC_ONKYO]);
-  assert.equal(element._payloadDialogDecodedSnapshot, null); // hex mode now
-  assert.equal(element._payloadDialogHexTab, "pronto");
+  assert.equal(element._payload.decodedSnapshot, null); // hex mode now
+  assert.equal(element._payload.hexTab, "pronto");
 });
 
 test("add-command on a non-X2 IR device opens the hex tabs, not the descriptor", async () => {
   const element = irLiveEditor("X1S");
-  await element._openAddCommandDialog();
-  assert.equal(element._payloadDialogAddMode, true);
-  assert.equal(element._payloadDialogDecodedSnapshot, null); // hex mode
+  await element._payload.openAdd();
+  assert.equal(element._payload.addMode, true);
+  assert.equal(element._payload.decodedSnapshot, null); // hex mode
 });
 
 test("add-command on an X2 IR device opens the descriptor form", async () => {
   const element = irLiveEditor("X2");
-  await element._openAddCommandDialog();
-  assert.equal(element._payloadDialogAddMode, true);
-  assert.ok(element._payloadDialogDecodedSnapshot);
-  assert.equal(element._payloadDialogDecodedSnapshot.className, "ir");
+  await element._payload.openAdd();
+  assert.equal(element._payload.addMode, true);
+  assert.ok(element._payload.decodedSnapshot);
+  assert.equal(element._payload.decodedSnapshot.className, "ir");
 });
 
 // ── Payload-editor learn mode (IR9) ──────────────────────────────────
@@ -1014,7 +1014,7 @@ async function settle() {
 function openLearnEditor(host: unknown): EditorElement {
   const element = createLiveDeviceEditor();
   element.irLearn = host;
-  element._openAddDialogWithSnapshot(1, null);
+  element._payload.openAddWithSnapshot(1, null);
   return element;
 }
 
@@ -1043,7 +1043,7 @@ test("entering learn mode opens the menu, subscribes the inbox and gates the HA 
   assert.equal(element._learn.haAvailable, true);
   assert.equal(element._learn.haOptionVisible(), true); // a consumer exists
 
-  element._closeCommandPayloadDialog();
+  element._payload.close();
   assert.equal(element._learn.view, "off");
   assert.equal(calls.emissionsUnsubscribed, 1);
 });
@@ -1055,7 +1055,7 @@ test("the HA option needs the emitter plus a consumer or a non-empty inbox", asy
     await element._learn.enter();
     await settle();
     assert.equal(element._learn.haOptionVisible(), false);
-    element._closeCommandPayloadDialog();
+    element._payload.close();
   }
   {
     const { host, calls } = learnHost({ consumers: [] });
@@ -1065,7 +1065,7 @@ test("the HA option needs the emitter plus a consumer or a non-empty inbox", asy
     assert.equal(element._learn.haOptionVisible(), false);
     calls.emissionSink!([{ label: "ProntoHexCommand (abcd1234)", payload_hex: "aabb", when: "2026-09-02T10:00:00+00:00", count: 1 }]);
     assert.equal(element._learn.haOptionVisible(), true);
-    element._closeCommandPayloadDialog();
+    element._payload.close();
   }
   {
     const { host } = learnHost({ consumersFails: true });
@@ -1073,7 +1073,7 @@ test("the HA option needs the emitter plus a consumer or a non-empty inbox", asy
     await element._learn.enter();
     await settle();
     assert.equal(element._learn.haAvailable, false);
-    element._closeCommandPayloadDialog();
+    element._payload.close();
   }
 });
 
@@ -1113,16 +1113,16 @@ test("hub learn: listening countdown, then a learned payload lands in the hex ed
 
   calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
   assert.equal(element._learn.view, "off");
-  assert.equal(element._payloadDialogOpen, true);
-  assert.equal(element._payloadDialogRawDraft, "0a 4f 22");
-  assert.equal(element._payloadDialogDecodedSnapshot, null);
+  assert.equal(element._payload.open, true);
+  assert.equal(element._payload.rawDraft, "0a 4f 22");
+  assert.equal(element._payload.decodedSnapshot, null);
   assert.match(element._learn.sourceNote, /136 timing values at 38\.4 kHz/);
   // The finished subscription is released exactly once.
   assert.equal(calls.learnCancelled, 1);
   // Inbox subscription is dropped with learn mode.
   assert.equal(calls.emissionsUnsubscribed, 1);
 
-  element._closeCommandPayloadDialog();
+  element._payload.close();
   assert.equal(element._learn.sourceNote, "");
 });
 
@@ -1137,7 +1137,7 @@ test("hub learn: carrier frequency follows the active locale", async () => {
   calls.learnEvents!({ state: "learned", payload_hex: "0a4f22", carrier_hz: 38400, duration_count: 136 });
   assert.match(element._learn.sourceNote, /136 IR-Zeitwerte bei 38,4 kHz/);
 
-  element._closeCommandPayloadDialog();
+  element._payload.close();
   setToolsCardLanguage("en");
 });
 
@@ -1161,7 +1161,7 @@ test("hub learn: terminal outcomes stay on the hub view with a retry; cancel uns
   assert.equal(element._learn.hubState, "arming");
   staleEvents({ state: "learned", payload_hex: "ff" });
   assert.equal(element._learn.hubState, "arming");
-  assert.equal(element._payloadDialogRawDraft, "");
+  assert.equal(element._payload.rawDraft, "");
 
   calls.learnEvents!({ state: "listening", timeout_s: 60 });
   element._learn.backToMenu();
@@ -1174,7 +1174,7 @@ test("hub learn: terminal outcomes stay on the hub view with a retry; cancel uns
   assert.equal(element._learn.hubState, "refused");
   assert.equal(element._learn.hubEvent.error_code, "ir_learn_refused");
 
-  element._closeCommandPayloadDialog();
+  element._payload.close();
   assert.equal(element._learn.view, "off");
 });
 
@@ -1188,7 +1188,7 @@ test("hub learn: a subscribe failure surfaces as an error state", async () => {
   await element._learn.startHubLearn();
   assert.equal(element._learn.hubState, "error");
   assert.equal(element._learn.hubEvent.error_code, "ir_learn_failed");
-  element._closeCommandPayloadDialog();
+  element._payload.close();
 });
 
 test("localized learn views never render backend exception messages", async () => {
@@ -1215,7 +1215,7 @@ test("localized learn views never render backend exception messages", async () =
   assert.match(inboxText, /Zuletzt gesendete IR-Befehle konnten nicht geladen werden/);
   assert.doesNotMatch(inboxText, /backend transport gone/);
 
-  element._closeCommandPayloadDialog();
+  element._payload.close();
   setToolsCardLanguage("en");
 });
 
@@ -1241,16 +1241,16 @@ test("inbox: new sends are judged against the ring as first seen, and Use adopts
 
   element._learn.useEmission(fresh);
   assert.equal(element._learn.view, "off");
-  assert.equal(element._payloadDialogRawDraft, "cc dd");
+  assert.equal(element._payload.rawDraft, "cc dd");
   assert.match(element._learn.sourceNote, /ProntoHexCommand\(68 timings, 38000 Hz\)/);
   assert.equal(calls.emissionsUnsubscribed, 1);
 
   // Adopting into the add dialog leaves Save's own checks intact: a
   // name is still required.
-  element._applyCommandPayloadDialog();
-  assert.equal(element._payloadDialogOpen, true);
-  assert.match(element._payloadDialogError, /name/i);
-  element._closeCommandPayloadDialog();
+  element._payload.apply();
+  assert.equal(element._payload.open, true);
+  assert.match(element._payload.error, /name/i);
+  element._payload.close();
 });
 
 test("inbox: time-ago labels follow the ticker clock", () => {
@@ -1301,31 +1301,31 @@ function emptyLiveDevice(deviceClass: string, model: "X1" | "X1S" | "X2" = "X1S"
 
 test("add-command on an empty Roku device opens the Roku form instead of the template error", async () => {
   const element = emptyLiveDevice("wifi_roku");
-  await element._openAddCommandDialog();
-  assert.equal(element._payloadFetchError, "");
-  assert.equal(element._payloadDialogAddMode, true);
-  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_roku");
-  assert.equal(element._payloadDialogDecodedDrafts.path, "keypress/");
+  await element._payload.openAdd();
+  assert.equal(element._payload.fetchError, "");
+  assert.equal(element._payload.addMode, true);
+  assert.equal(element._payload.decodedSnapshot?.className, "wifi_roku");
+  assert.equal(element._payload.decodedDrafts.path, "keypress/");
 });
 
 test("add-command on an empty Wifi HTTP device opens the HTTP form with GET defaults", async () => {
   const element = emptyLiveDevice("wifi_ip");
-  await element._openAddCommandDialog();
-  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_ip");
-  assert.equal(element._payloadDialogDecodedDrafts.method, "GET");
-  assert.equal(element._payloadDialogDecodedDrafts.port, "80");
+  await element._payload.openAdd();
+  assert.equal(element._payload.decodedSnapshot?.className, "wifi_ip");
+  assert.equal(element._payload.decodedDrafts.method, "GET");
+  assert.equal(element._payload.decodedDrafts.port, "80");
 });
 
 test("add-command on an empty MQTT device commits the device and allocated command id", async () => {
   const element = emptyLiveDevice("wifi_mqtt", "X2");
   const changes = collectBundleChanges(element);
-  await element._openAddCommandDialog();
-  assert.equal(element._payloadDialogDecodedSnapshot?.className, "wifi_mqtt");
-  assert.equal(element._payloadDialogDecodedDrafts.device_id, "9");
-  assert.equal(element._payloadDialogDecodedDrafts.command_id, "1");
+  await element._payload.openAdd();
+  assert.equal(element._payload.decodedSnapshot?.className, "wifi_mqtt");
+  assert.equal(element._payload.decodedDrafts.device_id, "9");
+  assert.equal(element._payload.decodedDrafts.command_id, "1");
 
-  element._payloadDialogNameDraft = "Toggle";
-  element._applyAddCommandDialog({ deviceId: 9, commandId: 0 });
+  element._payload.nameDraft = "Toggle";
+  element._payload.applyAdd({ deviceId: 9, commandId: 0 });
 
   assert.equal(changes.length, 1);
   const device = changes[0].devices.find((row) => row.device?.device_id === 9)!;
@@ -1343,9 +1343,9 @@ test("add-command on an empty MQTT device commits the device and allocated comma
 
 test("add-command on an empty IR device keeps the IR path (hex tabs on X1S)", async () => {
   const element = emptyLiveDevice("ir");
-  await element._openAddCommandDialog();
-  assert.equal(element._payloadDialogAddMode, true);
-  assert.equal(element._payloadDialogDecodedSnapshot, null);
+  await element._payload.openAdd();
+  assert.equal(element._payload.addMode, true);
+  assert.equal(element._payload.decodedSnapshot, null);
 });
 
 test("macro steps reorder from the keyboard, with or without ha-sortable (CR-F2-11)", () => {
