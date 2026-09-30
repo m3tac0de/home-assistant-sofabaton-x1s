@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Collection
 from typing import Any
 
 from .hub_versions import (
@@ -965,6 +966,133 @@ class ActivityOpsMixin:
         # answered request always has one; None stays reserved for no answer.
         return list(self.state.activity_favorites_order.get(act_lo) or [])
 
+    def _x1_live_quick_access_ids(self, act_lo: int) -> set[int] | None:
+        """The ids of every favorite and macro shortcut the X1 holds for the
+        activity, read fresh from the hub; ``None`` when either read did not
+        complete (a partial read must never decide what the order lists).
+
+        On the X1 the two share one id space and one family-0x61 order
+        table. A record the table does not list still takes a row on the
+        remote, at the slot equal to its own id, covering whatever the table
+        put there and leaving the last row empty (seen on Marcel's X1,
+        2026-09-30, after a restore that wrote the table per favorite).
+        """
+
+        act_lo &= 0xFF
+        self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=True, clear_macros=True)
+        if not self._fetch_and_wait(
+            f"buttons:{act_lo}",
+            lambda: self.get_buttons_for_entity(act_lo, fetch_if_missing=True),
+            lambda: act_lo in self.state.buttons,
+            timeout=10.0,
+        ):
+            return None
+        if not self._fetch_and_wait(
+            f"macros:{act_lo}",
+            lambda: self.get_macros_for_activity(act_lo, fetch_if_missing=True),
+            lambda: act_lo in self._macros_complete,
+            timeout=10.0,
+        ):
+            return None
+        live = {int(slot.get("button_id", 0)) & 0xFF for slot in self.state.get_activity_favorite_slots(act_lo)}
+        live |= {int(macro.get("command_id", 0)) & 0xFF for macro in self.state.get_activity_macros(act_lo)}
+        live.discard(0)
+        return live
+
+    @staticmethod
+    def _with_x1_unlisted_records(order_ids: list[int], live_ids: set[int] | None) -> list[int]:
+        """*order_ids* with every live record it leaves out put back.
+
+        Each missing id goes to the position equal to its id (clamped to the
+        end): that is where the remote already draws it, so the repair only
+        brings back the entry it covered and fills the empty last row. Ids
+        in *order_ids* are kept as they are.
+        """
+
+        result = list(order_ids)
+        if not live_ids:
+            return result
+        for fav_id in sorted(set(live_ids) - set(result)):
+            result.insert(min(max(fav_id - 1, 0), len(result)), fav_id)
+        return result
+
+    def repair_x1_quick_access_order(self, activity_id: int) -> bool | None:
+        """X1: rewrite the activity's order table when it leaves out a live
+        favorite or macro shortcut (the repair syncs run for activities a
+        restore left with such a table, 2026-09-30).
+
+        Returns True when it wrote, False when nothing was missing, None when
+        this is not an X1, the hub is not controllable, or a read or write
+        failed. Reads only when nothing is missing.
+        """
+
+        if self.hub_version != HUB_VERSION_X1 or not self.can_issue_commands():
+            return None
+        act_lo = activity_id & 0xFF
+        live = self._x1_live_quick_access_ids(act_lo)
+        if live is None:
+            return None
+        order = self.request_favorites_order(act_lo)
+        if order is None:
+            return None
+        order_ids = [fav_id for fav_id, _slot in sorted(order, key=lambda pair: pair[1])]
+        repaired = self._with_x1_unlisted_records(order_ids, live)
+        if repaired == order_ids:
+            return False
+        self._log.info(
+            "[FAV_ORDER] act=0x%02X order %s leaves out live records %s; writing %s",
+            act_lo,
+            order_ids,
+            sorted(live - set(order_ids)),
+            repaired,
+        )
+        self.reset_ack_queues()
+        step = self._send_step(
+            step_name=f"fav-order-repair-61[act=0x{act_lo:02X}]",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, repaired),
+            ack_opcode=0x0103,
+        )
+        if not step.ok:
+            return None
+        step = self._send_step(
+            step_name=f"fav-order-repair-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        )
+        if not step.ok:
+            return None
+        self.state.activity_favorites_order[act_lo] = [
+            (fav_id, slot) for slot, fav_id in enumerate(repaired, start=1)
+        ]
+        return True
+
+    def _x1_repaired_order(self, act_lo: int, order_ids: list[int], *, exclude: Collection[int] = ()) -> list[int]:
+        """*order_ids* completed with the X1's unlisted records (see
+        :meth:`_with_x1_unlisted_records`); unchanged on other hubs or when the
+        live read fails. *exclude* names ids this write is removing."""
+
+        if self.hub_version != HUB_VERSION_X1:
+            return list(order_ids)
+        live = self._x1_live_quick_access_ids(act_lo)
+        if live is None:
+            self._log.warning(
+                "[FAV_ORDER] act=0x%02X the favorites and macros could not be re-read; "
+                "writing the order without the unlisted-record repair",
+                act_lo,
+            )
+            return list(order_ids)
+        repaired = self._with_x1_unlisted_records(order_ids, live - set(exclude))
+        if repaired != list(order_ids):
+            self._log.info(
+                "[FAV_ORDER] act=0x%02X order %s leaves out live records; writing %s",
+                act_lo,
+                list(order_ids),
+                repaired,
+            )
+        return repaired
+
     def _validate_favorite_fav_id(
         self,
         act_lo: int,
@@ -1049,6 +1177,10 @@ class ActivityOpsMixin:
             self._log.warning("[FAV_REORDER] no valid fav_ids for act=0x%02X", act_lo)
             return None
 
+        # X1: the table is rewritten whole, so it lists every live record,
+        # also one an earlier write left out (the repair for affected hubs).
+        ordered_fav_ids_checked = self._x1_repaired_order(act_lo, ordered_fav_ids_checked)
+
         self.reset_ack_queues()
 
         _step = self._send_step(
@@ -1126,6 +1258,11 @@ class ActivityOpsMixin:
             return None
 
         remaining_fav_ids = [fid for fid, _slot in current_order if fid != validated_fav_id]
+        # X1: the remaining order is written whole; list every live record
+        # (read before the delete, so the deleted one is excluded by id).
+        remaining_fav_ids = self._x1_repaired_order(
+            act_lo, remaining_fav_ids, exclude={validated_fav_id}
+        )
         self._log.info(
             "[FAV_DELETE] act=0x%02X deleting fav_id=0x%02X; %d remaining",
             act_lo,
@@ -1188,8 +1325,17 @@ class ActivityOpsMixin:
         slot_id: int | None = None,
         refresh_after_write: bool = True,
         query_existing_order: bool = True,
+        existing_order_ids: list[int] | None = None,
+        repair_order: bool = True,
     ) -> dict[str, Any] | None:
-        """Add a command favorite to an arbitrary activity."""
+        """Add a command favorite to an arbitrary activity.
+
+        X1 only: the stage rewrites the whole order table, from the order read
+        back (``query_existing_order``) or, when given, *existing_order_ids*
+        (a caller that knows the table, e.g. a restore building it up), with
+        live records the table leaves out put back (``repair_order``; a
+        caller that rewrites the order afterwards may skip the extra read).
+        """
 
         if not self.can_issue_commands():
             self._log.info("[FAVORITE] command_to_favorite ignored: proxy client is connected")
@@ -1207,7 +1353,9 @@ class ActivityOpsMixin:
         # On X1, macros share the same fav_id/slot namespace as command favorites
         # and must be included in the stage payload with their actual slot numbers.
         x1_existing_fav_ids: list[int] = []
-        if self.hub_version == HUB_VERSION_X1 and query_existing_order:
+        if self.hub_version == HUB_VERSION_X1 and existing_order_ids is not None:
+            x1_existing_fav_ids = [int(fav_id) & 0xFF for fav_id in existing_order_ids]
+        elif self.hub_version == HUB_VERSION_X1 and query_existing_order:
             existing_order = self.request_favorites_order(act_lo)
             if existing_order is None:
                 # The stage below rewrites the whole order table: without
@@ -1230,6 +1378,8 @@ class ActivityOpsMixin:
                 act_lo,
                 x1_existing_fav_ids,
             )
+            if repair_order:
+                x1_existing_fav_ids = self._x1_repaired_order(act_lo, x1_existing_fav_ids)
 
         # Step 1: Map — inlined so we can read the assigned fav_id from the
         # 0x013E ACK payload.  That fav_id is used to build the stage payload.

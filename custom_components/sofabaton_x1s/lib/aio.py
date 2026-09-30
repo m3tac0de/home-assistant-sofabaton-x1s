@@ -3292,6 +3292,8 @@ ENGINE_ONLY: dict[str, str] = {
             "command_to_favorite",
             "delete_favorite",
             "reorder_favorites",
+            # the X1 quick-access order check sync_activity runs after its plan
+            "repair_x1_quick_access_order",
             "add_device_to_activity",
             "persist_ir_blob",
         ),

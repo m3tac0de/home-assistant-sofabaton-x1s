@@ -172,6 +172,8 @@ def test_restore_activity_post_steps_match_canonical(monkeypatch) -> None:
         slot_id=None,
         refresh_after_write=True,
         query_existing_order=True,
+        existing_order_ids=None,
+        repair_order=True,
     ):
         call_order.append("favorite")
         return {"activity_id": activity_id, "device_id": device_id, "command_id": command_id}
@@ -249,6 +251,8 @@ def test_restore_activity_writes_favorite_slots(monkeypatch) -> None:
         slot_id=None,
         refresh_after_write=True,
         query_existing_order=True,
+        existing_order_ids=None,
+        repair_order=True,
     ):
         favorite_calls.append(
             (activity_id, device_id, command_id, slot_id, refresh_after_write, query_existing_order)

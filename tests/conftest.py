@@ -421,3 +421,19 @@ _install_homeassistant_stubs()
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _x1_live_quick_access_read_unavailable(monkeypatch):
+    """The X1 order writers re-read the activity's favorites and macros from
+    the hub before writing the order table (the unlisted-record repair).
+    Without a hub that read would wait out its timeouts, so by default it
+    reports "could not be read" and the writers act exactly as before. Tests
+    of the repair patch ``_x1_live_quick_access_ids`` themselves."""
+
+    from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
+
+    monkeypatch.setattr(ActivityOpsMixin, "_x1_live_quick_access_ids", lambda self, act_lo: None)

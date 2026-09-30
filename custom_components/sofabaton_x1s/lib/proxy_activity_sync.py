@@ -488,6 +488,19 @@ class ActivitySyncMixin:
             return failure
         total = len(plan)
 
+        # X1: an order table that leaves out a live favorite or macro (as an
+        # older restore wrote them) shows as a covered entry and an empty row
+        # on the remote. The plan only rewrites the table when the order
+        # changed, so the sync checks it and repairs it here. Best effort.
+        try:
+            self.repair_x1_quick_access_order(activity_id)
+        except Exception:  # noqa: BLE001 - the repair never fails a sync
+            self._log.warning(
+                "[ACTIVITY_SYNC] quick-access order repair failed act=0x%02X",
+                activity_id & 0xFF,
+                exc_info=True,
+            )
+
         # The settle window below can take seconds; "completed" is only
         # emitted once it finishes so the UI never claims synced while the
         # engine is still working. step_kind is cleared explicitly: progress
