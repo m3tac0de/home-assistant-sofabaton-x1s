@@ -5,6 +5,13 @@ from types import SimpleNamespace
 
 from homeassistant.components import frontend
 from custom_components.sofabaton_x1s.__init__ import (
+    _reconcile_version_metadata,
+    async_remove_entry,
+    async_setup_entry,
+    async_unload_entry,
+    async_setup,
+)
+from custom_components.sofabaton_x1s.frontend_resources import (
     _async_get_remote_card_version,
     _async_unregister_lovelace_resources,
     _async_sync_lovelace_resources,
@@ -12,11 +19,6 @@ from custom_components.sofabaton_x1s.__init__ import (
     _frontend_loader_url,
     _get_lovelace_resource_mode,
     _inspect_frontend_dir,
-    _reconcile_version_metadata,
-    async_remove_entry,
-    async_setup_entry,
-    async_unload_entry,
-    async_setup,
 )
 
 
@@ -486,19 +488,19 @@ def test_async_setup_bootstraps_storage_mode_without_registering_resources(monke
     added_loader_urls = []
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_has_community_remote_card",
+        "custom_components.sofabaton_x1s.frontend_resources._async_has_community_remote_card",
         lambda hass: asyncio.sleep(0, result=False),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._inspect_frontend_dir",
+        "custom_components.sofabaton_x1s.frontend_resources._inspect_frontend_dir",
         lambda frontend_dir: (str(frontend_dir.resolve()), True, ["tools-card.js", "remote-card.js"]),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_integration_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_integration_version",
         lambda hass: asyncio.sleep(0, result="0.5.7"),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_remote_card_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_remote_card_version",
         lambda hass: asyncio.sleep(0, result="0.1.6"),
     )
 
@@ -506,7 +508,7 @@ def test_async_setup_bootstraps_storage_mode_without_registering_resources(monke
         registered_modules.append(modules)
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_register_storage_mode_resources",
+        "custom_components.sofabaton_x1s.frontend_resources._async_register_storage_mode_resources",
         _capture_modules,
     )
     monkeypatch.setattr(frontend, "add_extra_js_url", lambda hass, url: added_loader_urls.append(url))
@@ -523,19 +525,19 @@ def test_async_setup_uses_loader_fallback_outside_storage_mode(monkeypatch) -> N
     added_loader_urls = []
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_has_community_remote_card",
+        "custom_components.sofabaton_x1s.frontend_resources._async_has_community_remote_card",
         lambda hass: asyncio.sleep(0, result=False),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._inspect_frontend_dir",
+        "custom_components.sofabaton_x1s.frontend_resources._inspect_frontend_dir",
         lambda frontend_dir: (str(frontend_dir.resolve()), True, ["tools-card.js", "remote-card.js", "card-loader.js"]),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_integration_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_integration_version",
         lambda hass: asyncio.sleep(0, result="0.5.7"),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_remote_card_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_remote_card_version",
         lambda hass: asyncio.sleep(0, result="0.1.6"),
     )
 
@@ -543,7 +545,7 @@ def test_async_setup_uses_loader_fallback_outside_storage_mode(monkeypatch) -> N
         registered_modules.append(modules)
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_register_storage_mode_resources",
+        "custom_components.sofabaton_x1s.frontend_resources._async_register_storage_mode_resources",
         _capture_modules,
     )
     monkeypatch.setattr(frontend, "add_extra_js_url", lambda hass, url: added_loader_urls.append(url))
@@ -599,15 +601,15 @@ def test_async_setup_entry_reregisters_storage_resources_after_last_hub_reenable
         _async_true,
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_has_community_remote_card",
+        "custom_components.sofabaton_x1s.frontend_resources._async_has_community_remote_card",
         lambda hass: asyncio.sleep(0, result=False),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_integration_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_integration_version",
         lambda hass: asyncio.sleep(0, result="0.5.7"),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_remote_card_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_remote_card_version",
         lambda hass: asyncio.sleep(0, result="0.1.6"),
     )
 
@@ -641,19 +643,19 @@ def test_async_setup_entry_keeps_yaml_loader_path_unchanged(monkeypatch) -> None
     _patch_setup_entry_runtime(monkeypatch)
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_has_community_remote_card",
+        "custom_components.sofabaton_x1s.frontend_resources._async_has_community_remote_card",
         lambda hass: asyncio.sleep(0, result=False),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._inspect_frontend_dir",
+        "custom_components.sofabaton_x1s.frontend_resources._inspect_frontend_dir",
         lambda frontend_dir: (str(frontend_dir.resolve()), True, ["tools-card.js", "remote-card.js", "card-loader.js"]),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_integration_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_integration_version",
         lambda hass: asyncio.sleep(0, result="0.5.7"),
     )
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_get_remote_card_version",
+        "custom_components.sofabaton_x1s.frontend_resources._async_get_remote_card_version",
         lambda hass: asyncio.sleep(0, result="0.1.6"),
     )
 
@@ -661,7 +663,7 @@ def test_async_setup_entry_keeps_yaml_loader_path_unchanged(monkeypatch) -> None
         registered_modules.append(modules)
 
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__._async_register_storage_mode_resources",
+        "custom_components.sofabaton_x1s.frontend_resources._async_register_storage_mode_resources",
         _capture_modules,
     )
     monkeypatch.setattr(frontend, "add_extra_js_url", lambda hass, url: added_loader_urls.append(url))

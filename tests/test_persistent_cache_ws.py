@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+frontend_module = importlib.import_module("custom_components.sofabaton_x1s.frontend_resources")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
@@ -284,7 +285,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
 
     monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
     monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
-    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
+    monkeypatch.setattr(frontend_module, "_async_get_integration_version", fake_version)
     monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
     monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
 
@@ -380,7 +381,7 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
 
     monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
     monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
-    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
+    monkeypatch.setattr(frontend_module, "_async_get_integration_version", fake_version)
     monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
     monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
 
