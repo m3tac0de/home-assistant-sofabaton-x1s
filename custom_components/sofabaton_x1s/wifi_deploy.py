@@ -9,6 +9,7 @@ X1 quick-access check that closes a sync.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Iterable
 
@@ -70,6 +71,35 @@ def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
     device_key, command_hash = suffix.split("-", 1)
     device_key = "".join(ch for ch in str(device_key).lower() if ch.isalnum())
     return (device_key or DEFAULT_WIFI_DEVICE_KEY), command_hash.strip()
+
+
+@dataclass
+class _DeployRun:
+    """What one Wifi Commands deploy carries between its phases."""
+
+    commands: list[Any]
+    command_payload: dict[str, Any]
+    normalized_device_key: str
+    slot_count: int
+    configured_slots: int
+    commands_hash: str
+    deployed_commands_hash: str
+    deployed_device_id: Any
+    brand_name: str
+    selected_transport: str
+    total_steps: int
+    store: Any
+    request_port: int
+    device_name: str
+    referenced_activity_ids: set[int] = field(default_factory=set)
+    managed: list[Any] = field(default_factory=list)
+    activity_input_command_ids: dict[int, int] = field(default_factory=dict)
+    wifi_device_id: int = 0
+    activity_ids: set[int] = field(default_factory=set)
+    add_results: dict[int, bool] = field(default_factory=dict)
+    delete_confirmed_acts: set[int] = field(default_factory=set)
+    activities_with_favorites: set[int] = field(default_factory=set)
+    failed_writes: list[str] = field(default_factory=list)
 
 
 class WifiDeployMixin:
@@ -727,191 +757,27 @@ class WifiDeployMixin:
                 phase="starting",
                 message="Starting sync",
             )
+            run = _DeployRun(
+                commands=commands,
+                command_payload=command_payload,
+                normalized_device_key=normalized_device_key,
+                slot_count=slot_count,
+                configured_slots=configured_slots,
+                commands_hash=commands_hash,
+                deployed_commands_hash=deployed_commands_hash,
+                deployed_device_id=deployed_device_id,
+                brand_name=brand_name,
+                selected_transport=selected_transport,
+                total_steps=total_steps,
+                store=store,
+                request_port=request_port,
+                device_name=device_name,
+            )
 
             try:
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=1,
-                    phase="enabling_device",
-                    message="Ensuring Wifi Device is enabled",
-                )
-                if (
-                    configured_slots > 0
-                    and selected_transport != WIFI_TRANSPORT_MQTT
-                    and not self.roku_server_enabled
-                ):
-                    await self.async_set_roku_server_enabled(True)
-                    from .roku_listener import async_get_roku_listener
-
-                    listener = await async_get_roku_listener(self.hass)
-                    listener_error = listener.get_last_start_error()
-                    if listener_error:
-                        raise HomeAssistantError(
-                            "Unable to enable Wifi Device (Roku/HTTP Listener): "
-                            f"port {request_port} may already be in use"
-                        )
-
-                referenced_activity_ids: set[int] = set()
-                for slot in commands[:slot_count]:
-                    if not isinstance(slot, dict):
-                        continue
-                    # A slot's activities list only means something for
-                    # favorites and hard-button bindings. The command editor
-                    # auto-selects a default activity and hides (without
-                    # clearing) the selection when both toggles are off, so an
-                    # orphaned list must not pull the device into activities
-                    # the user never sees referenced (issue #258).
-                    slot_activities_active = bool(slot.get("add_as_favorite")) or bool(
-                        str(slot.get("hard_button") or "").strip()
-                    )
-                    raw_activities = slot.get("activities")
-                    if slot_activities_active and isinstance(raw_activities, list):
-                        for act in raw_activities:
-                            try:
-                                referenced_activity_ids.add(int(act))
-                            except (TypeError, ValueError):
-                                continue
-                    raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
-                    if raw_input_activity_id:
-                        try:
-                            referenced_activity_ids.add(int(raw_input_activity_id))
-                        except (TypeError, ValueError):
-                            pass
-
-                # Validate the configured activities against a fresh hub read
-                # BEFORE the destructive delete/recreate below. The hub reuses
-                # freed activity ids, so an id picked earlier can silently come
-                # to mean a different activity after the user deletes/recreates
-                # activities in the Sofabaton app (issue #258). The label
-                # snapshot taken at configuration time lets us tell "renamed or
-                # reused" apart from "unchanged"; on any mismatch we abort with
-                # an actionable message instead of deploying into the wrong
-                # activity. Skipped when the proxy cannot issue commands (hub
-                # link down or the Sofabaton app attached): the deploy cannot
-                # proceed there anyway and fails on its first write.
-                if (
-                    configured_slots > 0
-                    and referenced_activity_ids
-                    and self._proxy.can_issue_commands()
-                ):
-                    self._set_command_sync_progress(
-                        device_key=normalized_device_key,
-                        phase="validating_activities",
-                        message="Validating Activities against the hub",
-                    )
-                    try:
-                        activity_snapshot = await self.async_request_catalog("activities")
-                    except TimeoutError as err:
-                        raise HomeAssistantError(
-                            "Failed to refresh the Activity list from the hub; "
-                            "sync aborted rather than deploying against a stale catalog"
-                        ) from err
-                    stored_activity_labels = command_payload.get("activity_labels")
-                    if isinstance(stored_activity_labels, dict):
-                        label_mismatches: list[str] = []
-                        for act_id in sorted(referenced_activity_ids):
-                            stored_label = str(
-                                stored_activity_labels.get(str(act_id)) or ""
-                            ).strip()
-                            if not stored_label:
-                                continue
-                            # Validate against the snapshot the refresh
-                            # returned, not self.activities: the burst
-                            # callback that updates the latter may still
-                            # be queued behind an older one.
-                            entry = activity_snapshot.get(act_id)
-                            if entry is None:
-                                # Deleted activities are dropped from the
-                                # deploy further down, matching the existing
-                                # recover-from-missing-target behavior.
-                                continue
-                            hub_label = str(entry.get("name") or "").strip()
-                            if hub_label and hub_label != stored_label:
-                                label_mismatches.append(
-                                    f'Activity {act_id} was "{stored_label}" when this '
-                                    f'Wifi Device was configured but is now "{hub_label}"'
-                                )
-                        if label_mismatches:
-                            raise HomeAssistantError(
-                                "Failed Activity validation: "
-                                + "; ".join(label_mismatches)
-                                + ". Activities on the hub changed since this Wifi Device "
-                                "was configured (deleting and recreating an Activity reuses "
-                                "its id). Re-select the Activities in the Wifi Command "
-                                "configuration, save, and sync again."
-                            )
-
-                try:
-                    device_snapshot = await self._async_refresh_devices_snapshot()
-                except TimeoutError as err:
-                    raise HomeAssistantError(
-                        "Failed to refresh the Device list from the hub; "
-                        "sync aborted rather than deploying against a stale catalog"
-                    ) from err
-                managed_devices = self._managed_wifi_devices(device_snapshot)
-                stored_devices = await store.async_list_hub_devices(self.entry_id) if store is not None else None
-                managed, ambiguous = self._match_managed_wifi_devices(
-                    managed_devices=managed_devices,
-                    stored_devices=stored_devices,
-                    device_key=normalized_device_key,
-                    deployed_device_id=deployed_device_id,
-                    deployed_commands_hash=deployed_commands_hash,
-                    commands_hash=commands_hash,
-                )
-                if ambiguous:
-                    raise HomeAssistantError(
-                        "Unable to safely identify existing managed Wifi Device; multiple matches found"
-                    )
-                if configured_slots == 0:
-                    self._set_command_sync_progress(
-                        device_key=normalized_device_key,
-                        current_step=2,
-                        phase="deleting_device",
-                        message="Deleting existing managed Wifi Device",
-                    )
-                    for dev_id, _managed_key, _managed_hash, _brand in managed:
-                        result = await self.async_delete_device(dev_id)
-                        if not result:
-                            raise HomeAssistantError(
-                                f"Failed deleting managed device {dev_id}"
-                            )
-
-                    if store is not None:
-                        await store.async_save_deployed_wifi_commands(
-                            self.entry_id,
-                            normalized_device_key,
-                            [],
-                            deployed_device_id=None,
-                            commands_hash="",
-                        )
-                    await self.async_update_wifi_mqtt_ingress()
-
-                    if self.roku_server_enabled and not await self._async_wifi_listener_needed():
-                        self._set_command_sync_progress(
-                            device_key=normalized_device_key,
-                            current_step=3,
-                            phase="disabling_device",
-                            message="Disabling Wifi Device",
-                        )
-                        await self.async_set_roku_server_enabled(False)
-
-                    self._set_command_sync_progress(
-                        device_key=normalized_device_key,
-                        status="success",
-                        current_step=7,
-                        total_steps=total_steps,
-                        phase="device_removed",
-                        message="No configured slots; managed Wifi Device removed",
-                        wifi_device_id=None,
-                        commands_hash=commands_hash,
-                    )
-                    return {
-                        "status": "success",
-                        "wifi_device_id": None,
-                        "commands_hash": commands_hash,
-                        "activities": [],
-                        "deleted_managed_devices": len(managed),
-                    }
+                await self._deploy_preflight(run)
+                if run.configured_slots == 0:
+                    return await self._deploy_teardown_zero_slots(run)
 
                 # ── In-place re-sync: with exactly one managed device
                 # matched, edit it in place so its device id (and everything
@@ -920,9 +786,9 @@ class WifiDeployMixin:
                 # through to the replace path below. A failure AFTER writes
                 # started raises instead (never replace on top of a
                 # half-applied edit). docs/internal/wifi-inplace-deploy-plan.md
-                if len(managed) == 1:
+                if len(run.managed) == 1:
                     inplace_result = await self._async_try_inplace_command_sync(
-                        managed_device_id=managed[0][0],
+                        managed_device_id=run.managed[0][0],
                         commands=commands,
                         command_payload=command_payload,
                         normalized_device_key=normalized_device_key,
@@ -936,523 +802,9 @@ class WifiDeployMixin:
                     if inplace_result is not None:
                         return inplace_result
 
-                command_defs: list[dict[str, Any]] = []
-                input_command_ids: list[int] = []
-                activity_input_command_ids: dict[int, int] = {}
-                max_power_command_id = min(len(commands), _WIFI_COMMAND_SLOT_COUNT)
-                raw_power_on_command_id = command_payload.get("power_on_command_id")
-                raw_power_off_command_id = command_payload.get("power_off_command_id")
-                power_on_command_id = normalize_power_command_id(
-                    raw_power_on_command_id,
-                    max_command_id=max_power_command_id,
-                )
-                power_off_command_id = normalize_power_command_id(
-                    raw_power_off_command_id,
-                    max_command_id=max_power_command_id,
-                )
-                if raw_power_on_command_id is not None and power_on_command_id is None:
-                    raise HomeAssistantError(
-                        f"power_on_command_id must be between 1 and {max_power_command_id}"
-                    )
-                if raw_power_off_command_id is not None and power_off_command_id is None:
-                    raise HomeAssistantError(
-                        f"power_off_command_id must be between 1 and {max_power_command_id}"
-                    )
-                for idx, slot in enumerate(commands[:slot_count]):
-                    raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
-                    if not raw_input_activity_id:
-                        continue
-                    try:
-                        input_activity_id = int(raw_input_activity_id)
-                    except (TypeError, ValueError):
-                        continue
-                    command_id = idx + 1
-                    input_command_ids.append(command_id)
-                    activity_input_command_ids.setdefault(input_activity_id, command_id)
-                for idx, slot in enumerate(commands[:slot_count]):
-                    name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
-                    command_defs.append(
-                        {
-                            "display_name": name,
-                            "press_type": "short",
-                            "command_index": idx,
-                        }
-                    )
-                for idx, slot in enumerate(commands[:slot_count]):
-                    name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
-                    command_defs.append(
-                        {
-                            "display_name": f"{name} Long Press",
-                            "press_type": "long",
-                            "command_index": idx,
-                        }
-                    )
-
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=2,
-                    phase="creating_device",
-                    message="Creating Wifi Device on Hub",
-                )
-                if selected_transport == WIFI_TRANSPORT_MQTT:
-                    created = await self.async_create_wifi_mqtt_device(
-                        device_name=device_name,
-                        commands=command_defs,
-                        brand_name=brand_name,
-                        power_on_command_id=power_on_command_id,
-                        power_off_command_id=power_off_command_id,
-                        input_command_ids=input_command_ids or None,
-                    )
-                else:
-                    created = await self.async_create_wifi_device(
-                        device_name=device_name,
-                        commands=command_defs,
-                        request_port=request_port,
-                        brand_name=brand_name,
-                        power_on_command_id=power_on_command_id,
-                        power_off_command_id=power_off_command_id,
-                        input_command_ids=input_command_ids or None,
-                        # The deploy keeps writing after the create
-                        # (memberships, favorites, bindings); the single
-                        # terminal resync at the end of this pipeline
-                        # covers the remote. A mid-batch trigger here
-                        # aborts/restarts the remote's multi-minute full
-                        # sync (bench 2026-08-27).
-                        send_remote_sync=False,
-                    )
-                if not created or not created.get("device_id"):
-                    raise HomeAssistantError("Failed creating Wifi Device")
-
-                wifi_device_id = int(created["device_id"])
-                # An ACK only proves the hub accepted each frame. Verify that
-                # every command row survived the create transaction before
-                # touching activities or deleting the old managed device.
-                if managed:
-                    await self.async_fetch_device_commands(wifi_device_id)
-                    command_rows, commands_ready = (
-                        await self.hass.async_add_executor_job(
-                            partial(
-                                self._proxy.get_commands_for_entity,
-                                wifi_device_id,
-                                fetch_if_missing=False,
-                            )
-                        )
-                    )
-                    # Compare labels as the hub stores them (fixed-width
-                    # slot): a 31-character "<name> Long Press" comes back
-                    # cut to 30 and is still the row we wrote.
-                    actual_commands = {
-                        int(command_id) & 0xFF: self._hub_command_label(str(label))
-                        for command_id, label in dict(command_rows or {}).items()
-                    }
-                    expected_commands = {
-                        idx + 1: self._hub_command_label(str(command["display_name"]))
-                        for idx, command in enumerate(command_defs)
-                    }
-                    if not commands_ready or actual_commands != expected_commands:
-                        mismatched = sorted(
-                            cid
-                            for cid in set(actual_commands) | set(expected_commands)
-                            if actual_commands.get(cid) != expected_commands.get(cid)
-                        )
-                        _LOGGER.warning(
-                            "[%s] sync_command_config: replacement Wifi Device %d failed "
-                            "command readback (table complete=%s, %d rows read, %d expected); "
-                            "mismatched ids: %s",
-                            self.entry_id,
-                            wifi_device_id,
-                            commands_ready,
-                            len(actual_commands),
-                            len(expected_commands),
-                            "; ".join(
-                                f"{cid}: hub={actual_commands.get(cid)!r} "
-                                f"expected={expected_commands.get(cid)!r}"
-                                for cid in mismatched[:10]
-                            )
-                            or "none",
-                        )
-                        await self.async_delete_device(wifi_device_id)
-                        raise HomeAssistantError(
-                            "The replacement Wifi Device did not pass command "
-                            "readback; the existing device was kept unchanged"
-                        )
-                cached_created_device = self._proxy.state.entities("device").get(wifi_device_id & 0xFF)
-                if isinstance(cached_created_device, dict):
-                    self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
-                else:
-                    self.devices[wifi_device_id & 0xFF] = {
-                        "brand": brand_name,
-                        "name": device_name,
-                    }
-                self._devices_generation += 1
-                self._bump_cache_generation()
-                async_dispatcher_send(self.hass, signal_devices(self.entry_id))
-
-                # Validated against a fresh hub catalog in the preflight above.
-                activity_ids: set[int] = set(referenced_activity_ids)
-
-                # Drop activity ids that no longer exist on this hub (e.g. the
-                # user deleted an activity that a previous deploy linked to).
-                # Without this filter async_add_device_to_activity fails on the
-                # missing target and rolls back the entire deploy, leaving the
-                # user no way to recover from the UI.
-                known_activity_ids = set(self.activities.keys())
-                if known_activity_ids:
-                    stale_activity_ids = activity_ids - known_activity_ids
-                    if stale_activity_ids:
-                        _LOGGER.info(
-                            "[%s] sync_command_config: dropping stale activity ids %s (no longer on hub)",
-                            self.entry_id,
-                            sorted(stale_activity_ids),
-                        )
-                        activity_ids &= known_activity_ids
-
-                add_results: dict[int, bool] = {}
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=3,
-                    phase="adding_to_activities",
-                    message="Adding Wifi Device to Activities",
-                )
-                for act_id in sorted(activity_ids):
-                    result = await self.async_add_device_to_activity(
-                        act_id,
-                        wifi_device_id,
-                        input_cmd_id=activity_input_command_ids.get(act_id),
-                    )
-                    add_results[act_id] = bool(result)
-
-                if activity_ids and not all(add_results.values()):
-                    await self.async_delete_device(wifi_device_id)
-                    raise HomeAssistantError("Failed adding Wifi Device to all activities")
-
-                # Delete the previous managed device only now, after the
-                # replacement has joined its activities. The hub's delete
-                # sweep purges any activity left with zero member devices,
-                # so a delete-before-create order destroyed activities whose
-                # sole member was the managed Wifi Device.
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=4,
-                    phase="deleting_device",
-                    message="Deleting existing managed Wifi Device",
-                )
-                # Activities the hub rewrote while deleting the old managed
-                # device. Their per-activity cache is cleared by the delete;
-                # the step-7 re-warm below refetches them (including ones the
-                # new config no longer references, which would otherwise stay
-                # cold until a full cache refresh).
-                delete_confirmed_acts: set[int] = set()
-                for dev_id, _managed_key, _managed_hash, _brand in managed:
-                    result = await self.async_delete_device(
-                        dev_id, refresh_impacted_activities=False
-                    )
-                    if not result:
-                        # Roll back to the pre-sync hub state: the store still
-                        # points at the old device id, so leaving the new
-                        # device behind would orphan it on the next sync.
-                        await self.async_delete_device(wifi_device_id)
-                        raise HomeAssistantError(
-                            f"Failed deleting managed device {dev_id}"
-                        )
-                    delete_confirmed_acts.update(
-                        int(act) & 0xFF
-                        for act in (
-                            result.get("impacted_activities")
-                            if result.get("impacted_activities") is not None
-                            else result.get("confirmed_activities") or []
-                        )
-                    )
-
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=5,
-                    phase="applying_favorites",
-                    message="Applying activity favorites",
-                )
-
-            # Track the hub-assigned fav_id for every successfully added favorite,
-            # keyed by activity and ordered by command slot (add order).  We use
-            # these tracked ids in the post-hoc reorder rather than a pre-existing
-            # snapshot so that fav_id recycling (the hub reusing freed ids) cannot
-            # cause old scrambled orders to be mistaken for "existing to preserve".
-                activities_new_fav_ids: dict[int, list[int]] = {}
-                # Binding and favorite-order writes the hub refused. The
-                # deploy still finishes (the device exists and owns its
-                # activities), but it reads as out of date and fails, so the
-                # next sync repairs it in place (CR-H1-4). A refused
-                # favorite add stays tolerated (L-H1).
-                failed_writes: list[str] = []
-
-                activities_with_favorites: set[int] = set()
-                for slot_idx, slot in enumerate(commands[:slot_count]):
-                    if not slot.get("add_as_favorite"):
-                        continue
-                    command_id = slot_idx + 1
-                    for act in slot.get("activities", []):
-                        try:
-                            act_id = int(act)
-                        except (TypeError, ValueError):
-                            continue
-                        if not add_results.get(act_id, False):
-                            continue
-                        result = await self.async_command_to_favorite(
-                            act_id,
-                            wifi_device_id,
-                            command_id,
-                            refresh_after_write=False,
-                            # The reorder below rewrites each activity's
-                            # order once and puts back any record it left
-                            # out (X1); one read per activity, not per add.
-                            repair_order=False,
-                        )
-                        activities_with_favorites.add(act_id)
-                        if result and result.get("fav_id") is not None:
-                            activities_new_fav_ids.setdefault(act_id, []).append(
-                                result["fav_id"]
-                            )
-
-            # Explicitly reorder so that all favorites (including the 5th+) get
-            # a display slot on the physical remote.  Without this step the
-            # stage payload sent by command_to_favorite may leave favorites beyond
-            # the 4th without a slot assignment on X1S/X2, making them invisible
-            # on the remote's touch screen.
-            #
-            # Desired order: pre-existing entries (macros, other-device favorites)
-            # in their current slot order, followed by the newly-added wifi-command
-            # favorites in command-slot order (i.e. the order they were added).
-            #
-            # We identify "new" favorites by the fav_id returned from each
-            # command_to_favorite call.  This is robust against hub fav_id
-            # recycling: when the hub reuses an id that was freed by a prior
-            # managed-device deletion, the recycled id still lands in
-            # activities_new_fav_ids and is correctly treated as a new add.
-                for act_id in sorted(activities_with_favorites):
-                    all_order = await self.async_request_favorites_order(act_id)
-                    if not all_order:
-                        continue
-                    new_fav_id_list = activities_new_fav_ids.get(act_id, [])
-                    new_fav_id_set = set(new_fav_id_list)
-                    # Pre-existing = everything in current slot order that is NOT
-                    # one of the newly-added wifi-command favorites.
-                    pre_existing = [
-                        fav_id
-                        for fav_id, _slot in sorted(all_order, key=lambda x: x[1])
-                        if fav_id not in new_fav_id_set
-                    ]
-                    final_order = pre_existing + new_fav_id_list
-                    if not await self.async_reorder_favorites(
-                        act_id, final_order, refresh_after_write=False
-                    ):
-                        failed_writes.append(f"favorite order in activity {act_id}")
-
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=6,
-                    phase="applying_bindings",
-                    message="Applying activity button mappings",
-                )
-                for slot_idx, slot in enumerate(commands[:slot_count]):
-                    hard_button = str(slot.get("hard_button") or "").strip().lower()
-                    if not hard_button:
-                        continue
-                    button_id = _HARD_BUTTON_TO_CODE.get(hard_button)
-                    if not button_id:
-                        continue
-                    command_id = slot_idx + 1
-                    long_press_enabled = bool(slot.get("long_press_enabled"))
-                    long_press_command_id = (
-                        # long-record id law: long = short + slot_count
-                        slot_idx + 1 + slot_count
-                        if long_press_enabled
-                        else None
-                    )
-                    for act in slot.get("activities", []):
-                        try:
-                            act_id = int(act)
-                        except (TypeError, ValueError):
-                            continue
-                        if not add_results.get(act_id, False):
-                            continue
-                        if not await self.async_command_to_button(
-                            act_id,
-                            button_id,
-                            wifi_device_id,
-                            command_id,
-                            long_press_device_id=wifi_device_id if long_press_enabled else None,
-                            long_press_command_id=long_press_command_id,
-                            refresh_after_write=False,
-                        ):
-                            failed_writes.append(f"button {hard_button} in activity {act_id}")
-
-                # Device-page key rows for unambiguously-claimed hard buttons:
-                # they make the Wifi Device selectable as a role-group
-                # controller (volume/navigation/…) in activity editors and
-                # respond to direct presses on the remote's device page. The
-                # binding table is uniform, so the same binding write applies
-                # with the device's own id as the keymap entity.
-                for dev_button_id, dev_command_id, dev_long_id in derive_device_level_bindings(
-                    commands[:slot_count],
-                    hard_button_codes=_HARD_BUTTON_TO_CODE,
-                    slot_count=slot_count,
-                    long_press_offset=slot_count,
-                ):
-                    if not await self.async_command_to_button(
-                        wifi_device_id,
-                        dev_button_id,
-                        wifi_device_id,
-                        dev_command_id,
-                        long_press_device_id=wifi_device_id if dev_long_id else None,
-                        long_press_command_id=dev_long_id,
-                        refresh_after_write=False,
-                    ):
-                        failed_writes.append(f"button 0x{dev_button_id:02X} on the device page")
-
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=7,
-                    phase="refreshing_maps",
-                    message="Refreshing activity maps and buttons",
-                )
-                # Backup-grade re-warm of the deployed device, before the
-                # activity re-warms so their favorite/binding label
-                # resolution reads a populated command catalog. The binding
-                # writes above cleared the device's cached key rows, and the
-                # create pipeline never fetched key-sort/inputs/idle at all;
-                # this is the same fetch as the Hub tab's per-device refresh,
-                # so the editor baseline and the persisted cache leave the
-                # deploy bundle-grade instead of needing a manual row
-                # refresh. On the replace path the readback guard above
-                # already verified the command table, so it is reused; first
-                # deploys still hold the unverified create-time echo and
-                # fetch a real one.
-                try:
-                    await self.hass.async_add_executor_job(
-                        partial(
-                            self._proxy.backup_device,
-                            wifi_device_id,
-                            include_blobs=False,
-                            reuse_commands=bool(managed),
-                        )
-                    )
-                except Exception:  # noqa: BLE001 - warm is best-effort tail work
-                    self._log.warning(
-                        "[%s] deploy finished, but the post-deploy device warm failed",
-                        self.entry_id,
-                        exc_info=True,
-                    )
-                # Re-warm every touched activity with the same clear-then-fetch
-                # sequence as the Hub tab's per-activity refresh. The write
-                # steps above (managed-device delete, activity re-add, favorite
-                # writes, the family-0x61 reorder and keymap writes) each
-                # invalidate parts of the per-activity cache, and a partial
-                # refetch here used to leave favorites and buttons cold after
-                # every deploy.
-                # X1: heal order tables that leave a live favorite or macro
-                # out (see _async_repair_x1_quick_access), before the re-warm
-                # reads them; the remote resync below carries the result.
-                await self._async_repair_x1_quick_access(
-                    [act for act in activity_ids if add_results.get(act, False)]
-                    + [act for act in delete_confirmed_acts if act in self.activities]
-                )
-                warmed_act_los: set[int] = set()
-                for act_id in sorted(activity_ids):
-                    if not add_results.get(act_id, False):
-                        continue
-                    warmed_act_los.add(int(act_id) & 0xFF)
-                    await self._async_fetch_activity_commands(act_id)
-                    if act_id in activities_with_favorites:
-                        # reorder_favorites dropped the cached family-0x61
-                        # display order; re-read it so the cache view sorts
-                        # favorites the way the remote now shows them.
-                        await self.async_request_favorites_order(act_id)
-
-                # Activities the managed-device delete rewrote but the new
-                # config no longer references: their cache was cleared by the
-                # delete, so re-warm them too. Skip ids the hub's delete sweep
-                # purged (single-member activities no longer in the catalog).
-                for act_lo in sorted(delete_confirmed_acts - warmed_act_los):
-                    if act_lo not in self.activities:
-                        continue
-                    await self._async_fetch_activity_commands(act_lo)
-
-                # Unconditional: every deploy that reaches here changed the
-                # device catalog (create + managed delete), and the only
-                # earlier generation bump fired mid-pipeline, before the
-                # cache was warm. Gating this on activity references froze
-                # the frontend on that mid-deploy snapshot (a device with an
-                # empty command table) and skipped the disk persist entirely
-                # for activity-less deploys.
-                self._bump_cache_generation()
-                async_dispatcher_send(self.hass, signal_devices(self.entry_id))
-                async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-                try:
-                    await self._async_persist_cache_if_enabled()
-                except Exception:  # noqa: BLE001 - persist is best-effort
-                    self._log.debug(
-                        "[%s] post-deploy cache persist failed",
-                        self.entry_id,
-                        exc_info=True,
-                    )
-
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=8,
-                    phase="resyncing_remote",
-                    message="Resyncing physical remote",
-                )
-                await self.async_resync_remote()
-
-                # Persist the command list that was just synced to the hub.
-                # Callbacks will resolve command indices against this frozen snapshot,
-                # independently of any subsequent staged-config edits.
-                if store is not None:
-                    await store.async_save_deployed_wifi_commands(
-                        self.entry_id,
-                        normalized_device_key,
-                        list(commands[:slot_count]),
-                        deployed_device_id=wifi_device_id,
-                        # An empty hash reads as "sync needed" in the card.
-                        commands_hash="" if failed_writes else commands_hash,
-                        # No port is baked into MQTT records; storing None keeps
-                        # listener-port changes from ever forcing a replace.
-                        request_port=(
-                            None if selected_transport == WIFI_TRANSPORT_MQTT else request_port
-                        ),
-                        deployed_transport=selected_transport,
-                    )
-
-                await self.async_update_wifi_mqtt_ingress()
-
-                if failed_writes:
-                    _LOGGER.warning(
-                        "[%s] sync_command_config: the hub refused %d write(s): %s",
-                        self.entry_id,
-                        len(failed_writes),
-                        ", ".join(failed_writes),
-                    )
-                    raise HomeAssistantError(
-                        f"Failed applying {len(failed_writes)} hub write(s) "
-                        f"({', '.join(failed_writes)}); the Wifi Device is deployed, "
-                        "sync again to repair it"
-                    )
-
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    status="success",
-                    current_step=8,
-                    total_steps=total_steps,
-                    phase="complete",
-                    message="Sync complete",
-                    wifi_device_id=wifi_device_id,
-                    commands_hash=commands_hash,
-                )
-                return {
-                    "status": "success",
-                    "wifi_device_id": wifi_device_id,
-                    "commands_hash": commands_hash,
-                    "activities": sorted(activity_ids),
-                }
+                await self._deploy_replace_create_and_verify(run)
+                await self._deploy_attach(run)
+                return await self._deploy_epilogue(run)
             except Exception as err:
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
@@ -1463,6 +815,795 @@ class WifiDeployMixin:
                     ),
                 )
                 raise
+
+    async def _deploy_preflight(self, run: _DeployRun) -> None:
+        """Step 1: the listener, the activity check against a fresh hub read,
+        and the managed device(s) this deploy replaces or edits."""
+
+        commands = run.commands
+        command_payload = run.command_payload
+        normalized_device_key = run.normalized_device_key
+        slot_count = run.slot_count
+        configured_slots = run.configured_slots
+        commands_hash = run.commands_hash
+        deployed_commands_hash = run.deployed_commands_hash
+        deployed_device_id = run.deployed_device_id
+        selected_transport = run.selected_transport
+        store = run.store
+        request_port = run.request_port
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=1,
+            phase="enabling_device",
+            message="Ensuring Wifi Device is enabled",
+        )
+        if (
+            configured_slots > 0
+            and selected_transport != WIFI_TRANSPORT_MQTT
+            and not self.roku_server_enabled
+        ):
+            await self.async_set_roku_server_enabled(True)
+            from .roku_listener import async_get_roku_listener
+
+            listener = await async_get_roku_listener(self.hass)
+            listener_error = listener.get_last_start_error()
+            if listener_error:
+                raise HomeAssistantError(
+                    "Unable to enable Wifi Device (Roku/HTTP Listener): "
+                    f"port {request_port} may already be in use"
+                )
+
+        referenced_activity_ids: set[int] = set()
+        for slot in commands[:slot_count]:
+            if not isinstance(slot, dict):
+                continue
+            # A slot's activities list only means something for
+            # favorites and hard-button bindings. The command editor
+            # auto-selects a default activity and hides (without
+            # clearing) the selection when both toggles are off, so an
+            # orphaned list must not pull the device into activities
+            # the user never sees referenced (issue #258).
+            slot_activities_active = bool(slot.get("add_as_favorite")) or bool(
+                str(slot.get("hard_button") or "").strip()
+            )
+            raw_activities = slot.get("activities")
+            if slot_activities_active and isinstance(raw_activities, list):
+                for act in raw_activities:
+                    try:
+                        referenced_activity_ids.add(int(act))
+                    except (TypeError, ValueError):
+                        continue
+            raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+            if raw_input_activity_id:
+                try:
+                    referenced_activity_ids.add(int(raw_input_activity_id))
+                except (TypeError, ValueError):
+                    pass
+
+        # Validate the configured activities against a fresh hub read
+        # BEFORE the destructive delete/recreate below. The hub reuses
+        # freed activity ids, so an id picked earlier can silently come
+        # to mean a different activity after the user deletes/recreates
+        # activities in the Sofabaton app (issue #258). The label
+        # snapshot taken at configuration time lets us tell "renamed or
+        # reused" apart from "unchanged"; on any mismatch we abort with
+        # an actionable message instead of deploying into the wrong
+        # activity. Skipped when the proxy cannot issue commands (hub
+        # link down or the Sofabaton app attached): the deploy cannot
+        # proceed there anyway and fails on its first write.
+        if (
+            configured_slots > 0
+            and referenced_activity_ids
+            and self._proxy.can_issue_commands()
+        ):
+            self._set_command_sync_progress(
+                device_key=normalized_device_key,
+                phase="validating_activities",
+                message="Validating Activities against the hub",
+            )
+            try:
+                activity_snapshot = await self.async_request_catalog("activities")
+            except TimeoutError as err:
+                raise HomeAssistantError(
+                    "Failed to refresh the Activity list from the hub; "
+                    "sync aborted rather than deploying against a stale catalog"
+                ) from err
+            stored_activity_labels = command_payload.get("activity_labels")
+            if isinstance(stored_activity_labels, dict):
+                label_mismatches: list[str] = []
+                for act_id in sorted(referenced_activity_ids):
+                    stored_label = str(
+                        stored_activity_labels.get(str(act_id)) or ""
+                    ).strip()
+                    if not stored_label:
+                        continue
+                    # Validate against the snapshot the refresh
+                    # returned, not self.activities: the burst
+                    # callback that updates the latter may still
+                    # be queued behind an older one.
+                    entry = activity_snapshot.get(act_id)
+                    if entry is None:
+                        # Deleted activities are dropped from the
+                        # deploy further down, matching the existing
+                        # recover-from-missing-target behavior.
+                        continue
+                    hub_label = str(entry.get("name") or "").strip()
+                    if hub_label and hub_label != stored_label:
+                        label_mismatches.append(
+                            f'Activity {act_id} was "{stored_label}" when this '
+                            f'Wifi Device was configured but is now "{hub_label}"'
+                        )
+                if label_mismatches:
+                    raise HomeAssistantError(
+                        "Failed Activity validation: "
+                        + "; ".join(label_mismatches)
+                        + ". Activities on the hub changed since this Wifi Device "
+                        "was configured (deleting and recreating an Activity reuses "
+                        "its id). Re-select the Activities in the Wifi Command "
+                        "configuration, save, and sync again."
+                    )
+
+        try:
+            device_snapshot = await self._async_refresh_devices_snapshot()
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                "Failed to refresh the Device list from the hub; "
+                "sync aborted rather than deploying against a stale catalog"
+            ) from err
+        managed_devices = self._managed_wifi_devices(device_snapshot)
+        stored_devices = await store.async_list_hub_devices(self.entry_id) if store is not None else None
+        managed, ambiguous = self._match_managed_wifi_devices(
+            managed_devices=managed_devices,
+            stored_devices=stored_devices,
+            device_key=normalized_device_key,
+            deployed_device_id=deployed_device_id,
+            deployed_commands_hash=deployed_commands_hash,
+            commands_hash=commands_hash,
+        )
+        if ambiguous:
+            raise HomeAssistantError(
+                "Unable to safely identify existing managed Wifi Device; multiple matches found"
+            )
+
+        run.referenced_activity_ids = referenced_activity_ids
+        run.managed = managed
+
+
+    async def _deploy_teardown_zero_slots(self, run: _DeployRun) -> dict[str, Any]:
+        """No configured slots: delete the managed device and forget the deploy."""
+
+        normalized_device_key = run.normalized_device_key
+        managed = run.managed
+        store = run.store
+        total_steps = run.total_steps
+        commands_hash = run.commands_hash
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=2,
+            phase="deleting_device",
+            message="Deleting existing managed Wifi Device",
+        )
+        for dev_id, _managed_key, _managed_hash, _brand in managed:
+            result = await self.async_delete_device(dev_id)
+            if not result:
+                raise HomeAssistantError(
+                    f"Failed deleting managed device {dev_id}"
+                )
+
+        if store is not None:
+            await store.async_save_deployed_wifi_commands(
+                self.entry_id,
+                normalized_device_key,
+                [],
+                deployed_device_id=None,
+                commands_hash="",
+            )
+        await self.async_update_wifi_mqtt_ingress()
+
+        if self.roku_server_enabled and not await self._async_wifi_listener_needed():
+            self._set_command_sync_progress(
+                device_key=normalized_device_key,
+                current_step=3,
+                phase="disabling_device",
+                message="Disabling Wifi Device",
+            )
+            await self.async_set_roku_server_enabled(False)
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            status="success",
+            current_step=7,
+            total_steps=total_steps,
+            phase="device_removed",
+            message="No configured slots; managed Wifi Device removed",
+            wifi_device_id=None,
+            commands_hash=commands_hash,
+        )
+        return {
+            "status": "success",
+            "wifi_device_id": None,
+            "commands_hash": commands_hash,
+            "activities": [],
+            "deleted_managed_devices": len(managed),
+        }
+
+
+    async def _deploy_replace_create_and_verify(self, run: _DeployRun) -> None:
+        """Step 2 (replace path): create the new device and, when it replaces
+        one, verify its command table before anything else is touched."""
+
+        commands = run.commands
+        command_payload = run.command_payload
+        normalized_device_key = run.normalized_device_key
+        slot_count = run.slot_count
+        brand_name = run.brand_name
+        selected_transport = run.selected_transport
+        device_name = run.device_name
+        request_port = run.request_port
+        managed = run.managed
+
+        command_defs: list[dict[str, Any]] = []
+        input_command_ids: list[int] = []
+        activity_input_command_ids: dict[int, int] = {}
+        max_power_command_id = min(len(commands), _WIFI_COMMAND_SLOT_COUNT)
+        raw_power_on_command_id = command_payload.get("power_on_command_id")
+        raw_power_off_command_id = command_payload.get("power_off_command_id")
+        power_on_command_id = normalize_power_command_id(
+            raw_power_on_command_id,
+            max_command_id=max_power_command_id,
+        )
+        power_off_command_id = normalize_power_command_id(
+            raw_power_off_command_id,
+            max_command_id=max_power_command_id,
+        )
+        if raw_power_on_command_id is not None and power_on_command_id is None:
+            raise HomeAssistantError(
+                f"power_on_command_id must be between 1 and {max_power_command_id}"
+            )
+        if raw_power_off_command_id is not None and power_off_command_id is None:
+            raise HomeAssistantError(
+                f"power_off_command_id must be between 1 and {max_power_command_id}"
+            )
+        for idx, slot in enumerate(commands[:slot_count]):
+            raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+            if not raw_input_activity_id:
+                continue
+            try:
+                input_activity_id = int(raw_input_activity_id)
+            except (TypeError, ValueError):
+                continue
+            command_id = idx + 1
+            input_command_ids.append(command_id)
+            activity_input_command_ids.setdefault(input_activity_id, command_id)
+        for idx, slot in enumerate(commands[:slot_count]):
+            name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+            command_defs.append(
+                {
+                    "display_name": name,
+                    "press_type": "short",
+                    "command_index": idx,
+                }
+            )
+        for idx, slot in enumerate(commands[:slot_count]):
+            name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+            command_defs.append(
+                {
+                    "display_name": f"{name} Long Press",
+                    "press_type": "long",
+                    "command_index": idx,
+                }
+            )
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=2,
+            phase="creating_device",
+            message="Creating Wifi Device on Hub",
+        )
+        if selected_transport == WIFI_TRANSPORT_MQTT:
+            created = await self.async_create_wifi_mqtt_device(
+                device_name=device_name,
+                commands=command_defs,
+                brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
+                input_command_ids=input_command_ids or None,
+            )
+        else:
+            created = await self.async_create_wifi_device(
+                device_name=device_name,
+                commands=command_defs,
+                request_port=request_port,
+                brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
+                input_command_ids=input_command_ids or None,
+                # The deploy keeps writing after the create
+                # (memberships, favorites, bindings); the single
+                # terminal resync at the end of this pipeline
+                # covers the remote. A mid-batch trigger here
+                # aborts/restarts the remote's multi-minute full
+                # sync (bench 2026-08-27).
+                send_remote_sync=False,
+            )
+        if not created or not created.get("device_id"):
+            raise HomeAssistantError("Failed creating Wifi Device")
+
+        wifi_device_id = int(created["device_id"])
+        # An ACK only proves the hub accepted each frame. Verify that
+        # every command row survived the create transaction before
+        # touching activities or deleting the old managed device.
+        if managed:
+            await self.async_fetch_device_commands(wifi_device_id)
+            command_rows, commands_ready = (
+                await self.hass.async_add_executor_job(
+                    partial(
+                        self._proxy.get_commands_for_entity,
+                        wifi_device_id,
+                        fetch_if_missing=False,
+                    )
+                )
+            )
+            # Compare labels as the hub stores them (fixed-width
+            # slot): a 31-character "<name> Long Press" comes back
+            # cut to 30 and is still the row we wrote.
+            actual_commands = {
+                int(command_id) & 0xFF: self._hub_command_label(str(label))
+                for command_id, label in dict(command_rows or {}).items()
+            }
+            expected_commands = {
+                idx + 1: self._hub_command_label(str(command["display_name"]))
+                for idx, command in enumerate(command_defs)
+            }
+            if not commands_ready or actual_commands != expected_commands:
+                mismatched = sorted(
+                    cid
+                    for cid in set(actual_commands) | set(expected_commands)
+                    if actual_commands.get(cid) != expected_commands.get(cid)
+                )
+                _LOGGER.warning(
+                    "[%s] sync_command_config: replacement Wifi Device %d failed "
+                    "command readback (table complete=%s, %d rows read, %d expected); "
+                    "mismatched ids: %s",
+                    self.entry_id,
+                    wifi_device_id,
+                    commands_ready,
+                    len(actual_commands),
+                    len(expected_commands),
+                    "; ".join(
+                        f"{cid}: hub={actual_commands.get(cid)!r} "
+                        f"expected={expected_commands.get(cid)!r}"
+                        for cid in mismatched[:10]
+                    )
+                    or "none",
+                )
+                await self.async_delete_device(wifi_device_id)
+                raise HomeAssistantError(
+                    "The replacement Wifi Device did not pass command "
+                    "readback; the existing device was kept unchanged"
+                )
+        cached_created_device = self._proxy.state.entities("device").get(wifi_device_id & 0xFF)
+        if isinstance(cached_created_device, dict):
+            self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
+        else:
+            self.devices[wifi_device_id & 0xFF] = {
+                "brand": brand_name,
+                "name": device_name,
+            }
+        self._devices_generation += 1
+        self._bump_cache_generation()
+        async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+
+        run.activity_input_command_ids = activity_input_command_ids
+        run.wifi_device_id = wifi_device_id
+
+
+    async def _deploy_attach(self, run: _DeployRun) -> None:
+        """Steps 3-6: join the activities, delete the old device, favorites and
+        their order, activity and device-page bindings."""
+
+        commands = run.commands
+        normalized_device_key = run.normalized_device_key
+        slot_count = run.slot_count
+        referenced_activity_ids = run.referenced_activity_ids
+        managed = run.managed
+        wifi_device_id = run.wifi_device_id
+        activity_input_command_ids = run.activity_input_command_ids
+
+        # Validated against a fresh hub catalog in the preflight above.
+        activity_ids: set[int] = set(referenced_activity_ids)
+
+        # Drop activity ids that no longer exist on this hub (e.g. the
+        # user deleted an activity that a previous deploy linked to).
+        # Without this filter async_add_device_to_activity fails on the
+        # missing target and rolls back the entire deploy, leaving the
+        # user no way to recover from the UI.
+        known_activity_ids = set(self.activities.keys())
+        if known_activity_ids:
+            stale_activity_ids = activity_ids - known_activity_ids
+            if stale_activity_ids:
+                _LOGGER.info(
+                    "[%s] sync_command_config: dropping stale activity ids %s (no longer on hub)",
+                    self.entry_id,
+                    sorted(stale_activity_ids),
+                )
+                activity_ids &= known_activity_ids
+
+        add_results: dict[int, bool] = {}
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=3,
+            phase="adding_to_activities",
+            message="Adding Wifi Device to Activities",
+        )
+        for act_id in sorted(activity_ids):
+            result = await self.async_add_device_to_activity(
+                act_id,
+                wifi_device_id,
+                input_cmd_id=activity_input_command_ids.get(act_id),
+            )
+            add_results[act_id] = bool(result)
+
+        if activity_ids and not all(add_results.values()):
+            await self.async_delete_device(wifi_device_id)
+            raise HomeAssistantError("Failed adding Wifi Device to all activities")
+
+        # Delete the previous managed device only now, after the
+        # replacement has joined its activities. The hub's delete
+        # sweep purges any activity left with zero member devices,
+        # so a delete-before-create order destroyed activities whose
+        # sole member was the managed Wifi Device.
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=4,
+            phase="deleting_device",
+            message="Deleting existing managed Wifi Device",
+        )
+        # Activities the hub rewrote while deleting the old managed
+        # device. Their per-activity cache is cleared by the delete;
+        # the step-7 re-warm below refetches them (including ones the
+        # new config no longer references, which would otherwise stay
+        # cold until a full cache refresh).
+        delete_confirmed_acts: set[int] = set()
+        for dev_id, _managed_key, _managed_hash, _brand in managed:
+            result = await self.async_delete_device(
+                dev_id, refresh_impacted_activities=False
+            )
+            if not result:
+                # Roll back to the pre-sync hub state: the store still
+                # points at the old device id, so leaving the new
+                # device behind would orphan it on the next sync.
+                await self.async_delete_device(wifi_device_id)
+                raise HomeAssistantError(
+                    f"Failed deleting managed device {dev_id}"
+                )
+            delete_confirmed_acts.update(
+                int(act) & 0xFF
+                for act in (
+                    result.get("impacted_activities")
+                    if result.get("impacted_activities") is not None
+                    else result.get("confirmed_activities") or []
+                )
+            )
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=5,
+            phase="applying_favorites",
+            message="Applying activity favorites",
+        )
+
+        # Track the hub-assigned fav_id for every successfully added favorite,
+        # keyed by activity and ordered by command slot (add order).  We use
+        # these tracked ids in the post-hoc reorder rather than a pre-existing
+        # snapshot so that fav_id recycling (the hub reusing freed ids) cannot
+        # cause old scrambled orders to be mistaken for "existing to preserve".
+        activities_new_fav_ids: dict[int, list[int]] = {}
+        # Binding and favorite-order writes the hub refused. The
+        # deploy still finishes (the device exists and owns its
+        # activities), but it reads as out of date and fails, so the
+        # next sync repairs it in place (CR-H1-4). A refused
+        # favorite add stays tolerated (L-H1).
+        failed_writes: list[str] = []
+
+        activities_with_favorites: set[int] = set()
+        for slot_idx, slot in enumerate(commands[:slot_count]):
+            if not slot.get("add_as_favorite"):
+                continue
+            command_id = slot_idx + 1
+            for act in slot.get("activities", []):
+                try:
+                    act_id = int(act)
+                except (TypeError, ValueError):
+                    continue
+                if not add_results.get(act_id, False):
+                    continue
+                result = await self.async_command_to_favorite(
+                    act_id,
+                    wifi_device_id,
+                    command_id,
+                    refresh_after_write=False,
+                    # The reorder below rewrites each activity's
+                    # order once and puts back any record it left
+                    # out (X1); one read per activity, not per add.
+                    repair_order=False,
+                )
+                activities_with_favorites.add(act_id)
+                if result and result.get("fav_id") is not None:
+                    activities_new_fav_ids.setdefault(act_id, []).append(
+                        result["fav_id"]
+                    )
+
+        # Explicitly reorder so that all favorites (including the 5th+) get
+        # a display slot on the physical remote.  Without this step the
+        # stage payload sent by command_to_favorite may leave favorites beyond
+        # the 4th without a slot assignment on X1S/X2, making them invisible
+        # on the remote's touch screen.
+        #
+        # Desired order: pre-existing entries (macros, other-device favorites)
+        # in their current slot order, followed by the newly-added wifi-command
+        # favorites in command-slot order (i.e. the order they were added).
+        #
+        # We identify "new" favorites by the fav_id returned from each
+        # command_to_favorite call.  This is robust against hub fav_id
+        # recycling: when the hub reuses an id that was freed by a prior
+        # managed-device deletion, the recycled id still lands in
+        # activities_new_fav_ids and is correctly treated as a new add.
+        for act_id in sorted(activities_with_favorites):
+            all_order = await self.async_request_favorites_order(act_id)
+            if not all_order:
+                continue
+            new_fav_id_list = activities_new_fav_ids.get(act_id, [])
+            new_fav_id_set = set(new_fav_id_list)
+            # Pre-existing = everything in current slot order that is NOT
+            # one of the newly-added wifi-command favorites.
+            pre_existing = [
+                fav_id
+                for fav_id, _slot in sorted(all_order, key=lambda x: x[1])
+                if fav_id not in new_fav_id_set
+            ]
+            final_order = pre_existing + new_fav_id_list
+            if not await self.async_reorder_favorites(
+                act_id, final_order, refresh_after_write=False
+            ):
+                failed_writes.append(f"favorite order in activity {act_id}")
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=6,
+            phase="applying_bindings",
+            message="Applying activity button mappings",
+        )
+        for slot_idx, slot in enumerate(commands[:slot_count]):
+            hard_button = str(slot.get("hard_button") or "").strip().lower()
+            if not hard_button:
+                continue
+            button_id = _HARD_BUTTON_TO_CODE.get(hard_button)
+            if not button_id:
+                continue
+            command_id = slot_idx + 1
+            long_press_enabled = bool(slot.get("long_press_enabled"))
+            long_press_command_id = (
+                # long-record id law: long = short + slot_count
+                slot_idx + 1 + slot_count
+                if long_press_enabled
+                else None
+            )
+            for act in slot.get("activities", []):
+                try:
+                    act_id = int(act)
+                except (TypeError, ValueError):
+                    continue
+                if not add_results.get(act_id, False):
+                    continue
+                if not await self.async_command_to_button(
+                    act_id,
+                    button_id,
+                    wifi_device_id,
+                    command_id,
+                    long_press_device_id=wifi_device_id if long_press_enabled else None,
+                    long_press_command_id=long_press_command_id,
+                    refresh_after_write=False,
+                ):
+                    failed_writes.append(f"button {hard_button} in activity {act_id}")
+
+        # Device-page key rows for unambiguously-claimed hard buttons:
+        # they make the Wifi Device selectable as a role-group
+        # controller (volume/navigation/…) in activity editors and
+        # respond to direct presses on the remote's device page. The
+        # binding table is uniform, so the same binding write applies
+        # with the device's own id as the keymap entity.
+        for dev_button_id, dev_command_id, dev_long_id in derive_device_level_bindings(
+            commands[:slot_count],
+            hard_button_codes=_HARD_BUTTON_TO_CODE,
+            slot_count=slot_count,
+            long_press_offset=slot_count,
+        ):
+            if not await self.async_command_to_button(
+                wifi_device_id,
+                dev_button_id,
+                wifi_device_id,
+                dev_command_id,
+                long_press_device_id=wifi_device_id if dev_long_id else None,
+                long_press_command_id=dev_long_id,
+                refresh_after_write=False,
+            ):
+                failed_writes.append(f"button 0x{dev_button_id:02X} on the device page")
+
+        run.activity_ids = activity_ids
+        run.add_results = add_results
+        run.delete_confirmed_acts = delete_confirmed_acts
+        run.activities_with_favorites = activities_with_favorites
+        run.failed_writes = failed_writes
+
+
+    async def _deploy_epilogue(self, run: _DeployRun) -> dict[str, Any]:
+        """Steps 7-8: re-warm, persist, resync the remote, save the deploy."""
+
+        commands = run.commands
+        normalized_device_key = run.normalized_device_key
+        slot_count = run.slot_count
+        commands_hash = run.commands_hash
+        selected_transport = run.selected_transport
+        total_steps = run.total_steps
+        store = run.store
+        request_port = run.request_port
+        managed = run.managed
+        wifi_device_id = run.wifi_device_id
+        activity_ids = run.activity_ids
+        add_results = run.add_results
+        delete_confirmed_acts = run.delete_confirmed_acts
+        activities_with_favorites = run.activities_with_favorites
+        failed_writes = run.failed_writes
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=7,
+            phase="refreshing_maps",
+            message="Refreshing activity maps and buttons",
+        )
+        # Backup-grade re-warm of the deployed device, before the
+        # activity re-warms so their favorite/binding label
+        # resolution reads a populated command catalog. The binding
+        # writes above cleared the device's cached key rows, and the
+        # create pipeline never fetched key-sort/inputs/idle at all;
+        # this is the same fetch as the Hub tab's per-device refresh,
+        # so the editor baseline and the persisted cache leave the
+        # deploy bundle-grade instead of needing a manual row
+        # refresh. On the replace path the readback guard above
+        # already verified the command table, so it is reused; first
+        # deploys still hold the unverified create-time echo and
+        # fetch a real one.
+        try:
+            await self.hass.async_add_executor_job(
+                partial(
+                    self._proxy.backup_device,
+                    wifi_device_id,
+                    include_blobs=False,
+                    reuse_commands=bool(managed),
+                )
+            )
+        except Exception:  # noqa: BLE001 - warm is best-effort tail work
+            self._log.warning(
+                "[%s] deploy finished, but the post-deploy device warm failed",
+                self.entry_id,
+                exc_info=True,
+            )
+        # Re-warm every touched activity with the same clear-then-fetch
+        # sequence as the Hub tab's per-activity refresh. The write
+        # steps above (managed-device delete, activity re-add, favorite
+        # writes, the family-0x61 reorder and keymap writes) each
+        # invalidate parts of the per-activity cache, and a partial
+        # refetch here used to leave favorites and buttons cold after
+        # every deploy.
+        # X1: heal order tables that leave a live favorite or macro
+        # out (see _async_repair_x1_quick_access), before the re-warm
+        # reads them; the remote resync below carries the result.
+        await self._async_repair_x1_quick_access(
+            [act for act in activity_ids if add_results.get(act, False)]
+            + [act for act in delete_confirmed_acts if act in self.activities]
+        )
+        warmed_act_los: set[int] = set()
+        for act_id in sorted(activity_ids):
+            if not add_results.get(act_id, False):
+                continue
+            warmed_act_los.add(int(act_id) & 0xFF)
+            await self._async_fetch_activity_commands(act_id)
+            if act_id in activities_with_favorites:
+                # reorder_favorites dropped the cached family-0x61
+                # display order; re-read it so the cache view sorts
+                # favorites the way the remote now shows them.
+                await self.async_request_favorites_order(act_id)
+
+        # Activities the managed-device delete rewrote but the new
+        # config no longer references: their cache was cleared by the
+        # delete, so re-warm them too. Skip ids the hub's delete sweep
+        # purged (single-member activities no longer in the catalog).
+        for act_lo in sorted(delete_confirmed_acts - warmed_act_los):
+            if act_lo not in self.activities:
+                continue
+            await self._async_fetch_activity_commands(act_lo)
+
+        # Unconditional: every deploy that reaches here changed the
+        # device catalog (create + managed delete), and the only
+        # earlier generation bump fired mid-pipeline, before the
+        # cache was warm. Gating this on activity references froze
+        # the frontend on that mid-deploy snapshot (a device with an
+        # empty command table) and skipped the disk persist entirely
+        # for activity-less deploys.
+        self._bump_cache_generation()
+        async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        try:
+            await self._async_persist_cache_if_enabled()
+        except Exception:  # noqa: BLE001 - persist is best-effort
+            self._log.debug(
+                "[%s] post-deploy cache persist failed",
+                self.entry_id,
+                exc_info=True,
+            )
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=8,
+            phase="resyncing_remote",
+            message="Resyncing physical remote",
+        )
+        await self.async_resync_remote()
+
+        # Persist the command list that was just synced to the hub.
+        # Callbacks will resolve command indices against this frozen snapshot,
+        # independently of any subsequent staged-config edits.
+        if store is not None:
+            await store.async_save_deployed_wifi_commands(
+                self.entry_id,
+                normalized_device_key,
+                list(commands[:slot_count]),
+                deployed_device_id=wifi_device_id,
+                # An empty hash reads as "sync needed" in the card.
+                commands_hash="" if failed_writes else commands_hash,
+                # No port is baked into MQTT records; storing None keeps
+                # listener-port changes from ever forcing a replace.
+                request_port=(
+                    None if selected_transport == WIFI_TRANSPORT_MQTT else request_port
+                ),
+                deployed_transport=selected_transport,
+            )
+
+        await self.async_update_wifi_mqtt_ingress()
+
+        if failed_writes:
+            _LOGGER.warning(
+                "[%s] sync_command_config: the hub refused %d write(s): %s",
+                self.entry_id,
+                len(failed_writes),
+                ", ".join(failed_writes),
+            )
+            raise HomeAssistantError(
+                f"Failed applying {len(failed_writes)} hub write(s) "
+                f"({', '.join(failed_writes)}); the Wifi Device is deployed, "
+                "sync again to repair it"
+            )
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            status="success",
+            current_step=8,
+            total_steps=total_steps,
+            phase="complete",
+            message="Sync complete",
+            wifi_device_id=wifi_device_id,
+            commands_hash=commands_hash,
+        )
+        return {
+            "status": "success",
+            "wifi_device_id": wifi_device_id,
+            "commands_hash": commands_hash,
+            "activities": sorted(activity_ids),
+        }
+
 
     async def _async_repair_x1_quick_access(self, activity_ids: Iterable[int]) -> bool:
         """X1: rewrite each activity's quick-access order that leaves out a
