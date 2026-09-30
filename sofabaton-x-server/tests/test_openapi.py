@@ -1,7 +1,8 @@
 """The committed OpenAPI document is the contract client generators consume.
 
 A spec change must be a reviewed diff: regenerate with
-``python -m sofabaton_server.openapi`` and commit the result.
+``PYTHONPATH=sofabaton-x-server/src python -m sofabaton_server.openapi
+sofabaton-x-server/openapi.json`` and commit the result.
 """
 
 from __future__ import annotations
@@ -12,12 +13,16 @@ from pathlib import Path
 from sofabaton_server import openapi
 
 COMMITTED = Path(__file__).resolve().parents[1] / "openapi.json"
+REGENERATE = (
+    "PYTHONPATH=sofabaton-x-server/src python -m sofabaton_server.openapi "
+    "sofabaton-x-server/openapi.json"
+)
 
 
 def test_committed_openapi_matches_the_running_app() -> None:
-    assert COMMITTED.exists(), "run: python -m sofabaton_server.openapi"
+    assert COMMITTED.exists(), f"run: {REGENERATE}"
     assert openapi.render(openapi.build_spec()) == COMMITTED.read_text(encoding="utf-8"), (
-        "openapi.json drifted; regenerate with: python -m sofabaton_server.openapi"
+        f"openapi.json drifted; regenerate with: {REGENERATE}"
     )
 
 

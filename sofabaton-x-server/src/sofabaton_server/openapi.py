@@ -30,6 +30,16 @@ def render(spec: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if not args and not (DEFAULT_PATH.parent / "pyproject.toml").is_file():
+        # A non-editable install: the default would write into the venv
+        # and leave the committed document stale (CR-S1-9).
+        print(
+            "sofabaton_server is not running from a checkout; pass the path, e.g. "
+            "python -m sofabaton_server.openapi sofabaton-x-server/openapi.json "
+            "(with PYTHONPATH=sofabaton-x-server/src to build from the checkout)",
+            file=sys.stderr,
+        )
+        return 2
     path = Path(args[0]) if args else DEFAULT_PATH
     path.write_text(render(build_spec()), encoding="utf-8")
     print(f"wrote {path}")

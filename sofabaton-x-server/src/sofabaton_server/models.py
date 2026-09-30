@@ -188,6 +188,10 @@ class HubCreate(BaseModel):
     enabled: bool = True
 
     def to_config(self) -> HubConfig:
+        if self.mac is not None and len(mac_key(self.mac)) != 12:
+            # The hub id is the MAC's hex digits: anything else gives an id
+            # no route can address (CR-S1-7).
+            raise ValueError("mac must be 6 hex octets, e.g. e2:6a:44:86:1b:45")
         data = self.model_dump()
         data.pop("enabled")
         return HubConfig.from_dict(data)

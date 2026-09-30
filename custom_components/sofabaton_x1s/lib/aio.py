@@ -1123,7 +1123,7 @@ class AsyncXProxy:
             verdict["firmware_min_recommended"] = MIN_RECOMMENDED_FIRMWARE.get(hub_version or "")
         return verdict
 
-    async def hub_info(self, *, refresh: bool = False) -> HubInfo:
+    async def hub_info(self, *, refresh: bool = False, cached_only: bool = False) -> HubInfo:
         """Return the hub's identity as read from its connect banner.
 
         Cached-else-fetch like the reads: the banner known from the
@@ -1132,7 +1132,8 @@ class AsyncXProxy:
         raises :class:`HubBusyError` / :class:`HubNotConnectedError`
         otherwise. When nothing is known yet and no fetch is possible the
         result has ``known=False`` rather than raising, so a status page
-        can render before the first banner lands.
+        can render before the first banner lands. ``cached_only=True``
+        never reaches the hub: what the session knows, or ``known=False``.
         """
 
         def _from_banner(info: dict) -> HubInfo:
@@ -1155,8 +1156,8 @@ class AsyncXProxy:
             )
 
         cached = await self.run(self._proxy.get_banner_info)
-        if cached and not refresh:
-            return _from_banner(cached)
+        if cached_only or (cached and not refresh):
+            return _from_banner(cached or {})
         if not self._proxy.can_issue_commands():
             # An explicit refresh is refused with the typed reason; a plain
             # read degrades to whatever is known (possibly nothing).

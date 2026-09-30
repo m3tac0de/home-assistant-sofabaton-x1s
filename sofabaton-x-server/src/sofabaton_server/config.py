@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -37,7 +37,7 @@ ENV_PREFIX = "SOFABATON_"
 
 @dataclass(frozen=True)
 class Settings:
-    """Everything the operator can set. Frozen; build a new one with ``with_``."""
+    """Everything the operator can set. Frozen; ``from_sources`` builds it."""
 
     bind: str = DEFAULT_BIND
     port: int = DEFAULT_PORT
@@ -187,9 +187,6 @@ class Settings:
         data["initial_hubs"] = list(self.initial_hubs)
         data.pop("pinned")
         return data
-
-    def with_(self, **changes: Any) -> "Settings":
-        return replace(self, **changes)
 
 
 _FIELD_NAMES = {f.name for f in fields(Settings)} - {"pinned"}

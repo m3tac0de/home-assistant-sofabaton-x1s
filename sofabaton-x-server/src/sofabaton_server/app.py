@@ -99,6 +99,8 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     discovery_service = discovery or DiscoveryService(settings, hub_manager)
     job_runner = JobRunner(problem_for=problem_body)
     hub_manager.jobs = job_runner
+    # A job follows its hub from host id to MAC id (CR-S1-1).
+    hub_manager.on_rekey(job_runner.rekey)
     # Before the event relay: a finished backup is announced with its expiry set.
     backup_stage = BackupStage(job_runner, **({"keep_seconds": backup_keep_seconds} if backup_keep_seconds is not None else {}))
     callback_service = callbacks or CallbackService(hub_manager, settings)
@@ -161,6 +163,12 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.state.job_runner = job_runner
     app.state.backup_stage = backup_stage
     app.state.apply_store = ApplyStore(settings.data_dir, keep=settings.apply_keep)
+    apply_store = app.state.apply_store
+    # A removed hub's apply records go with it: a re-added hub must not
+    # resume or replay them (CR-S1-6).
+    hub_manager.on_server_event(
+        lambda hub_id, kind: apply_store.delete_hub(hub_id) if kind == "hub_removed" else None
+    )
     relay = EventRelay(hub_manager, jobs=job_runner, **({"maxsize": ws_queue_size} if ws_queue_size else {}))
     relay.instance_id = callback_service.ring.instance_id
     callback_service.on_press(lambda press: relay.publish(press.hub_id, WsPress(**press.to_dict())))

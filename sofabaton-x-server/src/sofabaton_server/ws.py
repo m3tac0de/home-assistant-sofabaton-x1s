@@ -26,10 +26,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from sofabaton import HubEvent
 
@@ -245,9 +245,12 @@ async def events_socket(
                 await websocket.send_json(_to_json(WsDropped(count=count)))
             await websocket.send_json(_to_json(message))
 
-    await websocket.send_json(_to_json(relay.hello()))
-    sender = asyncio.create_task(pump())
+    sender: Optional[asyncio.Task] = None
     try:
+        # Inside the try: a client gone before the hello still releases
+        # its subscription (CR-S1-10).
+        await websocket.send_json(_to_json(relay.hello()))
+        sender = asyncio.create_task(pump())
         while True:
             await websocket.receive_text()          # inbound is ignored in v1
     except WebSocketDisconnect:
@@ -255,10 +258,11 @@ async def events_socket(
     except Exception:  # noqa: BLE001
         log.debug("events: client %s connection error", client, exc_info=True)
     finally:
-        sender.cancel()
-        try:
-            await sender
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
+        if sender is not None:
+            sender.cancel()
+            try:
+                await sender
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
         relay.unsubscribe(sub)
         log.info("events: client %s gone", client)
