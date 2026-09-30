@@ -1658,3 +1658,48 @@ def test_backup_with_an_empty_or_out_of_range_id_list_is_refused_not_widened() -
                 raise AssertionError(f"backup(device_ids={ids}) must be refused")
 
     asyncio.run(main())
+
+
+def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
+    """X1: after the plan (and even with nothing to write) the update checks
+    each activity's quick-access order and rewrites one an older restore left
+    short; what it rewrote is read back and closed by one remote sync. The
+    X1S keeps macros outside its order table: never checked there."""
+
+    async def main():
+        for hub_version, expect_repairs in (("X1", True), ("X1S", False)):
+            dep = _deployment(hub_version)
+            engine, runs = _update_engine(monkeypatch, dep, hub_version=hub_version)
+            repairs: list[int] = []
+
+            def repair(act_id):
+                repairs.append(act_id)
+                engine.trace.append(("repair", act_id))
+                return True
+
+            monkeypatch.setattr(engine, "repair_x1_quick_access_order", repair)
+            # The device is a member of 101 (the fixture's live activity lists it).
+            monkeypatch.setattr(engine, "activities_referencing_device", lambda dev_id: [101])
+            proxy = aio.AsyncXProxy.wrap(engine)
+            routed = _WifiDeviceSpec(name="Server", slots=(
+                _WifiSlotSpec("Play", favorite=True, activities=(101,)), _WifiSlotSpec("Pause")))
+
+            await proxy.update_wifi_device(dep, routed)
+            if expect_repairs:
+                assert engine.trace[engine.trace.index("run"):] == [
+                    "run", ("repair", 101), ("device", 12), ("activity", 101), "resync"]
+            else:
+                assert repairs == []
+
+            # Nothing to write: an X1 still heals, then re-reads and resyncs.
+            engine.trace.clear()
+            repairs.clear()
+            await proxy.update_wifi_device(dep, _WifiDeviceSpec.from_dict(dep.spec.to_dict()))
+            assert len(runs) == 1
+            if expect_repairs:
+                assert repairs == [101]
+                assert engine.trace[-3:] == [("repair", 101), ("activity", 101), "resync"]
+            else:
+                assert repairs == [] and "resync" not in engine.trace
+
+    asyncio.run(main())

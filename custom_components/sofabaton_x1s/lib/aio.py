@@ -2189,6 +2189,26 @@ class AsyncXProxy:
         finally:
             await self._resync_remote_after(f"deploy_wifi_device({spec.name!r})")
 
+    async def _repair_x1_quick_access(self, activity_ids: Iterable[int]) -> tuple[int, ...]:
+        """X1: rewrite each activity's quick-access order that leaves out a
+        live favorite or macro shortcut (an older restore wrote such tables;
+        the remote then covers an entry and shows an empty row). Best
+        effort, never fails the caller; call inside the hub hold. Returns
+        the activities it rewrote, for the caller's re-read."""
+
+        if self._proxy.hub_version != HUB_VERSION_X1:
+            return ()
+        repaired: list[int] = []
+        for act in sorted({int(a) & 0xFF for a in activity_ids if (int(a) & 0xFF) >= 101}):
+            try:
+                result = await self._run_draining(self._proxy.repair_x1_quick_access_order, act)
+            except Exception:  # noqa: BLE001 - the repair never fails a write
+                _LOG.warning("quick-access order repair failed for activity %s", act, exc_info=True)
+                continue
+            if result is True:
+                repaired.append(act)
+        return tuple(repaired)
+
     async def _resync_remote_after(self, what: str) -> None:
         """The physical remote-sync trigger closing a multi-write operation.
 
@@ -2360,6 +2380,17 @@ class AsyncXProxy:
             transport=deployment.transport,
         )
         if not plan.steps:
+            if self._proxy.hub_version != HUB_VERSION_X1:
+                return updated
+            # Nothing to write, but an X1 order table an older restore left
+            # short still heals here, as on the Home Assistant path.
+            referencing = await self._activities_referencing(dev_lo)
+            async with self._holding_hub("a callback device write"):
+                repaired = await self._repair_x1_quick_access({*desired.activities, *referencing})
+            if repaired:
+                await self._rebase_after_write({"status": "success"}, force=True, reread_activities=repaired)
+                if remote_sync:
+                    await self._resync_remote_after(what)
             return updated
 
         # Asked before the write, on the cache the baseline read just filled.
@@ -2368,6 +2399,10 @@ class AsyncXProxy:
             result = await self._run_draining(
                 self._proxy.run_wifi_inplace_plan, plan, progress_callback=self._engine_progress(progress)
             )
+            if isinstance(result, dict) and result.get("status") == "success":
+                repaired = await self._repair_x1_quick_access({*desired.activities, *referencing})
+            else:
+                repaired = ()
         touched = {
             int(step.payload.get("activity_id")) & 0xFF
             for step in plan.steps
@@ -2382,6 +2417,7 @@ class AsyncXProxy:
             touched.update(referencing)
         # A device-page binding step names the device in ``activity_id``
         # (one id space, activities from 101 up).
+        touched.update(repaired)
         await self._rebase_after_write(
             result, force=True, reread_devices=(dev_lo,),
             reread_activities=tuple(sorted(a for a in touched if a >= 101)),
