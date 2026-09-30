@@ -12,12 +12,11 @@ import asyncio
 
 import pytest
 
-import custom_components.sofabaton_x1s.hub as hub_module
 import custom_components.sofabaton_x1s.wifi_deploy as wifi_deploy_module
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 from custom_components.sofabaton_x1s.lib.commands import hub_command_label
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 OLD_HASH = "oldhash"
 NEW_HASH = "newhash"

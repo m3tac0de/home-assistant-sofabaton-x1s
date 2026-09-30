@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 from custom_components.sofabaton_x1s.const import DOMAIN
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 
 def _hub(loop):

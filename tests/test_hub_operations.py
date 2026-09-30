@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from homeassistant.exceptions import HomeAssistantError
 
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
 from custom_components.sofabaton_x1s.hub import SofabatonHub  # noqa: E402
