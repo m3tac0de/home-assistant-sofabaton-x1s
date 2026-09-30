@@ -6,11 +6,12 @@ runtime.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
-from homeassistant.core import ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 
+from .const import DOMAIN
 from .command_config import (
     CommandConfigStore,
     is_wifi_events_device_key,
@@ -678,3 +679,49 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
     if isinstance(result, dict) and str(result.get("status") or "") == "failed":
         raise HomeAssistantError(str(result.get("message") or "Sync failed"))
     return result
+
+
+#: Every service: (name, handler, returns a response), in registration order.
+#: One table for registration (first hub set up) and removal (last hub
+#: unloaded); the two hand-kept 20-name lists had to change in lockstep.
+SERVICES: tuple[tuple[str, Callable[[ServiceCall], Any], bool], ...] = (
+    ("fetch_device_commands", _async_handle_fetch_device_commands, False),
+    ("dump_ir_commands", _async_handle_dump_ir_commands, True),
+    ("fetch_blob", _async_handle_fetch_blob, True),
+    ("backup_bundle", _async_handle_backup_bundle, True),
+    ("restore_backup", _async_handle_restore_backup, True),
+    ("play_ir_blob", _async_handle_play_ir_blob, False),
+    ("set_ir_learn_mode", _async_handle_set_ir_learn_mode, False),
+    ("ir_learn_command", _async_handle_ir_learn_command, True),
+    ("persist_ir_blob", _async_handle_persist_ir_blob, True),
+    ("create_wifi_device", _async_handle_create_wifi_device, False),
+    ("device_to_activity", _async_handle_device_to_activity, False),
+    ("delete_device", _async_handle_delete_device, False),
+    ("command_to_favorite", _async_handle_command_to_favorite, False),
+    ("get_favorites", _async_handle_get_favorites, True),
+    ("reorder_favorites", _async_handle_reorder_favorites, False),
+    ("delete_favorite", _async_handle_delete_favorite, False),
+    ("command_to_button", _async_handle_command_to_button, False),
+    ("sync_command_config", _async_handle_sync_command_config, False),
+    ("export_snapshot", _async_handle_export_snapshot, True),
+    ("sync_from_snapshot", _async_handle_sync_from_snapshot, True),
+)
+
+
+def async_register_services(hass: HomeAssistant) -> None:
+    """Register every service that is not registered yet."""
+
+    for name, handler, responds in SERVICES:
+        if hass.services.has_service(DOMAIN, name):
+            continue
+        if responds:
+            hass.services.async_register(DOMAIN, name, handler, supports_response=SupportsResponse.OPTIONAL)
+        else:
+            hass.services.async_register(DOMAIN, name, handler)
+
+
+def async_remove_services(hass: HomeAssistant) -> None:
+    """Remove every service (the last hub unloaded)."""
+
+    for name, _handler, _responds in SERVICES:
+        hass.services.async_remove(DOMAIN, name)

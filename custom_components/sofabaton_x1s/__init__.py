@@ -12,7 +12,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, SupportsResponse
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import issue_registry as ir
 
@@ -157,6 +157,7 @@ from .ws_editor import (  # noqa: F401
     _ws_get_device_power_state,
 )
 
+from . import services
 from .services import (  # noqa: F401
     _async_handle_fetch_device_commands,
     _async_handle_dump_ir_commands,
@@ -429,86 +430,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hub.async_start()
 
-    if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
-        hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
-    if not hass.services.has_service(DOMAIN, "dump_ir_commands"):
-        hass.services.async_register(
-            DOMAIN,
-            "dump_ir_commands",
-            _async_handle_dump_ir_commands,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "fetch_blob"):
-        hass.services.async_register(
-            DOMAIN,
-            "fetch_blob",
-            _async_handle_fetch_blob,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "backup_bundle"):
-        hass.services.async_register(
-            DOMAIN,
-            "backup_bundle",
-            _async_handle_backup_bundle,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "restore_backup"):
-        hass.services.async_register(
-            DOMAIN,
-            "restore_backup",
-            _async_handle_restore_backup,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "play_ir_blob"):
-        hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
-    if not hass.services.has_service(DOMAIN, "set_ir_learn_mode"):
-        hass.services.async_register(DOMAIN, "set_ir_learn_mode", _async_handle_set_ir_learn_mode)
-    if not hass.services.has_service(DOMAIN, "ir_learn_command"):
-        hass.services.async_register(
-            DOMAIN,
-            "ir_learn_command",
-            _async_handle_ir_learn_command,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "persist_ir_blob"):
-        hass.services.async_register(
-            DOMAIN,
-            "persist_ir_blob",
-            _async_handle_persist_ir_blob,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "create_wifi_device"):
-        hass.services.async_register(DOMAIN, "create_wifi_device", _async_handle_create_wifi_device)
-    if not hass.services.has_service(DOMAIN, "device_to_activity"):
-        hass.services.async_register(DOMAIN, "device_to_activity", _async_handle_device_to_activity)
-    if not hass.services.has_service(DOMAIN, "delete_device"):
-        hass.services.async_register(DOMAIN, "delete_device", _async_handle_delete_device)
-    if not hass.services.has_service(DOMAIN, "command_to_favorite"):
-        hass.services.async_register(DOMAIN, "command_to_favorite", _async_handle_command_to_favorite)
-    if not hass.services.has_service(DOMAIN, "get_favorites"):
-        hass.services.async_register(DOMAIN, "get_favorites", _async_handle_get_favorites, supports_response=SupportsResponse.OPTIONAL)
-    if not hass.services.has_service(DOMAIN, "reorder_favorites"):
-        hass.services.async_register(DOMAIN, "reorder_favorites", _async_handle_reorder_favorites)
-    if not hass.services.has_service(DOMAIN, "delete_favorite"):
-        hass.services.async_register(DOMAIN, "delete_favorite", _async_handle_delete_favorite)
-    if not hass.services.has_service(DOMAIN, "command_to_button"):
-        hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
-    if not hass.services.has_service(DOMAIN, "sync_command_config"):
-        hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
-    if not hass.services.has_service(DOMAIN, "export_snapshot"):
-        hass.services.async_register(
-            DOMAIN,
-            "export_snapshot",
-            _async_handle_export_snapshot,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, "sync_from_snapshot"):
-        hass.services.async_register(
-            DOMAIN,
-            "sync_from_snapshot",
-            _async_handle_sync_from_snapshot,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
+    services.async_register_services(hass)
 
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -615,26 +537,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not runtime._get_hubs(hass.data[DOMAIN]):
-            hass.services.async_remove(DOMAIN, "fetch_device_commands")
-            hass.services.async_remove(DOMAIN, "dump_ir_commands")
-            hass.services.async_remove(DOMAIN, "fetch_blob")
-            hass.services.async_remove(DOMAIN, "backup_bundle")
-            hass.services.async_remove(DOMAIN, "restore_backup")
-            hass.services.async_remove(DOMAIN, "play_ir_blob")
-            hass.services.async_remove(DOMAIN, "set_ir_learn_mode")
-            hass.services.async_remove(DOMAIN, "ir_learn_command")
-            hass.services.async_remove(DOMAIN, "persist_ir_blob")
-            hass.services.async_remove(DOMAIN, "create_wifi_device")
-            hass.services.async_remove(DOMAIN, "device_to_activity")
-            hass.services.async_remove(DOMAIN, "delete_device")
-            hass.services.async_remove(DOMAIN, "command_to_favorite")
-            hass.services.async_remove(DOMAIN, "get_favorites")
-            hass.services.async_remove(DOMAIN, "reorder_favorites")
-            hass.services.async_remove(DOMAIN, "delete_favorite")
-            hass.services.async_remove(DOMAIN, "command_to_button")
-            hass.services.async_remove(DOMAIN, "sync_command_config")
-            hass.services.async_remove(DOMAIN, "export_snapshot")
-            hass.services.async_remove(DOMAIN, "sync_from_snapshot")
+            services.async_remove_services(hass)
             async_teardown_diagnostics(hass)
             if frontend_resources._get_lovelace_resource_mode(hass) == frontend_resources._LOVELACE_STORAGE_MODE:
                 if hass.data[DOMAIN].get("storage_resources_registered"):
