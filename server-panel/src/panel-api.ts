@@ -5,307 +5,101 @@
 
 import { SERVER_API_PREFIX } from "../../remote-card/src/backend/server-backend";
 import { serverBaseFromPageUrl } from "../../remote-card/src/remote-web-config";
+import type { components } from "../../sofabaton-x-server/openapi";
 
-export interface RunningActivity {
-  activity_id: number;
-  name?: string | null;
-}
+// The server's wire contract, generated from sofabaton-x-server/openapi.json
+// (`npm run gen:server-types`, CR-X3-5). The types below are aliases of its
+// schemas; a local refinement says why.
+type Schemas = components["schemas"];
+
+export type RunningActivity = Schemas["RunningActivity"];
 
 /** `GET /hubs/{id}/info`: identity from the connect banner; `known` false until read. */
-export interface HubInfo {
-  known: boolean;
-  model: string | null;
-  name: string | null;
-  mac: string | null;
-  firmware_version: number | null;
-  production_batch: string | null;
-  firmware_min_supported?: number | null;
-  firmware_min_recommended?: number | null;
-  firmware_unsupported?: boolean;
-  firmware_outdated?: boolean;
-}
+export type HubInfo = Schemas["HubInfo"];
 
-export interface HubStatus {
-  hub_connected: boolean;
-  app_connected: boolean;
-  controllable: boolean;
-  mode: "disconnected" | "observe" | "control" | string;
-  hub_version: string | null;
-  proxy_enabled: boolean;
-  running_activity: RunningActivity | null;
-  activities_cached: number;
-  devices_cached: number;
-  catalog_ready: boolean;
-  /** The library's firmware floor verdicts from the banner: `firmware_unsupported`
-   *  means the hub ACKs writes and drops them (the write surfaces block on it),
-   *  `firmware_outdated` only asks for an update. Absent on older servers. */
-  firmware_version?: number | null;
-  firmware_min_supported?: number | null;
-  firmware_unsupported?: boolean;
-  firmware_outdated?: boolean;
-}
+export type HubStatus = Schemas["HubStatus"];
 
-export interface HubConfig {
-  host: string;
-  name?: string | null;
-  hub_version?: string | null;
-  mac?: string | null;
-  /** Whether the official app can reach the hub through the server (absent = on). */
-  proxy_enabled?: boolean;
-  [key: string]: unknown;
-}
+export type HubConfig = Schemas["HubConfig"];
 
 /** One row of `GET /hubs` (openapi `HubView`). `active_job` is the job
  *  queued or running on the hub now, `last_job` the newest finished one
  *  (server panel state plan, decision 1); older fixtures may omit them. */
-export interface HubView {
-  hub_id: string;
-  enabled: boolean;
-  config: HubConfig;
-  added_at: string;
-  last_seen: string | null;
-  status: HubStatus | null;
-  active_job?: JobView | null;
-  last_job?: JobView | null;
-  /** The hub's own name from its banner; shown when no name was configured. */
-  hub_name?: string | null;
-}
+export type HubView = Schemas["HubView"];
 
 /** One row of `GET /discovery/hubs` (openapi `SeenHub`). */
-export interface SeenHub {
-  key: string;
-  config: HubConfig;
-  first_seen: string;
-  last_seen: string;
-  present: boolean;
-  registered_hub_id: string | null;
-}
+export type SeenHub = Schemas["SeenHub"];
 
 /** The error body every route answers with (RFC 9457 shape). */
-export interface Problem {
-  type: string;
-  title: string;
-  status: number;
-  detail?: string | null;
-  hub_id?: string | null;
-  mode?: string | null;
-}
+export type Problem = Schemas["Problem"];
 
 /** `GET /server/callback-listener` (openapi `CallbackListener`), also embedded in `ServerInfo`. */
-export interface CallbackListener {
-  wanted?: boolean;
-  bound?: boolean;
-  bound_port?: number | null;
-  [key: string]: unknown;
-}
+export type CallbackListener = Schemas["CallbackListenerView"];
 
 /** `GET /server/updates` (openapi `UpdateStatus`), also the `update` block of `ServerInfo`: the last
  *  PyPI check judged against the running version. `failed` means nothing is known about newer
  *  releases; it never reads as up to date. */
-export interface UpdateStatus {
-  installed_version: string;
-  status: "not_checked" | "up_to_date" | "update_available" | "failed";
-  latest_version: string | null;
-  checked_at: string | null;
-  checked_by: "manual" | "automatic" | null;
-  error: string | null;
-  /** The daily automatic check (server.json `update_check`); pinned = set by the environment. */
-  automatic: boolean;
-  automatic_pinned: boolean;
-  next_check_at: string | null;
-  checking: boolean;
-  release_notes_url: string;
-  upgrade_url: string;
-  pypi_url: string;
-}
+export type UpdateStatus = Schemas["UpdateStatus"];
 
-export interface ServerInfo {
-  version: string;
-  library_version: string;
-  api_version: string;
-  instance_id?: string;
-  hubs?: number;
-  callback_listener?: CallbackListener;
-  update?: UpdateStatus | null;
-  /** Access (auth plan): once claimed, writes need a token or the panel's sign-in. */
-  auth?: { claimed: boolean } | null;
-  [key: string]: unknown;
-}
+export type ServerInfo = Schemas["ServerInfo"];
 
 /** `GET /auth` (openapi `AuthStatus`). */
-export interface AuthStatus {
-  claimed: boolean;
-  signed_in: boolean;
-  username?: string | null;
-  via?: "session" | "token" | null;
-}
+export type AuthStatus = Schemas["AuthStatus"];
 
 /** A write token as `GET /auth/tokens` lists it (openapi `TokenInfo`); never the secret. */
-export interface TokenInfo {
-  id: string;
-  name: string;
-  hint: string;
-  created_at: string;
-  last_used_at: string | null;
-}
+export type TokenInfo = Schemas["TokenInfo"];
 
 /** `POST /auth/tokens` (openapi `TokenCreated`): the only answer that carries `token`. */
-export interface TokenCreated extends TokenInfo {
-  token: string;
-}
+export type TokenCreated = Schemas["TokenCreated"];
 
 /** A signed-in browser (openapi `SessionView`). */
-export interface SessionView {
-  id: string;
-  remember: boolean;
-  created_at: string;
-  last_seen_at: string;
-  expires_at: string;
-  user_agent: string;
-  current: boolean;
-}
+export type SessionView = Schemas["SessionView"];
 
 /** The Problem types that mean "this browser is not (or no longer) signed in". */
 export const SIGNED_OUT_PROBLEMS = new Set(["auth_required", "invalid_credentials"]);
 
 /** One command slot of a Wifi Device's spec (openapi `CallbackSlot`). */
-export interface WifiSlot {
-  label: string;
-  long_label?: string | null;
-  /** A favorite in each of `activities`. */
-  favorite?: boolean;
-  /** The hub button code bound to this command in each of `activities`. */
-  button?: number | null;
-  /** Also bind the slot's long record to that button's long press. */
-  long_press?: boolean;
-  activities?: number[];
-  /** The activity whose start performs this command (X1S, X2). */
-  input_activity_id?: number | null;
-}
+export type WifiSlot = Schemas["CallbackSlot"];
 
 /** A Wifi Device's spec: what `POST` and `PUT /wifi-devices` take, whole (openapi `WifiDeviceRequest`). Hook slots are 1-based. */
-export interface WifiDeviceSpec {
-  name: string;
-  slots: WifiSlot[];
-  power_on_slot: number | null;
-  power_off_slot: number | null;
-  input_slots: number[];
-  brand?: string;
-}
+export type WifiDeviceSpec = Required<Omit<Schemas["WifiDeviceRequest"], "transport">> & { brand?: string };
 
 /** One managed Wifi Device as the server keeps it (openapi `CallbackDeviceView`). */
-export interface WifiDeviceView {
-  key: string;
-  transport: string;
-  device_id: number | null;
-  spec: WifiDeviceSpec;
-  /** The address the device calls; null for an mqtt device, which calls nothing. */
-  target: { host: string; port: number; action_id: string } | null;
-  /** An mqtt device's press topic on the broker, `<MAC>/up`. */
-  mqtt_topic?: string | null;
-  labels: Record<string, string>;
-  hub_version: string;
-  deployed_at: string | null;
-  adopted: boolean;
-  stale: boolean;
-  deployed: boolean;
-  pending?: { op: string; started_at: string } | null;
-  last_press?: { seq: number; received_at: string } | null;
-  effective_destination?: { host: string; port: number } | null;
-}
+// The document types the stored spec as an open object: it is the deploy
+// request, whole, plus the brand the server gave the device.
+export type WifiDeviceView = Omit<Schemas["CallbackDeviceView"], "key" | "spec"> & { key: string; spec: WifiDeviceSpec };
 
 /** `GET /hubs/{id}/wifi-devices` (openapi `WifiDeviceList`). */
-export interface WifiDeviceList {
-  devices: WifiDeviceView[];
-  max_devices: number;
-  /** How a press can reach the server; a chooser appears once there is more than one. */
-  transports: string[];
-  effective_destination?: { host: string; port: number } | null;
-}
+export type WifiDeviceList = Omit<Schemas["WifiDeviceList"], "devices"> & { devices: WifiDeviceView[] };
 
 /** `GET /server/mqtt` (openapi `MqttView`): the server's broker connection. The broker comes from the
  *  panel's MQTT broker page (mqtt.json) or, read-only, from the command line or environment; the
  *  password is in no answer. */
-export interface MqttState {
-  configured: boolean;
-  /** A device uses the transport; the connection exists only then. */
-  wanted: boolean;
-  connected: boolean;
-  host: string | null;
-  port: number | null;
-  tls: boolean;
-  username: string | null;
-  topics: string[];
-  last_error: string | null;
-  connected_at: string | null;
-  next_retry_at: string | null;
-}
+export type MqttState = Schemas["MqttState"];
 
 /** `GET /server/mqtt/config` (openapi `MqttConfigView`): the broker settings, never the password. */
-export interface MqttConfigView {
-  /** none: no broker; panel: stored by this panel; startup: set by flags or environment, read-only here. */
-  source: "none" | "panel" | "startup";
-  editable: boolean;
-  host: string | null;
-  port: number | null;
-  effective_port: number | null;
-  username: string | null;
-  password_set: boolean;
-  tls: boolean;
-  tls_ca: string | null;
-  tls_insecure: boolean;
-  client_id: string | null;
-  devices_using: number;
-  /** The change moved the destination without a new password, so the stored one was dropped. */
-  password_dropped: boolean;
-}
+export type MqttConfigView = Schemas["MqttConfigView"];
 
 /** The body of `PUT /server/mqtt/config` and `POST /server/mqtt/test`. Leave `password` out to keep the stored one
  *  (only while the destination stays the same); send "" to remove it. */
-export interface MqttConfigBody {
-  host: string;
-  port?: number | null;
-  username?: string | null;
-  password?: string | null;
-  tls?: boolean;
-  tls_ca?: string | null;
-  tls_insecure?: boolean;
-  client_id?: string | null;
-}
+export type MqttConfigBody = Schemas["MqttConfigBody"];
 
-export interface MqttTestResult {
-  ok: boolean;
-  error: string | null;
-  elapsed_ms: number;
-}
+export type MqttTestResult = Schemas["MqttTestResult"];
 
 /** One port in `GET /server/settings` (openapi `PortSetting`). */
-export interface PortSetting {
-  running: number;
-  configured: number;
-  default: number;
-  pinned: boolean;
-}
+export type PortSetting = Schemas["PortSetting"];
 
 export type ServerPortName = "hub_listen_port" | "app_discovery_port" | "callback_port";
 
 /** `allowed_origins` in `GET|PUT /server/settings` (openapi `OriginsSetting`); applied live. */
-export interface OriginsSetting {
-  value: string[];
-  pinned: boolean;
-}
+export type OriginsSetting = Schemas["OriginsSetting"];
 
 /** `GET|PUT /server/settings` (openapi `ServerSettingsView`). */
-export type ServerSettings = Record<ServerPortName, PortSetting> & { allowed_origins?: OriginsSetting; restart_required: boolean };
+export type ServerSettings = Schemas["ServerSettingsView"];
 
 /** The body of `PUT /server/settings`. */
-export type ServerSettingsUpdate = Partial<Record<ServerPortName, number>> & { allowed_origins?: string[] };
+export type ServerSettingsUpdate = Schemas["ServerSettingsUpdate"];
 
-export interface RemoteCardDocument {
-  hub_id: string;
-  document: Record<string, unknown> | null;
-  updated_at: string | null;
-}
+export type RemoteCardDocument = Schemas["RemoteCardDocument"];
 
 /** One operation from the OpenAPI document, as the API view lists them. */
 export interface Operation {
@@ -336,133 +130,45 @@ export interface RequestOptions {
   rawBody?: string;
 }
 
-export interface HubCreate {
-  host: string;
-  name?: string | null;
-  enabled?: boolean;
-  [key: string]: unknown;
-}
+export type HubCreate = Schemas["HubCreate"];
 
 // -- the catalog (openapi Device, Command, Activity, Button, Macro, Favorite) --
 
-export interface Device {
-  device_id: number;
-  name: string;
-  brand: string | null;
-  device_class: string | null;
-  device_class_code: number | null;
-  power_state: number | null;
-  idle_behavior: number | null;
-  /** The hub's stored display position (0 = none); the list already comes in that order. */
-  sort: number;
-}
+export type Device = Schemas["Device"];
 
-export interface Command {
-  command_id: number;
-  label: string;
-}
+export type Command = Schemas["Command"];
 
-export interface Activity {
-  activity_id: number;
-  name: string;
-  active: boolean;
-  needs_confirm: boolean;
-  /** The hub's stored display position (0 = none); the list already comes in that order. */
-  sort: number;
-}
+export type Activity = Schemas["Activity"];
 
-export interface Button {
-  button_code: number;
-  name: string | null;
-  device_id: number | null;
-  command_id: number | null;
-  long_press_device_id?: number | null;
-  long_press_command_id?: number | null;
-}
+export type Button = Schemas["Button"];
 
-export interface Macro {
-  command_id: number;
-  label: string | null;
-}
+export type Macro = Schemas["Macro"];
 
-export interface Favorite {
-  device_id: number;
-  command_id: number;
-  label: string | null;
-}
+export type Favorite = Schemas["Favorite"];
 
 /** One entity's provenance in `GET /hubs/{id}/snapshot` (the tables ride along untyped). */
-export interface SnapshotEntity {
-  kind: string;
-  device: { device_id: number; name?: string | null; [key: string]: unknown };
-  complete: boolean;
-  editable: boolean;
-  fetched_at: string | null;
-  [key: string]: unknown;
-}
+export type SnapshotEntity = Schemas["SnapshotEntityPayload"];
 
-export interface SnapshotDocument {
-  snapshot_id: string;
-  captured_at: string;
-  engine_generation: number;
-  complete: boolean;
-  payload_profile: string;
-  devices: SnapshotEntity[];
-  activities: SnapshotEntity[];
-  [key: string]: unknown;
-}
+export type SnapshotDocument = Schemas["SnapshotDocument"];
 
-export interface JobProgress {
-  completed_steps?: number | null;
-  total_steps?: number | null;
-  [key: string]: unknown;
-}
+export type JobProgress = Schemas["WriteProgress"];
 
 /** `JobView`: what a 202 returns and what `GET /jobs/{id}` reports. */
-export interface JobView {
-  job_id: string;
-  hub_id: string;
-  kind: string;
-  status: "queued" | "running" | "done" | "failed" | "cancelled" | string;
-  cancellable: boolean;
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  progress: JobProgress | null;
-  result: Record<string, unknown> | null;
-  error: Problem | null;
-}
+export type JobView = Schemas["JobView"];
 
 export const TERMINAL_JOB_STATES: ReadonlySet<string> = new Set(["done", "failed", "cancelled"]);
 
 /** One row of `GET /hubs/{id}/applies` (openapi `ApplySummary`). */
-export interface ApplySummary {
-  apply_id: string;
-  hub_id: string;
-  status: string;
-  resumable: boolean;
-  job_id: string | null;
-  created_at: string;
-  updated_at: string;
-  runs?: number;
-  cursor?: number;
-  item_count?: number;
-  writes?: number;
-  [key: string]: unknown;
-}
+export type ApplySummary = Schemas["ApplySummary"];
 
 /** `POST /snapshot/refresh` body: one entity, or neither for the whole hub. */
 export type RefreshScope = { device_id: number } | { activity_id: number } | Record<string, never>;
 
 /** `GET .../commands/{cid}/payload`: the stored body and what the library could read from it. */
-export interface PayloadView {
-  kind: "raw" | "descriptive" | string;
-  hex: string;
-  descriptor: string | null;
-  carrier_hz: number | null;
-  /** The library's structured block for the classes it round-trips (`restore_data.decoded`'s shape); null when the body stays raw. */
-  decoded: { class: string; fields: Record<string, unknown>; trailer_hex?: string } | null;
-}
+// The document types `decoded` as an open object; it is `restore_data.decoded`'s shape.
+export type PayloadView = Omit<Schemas["PayloadView"], "decoded"> & {
+  decoded?: { class: string; fields: Record<string, unknown>; trailer_hex?: string } | null;
+};
 
 /** One payload in any supported source format (exactly one field), for `POST /play`. */
 export type PayloadSpec = { hex: string } | { pronto: string } | { descriptor: string } | { timings_us: number[]; carrier_hz: number };

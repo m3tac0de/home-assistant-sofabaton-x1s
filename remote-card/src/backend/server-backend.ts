@@ -20,6 +20,7 @@
 // coalesced to one in flight plus one pending. A failed load or page fetch
 // is retried with backoff for as long as someone is subscribed.
 
+import type { components } from "../../../sofabaton-x-server/openapi";
 import type {
   DeviceKeymapResponse,
   RemoteEntityAttributes,
@@ -34,72 +35,21 @@ import type {
 export const SERVER_API_PREFIX = "/api/v1";
 
 // ---------- server wire shapes (openapi.json components) ----------
+// Aliases of the schemas generated from sofabaton-x-server/openapi.json
+// (`npm run gen:server-types`, CR-X3-5). The WS envelope stays local: its
+// generated `type` discriminants come out optional (they have defaults).
 
-interface ServerRunningActivity {
-  activity_id: number;
-  name: string | null;
-}
+type Schemas = components["schemas"];
 
-interface ServerHubStatus {
-  hub_connected: boolean;
-  app_connected: boolean;
-  controllable: boolean;
-  mode: "disconnected" | "observe" | "control";
-  hub_version: string | null;
-  running_activity: ServerRunningActivity | null;
-  catalog_ready?: boolean;
-}
-
-interface ServerHubStatusView {
-  hub_id: string;
-  enabled: boolean;
-  status: ServerHubStatus | null;
-}
-
-interface ServerActivity {
-  activity_id: number;
-  name: string;
-  active: boolean;
-}
-
-interface ServerDevice {
-  device_id: number;
-  name: string;
-  device_class: string | null;
-  power_state: number | null;
-  idle_behavior: number | null;
-}
-
-interface ServerCommand {
-  command_id: number;
-  label: string;
-}
-
-interface ServerButton {
-  button_code: number;
-  name: string | null;
-  device_id: number | null;
-  command_id: number | null;
-  long_press_device_id?: number | null;
-  long_press_command_id?: number | null;
-}
-
-interface ServerMacro {
-  command_id: number;
-  label: string | null;
-}
-
-interface ServerFavorite {
-  device_id: number;
-  command_id: number;
-  label: string | null;
-}
-
-interface ServerHubEvent {
-  seq: number;
-  kind: string;
-  payload: Record<string, unknown> | null;
-}
+type ServerRunningActivity = Schemas["RunningActivity"];
+type ServerHubStatusView = Schemas["HubStatusView"];
+type ServerActivity = Schemas["Activity"];
+type ServerDevice = Schemas["Device"];
+type ServerCommand = Schemas["Command"];
+type ServerButton = Schemas["Button"];
+type ServerMacro = Schemas["Macro"];
+type ServerFavorite = Schemas["Favorite"];
+type ServerHubEvent = Schemas["HubEvent"];
 
 interface ServerWsMessage {
   type: string;
@@ -842,7 +792,8 @@ export class ServerRemoteBackend implements RemoteBackend {
   }
 
   private handleHubEvent(event: ServerHubEvent): void {
-    const payload = event.payload ?? {};
+    // The payload's schema follows `kind`; each case reads the fields it knows.
+    const payload = (event.payload ?? {}) as Record<string, unknown>;
     switch (event.kind) {
       case "activity_changed": {
         const id = toNumber(payload.activity_id);

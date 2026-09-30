@@ -68,7 +68,7 @@ test("countLine is the card's wording, singular and plural", () => {
 });
 
 test("activity summaries exclude internal power sequences while counting user macros", () => {
-  const activity = { ...SNAPSHOT.activities[0], macros: [
+  const activity = { ...SNAPSHOT.activities![0], macros: [
     { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 1 }] },
     { button_id: 199, name: "POWER_OFF", steps: [] },
   ] };
@@ -88,13 +88,14 @@ test("boundButtons keeps the buttons the hub maps to a command", () => {
 });
 
 test("jobPhrase says what the refresh is doing and its step count, never the raw status", () => {
-  const job = (status: string, progress: JobView["progress"]): JobView => ({
+  const job = (status: JobView["status"], progress: JobView["progress"]): JobView => ({
     job_id: "j", hub_id: "h", kind: "refresh", status, cancellable: false, created_at: "t", started_at: null, finished_at: null, progress, result: null, error: null,
   });
   assert.equal(jobPhrase(job("queued", null)), "Queued…");
   assert.equal(jobPhrase(job("running", null)), "Refreshing…");
-  assert.equal(jobPhrase(job("running", { completed_steps: 2, total_steps: 5 })), "Refreshing 2/5");
-  assert.equal(jobPhrase(job("running", { total_steps: 5 })), "Refreshing 0/5");
+  assert.equal(jobPhrase(job("running", { phase: "item", message: "", completed_steps: 2, total_steps: 5 })), "Refreshing 2/5");
+  // A progress without its step count reads as step 0.
+  assert.equal(jobPhrase(job("running", { total_steps: 5 } as JobView["progress"])), "Refreshing 0/5");
 });
 
 test("the catalog routes and refresh scopes hit the documented paths; followJob polls to a terminal state", async () => {

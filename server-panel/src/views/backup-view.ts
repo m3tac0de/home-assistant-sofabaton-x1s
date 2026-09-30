@@ -605,7 +605,6 @@ export class SbPanelBackup extends LitElement {
     const bundle = this._restoreBundle;
     if (!hubId || !api || !bundle || this._busy) return;
     const selection = reconcileRestoreSelection({ bundle, selectedActivityIds: this._restoreActivityIds, manualSelectedDeviceIds: this._restoreManualDeviceIds });
-    // The expanded set: activities pulled in by a chain reference come along.
     const filtered = pruneBackupBundle({ bundle, selectedActivityIds: selection.selectedActivityIds, selectedDeviceIds: selection.selectedDeviceIds });
     this._restoreError = null;
     this._shownRestoreJobId = null;
@@ -935,7 +934,7 @@ export class SbPanelBackup extends LitElement {
                   <div class="selection-card"><div class="selection-list" id="restore-list">
                     ${activities.length
                       ? html`<div class="selection-group-header">${S.activities}</div>
-                          ${activities.map((activity) => row(activity, selection.forcedActivityIds.includes(activity.id), selection.selectedActivityIds.includes(activity.id), "activity", (next) => this._setRestoreActivity(activity.id, next)))}`
+                          ${activities.map((activity) => row(activity, false, selection.selectedActivityIds.includes(activity.id), "activity", (next) => this._setRestoreActivity(activity.id, next)))}`
                       : html`<div class="selection-empty">${S.noActivitiesInFile}</div>`}
                     ${devices.length
                       ? html`<div class="selection-group-header">${S.devices}</div>

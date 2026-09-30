@@ -643,9 +643,18 @@ def _validate(diff: _Diff, hub_version: Optional[str]) -> None:
     # References: every target must be an entity the document keeps or creates.
     device_ids = set(diff.want_devices)
     activity_ids = set(diff.want_activities)
+    written = {("activity", eid) for eid in (*diff.created_activities, *diff.edited_activities)}
     for referrer, site, target in iter_entity_references(diff.desired):
         if referrer[1] == target:
             continue  # an activity's own macro ids ride its own id
+        if tuple(referrer) in written and (target >= ACTIVITY_ID_BASE or target in activity_ids):
+            # One activity never starts or binds another (L-B25). Rows the
+            # document leaves alone pass: they are not written.
+            raise InvalidDocumentError(
+                f"{referrer[0]} {referrer[1]} references activity {target} ({site}); "
+                "an activity cannot reference another activity",
+                entity=referrer,
+            )
         if target in device_ids or target in activity_ids:
             continue
         if target < 0:

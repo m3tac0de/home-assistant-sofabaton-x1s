@@ -168,8 +168,8 @@ test("job phrases: labels per kind, narration from the progress record, progress
   assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Rename TV", completed_steps: 0, total_steps: 1, item_index: 1, item_count: 5 } })), "Applying the document · Rename TV · item 2/5 · step 0/1");
   assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "reading", message: "", completed_steps: 0, total_steps: 0, entity_kind: "activity", entity_id: 101 } })), "Backing up the hub · activity 101");
   assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Creating device 113", completed_steps: 0, total_steps: 0, entity_kind: "device", entity_id: 13 } })), "Applying the document · Creating device 113 · device 13");
-  assert.deepEqual(jobProgress(job({ progress: { completed_steps: 3, total_steps: 12 } })), { current: 3, total: 12, percent: 25, indeterminate: false });
-  assert.deepEqual(jobProgress(job({ progress: { completed_steps: 30, total_steps: 12 } })), { current: 30, total: 12, percent: 100, indeterminate: false });
+  assert.deepEqual(jobProgress(job({ progress: { phase: "item", message: "", completed_steps: 3, total_steps: 12 } })), { current: 3, total: 12, percent: 25, indeterminate: false });
+  assert.deepEqual(jobProgress(job({ progress: { phase: "item", message: "", completed_steps: 30, total_steps: 12 } })), { current: 30, total: 12, percent: 100, indeterminate: false });
   assert.deepEqual(jobProgress(job()), { current: 0, total: null, percent: null, indeterminate: true });
 });
 

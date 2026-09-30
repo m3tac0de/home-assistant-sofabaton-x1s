@@ -64,9 +64,11 @@ if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
 
 # The hub's shared 8-bit entity-id space: devices are 0x01-0x63,
-# activities 0x65-0xFF (see docs/protocol/data-structures.md). An id at
-# or above this threshold inside a binding / macro step / favourite is a
-# cross-activity reference, not a source device.
+# activities 0x65-0xFF (see docs/protocol/data-structures.md). Inside a
+# binding / macro step / favourite, an id at or above this threshold is
+# the activity's own id (a macro-target binding) or a reference to another
+# activity, which restore refuses: one activity never links to another
+# (L-B25).
 ACTIVITY_ENTITY_ID_MIN = 0x65
 
 
@@ -1357,7 +1359,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         device_id_map: dict[int, int],
         bundle_devices_by_source_id: dict[int, dict[str, Any]] | None = None,
         command_id_maps_by_source_device_id: dict[int, dict[int, int]] | None = None,
-        activity_id_map: dict[int, int] | None = None,
         send_remote_sync: bool = True,
     ) -> dict[str, Any] | None:
         """Restore an activity from a backup payload.
@@ -1381,22 +1382,12 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
 
         Validation:
 
-        ``activity_id_map`` translates source-side ACTIVITY ids (the
-        shared entity-id space's >= 0x65 range) referenced by macro
-        steps — e.g. a power-off step that starts another activity —
-        to the ids the destination hub assigned to those activities.
-        The bundle orchestrator restores activities in dependency order
-        and threads this map in; standalone callers only need it when
-        their payload carries cross-activity references.
-
-        Validation:
-
         - Payload must declare ``kind == 'activity_backup'``.
         - ``device_id_map`` must cover every distinct source device id
           referenced anywhere in the payload's button bindings, macro
           steps, and favourites; missing keys raise ``ValueError``.
-        - ``activity_id_map`` must likewise cover every referenced
-          foreign activity id.
+        - No row may reference another activity (L-B25): that raises
+          ``ValueError`` too.
         """
 
         try:
@@ -1406,9 +1397,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             activity_block = self._validate_activity_restore_payload(
                 payload,
                 known_device_ids={int(k) & 0xFF for k in device_id_map.keys()},
-                known_activity_ids={
-                    int(k) & 0xFF for k in (activity_id_map or {}).keys()
-                },
             )
 
             remap_lookup = {
@@ -1439,10 +1427,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                     if isinstance(fav_id, int) and not isinstance(fav_id, bool)
                 ],
                 device_id_map=remap_lookup,
-                activity_id_map={
-                    int(k) & 0xFF: int(v) & 0xFF
-                    for k, v in (activity_id_map or {}).items()
-                },
                 bundle_devices_by_source_id=bundle_devices,
                 command_id_maps_by_source_device_id=command_id_maps,
                 send_remote_sync=send_remote_sync,
@@ -1528,17 +1512,12 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 payload=device_payload,
             )
             self._preflight_device_content(device_payload, device_class)
-        # Cross-activity references (chain steps) need the target's
-        # hub-assigned id before the referencing activity is written, so
-        # restore in dependency order. Cycles cannot be ordered: fail the
-        # whole bundle up front with the offending ids.
-        raw_activities = list(payload.get("activities") or [])
+        activities = [entry for entry in payload.get("activities") or [] if isinstance(entry, dict)]
         # Every activity check restore_activity would fail on, against the
-        # bundle's own ids: the id maps at write time are built from the
-        # bundle's devices (source id 0 is skipped) and from the activities
-        # restored before it, so a reference outside the bundle can never
-        # resolve. Runs before the sort so a malformed entry fails with the
-        # restore's own ValueError. Found by review of 635ecfe: a bad
+        # bundle's own ids: the device id map at write time is built from
+        # the bundle's devices (source id 0 is skipped), so a reference
+        # outside the bundle can never resolve, and a reference to another
+        # activity is refused (L-B25). Found by review of 635ecfe: a bad
         # activity used to pass preflight and fail only after a replacing
         # restore had erased the hub.
         bundle_device_ids = {
@@ -1546,20 +1525,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             for d in devices
             if isinstance(d, dict) and isinstance(d.get("device"), dict)
         } - {0}
-        bundle_activity_ids = {
-            int(((a.get("device") or {}).get("device_id", 0))) & 0xFF
-            for a in raw_activities
-            if isinstance(a, dict) and isinstance(a.get("device"), dict)
-        } - {0}
-        for activity_payload in raw_activities:
-            if not isinstance(activity_payload, dict):
-                continue
-            self._validate_activity_restore_payload(
-                activity_payload,
-                known_device_ids=bundle_device_ids,
-                known_activity_ids=bundle_activity_ids,
-            )
-        activities = self._sort_bundle_activities_for_restore(raw_activities)
+        for activity_payload in activities:
+            self._validate_activity_restore_payload(activity_payload, known_device_ids=bundle_device_ids)
         return devices, activities
 
     def _preflight_device_content(self, device_payload: dict[str, Any], device_class: str) -> None:
@@ -1760,7 +1727,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 current_device_id=src_id,
             )
 
-        activity_id_map: dict[int, int] = {}
         for activity_payload in activities:
             if not isinstance(activity_payload, dict):
                 continue
@@ -1780,7 +1746,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                     device_id_map=device_id_map,
                     bundle_devices_by_source_id=bundle_devices_by_source_id,
                     command_id_maps_by_source_device_id=command_id_maps,
-                    activity_id_map=activity_id_map,
                     # One terminal trigger for the whole bundle (below):
                     # per-activity triggers kept aborting/restarting the
                     # remote's multi-minute full sync (bench 2026-08-27).
@@ -1794,8 +1759,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             if not isinstance(result, dict) or result.get("status") != "success":
                 return _failed("activity", src_act_id)
             new_activity_id = int(result.get("activity_id", 0)) & 0xFF
-            if src_act_id > 0 and new_activity_id > 0:
-                activity_id_map[src_act_id] = new_activity_id
             restored_activities.append(
                 {
                     "source_activity_id": src_act_id,
@@ -1861,7 +1824,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
 
         activity_block = request.device_block
         remap_lookup = dict(request.device_id_map)
-        activity_remap = dict(request.activity_id_map)
         old_activity_id = int(activity_block.get("device_id", 0)) & 0xFF
 
         def _map_device_id(raw: Any) -> int | None:
@@ -1878,11 +1840,11 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             # binding/macro loops, so new_activity_id is set by call time.)
             if src == old_activity_id:
                 return new_activity_id
-            # Ids in the activity range are cross-activity references
-            # (e.g. a power-off step that starts another activity) and
-            # resolve ONLY through the activity map — never the device map.
+            # Another activity's id never resolves: validation refuses such
+            # a row before the create (L-B25), and it must never fall
+            # through to the device map.
             if src >= ACTIVITY_ENTITY_ID_MIN:
-                return activity_remap.get(src)
+                return None
             return remap_lookup.get(src)
 
         create_config = device_config_from_backup(activity_block, for_create=True)
@@ -2287,15 +2249,14 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         payload: Any,
         *,
         known_device_ids: set[int],
-        known_activity_ids: set[int],
     ) -> dict[str, Any]:
         """Every check ``restore_activity`` makes before its first write.
 
         Shape, kind, schema version, the ``entity_type='activity'``
         marker, and reference coverage: every source device id the
         payload's bindings, macro steps and favourites reference must be
-        in ``known_device_ids`` and every foreign activity id in
-        ``known_activity_ids``. Pure and in-memory; the bundle preflight
+        in ``known_device_ids``, and no row may reference another activity
+        (L-B25). Pure and in-memory; the bundle preflight
         runs it against the bundle's own ids before a replacing restore
         erases the hub, ``restore_activity`` against the id maps it was
         handed. Raises ``ValueError``; returns the activity block.
@@ -2330,25 +2291,20 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             )
 
         referenced_activities = RestoreMixin._collect_referenced_activity_ids(payload)
-        missing_activities = referenced_activities - known_activity_ids
-        if missing_activities:
-            missing_list = ", ".join(
-                f"0x{m:02X}" for m in sorted(missing_activities)
-            )
+        if referenced_activities:
+            listed = ", ".join(f"0x{m:02X}" for m in sorted(referenced_activities))
             raise ValueError(
-                "this activity references other activities "
-                f"({missing_list}) that are not part of this restore or "
-                "have not been restored yet; include them in the restore "
-                "selection"
+                f"this activity references other activities ({listed}); an "
+                "activity cannot start or bind another activity, so remove "
+                "those bindings, macro steps or favorites and export again"
             )
         return activity_block
 
     @staticmethod
     def _collect_referenced_source_device_ids(payload: dict[str, Any]) -> set[int]:
         """Referenced ids in the DEVICE range of the shared entity-id
-        space (< 0x65). Ids in the activity range are cross-activity
-        references (e.g. a power-off step that starts another activity)
-        and resolve through ``activity_id_map``, never the device map.
+        space (< 0x65). Ids in the activity range are references to other
+        activities, which restore refuses (L-B25).
         """
 
         return {
@@ -2359,8 +2315,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
 
     @staticmethod
     def _collect_referenced_activity_ids(payload: dict[str, Any]) -> set[int]:
-        """Referenced ids in the ACTIVITY range (>= 0x65) — foreign
-        activities this activity chains to.
+        """Referenced ids in the ACTIVITY range (>= 0x65): other activities
+        this activity names. Restore refuses any (L-B25).
         """
 
         return {
@@ -2368,61 +2324,6 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             for value in RestoreMixin._collect_referenced_entity_ids(payload)
             if value >= ACTIVITY_ENTITY_ID_MIN
         }
-
-    @staticmethod
-    def _sort_bundle_activities_for_restore(
-        activities: list[Any],
-    ) -> list[Any]:
-        """Order bundle activities so cross-activity references restore
-        before the activities that reference them (the referencing
-        activity needs the target's hub-assigned id in
-        ``activity_id_map`` at write time). Stable: activities with no
-        dependency constraints keep their bundle order. A circular
-        reference chain cannot be ordered and raises ``ValueError`` —
-        supporting cycles would require a two-pass restore (create all
-        activity records first, write content second).
-        """
-
-        entries = [entry for entry in activities if isinstance(entry, dict)]
-        source_ids = [
-            int(((entry.get("device") or {}).get("device_id", 0))) & 0xFF
-            for entry in entries
-        ]
-        index_by_id = {
-            src: idx for idx, src in enumerate(source_ids) if src > 0
-        }
-        dependencies: list[set[int]] = []
-        for entry in entries:
-            refs = RestoreMixin._collect_referenced_activity_ids(entry)
-            # Refs to activities absent from the bundle are not ordering
-            # constraints; restore_activity rejects them with its own
-            # clear error.
-            dependencies.append(
-                {index_by_id[ref] for ref in refs if ref in index_by_id}
-            )
-        ordered: list[Any] = []
-        placed: set[int] = set()
-        while len(ordered) < len(entries):
-            progressed = False
-            for idx in range(len(entries)):
-                if idx in placed or not dependencies[idx] <= placed:
-                    continue
-                ordered.append(entries[idx])
-                placed.add(idx)
-                progressed = True
-            if not progressed:
-                cyclic = sorted(
-                    source_ids[idx]
-                    for idx in range(len(entries))
-                    if idx not in placed
-                )
-                cyclic_list = ", ".join(f"0x{value:02X}" for value in cyclic)
-                raise ValueError(
-                    "bundle activities form a circular cross-activity "
-                    f"reference chain ({cyclic_list}); break the cycle and "
-                    "re-export"
-                )
-        return ordered
 
 
 __all__ = ["RestoreMixin"]

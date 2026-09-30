@@ -5,6 +5,7 @@
 // same notices. Pure over an injected fetch, so the node suite covers it;
 // the DOM glue stays in the two hosts.
 
+import type { components } from "../../sofabaton-x-server/openapi";
 import { SERVER_API_PREFIX } from "./backend/server-backend";
 import { str } from "./remote-card-strings";
 import { normalizeHubId } from "./remote-web-config";
@@ -17,11 +18,12 @@ export interface HubSummary {
   status?: { hub_version?: string | null; mode?: string } | null;
 }
 
-interface UiDocumentResponse {
-  hub_id: string;
-  document: Record<string, unknown> | null;
-  updated_at: string | null;
-}
+type UiDocumentResponse = components["schemas"]["RemoteCardDocument"];
+
+// HubSummary is the part of `HubView` a host reads: the server's row must
+// stay assignable to it (CR-X3-5).
+const _hubViewIsASummary = (row: components["schemas"]["HubView"]): HubSummary => row;
+void _hubViewIsASummary;
 
 /** The error codes a host maps to a notice and, on the element, an event. */
 export type HostErrorCode =
