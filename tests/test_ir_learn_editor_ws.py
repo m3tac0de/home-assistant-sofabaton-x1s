@@ -25,6 +25,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+ws_ir_module = importlib.import_module("custom_components.sofabaton_x1s.ws_ir")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 _ACK_OK = (OP_STATUS_ACK, b"\x00")
@@ -305,7 +306,7 @@ def test_emissions_subscribe_replays_now_and_on_every_send(monkeypatch) -> None:
         connected["target"] = target
         return lambda: connected.setdefault("unsubscribed", True)
 
-    monkeypatch.setattr(integration, "async_dispatcher_connect", fake_connect)
+    monkeypatch.setattr(ws_ir_module, "async_dispatcher_connect", fake_connect)
 
     _run(
         integration._ws_ir_emissions_subscribe(
@@ -361,9 +362,9 @@ def _hass_with_entries(entries, friendly=None):
 
 
 def _registry(monkeypatch, per_entry: dict[str, list]):
-    monkeypatch.setattr(integration.er, "async_get", lambda hass=None: object(), raising=False)
+    monkeypatch.setattr(ws_ir_module.er, "async_get", lambda hass=None: object(), raising=False)
     monkeypatch.setattr(
-        integration.er,
+        ws_ir_module.er,
         "async_entries_for_config_entry",
         lambda _registry, entry_id: list(per_entry.get(entry_id, [])),
         raising=False,
@@ -371,22 +372,22 @@ def _registry(monkeypatch, per_entry: dict[str, list]):
 
 
 def test_consumers_unavailable_without_the_infrared_platform(monkeypatch) -> None:
-    monkeypatch.setattr(integration, "infrared_platform_available", lambda: False)
+    monkeypatch.setattr(ws_ir_module, "infrared_platform_available", lambda: False)
     hub = _Hub()
-    result = integration.build_ir_emitter_consumers(_hass_with_entries([]), hub)
+    result = ws_ir_module.build_ir_emitter_consumers(_hass_with_entries([]), hub)
     assert result == {"available": False, "emitter_entity_id": None, "consumers": []}
 
 
 def test_consumers_unavailable_without_an_emitter_entity(monkeypatch) -> None:
-    monkeypatch.setattr(integration, "infrared_platform_available", lambda: True)
+    monkeypatch.setattr(ws_ir_module, "infrared_platform_available", lambda: True)
     _registry(monkeypatch, {"entry-1": [_RegEntry("sensor.x1_hub_ir_intercept", "sensor")]})
     hub = _Hub()
-    result = integration.build_ir_emitter_consumers(_hass_with_entries([]), hub)
+    result = ws_ir_module.build_ir_emitter_consumers(_hass_with_entries([]), hub)
     assert result["available"] is False
 
 
 def test_consumers_are_found_by_config_entry_inspection(monkeypatch) -> None:
-    monkeypatch.setattr(integration, "infrared_platform_available", lambda: True)
+    monkeypatch.setattr(ws_ir_module, "infrared_platform_available", lambda: True)
     emitter = "infrared.x1_hub_ir_emitter"
     ours = SimpleNamespace(entry_id="entry-1", domain=integration.DOMAIN, title="X1 Hub", data={}, options={})
     samsung = SimpleNamespace(
@@ -428,7 +429,7 @@ def test_consumers_are_found_by_config_entry_inspection(monkeypatch) -> None:
         [ours, samsung, climate, other], friendly={"remote.samsung_tv": "Samsung TV Remote"}
     )
 
-    result = integration.build_ir_emitter_consumers(hass, _Hub())
+    result = ws_ir_module.build_ir_emitter_consumers(hass, _Hub())
 
     assert result["available"] is True
     assert result["emitter_entity_id"] == emitter
@@ -453,7 +454,7 @@ def test_consumers_match_read_only_config_entry_mappings(monkeypatch) -> None:
 
     from types import MappingProxyType
 
-    monkeypatch.setattr(integration, "infrared_platform_available", lambda: True)
+    monkeypatch.setattr(ws_ir_module, "infrared_platform_available", lambda: True)
     emitter = "infrared.x1_hub_ir_emitter"
     samsung = SimpleNamespace(
         entry_id="samsung-1",
@@ -470,7 +471,7 @@ def test_consumers_match_read_only_config_entry_mappings(monkeypatch) -> None:
         },
     )
 
-    result = integration.build_ir_emitter_consumers(_hass_with_entries([samsung]), _Hub())
+    result = ws_ir_module.build_ir_emitter_consumers(_hass_with_entries([samsung]), _Hub())
 
     assert [c["entry_id"] for c in result["consumers"]] == ["samsung-1"]
     assert result["consumers"][0]["entities"] == [{"entity_id": "remote.samsung_tv", "name": "Remote"}]
@@ -481,7 +482,7 @@ def test_ws_consumers_command_returns_the_discovery(monkeypatch) -> None:
     conn = _Conn()
     _wire(monkeypatch, hub)
     monkeypatch.setattr(
-        integration,
+        ws_ir_module,
         "build_ir_emitter_consumers",
         lambda _hass, _hub: {"available": True, "emitter_entity_id": "infrared.e", "consumers": []},
     )
