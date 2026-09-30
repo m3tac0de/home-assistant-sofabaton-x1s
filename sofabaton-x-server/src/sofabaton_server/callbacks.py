@@ -1158,6 +1158,16 @@ class CallbackService:
             record.stale = False
             self.save(hub_id, record)
             return record
+        # The record is forgotten only once the new deploy can run: a broker
+        # that went away (or the X1 port rule) used to cost the device its
+        # stored spec when the deploy then refused (CR-S2-2).
+        hub_version = (await proxy.status()).hub_version
+        if record.transport == TRANSPORT_MQTT:
+            reason = self.mqtt_unavailable_reason(hub_id, hub_version)
+            if reason is not None:
+                raise MqttUnavailable(reason)
+        else:
+            self.check_port(hub_version)
         self.save(hub_id, None, key)
         return await self.deploy(hub_id, proxy, spec, key=key, transport=record.transport)
 

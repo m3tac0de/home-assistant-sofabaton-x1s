@@ -406,12 +406,18 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
     if not record.stale:
         raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",
                          detail="it is still on the hub; update it instead", hub_id=hub_id)
+    hub_version = (await proxy.status()).hub_version
     try:
         if record.transport != TRANSPORT_MQTT:
-            service.check_port((await proxy.status()).hub_version)
+            service.check_port(hub_version)
     except CallbackPortRefused as err:
         raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
                          detail=str(err), hub_id=hub_id) from err
+    if record.transport == TRANSPORT_MQTT:
+        reason = service.mqtt_unavailable_reason(hub_id, hub_version)
+        if reason is not None:
+            raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail=reason, hub_id=hub_id)
     await _require_control(proxy, hub_id)
 
     async def run(progress) -> dict[str, Any]:
@@ -419,6 +425,9 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
             fresh = await service.redeploy(hub_id, proxy, key=key)
         except MqttUnavailable as err:
             raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
+                             detail=str(err), hub_id=hub_id) from err
+        except CallbackPortRefused as err:
+            raise ApiProblem(409, "callback_port_x1", "An X1 hub can only call back on port 8060",
                              detail=str(err), hub_id=hub_id) from err
         except CallbackDeviceNotStale as err:
             raise ApiProblem(409, "callback_device_not_stale", "The callback device is not stale",

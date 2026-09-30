@@ -360,3 +360,30 @@ def test_without_a_broker_mqtt_is_not_offered_and_a_lost_device_redeploys_over_m
             proxy.place_wifi_device(new_dev, spec, brand=spec.brand, device_class="wifi_mqtt")
             client.portal.call(functools.partial(proxy._emit_snapshot_changed, device_ids=(new_dev,)))
             _until(lambda: not client.get(f"{HUBS}/{HUB_ID}/wifi-devices/{key}").json()["stale"])
+
+
+def test_a_redeploy_without_a_broker_keeps_the_stale_record(tmp_path: Path) -> None:
+    """CR-S2-2: the record (name, slots, labels, activities) survives a
+    redeploy the missing broker refuses, on the route and in the service."""
+    with FakeBroker() as broker:
+        import functools
+        client, factory = _rig(tmp_path, mqtt_host=LOOPBACK, mqtt_port=broker.port, on_build=lambda p: (setattr(p, "mac", MAC), _x2(p)))
+        with client:
+            _, proxy = _hub(client, factory)
+            device = _create(client, HUB_ID, {"name": "Lights", "transport": "mqtt", "slots": [{"label": "On"}]})
+            key, dev = device["key"], device["device_id"]
+            proxy.devices_data = [d for d in proxy.devices_data if d.device_id != dev]
+            client.portal.call(functools.partial(proxy._emit_snapshot_changed, device_ids=(dev,)))
+            _until(lambda: client.get(f"{HUBS}/{HUB_ID}/wifi-devices/{key}").json()["stale"])
+
+            service = client.app.state.callbacks
+            # The broker is gone (removed in the panel, or a restart without its flags).
+            service.mqtt_unavailable_reason = lambda *_args: "the server has no MQTT broker"
+            r = client.post(f"{HUBS}/{HUB_ID}/wifi-devices/{key}/redeploy")
+            assert r.status_code == 409 and r.json()["type"] == "mqtt_unavailable"
+            assert client.get(f"{HUBS}/{HUB_ID}/wifi-devices/{key}").json()["spec"]["name"] == "Lights"
+
+            from sofabaton_server.callbacks import MqttUnavailable
+            with pytest.raises(MqttUnavailable):
+                client.portal.call(functools.partial(service.redeploy, HUB_ID, proxy, key=key))
+            assert service.record(HUB_ID, key) is not None
