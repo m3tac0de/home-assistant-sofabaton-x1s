@@ -37,8 +37,9 @@ _POWER_MACRO_BUTTON_IDS = frozenset({POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_B
 DEVICE_POWER_ON_REF_COMMAND = 0xC6
 DEVICE_POWER_OFF_REF_COMMAND = 0xC7
 DEVICE_INPUT_REF_COMMAND = 0xC5
-# Shared entity-id space: activity ids live at >= 0x65 (cross-activity chain
-# steps reference them by a device byte in that range).
+# Shared entity-id space: activity ids live at >= 0x65. Inside an activity
+# the only id in that range is its own (a macro-target binding): one
+# activity never references another (L-B25).
 ACTIVITY_ID_BASE = 0x65
 
 
@@ -231,8 +232,8 @@ def _member_device_ids(activity: Mapping[str, Any]) -> set[int]:
     """Devices this activity references (power refs, favorites, bindings,
     real macro command steps) — excluding the activity's own id."""
     self_id = _activity_id_of(activity)
-    # Ids >= ACTIVITY_ID_BASE are cross-activity chain references (an
-    # activity byte), not source devices, and are not members.
+    # Ids >= ACTIVITY_ID_BASE are activity ids, never source devices, and
+    # never members.
     return {
         target
         for _referrer, _site, target in iter_entity_references(

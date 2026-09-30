@@ -43,7 +43,7 @@ def iter_entity_references(
     Sites: ``favorite`` (``favorite_slots[].device_id``), ``binding``
     (``button_bindings[].device_id``), ``binding_long_press``
     (``long_press_device_id``), ``macro_step`` (``macros[].steps[].device_id``,
-    a device or a cross-activity reference; delay steps skipped),
+    a device; delay steps skipped),
     ``referenced_source`` (the derived ``referenced_source_device_ids``
     list). ``exclude_sites`` leaves sites out: membership is the direct
     references, without the derived ``referenced_source`` mirror. A row's

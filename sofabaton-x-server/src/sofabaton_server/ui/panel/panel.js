@@ -16201,48 +16201,6 @@ function bundleDeviceOptions(bundle) {
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 var ACTIVITY_ENTITY_ID_MIN = 101;
-function activityChainDependencyIds(bundle, activityId) {
-  const activity = (bundle?.activities ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
-  );
-  if (!bundle || !activity) return [];
-  const selfId = Number(activity?.device?.device_id || 0);
-  const bundleActivityIds = new Set(
-    (bundle.activities ?? []).map((entry) => Number(entry?.device?.device_id || 0))
-  );
-  const refs = /* @__PURE__ */ new Set();
-  const add = (value) => {
-    const id = Number(value || 0);
-    if (id >= ACTIVITY_ENTITY_ID_MIN && id !== 255 && id !== selfId && bundleActivityIds.has(id)) refs.add(id);
-  };
-  for (const binding of activity.button_bindings ?? []) {
-    add(binding?.device_id);
-    add(binding?.long_press_device_id);
-  }
-  for (const macro of activity.macros ?? []) {
-    for (const step of macro?.steps ?? []) {
-      if (Number(step?.device_id || 0) === 255) continue;
-      add(step?.device_id);
-    }
-  }
-  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
-  return [...refs].sort((left, right) => left - right);
-}
-function forcedRestoreActivityIds(bundle, selectedActivityIds) {
-  const selected = new Set(selectedActivityIds.map((value) => Number(value)));
-  const reached = new Set(selected);
-  const queue = [...reached];
-  while (queue.length) {
-    const current = queue.pop();
-    for (const dep of activityChainDependencyIds(bundle, current)) {
-      if (!reached.has(dep)) {
-        reached.add(dep);
-        queue.push(dep);
-      }
-    }
-  }
-  return [...reached].filter((id) => !selected.has(id)).sort((left, right) => left - right);
-}
 function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
   const forced = /* @__PURE__ */ new Set();
@@ -16257,12 +16215,8 @@ function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   return [...forced].sort((left, right) => left - right);
 }
 function reconcileRestoreSelection(params) {
-  const forcedActivityIds = forcedRestoreActivityIds(params.bundle, params.selectedActivityIds);
   const selectedActivityIds = [
-    .../* @__PURE__ */ new Set([
-      ...(params.selectedActivityIds ?? []).map((value) => Number(value)),
-      ...forcedActivityIds
-    ])
+    ...new Set((params.selectedActivityIds ?? []).map((value) => Number(value)))
   ].sort((left, right) => left - right);
   const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, selectedActivityIds);
   const selected = new Set(forcedDeviceIds);
@@ -16273,8 +16227,7 @@ function reconcileRestoreSelection(params) {
   return {
     forcedDeviceIds,
     selectedDeviceIds: [...selected].sort((left, right) => left - right),
-    selectedActivityIds,
-    forcedActivityIds
+    selectedActivityIds
   };
 }
 function pruneBackupBundle(params) {
@@ -19052,7 +19005,7 @@ var SbPanelBackup = class extends i4 {
                   </div>
                   <div class="selection-card"><div class="selection-list" id="restore-list">
                     ${activities.length ? b2`<div class="selection-group-header">${S3.activities}</div>
-                          ${activities.map((activity) => row(activity, selection.forcedActivityIds.includes(activity.id), selection.selectedActivityIds.includes(activity.id), "activity", (next) => this._setRestoreActivity(activity.id, next)))}` : b2`<div class="selection-empty">${S3.noActivitiesInFile}</div>`}
+                          ${activities.map((activity) => row(activity, false, selection.selectedActivityIds.includes(activity.id), "activity", (next) => this._setRestoreActivity(activity.id, next)))}` : b2`<div class="selection-empty">${S3.noActivitiesInFile}</div>`}
                     ${devices.length ? b2`<div class="selection-group-header">${S3.devices}</div>
                           ${devices.map((device) => row(device, selection.forcedDeviceIds.includes(device.id), selection.selectedDeviceIds.includes(device.id), "device", (next) => this._setRestoreDevice(device.id, next)))}` : b2`<div class="selection-empty">${S3.noDevicesInFile}</div>`}
                   </div></div>

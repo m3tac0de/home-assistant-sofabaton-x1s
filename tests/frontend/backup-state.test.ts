@@ -4,7 +4,6 @@ import {
   activityAddableDevices,
   activityButtonBindingItems,
   activityQuickAccessItems,
-  activityChainDependencyIds,
   activityRoleAssignments,
   roleMappableButtonCount,
   setActivityRoleDevice,
@@ -54,7 +53,6 @@ import {
   deviceIdleBehavior,
   updateBundleDeviceIdleBehavior,
   IDLE_BEHAVIOR_DISABLED,
-  forcedRestoreActivityIds,
   forcedRestoreDeviceIds,
   normalizeHubVersion,
   pruneBackupBundle,
@@ -101,7 +99,6 @@ test("reconcileRestoreSelection keeps manual device picks alongside forced ones"
       forcedDeviceIds: [1, 2],
       selectedDeviceIds: [1, 2, 3],
       selectedActivityIds: [101],
-      forcedActivityIds: [],
     },
   );
 });
@@ -1544,11 +1541,11 @@ test("reconcile repairs missing power refs in interleaved macros", () => {
   assert.deepEqual(offSteps.map((s) => [s.device_id, s.command_id]), [[3, 0xC7], [9, 0xC7]]);
 });
 
-// ── Cross-activity chain references (restore selection) ─────────────
+// ── References to another activity (unsupported, L-B25) ─────────────
 
-// Activity 101's power-off chains into 102 (a step targeting the other
-// activity's id); 102 chains into 103. Devices give each activity its
-// own linked-device footprint.
+// Activity 101's power-off names 102 (a step targeting the other
+// activity's id); 102 names 103. Devices give each activity its own
+// linked-device footprint.
 function chainBundle() {
   return {
     kind: "hub_bundle",
@@ -1589,28 +1586,16 @@ function chainBundle() {
   };
 }
 
-test("activityChainDependencyIds finds foreign activity ids in macro steps", () => {
-  assert.deepEqual(activityChainDependencyIds(chainBundle(), 101), [102]);
-  assert.deepEqual(activityChainDependencyIds(chainBundle(), 102), [103]);
-  assert.deepEqual(activityChainDependencyIds(chainBundle(), 103), []);
-});
-
-test("forcedRestoreActivityIds is transitive and excludes the picks", () => {
-  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [101]), [102, 103]);
-  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [102]), [103]);
-  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [101, 102]), [103]);
-});
-
-test("reconcileRestoreSelection pulls chained activities and their devices in", () => {
+test("reconcileRestoreSelection never pulls in an activity another one names", () => {
+  // One activity never starts another (L-B25, CR-F3-19): such a step is
+  // left for the restore to refuse, and selects nothing by itself.
   const selection = reconcileRestoreSelection({
     bundle: chainBundle(),
     selectedActivityIds: [101],
     manualSelectedDeviceIds: [],
   });
-  assert.deepEqual(selection.selectedActivityIds, [101, 102, 103]);
-  assert.deepEqual(selection.forcedActivityIds, [102, 103]);
-  // Device 2 is linked only to the FORCED activity 102 — it must come along.
-  assert.deepEqual(selection.forcedDeviceIds, [1, 2]);
+  assert.deepEqual(selection.selectedActivityIds, [101]);
+  assert.deepEqual(selection.forcedDeviceIds, [1]);
 });
 
 test("isManagedWifiBrand recognizes managed brands and rejects others", () => {

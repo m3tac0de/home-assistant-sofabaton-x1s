@@ -404,7 +404,6 @@ class _OpsHost(Protocol):
         device_id_map: dict[int, int],
         bundle_devices_by_source_id: dict[int, dict[str, Any]] | None = ...,
         command_id_maps_by_source_device_id: dict[int, dict[int, int]] | None = ...,
-        activity_id_map: dict[int, int] | None = ...,
         send_remote_sync: bool = ...,
     ) -> dict[str, Any] | None: ...
     def restore_device(

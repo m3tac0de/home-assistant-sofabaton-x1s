@@ -380,6 +380,10 @@ Confirmed:
   activity already on the hub but absent from the bundle is rejected;
   standalone `restore_activity` handles it via an explicit
   `activity_id_map={id: id}`.
+  **Removed 2026-09-30 (CR-F3-19):** one activity never references
+  another (ledger L-B25), so the remap, the dependency order and
+  `activity_id_map` are gone; restore and the document planner now
+  refuse such a row before any write.
 - **HA-action blobs without inner-record trailer (former pending
   gate)**: the hub accepts the editor's trailer-less `wifi_ip` records
   as-is — every family-0x0E page acked `0x0103/0x00`, the record is

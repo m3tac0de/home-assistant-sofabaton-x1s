@@ -43,10 +43,9 @@ from .protocol_const import (
 )
 
 # Shared entity-id space: ids below this are source devices, ids at or
-# above it are activities. Binding/step targets in the activity range
-# (a macro-target binding carries the activity's own id; a chain step
-# carries another activity's id) are not source devices and must never
-# enter ``referenced_source_device_ids``.
+# above it are activities. A binding target in the activity range (a
+# macro-target binding carries the activity's own id) is not a source
+# device and must never enter ``referenced_source_device_ids``.
 ACTIVITY_ID_BASE = 0x65
 
 _NETWORK_CALLBACK_CLASSES = {

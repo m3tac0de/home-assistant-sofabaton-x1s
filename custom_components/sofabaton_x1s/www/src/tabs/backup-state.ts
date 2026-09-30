@@ -24,10 +24,7 @@ export interface BackupSelectionOption {
 export interface RestoreSelectionState {
   forcedDeviceIds: number[];
   selectedDeviceIds: number[];
-  /** User picks plus activities forced in by cross-activity chains. */
   selectedActivityIds: number[];
-  /** Activities pulled in only because a selected one references them. */
-  forcedActivityIds: number[];
 }
 
 export interface BackupActivityQuickAccessItem {
@@ -496,71 +493,10 @@ export function bundleDeviceOptions(bundle: BackupBundlePayload | null): BackupS
 }
 
 // The hub's shared 8-bit entity-id space: devices 0x01-0x63, activities
-// 0x65-0xFF. An id at or above this threshold inside a binding / macro
-// step / favorite is a cross-activity reference, not a source device.
+// 0x65-0xFF. Inside a binding / macro step / favorite, an id at or above
+// this threshold is the activity's own (a macro-target binding) or another
+// activity's, which restore refuses (L-B25): never a source device.
 const ACTIVITY_ENTITY_ID_MIN = 0x65;
-
-/**
- * Foreign activities this activity chains to — ids in the activity
- * range referenced by its bindings, macro steps, or favorites that
- * exist as activities in the bundle (self excluded). Restore needs
- * these present and restored first.
- */
-export function activityChainDependencyIds(
-  bundle: BackupBundlePayload | null,
-  activityId: number,
-): number[] {
-  const activity = (bundle?.activities ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId),
-  );
-  if (!bundle || !activity) return [];
-  const selfId = Number(activity?.device?.device_id || 0);
-  const bundleActivityIds = new Set(
-    (bundle.activities ?? []).map((entry) => Number(entry?.device?.device_id || 0)),
-  );
-  const refs = new Set<number>();
-  const add = (value: unknown) => {
-    const id = Number(value || 0);
-    if (
-      id >= ACTIVITY_ENTITY_ID_MIN
-      && id !== 0xFF
-      && id !== selfId
-      && bundleActivityIds.has(id)
-    ) refs.add(id);
-  };
-  for (const binding of activity.button_bindings ?? []) {
-    add(binding?.device_id);
-    add(binding?.long_press_device_id);
-  }
-  for (const macro of activity.macros ?? []) {
-    for (const step of macro?.steps ?? []) {
-      if (Number(step?.device_id || 0) === 0xFF) continue;
-      add(step?.device_id);
-    }
-  }
-  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
-  return [...refs].sort((left, right) => left - right);
-}
-
-/** Transitive closure of chain dependencies, minus the original picks. */
-export function forcedRestoreActivityIds(
-  bundle: BackupBundlePayload | null,
-  selectedActivityIds: number[],
-): number[] {
-  const selected = new Set(selectedActivityIds.map((value) => Number(value)));
-  const reached = new Set(selected);
-  const queue = [...reached];
-  while (queue.length) {
-    const current = queue.pop()!;
-    for (const dep of activityChainDependencyIds(bundle, current)) {
-      if (!reached.has(dep)) {
-        reached.add(dep);
-        queue.push(dep);
-      }
-    }
-  }
-  return [...reached].filter((id) => !selected.has(id)).sort((left, right) => left - right);
-}
 
 export function forcedRestoreDeviceIds(bundle: BackupBundlePayload | null, selectedActivityIds: number[]): number[] {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
@@ -581,15 +517,8 @@ export function reconcileRestoreSelection(params: {
   selectedActivityIds: number[];
   manualSelectedDeviceIds: number[];
 }): RestoreSelectionState {
-  // Cross-activity chains first: a selected activity pulls in the
-  // activities it references (transitively), which in turn pull in
-  // their linked devices below.
-  const forcedActivityIds = forcedRestoreActivityIds(params.bundle, params.selectedActivityIds);
   const selectedActivityIds = [
-    ...new Set([
-      ...(params.selectedActivityIds ?? []).map((value) => Number(value)),
-      ...forcedActivityIds,
-    ]),
+    ...new Set((params.selectedActivityIds ?? []).map((value) => Number(value))),
   ].sort((left, right) => left - right);
   const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, selectedActivityIds);
   const selected = new Set<number>(forcedDeviceIds);
@@ -601,7 +530,6 @@ export function reconcileRestoreSelection(params: {
     forcedDeviceIds,
     selectedDeviceIds: [...selected].sort((left, right) => left - right),
     selectedActivityIds,
-    forcedActivityIds,
   };
 }
 
@@ -1964,8 +1892,8 @@ function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<numb
         || command === DEVICE_POWER_OFF_REF_COMMAND
       ) {
         const deviceId = Number(step?.device_id || 0);
-        // Chain steps (a power ref whose target is another activity) are
-        // preserved in the macro but never count as member devices.
+        // A power ref naming another activity (unsupported, L-B25) stays
+        // in the macro but never counts as a member device.
         if (deviceId > 0 && deviceId < ACTIVITY_ENTITY_ID_MIN) ids.add(deviceId);
       }
     }
@@ -1983,8 +1911,8 @@ function activityUsageDeviceIds(activity: BackupBundleActivityPayload): Set<numb
   const add = (value: unknown) => {
     const id = Number(value || 0);
     // The activity's own id appears as a binding target for MACRO bindings,
-    // and other activities' ids appear in cross-activity chain steps;
-    // neither is a source device and must not pull power steps.
+    // and another activity's id can only come from an unsupported file
+    // (L-B25); neither is a source device and must not pull power steps.
     if (id > 0 && id < ACTIVITY_ENTITY_ID_MIN && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
@@ -2031,8 +1959,9 @@ function reconcilePowerMacroSteps(
   const { prefix, groups } = groupMacroSteps(existingSteps);
   const kept = flattenMacroGroups(prefix, groups.filter((group) => {
     const deviceId = Number(group.head?.device_id || 0);
-    // Activity-range targets are cross-activity chain rows; they are not
-    // member-managed, so preserve them verbatim.
+    // Activity-range targets name another activity (unsupported, L-B25):
+    // kept verbatim, so the restore refuses the file with a clear message
+    // instead of the editor dropping rows silently.
     if (deviceId >= ACTIVITY_ENTITY_ID_MIN && deviceId !== 0xFF) return true;
     return deviceId > 0 ? memberSet.has(deviceId) : true;
   }));

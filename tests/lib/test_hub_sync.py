@@ -354,6 +354,34 @@ def test_dangling_reference_to_an_unknown_placeholder() -> None:
     assert info.value.target == ("device", -5)
 
 
+
+@pytest.mark.parametrize("site", ["binding", "favorite", "macro_step"])
+def test_an_activity_the_document_writes_cannot_reference_another_activity(site: str) -> None:
+    """One activity never starts or binds another (L-B25, CR-F3-19)."""
+
+    base = _bundle()
+    desired = copy.deepcopy(base)
+    activity = _find(desired, "activity", 101)
+    if site == "binding":
+        activity["button_bindings"].append(_binding(VOL_UP, 102, 1))
+    elif site == "favorite":
+        activity["favorite_slots"].append({"button_id": 3, "device_id": 102, "command_id": 1, "name": "Listen"})
+    else:
+        activity["macros"][0]["steps"].append({"device_id": 102, "command_id": 0xC6})
+    with pytest.raises(hub_sync.InvalidDocumentError, match="cannot reference another activity") as info:
+        build(base, desired)
+    assert info.value.entity == ("activity", 101)
+
+
+def test_an_activity_the_document_leaves_alone_is_not_refused_for_its_references() -> None:
+    """Only written rows are checked: an unchanged activity is never sent."""
+
+    base = _bundle()
+    _find(base, "activity", 101)["button_bindings"].append(_binding(VOL_UP, 102, 1))
+    desired = copy.deepcopy(base)
+    _find(desired, "device", 9)["device"]["name"] = "Media"
+    build(base, desired)
+
 def test_out_of_scope_entity_diff_names_the_entity() -> None:
     base = _bundle()
     desired = copy.deepcopy(base)
