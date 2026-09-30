@@ -621,7 +621,7 @@ test("activity button binding can create a macro target", () => {
   assert.ok(binding, "expected the selected button to be bound");
   assert.equal(binding.device_id, 101);
   assert.equal(binding.command_id, macro.button_id);
-  assert.deepEqual(element._macroEditor, {
+  assert.deepEqual(element._steps.editor, {
     scope: "activity",
     entityId: 101,
     buttonId: macro.button_id,
@@ -668,7 +668,7 @@ test("activity button binding can reuse an existing macro target", () => {
   assert.ok(binding, "expected the selected button to be bound");
   assert.equal(binding.device_id, 101);
   assert.equal(binding.command_id, 5);
-  assert.equal(element._macroEditor, null);
+  assert.equal(element._steps.editor, null);
 });
 
 test("activity long-press binding can reuse an existing macro target", () => {
@@ -822,7 +822,7 @@ test("activity shortcut macro flow can reuse an existing activity macro", () => 
 
   const activity = element.bundle.activities[0];
   assert.equal(activity.macros.length, 1);
-  assert.deepEqual(element._macroEditor, {
+  assert.deepEqual(element._steps.editor, {
     scope: "activity",
     entityId: 101,
     buttonId: 5,

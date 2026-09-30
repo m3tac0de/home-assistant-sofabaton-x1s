@@ -2605,10 +2605,10 @@
           await detail.updateComplete;
           // The "Volume Combo" macro (button 3) of activity 101, then its Add
           // step dialog: native device / command selects plus the hold input.
-          detail._openMacroEditor("activity", 101, 3, "Volume Combo");
+          detail._steps.openEditor("activity", 101, 3, "Volume Combo");
           detail.requestUpdate();
           await detail.updateComplete;
-          detail._openAddStepDialog();
+          detail._steps.openAdd();
           detail.requestUpdate();
           await detail.updateComplete;
         },

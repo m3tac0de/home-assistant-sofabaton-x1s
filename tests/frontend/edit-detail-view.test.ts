@@ -322,9 +322,9 @@ test("macro timing conversion covers invalid, boundary, rounding, and saturation
   ];
   // The conversion is the shared rule (shared/hub-rules.ts, CR-X6-3) the panel uses too.
   for (const [raw, expected] of cases) assert.equal(secondsToByte(raw), expected, raw);
-  assert.equal(element._snapHalfSeconds("0.3"), "0.5");
-  assert.equal(element._snapHalfSeconds("-2"), "0");
-  assert.equal(element._snapHalfSeconds("999"), "127.5");
+  assert.equal(element._steps.snapHalfSeconds("0.3"), "0.5");
+  assert.equal(element._steps.snapHalfSeconds("-2"), "0");
+  assert.equal(element._steps.snapHalfSeconds("999"), "127.5");
 });
 
 test("wait change snaps the control and emits the exact attached delay row", () => {
@@ -335,10 +335,10 @@ test("wait change snaps the control and emits the exact attached delay row", () 
     { device_id: 1, command_id: 10, button_code: 0x4E0A, duration: 0, delay: 0xFF },
   );
   const changes = collectBundleChanges(element);
-  element._macroEditor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
+  element._steps.editor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
   const { event, control } = mutableControlEvent("0.3");
 
-  element._handleStepWaitChange({ index: 0 }, event);
+  element._steps.handleWaitChange({ index: 0 }, event);
 
   assert.equal(control.value, "0.5");
   assert.equal(changes.length, 1);
@@ -351,30 +351,30 @@ test("wait change snaps the control and emits the exact attached delay row", () 
 
 test("the attached-wait sub-row renders under every step except the last", () => {
   const element = createEditor();
-  element._macroEditor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
+  element._steps.editor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
   const item = { index: 0, kind: "command", commandId: 10, deviceId: 1, label: "TV · Power", hold: 0, wait: 2 };
-  assert.ok(templateText(element._renderMacroStepRow(item, 0, 2)).includes("step-wait"));
-  assert.ok(!templateText(element._renderMacroStepRow(item, 1, 2)).includes("step-wait"));
+  assert.ok(templateText(element._steps.renderRow(item, 0, 2)).includes("step-wait"));
+  assert.ok(!templateText(element._steps.renderRow(item, 1, 2)).includes("step-wait"));
 });
 
 test("macro step Save blocks incomplete input and commits a quantized valid step", () => {
   const element = createEditor();
   const changes = collectBundleChanges(element);
-  element._macroEditor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
-  element._stepDialogOpen = true;
-  element._stepDialogEditIndex = null;
-  element._stepKind = "command";
-  element._stepDeviceId = 3;
-  element._stepCommandId = null;
-  element._stepHoldSeconds = "0.3";
+  element._steps.editor = { scope: "activity", entityId: 101, buttonId: 3, name: "Volume Combo" };
+  element._steps.dialogOpen = true;
+  element._steps.editIndex = null;
+  element._steps.kind = "command";
+  element._steps.deviceId = 3;
+  element._steps.commandId = null;
+  element._steps.holdSeconds = "0.3";
 
-  element._applyStep();
+  element._steps.apply();
   assert.equal(changes.length, 0);
-  assert.notEqual(element._stepError, "");
-  assert.equal(element._stepDialogOpen, true);
+  assert.notEqual(element._steps.error, "");
+  assert.equal(element._steps.dialogOpen, true);
 
-  element._stepCommandId = 30;
-  element._applyStep();
+  element._steps.commandId = 30;
+  element._steps.apply();
   assert.equal(changes.length, 1);
   const activity = changes[0].activities[0];
   const macro = activity.macros?.find((row) => row.button_id === 3);
@@ -383,7 +383,7 @@ test("macro step Save blocks incomplete input and commits a quantized valid step
     [[1, 10, 0], [3, 30, 1]],
   );
   assert.deepEqual(activity.referenced_source_device_ids, [1, 3]);
-  assert.equal(element._stepDialogOpen, false);
+  assert.equal(element._steps.dialogOpen, false);
 });
 
 test("favorite Save blocks an incomplete selection and commits the command's label", () => {
@@ -1362,17 +1362,17 @@ test("macro steps reorder from the keyboard, with or without ha-sortable (CR-F2-
     ],
   }];
   element._haSortableReady = false;
-  element._macroEditor = { scope: "device", entityId: 1, buttonId: 0x5d, name: "Night" };
-  const before = element._currentMacroStepItems().map((item: { label: string }) => item.label);
+  element._steps.editor = { scope: "device", entityId: 1, buttonId: 0x5d, name: "Night" };
+  const before = element._steps.currentItems().map((item: { label: string }) => item.label);
   assert.equal(before.length, 2);
 
   // The handle is focusable and named even without ha-sortable.
-  const markup = templateText(element._renderMacroStepEditorView(element._macroEditor));
+  const markup = templateText(element._steps.render(element._steps.editor));
   assert.match(markup, /role="button"/);
   assert.ok(markup.includes(TOOLS_CARD_STRINGS.backup.reorderHandleAria(before[0])));
 
-  element._reorderSteps(0, 1);
-  const after = element._currentMacroStepItems().map((item: { label: string }) => item.label);
+  element._steps.reorder(0, 1);
+  const after = element._steps.currentItems().map((item: { label: string }) => item.label);
   assert.deepEqual(after, [before[1], before[0]]);
 });
 

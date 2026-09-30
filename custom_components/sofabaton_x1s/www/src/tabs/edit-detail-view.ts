@@ -17,9 +17,14 @@
  * the detail view. The Backup → Edit tab embeds it with mode="backup";
  * the live Activities tab embeds it with mode="live" and syncs the
  * edits to the hub behind the same events.
+ *
+ * The larger state islands live in reactive controllers under
+ * edit-detail/ (R6, CR-F2-14): IR learn (_learn), the payload dialog
+ * (_payload), the Wifi Event target (_events), the binding picker
+ * (_binding) and the macro step editor (_steps).
  */
 import { LitElement, html, nothing } from "lit";
-import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN, byteToSeconds, secondsToByte } from "../shared/hub-rules";
+import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   activityEditorStyles,
@@ -39,10 +44,8 @@ import {
   activityUserMacroSummaries,
   roleMappableButtonCount,
   setActivityRoleDevice,
-  addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
-  addDeviceMacroCommandStep,
   applyBundleDelete,
   activityQuickAccessItems,
   backupDeleteHasCascade,
@@ -50,7 +53,6 @@ import {
   type BackupDeleteTarget,
   type BundleDeleteOptions,
   type BackupDeviceCommandItem,
-  type BackupMacroStepItem,
   bundleDeleteImpact,
   bundleActivityOptions,
   bundleDeviceBrand,
@@ -60,7 +62,6 @@ import {
   isWifiEventsLongRecord,
   wifiEventsSlotCount,
   bundleDeviceOptions,
-  clearActivityDeviceInput,
   commandDecodedBlock,
   commandRawPayloadHex,
   normalizeCommandPayloadHex,
@@ -74,24 +75,15 @@ import {
   IDLE_BEHAVIOR_ALWAYS_ON,
   IDLE_BEHAVIOR_STAY_ON,
   IDLE_BEHAVIOR_DISABLED,
-  removeActivityMacroStep,
-  removeDeviceMacroStep,
-  reorderActivityMacroSteps,
   reorderBundleActivityQuickAccess,
-  reorderDeviceMacroSteps,
   renameBundleActivity,
   renameBundleActivityFavorite,
   renameBundleActivityMacro,
   renameBundleDevice,
   renameBundleDeviceCommand,
-  setActivityDeviceInput,
-  setActivityMacroStepWait,
-  setDeviceMacroStepWait,
   unboundButtonsForActivity,
   unboundButtonsForDevice,
-  updateActivityMacroStep,
   updateBundleDeviceIp,
-  updateDeviceMacroStep,
 } from "./backup-state";
 import type {
   ActivityBindingTargetKind,
@@ -101,7 +93,6 @@ import type {
   BackupRenameDialogTarget,
   FetchedCommandPayload,
   IrLearnHost,
-  MacroStepKind,
   MacroTargetMode,
   WifiEventsHost,
 } from "./edit-detail/host-types";
@@ -111,15 +102,11 @@ import { IrLearnController } from "./edit-detail/ir-learn-controller";
 import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
 import { WifiEventTargets } from "./edit-detail/wifi-event-targets";
 import { BindingDialogController } from "./edit-detail/binding-dialog-controller";
+import { MacroStepEditorController } from "./edit-detail/macro-step-editor";
 
 // The element's public names, kept here for its importers (R6, CR-F2-14).
 export type { BackupEditTargetKind, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
 export { bundleIsX2, bundleSupportsUnicodeNames, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
-
-// POWER_ON / POWER_OFF macro slots. These carry fixed semantic names
-// ("Power On"/"Power Off") and a binding refers to them by slot, so they
-// are not renameable — unlike user macros bound to activity buttons.
-const POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
 
 export class SofabatonEditDetailView extends LitElement {
   static properties = {
@@ -145,14 +132,6 @@ export class SofabatonEditDetailView extends LitElement {
     _addFavoriteDeviceId: { state: true },
     _addFavoriteCommandId: { state: true },
     _addFavoriteError: { state: true },
-    _macroEditor: { state: true },
-    _stepDialogOpen: { state: true },
-    _stepDialogEditIndex: { state: true },
-    _stepKind: { state: true },
-    _stepDeviceId: { state: true },
-    _stepCommandId: { state: true },
-    _stepHoldSeconds: { state: true },
-    _stepError: { state: true },
     _haSortableReady: { state: true },
     _powerControlMenuOpen: { state: true },
     _roleMenuOpen: { state: true },
@@ -186,7 +165,7 @@ export class SofabatonEditDetailView extends LitElement {
   private _roleMenuAnchor: DOMRect | null = null;
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
-  private _bindingsView = false;
+  _bindingsView = false;
   private _addShortcutKind: ActivityBindingTargetKind = "command";
   private _addShortcutActionName = "";
   private _addShortcutMacroMode: MacroTargetMode = "new";
@@ -200,10 +179,10 @@ export class SofabatonEditDetailView extends LitElement {
   /** The events device's slot count as the editor opened it (CR-F2-2): the
    *  working bundle loses two records per paired delete. */
   private _wifiEventsOpenedSlots: number | null = null;
-  private _editRenameDialogOpen = false;
-  private _editRenameDialogDraft = "";
-  private _editRenameDialogError = "";
-  private _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
+  _editRenameDialogOpen = false;
+  _editRenameDialogDraft = "";
+  _editRenameDialogError = "";
+  _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
   // to fetch a command's blob on demand and to Test it on the hub. Absent
@@ -227,6 +206,7 @@ export class SofabatonEditDetailView extends LitElement {
   readonly _payload = new PayloadDialogController(this);
   readonly _events = new WifiEventTargets(this);
   readonly _binding = new BindingDialogController(this);
+  readonly _steps = new MacroStepEditorController(this);
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;
@@ -237,15 +217,7 @@ export class SofabatonEditDetailView extends LitElement {
   private _addFavoriteError = "";
   private _detailScrollTop = 0;
   private _bindingsScrollTop = 0;
-  private _macroEditor: { scope: BackupEditTargetKind; entityId: number; buttonId: number; name: string } | null = null;
-  private _stepDialogOpen = false;
-  private _stepDialogEditIndex: number | null = null;
-  private _stepKind: MacroStepKind = "command";
-  private _stepDeviceId: number | null = null;
-  private _stepCommandId: number | null = null;
-  private _stepHoldSeconds = "0";
-  private _stepError = "";
-  private _haSortableReady = Boolean(customElements.get("ha-sortable"));
+  _haSortableReady = Boolean(customElements.get("ha-sortable"));
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -292,8 +264,8 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeAddFavoriteDialog();
     this._closeAddMemberDialog();
     this._binding.close();
-    this._macroEditor = null;
-    this._closeStepDialog();
+    this._steps.editor = null;
+    this._steps.closeDialog();
   }
 
   /**
@@ -308,7 +280,7 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /** Ask the host to leave the detail view (back button, entity delete). */
-  private _requestClose = () => {
+  _requestClose = () => {
     this.dispatchEvent(new CustomEvent("close"));
   };
 
@@ -320,7 +292,7 @@ export class SofabatonEditDetailView extends LitElement {
   // "Unsaved".
   private _requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
 
-  private _renderDirtyChip() {
+  _renderDirtyChip() {
     // Live mode has no dirty chip — the Sync button's state carries that
     // signal (matching the Wifi command editor). Backup mode keeps "Unsaved".
     if (this.mode === "live" || !this.dirty) return nothing;
@@ -385,8 +357,8 @@ export class SofabatonEditDetailView extends LitElement {
 
   protected render() {
     if (!this.bundle || this.entityId == null) return nothing;
-    if (this._macroEditor) {
-      return this._renderMacroStepEditorView(this._macroEditor);
+    if (this._steps.editor) {
+      return this._steps.render(this._steps.editor);
     }
     if (this._bindingsView && this.kind === "activity") {
       return this._renderActivityBindingsView();
@@ -1144,7 +1116,7 @@ export class SofabatonEditDetailView extends LitElement {
               ? html`
                   <button
                     class="icon-btn"
-                    @click=${() => this._openMacroEditor("activity", Number(this.entityId), item.buttonId, item.label)}
+                    @click=${() => this._steps.openEditor("activity", Number(this.entityId), item.buttonId, item.label)}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editStepsAria}
                   >
                     <ha-icon icon="mdi:playlist-edit"></ha-icon>
@@ -1175,7 +1147,7 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _renderEditRenameDialog() {
+  _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return nothing;
     const label = this._editRenameDialogLabel();
     return html`
@@ -1476,7 +1448,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._confirmDeleteLabel = name;
   }
 
-  private _renderDeleteConfirmDialog() {
+  _renderDeleteConfirmDialog() {
     const target = this._confirmDeleteTarget;
     if (!target || !this.bundle) return nothing;
     const impact = bundleDeleteImpact(this.bundle, target);
@@ -1631,7 +1603,7 @@ export class SofabatonEditDetailView extends LitElement {
     );
   }
 
-  private _openAddMemberDialog = () => {
+  _openAddMemberDialog = () => {
     const options = this._addableMemberDevices();
     this._addMemberDeviceId = options[0]?.id ?? null;
     this._addMemberOpen = true;
@@ -1652,18 +1624,18 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeAddMemberDialog();
   };
 
-  private _openMemberRemoveConfirm(activityId: number, deviceId: number, deviceName: string) {
+  _openMemberRemoveConfirm(activityId: number, deviceId: number, deviceName: string) {
     this._confirmDeleteTarget = { kind: "activity_member", activityId, deviceId };
     this._confirmDeleteLabel = deviceName;
   }
 
-  private _memberDeviceName(activityId: number, deviceId: number): string {
+  _memberDeviceName(activityId: number, deviceId: number): string {
     const member = activityMemberViews(this.bundle, activityId)
       .find((candidate) => candidate.deviceId === deviceId);
     return member?.deviceName || TOOLS_CARD_STRINGS.common.deviceFallback(deviceId);
   }
 
-  private _renderAddMemberDialog() {
+  _renderAddMemberDialog() {
     if (!this._addMemberOpen || !this.bundle) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
     const options = this._addableMemberDevices();
@@ -1750,7 +1722,7 @@ export class SofabatonEditDetailView extends LitElement {
         return;
       }
       this._closeAddFavoriteDialog();
-      this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
+      this._steps.openEditor("activity", activityId, existing.buttonId, existing.name);
       return;
     }
     const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim()
@@ -1760,7 +1732,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeAddFavoriteDialog();
     const summaries = activityUserMacroSummaries(next, activityId);
     const created = summaries[summaries.length - 1];
-    if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+    if (created) this._steps.openEditor("activity", activityId, created.buttonId, created.name);
   };
 
   private _renderAddFavoriteDialog() {
@@ -1916,7 +1888,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
   }
 
-  private _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
+  _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
     return kind === "activity"
       ? TOOLS_CARD_STRINGS.backup.crumbActivities
       : TOOLS_CARD_STRINGS.backup.crumbDevices;
@@ -1925,7 +1897,7 @@ export class SofabatonEditDetailView extends LitElement {
   // Compact ancestor trail shown above the detail/editor title. Each crumb
   // is a tappable button that pops back to that level; the trailing "›"
   // leads the eye into the current page's big title beneath it.
-  private _renderDetailCrumbs(crumbs: Array<{ label: string; onClick: () => void }>) {
+  _renderDetailCrumbs(crumbs: Array<{ label: string; onClick: () => void }>) {
     if (!crumbs.length) return nothing;
     return html`
       <div class="detail-crumbs">
@@ -1970,12 +1942,12 @@ export class SofabatonEditDetailView extends LitElement {
       // If the renamed macro is the one open in the step editor, refresh its
       // title so the rename shows immediately without backing out.
       if (
-        this._macroEditor &&
-        this._macroEditor.scope === "activity" &&
-        this._macroEditor.entityId === target.activityId &&
-        this._macroEditor.buttonId === target.buttonId
+        this._steps.editor &&
+        this._steps.editor.scope === "activity" &&
+        this._steps.editor.entityId === target.activityId &&
+        this._steps.editor.buttonId === target.buttonId
       ) {
-        this._macroEditor = { ...this._macroEditor, name: next };
+        this._steps.editor = { ...this._steps.editor, name: next };
       }
       this._closeEditRenameDialog();
       return;
@@ -2071,7 +2043,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._binding.lpMacroId = firstMacro?.value ?? null;
   }
 
-  private _captureCurrentScrollPosition() {
+  _captureCurrentScrollPosition() {
     const root = this.renderRoot as ParentNode | undefined;
     const scrollEl = root?.querySelector<HTMLElement>(".detail-scroll");
     if (!scrollEl) return;
@@ -2079,7 +2051,7 @@ export class SofabatonEditDetailView extends LitElement {
     else this._detailScrollTop = scrollEl.scrollTop;
   }
 
-  private _restoreMainScroll() {
+  _restoreMainScroll() {
     void this.updateComplete.then(() => {
       const root = this.renderRoot as ParentNode | undefined;
       const scrollEl = root?.querySelector<HTMLElement>(".detail-scroll");
@@ -2087,7 +2059,7 @@ export class SofabatonEditDetailView extends LitElement {
     });
   }
 
-  private _restoreBindingsScroll() {
+  _restoreBindingsScroll() {
     void this.updateComplete.then(() => {
       const root = this.renderRoot as ParentNode | undefined;
       const scrollEl = root?.querySelector<HTMLElement>(".detail-scroll");
@@ -2119,250 +2091,9 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  // ── Macro step editor (device macros + activity user macros) ────────
-  _openMacroEditor(scope: BackupEditTargetKind, entityId: number, buttonId: number, name: string) {
-    this._captureCurrentScrollPosition();
-    this._macroEditor = { scope, entityId: Number(entityId), buttonId: Number(buttonId), name };
-  }
-
-  private _closeMacroEditor = () => {
-    this._macroEditor = null;
-    this._closeStepDialog();
-    if (this._bindingsView) this._restoreBindingsScroll();
-    else this._restoreMainScroll();
-  };
-
-  // Rename the macro currently open in the step editor. Reuses the shared
-  // rename dialog (kind "macro"); applying it also refreshes the editor's
-  // own title via the macro branch in _applyEditRenameDialog.
-  private _openMacroNameRenameDialog = () => {
-    const editor = this._macroEditor;
-    if (!editor || editor.scope !== "activity" || POWER_MACRO_BUTTON_IDS.has(editor.buttonId)) return;
-    this._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
-    this._editRenameDialogDraft = editor.name;
-    this._editRenameDialogError = "";
-    this._editRenameDialogOpen = true;
-  };
-
-  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
-  private _snapHalfSeconds(value: string): string {
-    return byteToSeconds(secondsToByte(value));
-  }
-
-  private _currentMacroStepItems(): BackupMacroStepItem[] {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return [];
-    return editor.scope === "device"
-      ? deviceMacroStepItems(this.bundle, editor.entityId, editor.buttonId)
-      : activityMacroStepItems(this.bundle, editor.entityId, editor.buttonId);
-  }
-
-  private _openAddStepDialog = () => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    this._stepDialogEditIndex = null;
-    this._stepKind = "command";
-    this._stepDeviceId = editor.scope === "activity"
-      ? (this._editableDeviceOptions()[0]?.id ?? null)
-      : editor.entityId;
-    const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    this._stepCommandId = commands[0]?.commandId ?? null;
-    this._stepHoldSeconds = "0";
-    this._stepError = "";
-    this._events.load();
-    this._stepDialogOpen = true;
-  };
-
-  private _openEditStepDialog(item: BackupMacroStepItem) {
-    const editor = this._macroEditor;
-    if (!editor) return;
-    this._stepDialogEditIndex = item.index;
-    this._stepError = "";
-    this._stepDialogOpen = true;
-    // An input ref: pick the device's command that drives the input (or none).
-    if (item.kind === "input") {
-      this._stepKind = "input";
-      this._stepDeviceId = item.deviceId ?? null;
-      this._stepCommandId = item.commandId ?? null;
-      return;
-    }
-    // A step referencing the (picker-hidden) Wifi Events device edits as
-    // the wifi_event kind — the filtered device select would otherwise
-    // strand it. slot = command_id - 1 (short law).
-    if (
-      this._events.available()
-      && editor.scope === "activity"
-      && item.deviceId != null
-      && isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(item.deviceId)))
-    ) {
-      this._stepKind = "wifi_event";
-      this._stepDeviceId = item.deviceId;
-      this._stepCommandId = item.commandId ?? null;
-      this._stepHoldSeconds = byteToSeconds(item.hold);
-      this._events.primary = {
-        mode: "existing",
-        slot: item.commandId != null ? Number(item.commandId) - 1 : null,
-        name: "",
-      };
-      this._events.load();
-      return;
-    }
-    this._stepKind = "command";
-    this._stepDeviceId = editor.scope === "activity" ? (item.deviceId ?? null) : editor.entityId;
-    this._stepCommandId = item.commandId ?? null;
-    this._stepHoldSeconds = byteToSeconds(item.hold);
-  }
-
-  private _closeStepDialog = () => {
-    this._stepDialogOpen = false;
-    this._stepDialogEditIndex = null;
-    this._stepKind = "command";
-    this._stepDeviceId = null;
-    this._stepCommandId = null;
-    this._stepHoldSeconds = "0";
-    this._stepError = "";
-  };
-
-  private _handleStepDeviceChange = (event: Event) => {
-    const value = Number((event.target as HTMLSelectElement).value);
-    this._stepDeviceId = Number.isFinite(value) ? value : null;
-    const commands = this._stepDeviceId != null && this.bundle
-      ? deviceCommandItems(this.bundle, this._stepDeviceId)
-      : [];
-    this._stepCommandId = commands[0]?.commandId ?? null;
-  };
-
-  private _handleStepCommandChange = (event: Event) => {
-    const raw = (event.target as HTMLSelectElement).value;
-    this._stepCommandId = raw === "" ? null : Number(raw);
-  };
-
-  private _handleStepHoldInput = (event: Event) => {
-    this._stepHoldSeconds = (event.target as HTMLInputElement).value;
-  };
-
-  // Snap the dialog's hold field to the 0.5s grid when the user commits it
-  // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
-  private _handleStepHoldChange = (event: Event) => {
-    this._stepHoldSeconds = this._snapHalfSeconds((event.target as HTMLInputElement).value);
-  };
-
-  // Inline per-row wait edit: the attached delay travels with its command.
-  private _handleStepWaitChange = (item: BackupMacroStepItem, event: Event) => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const input = event.target as HTMLInputElement;
-    const waitByte = secondsToByte(input.value);
-    // Reflect the snapped 0.5s value in the field immediately. A re-render
-    // alone can't fix it when the typed value rounds to the current byte:
-    // the bound value is unchanged, so Lit leaves the stray text in place.
-    input.value = byteToSeconds(waitByte);
-    const next = editor.scope === "device"
-      ? setDeviceMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte)
-      : setActivityMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
-    this._commitEditBundleEdit(next);
-  };
-
-  private _applyStepWifiEvent = async () => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const timeByte = secondsToByte(this._stepHoldSeconds);
-    const editIndex = this._stepDialogEditIndex;
-    try {
-      const ref = await this._events.resolveRef(this._events.primary);
-      const next = editIndex === null
-        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte)
-        : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
-            deviceId: ref.deviceId,
-            commandId: ref.shortCommandId,
-            hold: timeByte,
-          });
-      this._commitEditBundleEdit(next);
-      this._closeStepDialog();
-    } catch (err) {
-      this._stepError = editorErrorMessage(err, "wifi_event");
-    }
-  };
-
-  private _applyStep = () => {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const timeByte = secondsToByte(this._stepHoldSeconds);
-    const editIndex = this._stepDialogEditIndex;
-    const isDevice = editor.scope === "device";
-    if (this._stepKind === "wifi_event") {
-      void this._applyStepWifiEvent();
-      return;
-    }
-    // Editing an activity power-macro input ref: set (or clear) the input.
-    if (this._stepKind === "input") {
-      const deviceId = Number(this._stepDeviceId);
-      if (deviceId > 0) {
-        const next = this._stepCommandId == null
-          ? clearActivityDeviceInput(this.bundle, editor.entityId, deviceId)
-          : setActivityDeviceInput(this.bundle, editor.entityId, deviceId, Number(this._stepCommandId));
-        this._commitEditBundleEdit(next);
-      }
-      this._closeStepDialog();
-      return;
-    }
-    const commandId = Number(this._stepCommandId);
-    if (!commandId || (!isDevice && !this._stepDeviceId)) {
-      this._stepError = TOOLS_CARD_STRINGS.backup.stepNoCommands;
-      return;
-    }
-    const deviceId = Number(this._stepDeviceId);
-    let next: BackupBundlePayload;
-    if (editIndex === null) {
-      next = isDevice
-        ? addDeviceMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, commandId, timeByte)
-        : addActivityMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
-    } else {
-      next = isDevice
-        ? updateDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte })
-        : updateActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
-    }
-    this._commitEditBundleEdit(next);
-    this._closeStepDialog();
-  };
-
-  private _removeStep(index: number) {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const next = editor.scope === "device"
-      ? removeDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, index)
-      : removeActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, index);
-    this._commitEditBundleEdit(next);
-  }
-
-  private _handleStepReorder = (event: Event) => {
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const sortableEvent = event as CustomEvent<{ oldIndex?: number; newIndex?: number }>;
-    this._reorderSteps(Number(sortableEvent.detail?.oldIndex), Number(sortableEvent.detail?.newIndex));
-  };
-
-  private _reorderSteps(oldIndex: number, newIndex: number) {
-    const editor = this._macroEditor;
-    if (!editor || !this.bundle) return;
-    const items = this._currentMacroStepItems();
-    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-    if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
-    const order = items.map((_, index) => index);
-    const [moved] = order.splice(oldIndex, 1);
-    order.splice(newIndex, 0, moved);
-    const next = editor.scope === "device"
-      ? reorderDeviceMacroSteps(this.bundle, editor.entityId, editor.buttonId, order)
-      : reorderActivityMacroSteps(this.bundle, editor.entityId, editor.buttonId, order);
-    this._commitEditBundleEdit(next);
-  }
-
   /** The drag handle doubles as the keyboard way to reorder: focus it and
    *  press the up/down arrows (CR-F2-11). Focus follows the moved row. */
-  private _renderReorderHandle(label: string, position: number, count: number, move: (delta: -1 | 1) => void) {
+  _renderReorderHandle(label: string, position: number, count: number, move: (delta: -1 | 1) => void) {
     return html`
       <div
         class="quick-access-drag"
@@ -2383,318 +2114,6 @@ export class SofabatonEditDetailView extends LitElement {
         }}
       >
         <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-      </div>
-    `;
-  }
-
-  private _renderMacroStepEditorView(editor: { scope: BackupEditTargetKind; entityId: number; buttonId: number; name: string }) {
-    const items = this._currentMacroStepItems();
-    // User macros (activity-bound) can be renamed right here so a freshly
-    // created one can be named without backing out. Power On/Off slots keep
-    // their fixed names, so no pencil for those.
-    const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
-    const sortable = this._haSortableReady && items.length > 1;
-    const renderRows = () =>
-      items.map((item, position) => this._renderMacroStepRow(item, position, items.length));
-    return html`
-      <div class="tab-panel tab-panel--detail">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <div class="detail-title-main">
-                <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeMacroEditor}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
-                </button>
-                <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-                    { label: this._entityKindCrumbLabel(editor.scope), onClick: this._requestClose },
-                    { label: this._selectedEditTitle(), onClick: this._closeMacroEditor },
-                  ])}
-                  <div class="detail-title">${editor.name}</div>
-                </div>
-                ${this._renderDirtyChip()}
-                ${canRename
-                  ? html`
-                      <div class="detail-title-actions">
-                        <button
-                          class="icon-btn"
-                          @click=${this._openMacroNameRenameDialog}
-                          aria-label=${TOOLS_CARD_STRINGS.backup.renameMacroAria}
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      </div>
-                    `
-                  : nothing}
-              </div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            <div class="quick-access-section">
-              <div class="quick-access-head">
-                <div class="quick-access-head-main">
-                  <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.steps}</div>
-                  <div class="quick-access-sub">
-                    ${this._haSortableReady
-                      ? TOOLS_CARD_STRINGS.backup.macroStepsSortableHelp
-                      : TOOLS_CARD_STRINGS.backup.macroStepsHelp}
-                  </div>
-                </div>
-                <div class="quick-access-head-actions">
-                  ${editor.scope === "activity" && POWER_MACRO_BUTTON_IDS.has(editor.buttonId)
-                    ? html`
-                        <button class="quick-access-add-btn add-member-btn" @click=${this._openAddMemberDialog}>
-                          <ha-icon icon="mdi:plus"></ha-icon>
-                          <span>${TOOLS_CARD_STRINGS.backup.addMemberButton}</span>
-                        </button>
-                      `
-                    : nothing}
-                  <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
-                    <ha-icon icon="mdi:plus"></ha-icon>
-                    <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
-                  </button>
-                </div>
-              </div>
-              ${items.length
-                ? html`
-                    <div class="quick-access-list">
-                      ${sortable
-                        ? html`
-                            <ha-sortable
-                              class="quick-access-sortable"
-                              draggable-selector=".quick-access-sortable-item"
-                              handle-selector=".quick-access-drag"
-                              animation="180"
-                              @item-moved=${this._handleStepReorder}
-                            >
-                              <div class="quick-access-sortable-container">${renderRows()}</div>
-                            </ha-sortable>
-                          `
-                        : html`<div class="quick-access-sortable-container">${renderRows()}</div>`}
-                    </div>
-                  `
-                : html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noMacroSteps}</div>`}
-            </div>
-          </div>
-        </div>
-        ${this._renderStepDialog()}
-        ${this._renderEditRenameDialog()}
-        ${this._renderAddMemberDialog()}
-        ${this._renderDeleteConfirmDialog()}
-      </div>
-    `;
-  }
-
-  private _renderMacroStepRow(item: BackupMacroStepItem, position: number, count: number) {
-    const isLast = position === count - 1;
-    const isPower = item.kind === "power";
-    const isInput = item.kind === "input";
-    const meta = item.kind === "command" && item.hold > 0
-      ? TOOLS_CARD_STRINGS.backup.holdLabel(byteToSeconds(item.hold))
-      : "";
-    const chip = isPower || isInput ? TOOLS_CARD_STRINGS.backup.requiredStepChip : TOOLS_CARD_STRINGS.backup.commandChip;
-    // An activity power-ref row is the device's membership token, so its
-    // delete affordance means "remove the device from this Activity" and
-    // routes through the member impact-confirm (both sequences, favorites,
-    // bindings, steps). Input refs keep their edit-only treatment.
-    const editor = this._macroEditor;
-    const memberDeviceId = isPower && editor?.scope === "activity"
-      ? Number(item.deviceId ?? 0)
-      : 0;
-    // Power refs: command/order protected (no rename) but their
-    // attached wait is editable. Input refs: editable (change input), no
-    // delete. Commands: full edit + delete. Every row owns an attached wait,
-    // rendered as a slim sub-row UNDER the step (matching execution order:
-    // step first, then the wait before the next step) — except the last
-    // step, whose wait is dead time: the sub-row is hidden and mutations
-    // normalize the stored value to 0.
-    return html`
-      <div class="quick-access-sortable-item" data-step-index=${item.index}>
-        <div class="quick-access-row">
-          ${count > 1
-            ? this._renderReorderHandle(item.label, position, count, (delta) => this._reorderSteps(position, position + delta))
-            : html`<span></span>`}
-          <div class="quick-access-main">
-            <div class="quick-access-label-row">
-              <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${chip}</div>
-            </div>
-            ${meta ? html`<div class="quick-access-meta">${meta}</div>` : nothing}
-          </div>
-          <div class="quick-access-actions">
-            ${isPower
-              ? (memberDeviceId > 0
-                  ? html`
-                      <button
-                        class="icon-btn icon-btn--danger"
-                        @click=${() => this._openMemberRemoveConfirm(
-                          Number(editor?.entityId ?? 0),
-                          memberDeviceId,
-                          this._memberDeviceName(Number(editor?.entityId ?? 0), memberDeviceId),
-                        )}
-                        aria-label=${TOOLS_CARD_STRINGS.backup.removeMemberAria}
-                      >
-                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                      </button>
-                    `
-                  : nothing)
-              : html`
-                  <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                  ${isInput
-                    ? nothing
-                    : html`
-                        <button class="icon-btn icon-btn--danger" @click=${() => this._removeStep(item.index)} aria-label=${TOOLS_CARD_STRINGS.backup.deleteStepAria}>
-                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                        </button>
-                      `}
-                `}
-          </div>
-        </div>
-        ${isLast
-          ? nothing
-          : html`
-              <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-                <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
-                <span class="step-wait-field">
-                  <input
-                    class="step-wait-input"
-                    type="number"
-                    min="0"
-                    max="120"
-                    step="0.5"
-                    aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                    .value=${byteToSeconds(item.wait)}
-                    @change=${(event: Event) => this._handleStepWaitChange(item, event)}
-                  />
-                  <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
-                </span>
-              </label>
-            `}
-      </div>
-    `;
-  }
-
-  private _renderStepDialog() {
-    if (!this._stepDialogOpen || !this.bundle || !this._macroEditor) return nothing;
-    const editor = this._macroEditor;
-    const isEdit = this._stepDialogEditIndex !== null;
-    const isActivity = editor.scope === "activity";
-    const isInput = this._stepKind === "input";
-    const isWifiEvent = this._stepKind === "wifi_event";
-    const devices = this._editableDeviceOptions();
-    const commandDeviceId = isInput ? this._stepDeviceId : (isActivity ? this._stepDeviceId : editor.entityId);
-    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
-    const canSave = isInput
-      || (isWifiEvent
-        ? !this._events.busy && (
-            this._events.primary.mode === "existing"
-              ? this._events.primary.slot != null
-              : this._events.primary.name.trim().length > 0
-          )
-        : this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
-    const title = isInput
-      ? TOOLS_CARD_STRINGS.backup.inputStepTitle
-      : isEdit
-        ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle
-        : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
-    return html`
-      <div class="modal-backdrop" @click=${this._closeStepDialog}>
-        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeStepDialog}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isInput
-              ? html`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
-                    <select id="sb-step-input" class="decoded-field-input" @change=${this._handleStepCommandChange}>
-                      <option value="" ?selected=${this._stepCommandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
-                      ${commands.map((command) => html`
-                        <option value=${command.commandId} ?selected=${command.commandId === this._stepCommandId}>${command.label}</option>
-                      `)}
-                    </select>
-                  </div>
-                `
-              : html`
-                  ${isActivity && this._events.available()
-                    ? html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-step-kind"
-                            class="decoded-field-input"
-                            @change=${(event: Event) => {
-                              const value = (event.target as HTMLSelectElement).value as MacroStepKind;
-                              this._stepKind = value;
-                              if (value === "wifi_event") this._events.primary = this._events.defaultSel();
-                              this._stepError = "";
-                            }}
-                          >
-                            <option value="command" ?selected=${this._stepKind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
-                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
-                          </select>
-                        </div>
-                      `
-                    : nothing}
-                  ${isWifiEvent
-                    ? this._events.renderTargetFields({
-                        idPrefix: "sb-step",
-                        sel: this._events.primary,
-                        onSelChange: (sel) => {
-                          this._events.primary = sel;
-                          this._stepError = "";
-                        },
-                      })
-                    : html`
-                        ${isActivity
-                          ? this._renderBindingSelect({
-                              id: "sb-step-device",
-                              label: TOOLS_CARD_STRINGS.backup.stepDevice,
-                              value: this._stepDeviceId,
-                              options: devices.map((device) => ({ value: device.id, label: device.label })),
-                              onChange: this._handleStepDeviceChange,
-                              emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
-                            })
-                          : nothing}
-                        ${this._renderBindingSelect({
-                          id: "sb-step-command",
-                          label: TOOLS_CARD_STRINGS.backup.stepCommand,
-                          value: this._stepCommandId,
-                          options: commands.map((command) => ({ value: command.commandId, label: command.label })),
-                          onChange: this._handleStepCommandChange,
-                          emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
-                        })}
-                      `}
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
-                    <input
-                      id="sb-step-hold"
-                      class="decoded-field-input"
-                      type="number"
-                      min="0"
-                      max="120"
-                      step="0.5"
-                      .value=${this._stepHoldSeconds}
-                      @input=${this._handleStepHoldInput}
-                      @change=${this._handleStepHoldChange}
-                    />
-                  </div>
-                `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._stepError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeStepDialog}>${TOOLS_CARD_STRINGS.backup.stepCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyStep} ?disabled=${!canSave}>
-                ${isEdit ? TOOLS_CARD_STRINGS.backup.stepSave : TOOLS_CARD_STRINGS.backup.stepAdd}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -2722,7 +2141,7 @@ export class SofabatonEditDetailView extends LitElement {
           aria-disabled=${disabled ? "true" : "false"}
           tabindex=${disabled ? "-1" : "0"}
           @click=${() => {
-            if (!disabled) this._openMacroEditor(scope, entityId, buttonId, label);
+            if (!disabled) this._steps.openEditor(scope, entityId, buttonId, label);
           }}
         >
           <span class="selection-main">
@@ -2881,7 +2300,7 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _selectedEditTitle() {
+  _selectedEditTitle() {
     if (!this.bundle || !this.kind || this.entityId == null) return "";
     const options = this.kind === "activity"
       ? bundleActivityOptions(this.bundle)

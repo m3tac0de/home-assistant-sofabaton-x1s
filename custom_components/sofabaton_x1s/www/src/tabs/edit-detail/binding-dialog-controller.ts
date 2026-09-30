@@ -41,9 +41,9 @@ export type BindingDialogHost = ReactiveControllerHost &
     | "_events"
     | "_macroName"
     | "_macroOptions"
-    | "_openMacroEditor"
     | "_renderBindingSelect"
     | "_resetMacroTarget"
+    | "_steps"
     | "bundle"
     | "entityId"
     | "wifiEvents"
@@ -620,7 +620,7 @@ export class BindingDialogController implements ReactiveController {
           longPress,
         }));
         this.close();
-        if (macroToOpen) this.host._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+        if (macroToOpen) this.host._steps.openEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
         return;
       }
       // "action"
@@ -644,7 +644,7 @@ export class BindingDialogController implements ReactiveController {
       this.host._commitEditBundleEdit(next);
       this.close();
       if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-      if (macroToOpen) this.host._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+      if (macroToOpen) this.host._steps.openEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
     } else {
       const commandId = Number(this.commandId);
       if (!commandId) {
