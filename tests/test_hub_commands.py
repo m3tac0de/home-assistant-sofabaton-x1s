@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import custom_components.sofabaton_x1s.hub as hub_module
+import custom_components.sofabaton_x1s.hub_identity as hub_identity_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
@@ -1924,7 +1925,7 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
     monkeypatch.setattr(hub._proxy, "get_activities", _get_activities)
     monkeypatch.setattr(hub._proxy, "get_devices", _get_devices)
     monkeypatch.setattr(hub, "_async_get_persistent_cache_store", _get_store)
-    monkeypatch.setattr(hub_module.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(hub_identity_module.dr, "async_get", lambda hass: device_registry)
     monkeypatch.setattr(
         hub._proxy,
         "update_discovery_identity",
@@ -1989,17 +1990,17 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
     device_registry = FakeDeviceRegistry(
         SimpleNamespace(id="device-1", name="X2 HUB", name_by_user=None)
     )
-    monkeypatch.setattr(hub_module.dr, "async_get", lambda hass: device_registry)
+    monkeypatch.setattr(hub_identity_module.dr, "async_get", lambda hass: device_registry)
 
     created = []
     deleted = []
     monkeypatch.setattr(
-        hub_module.ir,
+        hub_identity_module.ir,
         "async_create_issue",
         lambda hass, domain, issue_id, **kwargs: created.append((domain, issue_id, kwargs)),
     )
     monkeypatch.setattr(
-        hub_module.ir,
+        hub_identity_module.ir,
         "async_delete_issue",
         lambda hass, domain, issue_id: deleted.append((domain, issue_id)),
     )
@@ -2016,7 +2017,7 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
     assert domain == hub_module.DOMAIN
     assert issue_id == "outdated_firmware_entry-id"
     assert kwargs["is_fixable"] is False
-    assert kwargs["severity"] == hub_module.ir.IssueSeverity.WARNING
+    assert kwargs["severity"] == hub_identity_module.ir.IssueSeverity.WARNING
     assert kwargs["translation_key"] == "outdated_firmware"
     assert kwargs["translation_placeholders"] == {
         "name": "X2 HUB",
