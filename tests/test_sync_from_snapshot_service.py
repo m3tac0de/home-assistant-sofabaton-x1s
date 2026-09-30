@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+services_module = importlib.import_module("custom_components.sofabaton_x1s.services")
 entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
@@ -104,7 +105,7 @@ def test_export_snapshot_requires_persistent_cache_enabled(monkeypatch) -> None:
     _wire_hub(monkeypatch)
     _wire_cache_store(monkeypatch, enabled=False)
 
-    with pytest.raises(integration.HomeAssistantError, match="persistent cache"):
+    with pytest.raises(services_module.HomeAssistantError, match="persistent cache"):
         asyncio.run(integration._async_handle_export_snapshot(_FakeCall({})))
 
 
@@ -113,7 +114,7 @@ def test_export_snapshot_requires_a_populated_cache(monkeypatch) -> None:
     hub.structural_bundle = None
     _wire_cache_store(monkeypatch, enabled=True)
 
-    with pytest.raises(integration.HomeAssistantError, match="No cached structural snapshot"):
+    with pytest.raises(services_module.HomeAssistantError, match="No cached structural snapshot"):
         asyncio.run(integration._async_handle_export_snapshot(_FakeCall({})))
 
 
@@ -186,7 +187,7 @@ def test_sync_from_snapshot_rejects_when_busy(monkeypatch) -> None:
         hass=SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}}),
     )
 
-    with pytest.raises(integration.HomeAssistantError, match="already running"):
+    with pytest.raises(services_module.HomeAssistantError, match="already running"):
         asyncio.run(integration._async_handle_sync_from_snapshot(call))
 
     assert hub.calls == []
@@ -197,7 +198,7 @@ def test_sync_from_snapshot_rejects_invalid_bundle_payload(monkeypatch) -> None:
     bad_baseline = _device_bundle([])
     bad_baseline["schema_version"] = 99
 
-    with pytest.raises(integration.HomeAssistantError, match="schema_version"):
+    with pytest.raises(services_module.HomeAssistantError, match="schema_version"):
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
@@ -280,7 +281,7 @@ def test_sync_from_snapshot_stale_expected_generation_refuses_loudly(monkeypatch
     )
 
     with pytest.raises(
-        integration.HomeAssistantError,
+        services_module.HomeAssistantError,
         match="expected generation 41, hub cache is at 44",
     ):
         asyncio.run(integration._async_handle_sync_from_snapshot(call))
@@ -364,7 +365,7 @@ def test_sync_from_snapshot_raises_when_engine_reports_failure(monkeypatch) -> N
     baseline = _device_bundle([])
     edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
 
-    with pytest.raises(integration.HomeAssistantError, match="changed on the hub"):
+    with pytest.raises(services_module.HomeAssistantError, match="changed on the hub"):
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
