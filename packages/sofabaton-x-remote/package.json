@@ -1,6 +1,6 @@
 {
   "name": "sofabaton-x-remote",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Sofabaton remote card as a web component for your own dashboard, talking to sofabaton-x-server",
   "type": "module",
   "main": "./dist/sofabaton-remote.js",
