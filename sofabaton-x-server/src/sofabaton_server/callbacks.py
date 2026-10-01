@@ -901,9 +901,12 @@ class CallbackService:
             return
         if "activity_id" not in data and isinstance(data.get("data"), dict):
             data = data["data"]
+        raw_id = data.get("activity_id")
         try:
-            activity_id = int(data.get("activity_id"))
+            activity_id = int(raw_id) if raw_id is not None else None
         except (TypeError, ValueError):
+            activity_id = None
+        if activity_id is None:
             log.info("mqtt: %s: not an activity state: %r", topic, payload[:80])
             return
         state = str(data.get("state") or "").strip().lower()
@@ -1463,9 +1466,10 @@ class CallbackService:
         from sofabaton.wifi_device import labels_from_spec
         labels = labels_from_spec(spec)
         for row in payload.get("commands") or []:
-            if not isinstance(row, dict) or row.get("command_id") is None:
+            raw_id = row.get("command_id") if isinstance(row, dict) else None
+            if raw_id is None:
                 continue
-            cid = int(row.get("command_id"))
+            cid = int(raw_id)
             live = str(row.get("name") or row.get("command_label") or "")
             if cid in labels and live:
                 labels[cid] = live

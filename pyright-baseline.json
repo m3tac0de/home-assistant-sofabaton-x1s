@@ -1,6 +1,6 @@
 {
   "pyright": "1.1.414",
-  "errors": 215,
+  "errors": 213,
   "entries": [
     {
       "file": "custom_components/sofabaton_x1s/lib/activity_sync.py",
@@ -325,12 +325,6 @@
       "rule": "reportReturnType",
       "message": "Type \"Literal[True]\" is not assignable to return type \"None\"",
       "count": 1
-    },
-    {
-      "file": "sofabaton-x-server/src/sofabaton_server/callbacks.py",
-      "rule": "reportArgumentType",
-      "message": "Argument of type \"Unknown | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
-      "count": 2
     },
     {
       "file": "sofabaton-x-server/src/sofabaton_server/discovery.py",

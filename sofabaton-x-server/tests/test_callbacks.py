@@ -48,6 +48,10 @@ def _hub(client, factory, host: str = LOOPBACK):
     client.post(HUBS, json={"host": host})
     proxy = factory.latest(host)
     client.portal.call(proxy.ready, MAC)
+    # ready() only queues catalog_ready; the manager's ready sync re-keys the hub to its
+    # MAC and reads the model from the proxy on a later loop turn. Return once it has,
+    # so a test that shapes the proxy afterwards (say, makes it an X2) cannot race it.
+    _until(lambda: client.get(f"{HUBS}/{HUB_ID}").status_code == 200)
     return HUB_ID, proxy
 
 
