@@ -428,3 +428,48 @@ def test_a_broker_change_never_leaves_the_old_subscriber_running(tmp_path: Path)
 
         restarted, swapped = client.portal.call(main)
         assert swapped and not restarted
+
+
+ACTIVITY_TOPIC = "activity/E26A44861B45/activity_control_up"
+
+
+def test_an_x2_feeds_its_activity_transitions_from_the_broker_into_the_engine(tmp_path: Path) -> None:
+    """The X2 publishes every activity transition to the broker early in the
+    power sequence. With a broker set, the server subscribes for every
+    enabled X2 whose MAC is known (no device needed) and feeds the push to
+    the library's apply with the Home Assistant integration's guards."""
+
+    with FakeBroker() as broker:
+        client, factory = _rig(tmp_path, mqtt_host=LOOPBACK, mqtt_port=broker.port, on_build=_x2)
+        with client:
+            hub_id, proxy = _hub(client, factory)
+            assert client.get(f"{HUBS}/{hub_id}").json()["config"]["hub_version"] == "X2"   # learned from the banner
+            # Not one device, and still a subscription: the activity topic alone brings the connection up.
+            _until(lambda: broker.subscriptions == [ACTIVITY_TOPIC])
+            mqtt = _until(lambda: (lambda s: s if s["connected"] else None)(client.get(f"{SERVER}/mqtt").json()))
+            assert mqtt["topics"] == [ACTIVITY_TOPIC]
+
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 101, "state": "on"}, retain=True)   # a replay: never applied
+            broker.publish(ACTIVITY_TOPIC, b"not json")
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 102, "state": "off"})               # off for an activity that is not running
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 101, "state": "on"})
+            _until(lambda: proxy.external_states == [101])
+            assert client.get(f"{HUBS}/{hub_id}/activity").json() == {"activity_id": 101, "name": "Watch TV"}
+            broker.publish(ACTIVITY_TOPIC, {"data": {"activity_id": 101, "state": "off"}})     # the request-side envelope, for the running one
+            _until(lambda: proxy.external_states == [101, None])
+            assert client.get(f"{HUBS}/{hub_id}/activity").json() is None
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 255, "state": "on"})                # 255 = all off, whatever the state says
+            _until(lambda: proxy.external_states == [101, None, None])
+
+            # Before the activities are read (or with the hub session down) the push is left alone.
+            proxy.catalog_ready = False
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 101, "state": "on"})
+            time.sleep(0.3)
+            assert proxy.external_states == [101, None, None]
+            proxy.catalog_ready = True
+
+            # A device on the transport adds its press topic next to it; disabling the hub drops both.
+            _create(client, hub_id, {"name": "Lights", "transport": "mqtt", "slots": [{"label": "On"}]})
+            _until(lambda: sorted(client.get(f"{SERVER}/mqtt").json()["topics"]) == [TOPIC, ACTIVITY_TOPIC])
+            client.post(f"{HUBS}/{hub_id}/disable")
+            _until(lambda: client.get(f"{SERVER}/mqtt").json()["wanted"] is False)

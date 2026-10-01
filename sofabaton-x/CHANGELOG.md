@@ -9,11 +9,7 @@ and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
-## Unreleased
-
-No changes yet.
-
-## 0.2.3 (2026-10-01)
+## 0.2.3 (unreleased)
 
 Changes since `sofabaton-x-v0.2.2`. This release is mostly fixes from a
 whole-codebase review: hub writes that failed or were reported wrongly,
@@ -50,6 +46,15 @@ backup and restore safety, and cache consistency.
 
 ### Added
 
+- `AsyncXProxy.apply_external_activity_state(activity_id)` is on the
+  facade (it was engine-only). It feeds an activity change learned
+  outside the hub session, such as the X2's MQTT activity topic
+  (`None` for powered off): the state flips and `activity_changed`
+  fires at once, the session's own refresh reconciles afterwards, and
+  `send()` and the activity controls are held until the hub reports
+  ready (at most 60 seconds). Returns `False` when nothing was applied.
+  The library still carries no MQTT client; the consumer subscribes and
+  checks the payload.
 - `AsyncXProxy.hub_info(cached_only=True)` returns what the session
   already knows without reaching the hub (`known=False` when nothing is
   known yet). Status pages can use it without waiting on a busy hub.

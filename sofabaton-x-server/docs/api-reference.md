@@ -661,6 +661,19 @@ panel under **Server settings → MQTT broker**, or with `--mqtt-host`, see
   the broker. An admin may still call the test API with supplied settings;
   the panel displays startup settings read-only.
   Invalid settings are `422 invalid_mqtt_config`.
+- **Activity state.** The X2 also publishes every activity transition
+  to `activity/<MAC>/activity_control_up` (`{"activity_id", "state"}`,
+  `255` = everything off), early in its power sequence. The server
+  subscribes to it for every enabled X2 whose MAC is known, device or no
+  device, and feeds the change to the library the way the Home Assistant
+  integration does: `activity_changed` fires and `GET /hubs/{id}/activity`
+  flips at once, the hub session's own refresh reconciles afterwards, and
+  commands sent before the hub reports ready are held (at most 60 s;
+  a command into a running power macro fails and can interrupt it).
+  Retained messages are dropped; pushes while the hub session is down or
+  before its first activities read are ignored; an individual `off`
+  counts only for the running activity. The activity topic shows in
+  `GET /server/mqtt` `topics`. Removing the broker ends it.
 - Saving or removing the broker emits `server_event` kind `mqtt_config`
   with an empty `hub_id`. Removing it stops MQTT press reception for
   existing MQTT Wifi Devices; it does not delete or convert those devices.

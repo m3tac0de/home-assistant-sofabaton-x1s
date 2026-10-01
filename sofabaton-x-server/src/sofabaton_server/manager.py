@@ -501,6 +501,12 @@ class HubManager:
         info = await proxy.hub_info()
         if info.known and info.name:
             record.hub_name = info.name
+        if info.known and info.model and record.config.hub_version != info.model:
+            # The banner names the model; a record added by address (or with a
+            # MAC but no model) learns it here, re-key or not. Consumers that
+            # key behaviour on the model (the X2 MQTT topics) read it from the
+            # record, so it must not stay at what the registration guessed.
+            record.config = dataclasses.replace(record.config, hub_version=info.model)
         if info.known and info.mac:
             new_id = mac_key(info.mac)
             if new_id != record.hub_id and new_id not in self._records:

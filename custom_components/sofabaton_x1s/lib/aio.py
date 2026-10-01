@@ -441,6 +441,7 @@ class AsyncXProxy:
             "get_macros_for_activity",
             "ensure_commands_for_activity",
             "send_command",
+            "apply_external_activity_state",
             "can_issue_commands",
             "find_remote",
             "sync_activity",
@@ -1445,6 +1446,32 @@ class AsyncXProxy:
         """Power off an activity."""
 
         return await self.run(self._proxy.send_command, activity_id, ButtonName.POWER_OFF)
+
+    async def apply_external_activity_state(self, activity_id: Optional[int]) -> bool:
+        """Apply an activity change learned outside the hub session.
+
+        The X2 publishes activity transitions to its MQTT broker
+        (``activity/<MAC>/activity_control_up``) early in the power
+        sequence, before the hub session confirms them. A consumer that
+        listens to that topic feeds the new id here (``None`` for powered
+        off): the state flips at once and the usual ``activity_changed``
+        event fires, while the session's own refresh stays behind it as
+        reconciliation and corrects a wrong or stale push on its own.
+        Until the hub reports ready again, :meth:`send` and the activity
+        controls are held (at most ``EXTERNAL_SETTLE_TIMEOUT`` seconds),
+        because a command sent into a running power macro fails and
+        can interrupt the macro.
+
+        Returns ``False`` when nothing was applied: before the first
+        complete activities read, for an id the catalog does not know,
+        or when the state already matches. The caller is expected to
+        check the push the way the Home Assistant integration does: drop
+        retained messages, ignore pushes while the hub session is down,
+        and treat an individual ``off`` as a change only when it names
+        the running activity.
+        """
+
+        return await self.run(self._proxy.apply_external_activity_state, activity_id)
 
     async def find_remote(self) -> bool:
         """Trigger the hub's find-my-remote signal.
@@ -3238,7 +3265,7 @@ _R_SYNC = (
     "single-shot write primitive composed by sync_activity/sync_device "
     "(phase 1 plan, decision 2)"
 )
-_R_PHASE3 = "parked past phase 3 W3 (idle behaviour reads, favorites order, MQTT state)"
+_R_PHASE3 = "parked past phase 3 W3 (idle behaviour reads, favorites order)"
 _R_INTEGRATION = (
     "Home Assistant orchestration hosted in the library, not promoted "
     "(phase 1 plan, decision 3)"
@@ -3341,7 +3368,6 @@ ENGINE_ONLY: dict[str, str] = {
             "fetch_idle_behavior",
             "request_idle_behavior",
             "request_favorites_order",
-            "apply_external_activity_state",
         ),
     ),
     **_reasons(

@@ -1590,6 +1590,54 @@ real activity switches from the remote.
   externally_applied guard (skip redundant-OFF arming when the settle
   gate was armed) is consistent with either behavior.
 
+## ◇ Validated: MQTT activity-state fast path via sofabaton-x-server (X2, 2026-10-01)
+
+Reproduction tooling:
+[`bench_291_mqtt_activity_state.py`](../../scripts/hub-bench/bench_291_mqtt_activity_state.py)
+(`ha` and `server` legs; its own subscriber on the activity topic
+timestamps the hub's publish independently of the consumer). Production
+X2 at .123, broker at .77, activity 105 "Play Steamdeck" started and
+stopped by the consumer (`remote.turn_on`/`turn_off` on HA, `POST
+/activities/105/start|stop` on the server), one transition each way per
+leg.
+
+- **Server leg (15/15 checks)**: a bench server registered the X2 by
+  address; the ready sync re-keyed the record to `fc012c39d390` with
+  model `X2`, and the server subscribed to
+  `activity/FC012C39D390/activity_control_up` with **no Wifi Device
+  deployed** (the activity topic alone brings the broker connection up).
+  Both pushes (`{"activity_id":105,"state":"on"}`, then
+  `{"activity_id":255,"state":"off"}`) were applied through
+  `AsyncXProxy.apply_external_activity_state` within 1 ms of the
+  publish; `hub_event`/`activity_changed` reached the WebSocket stream
+  1 ms after the publish and `GET /hubs/{id}/activity` flipped
+  accordingly. Close-out re-enabled the HA entry and HA held the hub
+  again.
+- **HA leg (same transitions)**: the integration applied both pushes
+  (`[MQTT_ACT] applied`) and the activity sensor flipped; same timings.
+- **Timing finding (consumer-triggered changes)**: in all ten
+  transitions of the day (105 on/off on both legs, then the sequence
+  off → 101 "Watch a movie" → 102 "Play Xbox" → off on both legs, with
+  power sequences of 2.1 to 3.5 s) ACK_READY arrived **about 70 ms
+  before** the MQTT push, whatever the macro length. The hub finishes
+  the macro, acknowledges on the TCP session, then publishes. Both
+  consumers therefore took the engine's "hub already ready" branch:
+  state applied from the push without arming the settling gate, the
+  ACK_READY-triggered refresh reconciling behind it. This differs from
+  the 2026-08-17 observation (push early in the power sequence, 1 to
+  1.5 s before ACK_READY), where the trigger was the **physical remote**;
+  today's trigger was the consumer's own `REQ_ACTIVATE` over TCP. The
+  working hypothesis is that the ordering depends on the trigger source
+  (a remote-initiated change publishes at macro start, a TCP-initiated
+  one after ACK_READY); a remote-triggered run with the same bench
+  (`--trigger remote`) is the open comparison. Not a regression: HA's
+  path is unchanged by the 2026-10-01 work and shows the same ordering.
+  The hub also published the `255` all-off on every OFF transition, so
+  an OFF initiated through the consumer is announced on the topic (the
+  earlier finding that a *redundant* OFF is not published still
+  stands). A direct switch 101 → 102 produced a single
+  `{"activity_id":102,"state":"on"}` publish, no `off` for 101.
+
 ## ◇ Measured: MQTT vs TCP command-send latency (X2, 2026-08-17)
 
 Reproduction tooling:

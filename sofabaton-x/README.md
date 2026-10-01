@@ -3,7 +3,7 @@
 > **This README describes 0.2.3.** This release is mostly fixes to hub
 > writes, backup and restore, and the cache, and limits new device and
 > activity names to the hub's 30 characters.
-> Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-01).
+> Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-unreleased).
 > Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
 > consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
 > consumers on 0.1.x also need the
@@ -266,6 +266,17 @@ the wait times out. Complete cached reads remain available.
 
 Control: `send(entity_id, command_id)` (alias `press`),
 `start_activity(act)`, `stop_activity(act)`, `find_remote()`.
+
+`apply_external_activity_state(activity_id)` feeds an activity change
+learned outside the hub session, such as the X2's MQTT activity topic
+(`activity/<MAC>/activity_control_up`, `None` for powered off). The
+state flips and `activity_changed` fires at once; the session's own
+refresh reconciles afterwards, and commands are held until the hub
+reports ready (at most 60 seconds). It returns `False` when nothing was
+applied (catalog not read yet, unknown id, or no change). The library
+carries no MQTT client; the consumer subscribes and checks the payload
+(drop retained messages, ignore pushes while the session is down, and
+apply an individual `off` only for the running activity).
 
 For the X2 on-screen number pad, use the package-root `ButtonName`
 constants `NUM_0`–`NUM_9`, `NUM_DASH` and `NUM_ENTER` wherever a button

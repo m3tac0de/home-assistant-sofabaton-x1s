@@ -4,8 +4,30 @@ Changes to `sofabaton-x-server`, compared against its own release tags.
 Protocol-library changes are recorded in the
 [library changelog](../sofabaton-x/CHANGELOG.md).
 
-## Unreleased
+## 0.2.4 (unreleased)
 
+Changes since `sofabaton-x-server-v0.2.3`. Requires
+**sofabaton-x >=0.2.3,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+This release is mostly fixes from a whole-codebase review. The library
+fixes it picks up (hub writes that failed or were reported wrongly,
+backup and restore safety, Wifi names outside Latin-1 on the X1S and X2)
+are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased).
+
+### Added
+
+- **X2 activity changes arrive over MQTT.** With a broker set, the server
+  subscribes to `activity/<MAC>/activity_control_up` for every enabled
+  X2 whose MAC is known, whether or not it has MQTT Wifi Devices, and
+  applies the change the way the Home Assistant integration does: the
+  `activity_changed` event and `GET /hubs/{id}/activity` reflect a change
+  made on the remote early in the hub's power sequence, the hub session
+  reconciles afterwards, and commands sent before the hub reports ready
+  are held (at most 60 seconds). Retained messages are dropped; pushes
+  while the hub is disconnected or before its first activities read are
+  ignored. The topic shows in `GET /server/mqtt`. See
+  [MQTT](docs/api-reference.md#mqtt).
 - **A hub that changes IP address is followed.** When a registered hub
   advertises itself from another address (a new DHCP lease), the server
   matches it by MAC, updates the registration and rebuilds its proxy on
@@ -19,17 +41,9 @@ Protocol-library changes are recorded in the
   They now read "status unknown" with a dark dot until the server
   answers again, and a dropped event stream asks REST at once instead of
   waiting for the next poll.
-
-## 0.2.4 (2026-10-01)
-
-Changes since `sofabaton-x-server-v0.2.3`. Requires
-**sofabaton-x >=0.2.3,<0.3**; publish the library first.
-The API prefix and advertised API generation remain `/api/v1` and `1`.
-
-This release is mostly fixes from a whole-codebase review. The library
-fixes it picks up (hub writes that failed or were reported wrongly,
-backup and restore safety, Wifi names outside Latin-1 on the X1S and X2)
-are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-2026-10-01).
+- The record's hub model (`config.hub_version`) follows the hub's banner
+  on every ready sync, not only when a host-registered hub is re-keyed
+  to its MAC.
 
 ### Upgrade notes
 

@@ -55,6 +55,7 @@ class FakeProxy:
         self.fail_with: Optional[BaseException] = None
         self.refuse = False
         self.running: Optional[RunningActivity] = None
+        self.external_states: list[Optional[int]] = []    # apply_external_activity_state calls
         self.sent: list[tuple[str, tuple]] = []
         self.catalog_clears = 0
         self.refreshes = 0
@@ -210,6 +211,19 @@ class FakeProxy:
         if not self.refuse:
             self.running = None
         return not self.refuse
+
+    async def apply_external_activity_state(self, activity_id: Optional[int]) -> bool:
+        """The engine's external apply: records the push, flips the running activity."""
+
+        self.external_states.append(activity_id)
+        current = None if self.running is None else self.running.activity_id
+        if activity_id == current:
+            return False
+        if activity_id is None:
+            self.running = None
+        else:
+            self.running = RunningActivity(activity_id=activity_id, name=next((a.name for a in self.activities_data if a.activity_id == activity_id), None))
+        return True
 
     async def find_remote(self) -> bool:
         self.sent.append(("find", ()))

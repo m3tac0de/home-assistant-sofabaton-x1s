@@ -847,6 +847,29 @@ def test_press_and_activity_control() -> None:
     asyncio.run(main())
 
 
+def test_external_activity_state_runs_the_engine_apply_in_the_executor() -> None:
+    class Engine(FakeProxy):
+        def __init__(self):
+            super().__init__()
+            self.applied: list = []
+            self.apply_thread: threading.Thread | None = None
+
+        def apply_external_activity_state(self, activity_id):
+            self.applied.append(activity_id)
+            self.apply_thread = threading.current_thread()
+            return activity_id is not None
+
+    async def main():
+        fake = Engine()
+        proxy = _wrap(fake)
+        assert await proxy.apply_external_activity_state(105) is True
+        assert await proxy.apply_external_activity_state(None) is False
+        assert fake.applied == [105, None]
+        assert fake.apply_thread is not threading.current_thread(), "the engine call runs off the loop thread"
+
+    asyncio.run(main())
+
+
 # ---------------------------------------------------------------------------
 # executor delegation / lifecycle / marshaling
 # ---------------------------------------------------------------------------

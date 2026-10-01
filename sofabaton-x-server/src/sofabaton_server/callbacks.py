@@ -801,8 +801,25 @@ class CallbackService:
                 return f"{mac_key(str(candidate)).upper()}/up"
         return None
 
+    def mqtt_activity_topic_for(self, hub_id: str) -> Optional[str]:
+        """``activity/<MAC>/activity_control_up``: where an X2 publishes its activity
+        transitions (the same MAC rendering as the press topic). None for other hubs
+        and while the MAC is not known."""
+
+        try:
+            row = self._manager.record(hub_id)
+        except HubNotFound:
+            return None
+        if str(row.config.hub_version or "") != MQTT_HUB_VERSION:
+            return None
+        press = self.mqtt_topic_for(hub_id)
+        return None if press is None else f"activity/{press[: -len('/up')]}/activity_control_up"
+
     def _mqtt_topics(self) -> dict[str, str]:
-        """topic -> hub id, for every enabled hub with a device on the mqtt transport."""
+        """topic -> hub id: the press topic of every enabled hub with a device on the
+        mqtt transport, and the activity topic of every enabled X2 whose MAC is known
+        (no refcount: the hub publishes its transitions whether or not a device
+        exists, and the state they carry is worth having whenever there is a broker)."""
 
         topics: dict[str, str] = {}
         for hub_id in self._manager.ids():
@@ -812,6 +829,9 @@ class CallbackService:
                 topic = self.mqtt_topic_for(hub_id)
                 if topic is not None:
                     topics[topic] = hub_id
+            activity = self.mqtt_activity_topic_for(hub_id)
+            if activity is not None:
+                topics[activity] = hub_id
         return topics
 
     def mqtt_unavailable_reason(self, hub_id: str, hub_version: Optional[str]) -> Optional[str]:
@@ -843,6 +863,9 @@ class CallbackService:
         hub_id = self._mqtt_topics().get(topic)
         if hub_id is None:
             return
+        if topic.startswith("activity/"):
+            self._on_activity_state_message(hub_id, topic, payload)
+            return
         try:
             data = json.loads(payload.decode("utf-8"))
             device_id, key_id = int(data["device_id"]), int(data["key_id"])
@@ -863,6 +886,63 @@ class CallbackService:
         else:
             parsed = ParsedPath(action_id="", device_id=device_id, slot_index=key_id - 1, press_type="short")
         self._record_press(hub_id, parsed, "", transport=TRANSPORT_MQTT)
+
+    def _on_activity_state_message(self, hub_id: str, topic: str, payload: bytes) -> None:
+        """The hub published an activity transition: ``{"activity_id", "state"}``, flat
+        (the ``{"data": {...}}`` envelope of the request side is tolerated), 255 = all off.
+        Parsed here; the checks that need the proxy run in a task."""
+
+        try:
+            data = json.loads(payload.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            log.info("mqtt: %s: not an activity state: %r", topic, payload[:80])
+            return
+        if not isinstance(data, dict):
+            return
+        if "activity_id" not in data and isinstance(data.get("data"), dict):
+            data = data["data"]
+        try:
+            activity_id = int(data.get("activity_id"))
+        except (TypeError, ValueError):
+            log.info("mqtt: %s: not an activity state: %r", topic, payload[:80])
+            return
+        state = str(data.get("state") or "").strip().lower()
+        task = asyncio.get_running_loop().create_task(
+            self._apply_activity_state(hub_id, activity_id, state), name=f"mqtt-activity:{hub_id}")
+        self._ensure_tasks.add(task)
+        task.add_done_callback(self._ensure_done)
+
+    async def _apply_activity_state(self, hub_id: str, activity_id: int, state: str) -> None:
+        """The Home Assistant integration's guards, then the library's apply: nothing
+        while the hub session is down or the activities are not read yet (the
+        session's own refresh is the safer source then); 255 and ``on`` carry a state,
+        an individual ``off`` only when it names the running activity."""
+
+        try:
+            proxy = self._manager.proxy(hub_id)
+        except (HubNotFound, HubDisabled):
+            return
+        status = await proxy.status()
+        if not status.hub_connected or not status.catalog_ready:
+            log.debug("hub %s: mqtt activity state ignored (hub %s, catalog %s)", hub_id,
+                      "connected" if status.hub_connected else "not connected",
+                      "ready" if status.catalog_ready else "not read yet")
+            return
+        if activity_id == 0xFF:
+            new_id: Optional[int] = None
+        elif state == "on":
+            new_id = activity_id
+        elif state == "off":
+            running = status.running_activity.activity_id if status.running_activity is not None else None
+            if running != (activity_id & 0xFF):
+                return
+            new_id = None
+        else:
+            log.debug("hub %s: mqtt activity state unhandled: activity_id=%s state=%r", hub_id, activity_id, state)
+            return
+        if await proxy.apply_external_activity_state(new_id):
+            log.info("hub %s: activity %s applied from the mqtt activity topic (activity_id=%s state=%s)",
+                     hub_id, new_id if new_id is not None else "off", activity_id, state or "<none>")
 
     def listener_state(self) -> ListenerState:
         return self.listener.state()
@@ -1417,6 +1497,10 @@ class CallbackService:
     def _on_hub_event(self, hub_id: str, event: HubEvent) -> None:
         if event.kind in ("catalog_ready", "snapshot_changed"):
             self._retry_pending_creates(hub_id)
+        if event.kind == "catalog_ready":
+            # A hub registered with its MAC but without a model learns the model here
+            # (no re-key follows): the X2 activity topic may have just become known.
+            self._on_server_event(hub_id, "hub_added")
         if event.kind != "snapshot_changed":
             return
         if not any(row.device_id is not None and row.pending is None for row in self.records(hub_id)):
@@ -1490,7 +1574,9 @@ class CallbackService:
             log.exception("hub %s: stale check failed", hub_id)
 
     def _on_server_event(self, hub_id: str, kind: str) -> None:
-        if kind not in ("hub_removed", "hub_disabled", "hub_enabled", "hub_added"):
+        # hub_rekeyed: the ready sync learned the MAC (and model), so an X2's activity
+        # topic exists from now on; the press topic needs a deploy, which realigns itself.
+        if kind not in ("hub_removed", "hub_disabled", "hub_enabled", "hub_added", "hub_rekeyed"):
             return
         if kind == "hub_removed":
             self.ring.forget(hub_id)
