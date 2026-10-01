@@ -28,6 +28,7 @@ from .lib.wifi_inplace_plan import (
     baseline_snapshot_from_bundle,
     build_wifi_inplace_plan,
     classify_live_slots,
+    clone_wifi_record_for_add,
     derive_device_level_bindings,
     desired_snapshot_from_config,
     wifi_events_retarget_steps,
@@ -426,6 +427,69 @@ class WifiDeployMixin:
                 await self.async_request_favorites_order(act_id)
         return touched_acts
 
+    async def _async_fill_wifi_command_adds(
+        self, plan: Any, *, dev_id: int, live_ids: set[int], slot_count: int
+    ) -> Any:
+        """Give each ``command_add`` step the record it writes.
+
+        The full-table deploy only adds a record the hub no longer has (one
+        a device-editor sync or a Wifi Event delete removed). The generic
+        add step needs the record bytes; a managed Wifi record is a
+        sibling's record with its own callback, so one live sibling is
+        fetched and cloned per added id. A step left without bytes fails
+        as before rather than writing a record with a foreign callback.
+        """
+
+        def _launch_tail(command_id: int) -> str:
+            if command_id <= slot_count:
+                index, press = command_id - 1, "short"
+            else:
+                index, press = command_id - 1 - slot_count, "long"
+            return self._proxy._build_launch_action_path(
+                device_id=dev_id, command_index=index, press_type=press
+            )
+
+        added = {
+            int(step.payload.get("command_id") or 0)
+            for step in plan.steps
+            if step.kind == "command_add"
+        }
+        template_id = min((cid for cid in live_ids if cid not in added), default=None)
+        if template_id is None:
+            return plan
+        fetched = await self.async_fetch_blob(dev_id, template_id)
+        rows = [
+            row for row in (fetched or {}).get("commands") or []
+            if int(row.get("command_id") or 0) == template_id
+        ]
+        template = rows[0].get("decoded") if rows else None
+        if not isinstance(template, dict):
+            _LOGGER.warning(
+                "[%s] no decodable template record %d on device %d to re-add records from",
+                self.entry_id, template_id, dev_id,
+            )
+            return plan
+        steps = []
+        for step in plan.steps:
+            if step.kind == "command_add":
+                command_id = int(step.payload.get("command_id") or 0)
+                restore_data = clone_wifi_record_for_add(
+                    template,
+                    template_tail=_launch_tail(template_id),
+                    new_tail=_launch_tail(command_id),
+                    command_id=command_id,
+                )
+                if restore_data is not None:
+                    step = replace(step, payload={**step.payload, "restore_data": restore_data})
+                else:
+                    _LOGGER.warning(
+                        "[%s] template record %d on device %d has an unexpected shape; "
+                        "record %d cannot be re-added in place",
+                        self.entry_id, template_id, dev_id, command_id,
+                    )
+            steps.append(step)
+        return replace(plan, steps=tuple(steps))
+
     async def _async_try_inplace_command_sync(
         self,
         *,
@@ -648,6 +712,10 @@ class WifiDeployMixin:
                     self.entry_id, len(retarget),
                 )
                 plan = replace(plan, steps=(*retarget, *plan.steps))
+        if any(step.kind == "command_add" for step in plan.steps):
+            plan = await self._async_fill_wifi_command_adds(
+                plan, dev_id=dev_id, live_ids=set(baseline.slots), slot_count=slot_count
+            )
 
         total_steps = len(plan.steps) + 2
         # Scanned before the write: a failed record delete may already have

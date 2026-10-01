@@ -5,7 +5,9 @@
 // resolution and the apply. Macro options, the macro target reset shared
 // with the Add shortcut dialog, and the Wifi Event target stay outside.
 // Either leg may be a device command, a macro or a Wifi Event, in any
-// combination (docs/internal/wifi-events-single-record-plan.md).
+// combination (docs/internal/wifi-events-single-record-plan.md), but one
+// assignment creates at most one new item: while one leg creates a new
+// macro or Wifi Event, the other leg only offers existing ones.
 
 import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import { TOOLS_CARD_STRINGS } from "../../strings";
@@ -472,6 +474,33 @@ export class BindingDialogController implements ReactiveController {
     this.lpCommandId = Number.isFinite(value) ? value : null;
   };
 
+  /** The short-press leg creates a new macro or Wifi Event. */
+  primaryCreatesNew(): boolean {
+    if (this.scope !== "activity") return false;
+    if (this.targetKind === "action") return this.macroMode === "new";
+    if (this.targetKind === "wifi_event") return this.host._events.primary.mode === "new";
+    return false;
+  }
+
+  /** The long-press leg creates a new macro or Wifi Event. */
+  longPressCreatesNew(): boolean {
+    if (this.scope !== "activity" || !this.longPressEnabled) return false;
+    if (this.lpTargetKind === "action") return this.lpMacroMode === "new";
+    if (this.lpTargetKind === "wifi_event") return this.host._events.longPress.mode === "new";
+    return false;
+  }
+
+  /** The target kinds one leg may offer: a kind whose only choice would be
+   *  "Create new" is left out while the other leg already creates one. */
+  legKinds(otherCreatesNew: boolean): ActivityBindingTargetKind[] {
+    const kinds: ActivityBindingTargetKind[] = ["command"];
+    if (!otherCreatesNew || this.host._macroOptions().length > 0) kinds.push("action");
+    if (this.host._events.available() && (!otherCreatesNew || this.host._events.deployed().length > 0)) {
+      kinds.push("wifi_event");
+    }
+    return kinds;
+  }
+
   resolveMacroTarget(
     bundle: BackupBundlePayload,
     activityId: number,
@@ -668,6 +697,8 @@ export class BindingDialogController implements ReactiveController {
     name: string;
     onMacroChange: (event: Event) => void;
     onNameInput: (event: Event) => void;
+    /** False when the other leg already creates something new. */
+    allowNew: boolean;
   }) {
     const S = TOOLS_CARD_STRINGS.backup;
     const macros = this.host._macroOptions();
@@ -684,9 +715,12 @@ export class BindingDialogController implements ReactiveController {
                 ${macros.map((macro) => html`
                   <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
                 `)}
-                <option value="__new__" ?selected=${params.mode === "new"}>${S.macroTargetCreateNew}</option>
+                ${params.allowNew
+                  ? html`<option value="__new__" ?selected=${params.mode === "new"}>${S.macroTargetCreateNew}</option>`
+                  : nothing}
               </select>
             </div>
+            ${params.allowNew ? nothing : html`<div class="decoded-field-helper">${S.bindingOneNewNote}</div>`}
           `
         : html`<div class="quick-access-empty">${S.macroTargetNoExisting}</div>`}
       ${params.mode === "new"
@@ -727,6 +761,8 @@ export class BindingDialogController implements ReactiveController {
     const wifiSelReady = (sel: WifiEventTargetSel) => !this.host._events.busy && (
       sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0
     );
+    const primaryNew = this.primaryCreatesNew();
+    const longPressNew = this.longPressCreatesNew();
     const canSave = this.buttonId != null && (
       scope === "device"
         ? this.commandId != null
@@ -738,10 +774,12 @@ export class BindingDialogController implements ReactiveController {
     ) && !(
       isActivity && this.longPressEnabled && lpTargetKind === "wifi_event"
       && !wifiSelReady(this.host._events.longPress)
-    );
+    ) && !(primaryNew && longPressNew);
     const title = isEdit
       ? S.bindingDialogEditTitle(buttonName(Number(this.buttonId)))
       : S.bindingDialogAddTitle;
+    const kindLabel = (kind: ActivityBindingTargetKind) =>
+      kind === "action" ? S.shortcutKindAction : kind === "wifi_event" ? S.shortcutKindWifiEvent : S.shortcutKindCommand;
     const commandFields = html`
       ${scope === "activity"
         ? this.host._renderBindingSelect({
@@ -769,6 +807,7 @@ export class BindingDialogController implements ReactiveController {
       name: this.actionName,
       onMacroChange: this.handleMacroTargetChange,
       onNameInput: this.handleActionNameInput,
+      allowNew: !longPressNew,
     });
     const lpCommandFields = html`
       ${scope === "activity"
@@ -797,6 +836,7 @@ export class BindingDialogController implements ReactiveController {
       name: this.lpActionName,
       onMacroChange: this.handleLpMacroTargetChange,
       onNameInput: this.handleLpActionNameInput,
+      allowNew: !primaryNew,
     });
     return html`
       <div class="modal-backdrop" @click=${this.close}>
@@ -830,11 +870,9 @@ export class BindingDialogController implements ReactiveController {
                       class="decoded-field-input"
                       @change=${this.handleTargetKindChange}
                     >
-                      <option value="command" ?selected=${targetKind === "command"}>${S.shortcutKindCommand}</option>
-                      <option value="action" ?selected=${targetKind === "action"}>${S.shortcutKindAction}</option>
-                      ${this.host._events.available()
-                        ? html`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
-                        : nothing}
+                      ${this.legKinds(longPressNew).map((kind) => html`
+                        <option value=${kind} ?selected=${targetKind === kind}>${kindLabel(kind)}</option>
+                      `)}
                     </select>
                   </div>
                 `
@@ -844,6 +882,7 @@ export class BindingDialogController implements ReactiveController {
               : targetKind === "wifi_event"
                 ? this.host._events.renderTargetFields({
                     idPrefix: "sb-binding",
+                    allowNew: !longPressNew,
                     sel: this.host._events.primary,
                     onSelChange: (sel) => {
                       this.host._events.primary = sel;
@@ -869,11 +908,9 @@ export class BindingDialogController implements ReactiveController {
                             class="decoded-field-input"
                             @change=${this.handleLpTargetKindChange}
                           >
-                            <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
-                            <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
-                            ${this.host._events.available()
-                              ? html`<option value="wifi_event" ?selected=${lpTargetKind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
-                              : nothing}
+                            ${this.legKinds(primaryNew).map((kind) => html`
+                              <option value=${kind} ?selected=${lpTargetKind === kind}>${kindLabel(kind)}</option>
+                            `)}
                           </select>
                         </div>
                       `
@@ -883,6 +920,7 @@ export class BindingDialogController implements ReactiveController {
                     : lpTargetKind === "wifi_event"
                       ? this.host._events.renderTargetFields({
                           idPrefix: "sb-binding-lp",
+                          allowNew: !primaryNew,
                           sel: this.host._events.longPress,
                           onSelChange: (sel) => {
                             this.host._events.longPress = sel;

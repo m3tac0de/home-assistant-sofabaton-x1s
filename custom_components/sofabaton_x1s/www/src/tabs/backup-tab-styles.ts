@@ -772,7 +772,7 @@ export const backupTabStyles = css`
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 3px 14px 6px;
+      padding: 4px 14px;
       background: color-mix(in srgb, var(--secondary-background-color, var(--divider-color)) 45%, transparent);
       cursor: text;
     }

@@ -584,6 +584,7 @@ var TOOLS_CARD_STRINGS_ES = {
     macroTargetNoExisting: "Todav\xEDa no hay macros. Crea una abajo.",
     addShortcutActionName: "Nombre",
     addShortcutActionHelper: "A continuaci\xF3n elegir\xE1s los pasos.",
+    bindingOneNewNote: "Solo se puede crear un elemento nuevo por asignaci\xF3n de bot\xF3n. La otra pulsaci\xF3n ya crea uno, as\xED que elige aqu\xED uno existente.",
     addShortcutCommandHelper: "El acceso directo aparece con el nombre del comando.",
     unsaved: "Sin guardar",
     unsavedTooltip: "Tienes cambios sin guardar. Descarga la copia de seguridad para conservarlos.",

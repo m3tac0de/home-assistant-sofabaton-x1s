@@ -2367,6 +2367,7 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
+    bindingOneNewNote: "Only one new item per button assignment. The other press already creates one, so choose an existing one here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
@@ -7263,7 +7264,7 @@ var backupTabStyles = i`
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 3px 14px 6px;
+      padding: 4px 14px;
       background: color-mix(in srgb, var(--secondary-background-color, var(--divider-color)) 45%, transparent);
       cursor: text;
     }
@@ -12392,6 +12393,7 @@ var WifiEventTargets = class {
     const S5 = TOOLS_CARD_STRINGS.backup;
     const events = this.deployed(params.hidden);
     const sel = params.sel;
+    const allowNew = params.allowNew !== false;
     return b2`
       ${events.length ? b2`
             <div class="decoded-field">
@@ -12409,9 +12411,10 @@ var WifiEventTargets = class {
                 ${events.map((item) => b2`
                   <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
                 `)}
-                <option value="__new__" ?selected=${sel.mode === "new"}>${S5.wifiEventTargetCreateNew}</option>
+                ${allowNew ? b2`<option value="__new__" ?selected=${sel.mode === "new"}>${S5.wifiEventTargetCreateNew}</option>` : A}
               </select>
             </div>
+            ${allowNew ? A : b2`<div class="decoded-field-helper">${S5.bindingOneNewNote}</div>`}
           ` : params.hidden ? A : b2`<div class="quick-access-empty">${S5.wifiEventNoneYet}</div>`}
       ${sel.mode === "new" ? b2`
             <div class="decoded-field">
@@ -12904,6 +12907,30 @@ var BindingDialogController = class {
     this.host._events.load();
     this.open = true;
   }
+  /** The short-press leg creates a new macro or Wifi Event. */
+  primaryCreatesNew() {
+    if (this.scope !== "activity") return false;
+    if (this.targetKind === "action") return this.macroMode === "new";
+    if (this.targetKind === "wifi_event") return this.host._events.primary.mode === "new";
+    return false;
+  }
+  /** The long-press leg creates a new macro or Wifi Event. */
+  longPressCreatesNew() {
+    if (this.scope !== "activity" || !this.longPressEnabled) return false;
+    if (this.lpTargetKind === "action") return this.lpMacroMode === "new";
+    if (this.lpTargetKind === "wifi_event") return this.host._events.longPress.mode === "new";
+    return false;
+  }
+  /** The target kinds one leg may offer: a kind whose only choice would be
+   *  "Create new" is left out while the other leg already creates one. */
+  legKinds(otherCreatesNew) {
+    const kinds = ["command"];
+    if (!otherCreatesNew || this.host._macroOptions().length > 0) kinds.push("action");
+    if (this.host._events.available() && (!otherCreatesNew || this.host._events.deployed().length > 0)) {
+      kinds.push("wifi_event");
+    }
+    return kinds;
+  }
   resolveMacroTarget(bundle, activityId, mode, macroId, rawName) {
     if (mode === "existing") {
       const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(macroId));
@@ -13032,9 +13059,10 @@ var BindingDialogController = class {
                 ${macros.map((macro) => b2`
                   <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
                 `)}
-                <option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>
+                ${params.allowNew ? b2`<option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>` : A}
               </select>
             </div>
+            ${params.allowNew ? A : b2`<div class="decoded-field-helper">${S5.bindingOneNewNote}</div>`}
           ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
       ${params.mode === "new" ? b2`
             <div class="decoded-field">
@@ -13067,8 +13095,11 @@ var BindingDialogController = class {
     const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this.lpDeviceId : entityId;
     const lpCommandOptions = this.commandOptions(lpDeviceId);
     const wifiSelReady = (sel) => !this.host._events.busy && (sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0);
-    const canSave = this.buttonId != null && (scope === "device" ? this.commandId != null : targetKind === "command" ? this.deviceId != null && this.commandId != null : targetKind === "wifi_event" ? wifiSelReady(this.host._events.primary) : true) && !(isActivity && this.longPressEnabled && lpTargetKind === "wifi_event" && !wifiSelReady(this.host._events.longPress));
+    const primaryNew = this.primaryCreatesNew();
+    const longPressNew = this.longPressCreatesNew();
+    const canSave = this.buttonId != null && (scope === "device" ? this.commandId != null : targetKind === "command" ? this.deviceId != null && this.commandId != null : targetKind === "wifi_event" ? wifiSelReady(this.host._events.primary) : true) && !(isActivity && this.longPressEnabled && lpTargetKind === "wifi_event" && !wifiSelReady(this.host._events.longPress)) && !(primaryNew && longPressNew);
     const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this.buttonId))) : S5.bindingDialogAddTitle;
+    const kindLabel = (kind) => kind === "action" ? S5.shortcutKindAction : kind === "wifi_event" ? S5.shortcutKindWifiEvent : S5.shortcutKindCommand;
     const commandFields = b2`
       ${scope === "activity" ? this.host._renderBindingSelect({
       id: "sb-binding-device",
@@ -13093,7 +13124,8 @@ var BindingDialogController = class {
       macroId: this.macroId,
       name: this.actionName,
       onMacroChange: this.handleMacroTargetChange,
-      onNameInput: this.handleActionNameInput
+      onNameInput: this.handleActionNameInput,
+      allowNew: !longPressNew
     });
     const lpCommandFields = b2`
       ${scope === "activity" ? this.host._renderBindingSelect({
@@ -13119,7 +13151,8 @@ var BindingDialogController = class {
       macroId: this.lpMacroId,
       name: this.lpActionName,
       onMacroChange: this.handleLpMacroTargetChange,
-      onNameInput: this.handleLpActionNameInput
+      onNameInput: this.handleLpActionNameInput,
+      allowNew: !primaryNew
     });
     return b2`
       <div class="modal-backdrop" @click=${this.close}>
@@ -13150,14 +13183,15 @@ var BindingDialogController = class {
                       class="decoded-field-input"
                       @change=${this.handleTargetKindChange}
                     >
-                      <option value="command" ?selected=${targetKind === "command"}>${S5.shortcutKindCommand}</option>
-                      <option value="action" ?selected=${targetKind === "action"}>${S5.shortcutKindAction}</option>
-                      ${this.host._events.available() ? b2`<option value="wifi_event" ?selected=${targetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
+                      ${this.legKinds(longPressNew).map((kind) => b2`
+                        <option value=${kind} ?selected=${targetKind === kind}>${kindLabel(kind)}</option>
+                      `)}
                     </select>
                   </div>
                 ` : A}
             ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this.host._events.renderTargetFields({
       idPrefix: "sb-binding",
+      allowNew: !longPressNew,
       sel: this.host._events.primary,
       onSelChange: (sel) => {
         this.host._events.primary = sel;
@@ -13180,14 +13214,15 @@ var BindingDialogController = class {
                             class="decoded-field-input"
                             @change=${this.handleLpTargetKindChange}
                           >
-                            <option value="command" ?selected=${lpTargetKind === "command"}>${S5.shortcutKindCommand}</option>
-                            <option value="action" ?selected=${lpTargetKind === "action"}>${S5.shortcutKindAction}</option>
-                            ${this.host._events.available() ? b2`<option value="wifi_event" ?selected=${lpTargetKind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
+                            ${this.legKinds(primaryNew).map((kind) => b2`
+                              <option value=${kind} ?selected=${lpTargetKind === kind}>${kindLabel(kind)}</option>
+                            `)}
                           </select>
                         </div>
                       ` : A}
                   ${lpTargetKind === "command" ? lpCommandFields : lpTargetKind === "wifi_event" ? this.host._events.renderTargetFields({
       idPrefix: "sb-binding-lp",
+      allowNew: !primaryNew,
       sel: this.host._events.longPress,
       onSelChange: (sel) => {
         this.host._events.longPress = sel;

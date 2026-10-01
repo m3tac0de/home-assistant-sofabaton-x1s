@@ -585,6 +585,7 @@ var TOOLS_CARD_STRINGS_DE = {
     macroTargetNoExisting: "Noch keine Makros. Erstelle unten eines.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "Als N\xE4chstes w\xE4hlst du die Schritte aus.",
+    bindingOneNewNote: "Pro Tastenbelegung kann nur ein neues Element erstellt werden. Der andere Tastendruck erstellt bereits eines, w\xE4hle hier ein vorhandenes.",
     addShortcutCommandHelper: "Die Verkn\xFCpfung wird unter dem Namen des Befehls angezeigt.",
     unsaved: "Nicht gespeichert",
     unsavedTooltip: "Du hast nicht gespeicherte \xC4nderungen. Lade das Backup herunter, um sie zu speichern.",

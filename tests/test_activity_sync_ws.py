@@ -634,6 +634,84 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     assert ((registry.get(operation_id) or {}).get("state") or {}).get("status") == "success"
 
 
+def test_wifi_events_device_sync_stamps_the_brand_the_store_will_hold(monkeypatch):
+    """Deleting an event in the device editor keeps the record in step: the
+    reconcile pass mirrors the hub brand hash into the store on every read,
+    so the sync writes the hash the store holds after its own reconcile
+    (S5 bench finding, wifi-events-single-record-plan)."""
+    from custom_components.sofabaton_x1s.command_config import (
+        WIFI_EVENTS_DEVICE_KEY,
+        CommandConfigStore,
+    )
+
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda *_a, **_k: 8060)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    for name in ("One", "Two"):
+        _run(store.async_allocate_wifi_event("entry-1", name))
+    payload = _run(store.async_get_hub_config("entry-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    _run(store.async_save_deployed_wifi_commands(
+        "entry-1", WIFI_EVENTS_DEVICE_KEY, payload["commands"],
+        deployed_device_id=1, commands_hash=payload["commands_hash"],
+    ))
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
+
+    class _DisabledStore:
+        enabled = False
+
+    async def fake_cache_store(_hass):
+        return _DisabledStore()
+
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_cache_store)
+
+    class _SyncingHub(_Hub):
+        sync_kwargs = None
+
+        async def async_sync_device(self, **kwargs):
+            self.sync_kwargs = kwargs
+            return {"status": "success", "completed_steps": 2, "total_steps": 2, "counters": {}}
+
+        async def async_request_catalog(self, kind):
+            pass
+
+        async def async_refresh_entity_structure(self, *, kind, ent_id):
+            pass
+
+        async def async_refresh_activities_referencing_device(self, device_id):
+            pass
+
+    def _events_bundle(command_ids):
+        bundle = _device_bundle_with_commands(command_ids)
+        bundle["devices"][0]["device"]["brand"] = f"m3-haevents-{payload['commands_hash']}"
+        return bundle
+
+    hub = _SyncingHub()
+    registry = operations_module._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="device_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+    result = _run(entity_sync_module._run_entity_sync_operation(
+        hass, operation_id, hub=hub,
+        baseline=_events_bundle([1, 2, 3]),
+        edited=_events_bundle([1, 3]),
+        entity_kind="device", entity_id=1,
+    ))
+
+    assert result["status"] == "success"
+    after = _run(store.async_get_hub_config("entry-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    assert [e["name"] for e in store.list_wifi_events("entry-1")] == ["One"]
+    assert after["deployed_commands_hash"] == after["commands_hash"]
+    brand = hub.sync_kwargs["edited"]["devices"][0]["device"]["brand"]
+    assert brand == f"m3-haevents-{after['commands_hash']}"
+
+
 # ── Immediate entity delete (activity / device) ─────────────────────────
 
 

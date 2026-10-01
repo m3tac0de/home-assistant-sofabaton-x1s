@@ -72,6 +72,7 @@ __all__ = [
     "derive_device_level_bindings",
     "desired_snapshot_from_config",
     "baseline_snapshot_from_bundle",
+    "clone_wifi_record_for_add",
     "retarget_long_record_refs",
     "wifi_events_retarget_steps",
 ]
@@ -1018,3 +1019,47 @@ def wifi_events_retarget_steps(
         )
         steps.extend(step for step in plan if step.kind != "remote_sync")
     return tuple(steps)
+
+
+# ── Re-adding a missing command record ──────────────────────────────────
+#
+# A full-table deploy only adds a record the hub no longer has: one a
+# device-editor sync or a Wifi Event delete removed. The generic
+# ``command_add`` step writes record bytes from ``restore_data``; a
+# managed Wifi record is a sibling's record with its own callback, so the
+# bytes are a sibling's decoded block with the callback path swapped.
+
+
+def clone_wifi_record_for_add(
+    template: Mapping[str, Any],
+    *,
+    template_tail: str,
+    new_tail: str,
+    command_id: int,
+) -> dict[str, Any] | None:
+    """A ``command_add`` ``restore_data`` cloned from a sibling record.
+
+    *template* is the sibling's decoded block (``decoded`` of a blob
+    fetch). Path-bearing classes (``wifi_ip``, ``wifi_roku``) must end in
+    *template_tail*, the sibling's own launch path, which is replaced by
+    *new_tail*. A ``wifi_mqtt`` body is inert (the hub publishes its own
+    ids), so only its nominal command id follows. Returns ``None`` when the
+    template does not have the expected shape: the caller then writes
+    nothing rather than a record with someone else's callback.
+    """
+
+    decoded = deepcopy(dict(template))
+    fields = decoded.get("fields")
+    if not isinstance(fields, dict):
+        return None
+    if "path" in fields:
+        path = str(fields.get("path") or "")
+        if not template_tail or not path.endswith(template_tail):
+            return None
+        fields["path"] = path[: len(path) - len(template_tail)] + new_tail
+    elif "command_id" in fields:
+        fields["command_id"] = int(command_id) & 0xFF
+    else:
+        return None
+    decoded["edited"] = True
+    return {"decoded": decoded}

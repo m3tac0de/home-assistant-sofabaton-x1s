@@ -1691,3 +1691,45 @@ test("an incomplete Wifi Event long press blocks Save", () => {
   const text = templateText(element._binding.render());
   assert.match(text, /dialog-btn-primary[^>]*disabled/);
 });
+
+// ── One new item per button assignment ───────────────────────────────
+
+test("a new macro on the short press leaves the long press with existing targets only", () => {
+  const element = bindingEditorWithEvents();
+  element._binding.targetKind = "action";
+  element._binding.macroMode = "new";
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "action";
+  element._binding.lpMacroMode = "existing";
+  element._binding.lpMacroId = 3;
+  const text = templateText(element._binding.render());
+  // The long-press macro picker offers no "Create new"; the short press still does.
+  assert.ok(text.includes("sb-binding-lp-macro-target"));
+  assert.equal(text.split(TOOLS_CARD_STRINGS.backup.macroTargetCreateNew).length - 1, 1);
+  assert.ok(text.includes(TOOLS_CARD_STRINGS.backup.bindingOneNewNote));
+  // A new Wifi Event on the long press is not offered either.
+  element._binding.lpTargetKind = "wifi_event";
+  element._events.longPress = { mode: "existing", slot: 2, name: "" };
+  const events = templateText(element._binding.render());
+  assert.ok(!events.includes(TOOLS_CARD_STRINGS.backup.wifiEventTargetCreateNew));
+});
+
+test("a kind whose only choice would be a second new item is not offered", () => {
+  const element = bindingEditorWithEvents();
+  element._events.list = [];
+  element._binding.targetKind = "wifi_event";
+  element._events.primary = { mode: "new", slot: null, name: "Doorbell" };
+  assert.deepEqual(element._binding.legKinds(element._binding.primaryCreatesNew()), ["command", "action"]);
+  element._events.primary = { mode: "existing", slot: 2, name: "" };
+  assert.deepEqual(element._binding.legKinds(element._binding.primaryCreatesNew()), ["command", "action", "wifi_event"]);
+});
+
+test("two new items on one assignment never save", () => {
+  const element = bindingEditorWithEvents();
+  element._binding.targetKind = "action";
+  element._binding.macroMode = "new";
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "wifi_event";
+  element._events.longPress = { mode: "new", slot: null, name: "Doorbell" };
+  assert.match(templateText(element._binding.render()), /dialog-btn-primary[^>]*disabled/);
+});

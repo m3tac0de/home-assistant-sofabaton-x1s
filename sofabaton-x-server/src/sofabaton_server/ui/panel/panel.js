@@ -15474,6 +15474,7 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
+    bindingOneNewNote: "Only one new item per button assignment. The other press already creates one, so choose an existing one here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
@@ -20187,7 +20188,7 @@ var EDITOR_CSS = i`
     .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
     .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
     /* The band is a <label>; undo the panel's generic form-label rule. */
-    .step-wait { display: flex; align-items: center; gap: 6px; margin: 0; padding: 3px 14px 6px; text-transform: none; letter-spacing: 0; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
+    .step-wait { display: flex; align-items: center; gap: 6px; margin: 0; padding: 4px 14px; text-transform: none; letter-spacing: 0; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
     .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
     .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
     .step-wait-field:focus-within { border-color: var(--sbp-accent); }
@@ -21467,7 +21468,20 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _shortcutTargetKinds() {
     return this._shortcutWifiSlots().length > 0 ? ["command", "action", "wifi_event"] : ["command", "action"];
   }
-  _macroTargetFields(idPrefix, target, onChange) {
+  /** A button assignment creates at most one new item: while one leg creates
+   *  a new macro, the other leg offers existing macros only. */
+  _bindingCreatesNew(dialog) {
+    return {
+      primary: dialog.kind === "action" && dialog.macro.mode === "new",
+      longPress: dialog.longPress && dialog.lpKind === "action" && dialog.lpMacro.mode === "new"
+    };
+  }
+  /** A leg's kinds: Macro is left out when its only choice would be a new
+   *  macro while the other leg already creates one. */
+  _bindingLegKinds(kinds, otherCreatesNew) {
+    return otherCreatesNew && this._macroOptions().length === 0 ? kinds.filter((kind) => kind !== "action") : kinds;
+  }
+  _macroTargetFields(idPrefix, target, onChange, allowNew = true) {
     const macros = this._macroOptions();
     return b2`
       ${macros.length ? b2`<div class="decoded-field">
@@ -21477,9 +21491,10 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       onChange(value === "__new__" ? { ...target, mode: "new", macroId: null } : { ...target, mode: "existing", macroId: Number(value) });
     }}>
               ${macros.map((macro) => b2`<option value=${macro.value} ?selected=${target.mode === "existing" && macro.value === target.macroId}>${macro.label}</option>`)}
-              <option value="__new__" ?selected=${target.mode === "new"}>${B2.macroTargetCreateNew}</option>
+              ${allowNew ? b2`<option value="__new__" ?selected=${target.mode === "new"}>${B2.macroTargetCreateNew}</option>` : A}
             </select>
-          </div>` : b2`<div class="quick-access-empty">${B2.macroTargetNoExisting}</div>`}
+          </div>
+          ${allowNew ? A : b2`<div class="decoded-field-helper">${B2.bindingOneNewNote}</div>`}` : b2`<div class="quick-access-empty">${B2.macroTargetNoExisting}</div>`}
       ${target.mode === "new" ? this._macroNameField(idPrefix, target.name, (name) => onChange({ ...target, name })) : A}
     `;
   }
@@ -21899,20 +21914,21 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const unbound = unboundButtonsForActivity(this._working, activityId);
     const devices = this._deviceOptions().map((device) => ({ value: device.id, label: device.label }));
     const primaryIsWifiEvent = dialog.kind === "wifi_event";
-    const canSave = dialog.buttonId != null && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true);
+    const createsNew = this._bindingCreatesNew(dialog);
+    const canSave = dialog.buttonId != null && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true) && !(createsNew.primary && createsNew.longPress);
     const title = isEdit ? B2.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : B2.bindingDialogAddTitle;
     return this._dialog("binding-dialog", title, this._closeBinding, b2`
       ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${B2.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : this._select("sb-binding-button", B2.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), B2.bindingNoButtons, (value) => set({ buttonId: value }))}
-      ${this._kindSelect("sb-binding-kind", dialog.kind, this._targetKinds(), (kind) => this._setBindingKind(kind))}
+      ${this._kindSelect("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
       ${dialog.kind === "command" ? b2`${this._select("sb-binding-device", B2.bindingTargetDevice, dialog.deviceId, devices, B2.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
-            ${this._select("sb-binding-command", B2.bindingCommand, dialog.commandId, this._commandOptions(dialog.deviceId), B2.bindingNoCommands, (value) => set({ commandId: value }))}` : primaryIsWifiEvent ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }))}
+            ${this._select("sb-binding-command", B2.bindingCommand, dialog.commandId, this._commandOptions(dialog.deviceId), B2.bindingNoCommands, (value) => set({ commandId: value }))}` : primaryIsWifiEvent ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
       <div class="binding-toggle-row">
         <span class="decoded-field-label">${B2.bindingEnableLongPress}</span>
         <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => this._toggleBindingLongPress(event.currentTarget.checked)} />
       </div>
-      ${dialog.longPress ? primaryIsWifiEvent ? b2`<div class="decoded-field-helper">${P3.wifiEventLongPressNote}</div>` : b2`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, ["command", "action"], (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
+      ${dialog.longPress ? primaryIsWifiEvent ? b2`<div class="decoded-field-helper">${P3.wifiEventLongPressNote}</div>` : b2`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
               ${dialog.lpKind === "command" ? b2`${this._select("sb-binding-lp-device", B2.bindingLongPressDevice, dialog.lpDeviceId, devices, B2.bindingNoDevices, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }))}
-                    ${this._select("sb-binding-lp-command", B2.bindingLongPressCommand, dialog.lpCommandId, this._commandOptions(dialog.lpDeviceId), B2.bindingNoCommands, (value) => set({ lpCommandId: value }))}` : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }))}` : A}`, b2`
+                    ${this._select("sb-binding-lp-command", B2.bindingLongPressCommand, dialog.lpCommandId, this._commandOptions(dialog.lpDeviceId), B2.bindingNoCommands, (value) => set({ lpCommandId: value }))}` : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }), !createsNew.primary)}` : A}`, b2`
       <button class="dialog-btn" type="button" @click=${this._closeBinding}>${B2.bindingCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B2.bindingSave : B2.bindingAdd}</button>`, dialog.error);
   }

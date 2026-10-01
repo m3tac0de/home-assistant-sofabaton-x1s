@@ -117,10 +117,14 @@ export class WifiEventTargets implements ReactiveController {
     sel: WifiEventTargetSel;
     onSelChange: (sel: WifiEventTargetSel) => void;
     hidden?: (event: WifiEvent) => boolean;
+    /** False when the dialog already creates something new elsewhere: a
+     *  button assignment creates at most one new item. */
+    allowNew?: boolean;
   }) {
     const S = TOOLS_CARD_STRINGS.backup;
     const events = this.deployed(params.hidden);
     const sel = params.sel;
+    const allowNew = params.allowNew !== false;
     return html`
       ${events.length
         ? html`
@@ -141,9 +145,12 @@ export class WifiEventTargets implements ReactiveController {
                 ${events.map((item) => html`
                   <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
                 `)}
-                <option value="__new__" ?selected=${sel.mode === "new"}>${S.wifiEventTargetCreateNew}</option>
+                ${allowNew
+                  ? html`<option value="__new__" ?selected=${sel.mode === "new"}>${S.wifiEventTargetCreateNew}</option>`
+                  : nothing}
               </select>
             </div>
+            ${allowNew ? nothing : html`<div class="decoded-field-helper">${S.bindingOneNewNote}</div>`}
           `
         : params.hidden
           // A dialog that hides events (the Add shortcut dialog) has nothing

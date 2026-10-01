@@ -254,6 +254,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     wifiEventCreateFailed: "Das Wifi-Event konnte nicht erstellt werden — es bleibt vorgemerkt und wird beim nächsten Erstellen erneut versucht.",
     wifiEventNameRequired: "Gib einen Namen für das neue Wifi-Event ein.",
     macroTargetCreateNew: "Neues Makro erstellen", macroTargetNoExisting: "Noch keine Makros. Erstelle unten eines.", addShortcutActionName: "Name", addShortcutActionHelper: "Als Nächstes wählst du die Schritte aus.",
+    bindingOneNewNote: "Pro Tastenbelegung kann nur ein neues Element erstellt werden. Der andere Tastendruck erstellt bereits eines, wähle hier ein vorhandenes.",
     addShortcutCommandHelper: "Die Verknüpfung wird unter dem Namen des Befehls angezeigt.", unsaved: "Nicht gespeichert", unsavedTooltip: "Du hast nicht gespeicherte Änderungen. Lade das Backup herunter, um sie zu speichern.",
     renameKind: (kind: "activity" | "device") => `${art(kind)} umbenennen`, managedWifiTitle: "Von Wifi Commands verwaltet", managedWifiIntro: "Dieses Gerät wurde über den Tab Wifi Commands bereitgestellt.",
     managedWifiBody: "Seine Befehle, Ein/Aus-Einstellungen, Eingänge und Tastenbelegungen werden dort konfiguriert — Änderungen hier würden bei der nächsten Synchronisierung überschrieben.",

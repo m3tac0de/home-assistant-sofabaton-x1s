@@ -242,6 +242,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     wifiEventCreateFailed: "No se pudo crear el evento Wifi — queda pendiente y se reintentará en la próxima creación.",
     wifiEventNameRequired: "Introduce un nombre para el nuevo evento Wifi.",
     macroTargetCreateNew: "Crear macro nueva", macroTargetNoExisting: "Todavía no hay macros. Crea una abajo.", addShortcutActionName: "Nombre", addShortcutActionHelper: "A continuación elegirás los pasos.",
+    bindingOneNewNote: "Solo se puede crear un elemento nuevo por asignación de botón. La otra pulsación ya crea uno, así que elige aquí uno existente.",
     addShortcutCommandHelper: "El acceso directo aparece con el nombre del comando.", unsaved: "Sin guardar", unsavedTooltip: "Tienes cambios sin guardar. Descarga la copia de seguridad para conservarlos.",
     renameKind: (kind: "activity" | "device") => `Cambiar nombre ${kind === "activity" ? "de la actividad" : "del dispositivo"}`, managedWifiTitle: "Gestionado por Wifi Commands", managedWifiIntro: "Este dispositivo se desplegó desde la pestaña Wifi Commands.",
     managedWifiBody: "Sus comandos, encendido y apagado, entrada y asignaciones de botones se configuran allí — si los editas aquí, se sobrescribirán en la próxima sincronización.",

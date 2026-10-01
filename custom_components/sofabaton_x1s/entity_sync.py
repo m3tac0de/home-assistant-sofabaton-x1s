@@ -239,6 +239,46 @@ async def _async_prepare_managed_wifi_rename(
     }
 
 
+async def _async_stamp_wifi_events_brand(
+    hass: HomeAssistant,
+    hub: SofabatonHub,
+    *,
+    edited: dict[str, Any],
+    entity_id: int,
+    renames: dict[int, str],
+    removals: list[int],
+    pending_wifi_rename: dict[str, Any] | None,
+) -> None:
+    """Keep the Wifi Events record in step across a device-editor sync.
+
+    The store follows the hub after the sync (renamed and removed records),
+    but the reconcile pass mirrors the hub-side brand hash back into the
+    store on every device read. So the hash the store will hold afterwards
+    is stamped into the edited brand here, and the device_rename step writes
+    it to the hub with the other edits, as a managed device rename does.
+    Left alone when the record is out of step: that sync must not make it
+    read deployed.
+    """
+
+    edit_block = _find_bundle_device_block(edited, entity_id)
+    if edit_block is None:
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    new_hash = store.wifi_events_hash_after_device_sync(
+        hub.entry_id,
+        renames=renames,
+        removals=removals,
+        # The store takes the hub-side name only on a rename.
+        device_name=(pending_wifi_rename or {}).get("device_name"),
+        roku_listen_port=runtime._resolve_roku_listen_port(hass, hub.entry_id),
+    )
+    if new_hash is None:
+        return
+    edit_block["brand"] = f"{COMMAND_BRAND_PREFIX}-{WIFI_EVENTS_DEVICE_KEY}-{new_hash}"
+    if pending_wifi_rename is not None:
+        pending_wifi_rename["deployed_commands_hash"] = new_hash
+
+
 def _bundle_device_is_wifi_events(bundle: dict[str, Any], entity_id: int) -> bool:
     """True when the bundle's device block carries the Wifi Events brand."""
 
@@ -373,6 +413,16 @@ async def _run_entity_sync_operation(
             events_command_removals = _collect_command_removals(
                 baseline, edited, entity_id
             )
+            if events_command_renames or events_command_removals:
+                await _async_stamp_wifi_events_brand(
+                    hass,
+                    hub,
+                    edited=edited,
+                    entity_id=entity_id,
+                    renames=events_command_renames or {},
+                    removals=events_command_removals or [],
+                    pending_wifi_rename=pending_wifi_rename,
+                )
 
     # Scanned before the write, as the facade does: a failed record delete
     # may already have cascaded the references a later scan would miss.

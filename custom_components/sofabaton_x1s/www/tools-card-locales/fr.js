@@ -585,6 +585,7 @@ var TOOLS_CARD_STRINGS_FR = {
     macroTargetNoExisting: "Aucune macro pour le moment. Cr\xE9ez-en une ci-dessous.",
     addShortcutActionName: "Nom",
     addShortcutActionHelper: "Vous choisirez ensuite les \xE9tapes.",
+    bindingOneNewNote: "Un seul nouvel \xE9l\xE9ment par affectation de bouton. L\u2019autre appui en cr\xE9e d\xE9j\xE0 un, choisissez ici un \xE9l\xE9ment existant.",
     addShortcutCommandHelper: "Le raccourci appara\xEEt sous le nom de la commande.",
     unsaved: "Non enregistr\xE9",
     unsavedTooltip: "Vous avez des modifications non enregistr\xE9es. T\xE9l\xE9chargez la sauvegarde pour les conserver.",

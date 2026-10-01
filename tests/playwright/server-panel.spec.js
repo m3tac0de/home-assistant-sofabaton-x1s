@@ -2165,6 +2165,17 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#bindings-title")).toHaveText("Individual buttons");
     const bindings = editor.locator('[data-kind="binding"]');
     await expect(bindings).toHaveCount(2);
+    // One assignment creates at most one new item: a new macro on the short
+    // press leaves the long press with existing macros only.
+    await editor.locator("#add-binding").click();
+    await editor.locator("#sb-binding-kind").selectOption("action");
+    await editor.locator("#sb-binding-macro-target").selectOption("__new__");
+    await editor.locator("#sb-binding-long-press").check();
+    await editor.locator("#sb-binding-lp-kind").selectOption("action");
+    await expect(editor.locator('#sb-binding-lp-macro-target option[value="__new__"]')).toHaveCount(0);
+    await expect(editor.locator("#binding-dialog")).toContainText("Only one new item per button assignment");
+    await expect(editor.locator('#sb-binding-macro-target option[value="__new__"]')).toHaveCount(1);
+    await editor.locator("#binding-dialog .dialog-btn", { hasText: "Cancel" }).click();
     await editor.locator("#add-binding").click();
     await expect(editor.locator("#binding-dialog .dialog-title")).toHaveText("Add button assignment");
     await editor.locator("#sb-binding-kind").selectOption("action");

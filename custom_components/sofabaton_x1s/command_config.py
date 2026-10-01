@@ -1323,6 +1323,52 @@ class CommandConfigStore:
             "slot_count": int(payload.get("slot_count") or WIFI_EVENTS_SLOT_COUNT),
         }
 
+    def wifi_events_hash_after_device_sync(
+        self,
+        entry_id: str,
+        *,
+        renames: dict[int, str],
+        removals: list[int],
+        device_name: str | None = None,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> str | None:
+        """The record's commands hash once a device-editor sync's renames and
+        removals are reconciled (the same rules as the two reconciles), or
+        ``None`` when the record is not in step now: a sync from an
+        out-of-step record must never make it read deployed.
+
+        The device sync stamps this hash into the hub-side brand, because the
+        reconcile pass mirrors the brand hash back into the store on every
+        device read and would otherwise undo the store-follows-hub update.
+        """
+
+        record = self._wifi_events_record(entry_id)
+        if record is None:
+            return None
+        payload = self._payload_for_device(record, roku_listen_port=roku_listen_port)
+        deployed_hash = str(payload.get("deployed_commands_hash") or "").strip()
+        if not deployed_hash or payload.get("commands_hash") != deployed_hash:
+            return None
+        commands, slot_count = self._wifi_events_slots(record)
+        for raw_id, raw_name in renames.items():
+            name = str(raw_name or "").strip()
+            idx = int(raw_id) - 1
+            if name and 0 <= idx < slot_count and commands[idx] != _default_slot(idx):
+                commands[idx]["name"] = name
+        for raw_id in removals:
+            idx = int(raw_id) - 1
+            if 0 <= idx < slot_count:
+                commands[idx] = _default_slot(idx)
+        return compute_commands_hash(
+            commands,
+            device_name=str(device_name or record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
+            roku_listen_port=record_hash_listen_port(record, roku_listen_port),
+            power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
+            power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
+            slot_count=slot_count,
+            single_record=True,
+        )
+
     def _wifi_events_followed_hash(
         self,
         record: dict[str, Any],

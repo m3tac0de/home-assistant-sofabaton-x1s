@@ -576,6 +576,7 @@ var TOOLS_CARD_STRINGS_NL = {
     shortcutKindAction: "Macro",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Nieuwe macro maken",
+    bindingOneNewNote: "Per knoptoewijzing kan maar \xE9\xE9n nieuw item worden gemaakt. De andere druk maakt er al een, kies hier een bestaand item.",
     shortcutKindWifiEvent: "Wifi-event",
     wifiEventTargetLabel: "Wifi-event",
     wifiEventTargetCreateNew: "Nieuw Wifi-event maken\u2026",

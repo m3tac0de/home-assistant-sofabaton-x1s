@@ -281,6 +281,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     roleConfirmReplace: "替换", roleConfirmCancel: "取消", customizeButtonsToggle: "自定义单个按键", bindingsViewTitle: "单个按键",
     bindingsConfiguredCount: (count: number) => `已配置 ${count} 个`, bindingsNoneConfigured: "尚未自定义单个按键", addShortcutButton: "添加", addShortcutTitle: "添加到快捷项",
     addShortcutKindLabel: "类型", shortcutKindCommand: "设备命令", shortcutKindAction: "宏", macroTargetLabel: "宏", macroTargetCreateNew: "新建宏",
+    bindingOneNewNote: "每个按键分配只能新建一项。另一种按法已在新建，请在此选择现有项。",
     shortcutKindWifiEvent: "Wifi 事件",
     wifiEventTargetLabel: "Wifi 事件",
     wifiEventTargetCreateNew: "新建 Wifi 事件…",

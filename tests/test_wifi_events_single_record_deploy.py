@@ -341,3 +341,98 @@ def test_first_deploy_creates_one_record_per_event(monkeypatch) -> None:
     defs = hub._created[0]["commands"]
     assert len(defs) == N
     assert {row["press_type"] for row in defs} == {"short"}
+
+
+# ── re-adding a record the hub no longer has (S5 bench finding) ─────────
+
+from custom_components.sofabaton_x1s.lib.blob_decoders import (  # noqa: E402
+    encode_decoded_blob,
+    render_wifi_ip_blob_body,
+    render_wifi_roku_blob_body,
+    try_decode_blob,
+)
+from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (  # noqa: E402
+    clone_wifi_record_for_add,
+)
+
+HUB_ACTION = "e26a44861b45"
+
+
+def _tail(index: int, press: str = "short") -> str:
+    return f"launch/{HUB_ACTION}/{DEV_ID}/{index}/{press}"
+
+
+def _http_template() -> dict:
+    body = render_wifi_ip_blob_body(
+        host="192.168.2.10", port=8060, method="POST", path=f"/{_tail(0)}",
+        content_type="application/x-www-form-urlencoded",
+    )
+    decoded = try_decode_blob("wifi_ip", body + b"\x5a")
+    assert decoded is not None
+    return decoded
+
+
+def test_clone_rewrites_the_http_callback_and_round_trips() -> None:
+    clone = clone_wifi_record_for_add(
+        _http_template(), template_tail=_tail(0), new_tail=_tail(5), command_id=6
+    )
+    assert clone is not None
+    decoded = clone["decoded"]
+    assert decoded["edited"] is True
+    assert decoded["fields"]["path"] == f"/{_tail(5)}"
+    # What the add step does with it: re-encode, decode, same fields.
+    again = try_decode_blob("wifi_ip", encode_decoded_blob(decoded))
+    assert again is not None and again["fields"] == decoded["fields"]
+    assert again["trailer_hex"] == decoded["trailer_hex"]
+
+
+def test_clone_rewrites_the_roku_callback() -> None:
+    template = try_decode_blob("wifi_roku", render_wifi_roku_blob_body(path=_tail(0)))
+    assert template is not None
+    clone = clone_wifi_record_for_add(
+        template, template_tail=_tail(0), new_tail=_tail(2, "long"), command_id=13
+    )
+    assert clone is not None and clone["decoded"]["fields"]["path"] == _tail(2, "long")
+
+
+def test_clone_keeps_an_inert_mqtt_body() -> None:
+    template = try_decode_blob("wifi_mqtt", bytes([DEV_ID, 1]))
+    assert template is not None
+    clone = clone_wifi_record_for_add(
+        template, template_tail=_tail(0), new_tail=_tail(5), command_id=6
+    )
+    assert clone is not None and clone["decoded"]["fields"]["command_id"] == 6
+
+
+def test_clone_refuses_a_template_with_a_foreign_callback() -> None:
+    assert clone_wifi_record_for_add(
+        _http_template(), template_tail=_tail(3), new_tail=_tail(5), command_id=6
+    ) is None
+    assert clone_wifi_record_for_add(
+        {"class": "wifi_ip"}, template_tail=_tail(0), new_tail=_tail(5), command_id=6
+    ) is None
+
+
+def test_sync_re_adds_a_deleted_record_with_its_own_callback(monkeypatch) -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    entry = _device_entry(long_records=False)
+    entry["commands"] = [row for row in entry["commands"] if row["command_id"] != 6]
+    hub = _make_hub(monkeypatch, loop, device_entry=entry, activity_entries=[])
+    monkeypatch.setattr(hub._proxy, "_stable_hub_action_id", lambda: HUB_ACTION)
+    fetched: list[tuple[int, int]] = []
+
+    async def _fetch_blob(device_id, command_id=None, **_kwargs):
+        fetched.append((device_id, command_id))
+        return {"commands": [{"command_id": command_id, "decoded": _http_template()}]}
+
+    monkeypatch.setattr(hub, "async_fetch_blob", _fetch_blob)
+    loop.run_until_complete(_sync(hub))
+    loop.close()
+
+    assert fetched == [(DEV_ID, 1)]
+    adds = [step for step in hub._plans[0].steps if step.kind == "command_add"]
+    assert [step.payload["command_id"] for step in adds] == [6]
+    restore = adds[0].payload["restore_data"]
+    assert restore["decoded"]["fields"]["path"] == f"/{_tail(5)}"
+    assert restore["decoded"]["edited"] is True

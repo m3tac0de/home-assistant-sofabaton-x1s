@@ -283,6 +283,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     roleConfirmReplace: "Vervangen", roleConfirmCancel: "Annuleren", customizeButtonsToggle: "Afzonderlijke knoppen aanpassen", bindingsViewTitle: "Afzonderlijke knoppen",
     bindingsConfiguredCount: (count: number) => `${count} geconfigureerd`, bindingsNoneConfigured: "Geen afzonderlijke knoppen aangepast", addShortcutButton: "Toevoegen", addShortcutTitle: "Aan snelkoppelingen toevoegen",
     addShortcutKindLabel: "Type", shortcutKindCommand: "Apparaatcommando", shortcutKindAction: "Macro", macroTargetLabel: "Macro", macroTargetCreateNew: "Nieuwe macro maken",
+    bindingOneNewNote: "Per knoptoewijzing kan maar één nieuw item worden gemaakt. De andere druk maakt er al een, kies hier een bestaand item.",
     shortcutKindWifiEvent: "Wifi-event",
     wifiEventTargetLabel: "Wifi-event",
     wifiEventTargetCreateNew: "Nieuw Wifi-event maken…",

@@ -573,6 +573,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     shortcutKindAction: "\u5B8F",
     macroTargetLabel: "\u5B8F",
     macroTargetCreateNew: "\u65B0\u5EFA\u5B8F",
+    bindingOneNewNote: "\u6BCF\u4E2A\u6309\u952E\u5206\u914D\u53EA\u80FD\u65B0\u5EFA\u4E00\u9879\u3002\u53E6\u4E00\u79CD\u6309\u6CD5\u5DF2\u5728\u65B0\u5EFA\uFF0C\u8BF7\u5728\u6B64\u9009\u62E9\u73B0\u6709\u9879\u3002",
     shortcutKindWifiEvent: "Wifi \u4E8B\u4EF6",
     wifiEventTargetLabel: "Wifi \u4E8B\u4EF6",
     wifiEventTargetCreateNew: "\u65B0\u5EFA Wifi \u4E8B\u4EF6\u2026",

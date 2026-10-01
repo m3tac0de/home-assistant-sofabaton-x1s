@@ -696,6 +696,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
+    bindingOneNewNote: "Only one new item per button assignment. The other press already creates one, so choose an existing one here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event…",
