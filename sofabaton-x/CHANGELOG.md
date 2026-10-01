@@ -13,6 +13,141 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 No changes yet.
 
+## 0.2.3 (2026-10-01)
+
+Changes since `sofabaton-x-v0.2.2`. This release is mostly fixes from a
+whole-codebase review: hub writes that failed or were reported wrongly,
+backup and restore safety, and cache consistency.
+
+### Upgrade notes
+
+- Update dependency pins to `sofabaton-x>=0.2.3,<0.3`. No public method
+  is removed or renamed and no required argument changes. Package-root
+  exports are unchanged.
+- **New and changed names must fit the hub.** Document applies and
+  `sync_device()` / `sync_activity()` now refuse a new or changed device
+  or activity name the hub cannot store, with the same rule as bundle
+  validation: at most 30 characters (UTF-16 code units), and only plain
+  ASCII letters, digits and spaces on an X1. They used a 64-character cap
+  that the hub silently truncated. Names the hub already holds pass
+  unchanged.
+- **A bundle in which one activity references another activity is
+  refused** (an activity's macro, button binding or favorite pointing at
+  a different activity), before anything is written. The official app
+  never creates these. An activity may still reference its own id.
+- `BatchOutcome.remote_sync` gains the value `"skipped"`: writes asked
+  for a remote sync but the caller passed
+  `batch_writes(send_remote_sync=False)`. It was reported as
+  `"not_needed"`. Code that switches on the literal should handle the
+  new value.
+- `RestoreResult` gains `partial_device_ids`, `hub_name` and
+  `hub_name_restored`; `to_dict()` / `from_dict()` carry them.
+  `wrote_nothing` is now false when a failed restore left a half-made
+  device behind.
+- `sofabaton.protocol_const` (not a package-root export) drops
+  `FAMILY_STATUS_ACK` and `group_known_opcodes_by_family()`; its
+  `__all__` lists more of the opcode and idle-behaviour constants.
+
+### Added
+
+- `AsyncXProxy.hub_info(cached_only=True)` returns what the session
+  already knows without reaching the hub (`known=False` when nothing is
+  known yet). Status pages can use it without waiting on a busy hub.
+
+### Fixed
+
+Hub writes and sync:
+
+- Wifi command and device names outside Latin-1 (accents, Cyrillic, CJK,
+  emoji) were garbled on the X1S and X2. They now arrive intact.
+- A Wifi Device sync could delete the wrong favorites, because it
+  resolved deletes against favorite ids left over from an earlier run.
+- X1: a favorite added through a Wifi Device could show as an empty last
+  row on the physical remote. Syncs and restores now rewrite the
+  quick-access order with every favorite and macro, which also repairs
+  affected activities. Adding a favorite after a timed-out order read no
+  longer rewrites the order table with only that favorite.
+- X1S/X2: favorites for command ids 224 and up failed to write. Favorite
+  writes now stop at command id 199, the hub's limit.
+- X1S/X2: writing an activity whose row was not cached used the X1 layout.
+- Writes sent while the hub was still streaming a list could be dropped
+  by the hub and time out (on the X1S, 20 out of 20 under steady list
+  reads). A waiting write now goes ahead of queued reads, and identical
+  queued reads are merged.
+- A device sync's idle-behaviour step could make the hub drop the next
+  power-macro page (X1S). Idle-behaviour writes now wait for their
+  acknowledgement.
+- An interrupted macro read corrupted every later macro read for that
+  activity.
+- A failed or interrupted list read could leave a flag set that stopped
+  later refreshes from ever loading that data.
+- A failed keymap read was treated as "no favorites", and writes then
+  acted on that. Activity writes now take no action after a failed read.
+- The hub rejecting an activity rename, or the first page of an inputs
+  write, was reported as success.
+- Deleting a device was reported as failed although the hub had deleted
+  it.
+- A device's inputs read could return an incomplete page as if it were
+  complete.
+- X1S/X2: an odd byte in a device name could make every device refresh
+  incomplete.
+- Hub names with Chinese characters were written in one encoding and
+  read back in another. Hub names are now read as GB2312.
+- Idle behaviour (auto power-off) of a deleted device showed on a new
+  device that reused its id, and after an erase.
+- When the hub reused the id of a deleted activity or device, the old
+  entity's keymap, favorites order and macros could show on the new one
+  until a full refresh.
+- Renaming an activity could drop the cached commands of devices whose
+  power macros had been read.
+- While the official app was connected, its traffic could be misread and
+  rename cached devices to "Virtual HTTP" with a bogus button.
+- Long-press-only button bindings (nothing on the short press) were
+  dropped from backups and restores.
+- A Wifi command with fields the hub cannot store failed halfway through
+  a sync instead of being refused up front.
+- Hub names in discovery could be cut in the middle of a character.
+- The official app could not find the proxy on networks that are not a
+  /24. With several hubs, its connection could be routed to the wrong hub.
+- After the hub reconnected, the bridge could drop the new connection.
+  After a network error, the listener could stop accepting the hub's
+  connections.
+
+Backup, restore and erase:
+
+- A hub that refused the erase was treated as erased.
+- A device deleted outside the library broke whole-hub backups.
+- A failed restore that had written to the hub did not tell the remotes
+  to sync, so they kept the old configuration.
+- A restore that left a half-made device behind reported "hub unchanged".
+- Backups and restores read the whole device or activity list again for
+  every entity, which made them much slower.
+- Exporting the cache or taking a backup could fail with "dictionary
+  changed size during iteration".
+- A backup of an empty device selection became a backup of the whole hub.
+- Per-entity `restore_device()` / `restore_activity()` ran outside the
+  facade's hub hold and read-back.
+- A raising progress callback could break `restore()`.
+- A resumed apply always stopped with "entity diverged" for an entity
+  the apply itself had created, and could create a device or activity a
+  second time.
+
+Facade and API:
+
+- Concurrent facade writes could interleave, and a cancelled write kept
+  writing. Hub holds now queue, cancels drain, and creates are verified.
+- The official app could take the hub in the middle of a restore or apply.
+- `SyncResult` after a failure reported `total_steps=0` and dropped the
+  counts of what had landed.
+- An async `on_state` callback could lose the final apply record.
+- Validation grandfathering let an edit add new dangling rows.
+- The default long label overflowed for 26 to 30 character slot labels.
+- `find_remote()` overwrote the engine's hub version.
+- The CLI printed a success line after a refused hub rename.
+- Every log record claimed to come from `hub_logging.py`; records now
+  name their own module. Frame-handler errors were logged only at DEBUG,
+  surfacing as unexplained timeouts; they are now logged once at WARNING.
+
 ## 0.2.2 (2026-09-25)
 
 Changes since `sofabaton-x-v0.2.1`.

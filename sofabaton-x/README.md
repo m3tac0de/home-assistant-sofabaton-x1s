@@ -1,9 +1,11 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.2.** This release adds X2 number keys and
-> firmware status fields, and returns activities and devices in display order.
-> Read the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25).
-> Consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
+> **This README describes 0.2.3.** This release is mostly fixes to hub
+> writes, backup and restore, and the cache, and limits new device and
+> activity names to the hub's 30 characters.
+> Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-01).
+> Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
+> consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
 > consumers on 0.1.x also need the
 > [0.2.0 migration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#020-2026-09-16).
 
@@ -74,7 +76,7 @@ Home Assistant integration provide their own listeners on top.
 ## Install
 
 ```
-python -m pip install "sofabaton-x>=0.2.2,<0.3"
+python -m pip install "sofabaton-x>=0.2.3,<0.3"
 ```
 
 From a checkout, run `python -m pip install .` from the repository root

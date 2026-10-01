@@ -8,6 +8,139 @@ Protocol-library changes are recorded in the
 
 No changes yet.
 
+## 0.2.4 (2026-10-01)
+
+Changes since `sofabaton-x-server-v0.2.3`. Requires
+**sofabaton-x >=0.2.3,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+This release is mostly fixes from a whole-codebase review. The library
+fixes it picks up (hub writes that failed or were reported wrongly,
+backup and restore safety, Wifi names outside Latin-1 on the X1S and X2)
+are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-2026-10-01).
+
+### Upgrade notes
+
+- Update the server to `sofabaton-x-server>=0.2.4,<0.3` with the same data
+  directory, then reload open panel and remote pages. No manual
+  conversion of registrations, access settings, Wifi Devices or saved
+  layouts is needed.
+- **Device and activity names are limited to 30 characters.** The
+  rename bodies and the create-device name accept at most 30 characters
+  (they accepted 64, which the hub silently truncated). The hub rename
+  keeps its 64-character limit and now has its own `HubRenameRequest`
+  schema. Snapshot applies refuse a new or changed name the hub cannot
+  store.
+- **A backup or snapshot in which one activity references another
+  activity is refused** before anything is written. The official app
+  never creates these.
+- The OpenAPI document no longer lists a `428` answer on the routes that
+  never send it. A non-numeric entity id in the row-edit routes answers
+  `422` instead of `500`, and a coded refusal inside a job keeps its code
+  instead of becoming `internal_error`. Regenerate clients from this
+  release's `openapi.json` if you rely on the response lists.
+- The npm package `sofabaton-x-remote` 0.1.1 carries the same remote
+  fixes; it is released separately and still works with server 0.2.2
+  and later.
+
+### Changed
+
+- **Button assignments in the activity editor create at most one new
+  macro.** While one press creates a new macro, the other press offers
+  existing macros only.
+- Unknown hub versions keep the Wifi power and input options in the
+  editors, as in the Home Assistant control panel.
+- Remote → Layout uses the panel's language (English) instead of
+  following the browser.
+
+### Fixed
+
+Server:
+
+- Removing a stale Wifi Device deleted whatever device had since taken
+  its old id.
+- Wifi Device records could be lost or orphaned when redeploying an MQTT
+  device while MQTT was down, when a create landed while the hub was
+  still connecting, when deleting a device whose create was still
+  pending, and when switching MQTT brokers during a reconnect.
+- Presses that arrived while a Wifi Device was being updated were lost.
+- Resuming an interrupted apply always stopped with "entity diverged",
+  and could create a device or activity a second time. Replaying an
+  apply after a server restart reported an interrupted apply as done.
+- The official app could take the hub in the middle of a restore or apply.
+- After the server renamed a hub to its MAC, a running job was not seen,
+  so the hub could be disabled or removed during it.
+- Concurrent panel actions could interleave their writes, and a
+  cancelled write kept writing.
+- One persistence error could stop a hub's events for good, with nothing
+  logged.
+- Stopping the server during IR learn waited up to 60 seconds. A hub
+  renamed during shutdown was never stopped.
+- Adding, removing or claiming a hub froze the server for about half a
+  second. Status reads could wait up to 2 seconds on the hub.
+- The hub's firmware-update reconnect pause did not work.
+- Adding a hub with a malformed MAC created a hub no route could reach.
+- Errors inside Wifi Device jobs came back as a bare "internal error".
+- The Wifi Device delete guard did not warn about activities whose
+  details were not loaded yet.
+- A client that disconnected before the event stream's hello leaked its
+  subscription.
+
+Control panel:
+
+- Browser Back, or editing the URL, dropped unsynced Wifi Device edits
+  and editor drafts without asking.
+- Deleting a second Wifi Event in the device editor removed a
+  neighbouring event's long-press action.
+- Editing a keyed Wifi Device in the device editor made its later Wifi
+  Device syncs fail.
+- An editor sync, refresh or delete that finished after you moved to
+  another entity acted on that entity. Catalog refreshes, reorders and
+  adds could act on a hub you had switched to.
+- An editor that failed to load stayed on "Loading..." for good. Leaving
+  during an editor's own sync showed a false "Unsynced changes" dialog
+  afterwards. Opening an editor discarded an older draft before the
+  "Keep editing / Discard" prompt was answered.
+- The selected hub jumped to the first hub when it was renamed to its MAC.
+- The Remote → Layout draft was dropped on a hub switch or reload.
+- A running job was reported as failed after one missed poll, or after
+  600 polls.
+- A stopped apply's Resume / Discard banner did not appear.
+- The Wifi Devices view showed the stale flag and Redeploy late, and its
+  leave dialog's "Sync now" was enabled for a device still being created.
+- Backup: switching hubs deleted the other hub's saved edit session, the
+  device list was never re-read after devices changed, finishing on one
+  hub dismissed the other hubs' notices, and the Backup editor's "Rename
+  hub" was ignored on restore. A backup of an empty device selection
+  became a backup of the whole hub.
+- The Events view's filter and pause changed the stream the rest of the
+  panel relies on.
+- The Server → Status ports and MQTT broker forms lost their edits when
+  the view came back.
+- The API console's "Follow job" flooded the history and could not be
+  stopped.
+- An enabled hub whose proxy failed to start said "This hub is disabled".
+- The account form reported every refusal as a wrong current password.
+- Catalog rows can be opened from the keyboard. "Up to date" and test
+  success texts meet contrast on the dark palette.
+
+Web remote and embed:
+
+- Device mode could fetch a keymap in a tight endless loop; a failed
+  fetch now backs off.
+- The web remote could get stuck loading after a reload during a page read.
+- The web remote and embed kept polling a dead hub id after the server
+  renamed the hub to its MAC.
+- Failed button presses showed no message, and after one retry succeeded
+  the remote kept waiting longer and longer between later retries.
+- Embed: setting the `config` property was ignored while a `config`
+  attribute was present.
+- A device cache miss showed Home Assistant recovery advice.
+- Macro, favorite and device-command buttons work from the keyboard. The
+  X2 number pad can be closed from the keyboard and keeps focus.
+- The X2 Exit key and the key names were always English; zh-CN browsers
+  got English, and the remote's own notices stayed English.
+
 ## 0.2.3 (2026-09-28)
 
 Changes since `sofabaton-x-server-v0.2.2`. Requires

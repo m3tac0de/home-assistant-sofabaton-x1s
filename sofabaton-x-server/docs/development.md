@@ -57,34 +57,35 @@ presses, rename, restart and deletion. They do not cover every route or firmware
 
 ## Release order
 
-The 0.2.3 server keeps the requirement `sofabaton-x>=0.2.2,<0.3`.
-Its changes do not require a new library release. The library, server,
-npm remote package and Home Assistant integration are versioned independently.
+The 0.2.4 server requires `sofabaton-x>=0.2.3,<0.3`: it calls
+`hub_info(cached_only=True)`, which library 0.2.3 adds, so library 0.2.3
+must be on PyPI first. The library, server, npm remote package and Home
+Assistant integration are versioned independently.
 
-1. Set the server version in `src/sofabaton_server/__init__.py` to `0.2.3`.
-   Keep the library dependency in `pyproject.toml` at `sofabaton-x>=0.2.2,<0.3`.
+1. Set the server version in `src/sofabaton_server/__init__.py` to `0.2.4`.
+   Set the library dependency in `pyproject.toml` to `sofabaton-x>=0.2.3,<0.3`.
    Do not bump the library solely to match the server version.
-2. Finalize the 0.2.3 date in the server changelog for the actual release
-   day, leaving a fresh **Unreleased** section. Update README notices,
-   installation pins and guides. Keep the API generation at `1`.
-   The release notes cover dashboard embedding, layout export, the Save
-   menu, panel navigation and status-bar changes, and the X2-only DVR switch.
+2. Finalize the 0.2.4 date in the server changelog (and the 0.2.3 date in
+   the library changelog) for the actual release day, leaving a fresh
+   **Unreleased** section. Update README notices, installation pins and
+   guides. Keep the API generation at `1`. The release notes cover the
+   review fixes, the 30-character name limit and the OpenAPI response
+   list changes.
 3. Regenerate `openapi.json` with the pinned toolchain even when only the
    package version changed. Rebuild the frontend bundles, run the library,
    server and frontend checks in [CONTRIBUTING](../../CONTRIBUTING.md#-versioning-and-releases),
    and build/install the server wheel with the published library for a
    local smoke test. Verify the wheel serves `/ui/embed/sofabaton-remote.js`
-   and test an embed from an allowed dashboard origin, saved and exported
-   layouts, and the layout editor's Save menu.
+   and the control panel, and test the web remote and an embed from an
+   allowed dashboard origin.
    Review `git status` before committing so new modules and tests are
    included; `git commit -a` does not include untracked files.
-4. Confirm that PyPI has a library version satisfying the dependency.
-   If a future server change needs a new library release, publish that
-   library first and wait for its workflow to succeed.
-5. Commit the release preparation, then tag and push
-   `sofabaton-x-server-v0.2.3`. Its workflow installs the library from PyPI.
-   Confirm the server publishing workflow succeeds and 0.2.3 is available
-   on PyPI.
+4. Commit the release preparation, then tag and push `sofabaton-x-v0.2.3`.
+   Wait for the library workflow to succeed and confirm that PyPI has a
+   library version satisfying the dependency.
+5. Tag and push `sofabaton-x-server-v0.2.4` on the same commit. Its
+   workflow installs the library from PyPI. Confirm the server publishing
+   workflow succeeds and 0.2.4 is available on PyPI.
 
 The workflows verify tags against package versions, run tests and publish
 to PyPI. These tags do not create GitHub Releases. For subsequent releases,
@@ -95,7 +96,7 @@ substitute the selected versions and dependency range in this sequence.
 `npm run build:remote-embed` produces both the committed server bundle and
 `packages/sofabaton-x-remote/dist/sofabaton-remote.js` for npm. The npm
 `dist/` is not committed. Its version is in
-`packages/sofabaton-x-remote/package.json` (currently `0.1.0`); a
-`sofabaton-x-remote-v0.1.0` tag runs `sofabaton-x-remote-release.yml`.
-Publishing server 0.2.3 does not publish this package. The server-hosted
+`packages/sofabaton-x-remote/package.json` (currently `0.1.1`); a
+`sofabaton-x-remote-v0.1.1` tag runs `sofabaton-x-remote-release.yml`.
+Publishing the server does not publish this package. The server-hosted
 embed is included in the server wheel and does not require npm publication.

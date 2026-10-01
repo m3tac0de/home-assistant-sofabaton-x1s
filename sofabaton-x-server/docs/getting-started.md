@@ -33,7 +33,7 @@ stay open either way, so keep the server on a trusted LAN, or use an
 With Python 3.11+ installed, run:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.3,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
 sofabaton-x-server
 ```
 

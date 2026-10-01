@@ -20,7 +20,7 @@ and you have tested control. Disable any existing proxy for that hub first.
 Install from PyPI (Python 3.11+; the library comes with it):
 
 ```
-python -m pip install "sofabaton-x-server>=0.2.3,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
 sofabaton-x-server
 ```
 
@@ -438,21 +438,23 @@ the server, install the selected release in the same Python environment
 (or rebuild the Docker image), then restart with the same data directory
 and settings. Confirm your hubs reconnect and test the web remote.
 
-For the 0.2.3 release, after stopping the server:
+For the 0.2.4 release, after stopping the server:
 
 ```sh
-python -m pip install --upgrade "sofabaton-x-server>=0.2.3,<0.3"
+python -m pip install --upgrade "sofabaton-x-server>=0.2.4,<0.3"
 ```
 
-The library requirement remains `sofabaton-x>=0.2.2,<0.3`. Existing
-registrations, callback devices and saved layouts require no manual conversion. Reload
-open browser pages after restarting. The 0.2.3 REST and WebSocket operations
-are unchanged from 0.2.2; the API prefix remains `/api/v1`. Integrations
-upgrading from an earlier release should regenerate clients from the
-release's OpenAPI document.
+The library requirement becomes `sofabaton-x>=0.2.3,<0.3`; pip installs
+it with the server. Existing registrations, callback devices and saved
+layouts require no manual conversion. Reload open browser pages after
+restarting. The 0.2.4 REST and WebSocket operations are unchanged from
+0.2.3 and the API prefix remains `/api/v1`, but device and activity names
+are now limited to 30 characters and the OpenAPI response lists changed
+(see the [changelog](../CHANGELOG.md#024-2026-10-01)). Integrations
+should regenerate clients from the release's OpenAPI document.
 
 The [embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)
-is served by 0.2.3 at `/ui/embed/sofabaton-remote.js`. Existing iframe
+is served from 0.2.3 onward at `/ui/embed/sofabaton-remote.js`. Existing iframe
 embeds need no changes; a dashboard using the new element must have its
 origin listed in `allowed_origins`.
 
