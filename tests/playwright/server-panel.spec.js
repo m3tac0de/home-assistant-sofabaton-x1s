@@ -2184,7 +2184,7 @@ test.describe("control panel, views", () => {
     await editor.locator("#sb-binding-long-press").check();
     await editor.locator("#sb-binding-lp-kind").selectOption("action");
     await expect(editor.locator('#sb-binding-lp-macro-target option[value="__new__"]')).toHaveCount(0);
-    await expect(editor.locator("#binding-dialog")).toContainText("Only one new item per button assignment");
+    await expect(editor.locator("#binding-dialog")).toContainText("Only one new macro or Wifi Event can be created");
     await expect(editor.locator('#sb-binding-macro-target option[value="__new__"]')).toHaveCount(1);
     await editor.locator("#binding-dialog .dialog-btn", { hasText: "Cancel" }).click();
     await editor.locator("#add-binding").click();
@@ -2395,7 +2395,8 @@ test.describe("control panel, views", () => {
     await page.locator("#add-confirm").click();
 
     // Add, while its job runs: the dialog stays, whole and opaque, over the full window; nothing else is layered on it.
-    await expect(page.locator("#dock-status")).toContainText("Syncing the activity to the hub");
+    // The dock narrates the running step on its own.
+    await expect(page.locator("#dock-status")).toHaveText("Creating the activity");
     await expect(page.locator("#add-confirm")).toHaveText("Creating…");
     await expect(page.locator("#add-confirm")).toBeDisabled();
     await expect(page.locator("#add-name")).toBeDisabled();
@@ -2426,7 +2427,8 @@ test.describe("control panel, views", () => {
     end("del1", { status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     await expect(editor.locator("#editor-delete-error")).toContainText("Delete failed: the hub went away");
     await expect(editor.locator("#editor-title")).toHaveText("Gaming");
-    await page.click("#dock-status");
+    // The dock keeps the short reason; the failure notice expires on its own.
+    await expect(page.locator("#dock-status")).toHaveText("Hub disconnected.");
 
     // Sync: the same swap, titled as on the card, with the running step and its counter.
     await editor.locator("#editor-rename").click();
@@ -3470,7 +3472,7 @@ test.describe("control panel, wifi commands", () => {
     await expect(card("0badf00d").locator(".status-pill")).toHaveClass(/sync-error/);
     await page.screenshot({ path: shot(testInfo, "wifi-roster") });
 
-    // A failed sync says why and keeps the edits.
+    // A failed sync says why, by its code, and keeps the edits.
     world.failUpdate = { type: "callback_update_declined", title: "The callback device could not be updated in place", status: 409, detail: "drift: commands 2" };
     await card("a1b2c3d4").click();
     const detail = view(page).locator("#wifi-device-detail");
@@ -3478,7 +3480,8 @@ test.describe("control panel, wifi commands", () => {
     await view(page).locator("#wifi-slot-name").fill("Scene");
     await view(page).locator("#wifi-slot-name").press("Enter");
     await detail.locator("#wifi-sync").click();
-    await expect(detail.locator("#wifi-sync-error")).toContainText("drift: commands 2");
+    await expect(detail.locator("#wifi-sync-error")).toContainText("The Wifi Device could not be updated.");
+    await expect(detail.locator("#wifi-sync-error")).not.toContainText("drift: commands 2");
     await expect(detail.locator('.slot-btn[data-slot="4"] .slot-name')).toHaveText("Scene");
     await expect(detail.locator("#wifi-sync")).toHaveText("Sync to Hub");
     // Leave without syncing drops the draft.
