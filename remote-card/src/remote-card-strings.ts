@@ -39,8 +39,8 @@ export const REMOTE_CARD_STRINGS_EN = {
     deviceKeymapMissingServer:
       "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
-    hubUnreachable: (detail: string) => `The server cannot reach the hub (${detail}).`,
-    controlRefused: "The hub did not take that command.",
+    serverReadFailed: "Could not load hub data from the server. Check the connection and try again.",
+    controlRefused: "The command could not be completed. Try again.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id: number | string) => `Activity ${id}`,

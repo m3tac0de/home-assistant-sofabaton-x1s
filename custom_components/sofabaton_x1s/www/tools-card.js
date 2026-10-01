@@ -1590,6 +1590,7 @@ var cardStyles = [secondaryTabStyles, i`
     --ha-color-form-background-hover: var(--ha-color-form-background);
   }
   .dialog-body ha-input, .dialog-body ha-textfield { width: 100%; }
+  .dialog-field-helper { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); overflow-wrap: anywhere; }
   .dialog-body ha-input { --ha-input-padding-top: 0; --ha-input-padding-bottom: 0; }
   .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; flex-wrap: wrap; }
   .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
@@ -1906,6 +1907,7 @@ var TOOLS_CARD_STRINGS_EN = {
     sidebarPanelOptionAdmin: "Admins only",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
+    hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
     renamingHub: "Renaming the hub\u2026",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
@@ -2367,7 +2369,7 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
-    bindingOneNewNote: "Only one new item per button assignment. The other press already creates one, so choose an existing one here.",
+    bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
@@ -5773,6 +5775,7 @@ function renderRenameDialog(params) {
                 <ha-textfield
                   id=${params.inputId}
                   .label=${params.label}
+                  aria-describedby=${params.helper ? `${params.inputId}-helper` : A}
                   .maxLength=${params.maxLength}
                   .value=${params.value}
                   ?disabled=${params.busy}
@@ -5785,6 +5788,7 @@ function renderRenameDialog(params) {
                   id=${params.inputId}
                   type="text"
                   .label=${params.label}
+                  aria-describedby=${params.helper ? `${params.inputId}-helper` : A}
                   .maxlength=${params.maxLength}
                   .value=${params.value}
                   ?disabled=${params.busy}
@@ -5793,6 +5797,7 @@ function renderRenameDialog(params) {
                   @keydown=${handleKeydown}
                 ></ha-input>
               `}
+          ${params.helper ? b2`<div id=${`${params.inputId}-helper`} class="dialog-field-helper">${params.helper}</div>` : A}
         </div>
         <div class="dialog-footer">
           <div class="dialog-footer-note">${params.error}</div>
@@ -21839,6 +21844,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       open: this._hubRenameOpen,
       title: TOOLS_CARD_STRINGS.settings.renameHub,
       label: TOOLS_CARD_STRINGS.settings.hubNameLabel,
+      helper: TOOLS_CARD_STRINGS.settings.hubNameHelper,
       value: this._hubRenameDraft,
       error: this._hubRenameError,
       maxLength: HUB_NAME_MAX,

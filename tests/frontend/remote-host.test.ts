@@ -5,6 +5,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setRemoteCardLanguage, str } from "../../remote-card/src/remote-card-strings";
+import "../../remote-card/src/remote-card-translations";
 
 import {
   MIN_SERVER_VERSION,
@@ -189,7 +191,23 @@ test("embedHtmlSnippet is the script and the element, with the layout inlined an
 test("unavailableBannerText adds only what the card cannot show (CR-X7-6, CR-F4a-7)", () => {
   // The card shows its own localized notice for an unavailable hub.
   assert.equal(unavailableBannerText(undefined, null), null);
-  assert.equal(unavailableBannerText({ state: "unavailable" }, "GET /status -> 504"), "The server cannot reach the hub (GET /status -> 504).");
+  assert.equal(unavailableBannerText({ state: "unavailable" }, "GET /status -> 504"), "Could not load hub data from the server. Check the connection and try again.");
   assert.equal(unavailableBannerText({ state: "on" }, "stale"), null);
-  assert.equal(unavailableBannerText({ state: "on" }, null, true), "The hub did not take that command.");
+  assert.equal(unavailableBannerText({ state: "on" }, null, true), "The command could not be completed. Try again.");
+});
+
+test("remote failure notices stay localized without diagnosing an unknown failure or exposing diagnostics", () => {
+  try {
+    for (const locale of ["en", "en-GB", "de", "es", "fr", "nl", "zh-Hans", "ar"]) {
+      setRemoteCardLanguage(locale);
+      for (const detail of ["Failed to fetch", "GET /status -> 401", "GET /devices -> 500"]) {
+        const notice = unavailableBannerText(undefined, detail);
+        assert.equal(notice, str().card.serverReadFailed, locale);
+        assert.equal(notice.includes(detail), false, locale);
+      }
+      assert.equal(unavailableBannerText({ state: "on" }, null, true), str().card.controlRefused, locale);
+    }
+  } finally {
+    setRemoteCardLanguage("en");
+  }
 });

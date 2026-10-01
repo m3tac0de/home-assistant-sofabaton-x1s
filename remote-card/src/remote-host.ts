@@ -295,17 +295,18 @@ export function embedHtmlSnippet(options: {
   );
 }
 
-/** The banner text for a hub the server cannot control right now, or null. */
+/** Localized read/control failure notice, without assuming where it failed. */
 export function unavailableBannerText(
   snapshot: { state?: string } | undefined,
   lastError: string | null,
   controlRefused = false,
 ): string | null {
   // The card shows its own localized notice for an unavailable hub; the
-  // banner only adds what the card cannot know: the server's error, or a
-  // command the hub just refused (CR-X7-6, CR-F4a-7).
+  // banner adds a read or control failure. An HTTP/fetch error does not
+  // establish that the hub is unreachable or rejected the command. Keep
+  // diagnostic details out of localized interface text.
   const unavailable = !snapshot || snapshot.state === "unavailable";
-  if (unavailable && lastError) return str().card.hubUnreachable(lastError);
+  if (unavailable && lastError) return str().card.serverReadFailed;
   if (controlRefused) return str().card.controlRefused;
   return null;
 }

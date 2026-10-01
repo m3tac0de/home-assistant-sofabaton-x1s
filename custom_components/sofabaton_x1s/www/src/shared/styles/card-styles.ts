@@ -681,6 +681,7 @@ export const cardStyles = [secondaryTabStyles, css`
     --ha-color-form-background-hover: var(--ha-color-form-background);
   }
   .dialog-body ha-input, .dialog-body ha-textfield { width: 100%; }
+  .dialog-field-helper { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); overflow-wrap: anywhere; }
   .dialog-body ha-input { --ha-input-padding-top: 0; --ha-input-padding-bottom: 0; }
   .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; flex-wrap: wrap; }
   .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }

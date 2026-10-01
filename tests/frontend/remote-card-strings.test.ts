@@ -389,6 +389,8 @@ test("bundled Simplified Chinese translation supports the zh-Hans locale", () =>
     "已为 X2 → 活动创建 2 个活动触发器",
   );
   assert.equal(str().editor.resetDefaultLayout, "重置布局");
+  assert.equal(str().keys.numenter, TOOLS_CARD_STRINGS_ZH_HANS.backup.buttonCatalog.numEnter);
+  assert.notEqual(str().keys.numenter, str().keys.ok);
   assert.equal(isPoweredOffLabel("已关机"), true);
 
   setRemoteCardLanguage("en");

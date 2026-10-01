@@ -688,6 +688,7 @@ class SofabatonControlPanelCard extends LitElement {
       open: this._hubRenameOpen,
       title: TOOLS_CARD_STRINGS.settings.renameHub,
       label: TOOLS_CARD_STRINGS.settings.hubNameLabel,
+      helper: TOOLS_CARD_STRINGS.settings.hubNameHelper,
       value: this._hubRenameDraft,
       error: this._hubRenameError,
       maxLength: HUB_NAME_MAX,

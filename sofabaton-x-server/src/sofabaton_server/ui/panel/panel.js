@@ -1184,8 +1184,8 @@ var REMOTE_CARD_STRINGS_EN = {
     deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
     deviceKeymapMissingServer: "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
-    hubUnreachable: (detail) => `The server cannot reach the hub (${detail}).`,
-    controlRefused: "The hub did not take that command.",
+    serverReadFailed: "Could not load hub data from the server. Check the connection and try again.",
+    controlRefused: "The command could not be completed. Try again.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
@@ -9062,8 +9062,8 @@ var REMOTE_CARD_STRINGS_AR = {
     deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
     deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
     deviceKeymapMissingServer: `\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0643\u062A\u0627\u0644\u0648\u062C ${isolate("Hub")}. \u062D\u062F\u0650\u0651\u062B ${isolate("Hub")} \u0641\u064A \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 ${SOFABATON}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062D\u0629.`,
-    hubUnreachable: (detail) => `\u0644\u0627 \u064A\u0633\u062A\u0637\u064A\u0639 \u0627\u0644\u062E\u0627\u062F\u0645 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 ${isolate("Hub")} (${isolate(detail)}).`,
-    controlRefused: `\u0644\u0645 \u064A\u0642\u0628\u0644 ${isolate("Hub")} \u0647\u0630\u0627 \u0627\u0644\u0623\u0645\u0631.`,
+    serverReadFailed: `\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A ${isolate("Hub")} \u0645\u0646 \u0627\u0644\u062E\u0627\u062F\u0645. \u062A\u062D\u0642\u0651\u0642 \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0648\u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627.`,
+    controlRefused: "\u062A\u0639\u0630\u0651\u0631 \u062A\u0646\u0641\u064A\u0630 \u0627\u0644\u0623\u0645\u0631. \u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627.",
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`,
@@ -9287,8 +9287,8 @@ var REMOTE_CARD_STRINGS_DE = {
     deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
     deviceKeymapMissingServer: "Dieses Ger\xE4t ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
-    hubUnreachable: (detail) => `Der Server erreicht den Hub nicht (${detail}).`,
-    controlRefused: "Der Hub hat diesen Befehl nicht angenommen.",
+    serverReadFailed: "Die Hub-Daten konnten nicht vom Server geladen werden. Pr\xFCfe die Verbindung und versuche es erneut.",
+    controlRefused: "Der Befehl konnte nicht ausgef\xFChrt werden. Versuche es erneut.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivit\xE4tslayout",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
@@ -9492,8 +9492,8 @@ var REMOTE_CARD_STRINGS_ES = {
     deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
     deviceKeymapMissingServer: "Este dispositivo no est\xE1 en el cat\xE1logo del hub. Actualiza el hub en el panel de control de Sofabaton y vuelve a cargar esta p\xE1gina.",
-    hubUnreachable: (detail) => `El servidor no puede comunicarse con el hub (${detail}).`,
-    controlRefused: "El hub no acept\xF3 ese comando.",
+    serverReadFailed: "No se pudieron cargar los datos del hub desde el servidor. Comprueba la conexi\xF3n y vuelve a intentarlo.",
+    controlRefused: "No se pudo completar el comando. Vuelve a intentarlo.",
     poweredOff: "Apagado",
     defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
@@ -9697,8 +9697,8 @@ var REMOTE_CARD_STRINGS_FR = {
     deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
     deviceKeymapMissingServer: "Cet appareil ne figure pas dans le catalogue du hub. Actualisez le hub dans le panneau de contr\xF4le Sofabaton, puis rechargez cette page.",
-    hubUnreachable: (detail) => `Le serveur ne parvient pas \xE0 joindre le hub (${detail}).`,
-    controlRefused: "Le hub n\u2019a pas accept\xE9 cette commande.",
+    serverReadFailed: "Impossible de charger les donn\xE9es du hub depuis le serveur. V\xE9rifiez la connexion, puis r\xE9essayez.",
+    controlRefused: "La commande n\u2019a pas pu \xEAtre ex\xE9cut\xE9e. R\xE9essayez.",
     poweredOff: "\xC9teinte",
     defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
     activityFallback: (id) => `Activit\xE9 ${id}`,
@@ -9901,8 +9901,8 @@ var REMOTE_CARD_STRINGS_NL = {
     deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
     deviceKeymapMissingServer: "Dit apparaat staat niet in de catalogus van de hub. Vernieuw de hub in het Sofabaton-bedieningspaneel en laad deze pagina daarna opnieuw.",
-    hubUnreachable: (detail) => `De server kan de hub niet bereiken (${detail}).`,
-    controlRefused: "De hub heeft dat commando niet aangenomen.",
+    serverReadFailed: "De hubgegevens konden niet van de server worden geladen. Controleer de verbinding en probeer het opnieuw.",
+    controlRefused: "Het commando kon niet worden uitgevoerd. Probeer het opnieuw.",
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
@@ -10105,8 +10105,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
     deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
     deviceKeymapMissingServer: "\u6B64\u8BBE\u5907\u4E0D\u5728 Hub \u7684\u76EE\u5F55\u4E2D\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u4E2D\u5237\u65B0 Hub\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u6B64\u9875\u9762\u3002",
-    hubUnreachable: (detail) => `\u670D\u52A1\u5668\u65E0\u6CD5\u8FDE\u63A5\u5230 Hub\uFF08${detail}\uFF09\u3002`,
-    controlRefused: "Hub \u672A\u63A5\u53D7\u8BE5\u547D\u4EE4\u3002",
+    serverReadFailed: "\u65E0\u6CD5\u4ECE\u670D\u52A1\u5668\u52A0\u8F7D Hub \u6570\u636E\u3002\u8BF7\u68C0\u67E5\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002",
+    controlRefused: "\u65E0\u6CD5\u5B8C\u6210\u8BE5\u547D\u4EE4\u3002\u8BF7\u91CD\u8BD5\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
     defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
@@ -10281,7 +10281,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     num8: "8",
     num9: "9",
     numdash: "-",
-    numenter: "\u786E\u5B9A"
+    numenter: "\u786E\u8BA4 (E)"
   }
 };
 registerRemoteCardTranslation("zh-hans", REMOTE_CARD_STRINGS_ZH_HANS);
@@ -15013,6 +15013,7 @@ var TOOLS_CARD_STRINGS_EN = {
     sidebarPanelOptionAdmin: "Admins only",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
+    hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
     renamingHub: "Renaming the hub\u2026",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
@@ -15474,7 +15475,7 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
-    bindingOneNewNote: "Only one new item per button assignment. The other press already creates one, so choose an existing one here.",
+    bindingOneNewNote: "Only one of the short-press and long-press assignments can create a new macro or Wifi Event. The other assignment must use an existing macro or Wifi Event.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
@@ -24980,6 +24981,12 @@ function embedHtmlSnippet(options) {
   return `<script type="module" src="${base}/ui/embed/sofabaton-remote.js"><\/script>
 <sofabaton-remote ${attributes.join(" ")}></sofabaton-remote>`;
 }
+function unavailableBannerText(snapshot, lastError, controlRefused = false) {
+  const unavailable = !snapshot || snapshot.state === "unavailable";
+  if (unavailable && lastError) return str().card.serverReadFailed;
+  if (controlRefused) return str().card.controlRefused;
+  return null;
+}
 
 // server-panel/src/views/remote-view.ts
 var REMOTE_VIEW_TAG = "sb-panel-remote";
@@ -25221,7 +25228,7 @@ var SbPanelRemote = class extends i4 {
     const snapshot = backend.snapshot();
     this._snapshot = snapshot;
     const unavailable = !snapshot || snapshot.state === "unavailable";
-    this._banner = unavailable ? backend.lastError ? `The server cannot reach the hub (${backend.lastError}).` : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)." : null;
+    this._banner = unavailableBannerText(snapshot, backend.lastError, backend.controlRefused) ?? (unavailable ? "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)." : null);
   }
   _setStatus(text, ok = true) {
     this._status = text;

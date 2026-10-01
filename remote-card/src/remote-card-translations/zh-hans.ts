@@ -34,9 +34,8 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     deviceKeymapError: "无法加载此设备的命令。",
     deviceKeymapMissingServer:
       "此设备不在 Hub 的目录中。请在 Sofabaton 控制面板中刷新 Hub，然后重新加载此页面。",
-    hubUnreachable: (detail: string) =>
-      `服务器无法连接到 Hub（${detail}）。`,
-    controlRefused: "Hub 未接受该命令。",
+    serverReadFailed: "无法从服务器加载 Hub 数据。请检查连接后重试。",
+    controlRefused: "无法完成该命令。请重试。",
     poweredOff: "已关机",
     defaultLayout: "默认活动布局",
     activityFallback: (id: number | string) => `活动 ${id}`,
@@ -222,7 +221,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     num8: "8",
     num9: "9",
     numdash: "-",
-    numenter: "确定",
+    numenter: "确认 (E)",
   },
 } satisfies RemoteCardStrings;
 

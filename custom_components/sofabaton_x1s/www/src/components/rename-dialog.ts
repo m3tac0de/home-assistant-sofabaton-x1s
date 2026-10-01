@@ -13,6 +13,7 @@ export function renderRenameDialog(params: {
   open: boolean;
   title: string;
   label: string;
+  helper?: string;
   value: string;
   error: string;
   maxLength: number;
@@ -50,6 +51,7 @@ export function renderRenameDialog(params: {
                 <ha-textfield
                   id=${params.inputId}
                   .label=${params.label}
+                  aria-describedby=${params.helper ? `${params.inputId}-helper` : nothing}
                   .maxLength=${params.maxLength}
                   .value=${params.value}
                   ?disabled=${params.busy}
@@ -63,6 +65,7 @@ export function renderRenameDialog(params: {
                   id=${params.inputId}
                   type="text"
                   .label=${params.label}
+                  aria-describedby=${params.helper ? `${params.inputId}-helper` : nothing}
                   .maxlength=${params.maxLength}
                   .value=${params.value}
                   ?disabled=${params.busy}
@@ -71,6 +74,7 @@ export function renderRenameDialog(params: {
                   @keydown=${handleKeydown}
                 ></ha-input>
               `}
+          ${params.helper ? html`<div id=${`${params.inputId}-helper`} class="dialog-field-helper">${params.helper}</div>` : nothing}
         </div>
         <div class="dialog-footer">
           <div class="dialog-footer-note">${params.error}</div>
