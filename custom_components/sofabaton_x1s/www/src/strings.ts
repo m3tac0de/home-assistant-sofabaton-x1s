@@ -559,6 +559,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     addFavoriteCancel: "Cancel",
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
     addFavoriteNoCommands: "This device has no commands to add.",
+    addShortcutNoCommandsLeft: "Every command is already a shortcut.",
     buttonBindingsTitle: "Button assignments",
     buttonBindingsActivitySub: "Assign remote buttons to a device's command within this activity.",
     buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
@@ -704,7 +705,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiEventNoneYet: "No Wifi Events yet. Create one below.",
     wifiEventCreateFailed: "Creating the Wifi Event failed — it stays staged and will retry on the next create.",
     wifiEventNameRequired: "Enter a name for the new Wifi Event.",
-    wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation → Events.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
     addShortcutCommandHelper: "The shortcut shows up under the command's name.",
@@ -1093,10 +1093,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     eventsConfiguredPill: (configured: number, total: number) => `${configured} of ${total} configured`,
     eventsShowUnconfigured: (count: number) => `Show ${count} unconfigured…`,
     wifiEventRowPress: (name: string) => `When ${name} is pressed`,
-    wifiEventRowLongPress: "and when it's pressed and held",
     wifiEventModalTitle: (name: string) => `When ${name} is pressed`,
-    wifiEventLongModalTitle: (name: string) => `When ${name} is pressed and held`,
     wifiEventNeedsSyncBadge: "needs sync",
+    wifiEventsRecordNeedsSyncNotice: "The Wifi Events device has changes waiting for a sync. Open Hub → Devices → Wifi Events → Edit and press Sync.",
     // Orphaned-config notice, split around the clickable phrase so locales
     // can place it anywhere in the sentence.
     wifiEventsStaleNoticePrefix:

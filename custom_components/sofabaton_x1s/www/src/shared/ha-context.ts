@@ -175,17 +175,15 @@ export interface LogsResponse {
   lines: ControlPanelLogLine[];
 }
 
-/** One configured Wifi Event slot (`sofabaton_x1s/wifi_event/list`). */
+/** One configured Wifi Event slot (`sofabaton_x1s/wifi_event/list`): one
+ *  hub record, one action. Long press is a property of the button binding,
+ *  never of the event (docs/internal/wifi-events-single-record-plan.md). */
 export interface WifiEvent {
   slot_index: number;
   name: string;
-  long_press_enabled: boolean;
   action: Record<string, unknown>;
-  long_press_action: Record<string, unknown>;
-  /** Short law: slot_index + 1. */
+  /** The event's hub record: slot_index + 1. */
   command_id: number;
-  /** Long law: command_id + slot_count. */
-  long_press_command_id: number;
   /** The deployed hub device id, or null before the first deploy lands. */
   device_id: number | null;
   /** False for a staged slot whose deploy hasn't landed (needs sync). */
@@ -250,6 +248,10 @@ export interface WifiEventsListResponse {
   /** The deployed events-device id, or null before the first deploy ever
    *  (refs use the placeholder id 0 until the Sync flow rewrites them). */
   device_id?: number | null;
+  /** The record's slot count. A deploy from before the single-record model
+   *  also holds a long record per event at `command_id + slot_count`; the
+   *  Sync that retires those moves their references onto the event. */
+  slot_count?: number;
 }
 
 export interface WifiEventCreateResponse extends WifiEventsListResponse {
@@ -257,7 +259,6 @@ export interface WifiEventCreateResponse extends WifiEventsListResponse {
     slot_index: number;
     name: string;
     command_id: number;
-    long_press_command_id: number;
     device_id: number | null;
   };
 }

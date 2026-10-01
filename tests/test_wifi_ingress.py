@@ -115,7 +115,8 @@ def test_roku_http_post_runs_configured_short_press_action():
     hass.data = {
         "sofabaton_x1s": {
             "command_config_store": SimpleNamespace(
-                async_get_hub_config=_async_get_hub_config
+                async_get_hub_config=_async_get_hub_config,
+                is_wifi_events_hub_device=lambda *_args: False,
             )
         }
     }
@@ -189,7 +190,8 @@ def test_roku_http_post_runs_configured_long_press_action():
     hass.data = {
         "sofabaton_x1s": {
             "command_config_store": SimpleNamespace(
-                async_get_hub_config=_async_get_hub_config
+                async_get_hub_config=_async_get_hub_config,
+                is_wifi_events_hub_device=lambda *_args: False,
             )
         }
     }
@@ -226,6 +228,78 @@ def test_roku_http_post_runs_configured_long_press_action():
             False,
         )
     ]
+
+    loop.close()
+
+
+def test_wifi_events_long_callback_aliases_the_event_action():
+    # wifi-events-single-record-plan §3.2: until the user's Sync retires
+    # the long records, a /long callback on the Wifi Events device runs the
+    # event's one action and reports a plain press (no /longpress suffix).
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
+
+    async def _async_call(domain, service, data, target=None, blocking=False):
+        service_calls.append((domain, service, data, target, blocking))
+
+    event_slot = {
+        "name": "Movie Night",
+        "long_press_enabled": False,
+        "action": {
+            "action": "perform-action",
+            "perform_action": "script.turn_on",
+            "target": {"entity_id": "script.movie_night"},
+        },
+    }
+
+    class _Store:
+        def is_wifi_events_hub_device(self, entry_id, hub_device_id):
+            return entry_id == "entry-id" and hub_device_id == 9
+
+        def get_deployed_wifi_commands(self, entry_id, *, hub_device_id=None, device_key=None):
+            return [event_slot] if hub_device_id == 9 else []
+
+        def get_live_wifi_command_slot(self, entry_id, *, command_index, hub_device_id=None, device_key=None):
+            return event_slot if hub_device_id == 9 and command_index == 0 else None
+
+        async def async_get_hub_config(self, _entry_id, **_kwargs):
+            return {"commands": []}
+
+    hass.services = SimpleNamespace(async_call=_async_call)
+    hass.data = {"sofabaton_x1s": {"command_config_store": _Store()}}
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/9/0/long",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    assert service_calls == [
+        ("script", "turn_on", {}, {"entity_id": "script.movie_night"}, False)
+    ]
+    ip_command = hub.get_last_ip_command()
+    assert ip_command["command_label"] == "Movie Night"
+    assert ip_command["press_type"] == "short"
 
     loop.close()
 

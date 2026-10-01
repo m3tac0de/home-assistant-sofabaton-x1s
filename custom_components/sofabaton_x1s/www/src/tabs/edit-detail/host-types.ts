@@ -44,14 +44,12 @@ export type WifiEventTargetSel = { mode: "existing" | "new"; slot: number | null
  * the sync validator's baseline grandfathering depends on it), returning
  * the grafted working bundle for the ref insert. `ensureGrafted` does the
  * graft alone (selecting an existing event whose device predates the
- * capture). `enableLongPress` flips the slot's standalone flag — a pure
- * store edit, the long record is always deployed.
+ * capture).
  */
 export interface WifiEventsHost {
   list(): Promise<WifiEvent[]>;
   create(name: string): Promise<{ event: WifiEvent; bundle: BackupBundlePayload | null }>;
   ensureGrafted(): Promise<BackupBundlePayload | null>;
-  enableLongPress(slotIndex: number): Promise<void>;
 }
 
 /**

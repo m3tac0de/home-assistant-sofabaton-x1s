@@ -1384,30 +1384,20 @@
       {
         slot_index: 0,
         name: "Movie Night",
-        long_press_enabled: true,
         action: {
           action: "perform-action",
           perform_action: "scene.turn_on",
           target: { entity_id: ["scene.movie_time"] },
         },
-        long_press_action: {
-          action: "perform-action",
-          perform_action: "light.turn_off",
-          target: { entity_id: ["light.downstairs"] },
-        },
         command_id: 1,
-        long_press_command_id: 51,
         device_id: 10,
         deployed: true,
       },
       {
         slot_index: 1,
         name: "Guests",
-        long_press_enabled: false,
         action: { ...DEFAULT_ACTION },
-        long_press_action: { ...DEFAULT_ACTION },
         command_id: 2,
-        long_press_command_id: 52,
         device_id: 10,
         deployed: false,
       },
@@ -1835,11 +1825,8 @@
               const event = {
                 slot_index: slotIndex,
                 name: String(message.name || `Event ${slotIndex + 1}`),
-                long_press_enabled: false,
                 action: { ...DEFAULT_ACTION },
-                long_press_action: { ...DEFAULT_ACTION },
                 command_id: slotIndex + 1,
-                long_press_command_id: slotIndex + 51,
                 device_id: null,
                 deployed: false,
               };
@@ -1862,22 +1849,12 @@
               const event = mock.wifiEvents.find(
                 (item) => item.slot_index === Number(message.slot_index),
               );
-              if (event) {
-                const key = message.press_type === "long" ? "long_press_action" : "action";
-                event[key] = clone(message.action ?? DEFAULT_ACTION);
-              }
+              if (event) event.action = clone(message.action ?? DEFAULT_ACTION);
               return respond(type, wifiEventsResponse());
             }
             case "sofabaton_x1s/wifi_event/clear_all":
               mock.wifiEvents = [];
               return respond(type, wifiEventsResponse());
-            case "sofabaton_x1s/wifi_event/set_longpress": {
-              const event = mock.wifiEvents.find(
-                (item) => item.slot_index === Number(message.slot_index),
-              );
-              if (event) event.long_press_enabled = Boolean(message.enabled);
-              return respond(type, wifiEventsResponse());
-            }
             default: {
               const error = new Error(`Unhandled harness API call: ${type}`);
               recordUnhandled("ws", message);

@@ -14887,6 +14887,11 @@ var TOOLS_CARD_STRINGS_EN = {
     refreshingCache: "Refreshing cache\u2026",
     hubCommandInProgress: "Hub command in progress\u2026"
   },
+  sidebarPanel: {
+    // The sidebar entry and the panel header. A product name: the same in
+    // every language.
+    title: "Sofabaton X"
+  },
   adminOnly: {
     title: "Admins only",
     copy: "This control panel is limited to Home Assistant administrators."
@@ -14959,6 +14964,8 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
+    hubNameInvalid: "The hub cannot store this name.",
+    hubRenameFailed: "The hub did not accept the new name.",
     noHubSelected: "No hub selected.",
     noHubSelectedLong: "No hub is selected.",
     cacheRefreshFailed: "Cache refresh failed.",
@@ -14998,6 +15005,15 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionNone: "Do nothing",
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
+    sidebarPanelTitle: "Sidebar Panel",
+    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar, opening this control panel full-page, for everyone or for administrators only.",
+    sidebarPanelFooter: "GLOBAL",
+    sidebarPanelOptionOff: "Off",
+    sidebarPanelOptionAll: "All users",
+    sidebarPanelOptionAdmin: "Admins only",
+    renameHub: "Rename hub",
+    hubNameLabel: "Hub name",
+    renamingHub: "Renaming the hub\u2026",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",
@@ -15330,6 +15346,7 @@ var TOOLS_CARD_STRINGS_EN = {
     addFavoriteCancel: "Cancel",
     addFavoriteNoDevices: "This backup has no devices with commands to add.",
     addFavoriteNoCommands: "This device has no commands to add.",
+    addShortcutNoCommandsLeft: "Every command is already a shortcut.",
     buttonBindingsTitle: "Button assignments",
     buttonBindingsActivitySub: "Assign remote buttons to a device's command within this activity.",
     buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
@@ -15466,7 +15483,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiEventNoneYet: "No Wifi Events yet. Create one below.",
     wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
     wifiEventNameRequired: "Enter a name for the new Wifi Event.",
-    wifiEventBindingLongPressNote: "Long press fires this event's long-press action. Configure it in Automation \u2192 Events.",
     addShortcutActionName: "Name",
     addShortcutActionHelper: "You'll pick the steps next.",
     addShortcutCommandHelper: "The shortcut shows up under the command's name.",
@@ -15813,10 +15829,9 @@ var TOOLS_CARD_STRINGS_EN = {
     eventsConfiguredPill: (configured, total) => `${configured} of ${total} configured`,
     eventsShowUnconfigured: (count) => `Show ${count} unconfigured\u2026`,
     wifiEventRowPress: (name) => `When ${name} is pressed`,
-    wifiEventRowLongPress: "and when it's pressed and held",
     wifiEventModalTitle: (name) => `When ${name} is pressed`,
-    wifiEventLongModalTitle: (name) => `When ${name} is pressed and held`,
     wifiEventNeedsSyncBadge: "needs sync",
+    wifiEventsRecordNeedsSyncNotice: "The Wifi Events device has changes waiting for a sync. Open Hub \u2192 Devices \u2192 Wifi Events \u2192 Edit and press Sync.",
     // Orphaned-config notice, split around the clickable phrase so locales
     // can place it anywhere in the sentence.
     wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
@@ -16449,6 +16464,20 @@ function deviceCommandItems(bundle, deviceId) {
   }
   return items.sort((left, right) => left.commandId - right.commandId);
 }
+function activityFavoriteKeys(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  return new Set((activity?.favorite_slots ?? []).map((row) => `${Number(row?.device_id || 0)}:${Number(row?.command_id || 0)}`));
+}
+function activityHasFavorite(bundle, activityId, deviceId, commandId) {
+  return activityFavoriteKeys(bundle, activityId).has(`${Number(deviceId)}:${Number(commandId)}`);
+}
+function activityShortcutCommandItems(bundle, activityId, deviceId) {
+  const taken = activityFavoriteKeys(bundle, activityId);
+  return deviceCommandItems(bundle, deviceId).filter((item) => !taken.has(`${item.deviceId}:${item.commandId}`));
+}
+function activityShortcutDeviceOptions(bundle, activityId, options) {
+  return options.filter((option) => activityShortcutCommandItems(bundle, activityId, option.id).length > 0);
+}
 function bundleDeviceClass(bundle, deviceId) {
   if (!bundle) return null;
   const normalizedId = Number(deviceId);
@@ -16477,11 +16506,7 @@ function isWifiEventsBrand(brand) {
   const text = String(brand ?? "").trim();
   return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
 }
-function wifiEventsSlotCount(openedElement, events) {
-  for (const event of events ?? []) {
-    const offset = Number(event?.long_press_command_id) - Number(event?.command_id);
-    if (Number.isInteger(offset) && offset > 0) return offset;
-  }
+function wifiEventsSlotCount(openedElement) {
   return Math.floor((openedElement?.commands?.length ?? 0) / 2);
 }
 function isWifiEventsLongRecord(commandId, slotCount) {
@@ -20942,8 +20967,8 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     };
     this._openAddShortcut = () => {
       if (!this._working || this.activityId == null) return;
-      const deviceId = this._deviceOptions()[0]?.id ?? null;
-      this._addShortcut = { kind: "command", deviceId, commandId: this._firstCommandId(deviceId), slot: this._wifiSlots[0]?.slot ?? null, error: "", ...this._defaultMacroTarget() };
+      const deviceId = this._shortcutDeviceOptions()[0]?.id ?? null;
+      this._addShortcut = { kind: "command", deviceId, commandId: this._shortcutCommandOptions(deviceId)[0]?.value ?? null, slot: this._shortcutWifiSlots()[0]?.slot ?? null, error: "", mode: "new", macroId: null, name: "" };
     };
     this._closeAddShortcut = () => {
       this._addShortcut = null;
@@ -21179,6 +21204,24 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   }
   _firstCommandId(deviceId) {
     return deviceId != null && this._working ? deviceCommandItems(this._working, deviceId)[0]?.commandId ?? null : null;
+  }
+  // A shortcut references a command (or Wifi Event) at most once per activity, so the Add
+  // shortcut dialog offers only what is not a shortcut yet. Button bindings have no such
+  // limit: any number of buttons may play the same command or macro.
+  _shortcutDeviceOptions() {
+    if (!this._working || this.activityId == null) return [];
+    return activityShortcutDeviceOptions(this._working, this.activityId, this._deviceOptions());
+  }
+  _shortcutCommandOptions(deviceId) {
+    if (deviceId == null || !this._working || this.activityId == null) return [];
+    return activityShortcutCommandItems(this._working, this.activityId, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+  /** The Wifi Events not shortcutted on the activity yet (the short record is the favorite). */
+  _shortcutWifiSlots() {
+    const callbackDeviceId = this._callbackDeviceId;
+    const activityId = this.activityId;
+    if (callbackDeviceId == null || activityId == null) return [];
+    return this._wifiSlots.filter((slot) => !activityHasFavorite(this._working, activityId, callbackDeviceId, slot.shortCommandId));
   }
   _defaultMacroTarget() {
     const first = this._macroOptions()[0] ?? null;
@@ -21420,6 +21463,10 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _targetKinds() {
     return this._wifiEventsAvailable ? ["command", "action", "wifi_event"] : ["command", "action"];
   }
+  /** The Add shortcut dialog offers the Wifi Event kind only while an event is left to shortcut. */
+  _shortcutTargetKinds() {
+    return this._shortcutWifiSlots().length > 0 ? ["command", "action", "wifi_event"] : ["command", "action"];
+  }
   _macroTargetFields(idPrefix, target, onChange) {
     const macros = this._macroOptions();
     return b2`
@@ -21433,15 +21480,18 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
               <option value="__new__" ?selected=${target.mode === "new"}>${B2.macroTargetCreateNew}</option>
             </select>
           </div>` : b2`<div class="quick-access-empty">${B2.macroTargetNoExisting}</div>`}
-      ${target.mode === "new" ? b2`<div class="decoded-field">
-            <label class="decoded-field-label" for=${`${idPrefix}-macro-name`}>${B2.addShortcutActionName}</label>
-            <input id=${`${idPrefix}-macro-name`} class="decoded-field-input" maxlength="20" .value=${target.name} @input=${(event) => onChange({ ...target, name: event.currentTarget.value })} />
-            <div class="decoded-field-helper">${B2.addShortcutActionHelper}</div>
-          </div>` : A}
+      ${target.mode === "new" ? this._macroNameField(idPrefix, target.name, (name) => onChange({ ...target, name })) : A}
     `;
   }
-  _wifiEventFields(idPrefix, slot, onChange) {
-    return this._select(`${idPrefix}-wifi-event`, B2.wifiEventTargetLabel, slot, this._wifiSlots.map((entry) => ({ value: entry.slot, label: entry.label })), P3.wifiEventNoSlots, onChange);
+  _macroNameField(idPrefix, name, onChange) {
+    return b2`<div class="decoded-field">
+      <label class="decoded-field-label" for=${`${idPrefix}-macro-name`}>${B2.addShortcutActionName}</label>
+      <input id=${`${idPrefix}-macro-name`} class="decoded-field-input" maxlength="20" .value=${name} @input=${(event) => onChange(event.currentTarget.value)} />
+      <div class="decoded-field-helper">${B2.addShortcutActionHelper}</div>
+    </div>`;
+  }
+  _wifiEventFields(idPrefix, slot, onChange, slots = this._wifiSlots) {
+    return this._select(`${idPrefix}-wifi-event`, B2.wifiEventTargetLabel, slot, slots.map((entry) => ({ value: entry.slot, label: entry.label })), P3.wifiEventNoSlots, onChange);
   }
   _dialog(id, title, close, body, footer, error = "") {
     return b2`
@@ -21804,11 +21854,11 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const set = (patch) => {
       this._addShortcut = { ...dialog, ...patch, error: "" };
     };
-    const devices = this._deviceOptions();
-    const commands = this._commandOptions(dialog.deviceId);
+    const devices = this._shortcutDeviceOptions();
+    const commands = this._shortcutCommandOptions(dialog.deviceId);
     const canAdd = dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : dialog.kind === "wifi_event" ? dialog.slot != null : true;
-    const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${B2.addFavoriteNoDevices}</div>` : b2`
-          ${this._select("sb-add-fav-device", B2.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B2.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+    const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${this._deviceOptions().length === 0 ? B2.addFavoriteNoDevices : B2.addShortcutNoCommandsLeft}</div>` : b2`
+          ${this._select("sb-add-fav-device", B2.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B2.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._shortcutCommandOptions(value)[0]?.value ?? null }))}
           <div class="decoded-field">
             <label class="decoded-field-label" for="sb-add-fav-command">${B2.addFavoriteCommand}</label>
             ${commands.length === 0 ? b2`<div class="quick-access-empty">${B2.addFavoriteNoCommands}</div>` : b2`<select id="sb-add-fav-command" class="decoded-field-input" @change=${(event) => set({ commandId: Number(event.currentTarget.value) })}>
@@ -21817,8 +21867,8 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             <div class="decoded-field-helper">${B2.addShortcutCommandHelper}</div>
           </div>`;
     return this._dialog("add-shortcut-dialog", B2.addShortcutTitle, this._closeAddShortcut, b2`
-      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._targetKinds(), (kind) => set(kind === "action" ? { kind, ...this._defaultMacroTarget() } : kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind }))}
-      ${dialog.kind === "command" ? commandFields : dialog.kind === "wifi_event" ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-add", dialog, (target) => set(target))}`, b2`
+      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._shortcutTargetKinds(), (kind) => set(kind === "action" ? { kind, mode: "new", macroId: null, name: "" } : kind === "wifi_event" ? { kind, slot: this._shortcutWifiSlots()[0]?.slot ?? null } : { kind }))}
+      ${dialog.kind === "command" ? commandFields : dialog.kind === "wifi_event" ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot }), this._shortcutWifiSlots()) : this._macroNameField("sb-add", dialog.name, (name) => set({ name }))}`, b2`
       <button class="dialog-btn" type="button" @click=${this._closeAddShortcut}>${B2.addFavoriteCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="add-shortcut-save" type="button" ?disabled=${!canAdd} @click=${this._applyAddShortcut}>${B2.addFavoriteAdd}</button>`, dialog.error);
   }

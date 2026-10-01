@@ -4,6 +4,8 @@
 // It owns the dialog state, its handlers, the macro and long-press target
 // resolution and the apply. Macro options, the macro target reset shared
 // with the Add shortcut dialog, and the Wifi Event target stay outside.
+// Either leg may be a device command, a macro or a Wifi Event, in any
+// combination (docs/internal/wifi-events-single-record-plan.md).
 
 import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import { TOOLS_CARD_STRINGS } from "../../strings";
@@ -299,19 +301,8 @@ export class BindingDialogController implements ReactiveController {
       ? this.targetKindFor(item.deviceId)
       : "command";
     if (this.targetKind === "wifi_event") {
-      // A wifi-event binding is atomic: the primary short record maps to
-      // its event slot (short command id = slot + 1); long press (if
-      // present) is the same event's long record, gated by the toggle.
-      this.host._events.primary = {
-        mode: "existing",
-        slot: Number(item.commandId) - 1,
-        name: "",
-      };
-      this.longPressEnabled = Boolean(item.longPress);
-      this.error = "";
-      this.host._events.load();
-      this.open = true;
-      return;
+      // An event's record is slot + 1.
+      this.host._events.primary = { mode: "existing", slot: Number(item.commandId) - 1, name: "" };
     }
     this.actionName = this.targetKind === "action"
       ? this.host._macroName(item.commandId)
@@ -331,6 +322,9 @@ export class BindingDialogController implements ReactiveController {
       : "";
     this.lpMacroMode = this.lpTargetKind === "action" ? "existing" : "new";
     this.lpMacroId = this.lpTargetKind === "action" ? this.lpCommandId : null;
+    if (this.lpTargetKind === "wifi_event") {
+      this.host._events.longPress = { mode: "existing", slot: Number(this.lpCommandId) - 1, name: "" };
+    }
     this.error = "";
     this.host._events.load();
     this.open = true;
@@ -422,8 +416,11 @@ export class BindingDialogController implements ReactiveController {
       this.lpCommandId = this.commandOptions(this.lpDeviceId)[0]?.value ?? null;
       return;
     }
-    // "action" (the long-press leg never targets a wifi event — that is
-    // only reachable atomically when the PRIMARY is a wifi event).
+    if (kind === "wifi_event") {
+      this.host._events.longPress = this.host._events.defaultSel();
+      return;
+    }
+    // "action"
     this.host._resetMacroTarget("bindingLp");
     this.lpActionName ||= this.host._macroName(this.lpCommandId);
   };
@@ -543,79 +540,80 @@ export class BindingDialogController implements ReactiveController {
     };
   }
 
-  /**
-   * Async binding apply when the button targets a Wifi Event. The event
-   * is atomic: the short press fires its short record, and — when the
-   * long-press toggle is on — the *same* event's long record is wired to
-   * the button's long press (and the event's long-press action is enabled
-   * for configuration in the Events tab). There is no independent
-   * long-press target here; that would collide with the Wifi Events model
-   * where short/long are two actions of one event.
-   */
-  applyActivityWithWifiEvents = async () => {
-    const S = TOOLS_CARD_STRINGS.backup;
-    if (!this.host.bundle || this.host.entityId == null) return;
-    const activityId = Number(this.host.entityId);
-    const buttonId = Number(this.buttonId);
-    if (!buttonId) {
-      this.error = S.bindingIncomplete;
-      return;
-    }
-    try {
-      const ref = await this.host._events.resolveRef(this.host._events.primary);
-      let longPress: { deviceId: number; commandId: number } | null = null;
-      if (this.longPressEnabled) {
-        // Wire the SAME event's long record and turn on its long-press
-        // action (a pure store-flag edit — the long record is always
-        // deployed; the Events tab exposes the action).
-        await this.host.wifiEvents!.enableLongPress(ref.slotIndex);
-        this.host._events.list = null;
-        longPress = { deviceId: ref.deviceId, commandId: ref.longCommandId };
-      }
-      this.host._commitEditBundleEdit(upsertActivityButtonBinding(ref.bundle, activityId, {
-        buttonId,
-        deviceId: ref.deviceId,
-        commandId: ref.shortCommandId,
-        longPress,
-      }));
-      this.close();
-    } catch (err) {
-      this.error = editorErrorMessage(err, "wifi_event");
-    }
-  };
-
   apply = () => {
     if (!this.host.bundle || this.host.entityId == null) return;
-    const buttonId = Number(this.buttonId);
-    const entityId = Number(this.host.entityId);
-    if (!buttonId) {
+    if (!Number(this.buttonId)) {
       this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
       return;
     }
-    // A Wifi Event binding is atomic (short + long from one event); its
-    // long-press leg is never an independent target.
-    if (this.scope === "activity" && this.targetKind === "wifi_event") {
-      void this.applyActivityWithWifiEvents();
+    const isActivity = this.scope === "activity";
+    const primaryEvent = isActivity && this.targetKind === "wifi_event";
+    const longPressEvent = isActivity && this.longPressEnabled && this.lpTargetKind === "wifi_event";
+    if (primaryEvent || longPressEvent) {
+      void this.applyWithWifiEvents(primaryEvent, longPressEvent);
       return;
     }
+    this.applyResolved(this.host.bundle, null, null);
+  };
+
+  /**
+   * Resolve the Wifi Event leg(s) first (selecting one grafts the events
+   * device into the host's bundles; a new one is allocated in the store),
+   * then write the binding like any other. An existing event resolves
+   * before a new one: creating an event reloads the list the existing
+   * selection is looked up in.
+   */
+  applyWithWifiEvents = async (primaryEvent: boolean, longPressEvent: boolean) => {
+    const events = this.host._events;
+    const legs: Array<"primary" | "longPress"> = [];
+    if (primaryEvent) legs.push("primary");
+    if (longPressEvent) legs.push("longPress");
+    legs.sort((left, right) => Number(events[left].mode === "new") - Number(events[right].mode === "new"));
+    const resolved: Partial<Record<"primary" | "longPress", { deviceId: number; commandId: number }>> = {};
+    let bundle = this.host.bundle;
+    try {
+      for (const leg of legs) {
+        const ref = await events.resolveRef(events[leg]);
+        resolved[leg] = { deviceId: ref.deviceId, commandId: ref.commandId };
+        bundle = ref.bundle;
+      }
+    } catch (err) {
+      this.error = editorErrorMessage(err, "wifi_event");
+      return;
+    }
+    if (bundle) this.applyResolved(bundle, resolved.primary ?? null, resolved.longPress ?? null);
+  };
+
+  /** Write the binding into `bundle`; `primaryEvent` / `longPressEvent` are
+   *  the already resolved Wifi Event legs. */
+  applyResolved(
+    bundle: BackupBundlePayload,
+    primaryEvent: { deviceId: number; commandId: number } | null,
+    longPressEvent: { deviceId: number; commandId: number } | null,
+  ) {
+    const buttonId = Number(this.buttonId);
+    const entityId = Number(this.host.entityId);
     if (this.scope === "activity") {
       const activityId = entityId;
-      let next = this.host.bundle;
+      let next = bundle;
       let macroToOpen: { buttonId: number; name: string } | null = null;
-      const longPressTarget = this.resolveActivityLongPressTarget(next, activityId);
+      const longPressTarget = longPressEvent
+        ? { bundle: next, longPress: longPressEvent, createdMacro: null }
+        : this.resolveActivityLongPressTarget(next, activityId);
       if (!longPressTarget) return;
       next = longPressTarget.bundle;
       macroToOpen = longPressTarget.createdMacro;
       const longPress = longPressTarget.longPress;
-      if (this.targetKind === "command") {
-        const commandId = Number(this.commandId);
-        if (!commandId || !this.deviceId) {
+      if (this.targetKind === "command" || primaryEvent) {
+        const deviceId = primaryEvent ? primaryEvent.deviceId : Number(this.deviceId);
+        const commandId = primaryEvent ? primaryEvent.commandId : Number(this.commandId);
+        if (!commandId || !deviceId) {
           this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
           return;
         }
         this.host._commitEditBundleEdit(upsertActivityButtonBinding(next, activityId, {
           buttonId,
-          deviceId: Number(this.deviceId),
+          deviceId,
           commandId,
           longPress,
         }));
@@ -654,14 +652,14 @@ export class BindingDialogController implements ReactiveController {
       const longPressCommandId = this.longPressEnabled && this.lpCommandId
         ? Number(this.lpCommandId)
         : null;
-      this.host._commitEditBundleEdit(upsertDeviceButtonBinding(this.host.bundle, entityId, {
+      this.host._commitEditBundleEdit(upsertDeviceButtonBinding(bundle, entityId, {
         buttonId,
         commandId,
         longPressCommandId,
       }));
       this.close();
     }
-  };
+  }
 
   renderMacroTargetFields(params: {
     idPrefix: string;
@@ -729,9 +727,6 @@ export class BindingDialogController implements ReactiveController {
     const wifiSelReady = (sel: WifiEventTargetSel) => !this.host._events.busy && (
       sel.mode === "existing" ? sel.slot != null : sel.name.trim().length > 0
     );
-    // A wifi-event binding is atomic: the long-press leg is the same
-    // event's long record, so it never gates saving independently.
-    const primaryIsWifiEvent = scope === "activity" && targetKind === "wifi_event";
     const canSave = this.buttonId != null && (
       scope === "device"
         ? this.commandId != null
@@ -740,6 +735,9 @@ export class BindingDialogController implements ReactiveController {
           : targetKind === "wifi_event"
             ? wifiSelReady(this.host._events.primary)
             : true
+    ) && !(
+      isActivity && this.longPressEnabled && lpTargetKind === "wifi_event"
+      && !wifiSelReady(this.host._events.longPress)
     );
     const title = isEdit
       ? S.bindingDialogEditTitle(buttonName(Number(this.buttonId)))
@@ -861,28 +859,38 @@ export class BindingDialogController implements ReactiveController {
               ></ha-switch>
             </div>
             ${this.longPressEnabled
-              ? primaryIsWifiEvent
-                ? html`
-                    <div class="decoded-field-helper">${S.wifiEventBindingLongPressNote}</div>
-                  `
-                : html`
-                    ${isActivity
-                      ? html`
-                          <div class="decoded-field">
-                            <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
-                            <select
-                              id="sb-binding-lp-kind"
-                              class="decoded-field-input"
-                              @change=${this.handleLpTargetKindChange}
-                            >
-                              <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
-                              <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
-                            </select>
-                          </div>
-                        `
-                      : nothing}
-                    ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
-                  `
+              ? html`
+                  ${isActivity
+                    ? html`
+                        <div class="decoded-field">
+                          <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
+                          <select
+                            id="sb-binding-lp-kind"
+                            class="decoded-field-input"
+                            @change=${this.handleLpTargetKindChange}
+                          >
+                            <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
+                            <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
+                            ${this.host._events.available()
+                              ? html`<option value="wifi_event" ?selected=${lpTargetKind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
+                              : nothing}
+                          </select>
+                        </div>
+                      `
+                    : nothing}
+                  ${lpTargetKind === "command"
+                    ? lpCommandFields
+                    : lpTargetKind === "wifi_event"
+                      ? this.host._events.renderTargetFields({
+                          idPrefix: "sb-binding-lp",
+                          sel: this.host._events.longPress,
+                          onSelChange: (sel) => {
+                            this.host._events.longPress = sel;
+                            this.error = "";
+                          },
+                        })
+                      : lpActionFields}
+                `
               : nothing}
           </div>
           <div class="dialog-footer">

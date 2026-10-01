@@ -32,7 +32,7 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
-import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat } from "../shared/ha-context";
+import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat, WifiEvent } from "../shared/ha-context";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -41,6 +41,9 @@ import {
   activityRoleAssignments,
   addActivityMemberDevice,
   type ActivityRoleGroupId,
+  activityHasFavorite,
+  activityShortcutCommandItems,
+  activityShortcutDeviceOptions,
   activityUserMacroSummaries,
   roleMappableButtonCount,
   setActivityRoleDevice,
@@ -59,8 +62,6 @@ import {
   bundleDeviceClass,
   isManagedWifiBrand,
   isWifiEventsBrand,
-  isWifiEventsLongRecord,
-  wifiEventsSlotCount,
   bundleDeviceOptions,
   commandDecodedBlock,
   commandRawPayloadHex,
@@ -139,8 +140,6 @@ export class SofabatonEditDetailView extends LitElement {
     _bindingsView: { state: true },
     _addShortcutKind: { state: true },
     _addShortcutActionName: { state: true },
-    _addShortcutMacroMode: { state: true },
-    _addShortcutMacroId: { state: true },
   };
 
   // The whole backup-tab stylesheet ships to both shadow roots (see
@@ -168,17 +167,12 @@ export class SofabatonEditDetailView extends LitElement {
   _bindingsView = false;
   private _addShortcutKind: ActivityBindingTargetKind = "command";
   private _addShortcutActionName = "";
-  private _addShortcutMacroMode: MacroTargetMode = "new";
-  private _addShortcutMacroId: number | null = null;
   // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
   // `_events.primary` serves whichever Add dialog is open (shortcut,
-  // step, or binding). A Wifi Event is atomic — a binding's long-press
-  // leg is the SAME event's long record, never an independent target — so
-  // one selection covers both legs.
+  // step, or binding); `_events.longPress` is the binding's long-press leg.
+  // A Wifi Event is one record: long press is a property of the binding
+  // (docs/internal/wifi-events-single-record-plan.md).
   wifiEvents: WifiEventsHost | null = null;
-  /** The events device's slot count as the editor opened it (CR-F2-2): the
-   *  working bundle loses two records per paired delete. */
-  private _wifiEventsOpenedSlots: number | null = null;
   _editRenameDialogOpen = false;
   _editRenameDialogDraft = "";
   _editRenameDialogError = "";
@@ -245,10 +239,6 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _resetForEntity() {
-    this._wifiEventsOpenedSlots = null;
-    // The events device pairs records by HA's frozen slot count: load the
-    // event list (the authoritative source) as soon as it opens.
-    if (this._isWifiEventsLiveDevice()) this._events.load();
     this._editDetailActiveSection = "power";
     this._powerControlMenuOpen = false;
     this._roleMenuOpen = null;
@@ -469,43 +459,6 @@ export class SofabatonEditDetailView extends LitElement {
     return options.filter(
       (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id)),
     );
-  }
-
-  /** True when the live editor is showing the reserved Wifi Events device.
-   *  It is fully editable (unlike other managed wifi devices). Command
-   *  deletion is available on every live device (a `command_delete` step
-   *  in the sync); what is events-specific is the short+long record
-   *  pairing: deleting a short row takes its long record along and long
-   *  rows carry no delete of their own. */
-  private _isWifiEventsLiveDevice(): boolean {
-    return (
-      this.mode === "live" &&
-      this.kind === "device" &&
-      this.entityId != null &&
-      isWifiEventsBrand(bundleDeviceBrand(this.bundle, Number(this.entityId)))
-    );
-  }
-
-  /** The Wifi Events device's slot count (the long-record offset): from
-   *  HA's event records when loaded, else as the device was when the editor
-   *  opened. Never from the working bundle (see wifiEventsSlotCount). */
-  private _wifiEventsSlotCount(): number {
-    if (this.entityId == null || !this.bundle) return 0;
-    if (this._wifiEventsOpenedSlots == null) {
-      const device = (this.bundle.devices ?? []).find(
-        (entry) => Number(entry?.device?.device_id ?? -1) === Number(this.entityId),
-      );
-      this._wifiEventsOpenedSlots = wifiEventsSlotCount(device);
-    }
-    return wifiEventsSlotCount(null, this._events.list) || this._wifiEventsOpenedSlots;
-  }
-
-  /** True when a command id is a long-press record (id > slot_count) on
-   *  the events device — long rows carry no independent delete; deleting
-   *  the short row removes the pair. */
-  private _commandIsLongRecord(commandId: number): boolean {
-    if (!this._isWifiEventsLiveDevice()) return false;
-    return isWifiEventsLongRecord(commandId, this._wifiEventsSlotCount());
   }
 
   private _editDetailSectionItems(kind: BackupEditTargetKind): Array<{
@@ -996,17 +949,13 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            ${!this._commandIsLongRecord(item.commandId)
-              ? html`
-                  <button
-                    class="icon-btn icon-btn--danger"
-                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-                  >
-                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                  </button>
-                `
-              : nothing}
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
           </div>
         </div>
       </div>
@@ -1394,21 +1343,7 @@ export class SofabatonEditDetailView extends LitElement {
     // device sync never writes activities and its scope guard tolerates
     // exactly the cascade. Offline edits keep the full reconcile.
     const deleteOptions: BundleDeleteOptions = { reconcileMembership: this.mode !== "live" };
-    let next = applyBundleDelete(this.bundle, target, deleteOptions);
-    // W7: deleting a Wifi Event's short record from the events device
-    // editor also removes its long record (they are one event) — the
-    // backend plan then emits both command_delete steps.
-    if (target.kind === "command" && this._isWifiEventsLiveDevice()) {
-      const slotCount = this._wifiEventsSlotCount();
-      if (slotCount > 0 && Number(target.commandId) <= slotCount) {
-        next = applyBundleDelete(next, {
-          kind: "command",
-          deviceId: target.deviceId,
-          commandId: Number(target.commandId) + slotCount,
-        }, deleteOptions);
-      }
-    }
-    this._commitEditBundleEdit(next);
+    this._commitEditBundleEdit(applyBundleDelete(this.bundle, target, deleteOptions));
     // Deleting the entity we're inside removes its detail page — fall back
     // to the overview. Row-level deletes (command / favorite / macro) keep
     // the detail open so the user can continue trimming the list.
@@ -1519,20 +1454,19 @@ export class SofabatonEditDetailView extends LitElement {
 
   // ── Add favorite (device → command picker) ──────────────────────────
   // One entry point for everything that can land on the remote screen:
-  // a device command or a macro (existing or new). The kind selector
-  // swaps the dialog's fields.
+  // a device command, a Wifi Event or a new macro. The kind selector
+  // swaps the dialog's fields. Only what is not a shortcut yet is offered
+  // (a favorite is unique by content; every existing macro already is one).
   private _openAddShortcutDialog = () => {
     if (this.entityId == null || !this.bundle) return;
-    const devices = this._editableDeviceOptions();
-    const firstDeviceId = devices[0]?.id ?? null;
-    const commands = firstDeviceId != null ? deviceCommandItems(this.bundle, firstDeviceId) : [];
+    const firstDeviceId = this._shortcutDeviceOptions()[0]?.id ?? null;
+    const commands = this._shortcutCommandItems(firstDeviceId);
     this._addShortcutKind = "command";
     this._addFavoriteDeviceId = firstDeviceId;
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
     this._addFavoriteError = "";
     this._addShortcutActionName = "";
-    this._resetMacroTarget("shortcut");
-    this._events.load();
+    this._events.load(this._shortcutEventTaken);
     this._addFavoriteOpen = true;
   };
 
@@ -1543,16 +1477,12 @@ export class SofabatonEditDetailView extends LitElement {
     this._addFavoriteError = "";
     this._addShortcutKind = "command";
     this._addShortcutActionName = "";
-    this._addShortcutMacroMode = "new";
-    this._addShortcutMacroId = null;
   };
 
   private _handleAddFavoriteDeviceChange = (event: Event) => {
     const value = Number((event.target as HTMLSelectElement).value);
     this._addFavoriteDeviceId = Number.isFinite(value) ? value : null;
-    const commands = this._addFavoriteDeviceId != null && this.bundle
-      ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
-      : [];
+    const commands = this._shortcutCommandItems(this._addFavoriteDeviceId);
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
     this._addFavoriteError = "";
   };
@@ -1693,7 +1623,7 @@ export class SofabatonEditDetailView extends LitElement {
         ref.bundle,
         activityId,
         ref.deviceId,
-        ref.shortCommandId,
+        ref.commandId,
         sanitizeBundleName(ref.bundle, ref.name),
       ));
       this._closeAddFavoriteDialog();
@@ -1712,19 +1642,9 @@ export class SofabatonEditDetailView extends LitElement {
       void this._applyAddShortcutWifiEvent();
       return;
     }
-    // "action" (custom macro).
+    // "action": always a new macro. Every existing macro of the activity is
+    // a shortcut already, so there is nothing to reference.
     const activityId = Number(this.entityId);
-    if (this._addShortcutMacroMode === "existing") {
-      const existing = activityUserMacroSummaries(this.bundle, activityId)
-        .find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
-      if (!existing) {
-        this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return;
-      }
-      this._closeAddFavoriteDialog();
-      this._steps.openEditor("activity", activityId, existing.buttonId, existing.name);
-      return;
-    }
     const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim()
       || TOOLS_CARD_STRINGS.backup.newMacroName;
     const next = addActivityUserMacro(this.bundle, activityId, name);
@@ -1739,11 +1659,9 @@ export class SofabatonEditDetailView extends LitElement {
     if (!this._addFavoriteOpen || !this.bundle) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
     const kind = this._addShortcutKind;
-    const devices = this._editableDeviceOptions();
-    const macros = this._macroOptions();
-    const commands = this._addFavoriteDeviceId != null
-      ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId)
-      : [];
+    // Only what is not a shortcut yet: a command once per activity; a macro is always a new one.
+    const devices = this._shortcutDeviceOptions();
+    const commands = this._shortcutCommandItems(this._addFavoriteDeviceId);
     const canAdd = kind === "command"
       ? this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null
       : kind === "wifi_event"
@@ -1754,7 +1672,7 @@ export class SofabatonEditDetailView extends LitElement {
           )
         : true;
     const commandFields = devices.length === 0
-      ? html`<div class="backup-drawer-sub">${S.addFavoriteNoDevices}</div>`
+      ? html`<div class="backup-drawer-sub">${this._editableDeviceOptions().length === 0 ? S.addFavoriteNoDevices : S.addShortcutNoCommandsLeft}</div>`
       : html`
           <div class="decoded-field">
             <label class="decoded-field-label" for="sb-add-fav-device">${S.addFavoriteDevice}</label>
@@ -1793,36 +1711,6 @@ export class SofabatonEditDetailView extends LitElement {
         <div class="decoded-field-helper">${S.addShortcutActionHelper}</div>
       </div>
     `;
-    const macroFields = html`
-      ${macros.length
-        ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-add-macro-target">${S.macroTargetLabel}</label>
-              <select
-                id="sb-add-macro-target"
-                class="decoded-field-input"
-                @change=${(event: Event) => {
-                  const value = (event.target as HTMLSelectElement).value;
-                  if (value === "__new__") {
-                    this._addShortcutMacroMode = "new";
-                    this._addShortcutMacroId = null;
-                  } else {
-                    this._addShortcutMacroMode = "existing";
-                    this._addShortcutMacroId = Number(value);
-                  }
-                  this._addFavoriteError = "";
-                }}
-              >
-                ${macros.map((macro) => html`
-                  <option value=${macro.value} ?selected=${this._addShortcutMacroMode === "existing" && macro.value === this._addShortcutMacroId}>${macro.label}</option>
-                `)}
-                <option value="__new__" ?selected=${this._addShortcutMacroMode === "new"}>${S.macroTargetCreateNew}</option>
-              </select>
-            </div>
-          `
-        : html`<div class="quick-access-empty">${S.macroTargetNoExisting}</div>`}
-      ${this._addShortcutMacroMode === "new" ? actionFields : nothing}
-    `;
     return html`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
@@ -1839,9 +1727,8 @@ export class SofabatonEditDetailView extends LitElement {
                 @change=${(event: Event) => {
                   this._addShortcutKind = (event.target as HTMLSelectElement).value as
                     ActivityBindingTargetKind;
-                  if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
                   if (this._addShortcutKind === "wifi_event") {
-                    this._events.primary = this._events.defaultSel();
+                    this._events.primary = this._events.defaultSel(this._shortcutEventTaken);
                   }
                   this._addFavoriteError = "";
                 }}
@@ -1859,12 +1746,13 @@ export class SofabatonEditDetailView extends LitElement {
                 ? this._events.renderTargetFields({
                     idPrefix: "sb-add-fav",
                     sel: this._events.primary,
+                    hidden: this._shortcutEventTaken,
                     onSelChange: (sel) => {
                       this._events.primary = sel;
                       this._addFavoriteError = "";
                     },
                   })
-                : macroFields}
+                : actionFields}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._addFavoriteError}</div>
@@ -2026,14 +1914,31 @@ export class SofabatonEditDetailView extends LitElement {
       .map((macro) => ({ value: macro.buttonId, label: macro.name }));
   }
 
-  _resetMacroTarget(prefix: "shortcut" | "binding" | "bindingLp") {
+  // A shortcut references a command (or Wifi Event) at most once per
+  // activity, so the Add shortcut dialog offers only what is not a shortcut
+  // yet. Button bindings have no such limit: any number of buttons may play
+  // the same command or macro.
+
+  _shortcutDeviceOptions() {
+    if (!this.bundle || this.entityId == null) return [];
+    return activityShortcutDeviceOptions(this.bundle, Number(this.entityId), this._editableDeviceOptions());
+  }
+
+  _shortcutCommandItems(deviceId: number | null) {
+    if (!this.bundle || this.entityId == null || deviceId == null) return [];
+    return activityShortcutCommandItems(this.bundle, Number(this.entityId), deviceId);
+  }
+
+  /** A Wifi Event the activity already shortcuts (its short record is a favorite). */
+  _shortcutEventTaken = (event: Pick<WifiEvent, "device_id" | "command_id">): boolean =>
+    event.device_id != null
+    && this.entityId != null
+    && activityHasFavorite(this.bundle, Number(this.entityId), event.device_id, event.command_id);
+
+  /** Seat the binding dialog macro target on the first existing macro (or a new one). */
+  _resetMacroTarget(prefix: "binding" | "bindingLp") {
     const firstMacro = this._macroOptions()[0] ?? null;
     const mode: MacroTargetMode = firstMacro ? "existing" : "new";
-    if (prefix === "shortcut") {
-      this._addShortcutMacroMode = mode;
-      this._addShortcutMacroId = firstMacro?.value ?? null;
-      return;
-    }
     if (prefix === "binding") {
       this._binding.macroMode = mode;
       this._binding.macroId = firstMacro?.value ?? null;

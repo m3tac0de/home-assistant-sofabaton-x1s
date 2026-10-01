@@ -14,6 +14,9 @@ import {
   removeActivityMemberDevice,
   addActivityMacroCommandStep,
   addActivityUserMacro,
+  activityHasFavorite,
+  activityShortcutCommandItems,
+  activityShortcutDeviceOptions,
   addBundleActivityFavorite,
   addBundleDeviceCommand,
   defaultDecodedSnapshotForClass,
@@ -34,6 +37,7 @@ import {
   applyBundleDelete,
   wifiEventsSlotCount,
   isWifiEventsLongRecord,
+  retireWifiEventLongRecords,
   assertBackupBundleRestoreCompatible,
   bundleButtonCatalog,
   backupDeleteHasCascade,
@@ -1762,15 +1766,60 @@ test("two Wifi Event deletes in one session remove their own long records", () =
   assert.equal(wifiEventsSlotCount(working.devices[0]), 23);
 });
 
-test("the slot count comes from HA's event records when known", () => {
-  // A later session: earlier deletes shrank the table to 48 records, but the
-  // device was created with 25 slots.
-  const shrunk = deleteEvent(eventsBundle(25), 3, 25);
-  const events = [{ command_id: 1, long_press_command_id: 26 }];
-  assert.equal(wifiEventsSlotCount(shrunk.devices[0], events), 25);
-  assert.equal(wifiEventsSlotCount(shrunk.devices[0], []), 24);
+test("the server panel's long-record test reads the frozen slot count", () => {
   assert.equal(isWifiEventsLongRecord(26, 25), true);
   assert.equal(isWifiEventsLongRecord(25, 25), false);
   assert.equal(isWifiEventsLongRecord(26, 0), false);
 });
 
+
+test("activity shortcut pickers skip the commands that are favorites already", () => {
+  const b = editableBundle();
+  // Activity 101 has TV Power (1:10) and AVR Power (2:20) as favorites.
+  assert.equal(activityHasFavorite(b, 101, 1, 10), true);
+  assert.equal(activityHasFavorite(b, 101, 1, 11), false);
+  assert.deepEqual(activityShortcutCommandItems(b, 101, 1).map((item) => item.commandId), [11]);
+  assert.deepEqual(activityShortcutCommandItems(b, 101, 2), []);
+  // Only devices with a command left to add are offered: the AVR has none.
+  assert.deepEqual(activityShortcutDeviceOptions(b, 101, [{ id: 1 }, { id: 2 }]).map((option) => option.id), [1]);
+  // Adding the last TV command exhausts the TV too.
+  const next = addBundleActivityFavorite(b, 101, 1, 11, "Volume Up");
+  assert.deepEqual(activityShortcutDeviceOptions(next, 101, [{ id: 1 }, { id: 2 }]), []);
+  // Another activity is unaffected (missing activity: nothing is taken).
+  assert.deepEqual(activityShortcutCommandItems(b, 999, 1).map((item) => item.commandId), [10, 11]);
+});
+
+test("retiring the Wifi Events long records follows the hub in a bundle", () => {
+  const bundle = {
+    devices: [
+      eventsBundle(25).devices[0],
+      { device: { device_id: 3, name: "TV" }, commands: [{ command_id: 30, name: "Vol" }, { command_id: 31, name: "Mute" }] },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV" },
+        favorite_slots: [{ button_id: 1, device_id: 9, command_id: 27 }, { button_id: 2, device_id: 3, command_id: 30 }],
+        button_bindings: [
+          { button_id: 0xB0, device_id: 3, command_id: 31, long_press_device_id: 9, long_press_command_id: 28 },
+          { button_id: 0xB1, device_id: 9, command_id: 2, long_press_device_id: 3, long_press_command_id: 30 },
+        ],
+        macros: [{ button_id: 4, steps: [{ device_id: 9, command_id: 26 }, { device_id: 255, command_id: 0 }] }],
+      },
+    ],
+  } as unknown as Parameters<typeof retireWifiEventLongRecords>[0];
+  const next = retireWifiEventLongRecords(bundle, 9, 25) as any;
+  const ids = next.devices[0].commands.map((row: any) => Number(row.command_id));
+  assert.deepEqual(ids, Array.from({ length: 25 }, (_, index) => index + 1));
+  assert.equal(next.devices[1].commands.length, 2); // other devices untouched
+  const act = next.activities[0];
+  assert.equal(act.favorite_slots[0].command_id, 2);
+  assert.equal(act.favorite_slots[1].command_id, 30);
+  assert.deepEqual(
+    act.button_bindings.map((row: any) => [row.command_id, row.long_press_command_id]),
+    [[31, 3], [2, 30]],
+  );
+  assert.equal(act.macros[0].steps[0].command_id, 1);
+  assert.equal(act.macros[0].steps[1].command_id, 0);
+  // no slot count -> untouched
+  assert.equal(retireWifiEventLongRecords(bundle, 9, 0), bundle);
+});

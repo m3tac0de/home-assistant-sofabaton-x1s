@@ -304,10 +304,10 @@ export class MacroStepEditorController implements ReactiveController {
     try {
       const ref = await this.host._events.resolveRef(this.host._events.primary);
       const next = editIndex === null
-        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.shortCommandId, timeByte)
+        ? addActivityMacroCommandStep(ref.bundle, editor.entityId, editor.buttonId, ref.deviceId, ref.commandId, timeByte)
         : updateActivityMacroStep(ref.bundle, editor.entityId, editor.buttonId, editIndex, {
             deviceId: ref.deviceId,
-            commandId: ref.shortCommandId,
+            commandId: ref.commandId,
             hold: timeByte,
           });
       this.host._commitEditBundleEdit(next);

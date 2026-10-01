@@ -22,6 +22,7 @@ from .command_config import (
     COMMAND_BRAND_PREFIX,
     WIFI_EVENTS_DEVICE_KEY,
     compute_commands_hash,
+    is_wifi_events_device_key,
     record_hash_listen_port,
 )
 from .lib.activity_sync import build_device_sync_plan
@@ -222,6 +223,8 @@ async def _async_prepare_managed_wifi_rename(
             power_on_command_id=record.get("power_on_command_id"),
             power_off_command_id=record.get("power_off_command_id"),
             slot_count=record_slot_count,
+            # In sync means the deployed layout is the current one.
+            single_record=is_wifi_events_device_key(record_key),
         )
         # The reconcile pass mirrors the hub-side brand hash back into the
         # store on every device burst, so the brand must be rewritten along

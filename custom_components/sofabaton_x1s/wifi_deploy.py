@@ -9,7 +9,7 @@ X1 quick-access check that closes a sync.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import Any, Iterable
 
@@ -30,6 +30,7 @@ from .lib.wifi_inplace_plan import (
     classify_live_slots,
     derive_device_level_bindings,
     desired_snapshot_from_config,
+    wifi_events_retarget_steps,
 )
 from .lib.protocol_const import ButtonName
 from .command_config import (
@@ -353,8 +354,8 @@ class WifiDeployMixin:
         device_id: int,
         command_ids: list[int],
     ) -> bool:
-        """Family-0x10 record deletes for a freed Wifi Event slot (short +
-        long record). The hub cascades referencing favorites/bindings and
+        """Family-0x10 record deletes for a freed Wifi Event slot (its one
+        record). The hub cascades referencing favorites/bindings and
         removes the step from macros in place — a macro left with no steps
         is removed (live-validated both hubs, wifi-events-plan §11 W0.2).
 
@@ -537,6 +538,14 @@ class WifiDeployMixin:
         if baseline.device_id != dev_id:
             return None
 
+        # The Wifi Events device holds one record per event. Its deployed
+        # expansion keeps the long records: a deploy from before that
+        # layout still has them on the hub, so they are neither drift nor
+        # foreign, and the diff against the 25-record desired snapshot
+        # retires them (wifi-events-single-record-plan §3.3). Once gone they
+        # only read as "missing", which is no reason to decline.
+        single_record = is_wifi_events_device_key(normalized_device_key)
+
         # Gate 3: drift detection — the live records must still match the
         # deployed snapshot's expansion (labels per command id). A user who
         # edited the managed device in the Sofabaton app invalidates the
@@ -554,6 +563,7 @@ class WifiDeployMixin:
             hard_button_codes=_HARD_BUTTON_TO_CODE,
             slot_count=slot_count,
             long_press_offset=slot_count,
+            long_records=not single_record,
         )
 
         # Classify every live record that disagrees with the deployed
@@ -613,6 +623,31 @@ class WifiDeployMixin:
                 self.entry_id, plan.fallback_reason,
             )
             return None
+        if single_record and any(
+            step.kind == "command_delete" and int(step.payload.get("command_id") or 0) > slot_count
+            for step in plan.steps
+        ):
+            # Retiring the long records of the old Wifi Events layout: move
+            # every reference to one onto its event's record BEFORE the
+            # deletes, or the hub cascades it away
+            # (wifi-events-single-record-plan §3.3). Same walk, so the
+            # progress feed, the read-back and the one remote resync cover
+            # these writes too.
+            try:
+                retarget = wifi_events_retarget_steps(
+                    activity_entries, device_id=dev_id, slot_count=slot_count
+                )
+            except ValueError as err:
+                raise WifiSyncError(
+                    "inplace_failed",
+                    f"Could not move long-press assignments onto their Wifi Events: {err}",
+                ) from err
+            if retarget:
+                _LOGGER.info(
+                    "[%s] moving %d long-press assignment write(s) onto Wifi Event records",
+                    self.entry_id, len(retarget),
+                )
+                plan = replace(plan, steps=(*retarget, *plan.steps))
 
         total_steps = len(plan.steps) + 2
         # Scanned before the write: a failed record delete may already have
@@ -750,8 +785,9 @@ class WifiDeployMixin:
             commands = list(command_payload.get("commands") or [])
             normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             # Per-record slot count (store payloads carry it; default 10).
-            # The Wifi Events record deploys 25 slots — 50 records — and
-            # honors long_press_enabled standalone (plan §2-capacity).
+            # The Wifi Events record deploys 25 slots, one record each
+            # (wifi-events-single-record-plan); user devices deploy a short
+            # and a long record per slot.
             try:
                 slot_count = int(command_payload.get("slot_count"))
             except (TypeError, ValueError):
@@ -761,7 +797,7 @@ class WifiDeployMixin:
             configured_slots = count_configured_command_slots(
                 commands,
                 slot_count=slot_count,
-                standalone_long_press=is_wifi_events_device_key(normalized_device_key),
+                single_record=is_wifi_events_device_key(normalized_device_key),
             )
             commands_hash = str(command_payload.get("commands_hash") or "")
             deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
@@ -1121,7 +1157,12 @@ class WifiDeployMixin:
                     "command_index": idx,
                 }
             )
-        for idx, slot in enumerate(commands[:slot_count]):
+        # The Wifi Events device gets no long records: an event is one
+        # record (wifi-events-single-record-plan).
+        long_slots = (
+            [] if is_wifi_events_device_key(normalized_device_key) else commands[:slot_count]
+        )
+        for idx, slot in enumerate(long_slots):
             name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
             command_defs.append(
                 {

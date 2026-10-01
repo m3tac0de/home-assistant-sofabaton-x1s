@@ -816,6 +816,47 @@ export function deviceCommandItems(
   return items.sort((left, right) => left.commandId - right.commandId);
 }
 
+/** `"device:command"` keys of an Activity's favorites (its device-command shortcuts). */
+function activityFavoriteKeys(bundle: BackupBundlePayload | null, activityId: number): Set<string> {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  return new Set((activity?.favorite_slots ?? []).map((row) => `${Number(row?.device_id || 0)}:${Number(row?.command_id || 0)}`));
+}
+
+/** True when `commandId` on `deviceId` is already one of the Activity's shortcuts. */
+export function activityHasFavorite(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  deviceId: number,
+  commandId: number,
+): boolean {
+  return activityFavoriteKeys(bundle, activityId).has(`${Number(deviceId)}:${Number(commandId)}`);
+}
+
+/**
+ * The commands on a Device that an Activity can still add as a shortcut.
+ * A favorite is identified by its content (device + command), so a command
+ * is a shortcut at most once per Activity; the Add shortcut dialog offers
+ * only the rest. Button bindings have no such limit: any number of buttons
+ * may play the same command.
+ */
+export function activityShortcutCommandItems(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  deviceId: number,
+): BackupDeviceCommandItem[] {
+  const taken = activityFavoriteKeys(bundle, activityId);
+  return deviceCommandItems(bundle, deviceId).filter((item) => !taken.has(`${item.deviceId}:${item.commandId}`));
+}
+
+/** `options` narrowed to the Devices with at least one command left to add as a shortcut. */
+export function activityShortcutDeviceOptions<T extends { id: number }>(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  options: T[],
+): T[] {
+  return options.filter((option) => activityShortcutCommandItems(bundle, activityId, option.id).length > 0);
+}
+
 /**
  * Read a device's `device_class` string from the bundle, normalized to
  * lowercase. Returns `null` when the device is missing.
@@ -874,24 +915,17 @@ export function isWifiEventsBrand(brand: string): boolean {
 }
 
 /**
- * The Wifi Events device's slot count: the long-record offset (the event in
- * slot `s` owns short record `s + 1` and long record `s + 1 + slotCount`).
- * It is frozen when the device is created, so it must never be read from a
- * record count that deletes shrink: every paired delete removes two records
- * and would shift the pairing onto a neighbour's long record. Taken from
- * Home Assistant's event records when known (their long and short ids
- * differ by exactly the slot count), else from the device element as it was
- * when the editor opened (the deploy writes 2N records). Shared by the card
- * and the server panel.
+ * The standalone server's Wifi Events device slot count: the long-record
+ * offset (the event in slot `s` owns short record `s + 1` and long record
+ * `s + 1 + slotCount`). Home Assistant's events device holds one record per
+ * event (docs/internal/wifi-events-single-record-plan.md); the server keeps
+ * the pair until its own plan. The count is frozen when the device is
+ * created, so it must never be read from a record count that deletes
+ * shrink: every paired delete removes two records and would shift the
+ * pairing onto a neighbour's long record. Read from the device element as
+ * it was when the editor opened (the deploy writes 2N records).
  */
-export function wifiEventsSlotCount(
-  openedElement: BackupBundleDevicePayload | null | undefined,
-  events?: ReadonlyArray<{ command_id: number; long_press_command_id: number }> | null,
-): number {
-  for (const event of events ?? []) {
-    const offset = Number(event?.long_press_command_id) - Number(event?.command_id);
-    if (Number.isInteger(offset) && offset > 0) return offset;
-  }
+export function wifiEventsSlotCount(openedElement: BackupBundleDevicePayload | null | undefined): number {
   return Math.floor((openedElement?.commands?.length ?? 0) / 2);
 }
 
@@ -3525,6 +3559,58 @@ export function rewriteWifiEventPlaceholderRefs(
       })),
     };
   });
+}
+
+/**
+ * Follow the Sync that retired the Wifi Events device's long records
+ * (docs/internal/wifi-events-single-record-plan.md §3.3): drop those records
+ * (`slotCount < id <= 2 * slotCount`) from the device block and move every
+ * activity reference to one onto its event's record (`id - slotCount`),
+ * exactly as the hub-side retarget pass did. Applied to an editor's baseline
+ * and working bundle alike, so both match the hub again and the editor's own
+ * diff is untouched.
+ */
+export function retireWifiEventLongRecords(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+  slotCount: number,
+): BackupBundlePayload | null {
+  if (!bundle || !(Number(deviceId) > 0) || !(Number(slotCount) > 0)) return bundle;
+  const isLong = (dev: unknown, cmd: unknown) =>
+    Number(dev ?? -1) === Number(deviceId)
+    && Number(cmd) > Number(slotCount)
+    && Number(cmd) <= 2 * Number(slotCount);
+  const shortId = (cmd: unknown) => Number(cmd) - Number(slotCount);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) =>
+      Number(entry?.device?.device_id ?? -1) === Number(deviceId)
+        ? {
+            ...entry,
+            commands: (entry.commands ?? []).filter((command) => !isLong(deviceId, command?.command_id)),
+          }
+        : entry),
+    activities: (bundle.activities ?? []).map((activity) => ({
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).map((slot) =>
+        isLong(slot?.device_id, slot?.command_id) ? { ...slot, command_id: shortId(slot.command_id) } : slot),
+      button_bindings: (activity.button_bindings ?? []).map((binding) => {
+        let next = binding;
+        if (isLong(binding?.device_id, binding?.command_id)) {
+          next = { ...next, command_id: shortId(binding.command_id) };
+        }
+        if (isLong(binding?.long_press_device_id, binding?.long_press_command_id)) {
+          next = { ...next, long_press_command_id: shortId(binding.long_press_command_id) };
+        }
+        return next;
+      }),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: (macro?.steps ?? []).map((step) =>
+          isLong(step?.device_id, step?.command_id) ? { ...step, command_id: shortId(step.command_id) } : step),
+      })),
+    })),
+  };
 }
 
 /** Drop one device entry (by id) from a bundle: the Sync flow uses this

@@ -789,7 +789,7 @@ test("activity long-press enable defaults command target to a real device", () =
   assert.equal(element._binding.lpCommandId, 3);
 });
 
-test("activity shortcut macro flow can reuse an existing activity macro", () => {
+test("activity shortcut macro flow only creates: an existing macro is a shortcut already", () => {
   const bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -816,17 +816,18 @@ test("activity shortcut macro flow can reuse an existing activity macro", () => 
 
   element._openAddShortcutDialog();
   element._addShortcutKind = "action";
-  element._addShortcutMacroMode = "existing";
-  element._addShortcutMacroId = 5;
+  element._addShortcutActionName = "Scene Two";
   element._applyAddShortcut();
 
+  // "Scene Prep" (5) is already on the shortcut list, so the dialog never
+  // references it: Add creates the next macro and opens its step editor.
   const activity = element.bundle.activities[0];
-  assert.equal(activity.macros.length, 1);
+  assert.deepEqual(activity.macros.map((macro: any) => [macro.button_id, macro.name]), [[5, "Scene Prep"], [6, "Scene Two"]]);
   assert.deepEqual(element._steps.editor, {
     scope: "activity",
     entityId: 101,
-    buttonId: 5,
-    name: "Scene Prep",
+    buttonId: 6,
+    name: "Scene Two",
   });
 });
 

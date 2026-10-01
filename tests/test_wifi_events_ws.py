@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.command_config import (
     WIFI_EVENTS_DEVICE_KEY,
-    WIFI_EVENTS_SLOT_COUNT,
     CommandConfigStore,
 )
 
@@ -110,7 +109,9 @@ def test_ws_wifi_event_list_empty(monkeypatch):
     conn = _Conn()
     _run(integration._ws_list_wifi_events(None, conn, _msg()))
     assert conn.error is None
-    assert conn.result[1] == {"events": [], "record_needs_sync": False, "device_id": None}
+    assert conn.result[1] == {
+        "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
+    }
 
 
 def test_ws_wifi_event_create_is_pure_store_allocation(monkeypatch):
@@ -129,7 +130,8 @@ def test_ws_wifi_event_create_is_pure_store_allocation(monkeypatch):
     assert payload["event"]["device_id"] is None  # first-ever: placeholder ref
     assert payload["record_needs_sync"] is True
     assert payload["events"][0]["deployed"] is False
-    assert payload["events"][0]["long_press_command_id"] == 1 + WIFI_EVENTS_SLOT_COUNT
+    # One record per event (single-record plan): no long-record id.
+    assert "long_press_command_id" not in payload["events"][0]
 
     # the reserved record now exists in the store list (listener guard path)
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("entry-1"))]
@@ -196,10 +198,10 @@ def test_ws_wifi_event_delete_resets_in_place(monkeypatch):
     ]
     # the reset deployed (2 configured slots remained -> normal sync)
     assert hub.sync_calls and hub.sync_calls[0]["configured"] == 2
-    # the freed slot's short + long records were REALLY deleted so the hub
-    # cascades referencing favorites/bindings/macro-steps (slot 1 -> short
-    # id 2, long id 2 + WIFI_EVENTS_SLOT_COUNT)
-    assert hub.record_delete_calls == [(10, [2, 2 + WIFI_EVENTS_SLOT_COUNT])]
+    # the freed slot's one record was REALLY deleted so the hub cascades
+    # referencing favorites/bindings/macro-steps (slot 1 -> id 2). The sync
+    # before it already retired any long record of the old layout.
+    assert hub.record_delete_calls == [(10, [2])]
     # the record survives (events remain)
     keys = [d["device_key"] for d in _run(store.async_list_hub_devices("entry-1"))]
     assert WIFI_EVENTS_DEVICE_KEY in keys
@@ -241,28 +243,46 @@ def test_ws_wifi_event_delete_sync_failure_keeps_reset_staged(monkeypatch):
     assert WIFI_EVENTS_DEVICE_KEY in keys
 
 
-def test_ws_wifi_event_set_action_and_longpress(monkeypatch):
+def test_ws_wifi_event_set_action(monkeypatch):
     _setup(monkeypatch)
     conn = _Conn()
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
+    action = {"action": "perform-action", "perform_action": "script.x"}
     conn = _Conn()
-    _run(
-        integration._ws_set_wifi_event_action(
-            None,
-            conn,
-            _msg(slot_index=0, press_type="long", action={"action": "perform-action", "perform_action": "script.x"}),
-        )
-    )
+    _run(integration._ws_set_wifi_event_action(None, conn, _msg(slot_index=0, action=action)))
     assert conn.error is None
-    assert conn.result[1]["events"][0]["long_press_action"]["perform_action"] == "script.x"
-    conn = _Conn()
-    _run(integration._ws_set_wifi_event_longpress(None, conn, _msg(slot_index=0, enabled=True)))
-    assert conn.error is None
-    assert conn.result[1]["events"][0]["long_press_enabled"] is True
+    event = conn.result[1]["events"][0]
+    assert event["action"]["perform_action"] == "script.x"
+    assert "long_press_action" not in event
     # unconfigured slot -> not_found
     conn = _Conn()
-    _run(integration._ws_set_wifi_event_longpress(None, conn, _msg(slot_index=9, enabled=True)))
+    _run(integration._ws_set_wifi_event_action(None, conn, _msg(slot_index=9, action=action)))
     assert conn.error is not None and conn.error[1] == "not_found"
+
+
+def test_ws_wifi_event_set_action_ignores_cached_long_press(monkeypatch):
+    # A cached card may still send press_type "long" for one release: it is
+    # accepted and never overwrites the event's one action.
+    _setup(monkeypatch)
+    conn = _Conn()
+    _run(integration._ws_create_wifi_event(None, conn, _msg(name="Movie Night")))
+    short = {"action": "perform-action", "perform_action": "script.short"}
+    conn = _Conn()
+    _run(integration._ws_set_wifi_event_action(
+        None, conn, _msg(slot_index=0, press_type="short", action=short)))
+    assert conn.error is None
+    conn = _Conn()
+    _run(integration._ws_set_wifi_event_action(
+        None, conn,
+        _msg(slot_index=0, press_type="long",
+             action={"action": "perform-action", "perform_action": "script.long"}),
+    ))
+    assert conn.error is None
+    assert conn.result[1]["events"][0]["action"]["perform_action"] == "script.short"
+
+
+def test_ws_wifi_event_set_longpress_is_gone():
+    assert not hasattr(integration, "_ws_set_wifi_event_longpress")
 
 
 def test_ws_command_devices_list_hides_reserved_record(monkeypatch):
@@ -519,13 +539,15 @@ def test_ws_wifi_event_clear_all_removes_orphaned_config(monkeypatch):
     _run(integration._ws_create_wifi_event(None, conn, _msg(name="Lights")))
     _run(
         store.async_set_wifi_event_action(
-            "entry-1", 0, "short", {"action": "perform-action", "perform_action": "script.a"}
+            "entry-1", 0, {"action": "perform-action", "perform_action": "script.a"}
         )
     )
     conn = _Conn()
     _run(integration._ws_clear_all_wifi_events(None, conn, _msg()))
     assert conn.error is None
-    assert conn.result[1] == {"events": [], "record_needs_sync": False, "device_id": None}
+    assert conn.result[1] == {
+        "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
+    }
     assert hub.sync_calls == []
     assert store.wifi_events_record_state("entry-1", roku_listen_port=8060)["exists"] is False
 
@@ -569,4 +591,6 @@ def test_ws_wifi_event_clear_all_without_record_is_idempotent(monkeypatch):
     conn = _Conn()
     _run(integration._ws_clear_all_wifi_events(None, conn, _msg()))
     assert conn.error is None
-    assert conn.result[1] == {"events": [], "record_needs_sync": False, "device_id": None}
+    assert conn.result[1] == {
+        "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
+    }

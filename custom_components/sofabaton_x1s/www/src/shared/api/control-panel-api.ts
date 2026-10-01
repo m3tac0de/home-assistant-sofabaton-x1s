@@ -432,27 +432,12 @@ export class ControlPanelApi {
     });
   }
 
-  setWifiEventAction(
-    hubEntryId: string,
-    slotIndex: number,
-    pressType: "short" | "long",
-    action: Record<string, unknown>,
-  ) {
+  setWifiEventAction(hubEntryId: string, slotIndex: number, action: Record<string, unknown>) {
     return this.hass.callWS<WifiEventsListResponse>({
       type: "sofabaton_x1s/wifi_event/set_action",
       entry_id: hubEntryId,
       slot_index: slotIndex,
-      press_type: pressType,
       action,
-    });
-  }
-
-  setWifiEventLongpress(hubEntryId: string, slotIndex: number, enabled: boolean) {
-    return this.hass.callWS<WifiEventsListResponse>({
-      type: "sofabaton_x1s/wifi_event/set_longpress",
-      entry_id: hubEntryId,
-      slot_index: slotIndex,
-      enabled,
     });
   }
 

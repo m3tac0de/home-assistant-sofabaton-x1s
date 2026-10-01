@@ -137,7 +137,7 @@ type ActivityEventPhase = "start" | "stop";
 type HubEventEditorTarget =
   | { kind: "hub"; key: HubEventKey }
   | { kind: "activity"; id: string; phase: ActivityEventPhase }
-  | { kind: "wifi_event"; slotIndex: number; pressType: PressType };
+  | { kind: "wifi_event"; slotIndex: number };
 
 interface ActivityEventEntry {
   start: WifiCommandAction;
@@ -263,6 +263,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     _wifiEventsRows: { state: true },
     _wifiEventsLoading: { state: true },
     _wifiEventsDeviceId: { state: true },
+    _wifiEventsRecordNeedsSync: { state: true },
     _wifiEventsStaleConfirm: { state: true },
     _wifiEventsStaleBusy: { state: true },
     _wifiEventsStaleError: { state: true },
@@ -856,6 +857,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _wifiEventsRows: WifiEvent[] | null = null;
   private _wifiEventsLoading = false;
   private _wifiEventsDeviceId: number | null = null;
+  /** The record differs from its last deploy (staged events, or a deploy
+   *  from before the single-record model still holding long records). */
+  private _wifiEventsRecordNeedsSync = false;
   private _wifiEventsStaleConfirm = false;
   private _wifiEventsStaleBusy = false;
   private _wifiEventsStaleError = "";
@@ -1358,11 +1362,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   // "Configured" for the section pills and the unconfigured-row filter:
-  // any of the row's action hooks carries a custom action.
+  // the event's one action is a custom action.
   private _wifiEventConfigured(event: WifiEvent): boolean {
-    if (this._commandHasCustomAction(this._normalizeCommandAction(event.action))) return true;
-    return Boolean(event.long_press_enabled)
-      && this._commandHasCustomAction(this._normalizeCommandAction(event.long_press_action));
+    return this._commandHasCustomAction(this._normalizeCommandAction(event.action));
   }
 
   private _activityEventConfigured(activityId: string): boolean {
@@ -1392,10 +1394,13 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   /** Apply a `wifi_event/*` state payload: rows plus the record-level
    *  deployed device id (null = orphaned or never deployed). */
-  private _applyWifiEventsState(state: { events?: WifiEvent[]; device_id?: number | null } | null | undefined): void {
+  private _applyWifiEventsState(
+    state: { events?: WifiEvent[]; device_id?: number | null; record_needs_sync?: boolean } | null | undefined,
+  ): void {
     this._wifiEventsRows = state?.events ?? [];
     const deviceId = state?.device_id;
     this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
+    this._wifiEventsRecordNeedsSync = Boolean(state?.record_needs_sync);
   }
 
   private async _loadWifiEventsRows(): Promise<void> {
@@ -1441,10 +1446,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _actionForHubEventTarget(target: HubEventEditorTarget): WifiCommandAction {
     if (target.kind === "hub") return this._normalizeCommandAction(this._hubEventActions[target.key]);
     if (target.kind === "wifi_event") {
-      const event = this._wifiEventBySlot(target.slotIndex);
-      return this._normalizeCommandAction(
-        target.pressType === "long" ? event?.long_press_action : event?.action,
-      );
+      return this._normalizeCommandAction(this._wifiEventBySlot(target.slotIndex)?.action);
     }
     return this._activityEventEntry(target.id)[target.phase];
   }
@@ -1461,7 +1463,6 @@ class SofabatonWifiCommandsTab extends LitElement {
       const result = await this.api().setWifiEventAction(
         hubEntryId,
         target.slotIndex,
-        target.pressType,
         { ...this._normalizeCommandAction(action) },
       );
       if (result?.events) this._applyWifiEventsState(result);
@@ -1584,39 +1585,29 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   /** Press-glow for a WIFI EVENTS row: match on the deployed device id +
-   *  slot index (the same callback identity the hub dispatches with);
-   *  `pressType` picks which of the row's two action links glows. */
-  private _pressMatchesWifiEvent(
-    press: WifiPressEvent | null,
-    event: WifiEvent,
-    pressType: PressType,
-  ): boolean {
+   *  slot index (the same callback identity the hub dispatches with). A
+   *  held button on an event fires the same record, so every press glows. */
+  private _pressMatchesWifiEvent(press: WifiPressEvent | null, event: WifiEvent): boolean {
     if (!press || press.deviceId == null || press.commandIndex == null) return false;
     if (event.device_id == null || press.deviceId !== event.device_id) return false;
-    return press.commandIndex === event.slot_index && press.pressType === pressType;
+    return press.commandIndex === event.slot_index;
   }
 
   /** WIFI EVENTS group (W7: Actions ONLY — no deletes, no toggles, no
    *  deploy affordances here; the event lifecycle lives in the editors'
-   *  sync cycle). Row shapes per the user spec:
-   *    `When <NAME> is pressed <action>.`
-   *    `When <NAME> is pressed <action>, and when it's long-pressed <action>.`
-   *  Long-press enablement is editor-only; a passive needs-sync badge is
-   *  the only deploy-state surface. */
+   *  sync cycle). One row per event: `When <NAME> is pressed <action>.`
+   *  An event has one action; which button and which press fires it is
+   *  the binding's business (wifi-events-single-record-plan). Passive
+   *  needs-sync surfaces only: a per-row badge for a staged event, and one
+   *  notice line when the record itself waits for a sync. */
   private _renderWifiEventsGroup(pressFlash: WifiPressEvent | null) {
     const W = TOOLS_CARD_STRINGS.wifiCommands;
     const events = this._wifiEventsRows ?? [];
-    const renderAction = (event: WifiEvent, pressType: PressType) => {
-      const action = this._normalizeCommandAction(
-        pressType === "long" ? event.long_press_action : event.action,
-      );
+    const renderAction = (event: WifiEvent) => {
+      const action = this._normalizeCommandAction(event.action);
       const configured = this._commandHasCustomAction(action);
-      const target: HubEventEditorTarget = {
-        kind: "wifi_event",
-        slotIndex: event.slot_index,
-        pressType,
-      };
-      const flashActive = this._pressMatchesWifiEvent(pressFlash, event, pressType);
+      const target: HubEventEditorTarget = { kind: "wifi_event", slotIndex: event.slot_index };
+      const flashActive = this._pressMatchesWifiEvent(pressFlash, event);
       return html`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
           ${this._hubEventActionText(action)}</button>${flashActive && pressFlash ? keyed(pressFlash.receivedAt, html`<div class="wifi-ir-flash" aria-hidden="true"></div>`) : nothing}</span>${configured ? html`<button
             class="hub-event-clear"
@@ -1625,6 +1616,11 @@ class SofabatonWifiCommandsTab extends LitElement {
           ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}`;
     };
     const orphaned = this._wifiEventsOrphaned();
+    // The record waits for a sync that no row badge explains: a deploy from
+    // before the single-record model (its long records go on the next Sync).
+    const recordNeedsSync = this._wifiEventsRecordNeedsSync
+      && !orphaned
+      && events.every((event) => event.deployed);
     const configuredCount = events.filter((event) => this._wifiEventConfigured(event)).length;
     const visible = this._wifiEventsShowUnconfigured
       ? events
@@ -1637,6 +1633,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
         ${orphaned ? this._renderWifiEventsStaleNotice() : nothing}
+        ${recordNeedsSync ? html`<div class="section-subtitle wifi-events-stale">${W.wifiEventsRecordNeedsSyncNotice}</div>` : nothing}
         ${events.length ? html`
           ${visible.length ? html`
             <ul class="hub-event-lines">
@@ -1645,8 +1642,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                   <span class="hub-event-icon"><ha-icon icon="mdi:gesture-tap-button"></ha-icon></span>
                   <span class="hub-event-text">
                     ${phraseWithName(W.wifiEventRowPress, event.name)}${event.deployed || orphaned ? nothing : html` <span class="hub-event-needs-sync">(${W.wifiEventNeedsSyncBadge})</span>`}
-                    ${renderAction(event, "short")}${event.long_press_enabled ? html`, ${W.wifiEventRowLongPress}
-                    ${renderAction(event, "long")}` : nothing}.
+                    ${renderAction(event)}.
                   </span>
                 </li>
               `)}
@@ -1819,11 +1815,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       return hubEventModalTitle(target.key);
     }
     if (target.kind === "wifi_event") {
-      const event = this._wifiEventBySlot(target.slotIndex);
-      const name = event?.name || "";
-      return target.pressType === "long"
-        ? TOOLS_CARD_STRINGS.wifiCommands.wifiEventLongModalTitle(name)
-        : TOOLS_CARD_STRINGS.wifiCommands.wifiEventModalTitle(name);
+      return TOOLS_CARD_STRINGS.wifiCommands.wifiEventModalTitle(this._wifiEventBySlot(target.slotIndex)?.name || "");
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
     const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));
@@ -2350,6 +2342,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._activityEventActions = {};
       this._wifiEventsRows = null;
       this._wifiEventsDeviceId = null;
+      this._wifiEventsRecordNeedsSync = false;
       this._wifiEventsStaleConfirm = false;
       this._wifiEventsStaleError = "";
     }

@@ -99,7 +99,8 @@ def test_allocate_and_list_events() -> None:
     first = _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
     assert first["slot_index"] == 0
     assert first["command_id"] == 1
-    assert first["long_press_command_id"] == 1 + WIFI_EVENTS_SLOT_COUNT
+    # One record per event: no long-record id (single-record plan).
+    assert "long_press_command_id" not in first
 
     second = _run(store.async_allocate_wifi_event("hub-1", "Lights Off"))
     assert second["slot_index"] == 1
@@ -107,7 +108,8 @@ def test_allocate_and_list_events() -> None:
     events = store.list_wifi_events("hub-1")
     assert [e["name"] for e in events] == ["Movie Night", "Lights Off"]
     assert all(e["deployed"] is False for e in events)
-    assert events[0]["long_press_enabled"] is False
+    for key in ("long_press_enabled", "long_press_action", "long_press_command_id"):
+        assert key not in events[0]
 
 
 def test_allocate_rejects_duplicate_and_empty_names() -> None:
@@ -164,7 +166,7 @@ def test_allocate_skips_slot_pending_hub_delete() -> None:
     commands = normalize_commands(
         _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands"],
         slot_count=WIFI_EVENTS_SLOT_COUNT,
-        standalone_long_press=True,
+        single_record=True,
     )
     _run(
         store.async_save_deployed_wifi_commands(
@@ -197,7 +199,7 @@ def test_allocate_pending_delete_when_only_freed_slot_is_undeleted() -> None:
     commands = normalize_commands(
         _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands"],
         slot_count=WIFI_EVENTS_SLOT_COUNT,
-        standalone_long_press=True,
+        single_record=True,
     )
     _run(
         store.async_save_deployed_wifi_commands(
@@ -213,44 +215,82 @@ def test_allocate_pending_delete_when_only_freed_slot_is_undeleted() -> None:
         assert str(err) == "wifi_events_pending_delete"
 
 
-def test_standalone_long_press_only_for_events_record() -> None:
+def _legacy_events_store(slot: dict) -> CommandConfigStore:
+    """A store persisted before the single-record model."""
+
     store = _store()
-    _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
-    assert _run(store.async_set_wifi_event_longpress("hub-1", 0, True)) is True
-    events = store.list_wifi_events("hub-1")
-    assert events[0]["long_press_enabled"] is True
-    # the live-slot read (callback runtime) sees the standalone flag too
+    store._data = {
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": WIFI_EVENTS_DEVICE_KEY,
+                        "device_name": WIFI_EVENTS_DEVICE_NAME,
+                        "slot_count": WIFI_EVENTS_SLOT_COUNT,
+                        "commands": [slot],
+                    }
+                ]
+            }
+        }
+    }
+    return store
+
+
+def test_events_record_discards_long_press_state() -> None:
+    # Plan §1.3: a configured long-press action has no home in the
+    # single-record model and is discarded on load.
+    store = _legacy_events_store(
+        {
+            "name": "Movie Night",
+            "long_press_enabled": True,
+            "action": {"action": "perform-action", "perform_action": "script.short"},
+            "long_press_action": {"action": "perform-action", "perform_action": "script.long"},
+        }
+    )
     slot = store.get_live_wifi_command_slot(
         "hub-1", command_index=0, device_key=WIFI_EVENTS_DEVICE_KEY
     )
-    assert slot is not None and slot["long_press_enabled"] is True
+    assert slot is not None
+    assert slot["long_press_enabled"] is False
+    assert slot["long_press_action"] == {"action": "perform-action"}
+    assert slot["action"]["perform_action"] == "script.short"
+    events = store.list_wifi_events("hub-1")
+    assert [e["name"] for e in events] == ["Movie Night"]
 
-    # user devices keep the original coupling: no hard button -> forced off
+
+def test_user_device_keeps_hard_button_long_press() -> None:
+    store = _store()
     _run(
         store.async_set_hub_commands(
             "hub-1",
-            [{"name": "User Cmd", "long_press_enabled": True, "hard_button": ""}],
+            [
+                {
+                    "name": "User Cmd",
+                    "long_press_enabled": True,
+                    "hard_button": "ok",
+                    "long_press_action": {"action": "perform-action", "perform_action": "script.l"},
+                },
+                {"name": "No Button", "long_press_enabled": True, "hard_button": ""},
+            ],
             device_key="default",
         )
     )
-    user_slot = store.get_live_wifi_command_slot(
-        "hub-1", command_index=0, device_key="default"
-    )
-    assert user_slot is not None and user_slot["long_press_enabled"] is False
+    held = store.get_live_wifi_command_slot("hub-1", command_index=0, device_key="default")
+    assert held is not None and held["long_press_enabled"] is True
+    assert held["long_press_action"]["perform_action"] == "script.l"
+    loose = store.get_live_wifi_command_slot("hub-1", command_index=1, device_key="default")
+    assert loose is not None and loose["long_press_enabled"] is False
 
 
-def test_set_event_actions_short_and_long() -> None:
+def test_set_event_action() -> None:
     store = _store()
     _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
-    short_action = {"action": "perform-action", "perform_action": "script.short"}
-    long_action = {"action": "perform-action", "perform_action": "script.long"}
-    assert _run(store.async_set_wifi_event_action("hub-1", 0, "short", short_action)) is True
-    assert _run(store.async_set_wifi_event_action("hub-1", 0, "long", long_action)) is True
+    action = {"action": "perform-action", "perform_action": "script.short"}
+    assert _run(store.async_set_wifi_event_action("hub-1", 0, action)) is True
     events = store.list_wifi_events("hub-1")
     assert events[0]["action"]["perform_action"] == "script.short"
-    assert events[0]["long_press_action"]["perform_action"] == "script.long"
     # unknown / unconfigured slot -> False
-    assert _run(store.async_set_wifi_event_action("hub-1", 7, "short", short_action)) is False
+    assert _run(store.async_set_wifi_event_action("hub-1", 7, action)) is False
 
 
 def test_live_slot_read_covers_high_indices() -> None:
@@ -278,19 +318,93 @@ def test_hash_stable_at_default_slot_count() -> None:
     )
 
 
-def test_longpress_flip_does_not_change_deploy_hash() -> None:
-    # Plan §11 discovery 1: the long record always exists, so flipping the
-    # standalone flag must never flag the record out-of-step.
+def _events_hash_kwargs() -> dict:
+    return {
+        "device_name": WIFI_EVENTS_DEVICE_NAME,
+        "slot_count": WIFI_EVENTS_SLOT_COUNT,
+    }
+
+
+def test_events_layout_token_flags_pre_change_deploys() -> None:
+    # Plan §3.1: every hash deployed before the single-record layout lacks
+    # the token, so the events record reads "needs sync" once after the
+    # upgrade, even for events that never used long press.
     store = _store()
     _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
-    before = _run(
-        store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY)
-    )["commands_hash"]
-    _run(store.async_set_wifi_event_longpress("hub-1", 0, True))
-    after = _run(
-        store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY)
-    )["commands_hash"]
-    assert before == after
+    payload = _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    legacy_hash = compute_commands_hash(payload["commands"], **_events_hash_kwargs())
+    assert payload["commands_hash"] == compute_commands_hash(
+        payload["commands"], single_record=True, **_events_hash_kwargs()
+    )
+    assert payload["commands_hash"] != legacy_hash
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1", WIFI_EVENTS_DEVICE_KEY, payload["commands"],
+            deployed_device_id=10, commands_hash=legacy_hash,
+        )
+    )
+    assert store.wifi_events_record_state("hub-1")["record_needs_sync"] is True
+
+
+def test_layout_token_leaves_user_devices_alone() -> None:
+    commands = default_commands()
+    assert compute_commands_hash(commands) == compute_commands_hash(
+        commands, single_record=False
+    )
+    store = _store()
+    _run(store.async_set_hub_commands("hub-1", [{"name": "Cmd"}], device_key="default"))
+    payload = _run(store.async_get_hub_config("hub-1", device_key="default"))
+    assert payload["commands_hash"] == compute_commands_hash(
+        payload["commands"], device_name=payload["device_name"]
+    )
+
+
+def _deploy_events(store: CommandConfigStore, *, legacy: bool) -> None:
+    payload = _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    commands_hash = (
+        compute_commands_hash(payload["commands"], **_events_hash_kwargs())
+        if legacy
+        else payload["commands_hash"]
+    )
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1", WIFI_EVENTS_DEVICE_KEY, payload["commands"],
+            deployed_device_id=10, commands_hash=commands_hash,
+        )
+    )
+
+
+def test_reconcile_keeps_legacy_layout_out_of_step() -> None:
+    # A device-editor rename or delete before the user's Sync must not
+    # make the retiring sync look done: the deployed hash keeps describing
+    # the legacy (short + long) layout the hub still holds.
+    store = _store()
+    for name in ("One", "Two"):
+        _run(store.async_allocate_wifi_event("hub-1", name))
+    _deploy_events(store, legacy=True)
+
+    assert _run(store.async_reconcile_wifi_events_command_renames("hub-1", {1: "Uno"})) is True
+    assert store.wifi_events_record_state("hub-1")["record_needs_sync"] is True
+    payload = _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    assert payload["deployed_commands_hash"] == compute_commands_hash(
+        payload["commands"], **_events_hash_kwargs()
+    )
+
+    assert _run(store.async_reconcile_wifi_events_command_removals("hub-1", [2])) is True
+    assert store.wifi_events_record_state("hub-1")["record_needs_sync"] is True
+
+
+def test_reconcile_keeps_current_layout_in_step() -> None:
+    store = _store()
+    for name in ("One", "Two"):
+        _run(store.async_allocate_wifi_event("hub-1", name))
+    _deploy_events(store, legacy=False)
+    assert store.wifi_events_record_state("hub-1")["record_needs_sync"] is False
+
+    assert _run(store.async_reconcile_wifi_events_command_renames("hub-1", {1: "Uno"})) is True
+    assert store.wifi_events_record_state("hub-1")["record_needs_sync"] is False
+    assert _run(store.async_reconcile_wifi_events_command_removals("hub-1", [2])) is True
+    assert store.wifi_events_record_state("hub-1")["record_needs_sync"] is False
 
 
 def test_slot_count_fallback_for_legacy_events_record() -> None:
@@ -321,11 +435,11 @@ def test_reconcile_command_removals_resets_short_slot(_store=None):
     _run(store.async_allocate_wifi_event("hub-1", "One"))
     _run(store.async_allocate_wifi_event("hub-1", "Two"))
     _run(store.async_set_wifi_event_action(
-        "hub-1", 0, "short", {"action": "perform-action", "perform_action": "script.x"}))
+        "hub-1", 0, {"action": "perform-action", "perform_action": "script.x"}))
     # simulate a deployed record so the hash path runs
     commands = normalize_commands(
         _run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands"],
-        slot_count=WIFI_EVENTS_SLOT_COUNT, standalone_long_press=True)
+        slot_count=WIFI_EVENTS_SLOT_COUNT, single_record=True)
     _run(store.async_save_deployed_wifi_commands(
         "hub-1", WIFI_EVENTS_DEVICE_KEY, commands, deployed_device_id=10,
         commands_hash=_run(store.async_get_hub_config("hub-1", device_key=WIFI_EVENTS_DEVICE_KEY))["commands_hash"]))
@@ -339,18 +453,17 @@ def test_reconcile_command_removals_resets_short_slot(_store=None):
     assert payload["deployed_commands_hash"] == payload["commands_hash"]
 
 
-def test_reconcile_command_removals_long_id_flips_flag_only():
+def test_reconcile_command_removals_ignores_long_ids():
+    # A long record from before the single-record model is retired by the
+    # user's Sync; its removal never touches the event.
     store = CommandConfigStore(SimpleNamespace())
     _run(store.async_load())
     _run(store.async_allocate_wifi_event("hub-1", "One"))
-    _run(store.async_set_wifi_event_longpress("hub-1", 0, True))
-    # removing only the LONG id (1 + slot_count) keeps the event, flag off
     changed = _run(store.async_reconcile_wifi_events_command_removals(
         "hub-1", [1 + WIFI_EVENTS_SLOT_COUNT]))
-    assert changed is True
+    assert changed is False
     events = store.list_wifi_events("hub-1")
     assert [e["name"] for e in events] == ["One"]
-    assert events[0]["long_press_enabled"] is False
 
 
 def test_reconcile_command_removals_noop_for_unconfigured():

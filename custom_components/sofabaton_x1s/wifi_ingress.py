@@ -143,6 +143,16 @@ class WifiIngressMixin:
         the slot-action runner are transport-agnostic.
         """
 
+        if press_type == "long" and device_id >= 0:
+            store = await async_get_command_config_store(self.hass)
+            if store.is_wifi_events_hub_device(self.entry_id, device_id):
+                # A Wifi Event is one record with one action. A long
+                # record still on the hub from before that model is an
+                # alias of its event until the user's Sync retires it
+                # (wifi-events-single-record-plan §3.2).
+                press_type = "short"
+                record["press_type"] = "short"
+
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
         if resolved_slot is not None and command_index is not None:

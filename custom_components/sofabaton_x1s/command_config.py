@@ -117,7 +117,7 @@ def _normalize_slot(
     slot: Any,
     idx: int,
     *,
-    standalone_long_press: bool = False,
+    single_record: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(slot, dict):
         return _default_slot(idx)
@@ -134,14 +134,14 @@ def _normalize_slot(
         "name": str(slot.get("name", f"Command {idx + 1}")),
         "add_as_favorite": add_as_favorite,
         "hard_button": hard_button,
-        # For the Wifi Events record the flag is honored standalone: the
-        # long record is always deployed, so the flag only gates HA-side
-        # long-press action execution — no hard button required. User wifi
-        # devices keep the original coupling. The deploy hash still ANDs
-        # with hard_button (see _hash_payload), so flipping the standalone
-        # flag never flags the record out-of-step.
+        # A Wifi Event is one record with one action
+        # (docs/internal/wifi-events-single-record-plan.md): long press is a
+        # property of the button binding, never of the event, so the
+        # events record carries no long-press state. User wifi devices
+        # keep the hard-button coupling.
         "long_press_enabled": bool(slot.get("long_press_enabled", False))
-        and (standalone_long_press or bool(hard_button.strip())),
+        and not single_record
+        and bool(hard_button.strip()),
         "input_activity_id": str(slot.get("input_activity_id", "")),
         "activities": [
             str(activity)
@@ -151,7 +151,11 @@ def _normalize_slot(
         if activities_active and isinstance(slot.get("activities"), list)
         else [],
         "action": _normalize_action(slot.get("action")),
-        "long_press_action": _normalize_action(slot.get("long_press_action")),
+        # Discarded for the events record: an action configured before the
+        # single-record model has no home (plan §1.3).
+        "long_press_action": _normalize_action(
+            None if single_record else slot.get("long_press_action")
+        ),
     }
 
 
@@ -237,14 +241,14 @@ def normalize_commands(
     raw: Any,
     *,
     slot_count: int = COMMAND_SLOT_COUNT,
-    standalone_long_press: bool = False,
+    single_record: bool = False,
 ) -> list[dict[str, Any]]:
     slots = default_commands(slot_count)
     if not isinstance(raw, list):
         return slots
 
     for idx, item in enumerate(raw[: int(slot_count)]):
-        slots[idx] = _normalize_slot(item, idx, standalone_long_press=standalone_long_press)
+        slots[idx] = _normalize_slot(item, idx, single_record=single_record)
 
     return slots
 
@@ -253,10 +257,10 @@ def count_configured_command_slots(
     commands: Any,
     *,
     slot_count: int = COMMAND_SLOT_COUNT,
-    standalone_long_press: bool = False,
+    single_record: bool = False,
 ) -> int:
     normalized = normalize_commands(
-        commands, slot_count=slot_count, standalone_long_press=standalone_long_press
+        commands, slot_count=slot_count, single_record=single_record
     )
     defaults = default_commands(slot_count)
     configured = 0
@@ -380,8 +384,9 @@ def compute_commands_hash(
     power_on_command_id: int | None = None,
     power_off_command_id: int | None = None,
     slot_count: int = COMMAND_SLOT_COUNT,
+    single_record: bool = False,
 ) -> str:
-    payload = {
+    payload: dict[str, Any] = {
         # Salting with the hash version lets a deploy-behavior change (not
         # just a config change) flag existing deploys out of step once —
         # v5: derived device-page key bindings ride the deploy.
@@ -395,6 +400,12 @@ def compute_commands_hash(
         "power_on_command_id": normalize_power_command_id(power_on_command_id),
         "power_off_command_id": normalize_power_command_id(power_off_command_id),
     }
+    if single_record:
+        # The Wifi Events record's hub layout (one record per event, no
+        # long records; wifi-events-single-record-plan §3.1). Every hash
+        # deployed before that layout lacks the token, so those deploys
+        # read out of step once; user wifi devices hash as before.
+        payload["layout"] = "records=1"
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -491,7 +502,7 @@ def _normalize_device_payload(
     payload["commands"] = normalize_commands(
         device.get("commands"),
         slot_count=payload["slot_count"],
-        standalone_long_press=is_wifi_events_device_key(payload["device_key"]),
+        single_record=is_wifi_events_device_key(payload["device_key"]),
     )
     payload["power_on_command_id"] = normalize_power_command_id(device.get("power_on_command_id"))
     payload["power_off_command_id"] = normalize_power_command_id(device.get("power_off_command_id"))
@@ -614,11 +625,11 @@ class CommandConfigStore:
     ) -> dict[str, Any]:
         device_key = str(device.get("device_key") or DEFAULT_WIFI_DEVICE_KEY)
         slot_count = _record_slot_count(device_key, device.get("slot_count"))
-        standalone_long_press = is_wifi_events_device_key(device_key)
+        single_record = is_wifi_events_device_key(device_key)
         commands = normalize_commands(
             device.get("commands"),
             slot_count=slot_count,
-            standalone_long_press=standalone_long_press,
+            single_record=single_record,
         )
         power_on_command_id = normalize_power_command_id(device.get("power_on_command_id"))
         power_off_command_id = normalize_power_command_id(device.get("power_off_command_id"))
@@ -639,11 +650,12 @@ class CommandConfigStore:
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
                 slot_count=slot_count,
+                single_record=single_record,
             ),
             "configured_slot_count": count_configured_command_slots(
                 commands,
                 slot_count=slot_count,
-                standalone_long_press=standalone_long_press,
+                single_record=single_record,
             ),
             "activity_labels": _normalize_activity_labels(device.get("activity_labels")),
             "deployed_device_id": device.get("deployed_device_id"),
@@ -988,7 +1000,7 @@ class CommandConfigStore:
             slot_count=_record_slot_count(
                 target_device.get("device_key"), target_device.get("slot_count")
             ),
-            standalone_long_press=is_wifi_events_device_key(target_device.get("device_key")),
+            single_record=is_wifi_events_device_key(target_device.get("device_key")),
         )
         if 0 <= command_index < len(commands):
             return commands[command_index]
@@ -1069,7 +1081,7 @@ class CommandConfigStore:
         normalized = normalize_commands(
             commands,
             slot_count=_record_slot_count(device.get("device_key"), device.get("slot_count")),
-            standalone_long_press=is_wifi_events_device_key(device.get("device_key")),
+            single_record=is_wifi_events_device_key(device.get("device_key")),
         )
         normalized_power_on = normalize_power_command_id(power_on_command_id)
         normalized_power_off = normalize_power_command_id(power_off_command_id)
@@ -1094,29 +1106,36 @@ class CommandConfigStore:
                 return device
         return None
 
+    def is_wifi_events_hub_device(self, entry_id: str, hub_device_id: Any) -> bool:
+        """True when *hub_device_id* is the deployed Wifi Events device."""
+
+        record = self._wifi_events_record(entry_id)
+        if record is None or not isinstance(hub_device_id, int) or hub_device_id < 0:
+            return False
+        return record.get("deployed_device_id") == hub_device_id
+
     def _wifi_events_slots(
         self, record: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], int]:
         slot_count = _record_slot_count(record.get("device_key"), record.get("slot_count"))
         commands = normalize_commands(
-            record.get("commands"), slot_count=slot_count, standalone_long_press=True
+            record.get("commands"), slot_count=slot_count, single_record=True
         )
         return commands, slot_count
 
     def list_wifi_events(self, entry_id: str) -> list[dict[str, Any]]:
         """Configured slots of the Wifi Events record, with their hub ids.
 
-        ``command_id`` follows the short law (slot index + 1),
-        ``long_press_command_id`` the long law (short + slot_count) —
-        both live-validated at slot_count=50 (plan §11). ``deployed`` is
-        True when the slot index is covered by the deployed snapshot;
-        a freshly allocated slot reads False until its sync lands.
+        ``command_id`` is the event's one hub record (slot index + 1;
+        wifi-events-single-record-plan). ``deployed`` is True when the
+        slot index is covered by the deployed snapshot; a freshly
+        allocated slot reads False until its sync lands.
         """
 
         record = self._wifi_events_record(entry_id)
         if record is None:
             return []
-        commands, slot_count = self._wifi_events_slots(record)
+        commands, _slot_count = self._wifi_events_slots(record)
         deployed_commands = record.get("deployed_commands")
         deployed_len = len(deployed_commands) if isinstance(deployed_commands, list) else 0
         deployed_device_id = record.get("deployed_device_id")
@@ -1128,11 +1147,8 @@ class CommandConfigStore:
                 {
                     "slot_index": idx,
                     "name": str(slot.get("name") or ""),
-                    "long_press_enabled": bool(slot.get("long_press_enabled")),
                     "action": _normalize_action(slot.get("action")),
-                    "long_press_action": _normalize_action(slot.get("long_press_action")),
                     "command_id": idx + 1,
-                    "long_press_command_id": idx + 1 + slot_count,
                     "device_id": deployed_device_id if isinstance(deployed_device_id, int) else None,
                     "deployed": isinstance(deployed_device_id, int) and idx < deployed_len,
                 }
@@ -1169,7 +1185,7 @@ class CommandConfigStore:
             )
             self._hub_device_records(entry_id).append(record)
 
-        commands, slot_count = self._wifi_events_slots(record)
+        commands, _slot_count = self._wifi_events_slots(record)
         deployed = record.get("deployed_commands")
         deployed_list = deployed if isinstance(deployed, list) else []
         wanted = normalize_command_name(normalized_name)
@@ -1221,7 +1237,6 @@ class CommandConfigStore:
             "slot_index": free_index,
             "name": normalized_name,
             "command_id": free_index + 1,
-            "long_press_command_id": free_index + 1 + slot_count,
         }
 
     def _wifi_events_configured_slot(
@@ -1259,19 +1274,16 @@ class CommandConfigStore:
         self,
         entry_id: str,
         slot_index: int,
-        press_type: str,
         action: Any,
     ) -> bool:
-        """Set an event's ``action`` (press_type "short") or
-        ``long_press_action`` ("long"). No re-deploy needed: the runtime
+        """Set an event's one ``action``. No re-deploy needed: the runtime
         reads the staged slot (`get_live_wifi_command_slot`)."""
 
         found = self._wifi_events_configured_slot(entry_id, slot_index)
         if found is None:
             return False
         record, commands = found
-        key = "long_press_action" if str(press_type).lower() == "long" else "action"
-        commands[int(slot_index)][key] = _normalize_action(action)
+        commands[int(slot_index)]["action"] = _normalize_action(action)
         record["commands"] = commands
         await self._store.async_save(self._data)
         return True
@@ -1292,7 +1304,12 @@ class CommandConfigStore:
 
         record = self._wifi_events_record(entry_id)
         if record is None:
-            return {"exists": False, "record_needs_sync": False, "device_id": None}
+            return {
+                "exists": False,
+                "record_needs_sync": False,
+                "device_id": None,
+                "slot_count": WIFI_EVENTS_SLOT_COUNT,
+            }
         payload = self._payload_for_device(record, roku_listen_port=roku_listen_port)
         deployed_hash = str(payload.get("deployed_commands_hash") or "").strip()
         raw_device_id = payload.get("deployed_device_id")
@@ -1300,7 +1317,40 @@ class CommandConfigStore:
             "exists": True,
             "record_needs_sync": payload.get("commands_hash") != deployed_hash,
             "device_id": raw_device_id if isinstance(raw_device_id, int) else None,
+            # The id offset of a long record from before the single-record
+            # model: the card retargets references to one after the Sync
+            # that retires them (wifi-events-single-record-plan §3.3).
+            "slot_count": int(payload.get("slot_count") or WIFI_EVENTS_SLOT_COUNT),
         }
+
+    def _wifi_events_followed_hash(
+        self,
+        record: dict[str, Any],
+        before: list[dict[str, Any]],
+        after: list[dict[str, Any]],
+        slot_count: int,
+        roku_listen_port: int,
+    ) -> str:
+        """The deployed hash after a store-follows-hub reconcile.
+
+        Keeps the hub layout the deployed hash describes: a deploy from
+        before the single-record model (its hash lacks the layout token)
+        stays a legacy-layout hash, so the record keeps reading out of step
+        until the user's own Sync retires the long records
+        (wifi-events-single-record-plan §3). An edit from the device
+        editor must never make that sync look done.
+        """
+
+        kwargs: dict[str, Any] = {
+            "device_name": str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
+            "roku_listen_port": record_hash_listen_port(record, roku_listen_port),
+            "power_on_command_id": normalize_power_command_id(record.get("power_on_command_id")),
+            "power_off_command_id": normalize_power_command_id(record.get("power_off_command_id")),
+            "slot_count": slot_count,
+        }
+        deployed_hash = str(record.get("deployed_commands_hash") or "").strip()
+        legacy_layout = deployed_hash == compute_commands_hash(before, **kwargs)
+        return compute_commands_hash(after, single_record=not legacy_layout, **kwargs)
 
     async def async_reconcile_wifi_events_command_renames(
         self,
@@ -1325,6 +1375,7 @@ class CommandConfigStore:
         if record is None or not renames:
             return False
         commands, slot_count = self._wifi_events_slots(record)
+        before = deepcopy(commands)
         deployed = record.get("deployed_commands")
         deployed_list = deployed if isinstance(deployed, list) else []
         changed = False
@@ -1350,13 +1401,8 @@ class CommandConfigStore:
             return False
         record["commands"] = commands
         if str(record.get("deployed_commands_hash") or "").strip():
-            record["deployed_commands_hash"] = compute_commands_hash(
-                commands,
-                device_name=str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
-                roku_listen_port=record_hash_listen_port(record, roku_listen_port),
-                power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
-                power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
-                slot_count=slot_count,
+            record["deployed_commands_hash"] = self._wifi_events_followed_hash(
+                record, before, commands, slot_count, roku_listen_port
             )
         await self._store.async_save(self._data)
         return True
@@ -1371,19 +1417,21 @@ class CommandConfigStore:
         """Store-follows-hub reconcile after a device/sync DELETED command
         records on the Wifi Events device (W7 stage 2, plan §9b.3).
 
-        A removed SHORT id resets its slot to the default in place (slot
-        indices stay stable; the event's actions are cleared with it); a
-        removed LONG id alone just flips the slot's ``long_press_enabled``
-        off. The deployed snapshot follows (freed entries return to their
-        placeholder names) and the deployed hash is recomputed so the
-        record reads in sync — the next event create's phase-1 sync
-        re-adds placeholder records for the freed ids.
+        A removed id resets its slot to the default in place (slot
+        indices stay stable; the event's action is cleared with it). An id
+        above the slot count is a long record from before the
+        single-record model, retired anyway, and is ignored. The deployed
+        snapshot follows (freed entries return to their placeholder names)
+        and the deployed hash is recomputed so the record reads in sync —
+        the next event create's phase-1 sync re-adds placeholder records
+        for the freed ids.
         """
 
         record = self._wifi_events_record(entry_id)
         if record is None or not removed_ids:
             return False
         commands, slot_count = self._wifi_events_slots(record)
+        before = deepcopy(commands)
         deployed = record.get("deployed_commands")
         deployed_list = deployed if isinstance(deployed, list) else []
         changed = False
@@ -1392,57 +1440,24 @@ class CommandConfigStore:
                 command_id = int(raw_id)
             except (TypeError, ValueError):
                 continue
-            if 1 <= command_id <= slot_count:
-                idx = command_id - 1
-                if commands[idx] != _default_slot(idx):
-                    commands[idx] = _default_slot(idx)
-                    changed = True
-            elif slot_count < command_id <= 2 * slot_count:
-                idx = command_id - slot_count - 1
-                if commands[idx].get("long_press_enabled"):
-                    commands[idx]["long_press_enabled"] = False
-                    commands[idx]["long_press_action"] = deepcopy(DEFAULT_COMMAND_ACTION)
-                    changed = True
-            else:
+            if not (1 <= command_id <= slot_count):
                 continue
+            idx = command_id - 1
+            if commands[idx] != _default_slot(idx):
+                commands[idx] = _default_slot(idx)
+                changed = True
             if idx < len(deployed_list) and isinstance(deployed_list[idx], dict):
                 default_name = f"Command {idx + 1}"
-                if 1 <= command_id <= slot_count and deployed_list[idx].get("name") != default_name:
+                if deployed_list[idx].get("name") != default_name:
                     deployed_list[idx]["name"] = default_name
                     changed = True
         if not changed:
             return False
         record["commands"] = commands
         if str(record.get("deployed_commands_hash") or "").strip():
-            record["deployed_commands_hash"] = compute_commands_hash(
-                commands,
-                device_name=str(record.get("device_name") or WIFI_EVENTS_DEVICE_NAME),
-                roku_listen_port=record_hash_listen_port(record, roku_listen_port),
-                power_on_command_id=normalize_power_command_id(record.get("power_on_command_id")),
-                power_off_command_id=normalize_power_command_id(record.get("power_off_command_id")),
-                slot_count=slot_count,
+            record["deployed_commands_hash"] = self._wifi_events_followed_hash(
+                record, before, commands, slot_count, roku_listen_port
             )
-        await self._store.async_save(self._data)
-        return True
-
-    async def async_set_wifi_event_longpress(
-        self,
-        entry_id: str,
-        slot_index: int,
-        enabled: bool,
-    ) -> bool:
-        """Toggle an event's standalone long-press flag.
-
-        A pure store-flag edit: the long record is always deployed (plan
-        §11 discovery 1), so the flag only gates HA-side long-press action
-        execution — zero hub writes."""
-
-        found = self._wifi_events_configured_slot(entry_id, slot_index)
-        if found is None:
-            return False
-        record, commands = found
-        commands[int(slot_index)]["long_press_enabled"] = bool(enabled)
-        record["commands"] = commands
         await self._store.async_save(self._data)
         return True
 

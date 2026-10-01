@@ -1389,11 +1389,8 @@ function wifiEvent(slot: number, name: string, deviceId: number | null = 9): Rec
   return {
     slot_index: slot,
     name,
-    long_press_enabled: false,
     action: {},
-    long_press_action: {},
     command_id: slot + 1,
-    long_press_command_id: slot + 1 + 25,
     device_id: deviceId,
     deployed: deviceId != null,
   };
@@ -1405,7 +1402,7 @@ function withEventsDevice(bundle: BackupBundlePayload): BackupBundlePayload {
     kind: "device",
     complete: true,
     device: { device_id: 9, name: "Wifi Events", brand: "m3-haevents-hub1", device_class: "wifi_ip" },
-    commands: Array.from({ length: 50 }, (_, index) => ({ command_id: index + 1, name: `Event ${index + 1}` })),
+    commands: Array.from({ length: 25 }, (_, index) => ({ command_id: index + 1, name: `Event ${index + 1}` })),
   });
   return next;
 }
@@ -1426,7 +1423,6 @@ test("a new Wifi Event shortcut is created through the host and added as a favor
       return { event: wifiEvent(4, name), bundle: withEventsDevice(element.bundle) };
     },
     ensureGrafted: async () => null,
-    enableLongPress: async () => {},
   });
   const changes = collectBundleChanges(element);
   element._events.primary = { mode: "new", slot: null, name: "  Movie time " };
@@ -1445,7 +1441,6 @@ test("an existing Wifi Event shortcut grafts the events device instead of creati
     list: async () => [],
     create: async () => { throw new Error("must not create"); },
     ensureGrafted: async () => { grafts += 1; return withEventsDevice(element.bundle); },
-    enableLongPress: async () => {},
   });
   element._events.list = [wifiEvent(2, "Lights off")];
   const changes = collectBundleChanges(element);
@@ -1463,7 +1458,6 @@ test("a refused Wifi Event create keeps the dialog open with localized copy", as
     list: async () => [],
     create: async () => { throw { code: "duplicate_name", message: "A Wifi Event with this name already exists" }; },
     ensureGrafted: async () => null,
-    enableLongPress: async () => {},
   });
   const changes = collectBundleChanges(element);
   element._events.primary = { mode: "new", slot: null, name: "Movie time" };
@@ -1510,3 +1504,190 @@ function findInputHandler(template: unknown): (event: Event) => void {
   }
   throw new Error("no @input handler rendered");
 }
+
+test("the Add shortcut dialog offers only what is not a shortcut yet: unused commands and Wifi Events, new macros", () => {
+  const element = createEditor();
+  // The only Television command (Power) is already the activity favorite,
+  // so the Television is not offered and the first pick lands on the Roku.
+  element._openAddShortcutDialog();
+  assert.deepEqual(element._shortcutDeviceOptions().map((device: any) => device.id), [2, 3]);
+  assert.deepEqual(element._shortcutCommandItems(1), []);
+  assert.equal(element._addFavoriteDeviceId, 2);
+  assert.equal(element._addFavoriteCommandId, 20);
+  assert.ok(templateText(element._renderAddFavoriteDialog()).includes("sb-add-fav-device"));
+
+  // The macro kind has no picker of existing macros: each of them is a
+  // shortcut already, so Add always creates a new one.
+  element._addShortcutKind = "action";
+  const actionText = templateText(element._renderAddFavoriteDialog());
+  assert.ok(!actionText.includes("sb-add-macro-target"));
+  assert.ok(actionText.includes("sb-add-action-name"));
+
+  // A Wifi Event whose short record is a favorite is hidden from the picker;
+  // an event without a device id (not deployed yet) can not be one.
+  assert.equal(element._shortcutEventTaken({ device_id: 1, command_id: 10 }), true);
+  assert.equal(element._shortcutEventTaken({ device_id: 1, command_id: 11 }), false);
+  assert.equal(element._shortcutEventTaken({ device_id: null, command_id: 10 }), false);
+
+  // Once every command is a shortcut the dialog says so instead of listing devices.
+  element._addShortcutKind = "command";
+  element.bundle = {
+    ...element.bundle,
+    activities: element.bundle.activities.map((activity: any) => ({
+      ...activity,
+      favorite_slots: [
+        ...activity.favorite_slots,
+        { button_id: 4, device_id: 2, command_id: 20, name: "Home" },
+        { button_id: 5, device_id: 3, command_id: 30, name: "Volume Up" },
+      ],
+    })),
+  };
+  assert.deepEqual(element._shortcutDeviceOptions(), []);
+  const exhausted = templateText(element._renderAddFavoriteDialog());
+  assert.ok(exhausted.includes(TOOLS_CARD_STRINGS.backup.addShortcutNoCommandsLeft));
+  assert.ok(!exhausted.includes("sb-add-fav-device"));
+});
+
+test("the Add shortcut dialog shows no empty Wifi Event row once every event is a shortcut", () => {
+  const element = liveActivityEditorWithEvents({
+    list: async () => [],
+    create: async () => { throw new Error("not called"); },
+    ensureGrafted: async () => null,
+  });
+  element.bundle = withEventsDevice(element.bundle);
+  // Event 2 (device 9, command 3) is the activity's only Wifi Event shortcut.
+  element.bundle.activities[0].favorite_slots.push({ button_id: 4, device_id: 9, command_id: 3, name: "Lights off" });
+  element._events.list = [wifiEvent(2, "Lights off")];
+  element._openAddShortcutDialog();
+  element._addShortcutKind = "wifi_event";
+  element._events.primary = element._events.defaultSel(element._shortcutEventTaken);
+  assert.deepEqual(element._events.primary, { mode: "new", slot: null, name: "" });
+
+  const text = templateText(element._renderAddFavoriteDialog());
+  assert.ok(!text.includes(TOOLS_CARD_STRINGS.backup.wifiEventNoneYet));
+  assert.ok(!text.includes("sb-add-fav-wifi-event\""));
+  assert.ok(text.includes("sb-add-fav-wifi-event-name"));
+
+  // A second event that is not a shortcut yet brings the picker back with only that one.
+  element._events.list = [wifiEvent(2, "Lights off"), wifiEvent(5, "Doorbell")];
+  const picker = templateText(element._renderAddFavoriteDialog());
+  assert.ok(picker.includes("Doorbell"));
+  assert.ok(!picker.includes("Lights off"));
+
+  // The step and binding dialogs (no hiding) keep the empty row when there are no events.
+  element._events.list = [];
+  const plain = templateText(element._events.renderTargetFields({ idPrefix: "x", sel: element._events.primary, onSelChange: () => {} }));
+  assert.ok(plain.includes(TOOLS_CARD_STRINGS.backup.wifiEventNoneYet));
+});
+
+// ── Wifi Events in either binding leg (wifi-events-single-record-plan) ──
+
+function bindingEditorWithEvents(created: string[] = []) {
+  const element = liveActivityEditorWithEvents({
+    list: async () => [],
+    create: async (name: string) => {
+      created.push(name);
+      return { event: wifiEvent(6, name), bundle: withEventsDevice(element.bundle) };
+    },
+    ensureGrafted: async () => withEventsDevice(element.bundle),
+  });
+  element._events.list = [wifiEvent(2, "Lights off"), wifiEvent(4, "Doorbell")];
+  element._binding.open = true;
+  element._binding.scope = "activity";
+  element._binding.buttonId = 0xB0;
+  return element;
+}
+
+function writtenBinding(changes: BackupBundlePayload[]) {
+  const activity = (changes.at(-1) as any).activities.find((entry: any) => entry.device.device_id === 101);
+  return activity.button_bindings.find((row: any) => row.button_id === 0xB0);
+}
+
+test("a device command short press can hold a Wifi Event as its long press", async () => {
+  const element = bindingEditorWithEvents();
+  const changes = collectBundleChanges(element);
+  element._binding.targetKind = "command";
+  element._binding.deviceId = 3;
+  element._binding.commandId = 30;
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "wifi_event";
+  element._events.longPress = { mode: "existing", slot: 4, name: "" };
+
+  element._binding.apply();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const row = writtenBinding(changes);
+  assert.equal(row.device_id, 3);
+  assert.equal(row.command_id, 30);
+  assert.equal(row.long_press_device_id, 9);
+  assert.equal(row.long_press_command_id, 5);
+  assert.equal(element._binding.open, false);
+});
+
+test("a Wifi Event short press keeps an independent device command long press", async () => {
+  const element = bindingEditorWithEvents();
+  const changes = collectBundleChanges(element);
+  element._binding.targetKind = "wifi_event";
+  element._events.primary = { mode: "existing", slot: 2, name: "" };
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "command";
+  element._binding.lpDeviceId = 3;
+  element._binding.lpCommandId = 30;
+
+  element._binding.apply();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const row = writtenBinding(changes);
+  assert.equal(row.device_id, 9);
+  assert.equal(row.command_id, 3);
+  assert.equal(row.long_press_device_id, 3);
+  assert.equal(row.long_press_command_id, 30);
+});
+
+test("both legs may be Wifi Events: the existing one resolves before a new one", async () => {
+  const created: string[] = [];
+  const element = bindingEditorWithEvents(created);
+  const changes = collectBundleChanges(element);
+  element._binding.targetKind = "wifi_event";
+  element._events.primary = { mode: "new", slot: null, name: "Movie time" };
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "wifi_event";
+  element._events.longPress = { mode: "existing", slot: 2, name: "" };
+
+  element._binding.apply();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(created, ["Movie time"]);
+  const row = writtenBinding(changes);
+  assert.equal(row.command_id, 7);
+  assert.equal(row.long_press_command_id, 3);
+  assert.equal(row.long_press_device_id, 9);
+});
+
+test("editing a binding seeds a Wifi Event long press as its own target", () => {
+  const element = bindingEditorWithEvents();
+  element.bundle = withEventsDevice(element.bundle);
+  element.bundle.activities[0].button_bindings = [
+    { button_id: 0xB0, button_name: "OK", device_id: 3, command_id: 30, long_press_device_id: 9, long_press_command_id: 5 },
+  ];
+  element._binding.openEdit("activity", 0xB0);
+
+  assert.equal(element._binding.targetKind, "command");
+  assert.equal(element._binding.longPressEnabled, true);
+  assert.equal(element._binding.lpTargetKind, "wifi_event");
+  assert.deepEqual(element._events.longPress, { mode: "existing", slot: 4, name: "" });
+  const text = templateText(element._binding.render());
+  assert.ok(text.includes("sb-binding-lp-wifi-event"));
+});
+
+test("an incomplete Wifi Event long press blocks Save", () => {
+  const element = bindingEditorWithEvents();
+  element._binding.targetKind = "command";
+  element._binding.deviceId = 3;
+  element._binding.commandId = 30;
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "wifi_event";
+  element._events.longPress = { mode: "new", slot: null, name: "  " };
+  const text = templateText(element._binding.render());
+  assert.match(text, /dialog-btn-primary[^>]*disabled/);
+});

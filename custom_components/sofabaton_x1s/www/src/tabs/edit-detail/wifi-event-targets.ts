@@ -1,9 +1,10 @@
 // The Wifi Event target of the three Add dialogs (shortcut, binding, step)
 // as a Lit reactive controller (R6, CR-F2-14).
 //
-// It holds the event list loaded from the host facade, the one selection
-// every open dialog shares, and the busy flag while a new event is
-// allocated, plus the target fields and the ref resolution.
+// It holds the event list loaded from the host facade, the selection every
+// open dialog shares (plus the binding dialog's long-press leg), and the
+// busy flag while a new event is allocated, plus the target fields and the
+// ref resolution.
 
 import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import { sanitizeWifiName } from "../../shared/hub-names";
@@ -49,6 +50,17 @@ export class WifiEventTargets implements ReactiveController {
     this._primary = value;
     this.host.requestUpdate();
   }
+  /** The binding dialog's long-press leg: an event is an ordinary target
+   *  for either leg (docs/internal/wifi-events-single-record-plan.md). */
+  private _longPress: WifiEventTargetSel = { mode: "new", slot: null, name: "" };
+  get longPress(): WifiEventTargetSel {
+    return this._longPress;
+  }
+  set longPress(value: WifiEventTargetSel) {
+    if (value === this._longPress) return;
+    this._longPress = value;
+    this.host.requestUpdate();
+  }
 
   constructor(private readonly host: WifiEventTargetsHost) {
     host.addController(this);
@@ -63,14 +75,19 @@ export class WifiEventTargets implements ReactiveController {
     return this.host.mode === "live" && this.host.wifiEvents != null;
   }
 
-  deployed(): WifiEvent[] {
+  /**
+   * The selectable events. `hidden` drops the ones a dialog must not offer
+   * (the Add shortcut dialog hides events the activity already shortcuts).
+   */
+  deployed(hidden?: (event: WifiEvent) => boolean): WifiEvent[] {
     // W7 full deferral: staged (not-yet-deployed) events are selectable —
     // they deploy as phase 1 of the Sync press. The name is historical.
-    return this.list ?? [];
+    const events = this.list ?? [];
+    return hidden ? events.filter((event) => !hidden(event)) : events;
   }
 
   /** Fire-and-forget refresh of the event list when a dialog opens. */
-  load() {
+  load(hidden?: (event: WifiEvent) => boolean) {
     if (!this.available()) return;
     void this.host.wifiEvents!.list()
       .then((events) => {
@@ -80,15 +97,16 @@ export class WifiEventTargets implements ReactiveController {
         // clobbering that mid-flight would lose their input.
         const pristine = (sel: WifiEventTargetSel) =>
           sel.mode === "new" && sel.slot == null && sel.name === "";
-        if (pristine(this.primary)) this.primary = this.defaultSel();
+        if (pristine(this.primary)) this.primary = this.defaultSel(hidden);
+        if (pristine(this.longPress)) this.longPress = this.defaultSel();
       })
       .catch(() => {
         this.list = [];
       });
   }
 
-  defaultSel(): WifiEventTargetSel {
-    const first = this.deployed()[0] ?? null;
+  defaultSel(hidden?: (event: WifiEvent) => boolean): WifiEventTargetSel {
+    const first = this.deployed(hidden)[0] ?? null;
     return first
       ? { mode: "existing", slot: first.slot_index, name: "" }
       : { mode: "new", slot: null, name: "" };
@@ -98,9 +116,10 @@ export class WifiEventTargets implements ReactiveController {
     idPrefix: string;
     sel: WifiEventTargetSel;
     onSelChange: (sel: WifiEventTargetSel) => void;
+    hidden?: (event: WifiEvent) => boolean;
   }) {
     const S = TOOLS_CARD_STRINGS.backup;
-    const events = this.deployed();
+    const events = this.deployed(params.hidden);
     const sel = params.sel;
     return html`
       ${events.length
@@ -126,7 +145,12 @@ export class WifiEventTargets implements ReactiveController {
               </select>
             </div>
           `
-        : html`<div class="quick-access-empty">${S.wifiEventNoneYet}</div>`}
+        : params.hidden
+          // A dialog that hides events (the Add shortcut dialog) has nothing
+          // to point at when they are all taken: no empty row, just the
+          // fields for a new event below.
+          ? nothing
+          : html`<div class="quick-access-empty">${S.wifiEventNoneYet}</div>`}
       ${sel.mode === "new"
         ? html`
             <div class="decoded-field">
@@ -156,13 +180,8 @@ export class WifiEventTargets implements ReactiveController {
   }
 
   /**
-   * Resolve a Wifi Event target selection to its atomic ref: a single
-   * event carries BOTH a short and a long record (short = slot+1, long =
-   * short + slot_count). A reference always addresses the event as one
-   * unit — the short record — and the long record is derived from the
-   * same event when a binding's long-press leg needs it (there is no
-   * separate long-press *target*; short vs long is an action-config
-   * distinction made in the Events tab, per the Wifi Events model).
+   * Resolve a Wifi Event target selection to its ref: the event's one
+   * record (slot + 1). Either leg of a binding may point at it.
    *
    * Returns the (possibly grafted) working bundle to insert into. Creating
    * a new event is an instant store allocation (W7) — no hub deploy here.
@@ -173,8 +192,7 @@ export class WifiEventTargets implements ReactiveController {
     sel: WifiEventTargetSel,
   ): Promise<{
     deviceId: number;
-    shortCommandId: number;
-    longCommandId: number;
+    commandId: number;
     slotIndex: number;
     name: string;
     bundle: BackupBundlePayload;
@@ -190,8 +208,7 @@ export class WifiEventTargets implements ReactiveController {
       const grafted = await this.host.wifiEvents.ensureGrafted();
       return {
         deviceId: event.device_id,
-        shortCommandId: event.command_id,
-        longCommandId: event.long_press_command_id,
+        commandId: event.command_id,
         slotIndex: event.slot_index,
         name: event.name,
         bundle: grafted ?? this.host.bundle,
@@ -207,8 +224,7 @@ export class WifiEventTargets implements ReactiveController {
       if (event.device_id == null) throw new Error(S.wifiEventCreateFailed);
       return {
         deviceId: event.device_id,
-        shortCommandId: event.command_id,
-        longCommandId: event.long_press_command_id,
+        commandId: event.command_id,
         slotIndex: event.slot_index,
         name: event.name,
         bundle: created.bundle ?? this.host.bundle,

@@ -30,6 +30,7 @@ import {
   isWifiEventsBrand,
   reconcileActivityPowerMacros,
   removeBundleDevice,
+  retireWifiEventLongRecords,
   rewriteWifiEventPlaceholderRefs,
 } from "./backup-state";
 import type { IrLearnHost, WifiEventsHost } from "./edit-detail-view";
@@ -61,6 +62,7 @@ class SofabatonActivitiesTab extends LitElement {
     _working: { state: true },
     _captureError: { state: true },
     _dirty: { state: true },
+    _eventsRecordNeedsSync: { state: true },
     _deleteError: { state: true },
     _exitConfirmOpen: { state: true },
     _syncProgress: { state: true },
@@ -209,6 +211,11 @@ class SofabatonActivitiesTab extends LitElement {
   private _working: BackupBundlePayload | null = null;
   private _captureError: string | null = null;
   private _dirty = false;
+  /** Device editor on the Wifi Events device whose record waits for a
+   *  sync (e.g. a deploy from before the single-record model): Sync is
+   *  offered even without edits and runs the events deploy first
+   *  (docs/internal/wifi-events-single-record-plan.md §3.4). */
+  private _eventsRecordNeedsSync = false;
   private _deleteError: string | null = null;
   private _exitConfirmOpen = false;
   private _syncProgress: BackupProgressEvent | null = null;
@@ -386,8 +393,8 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   /** Synthetic device block for the events device (real id when deployed,
-   *  else the placeholder) carrying every STAGED event's short + long
-   *  records, so refs resolve for display and the scope guard stays
+   *  else the placeholder) carrying every STAGED event's record, so refs
+   *  resolve for display and the scope guard stays
    *  balanced (grafted into BOTH bundles). The Sync flow retires it for
    *  the real deployed block after phase 1. */
   private _syntheticEventsBlock(events: WifiEvent[], deviceId: number) {
@@ -398,10 +405,7 @@ class SofabatonActivitiesTab extends LitElement {
         brand: "m3-haevents-staged0000000",
         device_class: "wifi_ip",
       },
-      commands: events.flatMap((event) => [
-        { command_id: event.command_id, name: event.name },
-        { command_id: event.long_press_command_id, name: `${event.name} Long Press` },
-      ]),
+      commands: events.map((event) => ({ command_id: event.command_id, name: event.name })),
     } as never;
   }
 
@@ -411,8 +415,8 @@ class SofabatonActivitiesTab extends LitElement {
    *  block would lack its command records — building the block from the
    *  events list instead keeps new events' favorites/bindings/steps
    *  resolvable in the UI immediately, before any sync. The synthetic
-   *  block carries every configured event's short + long records; the
-   *  real deployed block replaces it on the post-sync rebase (and, for the
+   *  block carries every configured event's record; the real deployed
+   *  block replaces it on the post-sync rebase (and, for the
    *  first-ever event, in the Sync flow's placeholder swap). */
   private async _graftWifiEventsDevice(options: { forceRefresh?: boolean } = {}): Promise<BackupBundlePayload | null> {
     if (!this.hub) return this._working;
@@ -450,11 +454,6 @@ class SofabatonActivitiesTab extends LitElement {
       return { event: full, bundle };
     },
     ensureGrafted: async () => this._graftWifiEventsDevice(),
-    enableLongPress: async (slotIndex: number) => {
-      const entityId = this._wifiEventsHubId();
-      if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
-      await this.api().setWifiEventLongpress(entityId, slotIndex, true);
-    },
   };
 
   /** W7 phase 1 of the Sync press: deploy the events record when it is
@@ -493,7 +492,8 @@ class SofabatonActivitiesTab extends LitElement {
     const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
       (entry) => Number(entry?.device?.device_id ?? -1) === placeholderId,
     );
-    if (state.record_needs_sync || (hasPlaceholder && state.device_id == null)) {
+    const deployed = state.record_needs_sync || (hasPlaceholder && state.device_id == null);
+    if (deployed) {
       this._syncProgress = { message: S.wifiEventsPhaseMessage } as BackupProgressEvent;
       try {
         state = await this.api().syncWifiEvents(entityId);
@@ -506,6 +506,11 @@ class SofabatonActivitiesTab extends LitElement {
       }
     }
     const realId = state.device_id;
+    // The deploy may have retired the long records of the old layout and
+    // moved every reference to one onto its event, in every activity.
+    // Follow it in both bundles, or this activity's stale preflight and
+    // diff would still hold the deleted records.
+    if (deployed && realId != null) this._retireWifiEventLongRecords(realId, state.slot_count);
     if (hasPlaceholder && placeholderId != null && realId != null) {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
       const entry = (res?.bundle?.devices ?? []).find(
@@ -529,6 +534,52 @@ class SofabatonActivitiesTab extends LitElement {
     return true;
   }
 
+  /** Apply the hub-side long-record retirement to the baseline and the
+   *  working bundle alike: the user's own edits (the diff) stay as they are. */
+  private _retireWifiEventLongRecords(deviceId: number, slotCount: number | undefined) {
+    if (!(Number(slotCount) > 0)) return;
+    this._baseline = retireWifiEventLongRecords(this._baseline, deviceId, Number(slotCount));
+    this._working = retireWifiEventLongRecords(this._working, deviceId, Number(slotCount));
+    this._recomputeDirty();
+  }
+
+  /** True when the captured device is the Wifi Events device. */
+  private _isWifiEventsDevice(bundle: BackupBundlePayload | null, entityId: number): boolean {
+    const entry = (bundle?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === Number(entityId),
+    );
+    return isWifiEventsBrand(String(entry?.device?.brand ?? ""));
+  }
+
+  /** Device editor on the Wifi Events device: run the events deploy the
+   *  record waits for, then follow it in both bundles. Returns false (with
+   *  the failure staged) when the deploy fails. */
+  private async _syncWifiEventsDevice(): Promise<boolean> {
+    const hubId = this._wifiEventsHubId();
+    if (!hubId || this._entityId == null) return true;
+    this._syncProgress = { message: S.wifiEventsPhaseMessage } as BackupProgressEvent;
+    let state;
+    try {
+      state = await this.api().syncWifiEvents(hubId);
+    } catch (error) {
+      this._syncError = formatError(error);
+      this._syncFailedAt = null;
+      this._syncProgress = null;
+      this._stage = "sync_failed";
+      return false;
+    }
+    this._eventsRecordNeedsSync = Boolean(state.record_needs_sync);
+    if (state.device_id !== this._entityId) {
+      // A replace deploy recreated the device under a new id: this editor's
+      // entity is gone.
+      this._syncProgress = null;
+      this._stage = "needs_refresh";
+      return false;
+    }
+    this._retireWifiEventLongRecords(this._entityId, state.slot_count);
+    return true;
+  }
+
   private _startCapture = async (entityId: number) => {
     if (!this.hub || !this.hass) return;
     this._entityId = entityId;
@@ -549,6 +600,15 @@ class SofabatonActivitiesTab extends LitElement {
       this._baseline = bundle;
       this._working = structuredClone(bundle);
       this._dirty = false;
+      this._eventsRecordNeedsSync = false;
+      if (this.kind === "device" && this._isWifiEventsDevice(bundle, entityId)) {
+        try {
+          const state = await this.api().listWifiEvents(this.hub.entry_id);
+          this._eventsRecordNeedsSync = Boolean(state.record_needs_sync);
+        } catch {
+          /* the editor works without it; Sync then needs an edit */
+        }
+      }
       this._stage = "editing";
     } catch (error) {
       this._captureError = formatError(error);
@@ -587,7 +647,8 @@ class SofabatonActivitiesTab extends LitElement {
   // Start the real sync engine (§4.5): diff baseline vs working on the
   // backend and issue targeted in-place writes, streaming progress.
   private _requestSync = async () => {
-    if (!this._dirty || this._entityId == null || !this.hub || !this._baseline || !this._working) return;
+    if (!(this._dirty || this._eventsRecordNeedsSync)) return;
+    if (this._entityId == null || !this.hub || !this._baseline || !this._working) return;
     this._exitConfirmOpen = false;
     this._syncError = null;
     this._syncFailedAt = null;
@@ -601,6 +662,17 @@ class SofabatonActivitiesTab extends LitElement {
       if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
         this._exitAfterSync = false;
         return;
+      }
+      if (this.kind === "device" && this._eventsRecordNeedsSync) {
+        if (!(await this._syncWifiEventsDevice())) {
+          this._exitAfterSync = false;
+          return;
+        }
+        if (!this._dirty) {
+          // Nothing of the user's own to write: the events deploy was all.
+          await this._onSyncSuccess(null);
+          return;
+        }
       }
       const start = this.kind === "device"
         ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working)
@@ -638,11 +710,13 @@ class SofabatonActivitiesTab extends LitElement {
     this._progressUnsub = unsub;
   }
 
-  private async _onSyncSuccess(operationId: string) {
+  private async _onSyncSuccess(operationId: string | null) {
     this._syncProgress = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
-    try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
+    if (operationId != null) {
+      try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
+    }
     try { await this.refreshControlPanelState?.(); } catch { /* ignore */ }
     if (exitAfterSync) {
       this._resetToList();
@@ -740,6 +814,7 @@ class SofabatonActivitiesTab extends LitElement {
     this._working = null;
     this._captureError = null;
     this._dirty = false;
+    this._eventsRecordNeedsSync = false;
     this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
@@ -887,7 +962,7 @@ class SofabatonActivitiesTab extends LitElement {
           .bundle=${this._working}
           .kind=${this.kind}
           .entityId=${this._entityId}
-          .dirty=${this._dirty}
+          .dirty=${this._dirty || this._eventsRecordNeedsSync}
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}

@@ -2082,10 +2082,16 @@ test.describe("control panel, views", () => {
     await page.mouse.up();
     await expect(shortcuts.nth(0).locator(".quick-access-label")).toHaveText("Power");
 
-    // A new macro is named, created and opened in the step editor; a step on any device; renamed from the header.
+    // A command is a shortcut at most once per activity: the Roku (its only command is now a shortcut) left the
+    // device list and Power on the TV is no longer offered. The macro kind only creates (every existing macro is a
+    // shortcut already), so there is no macro picker. A new macro is named, created and opened in the step editor;
+    // a step on any device; renamed from the header.
     await editor.locator("#add-shortcut").click();
+    await expect(editor.locator("#sb-add-fav-device option")).toHaveText(["TV", "Server", "Amp"]);
+    await expect(editor.locator("#sb-add-fav-command option")).toHaveText(["Vol up", "Vol down", "Up", "HDMI 1"]);
     await editor.locator("#sb-add-shortcut-kind").selectOption("action");
-    await expect(editor.locator("#add-shortcut-dialog .quick-access-empty")).toHaveText("No macros yet. Create one below.");
+    await expect(editor.locator("#add-shortcut-dialog .quick-access-empty")).toHaveCount(0);
+    await expect(editor.locator("#sb-add-macro-target")).toHaveCount(0);
     await editor.locator("#sb-add-macro-name").fill("Lights");
     await editor.locator("#add-shortcut-save").click();
     await expect(editor.locator("#step-title")).toHaveText("Lights");

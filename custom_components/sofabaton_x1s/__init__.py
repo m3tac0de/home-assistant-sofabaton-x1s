@@ -110,7 +110,6 @@ from .ws_wifi import (  # noqa: F401
     _ws_sync_wifi_events,
     _ws_clear_all_wifi_events,
     _ws_set_wifi_event_action,
-    _ws_set_wifi_event_longpress,
     _build_wifi_press_event,
     _ws_subscribe_wifi_presses,
     _build_hub_event_payload,
@@ -207,7 +206,6 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_sync_wifi_events)
     websocket_api.async_register_command(hass, _ws_clear_all_wifi_events)
     websocket_api.async_register_command(hass, _ws_set_wifi_event_action)
-    websocket_api.async_register_command(hass, _ws_set_wifi_event_longpress)
     websocket_api.async_register_command(hass, _ws_get_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_set_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)

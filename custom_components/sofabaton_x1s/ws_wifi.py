@@ -607,6 +607,7 @@ def _wifi_events_state_payload(
         "events": store.list_wifi_events(entry_id),
         "record_needs_sync": bool(record_state.get("record_needs_sync")),
         "device_id": record_state.get("device_id"),
+        "slot_count": record_state.get("slot_count"),
     }
 
 
@@ -734,19 +735,21 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     ):
         await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
     elif isinstance(result, dict) and isinstance(result.get("wifi_device_id"), int):
-        # The sync re-labeled the freed slot's records to placeholders
+        # The sync re-labeled the freed slot's record to its placeholder
         # (full-table invariant keeps slot ids stable) — but references on
         # the hub only cascade on a REAL record delete. Delete the freed
-        # short + long records so favorites/bindings/macro-steps that
-        # pointed at the event are cleaned up (the confirm dialog promises
-        # exactly this). Best-effort: on failure the placeholders keep the
-        # stale refs firing no-op callbacks until the next full replace.
+        # record so favorites/bindings/macro-steps that pointed at the
+        # event are cleaned up (the confirm dialog promises exactly this).
+        # The sync above already retired any long records of the old
+        # layout, moving their references onto this record first
+        # (wifi-events-single-record-plan §3.3). Best-effort: on failure
+        # the placeholder keeps the stale refs firing no-op callbacks until
+        # the next full replace.
         try:
-            slot_count = int(payload.get("slot_count") or 10)
             short_id = int(msg["slot_index"]) + 1
             await hub.async_delete_wifi_event_records(
                 device_id=int(result["wifi_device_id"]),
-                command_ids=[short_id, short_id + slot_count],
+                command_ids=[short_id],
             )
         except Exception:  # pragma: no cover - cascade is best-effort
             _LOGGER.exception("[wifi_events] freed-slot record delete failed")
@@ -840,7 +843,10 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
         vol.Optional("entity_id"): cv.entity_id,
         vol.Optional("entry_id"): str,
         vol.Required("slot_index"): int,
-        vol.Required("press_type"): vol.In(["short", "long"]),
+        # A Wifi Event has one action (wifi-events-single-record-plan).
+        # Accepted for one release so a cached card keeps working; drop
+        # it from the schema the release after.
+        vol.Optional("press_type"): vol.In(["short", "long"]),
         vol.Required("action"): dict,
     }
 )
@@ -851,36 +857,14 @@ async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[s
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
     store = await runtime._async_get_command_config_store(hass)
+    if msg.get("press_type") == "long":
+        # A cached card's long-press action has no home any more; never
+        # let it overwrite the event's one action.
+        connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+        return
     # No re-deploy: the callback runtime reads the staged slot.
     updated = await store.async_set_wifi_event_action(
-        hub.entry_id, msg["slot_index"], msg["press_type"], msg["action"]
-    )
-    if not updated:
-        connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
-        return
-    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): f"{DOMAIN}/wifi_event/set_longpress",
-        vol.Optional("entity_id"): cv.entity_id,
-        vol.Optional("entry_id"): str,
-        vol.Required("slot_index"): int,
-        vol.Required("enabled"): bool,
-    }
-)
-@websocket_api.async_response
-async def _ws_set_wifi_event_longpress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
-    if hub is None:
-        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
-        return
-    store = await runtime._async_get_command_config_store(hass)
-    # Pure store-flag edit: the long record is always deployed (plan §11
-    # discovery 1) — zero hub writes, the flag gates HA-side execution.
-    updated = await store.async_set_wifi_event_longpress(
-        hub.entry_id, msg["slot_index"], msg["enabled"]
+        hub.entry_id, msg["slot_index"], msg["action"]
     )
     if not updated:
         connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
