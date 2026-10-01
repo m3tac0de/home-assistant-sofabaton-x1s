@@ -939,9 +939,9 @@ def baseline_snapshot_from_bundle(
 
 def _retarget(row: dict[str, Any], dev_key: str, cmd_key: str, device_id: int, slot_count: int) -> bool:
     try:
-        dev = int(row.get(dev_key))
-        cmd = int(row.get(cmd_key))
-    except (TypeError, ValueError):
+        dev = int(row[dev_key])
+        cmd = int(row[cmd_key])
+    except (KeyError, TypeError, ValueError):
         return False
     if dev != device_id or not (slot_count < cmd <= 2 * slot_count):
         return False
