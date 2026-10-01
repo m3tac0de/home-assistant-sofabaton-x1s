@@ -998,6 +998,10 @@ var cardStyles = [secondaryTabStyles, i`
     color: var(--primary-text-color);
   }
   *, *::before, *::after { box-sizing: border-box; }
+  /* fill_height (the sidebar panel host): the card is as tall as its
+     container; .card-inner gets height:100% inline from the card. */
+  :host([fill-height]) { height: 100%; }
+  :host([fill-height]) ha-card { height: 100%; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
   .card-topbar {
     position: relative;
@@ -1728,6 +1732,11 @@ var TOOLS_CARD_STRINGS_EN = {
     refreshingCache: "Refreshing cache\u2026",
     hubCommandInProgress: "Hub command in progress\u2026"
   },
+  sidebarPanel: {
+    // The sidebar entry and the panel header. A product name: the same in
+    // every language.
+    title: "Sofabaton X"
+  },
   adminOnly: {
     title: "Admins only",
     copy: "This control panel is limited to Home Assistant administrators."
@@ -1839,6 +1848,9 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionNone: "Do nothing",
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
+    sidebarPanelTitle: "Sidebar Panel",
+    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar and open this control panel full-page.",
+    sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",
@@ -3543,6 +3555,9 @@ function selectedHubCache(snapshot) {
 function persistentCacheEnabled(snapshot) {
   return !!snapshot.state?.persistent_cache_enabled;
 }
+function sidebarPanelEnabled(snapshot) {
+  return snapshot.state?.sidebar_panel_enabled === true;
+}
 function hubClickAction(snapshot) {
   const action = snapshot.state?.hub_click_action;
   return action === "send" || action === "copy" ? action : "none";
@@ -4924,6 +4939,13 @@ var ControlPanelStore = class {
     if (!this._snapshot.state) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
+    if (setting === "sidebar_panel") {
+      this._snapshot = {
+        ...this._snapshot,
+        state: { ...this._snapshot.state, sidebar_panel_enabled: enabled }
+      };
+      return;
+    }
     if (setting === "persistent_cache") {
       this._snapshot = {
         ...this._snapshot,
@@ -5486,6 +5508,17 @@ function renderSettingsTab(params) {
                 <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
                 <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
               </select>`
+  })}
+            ${renderSettingTile({
+    title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
+    description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+    classes: `toggle${busy ? " disabled" : ""}`,
+    footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
+    control: b2`<ha-switch .checked=${params.sidebarPanelEnabled} .disabled=${busy} @change=${(event) => {
+      event.stopPropagation();
+      params.onToggleSetting("sidebar_panel", !!event.currentTarget.checked);
+    }}></ha-switch>`,
+    onClick: busy ? void 0 : () => params.onToggleSetting("sidebar_panel", !params.sidebarPanelEnabled)
   })}
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
@@ -20901,6 +20934,124 @@ if (!customElements.get("sofabaton-activities-tab")) {
   customElements.define("sofabaton-activities-tab", SofabatonActivitiesTab);
 }
 
+// custom_components/sofabaton_x1s/www/src/sidebar-panel.ts
+var PANEL_TYPE = "sofabaton-x-panel";
+var CARD_TYPE = "sofabaton-control-panel";
+var SofabatonXPanel = class extends i4 {
+  constructor() {
+    super(...arguments);
+    this._hass = null;
+    this._narrow = false;
+    this._card = null;
+  }
+  set hass(value) {
+    this._hass = value;
+    if (this._card) this._card.hass = value;
+    this.requestUpdate();
+  }
+  get hass() {
+    return this._hass;
+  }
+  set narrow(value) {
+    const next = Boolean(value);
+    if (next === this._narrow) return;
+    this._narrow = next;
+    this.toggleAttribute("narrow", next);
+    this.requestUpdate();
+  }
+  get narrow() {
+    return this._narrow;
+  }
+  // HA hands every custom panel its route and panel config; neither is used.
+  set route(_value) {
+  }
+  set panel(_value) {
+  }
+  /** The one card instance: created on first render (after the whole
+   *  module, card definition included, has run), sized to the page. */
+  card() {
+    if (!this._card) {
+      const card = document.createElement(CARD_TYPE);
+      card.setConfig({ fill_height: true });
+      if (this._hass) card.hass = this._hass;
+      this._card = card;
+    }
+    return this._card;
+  }
+  render() {
+    return b2`
+      <div class="header">
+        <ha-menu-button .hass=${this._hass} .narrow=${this._narrow}></ha-menu-button>
+        <div class="header-title">${TOOLS_CARD_STRINGS.sidebarPanel.title}</div>
+      </div>
+      <div class="content">
+        <div class="page">${this.card()}</div>
+      </div>
+    `;
+  }
+};
+SofabatonXPanel.styles = i`
+    :host {
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      height: 100vh;
+      height: 100dvh;
+      background: var(--primary-background-color);
+      color: var(--primary-text-color);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    /* HA's own page header (hass-subpage): same height, colours and border. */
+    .header {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      height: var(--header-height, 56px);
+      padding: 0 12px 0 4px;
+      padding-top: env(safe-area-inset-top);
+      background-color: var(--app-header-background-color, var(--primary-color));
+      color: var(--app-header-text-color, var(--text-primary-color));
+      border-bottom: var(--app-header-border-bottom, none);
+      font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, inherit));
+    }
+    .header-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      margin: var(--margin-title, 0 0 0 20px);
+      font-size: var(--ha-font-size-xl, 20px);
+      font-weight: var(--ha-font-weight-normal, 400);
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .content {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .page {
+      height: 100%;
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 16px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+    sofabaton-control-panel {
+      display: block;
+      height: 100%;
+    }
+    /* Narrow (phone): the card is the page. */
+    :host([narrow]) .page {
+      padding: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    :host([narrow]) sofabaton-control-panel {
+      --ha-card-border-radius: 0;
+      --ha-card-border-width: 0;
+    }
+  `;
+if (!customElements.get(PANEL_TYPE)) customElements.define(PANEL_TYPE, SofabatonXPanel);
+
 // custom_components/sofabaton_x1s/www/src/tools-card.ts
 var TOOLS_TYPE = "sofabaton-control-panel";
 var LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -21085,6 +21236,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   setConfig(config) {
     this._config = config || {};
+    this.toggleAttribute("fill-height", this._config.fill_height === true);
     this.requestUpdate();
     const hub = typeof this._config.hub === "string" ? this._config.hub.trim() : "";
     this._store.setPreferredHub(hub || null);
@@ -21537,10 +21689,16 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   adminOnlyBlocked() {
     return this._config.admin_only === true && this._userIsAdmin !== true;
   }
-  renderAdminOnly(height) {
+  /** The inline height of .card-inner: the configured pixel height, or
+   *  100% of the host when `fill_height` is on. */
+  cardHeightStyle() {
+    if (this._config.fill_height === true) return "height:100%";
+    return `height:${Number(this._config.card_height ?? 600)}px`;
+  }
+  renderAdminOnly(heightStyle) {
     return b2`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:shield-account-outline"></ha-icon></div>
@@ -21552,10 +21710,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       </ha-card>
     `;
   }
-  renderBackendUnavailable(height) {
+  renderBackendUnavailable(heightStyle) {
     return b2`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
@@ -21569,10 +21727,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       </ha-card>
     `;
   }
-  renderVersionMismatch(height) {
+  renderVersionMismatch(heightStyle) {
     return b2`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="version-mismatch-state">
               <div class="version-mismatch-header">
@@ -21643,13 +21801,13 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     `;
   }
   render() {
-    const height = Number(this._config.card_height ?? 600);
+    const heightStyle = this.cardHeightStyle();
     if (this._localeLoading) {
       return b2`
         <ha-card>
           <div
             class="locale-loading"
-            style=${`height:${height}px`}
+            style=${heightStyle}
             role="status"
             aria-busy="true"
           >
@@ -21659,17 +21817,17 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       `;
     }
     if (this._preview) return this.renderPreview();
-    if (this.adminOnlyBlocked()) return this.renderAdminOnly(height);
+    if (this.adminOnlyBlocked()) return this.renderAdminOnly(heightStyle);
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const cardGateState = resolveCardGateState(this._snapshot);
     if (cardGateState.kind === "version_mismatch") {
-      return this.renderVersionMismatch(height);
+      return this.renderVersionMismatch(heightStyle);
     }
     if (cardGateState.kind === "backend_unavailable") {
-      return this.renderBackendUnavailable(height);
+      return this.renderBackendUnavailable(heightStyle);
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
     const runtimeState = resolveRuntimeState(this._snapshot);
@@ -21686,6 +21844,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       hub,
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
+      sidebarPanelEnabled: sidebarPanelEnabled(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -21827,7 +21986,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     }
     return b2`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
             ${hubs.length > 1 ? renderHubPicker({

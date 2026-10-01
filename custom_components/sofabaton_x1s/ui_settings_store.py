@@ -31,6 +31,8 @@ class UiSettingsStore:
         )
         self._data: dict[str, Any] = {
             "hub_click_action": HUB_CLICK_ACTION_NONE,
+            # Whether the "Sofabaton X" sidebar panel is registered.
+            "sidebar_panel": False,
         }
 
     async def async_load(self) -> None:
@@ -39,6 +41,9 @@ class UiSettingsStore:
             action = loaded.get("hub_click_action")
             if action in HUB_CLICK_ACTIONS:
                 self._data["hub_click_action"] = action
+            sidebar_panel = loaded.get("sidebar_panel")
+            if isinstance(sidebar_panel, bool):
+                self._data["sidebar_panel"] = sidebar_panel
 
     @property
     def hub_click_action(self) -> str:
@@ -49,4 +54,12 @@ class UiSettingsStore:
         if action not in HUB_CLICK_ACTIONS:
             raise ValueError(f"Invalid hub_click_action: {action!r}")
         self._data["hub_click_action"] = action
+        await self._store.async_save(self._data)
+
+    @property
+    def sidebar_panel_enabled(self) -> bool:
+        return self._data.get("sidebar_panel") is True
+
+    async def async_set_sidebar_panel_enabled(self, enabled: bool) -> None:
+        self._data["sidebar_panel"] = bool(enabled)
         await self._store.async_save(self._data)

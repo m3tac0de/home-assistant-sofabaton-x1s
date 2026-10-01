@@ -56,6 +56,7 @@ var TOOLS_CARD_STRINGS_ES = {
     refreshingCache: "Actualizando la cach\xE9\u2026",
     hubCommandInProgress: "Comando del hub en curso\u2026"
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Solo administradores", copy: "Este panel de control est\xE1 limitado a los administradores de Home Assistant." },
   hubUnavailable: { title: "Hub no disponible", copy: "Este hub no est\xE1 conectado. El panel de control no estar\xE1 disponible hasta que el hub vuelva a conectarse." },
   availability: {
@@ -160,6 +161,9 @@ var TOOLS_CARD_STRINGS_ES = {
     hubClickActionOptionNone: "No hacer nada",
     hubClickActionOptionSend: "Enviar el comando",
     hubClickActionOptionCopy: "Copiar el comando",
+    sidebarPanelTitle: "Panel lateral",
+    sidebarPanelDescription: "A\xF1ade Sofabaton X a la barra lateral de Home Assistant y abre este panel de control a p\xE1gina completa.",
+    sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Registro hexadecimal",
     hexLoggingDescription: "Registra el tr\xE1fico hexadecimal sin procesar entre el hub, la integraci\xF3n y la aplicaci\xF3n.",
     proxyTitle: "Proxy",

@@ -24,6 +24,7 @@ export function renderSettingsTab(params: {
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
   persistentCacheEnabled: boolean;
+  sidebarPanelEnabled: boolean;
   hubClickAction: HubClickAction;
   hubCommandBusy: boolean;
   pendingSettingKey: PendingSettingKey | null;
@@ -50,7 +51,7 @@ export function renderSettingsTab(params: {
 
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
-  const settingValue = (key: Exclude<SettingKey, "persistent_cache">) => !!params.hub?.settings?.[key];
+  const settingValue = (key: Exclude<SettingKey, "persistent_cache" | "sidebar_panel">) => !!params.hub?.settings?.[key];
 
   return html`
     <div class="hub-tab-layout">
@@ -131,6 +132,14 @@ export function renderSettingsTab(params: {
                 <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
                 <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
               </select>`,
+            })}
+            ${renderSettingTile({
+              title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
+              description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+              classes: `toggle${busy ? " disabled" : ""}`,
+              footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
+              control: html`<ha-switch .checked=${params.sidebarPanelEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("sidebar_panel", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
+              onClick: busy ? undefined : () => params.onToggleSetting("sidebar_panel", !params.sidebarPanelEnabled),
             })}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,

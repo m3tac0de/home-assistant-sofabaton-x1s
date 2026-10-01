@@ -1217,6 +1217,14 @@ export class ControlPanelStore {
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
 
+    if (setting === "sidebar_panel") {
+      this._snapshot = {
+        ...this._snapshot,
+        state: { ...this._snapshot.state, sidebar_panel_enabled: enabled },
+      };
+      return;
+    }
+
     if (setting === "persistent_cache") {
       this._snapshot = {
         ...this._snapshot,

@@ -60,6 +60,7 @@ var TOOLS_CARD_STRINGS_NL = {
     refreshingCache: "Cache vernieuwen\u2026",
     hubCommandInProgress: "Hubcommando wordt uitgevoerd\u2026"
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Alleen beheerders", copy: "Dit bedieningspaneel is voorbehouden aan Home Assistant-beheerders." },
   hubUnavailable: { title: "Hub niet beschikbaar", copy: "Deze hub is niet verbonden. Het bedieningspaneel is niet beschikbaar totdat de hub opnieuw verbinding maakt." },
   availability: {
@@ -164,6 +165,9 @@ var TOOLS_CARD_STRINGS_NL = {
     hubClickActionOptionNone: "Niets doen",
     hubClickActionOptionSend: "Commando verzenden",
     hubClickActionOptionCopy: "Commando kopi\xEBren",
+    sidebarPanelTitle: "Zijbalkpaneel",
+    sidebarPanelDescription: "Voeg Sofabaton X toe aan de zijbalk van Home Assistant en open dit bedieningspaneel op een volledige pagina.",
+    sidebarPanelFooter: "ALGEMEEN",
     hexLoggingTitle: "Hex-logboekregistratie",
     hexLoggingDescription: "Registreer onbewerkt hex-verkeer tussen hub, integratie en app.",
     proxyTitle: "Proxy",

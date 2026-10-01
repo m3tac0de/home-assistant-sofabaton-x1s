@@ -46,6 +46,7 @@ from .roku_listener import async_get_roku_listener
 from . import operations
 
 from . import runtime
+from . import sidebar_panel
 
 
 from .ws_backup import (  # noqa: F401
@@ -457,6 +458,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry, _supported_platforms()
     )
     await frontend_resources._async_ensure_storage_mode_frontend_resources(hass)
+    await sidebar_panel.async_sync_sidebar_panel(hass)
     return True
 
 
@@ -545,6 +547,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if hass.data[DOMAIN].get("storage_resources_registered"):
                     await frontend_resources._async_unregister_lovelace_resources(hass)
                 hass.data[DOMAIN]["storage_resources_registered"] = False
+            sidebar_panel.async_remove_sidebar_panel(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             try:

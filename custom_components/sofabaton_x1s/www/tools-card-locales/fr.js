@@ -57,6 +57,7 @@ var TOOLS_CARD_STRINGS_FR = {
     refreshingCache: "Actualisation du cache\u2026",
     hubCommandInProgress: "Commande du hub en cours\u2026"
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "R\xE9serv\xE9 aux administrateurs", copy: "Ce panneau de contr\xF4le est r\xE9serv\xE9 aux administrateurs Home Assistant." },
   hubUnavailable: { title: "Hub indisponible", copy: "Ce hub n\u2019est pas connect\xE9. Le panneau de contr\xF4le restera indisponible jusqu\u2019\xE0 sa reconnexion." },
   availability: {
@@ -161,6 +162,9 @@ var TOOLS_CARD_STRINGS_FR = {
     hubClickActionOptionNone: "Ne rien faire",
     hubClickActionOptionSend: "Envoyer la commande",
     hubClickActionOptionCopy: "Copier la commande",
+    sidebarPanelTitle: "Panneau lat\xE9ral",
+    sidebarPanelDescription: "Ajouter Sofabaton X \xE0 la barre lat\xE9rale de Home Assistant et ouvrir ce panneau de contr\xF4le en pleine page.",
+    sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Journalisation hexad\xE9cimale",
     hexLoggingDescription: "Consigner le trafic hexad\xE9cimal brut entre le hub, l\u2019int\xE9gration et l\u2019application.",
     proxyTitle: "Proxy",

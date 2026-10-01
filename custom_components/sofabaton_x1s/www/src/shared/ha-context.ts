@@ -4,6 +4,7 @@ export type BackupSectionId = "make" | "edit" | "restore";
 export type WifiSectionId = "wifi" | "hub_events";
 export type SettingKey =
   | "persistent_cache"
+  | "sidebar_panel"
   | "hex_logging_enabled"
   | "proxy_enabled"
   | "wifi_device_enabled";
@@ -92,6 +93,8 @@ export interface ControlPanelHubState {
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   hub_click_action?: HubClickAction;
+  /** Global: the "Sofabaton X" sidebar panel is registered. */
+  sidebar_panel_enabled?: boolean;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }

@@ -89,6 +89,10 @@ export const cardStyles = [secondaryTabStyles, css`
     color: var(--primary-text-color);
   }
   *, *::before, *::after { box-sizing: border-box; }
+  /* fill_height (the sidebar panel host): the card is as tall as its
+     container; .card-inner gets height:100% inline from the card. */
+  :host([fill-height]) { height: 100%; }
+  :host([fill-height]) ha-card { height: 100%; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
   .card-topbar {
     position: relative;

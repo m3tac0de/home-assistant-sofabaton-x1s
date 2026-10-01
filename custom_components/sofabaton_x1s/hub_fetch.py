@@ -583,7 +583,13 @@ class HubFetchMixin:
             cached_detail_ids = await self.hass.async_add_executor_job(
                 self._proxy.get_cached_activity_detail_ids
             )
-            for act_id in (old_ids | cached_detail_ids) - new_ids:
+            # Never an id the device catalog lists: the kinds share the
+            # command, keymap and macro tables, so forgetting a device as
+            # a vanished activity would take its commands with it. The
+            # catalogs are disjoint, so a device id here is a misfiled
+            # detail entry, not a gone activity (2026-10-01).
+            device_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
+            for act_id in (old_ids | cached_detail_ids) - new_ids - device_ids:
                 await self.hass.async_add_executor_job(
                     partial(self._proxy.clear_cached_entity_detail, act_id, kind="activity")
                 )

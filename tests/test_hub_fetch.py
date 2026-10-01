@@ -579,3 +579,38 @@ def test_prime_does_not_stay_pending_when_nothing_was_requested(monkeypatch):
     monkeypatch.setattr(hub, "_activity_map_cached", lambda *_a: True)
     loop.run_until_complete(asyncio.wait_for(hub._async_prime_buttons_for(0x65), 2))
     assert 0x65 not in hub._pending_button_fetch
+
+
+def test_async_request_catalog_never_prunes_a_catalog_device_as_an_activity(monkeypatch):
+    # Regression (2026-10-01): an activity rename ended in this prune with
+    # the device ids reported as cached activity detail (their macro lists
+    # sit in the shared macros table), and forgetting them under the
+    # activity kind wiped every device's commands and keymap.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = _bare_hub(loop)
+
+    hub._proxy.get_known_activity_ids = lambda: {101, 102}  # type: ignore[method-assign]
+    hub._proxy.get_known_device_ids = lambda: {1, 2, 5}  # type: ignore[method-assign]
+    hub._proxy.get_cached_activity_detail_ids = lambda: {1, 2, 5, 101, 102, 103}  # type: ignore[method-assign]
+    hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
+
+    cleared: list[tuple[int, str]] = []
+
+    def _clear_cached_entity_detail(ent_id, *, kind):
+        cleared.append((ent_id, kind))
+
+    hub._proxy.clear_cached_entity_detail = _clear_cached_entity_detail  # type: ignore[method-assign]
+
+    async def _fake_sleep(_delay):
+        hub._proxy._activities_commit_serial += 1
+
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub_fetch.async_dispatcher_send", lambda *_: None)
+
+    loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.2))
+
+    # Only the activity that really left the catalog is forgotten.
+    assert cleared == [(103, "activity")]
+
+    loop.close()

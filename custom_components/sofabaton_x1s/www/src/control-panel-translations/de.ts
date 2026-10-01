@@ -35,6 +35,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     versionMismatchCopy: "Dieses Dashboard verwendet noch eine ältere zwischengespeicherte Version der Sofabaton-Steuerzentrale als die derzeit in Home Assistant laufende Version. Aktualisiere oder öffne das Dashboard bzw. den Browser erneut, bevor du die Steuerzentrale wieder verwendest, damit die aktualisierte Karte geladen wird.",
     backendExpects: "Backend erwartet", cardLoaded: "Geladene Karte", unknownVersion: "unbekannt", refreshingCache: "Cache wird aktualisiert…", hubCommandInProgress: "Hub-Befehl wird ausgeführt…",
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Nur für Administratoren", copy: "Diese Steuerzentrale ist Home-Assistant-Administratoren vorbehalten." },
   hubUnavailable: { title: "Hub nicht verfügbar", copy: "Dieser Hub ist nicht verbunden. Die Steuerzentrale ist erst wieder verfügbar, wenn der Hub erneut verbunden ist." },
   availability: {
@@ -65,6 +66,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     persistentCacheTitle: "Dauerhafter Cache", persistentCacheDescription: "Aktivitäts- und Gerätedaten für schnelleren Zugriff lokal speichern.", persistentCacheFooter: "GLOBAL",
     hubClickActionTitle: "Klicks im Hub-Tab", hubClickActionDescription: "Wähle aus, was beim Anklicken eines Befehls, Favoriten, Makros oder einer Taste in den Listen des Hub-Tabs geschieht.",
     hubClickActionFooter: "GLOBAL", hubClickActionOptionNone: "Nichts tun", hubClickActionOptionSend: "Befehl senden", hubClickActionOptionCopy: "Befehl kopieren",
+    sidebarPanelTitle: "Seitenleisten-Panel", sidebarPanelDescription: "Sofabaton X zur Home-Assistant-Seitenleiste hinzufügen und diese Steuerzentrale ganzseitig öffnen.", sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Hex-Protokollierung", hexLoggingDescription: "Unformatierten Hex-Datenverkehr zwischen Hub, Integration und App protokollieren.",
     proxyTitle: "Proxy", proxyDescription: "Der offiziellen Sofabaton-App und HA erlauben, die Hub-Verbindung gleichzeitig zu verwenden.",
     wifiDeviceTitle: "WLAN-Gerät", wifiDeviceDescription: "Den HTTP-Listener aktivieren, der Tastendrücke der Fernbedienung erfasst und an HA-Aktionen weiterleitet.",

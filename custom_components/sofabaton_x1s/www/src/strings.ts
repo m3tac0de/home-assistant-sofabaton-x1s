@@ -77,6 +77,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     refreshingCache: "Refreshing cache…",
     hubCommandInProgress: "Hub command in progress…",
   },
+  sidebarPanel: {
+    // The sidebar entry and the panel header. A product name: the same in
+    // every language.
+    title: "Sofabaton X",
+  },
   adminOnly: {
     title: "Admins only",
     copy: "This control panel is limited to Home Assistant administrators.",
@@ -192,6 +197,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionNone: "Do nothing",
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
+    sidebarPanelTitle: "Sidebar Panel",
+    sidebarPanelDescription:
+      "Add Sofabaton X to the Home Assistant sidebar and open this control panel full-page.",
+    sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",

@@ -53,6 +53,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     backendExpects: "后端要求版本", cardLoaded: "卡片已加载版本", unknownVersion: "未知",
     refreshingCache: "正在刷新缓存…", hubCommandInProgress: "正在执行 Hub 命令…",
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "仅限管理员", copy: "此控制面板仅限 Home Assistant 管理员使用。" },
   hubUnavailable: { title: "Hub 不可用", copy: "此 Hub 尚未连接。重新连接之前，控制面板不可用。" },
   availability: {
@@ -90,6 +91,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     hubClickActionTitle: "Hub 列表点击操作",
     hubClickActionDescription: "选择在 Hub 选项卡的列表中点击命令、收藏、宏或按键时执行的操作。",
     hubClickActionFooter: "全局", hubClickActionOptionNone: "不执行操作", hubClickActionOptionSend: "发送命令", hubClickActionOptionCopy: "复制命令",
+    sidebarPanelTitle: "侧边栏面板", sidebarPanelDescription: "将 Sofabaton X 添加到 Home Assistant 侧边栏，并全页打开此控制面板。", sidebarPanelFooter: "全局",
     hexLoggingTitle: "十六进制日志", hexLoggingDescription: "记录 Hub、集成和应用之间的原始十六进制通信。",
     proxyTitle: "代理", proxyDescription: "允许 Sofabaton 官方应用和 HA 同时共享 Hub 连接。",
     wifiDeviceTitle: "Wifi 设备", wifiDeviceDescription: "启用 HTTP 监听器，捕获遥控器按键操作并转交 HA 动作处理。",

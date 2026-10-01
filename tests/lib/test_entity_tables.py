@@ -195,3 +195,22 @@ def test_every_persisted_table_survives_the_cache_document() -> None:
     document.pop("generation")
     again.pop("generation")
     assert again == document
+
+
+def test_a_device_macro_read_does_not_make_it_an_activity_detail_id() -> None:
+    # A device backup reads its power macros through the macro burst, which
+    # files the (usually empty) list under the device id in
+    # state.activity_macros. The activities prune takes every cached-detail
+    # activity id a fresh catalog no longer lists and forgets it under the
+    # activity kind, which also empties the shared command and keymap
+    # tables, so a device id must never come out of this set (2026-10-01).
+    proxy = _proxy()
+    proxy.state.replace_activity_macros(DEV, [])
+    proxy.state.replace_activity_macros(ACT, [{"command_id": 3, "label": "Movie"}])
+    proxy.state.activity_favorite_slots[ACT] = [
+        {"button_id": 1, "device_id": DEV, "command_id": 1, "source": "cache"}
+    ]
+
+    # The macros table holds both kinds, so it cannot vouch for either;
+    # the activity-only favorites table does.
+    assert proxy.get_cached_activity_detail_ids() == {ACT}

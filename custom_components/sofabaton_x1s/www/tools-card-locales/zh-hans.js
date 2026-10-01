@@ -57,6 +57,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     refreshingCache: "\u6B63\u5728\u5237\u65B0\u7F13\u5B58\u2026",
     hubCommandInProgress: "\u6B63\u5728\u6267\u884C Hub \u547D\u4EE4\u2026"
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "\u4EC5\u9650\u7BA1\u7406\u5458", copy: "\u6B64\u63A7\u5236\u9762\u677F\u4EC5\u9650 Home Assistant \u7BA1\u7406\u5458\u4F7F\u7528\u3002" },
   hubUnavailable: { title: "Hub \u4E0D\u53EF\u7528", copy: "\u6B64 Hub \u5C1A\u672A\u8FDE\u63A5\u3002\u91CD\u65B0\u8FDE\u63A5\u4E4B\u524D\uFF0C\u63A7\u5236\u9762\u677F\u4E0D\u53EF\u7528\u3002" },
   availability: {
@@ -161,6 +162,9 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     hubClickActionOptionNone: "\u4E0D\u6267\u884C\u64CD\u4F5C",
     hubClickActionOptionSend: "\u53D1\u9001\u547D\u4EE4",
     hubClickActionOptionCopy: "\u590D\u5236\u547D\u4EE4",
+    sidebarPanelTitle: "\u4FA7\u8FB9\u680F\u9762\u677F",
+    sidebarPanelDescription: "\u5C06 Sofabaton X \u6DFB\u52A0\u5230 Home Assistant \u4FA7\u8FB9\u680F\uFF0C\u5E76\u5168\u9875\u6253\u5F00\u6B64\u63A7\u5236\u9762\u677F\u3002",
+    sidebarPanelFooter: "\u5168\u5C40",
     hexLoggingTitle: "\u5341\u516D\u8FDB\u5236\u65E5\u5FD7",
     hexLoggingDescription: "\u8BB0\u5F55 Hub\u3001\u96C6\u6210\u548C\u5E94\u7528\u4E4B\u95F4\u7684\u539F\u59CB\u5341\u516D\u8FDB\u5236\u901A\u4FE1\u3002",
     proxyTitle: "\u4EE3\u7406",

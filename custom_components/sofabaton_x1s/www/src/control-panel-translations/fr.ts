@@ -33,6 +33,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     versionMismatchCopy: "Ce tableau de bord utilise encore une version en cache du panneau de contrôle Sofabaton plus ancienne que celle qui s’exécute maintenant dans Home Assistant. Actualisez ou rouvrez le tableau de bord ou le navigateur avant de réutiliser le panneau afin que la carte mise à jour puisse se charger.",
     backendExpects: "Version attendue par le backend", cardLoaded: "Carte chargée", unknownVersion: "inconnue", refreshingCache: "Actualisation du cache…", hubCommandInProgress: "Commande du hub en cours…",
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Réservé aux administrateurs", copy: "Ce panneau de contrôle est réservé aux administrateurs Home Assistant." },
   hubUnavailable: { title: "Hub indisponible", copy: "Ce hub n’est pas connecté. Le panneau de contrôle restera indisponible jusqu’à sa reconnexion." },
   availability: {
@@ -63,6 +64,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     persistentCacheTitle: "Cache persistant", persistentCacheDescription: "Stocker localement les données des activités et des appareils pour un accès plus rapide.", persistentCacheFooter: "GLOBAL",
     hubClickActionTitle: "Clics dans l’onglet Hub", hubClickActionDescription: "Choisissez ce qui se passe lorsque vous cliquez sur une commande, un favori, une macro ou une touche dans les listes de l’onglet Hub.",
     hubClickActionFooter: "GLOBAL", hubClickActionOptionNone: "Ne rien faire", hubClickActionOptionSend: "Envoyer la commande", hubClickActionOptionCopy: "Copier la commande",
+    sidebarPanelTitle: "Panneau latéral", sidebarPanelDescription: "Ajouter Sofabaton X à la barre latérale de Home Assistant et ouvrir ce panneau de contrôle en pleine page.", sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Journalisation hexadécimale", hexLoggingDescription: "Consigner le trafic hexadécimal brut entre le hub, l’intégration et l’application.",
     proxyTitle: "Proxy", proxyDescription: "Permettre à l’application Sofabaton officielle et à HA de partager simultanément la connexion au hub.",
     wifiDeviceTitle: "Appareil Wifi", wifiDeviceDescription: "Activer l’écouteur HTTP qui capture les appuis sur la télécommande et les achemine vers des actions HA.",

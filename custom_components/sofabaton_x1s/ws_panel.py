@@ -33,6 +33,7 @@ from .ws_wifi import (
     _build_wifi_device_sync_payload,
 )
 from . import frontend_resources
+from . import sidebar_panel
 
 
 async def _async_build_control_panel_runtime_payload(
@@ -241,6 +242,7 @@ async def _ws_get_control_panel_state(
     payload = {
         "persistent_cache_enabled": store.enabled,
         "hub_click_action": ui_settings.hub_click_action,
+        "sidebar_panel_enabled": ui_settings.sidebar_panel_enabled,
         "tools_frontend_version": tools_frontend_version,
         "hubs": hubs,
     }
@@ -255,6 +257,7 @@ async def _ws_get_control_panel_state(
             [
                 "persistent_cache",
                 "hub_click_action",
+                "sidebar_panel",
                 "proxy_enabled",
                 "hex_logging_enabled",
                 "wifi_device_enabled",
@@ -295,6 +298,14 @@ async def _ws_control_panel_set_setting(
         await store.async_set_enabled(enabled)
         if not enabled:
             await store.async_clear_all_hub_cache()
+        connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
+        return
+
+    if setting == "sidebar_panel":
+        ui_settings = await runtime._async_get_ui_settings_store(hass)
+        await ui_settings.async_set_sidebar_panel_enabled(enabled)
+        # The sidebar follows the setting right away; no restart.
+        await sidebar_panel.async_sync_sidebar_panel(hass)
         connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
         return
 

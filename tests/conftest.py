@@ -343,6 +343,8 @@ def _install_homeassistant_stubs() -> None:
 
     frontend = types.ModuleType("homeassistant.components.frontend")
     frontend.add_extra_js_url = lambda *args, **kwargs: None
+    frontend.async_register_built_in_panel = lambda *args, **kwargs: None
+    frontend.async_remove_panel = lambda *args, **kwargs: None
     sys.modules.setdefault("homeassistant.components.frontend", frontend)
     components.frontend = frontend
 

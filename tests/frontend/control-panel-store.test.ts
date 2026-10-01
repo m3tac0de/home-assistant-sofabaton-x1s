@@ -20,6 +20,7 @@ const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 
 const baseState = {
   persistent_cache_enabled: true,
+  sidebar_panel_enabled: false,
   tools_frontend_version: "dev",
   hubs: [
     {
@@ -455,6 +456,59 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   await pending;
   assert.equal(store.snapshot.pendingSettingKey, null);
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
+});
+
+test("setSetting sidebar_panel is a global flag: optimistic, rolled back on failure", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/set_setting": () => {
+          throw new Error("backend failed");
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const pending = store.setSetting("sidebar_panel", true);
+  assert.equal(store.snapshot.pendingSettingKey, "sidebar_panel");
+  assert.equal(store.snapshot.state?.sidebar_panel_enabled, true);
+  // Global: no hub-level setting is touched.
+  assert.equal(store.snapshot.state?.hubs[0].settings?.sidebar_panel, undefined);
+
+  await pending;
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.sidebar_panel_enabled, false);
+});
+
+test("setSetting sidebar_panel persists through set_setting and reloads state", async () => {
+  const { store } = createStore();
+  const messages: Record<string, unknown>[] = [];
+  let enabled = false;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, sidebar_panel_enabled: enabled }),
+        "sofabaton_x1s/control_panel/set_setting": (message) => {
+          messages.push(message);
+          enabled = Boolean(message.enabled);
+          return { ok: true, enabled };
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  await store.setSetting("sidebar_panel", true);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].setting, "sidebar_panel");
+  assert.equal(messages[0].enabled, true);
+  assert.equal(messages[0].entry_id, "hub-1");
+  assert.equal(store.snapshot.state?.sidebar_panel_enabled, true);
 });
 
 test("setHubClickAction applies optimistic state and rolls back on failure", async () => {

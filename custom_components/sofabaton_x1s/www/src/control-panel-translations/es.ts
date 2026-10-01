@@ -32,6 +32,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     versionMismatchCopy: "Este panel aún usa una versión anterior en caché de la tarjeta Panel de control Sofabaton, distinta de la que se está ejecutando ahora en Home Assistant. Actualiza o vuelve a abrir el panel o el navegador antes de usar de nuevo el panel de control para que pueda cargarse la tarjeta actualizada.",
     backendExpects: "El backend espera", cardLoaded: "Tarjeta cargada", unknownVersion: "desconocida", refreshingCache: "Actualizando la caché…", hubCommandInProgress: "Comando del hub en curso…",
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Solo administradores", copy: "Este panel de control está limitado a los administradores de Home Assistant." },
   hubUnavailable: { title: "Hub no disponible", copy: "Este hub no está conectado. El panel de control no estará disponible hasta que el hub vuelva a conectarse." },
   availability: {
@@ -62,6 +63,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     persistentCacheTitle: "Caché persistente", persistentCacheDescription: "Guarda localmente los datos de actividades y dispositivos para acceder más rápido.", persistentCacheFooter: "GLOBAL",
     hubClickActionTitle: "Clics en la pestaña Hub", hubClickActionDescription: "Elige qué ocurre al hacer clic en un comando, favorito, macro o botón de las listas de la pestaña Hub.",
     hubClickActionFooter: "GLOBAL", hubClickActionOptionNone: "No hacer nada", hubClickActionOptionSend: "Enviar el comando", hubClickActionOptionCopy: "Copiar el comando",
+    sidebarPanelTitle: "Panel lateral", sidebarPanelDescription: "Añade Sofabaton X a la barra lateral de Home Assistant y abre este panel de control a página completa.", sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Registro hexadecimal", hexLoggingDescription: "Registra el tráfico hexadecimal sin procesar entre el hub, la integración y la aplicación.",
     proxyTitle: "Proxy", proxyDescription: "Permite que la aplicación oficial de Sofabaton y HA compartan simultáneamente la conexión con el hub.",
     wifiDeviceTitle: "Dispositivo Wifi", wifiDeviceDescription: "Activa el listener HTTP que captura pulsaciones del mando a distancia y las dirige a acciones de HA.",

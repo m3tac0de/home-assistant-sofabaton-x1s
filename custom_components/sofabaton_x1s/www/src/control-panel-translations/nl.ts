@@ -55,6 +55,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     backendExpects: "Backend verwacht", cardLoaded: "Geladen kaart", unknownVersion: "onbekend",
     refreshingCache: "Cache vernieuwen…", hubCommandInProgress: "Hubcommando wordt uitgevoerd…",
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Alleen beheerders", copy: "Dit bedieningspaneel is voorbehouden aan Home Assistant-beheerders." },
   hubUnavailable: { title: "Hub niet beschikbaar", copy: "Deze hub is niet verbonden. Het bedieningspaneel is niet beschikbaar totdat de hub opnieuw verbinding maakt." },
   availability: {
@@ -92,6 +93,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     hubClickActionTitle: "Klikken op het tabblad Hub",
     hubClickActionDescription: "Kies wat er gebeurt wanneer je in de lijsten op het tabblad Hub op een commando, favoriet, macro of knop klikt.",
     hubClickActionFooter: "ALGEMEEN", hubClickActionOptionNone: "Niets doen", hubClickActionOptionSend: "Commando verzenden", hubClickActionOptionCopy: "Commando kopiëren",
+    sidebarPanelTitle: "Zijbalkpaneel", sidebarPanelDescription: "Voeg Sofabaton X toe aan de zijbalk van Home Assistant en open dit bedieningspaneel op een volledige pagina.", sidebarPanelFooter: "ALGEMEEN",
     hexLoggingTitle: "Hex-logboekregistratie", hexLoggingDescription: "Registreer onbewerkt hex-verkeer tussen hub, integratie en app.",
     proxyTitle: "Proxy", proxyDescription: "Laat de officiële Sofabaton-app en HA tegelijkertijd de hubverbinding delen.",
     wifiDeviceTitle: "Wifi-apparaat", wifiDeviceDescription: "Schakel de HTTP-listener in die knopdrukken van de afstandsbediening opvangt en doorstuurt naar HA-acties.",

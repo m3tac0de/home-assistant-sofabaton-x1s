@@ -45,6 +45,10 @@ export function persistentCacheEnabled(snapshot: ControlPanelSnapshot): boolean 
   return !!snapshot.state?.persistent_cache_enabled;
 }
 
+export function sidebarPanelEnabled(snapshot: ControlPanelSnapshot): boolean {
+  return snapshot.state?.sidebar_panel_enabled === true;
+}
+
 export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {
   const action = snapshot.state?.hub_click_action;
   return action === "send" || action === "copy" ? action : "none";

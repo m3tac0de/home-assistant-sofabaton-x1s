@@ -57,6 +57,7 @@ var TOOLS_CARD_STRINGS_DE = {
     refreshingCache: "Cache wird aktualisiert\u2026",
     hubCommandInProgress: "Hub-Befehl wird ausgef\xFChrt\u2026"
   },
+  sidebarPanel: { title: "Sofabaton X" },
   adminOnly: { title: "Nur f\xFCr Administratoren", copy: "Diese Steuerzentrale ist Home-Assistant-Administratoren vorbehalten." },
   hubUnavailable: { title: "Hub nicht verf\xFCgbar", copy: "Dieser Hub ist nicht verbunden. Die Steuerzentrale ist erst wieder verf\xFCgbar, wenn der Hub erneut verbunden ist." },
   availability: {
@@ -161,6 +162,9 @@ var TOOLS_CARD_STRINGS_DE = {
     hubClickActionOptionNone: "Nichts tun",
     hubClickActionOptionSend: "Befehl senden",
     hubClickActionOptionCopy: "Befehl kopieren",
+    sidebarPanelTitle: "Seitenleisten-Panel",
+    sidebarPanelDescription: "Sofabaton X zur Home-Assistant-Seitenleiste hinzuf\xFCgen und diese Steuerzentrale ganzseitig \xF6ffnen.",
+    sidebarPanelFooter: "GLOBAL",
     hexLoggingTitle: "Hex-Protokollierung",
     hexLoggingDescription: "Unformatierten Hex-Datenverkehr zwischen Hub, Integration und App protokollieren.",
     proxyTitle: "Proxy",

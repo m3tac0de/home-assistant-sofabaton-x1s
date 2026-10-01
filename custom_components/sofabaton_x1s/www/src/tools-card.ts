@@ -20,6 +20,7 @@ import {
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
+  sidebarPanelEnabled,
   hubActiveRefreshLabel,
   hubExternalCommandLabel,
   hubRefreshBusy,
@@ -43,6 +44,8 @@ import { toolsCardLocaleLoader } from "./control-panel-language-loader";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
+// The full-page host behind the "Sidebar Panel" setting; it mounts this card.
+import "./sidebar-panel";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -256,6 +259,10 @@ class SofabatonControlPanelCard extends LitElement {
 
   setConfig(config: Record<string, unknown>) {
     this._config = config || {};
+    // `fill_height: true` (the sidebar panel host) sizes the card to its
+    // container instead of the fixed `card_height`; card-styles.ts keys the
+    // host and ha-card heights on this attribute.
+    this.toggleAttribute("fill-height", this._config.fill_height === true);
     this.requestUpdate();
     // When created from a hub-specific entity (card picker), pre-select that hub.
     const hub = typeof this._config.hub === "string" ? this._config.hub.trim() : "";
@@ -823,10 +830,17 @@ class SofabatonControlPanelCard extends LitElement {
     return this._config.admin_only === true && this._userIsAdmin !== true;
   }
 
-  private renderAdminOnly(height: number) {
+  /** The inline height of .card-inner: the configured pixel height, or
+   *  100% of the host when `fill_height` is on. */
+  private cardHeightStyle(): string {
+    if (this._config.fill_height === true) return "height:100%";
+    return `height:${Number(this._config.card_height ?? 600)}px`;
+  }
+
+  private renderAdminOnly(heightStyle: string) {
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:shield-account-outline"></ha-icon></div>
@@ -839,10 +853,10 @@ class SofabatonControlPanelCard extends LitElement {
     `;
   }
 
-  private renderBackendUnavailable(height: number) {
+  private renderBackendUnavailable(heightStyle: string) {
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
@@ -857,10 +871,10 @@ class SofabatonControlPanelCard extends LitElement {
     `;
   }
 
-  private renderVersionMismatch(height: number) {
+  private renderVersionMismatch(heightStyle: string) {
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="version-mismatch-state">
               <div class="version-mismatch-header">
@@ -934,13 +948,13 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   protected render() {
-    const height = Number(this._config.card_height ?? 600);
+    const heightStyle = this.cardHeightStyle();
     if (this._localeLoading) {
       return html`
         <ha-card>
           <div
             class="locale-loading"
-            style=${`height:${height}px`}
+            style=${heightStyle}
             role="status"
             aria-busy="true"
           >
@@ -950,17 +964,17 @@ class SofabatonControlPanelCard extends LitElement {
       `;
     }
     if (this._preview) return this.renderPreview();
-    if (this.adminOnlyBlocked()) return this.renderAdminOnly(height);
+    if (this.adminOnlyBlocked()) return this.renderAdminOnly(heightStyle);
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const cardGateState = resolveCardGateState(this._snapshot);
     if (cardGateState.kind === "version_mismatch") {
-      return this.renderVersionMismatch(height);
+      return this.renderVersionMismatch(heightStyle);
     }
     if (cardGateState.kind === "backend_unavailable") {
-      return this.renderBackendUnavailable(height);
+      return this.renderBackendUnavailable(heightStyle);
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
     const runtimeState = resolveRuntimeState(this._snapshot);
@@ -980,6 +994,7 @@ class SofabatonControlPanelCard extends LitElement {
       hub,
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
+      sidebarPanelEnabled: sidebarPanelEnabled(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -1126,7 +1141,7 @@ class SofabatonControlPanelCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
             ${hubs.length > 1

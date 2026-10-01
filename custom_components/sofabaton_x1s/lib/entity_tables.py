@@ -123,8 +123,11 @@ ENTITY_TABLES: tuple[EntityTable, ...] = (
     EntityTable("_activity_map_complete", ACTIVITY, "favorites", _proxy("_activity_map_complete"), cached=False),
     # Quick-access order (family 0x61); a favorites write re-reads it separately.
     EntityTable("state.activity_favorites_order", ACTIVITY, "favorites_order", _state("activity_favorites_order"), persisted="activity_favorites_order"),
-    # Macros.
-    EntityTable("state.activity_macros", ACTIVITY, "macros", _state("activity_macros"), persisted="activity_macros"),
+    # Macros. The macro read fills state.activity_macros for devices too
+    # (a device backup reads its power macros through the same burst), so
+    # the table holds both kinds; declared ACTIVITY it fed device ids into
+    # the activities prune, which then forgot their commands (2026-10-01).
+    EntityTable("state.activity_macros", BOTH, "macros", _state("activity_macros"), persisted="activity_macros"),
     EntityTable("_macro_records_cache", BOTH, "macros", _proxy("_macro_records_cache"), shape="pair_keyed", lock="_macro_payload_lock", persisted="macro_records"),
     EntityTable("_macros_complete", BOTH, "macros", _proxy("_macros_complete"), cached=False),
     EntityTable("_pending_macro_requests", BOTH, "macros", _proxy("_pending_macro_requests"), cached=False),

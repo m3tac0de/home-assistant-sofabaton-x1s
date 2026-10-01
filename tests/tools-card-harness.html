@@ -1001,6 +1001,7 @@
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
+      sidebar_panel_enabled: false,
       tools_frontend_version: TOOLS_FRONTEND_VERSION,
       hubs: [HUB_1],
     };
@@ -1603,6 +1604,8 @@
                 mock.contents.enabled = Boolean(message.enabled);
               } else if (message.setting === "hub_click_action") {
                 mock.state.hub_click_action = String(message.value ?? "none");
+              } else if (message.setting === "sidebar_panel") {
+                mock.state.sidebar_panel_enabled = Boolean(message.enabled);
               } else {
                 const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id);
                 if (hub?.settings) hub.settings[message.setting] = Boolean(message.enabled);
