@@ -1664,6 +1664,11 @@
               return respond(type, { status: "success" });
             case "sofabaton_x1s/device/delete":
               return respond(type, { status: "success" });
+            case "sofabaton_x1s/hub/rename": {
+              const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id) ?? mock.state.hubs[0];
+              if (hub) hub.name = String(message.name ?? hub.name);
+              return respond(type, { status: "success", name: hub?.name ?? message.name });
+            }
             case "sofabaton_x1s/activity/reorder":
             case "sofabaton_x1s/device/reorder":
               return respond(type, {

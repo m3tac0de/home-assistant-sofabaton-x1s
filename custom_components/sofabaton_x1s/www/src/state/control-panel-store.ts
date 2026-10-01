@@ -917,6 +917,27 @@ export class ControlPanelStore {
   }
 
   /**
+   * Immediate live write of the hub's own name. Resolves with `null` on
+   * success (state reloaded, so the new name shows everywhere the hub is
+   * named) or a localized failure message for the dialog.
+   */
+  async renameHub(name: string): Promise<string | null> {
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.settings.renamingHub, hub.entry_id);
+    try {
+      await this.api().renameHub(hub.entry_id, name);
+    } catch (error) {
+      return localizeBackendError(error, "hub_rename");
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+
+  /**
    * Immediate live write of the hub's stored activity display order.
    * ``orderedIds`` is the full activity id list in the desired order.
    * Resolves with `null` on success or a failure message for the caller's UI.

@@ -29,3 +29,18 @@ export function sanitizeWifiName(hubVersion: string | null | undefined, value: u
 export function sanitizeEntityName(hubVersion: string | null | undefined, value: unknown): string {
   return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
 }
+
+/** The hub's own name: printable ASCII without the backslash, 30 chars. */
+export const HUB_NAME_MAX = 30;
+
+/**
+ * The hub's own name, as the official app's rename field accepts it on
+ * every model: printable ASCII (space through tilde) without the
+ * backslash, at most 30 characters. The name also rides in the hub's mDNS
+ * TXT record and discovery banner, where only 7-bit text is safe, so this
+ * is stricter than the entity-name rule; the backend applies the same
+ * rule (ws_editor.py _hub_name_storable).
+ */
+export function sanitizeHubName(value: unknown): string {
+  return String(value ?? "").replace(/[^ -\[\]-~]+/g, "").slice(0, HUB_NAME_MAX);
+}

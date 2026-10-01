@@ -200,6 +200,15 @@ export class ControlPanelApi {
     });
   }
 
+  // Immediate live write of the hub's own name (Settings tab pencil).
+  renameHub(entryId: string, name: string) {
+    return this.hass.callWS<{ status?: string; name?: string }>({
+      type: "sofabaton_x1s/hub/rename",
+      entry_id: entryId,
+      name,
+    });
+  }
+
   // Immediate live write of the hub's stored activity display order.
   // ordered_ids is the full activity id list in the desired order.
   reorderActivities(entryId: string, orderedIds: number[]) {

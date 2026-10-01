@@ -10,7 +10,7 @@ type BackendOperation =
 
 export type BackendErrorSurface =
   | "device_create" | "activity_create" | "catalog_write" | "ir_learn" | "ir_emissions" | "ir_convert"
-  | "hub_request" | "wifi_event";
+  | "hub_request" | "wifi_event" | "hub_rename";
 
 /**
  * The `ir_payload/convert` rejection carries the refused protocol as its
@@ -103,6 +103,15 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
     if (code === "empty_name" || code === "invalid_format") return E.wifiEventNameInvalid;
     if (code === "not_found") return E.selectedHubUnavailable;
     return E.wifiEventFailed;
+  }
+  if (surface === "hub_rename") {
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "unavailable" || code === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code === "invalid_name") return TOOLS_CARD_STRINGS.errors.hubNameInvalid;
+    return TOOLS_CARD_STRINGS.errors.hubRenameFailed;
   }
   if (surface === "activity_create" || surface === "catalog_write") {
     // The Add Activity dialog and the reorders share one backend guard with

@@ -1546,7 +1546,10 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-badge--on { color: #67b7ff; }
   .hub-compact-badge--off { color: color-mix(in srgb, var(--secondary-text-color) 45%, transparent); }
   .hub-compact-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .hub-compact-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-rename-btn { width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0; }
+  .hub-rename-btn ha-icon { --mdc-icon-size: 15px; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
@@ -1558,6 +1561,51 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-stat-value { font-size: 17px; font-weight: 800; color: var(--primary-text-color); line-height: 1; }
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
+  /* The small modal dialog, as the backup editor draws it
+     (backup-tab-styles.ts): hosts that render inside the card's own shadow
+     root (the Settings tab's hub rename) get the same rules here. */
+  .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog.small { width: min(500px, calc(100vw - 36px)); }
+  .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+  .dialog-header { border-bottom: 1px solid var(--divider-color); }
+  .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
+  .dialog-close { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
+  .dialog-close:hover { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); }
+  .dialog-close:active { transform: translateY(1px); }
+  .dialog-close ha-icon { --mdc-icon-size: 16px; }
+  .dialog-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    --ha-color-form-background: var(
+      --sb-field-surface,
+      var(
+        --secondary-background-color,
+        color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
+      )
+    );
+    --ha-color-form-background-hover: var(--ha-color-form-background);
+  }
+  .dialog-body ha-input, .dialog-body ha-textfield { width: 100%; }
+  .dialog-body ha-input { --ha-input-padding-top: 0; --ha-input-padding-bottom: 0; }
+  .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; flex-wrap: wrap; }
+  .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
+  .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--error-color, #db4437); }
+  .dialog-btn { border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  .dialog-btn:disabled, .dialog-close:disabled { opacity: 0.45; cursor: default; }
+  @container sofabaton-card (max-width: 480px) {
+    .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+    .dialog, .dialog.small { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: calc(var(--ha-card-border-radius, 12px) * 1.8) calc(var(--ha-card-border-radius, 12px) * 1.8) 0 0; }
+    .dialog-footer { flex-direction: column; align-items: stretch; }
+    .dialog-footer-actions { width: 100%; }
+    .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+    .dialog-footer-note { min-height: 0; }
+  }
   @container sofabaton-card (max-width: 480px) {
     /* Pull the primary tabs together: the longer translated labels
        (Automatisierung, Automatisering, Sauvegarde) need the room more
@@ -1809,6 +1857,8 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
+    hubNameInvalid: "The hub cannot store this name.",
+    hubRenameFailed: "The hub did not accept the new name.",
     noHubSelected: "No hub selected.",
     noHubSelectedLong: "No hub is selected.",
     cacheRefreshFailed: "Cache refresh failed.",
@@ -1854,6 +1904,9 @@ var TOOLS_CARD_STRINGS_EN = {
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
+    renameHub: "Rename hub",
+    hubNameLabel: "Hub name",
+    renamingHub: "Renaming the hub\u2026",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",
@@ -2973,6 +3026,14 @@ var ControlPanelApi = class {
       device_id: deviceId
     });
   }
+  // Immediate live write of the hub's own name (Settings tab pencil).
+  renameHub(entryId, name) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/hub/rename",
+      entry_id: entryId,
+      name
+    });
+  }
   // Immediate live write of the hub's stored activity display order.
   // ordered_ids is the full activity id list in the desired order.
   reorderActivities(entryId, orderedIds) {
@@ -3320,6 +3381,15 @@ function localizeBackendError(value, surface) {
     if (code2 === "empty_name" || code2 === "invalid_format") return E2.wifiEventNameInvalid;
     if (code2 === "not_found") return E2.selectedHubUnavailable;
     return E2.wifiEventFailed;
+  }
+  if (surface === "hub_rename") {
+    const code2 = backendErrorCode(value);
+    if (code2 === "busy" || code2 === "unavailable" || code2 === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code2 === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code2 === "invalid_name") return TOOLS_CARD_STRINGS.errors.hubNameInvalid;
+    return TOOLS_CARD_STRINGS.errors.hubRenameFailed;
   }
   if (surface === "activity_create" || surface === "catalog_write") {
     const code2 = backendErrorCode(value);
@@ -4697,6 +4767,26 @@ var ControlPanelStore = class {
     }
   }
   /**
+   * Immediate live write of the hub's own name. Resolves with `null` on
+   * success (state reloaded, so the new name shows everywhere the hub is
+   * named) or a localized failure message for the dialog.
+   */
+  async renameHub(name) {
+    if (this._isHubCommandBusy()) return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.settings.renamingHub, hub.entry_id);
+    try {
+      await this.api().renameHub(hub.entry_id, name);
+    } catch (error) {
+      return localizeBackendError(error, "hub_rename");
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+  /**
    * Immediate live write of the hub's stored activity display order.
    * ``orderedIds`` is the full activity id list in the desired order.
    * Resolves with `null` on success or a failure message for the caller's UI.
@@ -5473,7 +5563,16 @@ function renderSettingsTab(params) {
               </div>
             </div>
             <div class="hub-compact-text">
-              <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+              <div class="hub-compact-name-row">
+                <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+                <button
+                  class="icon-btn hub-rename-btn"
+                  ?disabled=${!canAct}
+                  aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
+                  title=${TOOLS_CARD_STRINGS.settings.renameHub}
+                  @click=${params.onRenameHub}
+                ><ha-icon icon="mdi:pencil"></ha-icon></button>
+              </div>
               ${versionLine ? b2`<div class="hub-compact-meta">${versionLine}</div>` : A}
               ${firmwareOutdated(hub) ? b2`<div class="hub-compact-meta"><span
                 class="hub-fw-chip"
@@ -5634,6 +5733,86 @@ function sanitizeWifiName(hubVersion, value) {
 }
 function sanitizeEntityName(hubVersion, value) {
   return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
+}
+var HUB_NAME_MAX = 30;
+function sanitizeHubName(value) {
+  return String(value ?? "").replace(/[^ -\[\]-~]+/g, "").slice(0, HUB_NAME_MAX);
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/names.ts
+function bundleIsX2(bundle) {
+  return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
+}
+function sanitizeBundleName(bundle, value) {
+  return sanitizeEntityName(bundle?.hub?.version, value);
+}
+function editorErrorMessage(error, surface) {
+  if (error instanceof Error) return error.message;
+  return localizeBackendError(error, surface);
+}
+function useLegacyTextField() {
+  return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
+}
+
+// custom_components/sofabaton_x1s/www/src/components/rename-dialog.ts
+function renderRenameDialog(params) {
+  if (!params.open) return A;
+  const handleInput = (event) => {
+    const input = event.currentTarget;
+    params.onInput(input.value);
+    if (input.value !== params.value) input.value = params.value;
+  };
+  const handleKeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (!params.busy) params.onConfirm();
+  };
+  const cancel = () => {
+    if (!params.busy) params.onCancel();
+  };
+  return b2`
+    <div class="modal-backdrop" @click=${cancel}>
+      <div class="dialog small" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
+        <div class="dialog-header">
+          <div class="dialog-title">${params.title}</div>
+          <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} ?disabled=${params.busy} @click=${cancel}><ha-icon icon="mdi:close"></ha-icon></button>
+        </div>
+        <div class="dialog-body">
+          ${useLegacyTextField() ? b2`
+                <ha-textfield
+                  id=${params.inputId}
+                  .label=${params.label}
+                  .maxLength=${params.maxLength}
+                  .value=${params.value}
+                  ?disabled=${params.busy}
+                  @input=${handleInput}
+                  @change=${handleInput}
+                  @keydown=${handleKeydown}
+                ></ha-textfield>
+              ` : b2`
+                <ha-input
+                  id=${params.inputId}
+                  type="text"
+                  .label=${params.label}
+                  .maxlength=${params.maxLength}
+                  .value=${params.value}
+                  ?disabled=${params.busy}
+                  @input=${handleInput}
+                  @change=${handleInput}
+                  @keydown=${handleKeydown}
+                ></ha-input>
+              `}
+        </div>
+        <div class="dialog-footer">
+          <div class="dialog-footer-note">${params.error}</div>
+          <div class="dialog-footer-actions">
+            <button class="dialog-btn" ?disabled=${params.busy} @click=${cancel}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+            <button class="dialog-btn dialog-btn-primary" ?disabled=${params.busy} @click=${params.onConfirm}>${TOOLS_CARD_STRINGS.common.save}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/cache-tab.ts
@@ -10125,21 +10304,6 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
       TOOLS_CARD_STRINGS.decodedPayload.incompatibleModels(sourceVersion, destinationVersion)
     );
   }
-}
-
-// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/names.ts
-function bundleIsX2(bundle) {
-  return String(bundle?.hub?.version || "").toUpperCase().includes("X2");
-}
-function sanitizeBundleName(bundle, value) {
-  return sanitizeEntityName(bundle?.hub?.version, value);
-}
-function editorErrorMessage(error, surface) {
-  if (error instanceof Error) return error.message;
-  return localizeBackendError(error, surface);
-}
-function useLegacyTextField() {
-  return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail/styles.ts
@@ -21245,6 +21409,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._addActivityError = null;
     // "Add Device" dialog state.
     this._addDeviceOpen = false;
+    // Settings tab hub rename dialog (the pencil next to the hub name).
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this._hubRenameError = "";
+    this._hubRenameBusy = false;
     this._addDeviceBusy = false;
     this._addDeviceError = null;
     this._addDeviceClass = "";
@@ -21572,6 +21741,69 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._editingEntity = { kind: "device", id: result.deviceId };
     this.requestUpdate();
   }
+  openHubRename() {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return;
+    this._hubRenameDraft = sanitizeHubName(String(hub.name ?? ""));
+    this._hubRenameError = "";
+    this._hubRenameBusy = false;
+    this._hubRenameOpen = true;
+    this.requestUpdate();
+  }
+  closeHubRename() {
+    if (this._hubRenameBusy) return;
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this._hubRenameError = "";
+    this.requestUpdate();
+  }
+  handleHubRenameInput(value) {
+    this._hubRenameDraft = sanitizeHubName(value);
+    this._hubRenameError = "";
+    this.requestUpdate();
+  }
+  async confirmHubRename() {
+    if (this._hubRenameBusy) return;
+    const hub = selectedHub(this._snapshot);
+    const next = sanitizeHubName(this._hubRenameDraft);
+    if (!next) {
+      this._hubRenameError = TOOLS_CARD_STRINGS.backup.enterName;
+      this.requestUpdate();
+      return;
+    }
+    if (next === String(hub?.name ?? "")) {
+      this.closeHubRename();
+      return;
+    }
+    this._hubRenameBusy = true;
+    this._hubRenameError = "";
+    this.requestUpdate();
+    const error = await this._store.renameHub(next);
+    this._hubRenameBusy = false;
+    if (error) {
+      this._hubRenameError = error;
+      this.requestUpdate();
+      return;
+    }
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this.requestUpdate();
+  }
+  renderHubRenameDialog() {
+    return renderRenameDialog({
+      open: this._hubRenameOpen,
+      title: TOOLS_CARD_STRINGS.settings.renameHub,
+      label: TOOLS_CARD_STRINGS.settings.hubNameLabel,
+      value: this._hubRenameDraft,
+      error: this._hubRenameError,
+      maxLength: HUB_NAME_MAX,
+      busy: this._hubRenameBusy,
+      inputId: "sb-settings-hub-name",
+      onInput: (value) => this.handleHubRenameInput(value),
+      onCancel: () => this.closeHubRename(),
+      onConfirm: () => void this.confirmHubRename()
+    });
+  }
   handleSettingToggle(setting, enabled) {
     void this._store.setSetting(setting, enabled);
   }
@@ -21897,7 +22129,8 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
       onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
       onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
-      onRunAction: (action) => this.handleAction(action)
+      onRunAction: (action) => this.handleAction(action),
+      onRenameHub: () => this.openHubRename()
     });
     if (this._snapshot.selectedTab === "logs") {
       activeTab = renderLogsTab({
@@ -22032,6 +22265,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     }
     return b2`
       <ha-card>
+        ${this.renderHubRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}

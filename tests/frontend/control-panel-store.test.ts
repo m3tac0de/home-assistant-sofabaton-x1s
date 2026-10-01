@@ -458,6 +458,57 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
 });
 
+test("renameHub writes the name through hub/rename and reloads the hub state", async () => {
+  const { store } = createStore();
+  const messages: Record<string, unknown>[] = [];
+  let name = "Living Room";
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          hubs: [{ ...baseState.hubs[0], name }],
+        }),
+        "sofabaton_x1s/hub/rename": (message) => {
+          messages.push(message);
+          name = String(message.name);
+          return { status: "success", name };
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const error = await store.renameHub("Den");
+
+  assert.equal(error, null);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].entry_id, "hub-1");
+  assert.equal(messages[0].name, "Den");
+  assert.equal(store.snapshot.state?.hubs[0].name, "Den");
+});
+
+test("renameHub localizes a refused name and leaves the state alone", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/hub/rename": () => {
+          throw { code: "invalid_name", message: "The hub cannot store this hub name" };
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const error = await store.renameHub("a\\b");
+
+  assert.equal(error, "The hub cannot store this name.");
+  assert.equal(store.snapshot.state?.hubs[0].name, "Living Room");
+});
+
 test("setSidebarPanelMode applies optimistic state and rolls back on failure", async () => {
   const { store } = createStore();
   store.connected();

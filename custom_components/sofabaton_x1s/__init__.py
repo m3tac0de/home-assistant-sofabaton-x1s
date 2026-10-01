@@ -146,6 +146,7 @@ from .ws_editor import (  # noqa: F401
     _ws_activity_reorder,
     _ws_device_reorder,
     _ws_activity_create,
+    _ws_hub_rename,
     _ws_device_create,
     _handle_entity_sync_plan_ws,
     _ws_activity_sync_plan,
@@ -235,6 +236,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_reorder)
     websocket_api.async_register_command(hass, _ws_device_reorder)
     websocket_api.async_register_command(hass, _ws_activity_create)
+    websocket_api.async_register_command(hass, _ws_hub_rename)
     websocket_api.async_register_command(hass, _ws_device_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)

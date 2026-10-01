@@ -34,6 +34,8 @@ export function renderSettingsTab(params: {
   onSelectHubClickAction: (value: HubClickAction) => void;
   onSelectSidebarPanelMode: (value: SidebarPanelMode) => void;
   onRunAction: (action: HubAction) => void;
+  /** Opens the hub rename dialog (the card owns the dialog state). */
+  onRenameHub: () => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -67,7 +69,16 @@ export function renderSettingsTab(params: {
               </div>
             </div>
             <div class="hub-compact-text">
-              <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+              <div class="hub-compact-name-row">
+                <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+                <button
+                  class="icon-btn hub-rename-btn"
+                  ?disabled=${!canAct}
+                  aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
+                  title=${TOOLS_CARD_STRINGS.settings.renameHub}
+                  @click=${params.onRenameHub}
+                ><ha-icon icon="mdi:pencil"></ha-icon></button>
+              </div>
               ${versionLine ? html`<div class="hub-compact-meta">${versionLine}</div>` : nothing}
               ${firmwareOutdated(hub) ? html`<div class="hub-compact-meta"><span
                 class="hub-fw-chip"

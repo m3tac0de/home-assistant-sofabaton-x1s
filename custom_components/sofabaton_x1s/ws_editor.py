@@ -8,6 +8,7 @@ power state the remote card reads.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -47,6 +48,20 @@ def _new_entity_name_storable(hub: SofabatonHub, name: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+# The hub's own name: printable ASCII without the backslash, at most 30
+# characters. That is what the official app's rename field accepts for
+# every hub model, and the name also travels in the hub's mDNS TXT record
+# and its discovery banner, where only 7-bit text is safe. The hub itself
+# stores other bytes when sent (bench 2026-09-30), so the rule is ours.
+_HUB_NAME_RE = re.compile(r"^[ -\[\]-~]{1,30}$")
+
+
+def _hub_name_storable(hub: SofabatonHub, name: str) -> bool:
+    """A hub name every hub model, the app and mDNS carry unchanged."""
+
+    return bool(_HUB_NAME_RE.match(name))
 
 
 def _hub_model_for_names(hub: SofabatonHub) -> str:
@@ -260,6 +275,39 @@ async def _ws_device_reorder(hass: HomeAssistant, connection, msg: dict[str, Any
         )
         return
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub/rename",
+        vol.Required("entry_id"): str,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws()
+async def _ws_hub_rename(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Rename the hub (Settings tab pencil): the same wire write a
+    replace-mode restore makes, followed by the identity refresh (mDNS
+    name, config entry data, device registry name)."""
+
+    name = str(msg["name"]).strip()
+    if not name or len(name) > 30:
+        connection.send_error(msg["id"], "invalid_name", "Hub name must be 1-30 characters")
+        return
+
+    hub = await _resolve_hub_for_activity_write(hass, connection, msg, op_name="_ws_hub_rename")
+    if hub is None:
+        return
+    if not _hub_name_storable(hub, name):
+        connection.send_error(msg["id"], "invalid_name", "The hub cannot store this hub name")
+        return
+
+    ok = await hub.async_set_hub_name(name)
+    if not ok:
+        connection.send_error(msg["id"], "rename_failed", "The hub did not confirm the new name")
+        return
+    connection.send_result(msg["id"], {"status": "success", "name": str(getattr(hub, "name", name) or name)})
 
 
 @websocket_api.websocket_command(

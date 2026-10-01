@@ -36,6 +36,8 @@ import {
 import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
+import { renderRenameDialog } from "./components/rename-dialog";
+import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
 import { DOC_URLS } from "./shared/doc-links";
@@ -223,6 +225,11 @@ class SofabatonControlPanelCard extends LitElement {
   private _addActivityError: string | null = null;
   // "Add Device" dialog state.
   private _addDeviceOpen = false;
+  // Settings tab hub rename dialog (the pencil next to the hub name).
+  private _hubRenameOpen = false;
+  private _hubRenameDraft = "";
+  private _hubRenameError = "";
+  private _hubRenameBusy = false;
   private _addDeviceBusy = false;
   private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
@@ -621,6 +628,77 @@ class SofabatonControlPanelCard extends LitElement {
     this.requestUpdate();
   }
 
+  private openHubRename() {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return;
+    this._hubRenameDraft = sanitizeHubName(String(hub.name ?? ""));
+    this._hubRenameError = "";
+    this._hubRenameBusy = false;
+    this._hubRenameOpen = true;
+    this.requestUpdate();
+  }
+
+  private closeHubRename() {
+    if (this._hubRenameBusy) return;
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this._hubRenameError = "";
+    this.requestUpdate();
+  }
+
+  private handleHubRenameInput(value: string) {
+    // Drop what the hub name cannot carry as the user types, like the
+    // editor's rename dialogs, so what they see is the name that gets
+    // written.
+    this._hubRenameDraft = sanitizeHubName(value);
+    this._hubRenameError = "";
+    this.requestUpdate();
+  }
+
+  private async confirmHubRename() {
+    if (this._hubRenameBusy) return;
+    const hub = selectedHub(this._snapshot);
+    const next = sanitizeHubName(this._hubRenameDraft);
+    if (!next) {
+      this._hubRenameError = TOOLS_CARD_STRINGS.backup.enterName;
+      this.requestUpdate();
+      return;
+    }
+    if (next === String(hub?.name ?? "")) {
+      this.closeHubRename();
+      return;
+    }
+    this._hubRenameBusy = true;
+    this._hubRenameError = "";
+    this.requestUpdate();
+    const error = await this._store.renameHub(next);
+    this._hubRenameBusy = false;
+    if (error) {
+      this._hubRenameError = error;
+      this.requestUpdate();
+      return;
+    }
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this.requestUpdate();
+  }
+
+  private renderHubRenameDialog() {
+    return renderRenameDialog({
+      open: this._hubRenameOpen,
+      title: TOOLS_CARD_STRINGS.settings.renameHub,
+      label: TOOLS_CARD_STRINGS.settings.hubNameLabel,
+      value: this._hubRenameDraft,
+      error: this._hubRenameError,
+      maxLength: HUB_NAME_MAX,
+      busy: this._hubRenameBusy,
+      inputId: "sb-settings-hub-name",
+      onInput: (value) => this.handleHubRenameInput(value),
+      onCancel: () => this.closeHubRename(),
+      onConfirm: () => void this.confirmHubRename(),
+    });
+  }
+
   private handleSettingToggle(setting: SettingKey, enabled: boolean) {
     void this._store.setSetting(setting, enabled);
   }
@@ -1003,6 +1081,7 @@ class SofabatonControlPanelCard extends LitElement {
       onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
       onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
       onRunAction: (action) => this.handleAction(action),
+      onRenameHub: () => this.openHubRename(),
     });
 
     if (this._snapshot.selectedTab === "logs") {
@@ -1142,6 +1221,7 @@ class SofabatonControlPanelCard extends LitElement {
 
     return html`
       <ha-card>
+        ${this.renderHubRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
