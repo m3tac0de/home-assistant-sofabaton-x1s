@@ -31,6 +31,12 @@ The official app and the server take turns controlling the hub. Close
 the app before synchronizing; the panel prevents competing writes while
 the app or another hub operation owns control.
 
+A hub that moves to another IP address (a new DHCP lease) does not need
+to be re-added: the server follows its mDNS advertisement, updates the
+address shown in the picker and reconnects. Hubs registered by address
+before their first connection are followed only once the server has
+learned their MAC (the first successful connection does that).
+
 ### Hub firmware
 
 The panel checks the hub's reported firmware before opening device and

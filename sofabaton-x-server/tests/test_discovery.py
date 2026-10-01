@@ -203,3 +203,79 @@ def test_real_advertiser_republishes_a_fresh_record_on_update(tmp_path: Path) ->
 
     adv.stop()
     assert zc.unregistered and zc.unregistered[0] is zc.updated[0]
+
+
+def _registered(tmp_path: Path, *, enabled: bool = True, mac: str | None = "AA:BB:CC:DD:EE:FF") -> None:
+    import json
+
+    config = {"host": "192.168.1.50", "hub_version": "X1S"}
+    if mac:
+        config["mac"] = mac
+    (tmp_path / "hubs.json").write_text(json.dumps({"schema": 1, "hubs": [{
+        "hub_id": "aabbccddeeff" if mac else "192.168.1.50", "enabled": enabled,
+        "added_at": "2026-09-16T00:00:00+00:00", "last_seen": None, "config": config,
+    }]}), encoding="utf-8")
+
+
+def test_a_hub_advertised_from_another_address_is_followed(tmp_path: Path) -> None:
+    """The hub's DHCP lease changed: it advertises from the new address
+    (it is not connected to anything, so it advertises) and the record
+    follows it, the way the Home Assistant integration updates its entry
+    on a zeroconf rediscovery. The running proxy is rebuilt on the new
+    address; its cache seeds the new engine through the state file."""
+
+    import json
+
+    _registered(tmp_path)
+    client, factory, discovery, _ = _rig(tmp_path)
+    with client:
+        browser = FakeBrowser.instances[-1]
+        old = factory.latest("192.168.1.50")
+        assert old.started
+        with client.websocket_connect(f"{API_PREFIX}/events") as ws:
+            ws.receive_json()                                           # hello
+            client.portal.call(browser.on_updated, _adv("192.168.1.77", mac="AA:BB:CC:DD:EE:FF"))
+            kinds = [ws.receive_json()["kind"] for _ in range(2)]
+            assert kinds == ["hub_discovered", "hub_host_changed"]
+        hub = client.get(f"{HUBS}/aabbccddeeff").json()
+        assert hub["config"]["host"] == "192.168.1.77" and hub["config"]["mac"] == "AA:BB:CC:DD:EE:FF"
+        assert hub["status"]["hub_connected"]
+        assert not old.started and old.stops == [False], "stopped without releasing: the hub comes straight back"
+        new = factory.latest("192.168.1.77")
+        assert new is not old and new.started
+        saved = json.loads((tmp_path / "hubs.json").read_text(encoding="utf-8"))["hubs"][0]
+        assert saved["config"]["host"] == "192.168.1.77"
+        # The table entry is linked to the record under its new address.
+        seen = {s["key"]: s for s in client.get(f"{DISC}/hubs").json()}
+        assert seen["aabbccddeeff"]["registered_hub_id"] == "aabbccddeeff"
+
+        # The same address again is nothing: no second rebuild.
+        client.portal.call(browser.on_updated, _adv("192.168.1.77", mac="AA:BB:CC:DD:EE:FF"))
+        client.get(f"{HUBS}/aabbccddeeff")
+        assert factory.latest("192.168.1.77") is new and len(factory.built["192.168.1.77"]) == 1
+
+
+def test_a_disabled_hub_follows_without_a_proxy_and_a_hub_without_a_mac_is_not_followed(tmp_path: Path) -> None:
+    _registered(tmp_path, enabled=False)
+    client, factory, _, _ = _rig(tmp_path)
+    with client:
+        browser = FakeBrowser.instances[-1]
+        with client.websocket_connect(f"{API_PREFIX}/events") as ws:
+            ws.receive_json()
+            client.portal.call(browser.on_updated, _adv("192.168.1.77", mac="AA:BB:CC:DD:EE:FF"))
+            assert [ws.receive_json()["kind"] for _ in range(2)] == ["hub_discovered", "hub_host_changed"]
+        hub = client.get(f"{HUBS}/aabbccddeeff").json()
+        assert hub["config"]["host"] == "192.168.1.77" and not hub["enabled"] and hub["status"] is None
+        assert not factory.built
+
+    # Registered by address only (no ready sync yet): an advertisement with a MAC
+    # from another address is a different hub for all the server knows.
+    _registered(tmp_path, mac=None)
+    client, factory, _, _ = _rig(tmp_path)
+    with client:
+        browser = FakeBrowser.instances[-1]
+        client.portal.call(browser.on_updated, _adv("192.168.1.77", mac="AA:BB:CC:DD:EE:FF"))
+        client.get(HUBS)
+        hub = client.get(f"{HUBS}/192.168.1.50").json()
+        assert hub["config"]["host"] == "192.168.1.50"
+        assert list(factory.built) == ["192.168.1.50"]

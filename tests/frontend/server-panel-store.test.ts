@@ -379,6 +379,24 @@ test("every stream connect is a resync; a new instance id means the server resta
   store.disconnect();
 });
 
+test("a dropped stream asks REST at once; when the server is gone the hubs read as unreachable before the next tick", async () => {
+  const { api, clock, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  assert.equal(store.snapshot.server.reachable, true);
+  // The server died: the socket closes and REST refuses.
+  api.hubs = new Error("connection refused");
+  const before = api.count("hubs");
+  socket().drop();
+  await flush();
+  assert.equal(api.count("hubs"), before + 1, "the drop probed the hub list without waiting for the tick");
+  assert.equal(store.snapshot.server.reachable, false);
+  assert.ok(clock.pending().includes(2000), "the retry owns the cadence from here");
+  store.disconnect();
+});
+
 test("lifecycle frames reload the list once per burst; other frames do not", async () => {
   const { api, clock, store, socket } = rig();
   store.connect();

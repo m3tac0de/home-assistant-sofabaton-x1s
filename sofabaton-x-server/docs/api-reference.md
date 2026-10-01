@@ -728,7 +728,7 @@ JSON objects discriminated by `type`:
 | --- | --- |
 | `hello` | once on connect: `server_version`, `api_version`, `instance_id`, `hubs` (`hub_id`, `enabled`) |
 | `hub_event` | `hub_id` and the library `event` (`seq`, `kind`, `payload`): `activity_changed`, `activity_list_updated`, `hub_state`, `app_state`, `status_changed`, `catalog_ready`, `snapshot_changed`, `ota` |
-| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`); `auth` with an empty `hub_id` says access was set up, the admin account changed or sessions were signed out (re-read `GET /auth`); `mqtt_config` with an empty `hub_id` says the broker was saved or removed (re-read `GET /server/mqtt/config` and `GET /server/mqtt`) |
+| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_host_changed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`); `auth` with an empty `hub_id` says access was set up, the admin account changed or sessions were signed out (re-read `GET /auth`); `mqtt_config` with an empty `hub_id` says the broker was saved or removed (re-read `GET /server/mqtt/config` and `GET /server/mqtt`) |
 | `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
 | `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |
@@ -739,7 +739,10 @@ library's consumer or the WebSocket client can fall behind. `press.seq` is
 a separate server-instance-wide counter shared with press history; use
 `(instance_id, seq)` to de-duplicate presses.
 `hub_rekeyed` is the one to watch after registering by host: the id
-becomes the hub's MAC once its banner is read. Disabling a hub is
+becomes the hub's MAC once its banner is read. `hub_host_changed` says the
+server saw the hub advertised from another address and followed it:
+`config.host` changed and a running proxy was rebuilt there (re-read the
+hub); the id, name, cache and layouts stay. Disabling a hub is
 announced by `hub_disabled` alone (its proxy is gone before any link
 event could be relayed); enabling it creates a new proxy whose
 `hub_event.event.seq` starts over. A hub transport reconnect alone does not

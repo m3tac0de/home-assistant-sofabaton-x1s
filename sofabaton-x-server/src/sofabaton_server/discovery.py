@@ -10,6 +10,11 @@ the server's own mDNS advertisement.
   hubs this server already fronts.
 * ``scan()`` runs the library's one-shot scan for platforms that want a
   synchronous answer and merges the result into the table.
+* A registered hub advertised from another address (its DHCP lease
+  changed) is followed: the record's host is updated and its proxy
+  rebuilt, as the Home Assistant integration does on a zeroconf
+  rediscovery. Only a MAC match counts; a hub is matched by host alone
+  only until its first ready sync learns the MAC.
 * ``Advertiser`` publishes ``_sofabaton-x._tcp.local.`` with TXT
   ``version``, ``api``, ``hubs``, ``path`` and, when the operator set an
   advertised URL, ``base_url``. The SRV target is always this host and
@@ -32,7 +37,7 @@ from sofabaton import AsyncHubBrowser, DiscoveredHub, HubConfig, async_discover_
 
 from . import API_PREFIX, API_VERSION, __version__
 from .config import Settings
-from .manager import HubManager
+from .manager import HubBusy, HubManager, HubNotFound
 from .models import mac_key, now_iso
 
 log = logging.getLogger(__name__)
@@ -188,6 +193,10 @@ class DiscoveryService:
         self._owns_zc = zeroconf is None
         self._browser: Any = None
         self._table: dict[str, SeenHub] = {}
+        # Host moves in flight, one per hub: an advertisement burst must not
+        # rebuild the same proxy twice (the second would see no change anyway,
+        # but it would wait on the transition lock for nothing).
+        self._moves: dict[str, asyncio.Task] = {}
         self.proxy_advertisements = 0
         self.enabled = False
         # Set by the app: whether the admin account exists (TXT auth=1).
@@ -227,6 +236,9 @@ class DiscoveryService:
 
     async def stop(self) -> None:
         self.enabled = False
+        for task in list(self._moves.values()):
+            task.cancel()
+        self._moves.clear()
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._advertiser.stop)
         if self._browser is not None:
@@ -269,6 +281,44 @@ class DiscoveryService:
                 return hub_id
         return None
 
+    def _moved_record_id(self, config: HubConfig) -> Optional[str]:
+        """The registered hub this advertisement belongs to by MAC, when it
+        is advertised from another address than the record holds."""
+
+        if not config.mac:
+            return None
+        wanted = mac_key(config.mac)
+        for hub_id in self._manager.ids():
+            record = self._manager.record(hub_id)
+            if hub_id == wanted or (record.config.mac and mac_key(record.config.mac) == wanted):
+                return hub_id if record.config.host != config.host else None
+        return None
+
+    def _follow_move(self, config: HubConfig) -> None:
+        hub_id = self._moved_record_id(config)
+        if hub_id is None:
+            return
+        pending = self._moves.get(hub_id)
+        if pending is not None and not pending.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._moves[hub_id] = loop.create_task(self._move(hub_id, config.host), name=f"hub-move:{hub_id}")
+
+    async def _move(self, hub_id: str, host: str) -> None:
+        try:
+            await self._manager.set_host(hub_id, host)
+        except HubBusy as err:
+            log.info("hub %s advertised at %s but %s holds it; following later", hub_id, host, err.active.kind)
+        except HubNotFound:
+            pass
+        except Exception:  # noqa: BLE001
+            log.exception("hub %s: following it to %s failed", hub_id, host)
+        finally:
+            self._moves.pop(hub_id, None)
+
     def _observe(self, hub: DiscoveredHub) -> None:
         if hub.is_proxy:
             self.proxy_advertisements += 1
@@ -289,6 +339,7 @@ class DiscoveryService:
         if newly:
             log.info("discovered hub %s at %s (%s)", key, config.host, config.hub_version or "unknown model")
             self._manager.emit_server_event("hub_discovered", key)
+        self._follow_move(config)
 
     def _on_seen(self, hub: DiscoveredHub) -> None:
         self._observe(hub)

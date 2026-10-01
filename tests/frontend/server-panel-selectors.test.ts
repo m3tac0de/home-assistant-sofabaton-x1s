@@ -239,6 +239,8 @@ test("connectivity and the list summary", () => {
   assert.deepEqual(connectivityFor(runtime(hub({ status: { app_connected: true } }))), { hub: true, app: true });
   assert.deepEqual(connectivityFor(runtime(hub({ status: null }))), { hub: false, app: false });
   assert.deepEqual(connectivityFor(null), { hub: false, app: false });
+  // An unreachable server darkens both halves: the last status is not a link anyone can use.
+  assert.deepEqual(connectivityFor(runtime(hub({ status: { app_connected: true } })), false), { hub: false, app: false });
   const two = [runtime(), runtime(hub({ hub_id: "b", status: { hub_connected: false } }))];
   assert.equal(hubsSummary(snapshot(two)), "1/2 connected");
   assert.equal(hubsSummary(snapshot([])), "");

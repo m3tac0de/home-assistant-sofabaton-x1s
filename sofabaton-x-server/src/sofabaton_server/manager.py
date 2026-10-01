@@ -322,6 +322,44 @@ class HubManager:
         log.info("hub %s: app proxy %s", hub_id, "enabled" if enabled else "disabled")
         return record
 
+    async def set_host(self, hub_id: str, host: str) -> HubRecord:
+        """The hub moved to another address (mDNS saw it there): follow it.
+
+        The record keeps its id, name, cache and web remote layout; only
+        ``config.host`` changes. A running proxy is rebuilt in place, the
+        way the Home Assistant integration does on an entry update: the
+        engine's hub address is fixed per instance, and the old one would
+        page the stale address forever while the hub's dial-back from the
+        new address was dropped as unknown. The state file written at the
+        stop seeds the new engine, so the cache survives. A job holds the
+        proxy, so the move waits for the next advertisement (``HubBusy``).
+        """
+
+        async with self._transition:
+            record = self.record(hub_id)
+            if record.config.host == host:
+                return record
+            # Validate the way a manual add would: a bad address never reaches the record.
+            new_config = HubConfig.from_dict({**record.config.to_dict(), "host": host})
+            running = hub_id in self._proxies
+            if running:
+                self._refuse_while_job_runs(hub_id)
+            old_host = record.config.host
+            async with self._lock:
+                record.config = new_config
+                self._persist()
+            log.info("hub %s moved from %s to %s", hub_id, old_host, host)
+            if running:
+                await self._stop_hub(hub_id, release=False)
+                try:
+                    await self._start_hub(record)
+                except HubStartFailed:
+                    # Logged by _start_hub; the record keeps the new host and
+                    # stays enabled, so enable() (Retry start) tries again.
+                    pass
+        self._emit_server("hub_host_changed", hub_id)
+        return record
+
     # -- internals -----------------------------------------------------------
 
     def _find_by_identity(self, config: HubConfig) -> Optional[HubRecord]:

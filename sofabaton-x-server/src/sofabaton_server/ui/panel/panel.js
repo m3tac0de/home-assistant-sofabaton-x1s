@@ -11919,7 +11919,9 @@ function withHub(route, hubId) {
 }
 
 // server-panel/src/panel-state.ts
-function hubState(hub) {
+var LINK_DOWN_STATE = { text: "status unknown: the server is not answering", tone: "off" };
+function hubState(hub, reachable = true) {
+  if (!reachable) return LINK_DOWN_STATE;
   if (!hub.enabled) return { text: "disabled", tone: "off" };
   const s7 = hub.status;
   if (!s7) return { text: "not running: the proxy did not start", tone: "err" };
@@ -12050,7 +12052,7 @@ var HUB_PICKER_CSS = i`
 function renderHubPicker(params) {
   const selected = params.hubs.find((r6) => r6.hub.hub_id === params.selectedHubId) ?? null;
   const label = selected ? hubDisplayName(selected.hub) : params.hubs.length ? "pick a hub" : "no hub";
-  const tone = selected ? hubState(selected.hub).tone : "off";
+  const tone = selected ? hubState(selected.hub, params.reachable).tone : "off";
   const discovered = unregisteredHubs(params.seen, params.hubs.map((r6) => r6.hub));
   return b2`
     <div class="hub-picker" id="hub-picker" @keydown=${params.onKeyDown}>
@@ -12075,7 +12077,7 @@ function renderHubPicker(params) {
             <div role="group" aria-label="Registered hubs">
               <div class="picker-heading"><span class="picker-heading-label">Registered hubs</span></div>
               ${params.hubs.length ? params.hubs.map(({ hub }) => {
-    const { text, tone: t5 } = hubState(hub);
+    const { text, tone: t5 } = hubState(hub, params.reachable);
     const name = hubDisplayName(hub);
     const active = hub.hub_id === params.selectedHubId;
     const expanded = params.actionsHubId === hub.hub_id;
@@ -12368,7 +12370,8 @@ function dockModel(snapshot, runtime, view = {}) {
   if (gate === "server_unreachable" || gate !== "pass" && runtime) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };
 }
-function connectivityFor(runtime) {
+function connectivityFor(runtime, reachable = true) {
+  if (!reachable) return { hub: false, app: false };
   const status = runtime?.hub.status ?? null;
   return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }
@@ -12817,6 +12820,7 @@ var PanelStore = class {
   _onStreamState(connected) {
     this._set({ stream: { ...this._snapshot.stream, connected } });
     if (connected) void this.refreshAll();
+    else if (this._connected && this._snapshot.server.reachable) void this.refreshHubs();
   }
   _onStreamMessage(message) {
     this._set({ stream: { ...this._snapshot.stream, messageCount: this._stream.messages.length } });
@@ -13659,6 +13663,7 @@ var SofabatonServerPanel = class extends i4 {
       hubs: s7.hubs,
       seen: s7.seen,
       selectedHubId: s7.selectedHubId,
+      reachable: s7.server.reachable,
       open: this._pickerOpen,
       manual: this._pickerManual,
       actionsHubId: this._pickerActionsHubId,
@@ -13721,7 +13726,7 @@ var SofabatonServerPanel = class extends i4 {
       }),
       message: s7.message,
       onShowDetails: (label, detail) => void this._showDockDetails(label, detail),
-      connectivity: connectivityFor(runtime),
+      connectivity: connectivityFor(runtime, s7.server.reachable),
       hasHub: ctx.hub !== null,
       press: runtime?.lastPress ?? null,
       docLink: route.kind === "hub" ? DOC_LINKS[route.tab] : null,

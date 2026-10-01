@@ -277,7 +277,10 @@ export interface Connectivity {
   app: boolean;
 }
 
-export function connectivityFor(runtime: HubRuntime | null): Connectivity {
+/** The dock's Hub/App pill. Both halves go dark while the server is unreachable:
+ *  the last status is not a link anyone can use. */
+export function connectivityFor(runtime: HubRuntime | null, reachable = true): Connectivity {
+  if (!reachable) return { hub: false, app: false };
   const status = runtime?.hub.status ?? null;
   return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }

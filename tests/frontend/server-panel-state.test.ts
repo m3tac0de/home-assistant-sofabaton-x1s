@@ -53,6 +53,9 @@ test("hubState says in one phrase what the record and its status mean", () => {
   assert.deepEqual(hubState(hub({ status: { mode: "observe" } })), { text: "observing", tone: "warn" });
   assert.deepEqual(hubState(hub({ status: { catalog_ready: false } })), { text: "connected, first sync running", tone: "ok" });
   assert.deepEqual(hubState(hub({})), { text: "connected, in control", tone: "ok" });
+  // With the server unreachable the last status is history: every hub reads as unknown.
+  assert.deepEqual(hubState(hub({}), false), { text: "status unknown: the server is not answering", tone: "off" });
+  assert.deepEqual(hubState(hub({ enabled: false }), false), { text: "status unknown: the server is not answering", tone: "off" });
 });
 
 test("names, dates and action outcomes", () => {

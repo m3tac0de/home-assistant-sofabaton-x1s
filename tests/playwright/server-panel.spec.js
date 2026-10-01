@@ -945,11 +945,20 @@ test.describe("control panel, shell", () => {
     await mockServer(page, state);
     await page.goto(PAGE);
     await expect(page.locator("#view-hub")).toBeVisible();
+    await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
     await page.route(`**${API}/hubs`, (route) => route.abort("connectionrefused"));
     await expect(page.locator("#blocked-scrim")).toContainText("The server is not answering", { timeout: 15_000 });
     await expect(page.locator("#dock-status")).toHaveText("The server is not answering");
+    // The picker and the dock pill stop claiming the hubs are connected: nothing can reach them.
+    await expect(chip(page).locator(".dot")).toHaveClass(/off/);
+    await expect(page.locator("#dock-pill .dock-pill-half").nth(0)).toHaveClass(/off/);
+    await chip(page).click();
+    await expect(options(page).nth(0)).toContainText("192.168.1.50 · status unknown: the server is not answering");
+    await expect(options(page).nth(0).locator(".dot")).toHaveClass(/off/);
+    await page.keyboard.press("Escape");
     await page.unroute(`**${API}/hubs`);
     await expect(page.locator("#blocked-scrim")).toHaveCount(0, { timeout: 15_000 });
+    await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
   });
 
   test("on a phone nothing scrolls sideways and both docks stay in view", async ({ page }, testInfo) => {

@@ -6,7 +6,19 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
-No changes yet.
+- **A hub that changes IP address is followed.** When a registered hub
+  advertises itself from another address (a new DHCP lease), the server
+  matches it by MAC, updates the registration and rebuilds its proxy on
+  the new address, as the Home Assistant integration does on a zeroconf
+  rediscovery. The event stream announces it as the `server_event` kind
+  `hub_host_changed`. Hubs registered by address are followed once their
+  MAC is known (the first ready sync).
+- **Control panel: hubs no longer read as connected while the server is
+  unreachable.** The hub picker and the dock's Hub/App pill showed each
+  hub's last status while the panel could not reach the server at all.
+  They now read "status unknown" with a dark dot until the server
+  answers again, and a dropped event stream asks REST at once instead of
+  waiting for the next poll.
 
 ## 0.2.4 (2026-10-01)
 

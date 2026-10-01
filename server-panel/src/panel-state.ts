@@ -8,8 +8,14 @@ import { isHubTab, normalizeSub, SUBTABS, type HubTab } from "./panel-route";
 
 export type Tone = "ok" | "warn" | "err" | "off";
 
-/** One phrase for a hub record plus its status snapshot. */
-export function hubState(hub: HubView): { text: string; tone: Tone } {
+/** The phrase a hub gets while the panel cannot reach the server: its last
+ *  status is history, not a state anyone can act on. */
+export const LINK_DOWN_STATE = { text: "status unknown: the server is not answering", tone: "off" as Tone };
+
+/** One phrase for a hub record plus its status snapshot. With the server
+ *  unreachable every hub reads as unknown, whatever its last status said. */
+export function hubState(hub: HubView, reachable = true): { text: string; tone: Tone } {
+  if (!reachable) return LINK_DOWN_STATE;
   if (!hub.enabled) return { text: "disabled", tone: "off" };
   const s = hub.status;
   if (!s) return { text: "not running: the proxy did not start", tone: "err" };

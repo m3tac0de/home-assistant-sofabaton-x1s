@@ -33,7 +33,10 @@ see registered hubs and hubs discovered on the LAN. Add a discovered hub
 with its Add button, or choose **Add by address…** for manual registration.
 Each registered hub's **⋯** actions enable, disable or remove it (see
 [hub management guide](managing-hubs.md)). If the hub is missing, make sure the app
-is fully closed and scan again. Keep the data directory (default `./data`)
+is fully closed and scan again. A registered hub whose address changes
+later (a new DHCP lease) is followed automatically: the server matches
+the advertisement by MAC, updates the registration and reconnects. That
+needs mDNS to reach the server, the same as discovery. Keep the data directory (default `./data`)
 across restarts. `--hub <physical IP>` is an alternative for seeding the
 first startup, not for adding hubs to an existing data directory.
 

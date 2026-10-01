@@ -507,6 +507,10 @@ export class PanelStore {
     this._set({ stream: { ...this._snapshot.stream, connected } });
     // Every (re)connect is a resync point: whatever happened while deaf is re-read.
     if (connected) void this.refreshAll();
+    // A dropped stream is usually the server going away: ask REST at once
+    // rather than at the next tick, so the picker and the dock stop showing
+    // hubs as connected while nothing can reach them.
+    else if (this._connected && this._snapshot.server.reachable) void this.refreshHubs();
   }
 
   private _onStreamMessage(message: StreamMessage): void {
