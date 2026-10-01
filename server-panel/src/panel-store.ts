@@ -124,6 +124,7 @@ export interface PanelStoreOptions {
   tickMs?: number;
   debounceMs?: number;
   noticeTtlMs?: number;
+  errorNoticeTtlMs?: number;
   /** A finished job older than this leaves no notice on load. */
   noticeWindowMs?: number;
   messageTtlMs?: number;
@@ -151,6 +152,7 @@ export class PanelStore {
   private readonly _tickMs: number;
   private readonly _debounceMs: number;
   private readonly _noticeTtlMs: number;
+  private readonly _errorNoticeTtlMs: number;
   private readonly _noticeWindowMs: number;
   private readonly _messageTtlMs: number;
   private readonly _retryMinMs: number;
@@ -179,6 +181,7 @@ export class PanelStore {
     this._tickMs = options.tickMs ?? 5000;
     this._debounceMs = options.debounceMs ?? 300;
     this._noticeTtlMs = options.noticeTtlMs ?? 6000;
+    this._errorNoticeTtlMs = options.errorNoticeTtlMs ?? 8000;
     this._noticeWindowMs = options.noticeWindowMs ?? 24 * 60 * 60 * 1000;
     this._messageTtlMs = options.messageTtlMs ?? 8000;
     this._retryMinMs = options.retryMinMs ?? 2000;
@@ -618,7 +621,7 @@ export class PanelStore {
           this._noticeTimers.delete(hubId);
           const current = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
           if (current?.notice?.jobId === notice.jobId) this.dismissNotice(hubId);
-        }, this._noticeTtlMs),
+        }, notice.tone === "error" ? this._errorNoticeTtlMs : this._noticeTtlMs),
       );
     }
   }

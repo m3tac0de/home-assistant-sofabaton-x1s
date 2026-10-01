@@ -198,11 +198,36 @@ export function problemText(response: ApiResponse): string {
   return problemSummary(body) || `HTTP ${response.status}`;
 }
 
+/** User-facing job failure, selected by code; diagnostics stay on the job. */
+export function jobFailureReason(problem: Partial<Problem> | null | undefined): string {
+  const reasons: Record<string, string> = {
+    hub_disconnected: "Hub disconnected.",
+    hub_not_connected: "Hub disconnected.",
+    hub_timeout: "The hub did not respond. Try again.",
+    hub_busy: "Close the Sofabaton app and try again.",
+    hub_disabled: "Enable the hub and try again.",
+    hub_start_failed: "The hub could not start.",
+    hub_not_found: "This hub is no longer available.",
+    hub_rejected: "The hub refused a change.",
+    snapshot_outdated: "Hub data changed. Refresh and try again.",
+    snapshot_incomplete: "Refresh the hub cache and try again.",
+    entity_not_editable: "Refresh the hub cache and try again.",
+    callback_update_declined: "The Wifi Device could not be updated.",
+    callback_update_failed: "The Wifi Device update failed.",
+    apply_stopped: "Changes were not fully applied.",
+    restore_failed: "Restore did not finish.",
+    sync_failed: "Sync did not finish.",
+    ir_learn_failed: "No IR code captured. Try again.",
+    invalid_request: "Check the entered values and try again.",
+  };
+  return reasons[problem?.type ?? ""] ?? "Operation failed.";
+}
+
 /** Why a followed job did not finish, as one line; null when it did. */
 export function jobOutcomeText(job: JobView | null): string | null {
   if (!job) return "The job could not be followed";
   if (job.status === "done") return null;
-  if (job.error) return problemSummary(job.error) || "Failed";
+  if (job.error) return jobFailureReason(job.error);
   if (job.status === "cancelled") return "Cancelled";
   if (job.status === "failed") return "Failed";
   // The follow gave up waiting, not the job: it may still finish (CR-F5a-5).

@@ -265,7 +265,7 @@ test("job frames mutate the hub record; a finished job leaves a notice that expi
   socket().push({ type: "job_event", hub_id: "a", job: job({ status: "done", finished_at: "2026-09-17T10:00:09Z" }) });
   assert.equal(rt(store).hub.active_job, null);
   assert.equal(rt(store).hub.last_job?.status, "done");
-  assert.deepEqual(rt(store).notice, { tone: "success", label: "Refreshing the hub: done", detail: null, jobId: "j1", sticky: false, at: clock.now });
+  assert.deepEqual(rt(store).notice, { tone: "success", label: "Hub refreshed.", detail: null, jobId: "j1", sticky: false, at: clock.now });
   await clock.advance(300);
   assert.equal(api.count("hubs"), hubsBefore + 1, "a terminal frame reloads the hub list");
   await clock.advance(6000);
@@ -283,7 +283,7 @@ test("a finished job announced again (a staged backup bundle downloaded or expir
   const backup = job({ job_id: "b1", kind: "backup", status: "done", cancellable: false, finished_at: "2026-09-17T10:00:09Z", result: { bundle_available: true, bundle_downloaded: false } });
   api.hubs = [hub({ last_job: backup })];
   socket().push({ type: "job_event", hub_id: "a", job: backup });
-  assert.equal(rt(store).notice?.label, "Backing up the hub: done");
+  assert.equal(rt(store).notice?.label, "Backup completed.");
   store.dismissNotice("a");
 
   // The same job, downloaded: the record follows, the notice does not come back.
@@ -304,7 +304,7 @@ test("a finished job announced again (a staged backup bundle downloaded or expir
   store.disconnect();
 });
 
-test("a failed job is sticky until dismissed; the acknowledgement stops a reload from repeating it", async () => {
+test("a failed job expires after eight seconds and is acknowledged without dropping diagnostics", async () => {
   const storage = new MemoryStorage();
   const failed = job({ status: "failed", finished_at: "2026-09-17T10:00:09Z", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "went away" } });
   const first = rig({ storage });
@@ -314,10 +314,11 @@ test("a failed job is sticky until dismissed; the acknowledgement stops a reload
   await flush();
   first.socket().push({ type: "job_event", hub_id: "a", job: failed });
   assert.equal(rt(first.store).notice?.tone, "error");
-  assert.equal(rt(first.store).notice?.sticky, true);
-  await first.clock.advance(60000);
-  assert.equal(rt(first.store).notice?.jobId, "j1", "still there a minute later");
-  first.store.dismissNotice("a");
+  assert.equal(rt(first.store).notice?.sticky, false);
+  await first.clock.advance(7999);
+  assert.equal(rt(first.store).notice?.jobId, "j1");
+  await first.clock.advance(1);
+  assert.equal(rt(first.store).hub.last_job?.error?.detail, "went away");
   assert.equal(rt(first.store).notice, null);
   first.store.disconnect();
 
@@ -338,7 +339,7 @@ test("on load an unacknowledged recent job shows its notice; an old one does not
   const a = rig({ api: recent, now: Date.parse(finishedAt) + 60_000 });
   a.store.connect();
   await flush();
-  assert.equal(rt(a.store).notice?.label, "Refreshing the hub: done");
+  assert.equal(rt(a.store).notice?.label, "Hub refreshed.");
   a.store.disconnect();
 
   const old = new FakeApi();
@@ -583,7 +584,7 @@ test("a cancel is remembered on the record until the job ends; a refused one is 
   assert.deepEqual(api.cancelled, ["a/j1"]);
   socket().push({ type: "job_event", hub_id: "a", job: job({ cancellable: true, status: "cancelled", finished_at: "2026-09-17T10:00:09Z" }) });
   assert.equal(rt(store).cancelRequestedJobId, null);
-  assert.equal(rt(store).notice?.label, "Refreshing the hub: cancelled");
+  assert.equal(rt(store).notice?.label, "Operation cancelled.");
 
   api.cancelJob = async () => ok({ type: "job_not_cancellable", title: "x", status: 409 }, 409) as unknown as ApiResponse<JobView>;
   socket().push({ type: "job_event", hub_id: "a", job: job({ job_id: "j2", cancellable: true }) });

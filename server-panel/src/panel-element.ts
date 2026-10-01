@@ -66,6 +66,7 @@ export class SofabatonServerPanel extends LitElement {
     _wifiDirty: { state: true },
     _layoutDirty: { state: true },
     _dockConfirm: { state: true },
+    _dockDetails: { state: true },
     _leaveAsk: { state: true },
     _pickerManual: { state: true },
     _pickerActionsHubId: { state: true },
@@ -181,7 +182,9 @@ export class SofabatonServerPanel extends LitElement {
       .dock-status.is-dismissable { cursor: pointer; border-radius: 4px; }
       .dock-status.is-dismissable:hover { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 50%, transparent); text-underline-offset: 2px; }
       .dock-status.is-dismissable:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
-      .dock-detail { color: var(--sbp-muted); }
+      .dock-details-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 20px; border: 1px solid var(--sbp-line); border-radius: 14px; background: var(--sbp-panel); color: var(--sbp-text); overflow: auto; }
+      .dock-details-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+      .dock-details-dialog pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--sbp-muted); }
       .dock-link { font-size: 12px; color: var(--sbp-muted); text-decoration: none; }
       .dock-link:hover { color: var(--sbp-accent); }
       .dock-actions { display: flex; align-items: center; gap: 6px; }
@@ -246,7 +249,7 @@ export class SofabatonServerPanel extends LitElement {
         .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
         .subtab-count { padding: 1px 5px; }
         .stage { padding: 12px 12px 12px; }
-        .dock-inner { gap: 8px; }
+        .dock-inner { min-height: 52px; gap: 8px; }
         .dock-right { gap: 8px; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
@@ -268,6 +271,7 @@ export class SofabatonServerPanel extends LitElement {
   private _dockConfirm: "apply" | "draft" | null = null;
   /** A move that waits on the panel's own leave dialog (CR-R1-2). */
   private _leaveAsk: { hubId?: string | null; route?: Route; kept?: boolean } | null = null;
+  private _dockDetails: { label: string; detail: string } | null = null;
   /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
   private _wifiDirty = false;
   /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
@@ -556,6 +560,22 @@ export class SofabatonServerPanel extends LitElement {
     // answers "cancel" wherever dialogs are suppressed (CR-R1-2, L-S5).
     this._leaveAsk = target;
     return false;
+  }
+
+  private async _showDockDetails(label: string, detail: string): Promise<void> {
+    this._dockDetails = { label, detail };
+    await this.updateComplete;
+    this.renderRoot.querySelector<HTMLDialogElement>("#dock-details-dialog")?.showModal();
+  }
+
+  private _renderDockDetails(): TemplateResult | typeof nothing {
+    if (!this._dockDetails) return nothing;
+    return html`<dialog class="dock-details-dialog" id="dock-details-dialog" aria-labelledby="dock-details-title"
+      @close=${() => { this._dockDetails = null; }}>
+      <h2 id="dock-details-title">${this._dockDetails.label}</h2>
+      <pre>${this._dockDetails.detail}</pre>
+      <form method="dialog"><button class="small" autofocus>Close</button></form>
+    </dialog>`;
   }
 
   private _renderLeaveDialog(): TemplateResult | typeof nothing {
@@ -907,6 +927,7 @@ export class SofabatonServerPanel extends LitElement {
             unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote",
           }),
           message: s.message,
+          onShowDetails: (label, detail) => void this._showDockDetails(label, detail),
           connectivity: connectivityFor(runtime),
           hasHub: ctx.hub !== null,
           press: runtime?.lastPress ?? null,
@@ -941,6 +962,7 @@ export class SofabatonServerPanel extends LitElement {
         })}
         ${this._renderAuthDialog()}
         ${this._renderLeaveDialog()}
+        ${this._renderDockDetails()}
       </div></div>
     `;
   }

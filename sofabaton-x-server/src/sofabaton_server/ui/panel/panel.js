@@ -11052,10 +11052,33 @@ function problemText(response) {
   if (!body || typeof body !== "object") return `HTTP ${response.status}`;
   return problemSummary(body) || `HTTP ${response.status}`;
 }
+function jobFailureReason(problem) {
+  const reasons = {
+    hub_disconnected: "Hub disconnected.",
+    hub_not_connected: "Hub disconnected.",
+    hub_timeout: "The hub did not respond. Try again.",
+    hub_busy: "Close the Sofabaton app and try again.",
+    hub_disabled: "Enable the hub and try again.",
+    hub_start_failed: "The hub could not start.",
+    hub_not_found: "This hub is no longer available.",
+    hub_rejected: "The hub refused a change.",
+    snapshot_outdated: "Hub data changed. Refresh and try again.",
+    snapshot_incomplete: "Refresh the hub cache and try again.",
+    entity_not_editable: "Refresh the hub cache and try again.",
+    callback_update_declined: "The Wifi Device could not be updated.",
+    callback_update_failed: "The Wifi Device update failed.",
+    apply_stopped: "Changes were not fully applied.",
+    restore_failed: "Restore did not finish.",
+    sync_failed: "Sync did not finish.",
+    ir_learn_failed: "No IR code captured. Try again.",
+    invalid_request: "Check the entered values and try again."
+  };
+  return reasons[problem?.type ?? ""] ?? "Operation failed.";
+}
 function jobOutcomeText(job) {
   if (!job) return "The job could not be followed";
   if (job.status === "done") return null;
-  if (job.error) return problemSummary(job.error) || "Failed";
+  if (job.error) return jobFailureReason(job.error);
   if (job.status === "cancelled") return "Cancelled";
   if (job.status === "failed") return "Failed";
   return "Still running on the server; the dock shows when it ends";
@@ -11707,14 +11730,18 @@ function renderBottomDock(params) {
   if (model.kind === "running") {
     tone = "dock--running";
     center = status(model.text);
-  } else if (message) {
+  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
     tone = message.ok ? "dock--message" : "dock--error";
     center = status(message.text, "hubs-msg");
   } else if (model.kind === "notice") {
     const notice = model.notice;
     tone = `dock--${notice.tone}`;
-    const full = notice.detail ? `${notice.label} \xB7 ${notice.detail}` : notice.label;
-    const body = b2`${notice.label}${notice.detail ? b2`<span class="dock-detail"> · ${notice.detail}</span>` : A}`;
+    const full = notice.label;
+    const body = b2`${notice.label}`;
+    if (notice.detail && params.onShowDetails) {
+      actions = b2`<button class="small dock-action" id="dock-details" type="button"
+        @click=${() => params.onShowDetails?.(notice.label, notice.detail)}>Details</button>`;
+    }
     center = notice.sticky ? b2`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
           @click=${params.onDismiss}
           @keydown=${(event) => {
@@ -12264,42 +12291,53 @@ function stepMessage(job) {
   const message = job.progress?.message;
   return typeof message === "string" ? message.trim().replace(/(…|\.+)$/u, "").trim() : "";
 }
-function restates(headline, step) {
-  const verb = (text) => text.split(/\s+/u)[0].toLowerCase();
-  const stem = verb(headline).replace(/ing$/u, "");
-  return stem.length > 2 && verb(step).startsWith(stem);
-}
 function jobNarration(job) {
-  const headline = jobHeadline(job);
-  const entity = jobEntity(job);
-  let step = stepMessage(job);
-  if (entity && headline.includes(entity) && step.endsWith(` on ${entity}`)) step = step.slice(0, -` on ${entity}`.length);
-  const parts = [];
-  if (!step || step.toLowerCase() === headline.toLowerCase()) parts.push(headline);
-  else if (restates(headline, step)) parts.push(job.kind in ENTITY_JOB_LABELS ? headline : step);
-  else parts.push(headline, step);
-  const entityId = job.progress?.entity_id;
-  if (entity && !new RegExp(`\\b${entityId}\\b`, "u").test(parts.join(" "))) parts.push(entity);
+  const text = stepMessage(job) || jobHeadline(job);
+  if (job.status === "queued") return text + " \xB7 queued";
+  if (/\d+\s*\/\s*\d+/u.test(text)) return text;
   const p4 = job.progress ?? {};
-  const itemIndex = typeof p4.item_index === "number" ? p4.item_index : null;
-  const itemCount = typeof p4.item_count === "number" ? p4.item_count : null;
-  const hasItems = itemIndex !== null && itemCount !== null && itemCount > 0;
-  if (hasItems) parts.push(`item ${itemIndex + 1}/${itemCount}`);
+  const index = p4.item_index;
+  const count = p4.item_count;
+  if (typeof index === "number" && Number.isFinite(index) && typeof count === "number" && Number.isFinite(count) && count > 0) {
+    return text + " \xB7 " + Math.min(count, Math.max(1, index + 1)) + "/" + count;
+  }
   const progress = jobProgress(job);
-  if (!progress.indeterminate) parts.push(`${hasItems ? "step " : ""}${progress.current ?? 0}/${progress.total}`);
-  else if (job.status === "queued") parts.push("queued");
-  return parts.join(" \xB7 ");
+  return progress.indeterminate ? text : text + " \xB7 " + Math.min(progress.total, Math.max(0, progress.current ?? 0)) + "/" + progress.total;
 }
+var JOB_COMPLETIONS = {
+  refresh: "Hub refreshed.",
+  refresh_entity: "Cache refreshed.",
+  sync_device: "Device synced.",
+  sync_activity: "Activity synced.",
+  add_device: "Device added.",
+  remove_device: "Device deleted.",
+  add_activity: "Activity added.",
+  remove_activity: "Activity deleted.",
+  reorder_devices: "Device order updated.",
+  reorder_activities: "Activity order updated.",
+  rename_hub: "Hub renamed.",
+  sync_hub: "Changes applied.",
+  resume_apply: "Changes applied.",
+  backup: "Backup completed.",
+  restore: "Restore completed.",
+  erase: "Hub erased.",
+  learn_ir: "IR code captured.",
+  deploy_callback_device: "Wifi Events deployed.",
+  update_callback_device: "Wifi Events synced.",
+  remove_callback_device: "Wifi Events deleted.",
+  redeploy_callback_device: "Wifi Events redeployed.",
+  deploy_wifi_device: "Wifi Device deployed.",
+  update_wifi_device: "Wifi Device synced.",
+  remove_wifi_device: "Wifi Device deleted.",
+  redeploy_wifi_device: "Wifi Device redeployed."
+};
 function noticeForJob(job, at) {
   if (!TERMINAL_JOB_STATES.has(job.status)) return null;
-  const label = jobHeadline(job);
   if (job.status === "failed") {
-    const problem = job.error;
-    const head = problemSummary(problem ? { ...problem, detail: null } : null) || "failed";
-    return { tone: "error", label: `${label}: ${head}`, detail: problem?.detail ?? null, jobId: job.job_id, sticky: true, at };
+    return { tone: "error", label: jobFailureReason(job.error), detail: problemSummary(job.error) || null, jobId: job.job_id, sticky: false, at };
   }
-  if (job.status === "cancelled") return { tone: "neutral", label: `${label}: cancelled`, detail: null, jobId: job.job_id, sticky: false, at };
-  return { tone: "success", label: `${label}: done`, detail: null, jobId: job.job_id, sticky: false, at };
+  if (job.status === "cancelled") return { tone: "neutral", label: "Operation cancelled.", detail: null, jobId: job.job_id, sticky: false, at };
+  return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
 function draftFor(runtime) {
   if (!runtime?.draft) return null;
@@ -12502,6 +12540,7 @@ var PanelStore = class {
     this._tickMs = options.tickMs ?? 5e3;
     this._debounceMs = options.debounceMs ?? 300;
     this._noticeTtlMs = options.noticeTtlMs ?? 6e3;
+    this._errorNoticeTtlMs = options.errorNoticeTtlMs ?? 8e3;
     this._noticeWindowMs = options.noticeWindowMs ?? 24 * 60 * 60 * 1e3;
     this._messageTtlMs = options.messageTtlMs ?? 8e3;
     this._retryMinMs = options.retryMinMs ?? 2e3;
@@ -12877,7 +12916,7 @@ var PanelStore = class {
           this._noticeTimers.delete(hubId);
           const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
           if (current?.notice?.jobId === notice.jobId) this.dismissNotice(hubId);
-        }, this._noticeTtlMs)
+        }, notice.tone === "error" ? this._errorNoticeTtlMs : this._noticeTtlMs)
       );
     }
   }
@@ -13084,6 +13123,7 @@ var SofabatonServerPanel = class extends i4 {
     this._dockConfirm = null;
     /** A move that waits on the panel's own leave dialog (CR-R1-2). */
     this._leaveAsk = null;
+    this._dockDetails = null;
     /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
     this._wifiDirty = false;
     /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
@@ -13336,6 +13376,22 @@ var SofabatonServerPanel = class extends i4 {
     }
     this._leaveAsk = target;
     return false;
+  }
+  async _showDockDetails(label, detail) {
+    this._dockDetails = { label, detail };
+    await this.updateComplete;
+    this.renderRoot.querySelector("#dock-details-dialog")?.showModal();
+  }
+  _renderDockDetails() {
+    if (!this._dockDetails) return A;
+    return b2`<dialog class="dock-details-dialog" id="dock-details-dialog" aria-labelledby="dock-details-title"
+      @close=${() => {
+      this._dockDetails = null;
+    }}>
+      <h2 id="dock-details-title">${this._dockDetails.label}</h2>
+      <pre>${this._dockDetails.detail}</pre>
+      <form method="dialog"><button class="small" autofocus>Close</button></form>
+    </dialog>`;
   }
   _renderLeaveDialog() {
     const target = this._leaveAsk;
@@ -13664,6 +13720,7 @@ var SofabatonServerPanel = class extends i4 {
         unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote"
       }),
       message: s7.message,
+      onShowDetails: (label, detail) => void this._showDockDetails(label, detail),
       connectivity: connectivityFor(runtime),
       hasHub: ctx.hub !== null,
       press: runtime?.lastPress ?? null,
@@ -13698,6 +13755,7 @@ var SofabatonServerPanel = class extends i4 {
     })}
         ${this._renderAuthDialog()}
         ${this._renderLeaveDialog()}
+        ${this._renderDockDetails()}
       </div></div>
     `;
   }
@@ -13710,6 +13768,7 @@ SofabatonServerPanel.properties = {
   _wifiDirty: { state: true },
   _layoutDirty: { state: true },
   _dockConfirm: { state: true },
+  _dockDetails: { state: true },
   _leaveAsk: { state: true },
   _pickerManual: { state: true },
   _pickerActionsHubId: { state: true },
@@ -13824,7 +13883,9 @@ SofabatonServerPanel.styles = [
       .dock-status.is-dismissable { cursor: pointer; border-radius: 4px; }
       .dock-status.is-dismissable:hover { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 50%, transparent); text-underline-offset: 2px; }
       .dock-status.is-dismissable:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
-      .dock-detail { color: var(--sbp-muted); }
+      .dock-details-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 20px; border: 1px solid var(--sbp-line); border-radius: 14px; background: var(--sbp-panel); color: var(--sbp-text); overflow: auto; }
+      .dock-details-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+      .dock-details-dialog pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--sbp-muted); }
       .dock-link { font-size: 12px; color: var(--sbp-muted); text-decoration: none; }
       .dock-link:hover { color: var(--sbp-accent); }
       .dock-actions { display: flex; align-items: center; gap: 6px; }
@@ -13889,7 +13950,7 @@ SofabatonServerPanel.styles = [
         .subtab-btn { min-height: 34px; padding-inline: 8px; gap: 4px; letter-spacing: 0.04em; }
         .subtab-count { padding: 1px 5px; }
         .stage { padding: 12px 12px 12px; }
-        .dock-inner { gap: 8px; }
+        .dock-inner { min-height: 52px; gap: 8px; }
         .dock-right { gap: 8px; }
         .dock-action { min-height: 40px; }
         .view { padding-top: 12px; }
@@ -15475,7 +15536,7 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
-    bindingOneNewNote: "Only one of the short-press and long-press assignments can create a new macro or Wifi Event. The other assignment must use an existing macro or Wifi Event.",
+    bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
     wifiEventTargetCreateNew: "Create new Wifi Event\u2026",

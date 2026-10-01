@@ -29,6 +29,7 @@ export function renderBottomDock(params: {
   press: PressEvent | null;
   docLink: DockLink | null;
   onDismiss: () => void;
+  onShowDetails?: (label: string, detail: string) => void;
   onResume: (applyId: string) => void;
   onDiscard: (applyId: string) => void;
   onKeepDraft: () => void;
@@ -51,14 +52,18 @@ export function renderBottomDock(params: {
   if (model.kind === "running") {
     tone = "dock--running";
     center = status(model.text);
-  } else if (message) {
+  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
     tone = message.ok ? "dock--message" : "dock--error";
     center = status(message.text, "hubs-msg");
   } else if (model.kind === "notice") {
     const notice = model.notice;
     tone = `dock--${notice.tone}`;
-    const full = notice.detail ? `${notice.label} · ${notice.detail}` : notice.label;
-    const body = html`${notice.label}${notice.detail ? html`<span class="dock-detail"> · ${notice.detail}</span>` : nothing}`;
+    const full = notice.label;
+    const body = html`${notice.label}`;
+    if (notice.detail && params.onShowDetails) {
+      actions = html`<button class="small dock-action" id="dock-details" type="button"
+        @click=${() => params.onShowDetails?.(notice.label, notice.detail!)}>Details</button>`;
+    }
     center = notice.sticky
       ? html`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
           @click=${params.onDismiss}
