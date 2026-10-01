@@ -26,7 +26,7 @@ from .diagnostics import (
     async_subscribe_hub_log_lines,
 )
 from .hub import SofabatonHub, get_hub_model
-from .ui_settings_store import HUB_CLICK_ACTIONS
+from .ui_settings_store import HUB_CLICK_ACTIONS, SIDEBAR_PANEL_MODES
 from . import operations
 from . import runtime
 from .ws_wifi import (
@@ -242,7 +242,7 @@ async def _ws_get_control_panel_state(
     payload = {
         "persistent_cache_enabled": store.enabled,
         "hub_click_action": ui_settings.hub_click_action,
-        "sidebar_panel_enabled": ui_settings.sidebar_panel_enabled,
+        "sidebar_panel": ui_settings.sidebar_panel_mode,
         "tools_frontend_version": tools_frontend_version,
         "hubs": hubs,
     }
@@ -263,9 +263,10 @@ async def _ws_get_control_panel_state(
                 "wifi_device_enabled",
             ]
         ),
-        # Boolean settings pass "enabled"; hub_click_action passes "value".
+        # Boolean settings pass "enabled"; the dropdown settings
+        # (hub_click_action, sidebar_panel) pass "value".
         vol.Optional("enabled"): cv.boolean,
-        vol.Optional("value"): vol.In(list(HUB_CLICK_ACTIONS)),
+        vol.Optional("value"): vol.In(list(HUB_CLICK_ACTIONS) + list(SIDEBAR_PANEL_MODES)),
     }
 )
 @websocket_api.async_response
@@ -286,6 +287,20 @@ async def _ws_control_panel_set_setting(
         connection.send_result(msg["id"], {"ok": True, "value": value})
         return
 
+    if setting == "sidebar_panel":
+        value = msg.get("value")
+        if value not in SIDEBAR_PANEL_MODES:
+            connection.send_error(
+                msg["id"], "invalid_format", "sidebar_panel requires a value"
+            )
+            return
+        ui_settings = await runtime._async_get_ui_settings_store(hass)
+        await ui_settings.async_set_sidebar_panel_mode(str(value))
+        # The sidebar follows the setting right away; no restart.
+        await sidebar_panel.async_sync_sidebar_panel(hass)
+        connection.send_result(msg["id"], {"ok": True, "value": value})
+        return
+
     if "enabled" not in msg:
         connection.send_error(
             msg["id"], "invalid_format", f"{setting} requires an enabled boolean"
@@ -298,14 +313,6 @@ async def _ws_control_panel_set_setting(
         await store.async_set_enabled(enabled)
         if not enabled:
             await store.async_clear_all_hub_cache()
-        connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
-        return
-
-    if setting == "sidebar_panel":
-        ui_settings = await runtime._async_get_ui_settings_store(hass)
-        await ui_settings.async_set_sidebar_panel_enabled(enabled)
-        # The sidebar follows the setting right away; no restart.
-        await sidebar_panel.async_sync_sidebar_panel(hass)
         connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
         return
 

@@ -11,6 +11,7 @@ import type {
   HubAction,
   HubEventActionsResponse,
   HubClickAction,
+  SidebarPanelMode,
   IrEmissionsEvent,
   IrEmitterConsumersResponse,
   IrLearnEvent,
@@ -57,6 +58,16 @@ export class ControlPanelApi {
       type: "sofabaton_x1s/control_panel/set_setting",
       entry_id: entryId,
       setting: "hub_click_action",
+      value,
+    });
+  }
+
+  // Global dropdown setting: the "Sofabaton X" sidebar panel mode.
+  setSidebarPanelMode(entryId: string, value: SidebarPanelMode) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "sidebar_panel",
       value,
     });
   }

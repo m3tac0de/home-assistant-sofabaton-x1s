@@ -35,15 +35,13 @@ class _CacheStore:
 
 
 class _UiSettingsStore:
-    def __init__(self, hub_click_action="none", sidebar_panel_enabled=False):
+    def __init__(self, hub_click_action="none", sidebar_panel_mode="off"):
         self.hub_click_action = hub_click_action
         self.set_hub_click_action_to = None
-        self.sidebar_panel_enabled = sidebar_panel_enabled
-        self.set_sidebar_panel_to = None
+        self.sidebar_panel_mode = sidebar_panel_mode
 
-    async def async_set_sidebar_panel_enabled(self, enabled):
-        self.sidebar_panel_enabled = bool(enabled)
-        self.set_sidebar_panel_to = self.sidebar_panel_enabled
+    async def async_set_sidebar_panel_mode(self, mode):
+        self.sidebar_panel_mode = mode
 
     async def async_set_hub_click_action(self, action):
         self.hub_click_action = action
@@ -311,7 +309,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
             "persistent_cache_enabled": False,
             # Global Hub-tab click behavior from the UI settings store.
             "hub_click_action": "send",
-            "sidebar_panel_enabled": False,
+            "sidebar_panel": "off",
             "tools_frontend_version": "2026.5.1",
             "hubs": [
                 {

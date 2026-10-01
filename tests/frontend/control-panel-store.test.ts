@@ -20,7 +20,7 @@ const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 
 const baseState = {
   persistent_cache_enabled: true,
-  sidebar_panel_enabled: false,
+  sidebar_panel: "off",
   tools_frontend_version: "dev",
   hubs: [
     {
@@ -458,7 +458,7 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
 });
 
-test("setSetting sidebar_panel is a global flag: optimistic, rolled back on failure", async () => {
+test("setSidebarPanelMode applies optimistic state and rolls back on failure", async () => {
   const { store } = createStore();
   store.connected();
   store.setHass(
@@ -472,43 +472,41 @@ test("setSetting sidebar_panel is a global flag: optimistic, rolled back on fail
   );
   await store.loadState();
 
-  const pending = store.setSetting("sidebar_panel", true);
+  const pending = store.setSidebarPanelMode("admin");
   assert.equal(store.snapshot.pendingSettingKey, "sidebar_panel");
-  assert.equal(store.snapshot.state?.sidebar_panel_enabled, true);
-  // Global: no hub-level setting is touched.
-  assert.equal(store.snapshot.state?.hubs[0].settings?.sidebar_panel, undefined);
+  assert.equal(store.snapshot.state?.sidebar_panel, "admin");
 
   await pending;
   assert.equal(store.snapshot.pendingSettingKey, null);
-  assert.equal(store.snapshot.state?.sidebar_panel_enabled, false);
+  assert.equal(store.snapshot.state?.sidebar_panel, "off");
 });
 
-test("setSetting sidebar_panel persists through set_setting and reloads state", async () => {
+test("setSidebarPanelMode persists the mode through set_setting", async () => {
   const { store } = createStore();
   const messages: Record<string, unknown>[] = [];
-  let enabled = false;
+  let mode = "off";
   store.connected();
   store.setHass(
     createHass({
       handlers: {
-        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, sidebar_panel_enabled: enabled }),
+        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, sidebar_panel: mode }),
         "sofabaton_x1s/control_panel/set_setting": (message) => {
           messages.push(message);
-          enabled = Boolean(message.enabled);
-          return { ok: true, enabled };
+          mode = String(message.value);
+          return { ok: true, value: mode };
         },
       },
     }),
   );
   await store.loadState();
 
-  await store.setSetting("sidebar_panel", true);
+  await store.setSidebarPanelMode("all");
 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].setting, "sidebar_panel");
-  assert.equal(messages[0].enabled, true);
+  assert.equal(messages[0].value, "all");
   assert.equal(messages[0].entry_id, "hub-1");
-  assert.equal(store.snapshot.state?.sidebar_panel_enabled, true);
+  assert.equal(store.snapshot.state?.sidebar_panel, "all");
 });
 
 test("setHubClickAction applies optimistic state and rolls back on failure", async () => {

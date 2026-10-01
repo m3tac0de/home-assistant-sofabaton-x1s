@@ -4,14 +4,16 @@ export type BackupSectionId = "make" | "edit" | "restore";
 export type WifiSectionId = "wifi" | "hub_events";
 export type SettingKey =
   | "persistent_cache"
-  | "sidebar_panel"
   | "hex_logging_enabled"
   | "proxy_enabled"
   | "wifi_device_enabled";
 /** Global setting: what clicking a row in the Hub tab drawers does. */
 export type HubClickAction = "none" | "send" | "copy";
+/** Global setting: the "Sofabaton X" sidebar panel is absent, shown to
+ *  every user, or to Home Assistant administrators only. */
+export type SidebarPanelMode = "off" | "all" | "admin";
 /** Keys the settings tab can hold pending while the backend persists them. */
-export type PendingSettingKey = SettingKey | "hub_click_action";
+export type PendingSettingKey = SettingKey | "hub_click_action" | "sidebar_panel";
 export type HubAction = "find_remote" | "sync_remote";
 export type RefreshKind = "activity" | "device";
 
@@ -93,8 +95,7 @@ export interface ControlPanelHubState {
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   hub_click_action?: HubClickAction;
-  /** Global: the "Sofabaton X" sidebar panel is registered. */
-  sidebar_panel_enabled?: boolean;
+  sidebar_panel?: SidebarPanelMode;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }

@@ -19,6 +19,17 @@ HUB_CLICK_ACTIONS = (
     HUB_CLICK_ACTION_COPY,
 )
 
+# The "Sofabaton X" sidebar panel: absent, for every user, or admins only
+# (HA's require_admin, the same gate a dashboard's "admin only" sets).
+SIDEBAR_PANEL_OFF = "off"
+SIDEBAR_PANEL_ALL = "all"
+SIDEBAR_PANEL_ADMIN = "admin"
+SIDEBAR_PANEL_MODES = (
+    SIDEBAR_PANEL_OFF,
+    SIDEBAR_PANEL_ALL,
+    SIDEBAR_PANEL_ADMIN,
+)
+
 
 class UiSettingsStore:
     """Global (all-hubs) control-panel UI settings, persisted across restarts."""
@@ -31,8 +42,7 @@ class UiSettingsStore:
         )
         self._data: dict[str, Any] = {
             "hub_click_action": HUB_CLICK_ACTION_NONE,
-            # Whether the "Sofabaton X" sidebar panel is registered.
-            "sidebar_panel": False,
+            "sidebar_panel": SIDEBAR_PANEL_OFF,
         }
 
     async def async_load(self) -> None:
@@ -42,7 +52,7 @@ class UiSettingsStore:
             if action in HUB_CLICK_ACTIONS:
                 self._data["hub_click_action"] = action
             sidebar_panel = loaded.get("sidebar_panel")
-            if isinstance(sidebar_panel, bool):
+            if sidebar_panel in SIDEBAR_PANEL_MODES:
                 self._data["sidebar_panel"] = sidebar_panel
 
     @property
@@ -57,9 +67,12 @@ class UiSettingsStore:
         await self._store.async_save(self._data)
 
     @property
-    def sidebar_panel_enabled(self) -> bool:
-        return self._data.get("sidebar_panel") is True
+    def sidebar_panel_mode(self) -> str:
+        mode = self._data.get("sidebar_panel")
+        return mode if mode in SIDEBAR_PANEL_MODES else SIDEBAR_PANEL_OFF
 
-    async def async_set_sidebar_panel_enabled(self, enabled: bool) -> None:
-        self._data["sidebar_panel"] = bool(enabled)
+    async def async_set_sidebar_panel_mode(self, mode: str) -> None:
+        if mode not in SIDEBAR_PANEL_MODES:
+            raise ValueError(f"Invalid sidebar_panel mode: {mode!r}")
+        self._data["sidebar_panel"] = mode
         await self._store.async_save(self._data)

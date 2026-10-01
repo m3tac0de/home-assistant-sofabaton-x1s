@@ -6,6 +6,7 @@ import type {
   HassLike,
   HubAction,
   HubClickAction,
+  SidebarPanelMode,
   HubClickItem,
   HubEventFireEvent,
   RefreshKind,
@@ -25,6 +26,7 @@ import {
   formatError,
   hassFingerprint,
   hubClickAction,
+  sidebarPanelMode,
   isBackendUnavailableError,
   persistentCacheEnabled,
   proxyClientConnected,
@@ -680,6 +682,37 @@ export class ControlPanelStore {
     }
   }
 
+  /** Persist the global sidebar-panel mode ("off" / "all" / "admin"), same
+   *  optimistic-update + rollback flow as the Hub-tab click behavior. */
+  async setSidebarPanelMode(value: SidebarPanelMode) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
+
+    const previous = sidebarPanelMode(this._snapshot);
+    if (previous === value) return;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "sidebar_panel" };
+    this._applyOptimisticSidebarPanelMode(value);
+
+    try {
+      await this.api().setSidebarPanelMode(hub.entry_id, value);
+      await this.loadControlPanelState();
+    } catch (error) {
+      this._applyOptimisticSidebarPanelMode(previous);
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+
+  private _applyOptimisticSidebarPanelMode(value: SidebarPanelMode) {
+    if (!this._snapshot.state) return;
+    this._snapshot = {
+      ...this._snapshot,
+      state: { ...this._snapshot.state, sidebar_panel: value },
+    };
+  }
+
   private _applyOptimisticHubClickAction(value: HubClickAction) {
     if (!this._snapshot.state) return;
     this._snapshot = {
@@ -1216,14 +1249,6 @@ export class ControlPanelStore {
     if (!this._snapshot.state) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-
-    if (setting === "sidebar_panel") {
-      this._snapshot = {
-        ...this._snapshot,
-        state: { ...this._snapshot.state, sidebar_panel_enabled: enabled },
-      };
-      return;
-    }
 
     if (setting === "persistent_cache") {
       this._snapshot = {

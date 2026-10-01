@@ -4,6 +4,7 @@ import type {
   HassLike,
   HubAction,
   HubClickAction,
+  SidebarPanelMode,
   PendingSettingKey,
   SettingKey,
 } from "../shared/ha-context";
@@ -24,13 +25,14 @@ export function renderSettingsTab(params: {
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
   persistentCacheEnabled: boolean;
-  sidebarPanelEnabled: boolean;
+  sidebarPanelMode: SidebarPanelMode;
   hubClickAction: HubClickAction;
   hubCommandBusy: boolean;
   pendingSettingKey: PendingSettingKey | null;
   pendingActionKey: HubAction | null;
   onToggleSetting: (setting: SettingKey, enabled: boolean) => void;
   onSelectHubClickAction: (value: HubClickAction) => void;
+  onSelectSidebarPanelMode: (value: SidebarPanelMode) => void;
   onRunAction: (action: HubAction) => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
@@ -51,7 +53,7 @@ export function renderSettingsTab(params: {
 
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
-  const settingValue = (key: Exclude<SettingKey, "persistent_cache" | "sidebar_panel">) => !!params.hub?.settings?.[key];
+  const settingValue = (key: Exclude<SettingKey, "persistent_cache">) => !!params.hub?.settings?.[key];
 
   return html`
     <div class="hub-tab-layout">
@@ -136,10 +138,25 @@ export function renderSettingsTab(params: {
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
               description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
-              classes: `toggle${busy ? " disabled" : ""}`,
+              classes: busy ? "disabled" : "",
               footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
-              control: html`<ha-switch .checked=${params.sidebarPanelEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("sidebar_panel", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
-              onClick: busy ? undefined : () => params.onToggleSetting("sidebar_panel", !params.sidebarPanelEnabled),
+              control: html`<select
+                class="setting-select"
+                .value=${params.sidebarPanelMode}
+                ?disabled=${busy}
+                @click=${(event: Event) => event.stopPropagation()}
+                @change=${(event: Event) => {
+                  event.stopPropagation();
+                  const value = (event.currentTarget as HTMLSelectElement).value;
+                  params.onSelectSidebarPanelMode(
+                    value === "all" || value === "admin" ? value : "off",
+                  );
+                }}
+              >
+                <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
+                <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
+                <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
+              </select>`,
             })}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,

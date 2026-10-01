@@ -6,6 +6,7 @@ import type {
   ControlPanelSnapshot,
   HassLike,
   HubClickAction,
+  SidebarPanelMode,
   TabId,
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
@@ -45,8 +46,9 @@ export function persistentCacheEnabled(snapshot: ControlPanelSnapshot): boolean 
   return !!snapshot.state?.persistent_cache_enabled;
 }
 
-export function sidebarPanelEnabled(snapshot: ControlPanelSnapshot): boolean {
-  return snapshot.state?.sidebar_panel_enabled === true;
+export function sidebarPanelMode(snapshot: ControlPanelSnapshot): SidebarPanelMode {
+  const mode = snapshot.state?.sidebar_panel;
+  return mode === "all" || mode === "admin" ? mode : "off";
 }
 
 export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {

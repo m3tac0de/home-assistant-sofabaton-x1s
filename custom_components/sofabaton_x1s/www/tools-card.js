@@ -1849,8 +1849,11 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar and open this control panel full-page.",
+    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar, opening this control panel full-page, for everyone or for administrators only.",
     sidebarPanelFooter: "GLOBAL",
+    sidebarPanelOptionOff: "Off",
+    sidebarPanelOptionAll: "All users",
+    sidebarPanelOptionAdmin: "Admins only",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",
@@ -2855,6 +2858,15 @@ var ControlPanelApi = class {
       value
     });
   }
+  // Global dropdown setting: the "Sofabaton X" sidebar panel mode.
+  setSidebarPanelMode(entryId, value) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "sidebar_panel",
+      value
+    });
+  }
   runAction(entryId, action) {
     return this.hass.callWS({
       type: "sofabaton_x1s/control_panel/run_action",
@@ -3555,8 +3567,9 @@ function selectedHubCache(snapshot) {
 function persistentCacheEnabled(snapshot) {
   return !!snapshot.state?.persistent_cache_enabled;
 }
-function sidebarPanelEnabled(snapshot) {
-  return snapshot.state?.sidebar_panel_enabled === true;
+function sidebarPanelMode(snapshot) {
+  const mode = snapshot.state?.sidebar_panel;
+  return mode === "all" || mode === "admin" ? mode : "off";
 }
 function hubClickAction(snapshot) {
   const action = snapshot.state?.hub_click_action;
@@ -4471,6 +4484,33 @@ var ControlPanelStore = class {
       this.emit();
     }
   }
+  /** Persist the global sidebar-panel mode ("off" / "all" / "admin"), same
+   *  optimistic-update + rollback flow as the Hub-tab click behavior. */
+  async setSidebarPanelMode(value) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub || this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) return;
+    const previous = sidebarPanelMode(this._snapshot);
+    if (previous === value) return;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "sidebar_panel" };
+    this._applyOptimisticSidebarPanelMode(value);
+    try {
+      await this.api().setSidebarPanelMode(hub.entry_id, value);
+      await this.loadControlPanelState();
+    } catch (error) {
+      this._applyOptimisticSidebarPanelMode(previous);
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+  _applyOptimisticSidebarPanelMode(value) {
+    if (!this._snapshot.state) return;
+    this._snapshot = {
+      ...this._snapshot,
+      state: { ...this._snapshot.state, sidebar_panel: value }
+    };
+  }
   _applyOptimisticHubClickAction(value) {
     if (!this._snapshot.state) return;
     this._snapshot = {
@@ -4939,13 +4979,6 @@ var ControlPanelStore = class {
     if (!this._snapshot.state) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    if (setting === "sidebar_panel") {
-      this._snapshot = {
-        ...this._snapshot,
-        state: { ...this._snapshot.state, sidebar_panel_enabled: enabled }
-      };
-      return;
-    }
     if (setting === "persistent_cache") {
       this._snapshot = {
         ...this._snapshot,
@@ -5512,13 +5545,25 @@ function renderSettingsTab(params) {
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
     description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
-    classes: `toggle${busy ? " disabled" : ""}`,
+    classes: busy ? "disabled" : "",
     footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
-    control: b2`<ha-switch .checked=${params.sidebarPanelEnabled} .disabled=${busy} @change=${(event) => {
+    control: b2`<select
+                class="setting-select"
+                .value=${params.sidebarPanelMode}
+                ?disabled=${busy}
+                @click=${(event) => event.stopPropagation()}
+                @change=${(event) => {
       event.stopPropagation();
-      params.onToggleSetting("sidebar_panel", !!event.currentTarget.checked);
-    }}></ha-switch>`,
-    onClick: busy ? void 0 : () => params.onToggleSetting("sidebar_panel", !params.sidebarPanelEnabled)
+      const value = event.currentTarget.value;
+      params.onSelectSidebarPanelMode(
+        value === "all" || value === "admin" ? value : "off"
+      );
+    }}
+              >
+                <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
+                <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
+                <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
+              </select>`
   })}
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
@@ -21844,13 +21889,14 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       hub,
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
-      sidebarPanelEnabled: sidebarPanelEnabled(this._snapshot),
+      sidebarPanelMode: sidebarPanelMode(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
       pendingActionKey: this._snapshot.pendingActionKey,
       onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
       onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
+      onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
       onRunAction: (action) => this.handleAction(action)
     });
     if (this._snapshot.selectedTab === "logs") {

@@ -1,7 +1,9 @@
 """The optional "Sofabaton X" sidebar panel.
 
-The Control Panel card's global "Sidebar panel" setting (off by default)
-adds a panel to Home Assistant's sidebar that hosts the card full-page.
+The Control Panel card's global "Sidebar Panel" setting (off by default)
+adds a panel to Home Assistant's sidebar that hosts the card full-page,
+for every user or for administrators only (HA's ``require_admin``: the
+sidebar entry and the URL are both withheld from non-admins).
 The panel is a plain custom panel: the frontend loads ``tools-card.js``
 (the same module the Lovelace card ships in, at the same versioned URL, so
 the browser fetches it once) and mounts the ``sofabaton-x-panel`` element
@@ -19,6 +21,7 @@ from homeassistant.core import HomeAssistant
 
 from . import frontend_resources, runtime
 from .const import DOMAIN
+from .ui_settings_store import SIDEBAR_PANEL_ADMIN, SIDEBAR_PANEL_OFF
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -42,19 +45,21 @@ async def async_sync_sidebar_panel(hass: HomeAssistant) -> bool:
     Returns whether the panel is registered afterwards.
     """
     ui_settings = await runtime._async_get_ui_settings_store(hass)
-    if ui_settings.sidebar_panel_enabled:
-        await async_register_sidebar_panel(hass)
-    else:
+    mode = ui_settings.sidebar_panel_mode
+    if mode == SIDEBAR_PANEL_OFF:
         async_remove_sidebar_panel(hass)
+    else:
+        await async_register_sidebar_panel(hass, require_admin=mode == SIDEBAR_PANEL_ADMIN)
     return sidebar_panel_registered(hass)
 
 
-async def async_register_sidebar_panel(hass: HomeAssistant) -> None:
+async def async_register_sidebar_panel(hass: HomeAssistant, *, require_admin: bool = False) -> None:
     """Register (or refresh) the sidebar panel.
 
     ``update=True`` keeps a repeat registration (a second hub setting up, a
-    flip of the setting while already on) from raising; the frontend
-    re-reads the panel list either way.
+    change of mode while already on) from raising; the frontend re-reads
+    the panel list either way, so an all-users -> admins-only switch takes
+    effect live.
     """
     domain_data = hass.data.setdefault(DOMAIN, {})
     version = await frontend_resources._async_get_integration_version(hass)
@@ -75,12 +80,16 @@ async def async_register_sidebar_panel(hass: HomeAssistant) -> None:
                 "module_url": module_url,
             }
         },
-        require_admin=False,
+        require_admin=require_admin,
         update=True,
     )
     if not domain_data.get(_REGISTERED_KEY):
         _LOGGER.info(
-            "[%s] Registered the %s sidebar panel (%s)", DOMAIN, SIDEBAR_PANEL_TITLE, module_url
+            "[%s] Registered the %s sidebar panel (%s, %s)",
+            DOMAIN,
+            SIDEBAR_PANEL_TITLE,
+            module_url,
+            "admins only" if require_admin else "all users",
         )
     domain_data[_REGISTERED_KEY] = True
 

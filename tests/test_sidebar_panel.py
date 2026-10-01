@@ -1,10 +1,12 @@
-"""The "Sofabaton X" sidebar panel follows the global sidebar_panel setting."""
+"""The "Sofabaton X" sidebar panel follows the global sidebar_panel mode."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib
 from types import SimpleNamespace
+
+import voluptuous as vol
 
 from homeassistant.components import frontend as frontend_module
 
@@ -29,12 +31,12 @@ class _Conn:
 
 
 class _UiSettings:
-    def __init__(self, enabled=False):
-        self.sidebar_panel_enabled = enabled
+    def __init__(self, mode="off"):
+        self.sidebar_panel_mode = mode
         self.hub_click_action = "none"
 
-    async def async_set_sidebar_panel_enabled(self, enabled):
-        self.sidebar_panel_enabled = bool(enabled)
+    async def async_set_sidebar_panel_mode(self, mode):
+        self.sidebar_panel_mode = mode
 
 
 def _patch_frontend(monkeypatch):
@@ -64,35 +66,43 @@ def _patch_ui_settings(monkeypatch, store):
     monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
 
 
-def test_ui_settings_store_persists_sidebar_panel_flag():
+def test_ui_settings_store_persists_sidebar_panel_mode():
     hass = SimpleNamespace(data={})
     store = UiSettingsStore(hass)
 
     async def scenario():
         await store.async_load()
-        assert store.sidebar_panel_enabled is False
-        await store.async_set_sidebar_panel_enabled(True)
-        assert store.sidebar_panel_enabled is True
-        # A fresh store over the same backing data reads the flag back.
+        assert store.sidebar_panel_mode == "off"
+        await store.async_set_sidebar_panel_mode("admin")
+        assert store.sidebar_panel_mode == "admin"
+        # A fresh store over the same backing data reads the mode back.
         reloaded = UiSettingsStore(hass)
         reloaded._store = store._store
         await reloaded.async_load()
-        assert reloaded.sidebar_panel_enabled is True
+        assert reloaded.sidebar_panel_mode == "admin"
 
     asyncio.run(scenario())
 
 
-def test_ui_settings_store_ignores_non_boolean_sidebar_panel():
+def test_ui_settings_store_ignores_unknown_sidebar_panel_mode():
     store = UiSettingsStore(SimpleNamespace(data={}))
-    store._store._data = {"hub_click_action": "send", "sidebar_panel": "yes"}
+    # The pre-release boolean shape and junk both fall back to "off".
+    store._store._data = {"hub_click_action": "send", "sidebar_panel": True}
     asyncio.run(store.async_load())
     assert store.hub_click_action == "send"
-    assert store.sidebar_panel_enabled is False
+    assert store.sidebar_panel_mode == "off"
+
+    try:
+        asyncio.run(store.async_set_sidebar_panel_mode("everyone"))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an unknown mode must be refused")
 
 
-def test_sync_registers_custom_panel_when_enabled(monkeypatch):
+def test_sync_registers_custom_panel_for_all_users(monkeypatch):
     registered, removed = _patch_frontend(monkeypatch)
-    _patch_ui_settings(monkeypatch, _UiSettings(enabled=True))
+    _patch_ui_settings(monkeypatch, _UiSettings(mode="all"))
     hass = SimpleNamespace(data={})
 
     assert asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass)) is True
@@ -118,14 +128,31 @@ def test_sync_registers_custom_panel_when_enabled(monkeypatch):
     assert sidebar_panel.sidebar_panel_registered(hass) is True
 
 
-def test_sync_removes_panel_when_disabled_after_registration(monkeypatch):
+def test_sync_registers_admin_only_panel_and_reregisters_on_mode_change(monkeypatch):
     registered, removed = _patch_frontend(monkeypatch)
-    ui_settings = _UiSettings(enabled=True)
+    ui_settings = _UiSettings(mode="admin")
     _patch_ui_settings(monkeypatch, ui_settings)
     hass = SimpleNamespace(data={})
 
     asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass))
-    ui_settings.sidebar_panel_enabled = False
+    assert registered[-1]["require_admin"] is True
+
+    # Admins only -> all users is a live re-registration, not a remove.
+    ui_settings.sidebar_panel_mode = "all"
+    assert asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass)) is True
+    assert len(registered) == 2
+    assert registered[-1]["require_admin"] is False
+    assert removed == []
+
+
+def test_sync_removes_panel_when_switched_off(monkeypatch):
+    registered, removed = _patch_frontend(monkeypatch)
+    ui_settings = _UiSettings(mode="all")
+    _patch_ui_settings(monkeypatch, ui_settings)
+    hass = SimpleNamespace(data={})
+
+    asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass))
+    ui_settings.sidebar_panel_mode = "off"
     assert asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass)) is False
 
     assert removed == [("sofabaton-x", {"warn_if_unknown": False})]
@@ -134,7 +161,7 @@ def test_sync_removes_panel_when_disabled_after_registration(monkeypatch):
 
 def test_remove_is_a_no_op_when_never_registered(monkeypatch):
     registered, removed = _patch_frontend(monkeypatch)
-    _patch_ui_settings(monkeypatch, _UiSettings(enabled=False))
+    _patch_ui_settings(monkeypatch, _UiSettings(mode="off"))
     hass = SimpleNamespace(data={})
 
     assert asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass)) is False
@@ -146,7 +173,7 @@ def test_remove_is_a_no_op_when_never_registered(monkeypatch):
 
 def test_ws_set_setting_sidebar_panel_persists_and_syncs(monkeypatch):
     registered, removed = _patch_frontend(monkeypatch)
-    ui_settings = _UiSettings(enabled=False)
+    ui_settings = _UiSettings(mode="off")
     _patch_ui_settings(monkeypatch, ui_settings)
     hass = SimpleNamespace(data={})
     conn = _Conn()
@@ -155,40 +182,47 @@ def test_ws_set_setting_sidebar_panel_persists_and_syncs(monkeypatch):
         integration._ws_control_panel_set_setting(
             hass,
             conn,
-            {"id": 7, "entry_id": "entry-1", "setting": "sidebar_panel", "enabled": True},
+            {"id": 7, "entry_id": "entry-1", "setting": "sidebar_panel", "value": "admin"},
         )
     )
 
     assert conn.error is None
-    assert conn.result == (7, {"ok": True, "enabled": True})
-    assert ui_settings.sidebar_panel_enabled is True
+    assert conn.result == (7, {"ok": True, "value": "admin"})
+    assert ui_settings.sidebar_panel_mode == "admin"
     assert len(registered) == 1
+    assert registered[0]["require_admin"] is True
 
     conn = _Conn()
     asyncio.run(
         integration._ws_control_panel_set_setting(
             hass,
             conn,
-            {"id": 8, "entry_id": "entry-1", "setting": "sidebar_panel", "enabled": False},
+            {"id": 8, "entry_id": "entry-1", "setting": "sidebar_panel", "value": "off"},
         )
     )
-    assert conn.result == (8, {"ok": True, "enabled": False})
-    assert ui_settings.sidebar_panel_enabled is False
+    assert conn.result == (8, {"ok": True, "value": "off"})
+    assert ui_settings.sidebar_panel_mode == "off"
     assert [path for path, _ in removed] == ["sofabaton-x"]
 
 
-def test_ws_set_setting_sidebar_panel_requires_enabled(monkeypatch):
+def test_ws_set_setting_sidebar_panel_requires_value(monkeypatch):
     _patch_frontend(monkeypatch)
-    _patch_ui_settings(monkeypatch, _UiSettings(enabled=False))
+    _patch_ui_settings(monkeypatch, _UiSettings(mode="off"))
     conn = _Conn()
 
     asyncio.run(
         integration._ws_control_panel_set_setting(
             SimpleNamespace(data={}),
             conn,
-            {"id": 9, "entry_id": "entry-1", "setting": "sidebar_panel"},
+            {"id": 9, "entry_id": "entry-1", "setting": "sidebar_panel", "enabled": True},
         )
     )
 
     assert conn.result is None
-    assert conn.error == (9, "invalid_format", "sidebar_panel requires an enabled boolean")
+    assert conn.error == (9, "invalid_format", "sidebar_panel requires a value")
+
+
+def test_ws_set_setting_schema_accepts_both_dropdown_value_sets():
+    schema = vol.Schema(integration._ws_control_panel_set_setting._ws_schema)
+    for value in ("none", "send", "copy", "off", "all", "admin"):
+        schema({"type": "sofabaton_x1s/control_panel/set_setting", "entry_id": "e", "setting": "sidebar_panel", "value": value})

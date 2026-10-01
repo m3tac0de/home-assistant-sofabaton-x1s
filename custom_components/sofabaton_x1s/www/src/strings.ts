@@ -199,8 +199,11 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
     sidebarPanelDescription:
-      "Add Sofabaton X to the Home Assistant sidebar and open this control panel full-page.",
+      "Add Sofabaton X to the Home Assistant sidebar, opening this control panel full-page, for everyone or for administrators only.",
     sidebarPanelFooter: "GLOBAL",
+    sidebarPanelOptionOff: "Off",
+    sidebarPanelOptionAll: "All users",
+    sidebarPanelOptionAdmin: "Admins only",
     hexLoggingTitle: "Hex Logging",
     hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
     proxyTitle: "Proxy",
