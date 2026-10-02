@@ -11,6 +11,7 @@ from typing import Callable, Dict, Optional
 
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version
 from .hub_logging import get_hub_logger
+from .network import route_local_ip as _route_local_ip
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -36,20 +37,6 @@ _NOTIFY_MODEL_BYTES: dict[str, int] = {
 
 def _sum8(payload: bytes) -> int:
     return sum(payload) & 0xFF
-
-
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
 
 
 def _local_ipv4_networks() -> list[ipaddress.IPv4Network]:
