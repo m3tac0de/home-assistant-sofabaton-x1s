@@ -142,17 +142,20 @@ def test_call_me_for_another_hub_is_not_routed_to_the_only_proxy():
 def test_notify_reply_goes_to_the_real_subnet_broadcast(monkeypatch):
     import ipaddress
 
-    from custom_components.sofabaton_x1s.lib import notify_demuxer
+    from custom_components.sofabaton_x1s.lib import network, notify_demuxer
 
     monkeypatch.setattr(
-        notify_demuxer,
-        "_local_ipv4_networks",
-        lambda: [ipaddress.IPv4Network("10.0.0.0/16"), ipaddress.IPv4Network("192.168.1.128/25")],
+        network,
+        "_local_ipv4_interfaces",
+        lambda: [
+            ipaddress.IPv4Interface("198.51.100.130/26"),
+            ipaddress.IPv4Interface("192.0.2.10/25"),
+        ],
     )
-    assert notify_demuxer._broadcast_ip("10.0.7.20") == "10.0.255.255"
-    assert notify_demuxer._broadcast_ip("192.168.1.200") == "192.168.1.255"
+    assert notify_demuxer._broadcast_ip("192.0.2.20") == "192.0.2.127"
+    assert notify_demuxer._broadcast_ip("198.51.100.150") == "198.51.100.191"
     # No local interface on the app's subnet: the /24 assumption remains.
-    assert notify_demuxer._broadcast_ip("172.16.4.9") == "172.16.4.255"
+    assert notify_demuxer._broadcast_ip("203.0.113.9") == "203.0.113.255"
 
 
 def test_notify_reply_cuts_a_long_name_on_a_character_boundary():

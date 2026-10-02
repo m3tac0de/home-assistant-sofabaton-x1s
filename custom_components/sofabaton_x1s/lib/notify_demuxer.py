@@ -9,8 +9,10 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
+from . import network
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version
 from .hub_logging import get_hub_logger
+from .network import route_local_ip as _route_local_ip
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -38,44 +40,6 @@ def _sum8(payload: bytes) -> int:
     return sum(payload) & 0xFF
 
 
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
-
-
-def _local_ipv4_networks() -> list[ipaddress.IPv4Network]:
-    """The IPv4 networks of this host's interfaces, most specific first.
-
-    ``ifaddr`` ships with zeroconf (the library's one dependency); without
-    it the caller falls back to assuming a /24.
-    """
-
-    try:
-        import ifaddr
-    except ImportError:
-        return []
-    networks: list[ipaddress.IPv4Network] = []
-    try:
-        for adapter in ifaddr.get_adapters():
-            for ip in adapter.ips:
-                if isinstance(ip.ip, str) and ip.network_prefix:
-                    networks.append(
-                        ipaddress.IPv4Network(f"{ip.ip}/{ip.network_prefix}", strict=False)
-                    )
-    except Exception:
-        return []
-    return sorted(networks, key=lambda net: net.prefixlen, reverse=True)
-
-
 def _broadcast_ip(peer_ip: str) -> str:
     """The subnet broadcast address the app at ``peer_ip`` hears.
 
@@ -88,9 +52,9 @@ def _broadcast_ip(peer_ip: str) -> str:
         addr = ipaddress.ip_address(peer_ip)
     except ValueError:
         return "255.255.255.255"
-    for network in _local_ipv4_networks():
-        if addr in network:
-            return str(network.broadcast_address)
+    for interface in network._local_ipv4_interfaces():
+        if addr in interface.network:
+            return str(interface.network.broadcast_address)
     return str(ipaddress.ip_network(f"{addr}/24", strict=False).broadcast_address)
 
 
