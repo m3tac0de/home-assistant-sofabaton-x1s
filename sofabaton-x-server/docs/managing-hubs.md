@@ -165,6 +165,15 @@ binding and model-specific details.
 
 ## Hub and server settings
 
+Register hubs through the **hub picker** at the top of the panel: it
+lists registered hubs and hubs discovered on the LAN. **Add** a
+discovered hub, or choose **Add by address…** to enter the physical
+hub's IP. If a hub is missing, make sure the official app is fully closed
+everywhere and scan again. A registered hub whose address changes later
+(a new DHCP lease) is followed automatically: the server matches the
+advertisement by MAC, updates the registration and reconnects, which
+needs mDNS to reach the server, the same as discovery.
+
 Use the hub picker's **⋯** menu to enable, disable or remove a registered
 hub, or retry a failed start. **Hub settings** in the cog menu shows the
 selected hub's details and connection state. Removing a registration

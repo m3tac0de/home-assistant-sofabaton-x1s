@@ -9,7 +9,9 @@ and date, update the README notice and install instructions, and start a new
 Unreleased section. Link breaking releases to their migration guidance.
 Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -->
 
-## 0.2.3 (unreleased)
+## Unreleased
+
+## 0.2.3 (2026-10-02)
 
 Changes since `sofabaton-x-v0.2.2`. This release is mostly fixes from a
 whole-codebase review: hub writes that failed or were reported wrongly,
@@ -17,16 +19,27 @@ backup and restore safety, and cache consistency.
 
 ### Upgrade notes
 
-- Update dependency pins to `sofabaton-x>=0.2.3,<0.3`. No public method
-  is removed or renamed and no required argument changes. Package-root
-  exports are unchanged.
+- Update dependency pins to `sofabaton-x>=0.2.3,<0.3` after reviewing
+  the compatibility change below. Package-root exports are unchanged;
+  the async facade removes two compatibility delegates.
+- **`AsyncXProxy.restore_device()` and `restore_activity()` are no longer
+  available.** These delegates bypassed the facade's exclusive hub hold,
+  read-back and snapshot events. Use `await proxy.restore(bundle)` with
+  a `hub_bundle` document instead; `backup(device_ids=[...])` creates a
+  device-only bundle. A per-entity backup document is not a `hub_bundle`
+  and cannot be passed directly to `restore()`. The synchronous engine
+  methods remain reachable through `proxy.sync`, an internal API whose
+  callers must provide their own coordination. Review this migration
+  even when upgrading from 0.2.2.
 - **New and changed names must fit the hub.** Document applies and
   `sync_device()` / `sync_activity()` now refuse a new or changed device
   or activity name the hub cannot store, with the same rule as bundle
   validation: at most 30 characters (UTF-16 code units), and only plain
-  ASCII letters, digits and spaces on an X1. They used a 64-character cap
-  that the hub silently truncated. Names the hub already holds pass
-  unchanged.
+  ASCII letters, digits and spaces on an X1. X1S/X2 validation accepts
+  letters, digits and combining marks from any script plus ASCII
+  punctuation, but not emoji. Document applies previously allowed 64
+  characters, and entity syncs did not enforce the name rules. Names the
+  baseline already holds pass unchanged.
 - **A bundle in which one activity references another activity is
   refused** (an activity's macro, button binding or favorite pointing at
   a different activity), before anything is written. The official app
@@ -37,9 +50,9 @@ backup and restore safety, and cache consistency.
   `"not_needed"`. Code that switches on the literal should handle the
   new value.
 - `RestoreResult` gains `partial_device_ids`, `hub_name` and
-  `hub_name_restored`; `to_dict()` / `from_dict()` carry them.
-  `wrote_nothing` is now false when a failed restore left a half-made
-  device behind.
+  `hub_name_restored`; `from_engine()` populates them and `to_dict()`
+  includes them. `wrote_nothing` is now false when a failed restore left
+  a half-made device behind.
 - `sofabaton.protocol_const` (not a package-root export) drops
   `FAMILY_STATUS_ACK` and `group_known_opcodes_by_family()`; its
   `__all__` lists more of the opcode and idle-behaviour constants.
@@ -125,13 +138,18 @@ Backup, restore and erase:
 - A failed restore that had written to the hub did not tell the remotes
   to sync, so they kept the old configuration.
 - A restore that left a half-made device behind reported "hub unchanged".
+- Expanded restore preflight checks device payloads and activity
+  references before a replacing restore erases the hub, so an invalid
+  bundle is refused before destructive work starts.
+- A successful `restore(bundle, replace=True)` now applies the bundle's
+  nonempty hub name. An additive restore keeps the current name. Check
+  `hub_name_restored` separately: a refused rename is reported as `False`
+  without changing a successful entity restore to a failure.
 - Backups and restores read the whole device or activity list again for
   every entity, which made them much slower.
 - Exporting the cache or taking a backup could fail with "dictionary
   changed size during iteration".
 - A backup of an empty device selection became a backup of the whole hub.
-- Per-entity `restore_device()` / `restore_activity()` ran outside the
-  facade's hub hold and read-back.
 - A raising progress callback could break `restore()`.
 - A resumed apply always stopped with "entity diverged" for an entity
   the apply itself had created, and could create a device or activity a
@@ -139,8 +157,11 @@ Backup, restore and erase:
 
 Facade and API:
 
-- Concurrent facade writes could interleave, and a cancelled write kept
-  writing. Hub holds now queue, cancels drain, and creates are verified.
+- Concurrent facade writes could interleave. Exclusive hub operations
+  now queue; cancelling an awaiting task keeps the hub held until the
+  in-flight engine call finishes, then propagates cancellation. It does
+  not interrupt or roll back writes already sent. Creates reported as
+  failed are checked against the hub before deciding whether they landed.
 - The official app could take the hub in the middle of a restore or apply.
 - `SyncResult` after a failure reported `total_steps=0` and dropped the
   counts of what had landed.
@@ -148,6 +169,8 @@ Facade and API:
 - Validation grandfathering let an edit add new dangling rows.
 - The default long label overflowed for 26 to 30 character slot labels.
 - `find_remote()` overwrote the engine's hub version.
+- The facade now pauses reconnects for five minutes when the hub
+  announces a firmware update, matching the Home Assistant integration.
 - The CLI printed a success line after a refused hub rename.
 - Every log record claimed to come from `hub_logging.py`; records now
   name their own module. Frame-handler errors were logged only at DEBUG,

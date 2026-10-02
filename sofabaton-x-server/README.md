@@ -41,41 +41,54 @@ for editing, synchronization, backups and Wifi Commands.
 
 ## Run
 
-You need a Sofabaton X1, X1S or X2 hub, a computer that can stay running
-on its network, and **Python 3.11+** or Docker on Linux.
+You need a Sofabaton X1, X1S or X2 hub and something on the same network
+that stays on to run the server: a NAS or Docker host, or a computer
+running Windows, macOS or Linux. One server manages all your hubs. (Home
+Assistant users have the
+[integration in this repository](https://github.com/m3tac0de/home-assistant-sofabaton-x1s),
+which manages hubs inside Home Assistant; this server is for everyone
+else and for other platforms.)
 
 **Fully close the official Sofabaton app on all phones and tablets before
 setup.** If another proxy, including the Home Assistant integration,
 already manages the hub, disable that hub there first.
 
-Install the server and start it (the protocol library is included):
+Pick the way that fits where it will run:
 
-```sh
-python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
-sofabaton-x-server
-```
+- **Docker, or a NAS such as a Synology:** run the published image
+  `m3tac0de/sofabaton-x-server` (also on GHCR) with the
+  [Compose file](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docker-compose.yml)
+  and Linux host networking. See [Docker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#docker).
+- **A computer (Windows, macOS, Linux):** install with
+  [pipx](https://pipx.pypa.io/stable/installation/), which keeps the
+  server in its own Python environment and upgrades with one command:
 
-Open `http://<server>:8480/`, or `http://localhost:8480/` on the server
-computer. Add your hub through the hub picker, try **Remote**, then create
-and download your first backup.
+  ```sh
+  pipx install "sofabaton-x-server>=0.2.4,<0.3"
+  sofabaton-x-server --data-dir <a folder for its data>
+  ```
 
-The [getting-started guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/getting-started.md)
-walks through each step. Keep the server's data directory across restarts.
-Until you set up access (**Server settings → Access** in the panel), anyone
-on your network can change your hubs; after that, changes need the
-panel's sign-in or a token, while reading and the remote stay open. Use
-the server on a trusted LAN or behind an authenticating reverse proxy.
-See [security](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#security).
+  Plain `pip` works too. See [Install](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#install).
+- **From source:** install both packages from the repository root. See
+  [from a source checkout](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#from-a-source-checkout).
+
+Then open `http://<server>:8480/`, or `http://localhost:8480/` on the
+machine running it. Add your hub through the hub picker, try **Remote**,
+then create and download your first backup. The
+[getting-started guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/getting-started.md)
+walks through each step.
+
+Keep the server's data directory across restarts; the Server page tells
+you when a newer release is out and how to update your kind of
+installation. Until you set up access (**Server settings → Access**),
+anyone on your network can change your hubs; see
+[security](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#security).
 
 <!-- Keep earlier deployment links and bookmarks useful. -->
 <a id="docker"></a>
 <a id="behind-a-reverse-proxy-tls"></a>
 <a id="settings"></a>
 <a id="security"></a>
-
-A container image is published with each release as
-`m3tac0de/sofabaton-x-server` on Docker Hub and
-`ghcr.io/m3tac0de/sofabaton-x-server` (Linux host networking, amd64 and arm64).
 
 For [Docker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#docker),
 [networking and reverse proxies](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#behind-a-reverse-proxy-tls),

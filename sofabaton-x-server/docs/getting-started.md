@@ -10,8 +10,9 @@ If you are building a client, continue with
 ## Before you start
 
 - A Sofabaton **X1, X1S or X2** hub connected to your network.
-- A computer on that network that can stay running, with **Python 3.11+**,
-  or Docker on Linux. Run one server for all your hubs.
+- Something on that network that stays on: a NAS or Docker host (Linux
+  host networking), or a computer running Windows, macOS or Linux with
+  **Python 3.11+**. Run one server for all your hubs.
 - A browser on that computer or another device on your network.
 
 **Fully close the official Sofabaton app on every phone or tablet before
@@ -23,33 +24,42 @@ If Home Assistant or another proxy already manages the hub, disable that
 hub there before adding it to this server. The hub has one client
 connection for these tools to share.
 
-Until you set up access, anyone on your network can change the server's
-hubs and settings; see [step 5](#5-set-up-access). Reads and the remote
-stay open either way, so keep the server on a trusted LAN, or use an
-[authenticating reverse proxy](running-server.md#behind-a-reverse-proxy-tls).
-
 ## 1. Install and start the server
 
-With Python 3.11+ installed, run:
+Pick the way that fits where it will run. Either way the protocol library
+and the web interface are included, and the server keeps its state in a
+data directory that you preserve across restarts and upgrades.
+
+**On a NAS or Docker host.** Use the published image with the
+[Compose file](../docker-compose.yml): `image: m3tac0de/sofabaton-x-server:latest`,
+Linux host networking, and `./data` mounted at `/data`. Start it with
+`docker compose up -d`, or create a Project from the file in Synology
+Container Manager. The container restarts with the host. See
+[Docker](running-server.md#docker), including the Synology steps and the
+two ports to change when Home Assistant's integration runs on the same
+host.
+
+**On a computer (Windows, macOS, Linux).** Install
+[pipx](https://pipx.pypa.io/stable/installation/) once, then:
 
 ```sh
-python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
-sofabaton-x-server
+pipx install "sofabaton-x-server>=0.2.4,<0.3"
+sofabaton-x-server --data-dir <a folder for its data>
 ```
 
-The protocol library and web interface are included. Leave the server
-running while you use the panel. The default data directory is `./data`
-in the directory where you started it; start it from that same directory
-next time, or set a fixed location with `--data-dir`.
+The server runs as long as that terminal window stays open; stop it with
+Ctrl+C and start it again the same way, with the same data directory.
+Without `--data-dir` it uses `./data` in the folder you started from.
+Plain pip works too: `python -m pip install "sofabaton-x-server>=0.2.4,<0.3"`.
+See [Install](running-server.md#install) for both.
 
-For Docker, use the [Linux host-network recipe](running-server.md#docker).
-For a source checkout, install from the repository root as described in
-[Running the server](running-server.md#run).
+**From a source checkout,** see
+[Running the server](running-server.md#from-a-source-checkout).
 
-Open `http://localhost:8480/` on the server computer. From another computer,
-phone or tablet, use `http://<server>:8480/`, replacing `<server>` with the
-server computer's IP address. This is the computer running the server,
-not the physical hub's address.
+Open `http://localhost:8480/` on the machine running the server. From
+another computer, phone or tablet, use `http://<server>:8480/`, replacing
+`<server>` with that computer's or NAS's IP address. This is the machine
+running the server, not the physical hub's address.
 
 ## 2. Add your hub
 
@@ -127,7 +137,10 @@ Wait for completion and let the physical remote finish synchronizing
 before testing its buttons. See [Managing your hubs](managing-hubs.md)
 for the differences between drafts, hub configuration and server settings.
 
-Keep the server running and preserve its data directory. See
+Keep the server running and preserve its data directory. The **Server**
+page in the cog menu shows the installed version, tells you when a newer
+release is out (**Check for updates**, or once a day when you turn that
+on) and words the update step for your kind of installation. See
 [storage and upgrades](running-server.md#storage-and-upgrades) for keeping
 the installation across restarts and updates.
 
@@ -150,6 +163,7 @@ activities in **Hub** before editing them in the panel.
 | The panel will not open | Confirm the server is running. Try `http://localhost:8480/` on its computer. From another device, use that computer's LAN address and allow TCP 8480 through its firewall. |
 | A hub is missing from discovery | Fully close the official app everywhere, then scan again. Check that the server and hub can communicate on the LAN. |
 | A registered hub will not connect | Check the hub address, power and network, and disable any other proxy managing it. Allow the hub to reach the server on TCP 8200 by default. |
+| The server stops at start with "address already in use" | Something else on that host uses one of its ports; with Home Assistant's integration on the same host that is TCP 8200 and UDP 8102. Change the ports in the [settings](running-server.md#settings), for a container through `SOFABATON_HUB_LISTEN_PORT` and `SOFABATON_APP_DISCOVERY_PORT`. |
 | Controls or Sync to Hub are unavailable | Close the official app; wait for the current operation and initial loading to finish. Check the hub's connection state. |
 | The panel shows old configuration | Close the official app, then refresh the affected row or use **Refresh all** in Hub. |
 | Equipment does not respond | Confirm the selected activity or device and command, and check that the equipment can receive the hub's signal. |
