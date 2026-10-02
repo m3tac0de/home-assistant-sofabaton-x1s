@@ -592,7 +592,7 @@ layouts require no manual conversion. Reload open browser pages after
 restarting. The 0.2.4 REST and WebSocket operations are unchanged from
 0.2.3 and the API prefix remains `/api/v1`, but device and activity names
 are now limited to 30 characters and the OpenAPI response lists changed
-(see the [changelog](../CHANGELOG.md#024-unreleased)). Integrations
+(see the [changelog](../CHANGELOG.md#024-2026-10-02)). Integrations
 should regenerate clients from the release's OpenAPI document.
 
 The [embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)

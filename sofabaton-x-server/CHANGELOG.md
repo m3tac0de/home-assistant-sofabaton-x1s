@@ -4,7 +4,9 @@ Changes to `sofabaton-x-server`, compared against its own release tags.
 Protocol-library changes are recorded in the
 [library changelog](../sofabaton-x/CHANGELOG.md).
 
-## 0.2.4 (unreleased)
+## Unreleased
+
+## 0.2.4 (2026-10-02)
 
 Changes since `sofabaton-x-server-v0.2.3`. Requires
 **sofabaton-x >=0.2.3,<0.3**; publish the library first.
@@ -13,7 +15,7 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
 This release is mostly fixes from a whole-codebase review. The library
 fixes it picks up (hub writes that failed or were reported wrongly,
 backup and restore safety, Wifi names outside Latin-1 on the X1S and X2)
-are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased).
+are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-2026-10-02).
 
 ### Added
 
@@ -85,20 +87,23 @@ are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased
   `image: m3tac0de/sofabaton-x-server:latest` (or a release tag) and keep
   the `./data` volume; nothing in the data directory changes. A locally
   built image keeps working.
-- **Device and activity names are limited to 30 characters.** The
-  rename bodies and the create-device name accept at most 30 characters
-  (they accepted 64, which the hub silently truncated). The hub rename
-  keeps its 64-character limit and now has its own `HubRenameRequest`
-  schema. Snapshot applies refuse a new or changed name the hub cannot
-  store.
+- **Device, activity and command rename requests accept at most 30
+  characters**, down from 64, which the hub silently truncated. Device
+  and activity creation already had a 30-character request limit. The
+  hub rename keeps its 64-character limit and now has its own
+  `HubRenameRequest` schema. Snapshot applies and entity syncs validate
+  new or changed device/activity names against the hub's limit of 30
+  UTF-16 code units and supported character set; X1 accepts only ASCII
+  letters, digits and spaces.
 - **A backup or snapshot in which one activity references another
   activity is refused** before anything is written. The official app
-  never creates these.
+  never creates these. An activity may still reference its own id.
 - The OpenAPI document no longer lists a `428` answer on the routes that
   never send it. A non-numeric entity id in the row-edit routes answers
   `422` instead of `500`, and a coded refusal inside a job keeps its code
   instead of becoming `internal_error`. Regenerate clients from this
-  release's `openapi.json` if you rely on the response lists.
+  release's `openapi.json` for the updated response lists, name limits,
+  `HubRenameRequest` and update-status `install_kind` field.
 - The npm package `sofabaton-x-remote` 0.1.1 carries the same remote
   fixes; it is released separately and still works with server 0.2.2
   and later.
@@ -116,6 +121,9 @@ are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased
 - **Button assignments in the activity editor create at most one new
   macro.** While one press creates a new macro, the other press offers
   existing macros only.
+- **Add Shortcut hides commands and Wifi Events already used as
+  shortcuts in that activity.** Adding a macro shortcut creates a new
+  macro; existing macros remain available for button assignments.
 - Unknown hub versions keep the Wifi power and input options in the
   editors, as in the Home Assistant control panel.
 - Remote → Layout uses the panel's language (English) instead of
@@ -138,8 +146,9 @@ Server:
 - The official app could take the hub in the middle of a restore or apply.
 - After the server renamed a hub to its MAC, a running job was not seen,
   so the hub could be disabled or removed during it.
-- Concurrent panel actions could interleave their writes, and a
-  cancelled write kept writing.
+- Concurrent panel actions could interleave their writes. Cancelling an
+  awaiting task now waits for the in-flight engine call to finish before
+  releasing the hub; it does not undo writes already sent.
 - One persistence error could stop a hub's events for good, with nothing
   logged.
 - Stopping the server during IR learn waited up to 60 seconds. A hub

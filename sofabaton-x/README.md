@@ -3,7 +3,8 @@
 > **This README describes 0.2.3.** This release is mostly fixes to hub
 > writes, backup and restore, and the cache, and limits new device and
 > activity names to the hub's 30 characters.
-> Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-unreleased).
+> The async facade's per-entity restore delegates were removed; use
+> `restore(bundle)`. Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-02).
 > Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
 > consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
 > consumers on 0.1.x also need the
@@ -610,11 +611,16 @@ additive: it creates entities with new hub-assigned ids. Use
 `restore(bundle, replace=True)` to validate the bundle before erasing and
 rebuilding the hub; do not call `erase()` separately to implement replace.
 Inspect `RestoreResult.ok`, `failed_at`, `restored_devices`,
-`restored_activities`, `device_id_map`, `snapshot_id` and `erased`.
+`restored_activities`, `device_id_map`, `snapshot_id`, `erased` and
+`partial_device_ids` (devices left half-made after a failed rollback).
 `erased=True` means the replacing restore already wiped the hub; even with
-zero restored entities, `wrote_nothing` is then false. A partial restore
-is not rolled back; inspect the resulting snapshot before deciding how to
-recover. Retrying an additive restore can create duplicates.
+zero restored entities, `wrote_nothing` is then false; it is also false
+when `partial_device_ids` is nonempty. A successful replacing restore
+applies the bundle's nonempty hub name: `hub_name` and `hub_name_restored`
+report that separate outcome. An additive restore keeps the current name.
+A partial restore is not rolled back; inspect the resulting snapshot
+before deciding how to recover. Retrying an additive restore can create
+duplicates.
 
 ### IR payloads
 
@@ -918,9 +924,11 @@ synchronous engine (reachable via `AsyncXProxy.sync` when you need the
 raw surface) is internal and not semver-covered. Prefer the named facade
 methods in this README; compatibility delegates and direct engine access
 are for advanced consumers. Until 1.0, pin a minor version and review
-release notes before each upgrade. **0.2.1 is an exception to the patch
-compatibility rule:** the corrected non-IR `read_payload()` return types
-require the migration described above.
+release notes before each upgrade. **0.2.1 and 0.2.3 have patch-level
+compatibility changes:** 0.2.1 corrects the non-IR `read_payload()` return
+types; 0.2.3 removes the async facade's `restore_device()` and
+`restore_activity()` delegates in favor of `restore(bundle)`. Review the
+linked upgrade notes before updating.
 
 The facade exports these typed exceptions, all subclasses of stdlib
 exceptions. Plain `ValueError` also reports malformed input or unsupported
