@@ -3,51 +3,66 @@
 Installation, deployment and settings for the computer hosting the server.
 For your first setup, follow [Getting started](getting-started.md).
 
-[Install](#run) · [Docker](#docker) · [Reverse proxy](#behind-a-reverse-proxy-tls) · [TLS without a proxy](#tls-without-a-proxy) ·
+[Install](#install) · [Docker](#docker) · [Reverse proxy](#behind-a-reverse-proxy-tls) · [TLS without a proxy](#tls-without-a-proxy) ·
 [Settings](#settings) · [Security](#security) · [Set up access](#set-up-access) ·
 [Tokens](#tokens) · [Recovery](#recovery) · [Storage and upgrades](#storage-and-upgrades)
 
-## Run
+## Install
+
+<a id="run"></a>
 
 **Run one server for all your hubs.** Register each hub in its control
-panel; all hubs share the same server URL and WebSocket endpoint.
+panel; all hubs share the same server URL and WebSocket endpoint. This
+section covers the installation per kind of host; the first setup after
+it (adding hubs, the remote, a backup, access) is in
+[Getting started](getting-started.md).
 
 **Close the official Sofabaton app on all phones/tablets before initial
 setup.** A hub connected directly to the app stops advertising, so the
 server cannot discover it. Keep the app closed until the hub is registered
 and you have tested control. Disable any existing proxy for that hub first.
 
-Install from PyPI (Python 3.11+; the library comes with it):
-
-```
-python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
-sofabaton-x-server
-```
-
-From a checkout, install both packages from the repository root instead:
-`python -m pip install . ./sofabaton-x-server`.
-
-Open the control panel at `http://<server>:8480/` (it lives at `/ui/`).
-Use `localhost` when browsing on the server host. Open the hub picker to
-see registered hubs and hubs discovered on the LAN. Add a discovered hub
-with its Add button, or choose **Add by address…** for manual registration.
-Each registered hub's **⋯** actions enable, disable or remove it (see
-[hub management guide](managing-hubs.md)). If the hub is missing, make sure the app
-is fully closed and scan again. A registered hub whose address changes
-later (a new DHCP lease) is followed automatically: the server matches
-the advertisement by MAC, updates the registration and reconnects. That
-needs mDNS to reach the server, the same as discovery. Keep the data directory (default `./data`)
-across restarts. `--hub <physical IP>` is an alternative for seeding the
-first startup, not for adding hubs to an existing data directory.
-
-After setup, the app can connect through the proxy; the server then observes
-the session but refuses control commands until the app disconnects.
-
 The server must sit on the same network segment as the phones running
 the official app (mDNS and UDP broadcast); in Docker that means host
 networking on a Linux host. Ports on the host: TCP 8200 (hub connect-
 back, shared by all hubs), UDP 8102 (app discovery), UDP 5353 (mDNS),
-and the API port.
+and the API port, 8480. Change them in the [settings](#settings) when
+something else on the host uses them; Home Assistant's integration uses
+8200 and 8102.
+
+The control panel lives at `http://<server>:8480/`; use `localhost` when
+browsing on the host itself. Keep the data directory across restarts and
+upgrades: it holds the registrations, settings, access setup and saved
+layouts.
+
+### On a computer: pipx or pip
+
+For Windows, macOS and Linux, desktops and servers alike. Python 3.11 or
+newer. [pipx](https://pipx.pypa.io/stable/installation/) is the
+recommended way: it gives the server its own Python environment and
+upgrades it with one command.
+
+```
+pipx install "sofabaton-x-server>=0.2.4,<0.3"
+sofabaton-x-server --data-dir /path/for/its/data
+```
+
+Upgrade later with `pipx upgrade sofabaton-x-server`. With plain pip, in
+the Python environment of your choice:
+
+```
+python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
+sofabaton-x-server --data-dir /path/for/its/data
+```
+
+Either way the protocol library comes with it. The server runs in the
+foreground until Ctrl+C. Give it a fixed `--data-dir` (or
+`SOFABATON_DATA_DIR`), so every start finds the same registrations and
+settings; without one it uses `./data` in the directory you start from.
+`--hub <physical IP>` seeds a new data directory with a hub; it does not
+add hubs to an existing one, the hub picker does that. On Linux a
+service manager such as systemd can start the server at boot; this guide
+does not supply unit files.
 
 ### Docker
 
@@ -116,6 +131,21 @@ settings change. `GET /api/v1/server` reports callback listener state, not
 [access is set up](#set-up-access)), `mqtt.json` (the MQTT broker when
 the control panel set it, password in plain text), one `state-<hub_id>.json` cache
 document per hub, and the [apply records](api-reference.md#recovery-and-retention).
+
+### From a source checkout
+
+Both distributions come from one repository. From its root, install the
+library and the server into the Python environment of your choice:
+
+```
+python -m pip install . ./sofabaton-x-server
+sofabaton-x-server --data-dir /path/for/its/data
+```
+
+The panel then reports the installation as a source checkout, and an
+upgrade means pulling the release and installing both packages again.
+For an editable install, the UI build and the tests, see
+[development](development.md).
 
 ### Behind a reverse proxy (TLS)
 
@@ -542,11 +572,19 @@ the server, install the selected release in the same Python environment
 then restart with the same data directory and settings. Confirm your
 hubs reconnect and test the web remote.
 
-For the 0.2.4 release, after stopping the server:
+For the 0.2.4 release, after stopping the server, with pipx:
+
+```sh
+pipx upgrade sofabaton-x-server
+```
+
+or with pip, in the same Python environment:
 
 ```sh
 python -m pip install --upgrade "sofabaton-x-server>=0.2.4,<0.3"
 ```
+
+A container is replaced by pulling the new image (see [Docker](#docker)).
 
 The library requirement becomes `sofabaton-x>=0.2.3,<0.3`; pip installs
 it with the server. Existing registrations, callback devices and saved

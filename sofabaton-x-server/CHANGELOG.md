@@ -105,6 +105,14 @@ are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased
 
 ### Changed
 
+- **Documentation: one install path per kind of host.** The README,
+  getting-started guide and running guide now start from where the
+  server will run: a NAS or Docker host (the published image), a
+  computer running Windows, macOS or Linux (pipx recommended, pip as the
+  alternative, a fixed data directory), or a source checkout. Hub
+  registration moved from the running guide to the hub guide; the
+  troubleshooting table gained the port clash with a Home Assistant
+  integration on the same host.
 - **Button assignments in the activity editor create at most one new
   macro.** While one press creates a new macro, the other press offers
   existing macros only.
