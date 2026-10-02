@@ -69,12 +69,14 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          # Node 24: npm 12 (npm@latest since 2026) refuses Node 20.
+          node-version: "24"
           cache: npm
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm run build:remote-embed
-      # Trusted publishing needs npm 11.5.1 or newer; Node 20 bundles 10.x.
-      - run: npm install -g npm@latest && npm --version
+      # Trusted publishing needs npm 11.5.1 or newer; a pinned major keeps
+      # this step from breaking when npm@latest moves its Node floor again.
+      - run: npm install -g npm@11 && npm --version
       - name: Publish
         run: cd packages/sofabaton-x-remote && npm publish --provenance --access public
