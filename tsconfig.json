@@ -9,6 +9,7 @@
       "DOM.Iterable"
     ],
     "strict": true,
+    "noUnusedLocals": true,
     "skipLibCheck": true,
     "allowJs": false,
     "isolatedModules": true,

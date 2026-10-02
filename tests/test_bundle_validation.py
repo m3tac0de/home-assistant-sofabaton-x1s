@@ -329,10 +329,23 @@ def test_hub_dangling_command_refs_are_grandfathered_only_when_tolerated():
             worse, hub_version="X1S", grandfather_baseline=stale
         )
 
+    # Nor may an edit copy the grandfathered pair onto a new row: only the
+    # row the hub holds is tolerated (CR-L5-4).
+    copied = copy.deepcopy(stale)
+    copied["devices"][0]["button_bindings"].append({"button_id": 0xAF, "command_id": 99})
+    with pytest.raises(ValueError, match="missing command 99 on device 1"):
+        validate_hub_bundle_for_model(copied, hub_version="X1S", grandfather_baseline=stale)
+    favorited = copy.deepcopy(stale)
+    favorited["activities"][0]["favorite_slots"].append(
+        {"button_id": 5, "device_id": 1, "command_id": 99, "name": "Ghost"}
+    )
+    with pytest.raises(ValueError, match="missing command 99 on device 1"):
+        validate_hub_bundle_for_model(favorited, hub_version="X1S", grandfather_baseline=stale)
+
 
 def test_unbound_zero_command_binding_rows_are_grandfathered_only_when_tolerated():
     # The vendor app clears a hard-button slot by writing command_id 0 into
-    # the KeyToKey row instead of deleting it (observed on the FWD button of
+    # the binding row instead of deleting it (observed on the FWD button of
     # cloud-provisioned device pages). Captured hub truth must not block a
     # sync, but a 0 row without baseline precedent stays invalid.
     stale = valid_bundle()
@@ -618,3 +631,48 @@ def test_invalid_hex_and_byte_overflow_are_rejected():
     with pytest.raises(ValueError, match="between 0 and 255"):
         validate_hub_bundle_for_model(overflow, hub_version="X1S")
 
+
+
+def test_an_edit_may_not_favorite_the_same_command_twice():
+    baseline = valid_bundle("X1S")
+    edited = copy.deepcopy(baseline)
+    edited["activities"][0]["favorite_slots"].append(
+        {"button_id": 3, "device_id": 1, "command_id": 10, "name": "Power"}
+    )
+    with pytest.raises(ValueError, match="more than once"):
+        validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=baseline)
+
+    # A duplicate the hub already holds is hub truth and passes.
+    validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=edited)
+
+
+def test_a_long_press_only_binding_row_is_valid_hub_truth():
+    # The hub keeps a row whose short press is empty (command 0) and whose
+    # long press is bound (bench 2026-09-30); an edit may keep or add one.
+    bundle = valid_bundle("X1S")
+    bundle["devices"][0]["button_bindings"] = [
+        {"button_id": 0xB6, "command_id": 0, "long_press_command_id": 10},
+    ]
+    validate_hub_bundle_for_model(bundle, hub_version="X1S", grandfather_baseline=valid_bundle("X1S"))
+
+    # An empty short press with no long press is still no binding at all.
+    empty = valid_bundle("X1S")
+    empty["devices"][0]["button_bindings"] = [
+        {"button_id": 0xB6, "command_id": 0, "long_press_command_id": None},
+    ]
+    with pytest.raises(ValueError, match="missing command 0"):
+        validate_hub_bundle_for_model(empty, hub_version="X1S", grandfather_baseline=valid_bundle("X1S"))
+
+
+def test_the_activity_export_keeps_a_long_press_only_row_and_skips_placeholders():
+    from custom_components.sofabaton_x1s.lib.backup_export import build_activity_button_rows
+
+    rows, referenced = build_activity_button_rows(
+        button_codes=[0xB7, 0xB8],
+        button_details={
+            0xB7: {"device_id": 5, "command_id": 0, "long_press_device_id": 5, "long_press_command_id": 2},
+            0xB8: {"device_id": 5, "command_id": 0},  # a role placeholder: no binding
+        },
+    )
+    assert [(r["button_id"], r["command_id"], r["long_press_command_id"]) for r in rows] == [(0xB7, 0, 2)]
+    assert referenced == {5}

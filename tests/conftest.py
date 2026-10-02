@@ -14,9 +14,19 @@ def _install_homeassistant_stubs() -> None:
         def __call__(self, *args, **kwargs):
             return self
 
+    class _Marker(str):  # pragma: no cover - only used as stub
+        """A schema key that still compares and hashes as the plain key,
+        but remembers whether it was Required (the WS schema guard,
+        tests/test_ws_frontend_schema.py, reads it)."""
+
+        required = False
+
+    class _Required(_Marker):  # pragma: no cover - only used as stub
+        required = True
+
     vol.Schema = _Schema
-    vol.Required = lambda key, default=None: key  # type: ignore[assignment]
-    vol.Optional = lambda key, default=None: key  # type: ignore[assignment]
+    vol.Required = lambda key, default=None: _Required(key) if isinstance(key, str) else key  # type: ignore[assignment]
+    vol.Optional = lambda key, default=None: _Marker(key) if isinstance(key, str) else key  # type: ignore[assignment]
     vol.All = lambda *args, **kwargs: args  # type: ignore[assignment]
     vol.Range = lambda **kwargs: kwargs  # type: ignore[assignment]
     vol.In = lambda *args, **kwargs: args  # type: ignore[assignment]
@@ -177,6 +187,19 @@ def _install_homeassistant_stubs() -> None:
     event.async_track_time_interval = lambda hass, action, interval: None
     sys.modules.setdefault("homeassistant.helpers.event", event)
 
+    util = types.ModuleType("homeassistant.util")
+    util_dt = types.ModuleType("homeassistant.util.dt")
+
+    def _utcnow():  # pragma: no cover - only used as stub
+        import datetime as _datetime
+
+        return _datetime.datetime.now(_datetime.timezone.utc)
+
+    util_dt.utcnow = _utcnow
+    util.dt = util_dt
+    sys.modules.setdefault("homeassistant.util", util)
+    sys.modules.setdefault("homeassistant.util.dt", util_dt)
+
     entity = types.ModuleType("homeassistant.helpers.entity")
 
     class DeviceInfo(dict):  # pragma: no cover - only used as stub
@@ -294,15 +317,50 @@ def _install_homeassistant_stubs() -> None:
     sensor.SensorStateClass = SensorStateClass
     sys.modules.setdefault("homeassistant.components.sensor", sensor)
 
+    button = types.ModuleType("homeassistant.components.button")
+
+    class ButtonEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    button.ButtonEntity = ButtonEntity
+    sys.modules.setdefault("homeassistant.components.button", button)
+
+    text = types.ModuleType("homeassistant.components.text")
+
+    class TextEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    text.TextEntity = TextEntity
+    sys.modules.setdefault("homeassistant.components.text", text)
+
     frontend = types.ModuleType("homeassistant.components.frontend")
     frontend.add_extra_js_url = lambda *args, **kwargs: None
+    frontend.async_register_built_in_panel = lambda *args, **kwargs: None
+    frontend.async_remove_panel = lambda *args, **kwargs: None
     sys.modules.setdefault("homeassistant.components.frontend", frontend)
     components.frontend = frontend
 
 
     websocket_api = types.ModuleType("homeassistant.components.websocket_api")
     websocket_api.async_register_command = lambda *args, **kwargs: None
-    websocket_api.websocket_command = lambda schema: (lambda func: func)
+    def _websocket_command(schema):
+        # Keep the schema on the handler, as HA does, so a guard test can
+        # compare it with the frontend's message fields (CR-X2-7).
+        def decorate(func):
+            func._ws_schema = schema
+            return func
+
+        return decorate
+
+    websocket_api.websocket_command = _websocket_command
     websocket_api.async_response = lambda func: func
     sys.modules.setdefault("homeassistant.components.websocket_api", websocket_api)
 
@@ -365,3 +423,19 @@ _install_homeassistant_stubs()
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _x1_live_quick_access_read_unavailable(monkeypatch):
+    """The X1 order writers re-read the activity's favorites and macros from
+    the hub before writing the order table (the unlisted-record repair).
+    Without a hub that read would wait out its timeouts, so by default it
+    reports "could not be read" and the writers act exactly as before. Tests
+    of the repair patch ``_x1_live_quick_access_ids`` themselves."""
+
+    from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
+
+    monkeypatch.setattr(ActivityOpsMixin, "_x1_live_quick_access_ids", lambda self, act_lo: None)

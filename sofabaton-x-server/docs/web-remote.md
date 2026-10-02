@@ -155,7 +155,10 @@ from 0.2.2 onward. The server's own copy at
 the dashboard can load a script from the server.
 
 Two limits: an https dashboard cannot call an http server (the browser
-blocks mixed content; put the server behind TLS), and a public website
+blocks mixed content; put the server behind a
+[TLS reverse proxy](running-server.md#behind-a-reverse-proxy-tls) or give it
+[a certificate of its own](running-server.md#tls-without-a-proxy), which
+is reloaded on renewal without a restart), and a public website
 calling a LAN server is subject to Chrome's Private Network Access
 (the page must be https and the user is asked for permission). The
 element is control-only and needs no token; anyone who can open the

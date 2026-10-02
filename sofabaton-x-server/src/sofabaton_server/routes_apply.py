@@ -250,11 +250,29 @@ def _job_view_from_record(record: ApplyRecord, hub_id: str) -> JobView:
     """A finished apply whose job the runner has forgotten: the record stands in."""
 
     state = record.state
-    status = {"success": "done", "stopped": "failed", "cancelled": "cancelled"}.get(str(state.get("status")), "done")
+    raw = str(state.get("status"))
+    error: Optional[Problem] = None
+    if raw == "success":
+        status = "done"
+    elif raw == "cancelled":
+        status = "cancelled"
+    elif raw == "stopped":
+        status = "failed"
+        error = Problem(type="apply_stopped", title="The apply stopped before it finished", status=409,
+                        detail=f"inspect apply {record.apply_id} and resume it with POST /applies/{record.apply_id}/resume",
+                        hub_id=hub_id)
+    else:
+        # Queued or running on disk, and no job knows it: the server went
+        # down during the run. Never 'done' (CR-S2-6): the edit may not
+        # have been written at all.
+        status = "failed"
+        error = Problem(type="apply_interrupted", title="The server stopped while this apply ran", status=409,
+                        detail=f"inspect apply {record.apply_id} and resume it with POST /applies/{record.apply_id}/resume",
+                        hub_id=hub_id)
     return JobView(
         job_id=record.job_id or record.apply_id, hub_id=hub_id, kind="sync_hub", status=status,  # type: ignore[arg-type]
         cancellable=True, created_at=record.created_at, started_at=record.created_at, finished_at=record.updated_at,
-        result=_result_dict(record),
+        result=_result_dict(record), error=error,
     )
 
 

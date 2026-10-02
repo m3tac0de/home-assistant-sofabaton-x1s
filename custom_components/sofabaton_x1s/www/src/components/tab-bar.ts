@@ -7,6 +7,7 @@ export function renderTabBar(params: {
   toolsMenuOpen: boolean;
   onSelect: (tabId: TabId) => void;
   onToggleToolsMenu: () => void;
+  onCloseToolsMenu: () => void;
 }) {
   const tabs: Array<{ id: TabId; label: string; disabled: boolean }> = [
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
@@ -17,12 +18,14 @@ export function renderTabBar(params: {
 
   return html`
     <div class="tabs">
-      <div class="tabs-scroll">
+      <div class="tabs-scroll" role="tablist">
         ${tabs.map(
           (tab) => html`
             <button
               class="tab-btn${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
               type="button"
+              role="tab"
+              aria-selected=${String(params.selectedTab === tab.id)}
               ?disabled=${tab.disabled}
               @click=${() => params.onSelect(tab.id)}
             >
@@ -31,12 +34,26 @@ export function renderTabBar(params: {
           `,
         )}
       </div>
-      <div class="tab-menu" id="tools-tab-menu-root">
+      <div
+        class="tab-menu"
+        id="tools-tab-menu-root"
+        @keydown=${(event: KeyboardEvent) => {
+          if (event.key !== "Escape" || !params.toolsMenuOpen) return;
+          event.stopPropagation();
+          params.onCloseToolsMenu();
+          ((event.currentTarget as HTMLElement).querySelector("#tools-tab-menu-btn") as HTMLElement | null)?.focus();
+        }}
+        @focusout=${(event: FocusEvent) => {
+          const root = event.currentTarget as HTMLElement;
+          if (params.toolsMenuOpen && !root.contains(event.relatedTarget as Node | null)) params.onCloseToolsMenu();
+        }}
+      >
         <button
           class="tab-btn tab-btn--menu${toolsMenuActive ? " active" : ""}${params.toolsMenuOpen ? " is-open" : ""}"
           id="tools-tab-menu-btn"
           type="button"
           aria-haspopup="menu"
+          aria-label=${TOOLS_CARD_STRINGS.card.toolsMenuAria}
           aria-expanded=${String(params.toolsMenuOpen)}
           @click=${params.onToggleToolsMenu}
         >

@@ -6,7 +6,6 @@ managed wifi device (scripts/hub-bench shape dump, X1S "Lights", 2026-07-17).
 
 from __future__ import annotations
 
-import pytest
 
 from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (
     ManagedWifiSnapshot,
@@ -689,3 +688,26 @@ def test_device_binding_steps_precede_membership_work():
     )
     plan = build_wifi_inplace_plan(baseline, desired)
     assert kinds(plan) == ["binding_write", "member_replay", "favorite_add"]
+
+
+def test_classify_live_slots_sorts_drift_resumed_and_missing():
+    """CR-X1-7: the one gate both the HA path and the facade classify with."""
+    from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (
+        WifiCommandSlot,
+        classify_live_slots,
+    )
+
+    live = {
+        1: WifiCommandSlot(1, "Lights On"),  # matches the deploy
+        2: WifiCommandSlot(2, "Movie Mode"),  # matches the desired config
+        3: WifiCommandSlot(3, "Renamed In App"),  # foreign edit
+        4: WifiCommandSlot(4, "LIGHTS OFF"),  # equal through label_key
+    }
+    expected = {1: "Lights On", 2: "Scene 2", 3: "Scene 3", 4: "Lights Off", 5: "Gone"}
+    desired = {2: WifiCommandSlot(2, "Movie Mode"), 3: WifiCommandSlot(3, "Scene 3b")}
+
+    result = classify_live_slots(live, expected, desired, label_key=str.upper)
+
+    assert result.drift == (3,)
+    assert result.resumed == (2,)
+    assert result.missing == (5,)

@@ -406,3 +406,26 @@ test("store: a backend that cannot fetch a keymap yet leaves no spinner behind",
   assert.equal(store.deviceKeymapState(8), null, "no entry cached");
   assert.ok(changes > before, "the store re-rendered after dropping the loading entry");
 });
+
+test("store: a keymap the backend cannot answer is retried with backoff, not in a loop", async () => {
+  // CR-F4a-1: the card's onChange re-renders, and render re-derives state,
+  // which asks for the keymap again. Without a backoff that is a fetch loop
+  // paced only by the HTTP round trip while the hub is busy or offline.
+  let calls = 0;
+  let store: RemoteCardStore;
+  store = new RemoteCardStore(() => { store?.deriveRuntimeState(); }, { fireEvent: () => undefined });
+  store.setConfig({ entity: ENTITY });
+  const backend = createFakeBackend(SNAPSHOT);
+  backend.deviceKeymap = async () => { calls += 1; return null; };
+  store.setBackend(backend);
+  await flush();
+  store.setMode("device");
+  store.setDevice(8);
+  for (let i = 0; i < 20; i += 1) {
+    store.deriveRuntimeState();
+    await flush();
+  }
+  assert.equal(calls, 1, "one fetch, then wait for the backoff");
+  assert.equal(store.deviceKeymapState(8), null);
+  store.disconnected();
+});

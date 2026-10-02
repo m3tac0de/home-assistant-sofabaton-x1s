@@ -23,6 +23,10 @@ from types import SimpleNamespace
 import pytest
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+services_module = importlib.import_module("custom_components.sofabaton_x1s.services")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 from tests.test_activity_sync_ws import _bundle, _Conn, _device_bundle
 
@@ -71,7 +75,7 @@ def _wire_hub(monkeypatch, hub: _FakeHub | None = None) -> _FakeHub:
     async def _resolve(_hass, _call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
     return hub
 
 
@@ -79,7 +83,7 @@ def _wire_cache_store(monkeypatch, *, enabled: bool) -> None:
     async def fake_store(_hass):
         return SimpleNamespace(enabled=enabled)
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +95,7 @@ def test_export_snapshot_requires_a_resolvable_hub(monkeypatch) -> None:
     async def _resolve(_hass, _call):
         return None
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="Could not resolve Sofabaton hub"):
         asyncio.run(integration._async_handle_export_snapshot(_FakeCall({})))
@@ -101,7 +105,7 @@ def test_export_snapshot_requires_persistent_cache_enabled(monkeypatch) -> None:
     _wire_hub(monkeypatch)
     _wire_cache_store(monkeypatch, enabled=False)
 
-    with pytest.raises(integration.HomeAssistantError, match="persistent cache"):
+    with pytest.raises(services_module.HomeAssistantError, match="persistent cache"):
         asyncio.run(integration._async_handle_export_snapshot(_FakeCall({})))
 
 
@@ -110,7 +114,7 @@ def test_export_snapshot_requires_a_populated_cache(monkeypatch) -> None:
     hub.structural_bundle = None
     _wire_cache_store(monkeypatch, enabled=True)
 
-    with pytest.raises(integration.HomeAssistantError, match="No cached structural snapshot"):
+    with pytest.raises(services_module.HomeAssistantError, match="No cached structural snapshot"):
         asyncio.run(integration._async_handle_export_snapshot(_FakeCall({})))
 
 
@@ -135,7 +139,7 @@ def test_sync_from_snapshot_requires_a_resolvable_hub(monkeypatch) -> None:
     async def _resolve(_hass, _call):
         return None
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     with pytest.raises(ValueError, match="Could not resolve Sofabaton hub"):
         asyncio.run(
@@ -171,7 +175,7 @@ def test_sync_from_snapshot_requires_dict_baseline_and_edited(monkeypatch) -> No
 
 def test_sync_from_snapshot_rejects_when_busy(monkeypatch) -> None:
     hub = _wire_hub(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="device_sync", entry_id=hub.entry_id, initial_state={"status": "running"})
     call = _FakeCall(
         {
@@ -180,10 +184,10 @@ def test_sync_from_snapshot_rejects_when_busy(monkeypatch) -> None:
             "baseline": _device_bundle([]),
             "edited": _device_bundle([]),
         },
-        hass=SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}}),
+        hass=SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}}),
     )
 
-    with pytest.raises(integration.HomeAssistantError, match="already running"):
+    with pytest.raises(services_module.HomeAssistantError, match="already running"):
         asyncio.run(integration._async_handle_sync_from_snapshot(call))
 
     assert hub.calls == []
@@ -194,7 +198,7 @@ def test_sync_from_snapshot_rejects_invalid_bundle_payload(monkeypatch) -> None:
     bad_baseline = _device_bundle([])
     bad_baseline["schema_version"] = 99
 
-    with pytest.raises(integration.HomeAssistantError, match="schema_version"):
+    with pytest.raises(services_module.HomeAssistantError, match="schema_version"):
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
@@ -268,16 +272,16 @@ def test_sync_from_snapshot_stale_expected_generation_refuses_loudly(monkeypatch
 
     hub = _wire_hub(monkeypatch)
     hub.cache_generation = 44
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     call = _FakeCall(
         _sync_call_data(expected_generation=41),
         hass=SimpleNamespace(
-            data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}}
+            data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}}
         ),
     )
 
     with pytest.raises(
-        integration.HomeAssistantError,
+        services_module.HomeAssistantError,
         match="expected generation 41, hub cache is at 44",
     ):
         asyncio.run(integration._async_handle_sync_from_snapshot(call))
@@ -324,9 +328,10 @@ def test_sync_from_snapshot_drives_hub_async_sync_device_and_returns_result(monk
     assert sync_calls[0][1]["device_id"] == 1
     assert sync_calls[0][1]["baseline"] == baseline
     assert sync_calls[0][1]["edited"] == edited
-    # Success tail runs the same post-sync cache refresh the WS path gets.
+    # Success tail runs the same post-sync cache refresh the WS path gets;
+    # the entity itself was already read back by the engine (CR-X1-8).
     assert ("request_catalog", {"kind": "devices"}) in hub.calls
-    assert ("refresh_entity_structure", {"kind": "device", "ent_id": 1}) in hub.calls
+    assert ("refresh_entity_structure", {"kind": "device", "ent_id": 1}) not in hub.calls
 
 
 def test_sync_from_snapshot_drives_hub_async_sync_activity_for_activity_kind(monkeypatch) -> None:
@@ -360,7 +365,7 @@ def test_sync_from_snapshot_raises_when_engine_reports_failure(monkeypatch) -> N
     baseline = _device_bundle([])
     edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
 
-    with pytest.raises(integration.HomeAssistantError, match="changed on the hub"):
+    with pytest.raises(services_module.HomeAssistantError, match="changed on the hub"):
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
@@ -422,14 +427,14 @@ def test_ws_and_service_share_the_prepare_entity_sync_helper(monkeypatch) -> Non
         )
         return f"op-{len(prepare_calls)}", canned_baseline, canned_edited, 101
 
-    monkeypatch.setattr(integration, "_async_prepare_entity_sync", fake_prepare)
+    monkeypatch.setattr(entity_sync_module, "_async_prepare_entity_sync", fake_prepare)
 
     hub = _wire_hub(monkeypatch)
 
     async def fake_resolve_data(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve_data)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve_data)
 
     # WS transport
     conn = _Conn()

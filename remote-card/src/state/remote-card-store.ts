@@ -1,5 +1,5 @@
-// State store for the remote card, extracted from the legacy card class for
-// the Lit port (docs/internal/remote-card-refactor-plan.md, Phase 3). Owns
+// State store for the remote card (docs/internal/remote-card-refactor-plan.md,
+// Phase 3). Owns
 // hass/config, the integration probe, the hub command queue, activity/preview
 // state, the enabled-buttons cache, and the load indicator; all pure
 // derivations keep delegating to the existing remote-card-* satellites.
@@ -223,6 +223,11 @@ export class RemoteCardStore {
   private _deviceId: number | null = null;
   private deviceKeymaps: Record<string, DeviceKeymapEntry> = {};
   private readonly deviceKeymapFetching = new Set<string>();
+  /** Backoff after the backend could not answer a keymap (CR-F4a-1): without
+   *  it, the render that follows the null answer re-fetched at once, a loop
+   *  paced only by the HTTP round trip while the hub was busy or offline. */
+  private readonly deviceKeymapRetry = new Map<string, { at: number; delayMs: number }>();
+  private deviceKeymapRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private initialViewApplied = false;
   commandFilter = "";
 
@@ -339,6 +344,8 @@ export class RemoteCardStore {
     this.commandPulseTimeout = null;
     this.commandPulseUntil = 0;
     this.activityLoadTimeout = null;
+    if (this.deviceKeymapRetryTimer) clearTimeout(this.deviceKeymapRetryTimer);
+    this.deviceKeymapRetryTimer = null;
   }
 
   // ---------- update gating ----------
@@ -378,6 +385,9 @@ export class RemoteCardStore {
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
+      // A binding-only edit changes only this; the keys' long-press arming
+      // is computed at render time from it (CR-F4a-3).
+      stableJsonSignature(attrs?.long_press_keys),
       stableJsonSignature(this._config?.background_override),
       themeName,
       themeMode,
@@ -649,12 +659,25 @@ export class RemoteCardStore {
     return (entry.version ?? 0) !== this.keymapVersion(deviceId);
   }
 
+  /** Re-render once the keymap backoff ends, so the fetch is retried even
+   *  when nothing else changes meanwhile. */
+  private scheduleKeymapRetry(delayMs: number): void {
+    if (this.deviceKeymapRetryTimer) clearTimeout(this.deviceKeymapRetryTimer);
+    this.deviceKeymapRetryTimer = setTimeout(() => {
+      this.deviceKeymapRetryTimer = null;
+      this.invalidateFingerprint();
+      this.onChange();
+    }, delayMs);
+  }
+
   async ensureDeviceKeymap(deviceId: number): Promise<void> {
     const key = String(deviceId);
     if (!this.keymapStale(deviceId)) return;
     const backend = this._backend;
     if (!backend) return;
     if (this.deviceKeymapFetching.has(key)) return;
+    const retry = this.deviceKeymapRetry.get(key);
+    if (retry && Date.now() < retry.at) return;
 
     const version = this.keymapVersion(deviceId);
     const previous = this.deviceKeymaps[key];
@@ -668,8 +691,12 @@ export class RemoteCardStore {
       const response = await backend.deviceKeymap(deviceId);
       if (response === null) {
         // The backend cannot fetch yet (HA: no entry id published; the
-        // server: catalog not read): retry on the next change instead of
-        // caching a miss, and never leave a spinner behind.
+        // server: catalog not read, hub busy or offline): retry after a
+        // growing delay instead of caching a miss, and never leave a
+        // spinner behind.
+        const delayMs = Math.min((retry?.delayMs ?? 500) * 2, 30_000);
+        this.deviceKeymapRetry.set(key, { at: Date.now() + delayMs, delayMs });
+        this.scheduleKeymapRetry(delayMs);
         if (!previous) {
           delete this.deviceKeymaps[key];
           this.invalidateFingerprint();
@@ -677,6 +704,7 @@ export class RemoteCardStore {
         }
         return;
       }
+      this.deviceKeymapRetry.delete(key);
       const keymap = response?.keymap;
       if (!keymap) {
         this.deviceKeymaps[key] = {
@@ -941,6 +969,18 @@ export class RemoteCardStore {
         this.onChange();
       }
     }, 60000);
+  }
+
+  /**
+   * A control request was refused (the server answers 409/404, HA raises).
+   * The card must not keep waiting for an activity switch that will not
+   * happen; the rejection itself stops here (CR-F4a-7). The server backend
+   * shows it on the host's banner.
+   */
+  controlFailed(): void {
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.stopActivityLoading();
   }
 
   stopActivityLoading(notify = true): void {
@@ -1537,7 +1577,11 @@ export class RemoteCardStore {
       mode !== "device"
         ? ""
         : keymapEntry?.status === "cache_miss"
-          ? str().card.deviceKeymapMissing
+          // The HA advice (tools card, dashboard) means nothing on the
+          // server-backed remote (CR-X7-5).
+          ? this._backend?.kind === "server"
+            ? str().card.deviceKeymapMissingServer
+            : str().card.deviceKeymapMissing
           : keymapEntry?.status === "error"
             ? str().card.deviceKeymapError
             : "";

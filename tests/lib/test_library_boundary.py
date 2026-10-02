@@ -7,7 +7,8 @@ package must stay self-contained:
 
 * no relative imports that reach above the package (``from ..`` etc.),
 * no Home Assistant imports,
-* no third-party imports beyond the declared dependency (``zeroconf``).
+* no third-party imports beyond the declared dependencies (``zeroconf`` and
+  ``ifaddr``, which zeroconf itself requires).
 
 This test walks every module's AST so a violation fails CI with the
 exact file/line instead of surfacing as an ImportError in a consumer.
@@ -27,7 +28,7 @@ LIB_DIR = (
 )
 
 # Third-party modules the published package declares as dependencies.
-ALLOWED_THIRD_PARTY = {"zeroconf"}
+ALLOWED_THIRD_PARTY = {"zeroconf", "ifaddr"}
 
 STDLIB = set(sys.stdlib_module_names)
 

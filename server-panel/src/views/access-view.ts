@@ -192,7 +192,12 @@ export class SbPanelAccess extends LitElement {
       if (next) change.new_password = next;
       if (!change.username && !change.new_password) return this._say("account", "Nothing to change.", false);
       const response = await this.api.updateAdmin(change);
-      if (!response.ok || !response.body) return this._say("account", response.status === 403 ? "The current password is not right." : problemText(response), false);
+      if (!response.ok || !response.body) {
+        // 403 also means cross_origin_refused (a proxy without --advertise-url)
+        // or admin_required; only wrong_password is about the field (CR-X3-6).
+        const wrongPassword = (response.body as { type?: string } | null)?.type === "wrong_password";
+        return this._say("account", wrongPassword ? "The current password is not right." : problemText(response), false);
+      }
       for (const id of ["account-current", "account-new", "account-again"]) {
         const field = this._field(id);
         if (field) field.value = "";

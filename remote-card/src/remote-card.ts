@@ -34,8 +34,10 @@ win.customCards = win.customCards || [];
 if (!win.customCards.some((c) => c.type === TYPE)) {
   win.customCards.push({
     type: TYPE,
-    name: str().card.pickerName,
-    description: str().card.pickerDescription,
+    // Getters, so the picker shows the active language rather than the
+    // English the module saw at load time (CR-X7-2).
+    get name() { return str().card.pickerName; },
+    get description() { return str().card.pickerDescription; },
     // Card picker (HA 2026.6+): recommend this card for Sofabaton remote
     // entities, which is exactly what it binds to.
     getEntitySuggestion: (hass, entityId) => {

@@ -259,13 +259,13 @@ test("job frames mutate the hub record; a finished job leaves a notice that expi
   await flush();
   socket().push({ type: "job_event", hub_id: "a", job: job({ status: "queued" }) });
   assert.equal(rt(store).hub.active_job?.status, "queued");
-  socket().push({ type: "job_event", hub_id: "a", job: job({ progress: { completed_steps: 1, total_steps: 3 } }) });
+  socket().push({ type: "job_event", hub_id: "a", job: job({ progress: { phase: "item", message: "", completed_steps: 1, total_steps: 3 } }) });
   assert.equal(rt(store).hub.active_job?.progress?.completed_steps, 1);
   const hubsBefore = api.count("hubs");
   socket().push({ type: "job_event", hub_id: "a", job: job({ status: "done", finished_at: "2026-09-17T10:00:09Z" }) });
   assert.equal(rt(store).hub.active_job, null);
   assert.equal(rt(store).hub.last_job?.status, "done");
-  assert.deepEqual(rt(store).notice, { tone: "success", label: "Refreshing the hub: done", detail: null, jobId: "j1", sticky: false, at: clock.now });
+  assert.deepEqual(rt(store).notice, { tone: "success", label: "Hub refreshed.", detail: null, jobId: "j1", sticky: false, at: clock.now });
   await clock.advance(300);
   assert.equal(api.count("hubs"), hubsBefore + 1, "a terminal frame reloads the hub list");
   await clock.advance(6000);
@@ -283,7 +283,7 @@ test("a finished job announced again (a staged backup bundle downloaded or expir
   const backup = job({ job_id: "b1", kind: "backup", status: "done", cancellable: false, finished_at: "2026-09-17T10:00:09Z", result: { bundle_available: true, bundle_downloaded: false } });
   api.hubs = [hub({ last_job: backup })];
   socket().push({ type: "job_event", hub_id: "a", job: backup });
-  assert.equal(rt(store).notice?.label, "Backing up the hub: done");
+  assert.equal(rt(store).notice?.label, "Backup completed.");
   store.dismissNotice("a");
 
   // The same job, downloaded: the record follows, the notice does not come back.
@@ -304,7 +304,7 @@ test("a finished job announced again (a staged backup bundle downloaded or expir
   store.disconnect();
 });
 
-test("a failed job is sticky until dismissed; the acknowledgement stops a reload from repeating it", async () => {
+test("a failed job expires after eight seconds and is acknowledged without dropping diagnostics", async () => {
   const storage = new MemoryStorage();
   const failed = job({ status: "failed", finished_at: "2026-09-17T10:00:09Z", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "went away" } });
   const first = rig({ storage });
@@ -314,10 +314,11 @@ test("a failed job is sticky until dismissed; the acknowledgement stops a reload
   await flush();
   first.socket().push({ type: "job_event", hub_id: "a", job: failed });
   assert.equal(rt(first.store).notice?.tone, "error");
-  assert.equal(rt(first.store).notice?.sticky, true);
-  await first.clock.advance(60000);
-  assert.equal(rt(first.store).notice?.jobId, "j1", "still there a minute later");
-  first.store.dismissNotice("a");
+  assert.equal(rt(first.store).notice?.sticky, false);
+  await first.clock.advance(7999);
+  assert.equal(rt(first.store).notice?.jobId, "j1");
+  await first.clock.advance(1);
+  assert.equal(rt(first.store).hub.last_job?.error?.detail, "went away");
   assert.equal(rt(first.store).notice, null);
   first.store.disconnect();
 
@@ -338,7 +339,7 @@ test("on load an unacknowledged recent job shows its notice; an old one does not
   const a = rig({ api: recent, now: Date.parse(finishedAt) + 60_000 });
   a.store.connect();
   await flush();
-  assert.equal(rt(a.store).notice?.label, "Refreshing the hub: done");
+  assert.equal(rt(a.store).notice?.label, "Hub refreshed.");
   a.store.disconnect();
 
   const old = new FakeApi();
@@ -375,6 +376,24 @@ test("every stream connect is a resync; a new instance id means the server resta
   assert.equal(rt(store).notice, null, "the old server's notices are gone");
   assert.deepEqual(store.snapshot.message, { text: "The server restarted; state reloaded.", ok: true });
   assert.equal(api.count("hubs"), before + 1);
+  store.disconnect();
+});
+
+test("a dropped stream asks REST at once; when the server is gone the hubs read as unreachable before the next tick", async () => {
+  const { api, clock, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  assert.equal(store.snapshot.server.reachable, true);
+  // The server died: the socket closes and REST refuses.
+  api.hubs = new Error("connection refused");
+  const before = api.count("hubs");
+  socket().drop();
+  await flush();
+  assert.equal(api.count("hubs"), before + 1, "the drop probed the hub list without waiting for the tick");
+  assert.equal(store.snapshot.server.reachable, false);
+  assert.ok(clock.pending().includes(2000), "the retry owns the cadence from here");
   store.disconnect();
 });
 
@@ -583,7 +602,7 @@ test("a cancel is remembered on the record until the job ends; a refused one is 
   assert.deepEqual(api.cancelled, ["a/j1"]);
   socket().push({ type: "job_event", hub_id: "a", job: job({ cancellable: true, status: "cancelled", finished_at: "2026-09-17T10:00:09Z" }) });
   assert.equal(rt(store).cancelRequestedJobId, null);
-  assert.equal(rt(store).notice?.label, "Refreshing the hub: cancelled");
+  assert.equal(rt(store).notice?.label, "Operation cancelled.");
 
   api.cancelJob = async () => ok({ type: "job_not_cancellable", title: "x", status: 409 }, 409) as unknown as ApiResponse<JobView>;
   socket().push({ type: "job_event", hub_id: "a", job: job({ job_id: "j2", cancellable: true }) });
@@ -679,4 +698,45 @@ test("a restored draft is checked against the hub's snapshot: fresh restores sil
   await flush();
   assert.equal(rt(junk.store).draft, null);
   junk.store.disconnect();
+});
+
+test("a selected hub that re-keys to its MAC stays selected, with its draft (CR-F5a-3)", async () => {
+  const storage = new MemoryStorage();
+  const api = new FakeApi();
+  const living = hub({ hub_id: "aabbccddee01", config: { host: "192.168.1.50", name: "Living room" } });
+  const bedroom = hub({ hub_id: "192.168.1.60", config: { host: "192.168.1.60", name: "Bedroom" } });
+  api.hubs = [living, bedroom];
+  const { store, clock } = rig({ storage, api });
+  store.connect();
+  await flush();
+  store.selectHub("192.168.1.60");
+  await flush();
+  store.setDraft("192.168.1.60", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } });
+  // Its first sync re-keys it; the re-keyed record lands at the end of the list.
+  api.hubs = [living, { ...bedroom, hub_id: "aabbccddee02" }];
+  await clock.advance(5000);
+  assert.equal(store.snapshot.selectedHubId, "aabbccddee02");
+  assert.equal(rt(store, "aabbccddee02").draft?.scope, "hub/devices");
+  assert.equal(storage.getItem("sofabaton-panel-draft:192.168.1.60"), null);
+  store.disconnect();
+});
+
+test("an apply job's end re-reads the stopped applies, and a dropped frame resyncs (CR-X3-1)", async () => {
+  const api = new FakeApi();
+  const { store, socket } = rig({ api });
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  assert.deepEqual(rt(store).stoppedApplies, []);
+  // An external PUT /snapshot stopped partway: the job ends failed, the record says stopped.
+  api.applies = [{ apply_id: "y", hub_id: "a", status: "stopped", resumable: true, job_id: null, created_at: "", updated_at: "" }];
+  socket().push({ type: "job_event", hub_id: "a", job: job({ kind: "sync_hub", status: "failed", finished_at: "2026-09-17T10:00:09Z" }) });
+  await flush();
+  assert.deepEqual(rt(store).stoppedApplies.map((a) => a.apply_id), ["y"]);
+  const before = api.count("server");
+  socket().push({ type: "dropped", count: 3 });
+  await flush();
+  assert.ok(api.count("server") > before, "a dropped frame reloads everything");
+  store.disconnect();
 });

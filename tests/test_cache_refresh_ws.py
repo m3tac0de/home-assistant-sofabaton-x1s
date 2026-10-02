@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
 class _Conn:
@@ -46,21 +48,22 @@ def _run(coro):
         loop.close()
 
 
-def _patch(monkeypatch, *, hub=_Hub(), locked=False, store=None):
+def _patch(monkeypatch, *, hub=None, locked=False, store=None):
+    hub = hub if hub is not None else _Hub()
     async def fake_resolve(_hass, _data):
         return hub
 
     async def fake_store(_hass):
         return store if store is not None else _Store()
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
     def fake_lock(*_a, **_k):
         if locked:
             raise HomeAssistantError("The Sofabaton app is connected")
 
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", fake_lock)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", fake_lock)
 
 
 def test_ws_refresh_all_cache_starts_operation(monkeypatch):
@@ -80,11 +83,11 @@ def test_ws_refresh_all_cache_starts_operation(monkeypatch):
 def test_ws_refresh_all_cache_busy(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="cache_refresh", entry_id="entry-1", initial_state={"status": "running"})
     hass = SimpleNamespace(
         async_create_task=lambda c: SimpleNamespace(),
-        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+        data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}},
     )
     _run(integration._ws_refresh_all_cache(hass, conn, {"id": 2, "entry_id": "entry-1"}))
     assert conn.error[1] == "busy"
@@ -111,13 +114,13 @@ def test_cache_refresh_progress_messages_use_cache_language():
 
 
 def test_runtime_payload_labels_cache_refresh():
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(
         kind="cache_refresh",
         entry_id="entry-1",
         initial_state={"status": "running", "message": "Refreshing device 11…"},
     )
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     hub = SimpleNamespace(entry_id="entry-1", client_connected=False)
     payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
     assert payload["kind"] == "operation_running"
@@ -130,7 +133,7 @@ def test_runtime_payload_forwards_structured_progress_for_localization():
     """`detail` is English prose the frontend cannot translate, so the payload
     also carries the structured phase/target the control panel localizes into
     "Refreshing device 11…" in the user's own language."""
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     operation_id = registry.create(
         kind="cache_refresh",
         entry_id="entry-1",
@@ -144,7 +147,7 @@ def test_runtime_payload_forwards_structured_progress_for_localization():
         completed_steps=3,
         total_steps=9,
     )
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     hub = SimpleNamespace(entry_id="entry-1", client_connected=False)
 
     payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
@@ -189,3 +192,40 @@ def test_ws_structural_bundle_gated_on_cache_enabled(monkeypatch):
     _run(integration._ws_get_structural_bundle(hass, conn, {"id": 6, "entry_id": "entry-1"}))
     assert conn.error is None
     assert conn.result[1] == {"bundle": None, "generation": None}
+
+
+def test_runtime_payload_reports_how_the_last_operation_ended(monkeypatch):
+    """CR-F1-1: the control panel sees a running operation disappear from the
+    poll; the idle payload says whether it succeeded or failed, so a failed
+    restore is never announced as a success."""
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    operation_id = registry.create(kind="backup_restore", entry_id="entry-1", initial_state={"status": "running"})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
+
+    class _Devices:
+        async def async_list_hub_devices(self, entry_id, *, roku_listen_port=None):
+            return [{"device_key": "livingroom", "commands": []}, {"device_key": "kitchen", "commands": []}]
+
+    async def _store(_hass):
+        return _Devices()
+
+    progress = {"livingroom": {"status": "failed", "error_code": "activities_changed"}, "kitchen": {"status": "idle"}}
+    hub = SimpleNamespace(
+        entry_id="entry-1",
+        client_connected=False,
+        get_command_sync_progress=lambda key: dict(progress.get(key, {"status": "idle"})),
+        get_managed_command_hashes=lambda: {},
+    )
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", _store)
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda *_a: 8060)
+
+    running = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert running["kind"] == "operation_running" and running["operation_id"] == operation_id
+
+    registry.update(operation_id, status="failed")
+    idle = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert idle["kind"] == "idle"
+    assert idle["last_operation"] == {"operation_id": operation_id, "status": "failed"}
+    assert idle["last_wifi_deploys"] == {"livingroom": "failed"}
+    # Why it failed, for the dock (the code, never the backend prose).
+    assert idle["last_wifi_deploy_errors"] == {"livingroom": "activities_changed"}

@@ -12,11 +12,11 @@ import asyncio
 
 import pytest
 
-import custom_components.sofabaton_x1s.hub as hub_module
+import custom_components.sofabaton_x1s.wifi_deploy as wifi_deploy_module
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 from custom_components.sofabaton_x1s.lib.commands import hub_command_label
-from tests.test_hub_commands import FakeHass
+from tests.hub_fakes import FakeHass
 
 OLD_HASH = "oldhash"
 NEW_HASH = "newhash"
@@ -120,7 +120,7 @@ def _make_hub(
         return dict(snapshot)
 
     monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _snapshot)
-    monkeypatch.setattr(hub_module, "async_get_command_config_store", _async_return(store))
+    monkeypatch.setattr(wifi_deploy_module, "async_get_command_config_store", _async_return(store))
 
     # in-place plumbing on the proxy
     monkeypatch.setattr(hub._proxy, "backup_device", lambda *_a, **_k: device_entry)
@@ -342,7 +342,7 @@ def test_rejected_inplace_write_raises_without_replace(monkeypatch):
         call_order=calls,
     )
 
-    with pytest.raises(hub_module.HomeAssistantError):
+    with pytest.raises(wifi_deploy_module.HomeAssistantError):
         _run_sync(loop, hub, _payload())
 
     assert "inplace_run" in calls
@@ -501,4 +501,29 @@ def test_replacement_readback_still_rejects_a_genuinely_different_label(monkeypa
         _run_sync(loop, hub, _payload(deployed_port=9999))
 
     assert calls == ["create", "delete:9"]
+    loop.close()
+
+
+def test_baseline_read_refreshes_the_activity_catalog_once(monkeypatch):
+    """CR-L6-10 (HA mirror): one activity catalog read for the whole
+    baseline, not one per activity."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store()
+    hub = _make_hub(monkeypatch, loop, store=store, device_entry=_device_entry())
+    hub.activities = {101: {"name": "A"}, 102: {"name": "B"}, 103: {"name": "C"}}
+    refreshes: list[str] = []
+    activity_reads: list[dict] = []
+
+    def _backup_activity(act_id, **kwargs):
+        activity_reads.append(dict(kwargs))
+        return {}
+
+    monkeypatch.setattr(hub._proxy, "_refresh_catalog", lambda kind, **_k: refreshes.append(kind))
+    monkeypatch.setattr(hub._proxy, "backup_activity", _backup_activity)
+
+    _run_sync(loop, hub, _payload())
+
+    assert refreshes == ["activities"]
+    assert activity_reads == [{"refresh_catalog": False}] * 3
     loop.close()

@@ -13,7 +13,7 @@ import { TYPE } from "../../../remote-card/src/remote-card-shared";
 import type { RemoteSnapshot } from "../../../remote-card/src/backend/remote-backend";
 import { deviceModeEnabledInConfig, isDeviceLayoutKey } from "../../../remote-card/src/remote-card-layout";
 import { cardConfigForWebRemote } from "../../../remote-card/src/remote-web-config";
-import { embedHtmlSnippet } from "../../../remote-card/src/remote-host";
+import { embedHtmlSnippet, unavailableBannerText } from "../../../remote-card/src/remote-host";
 import { problemText, type HubView, type PanelApi } from "../panel-api";
 import { copyText } from "./access-view";
 import type { HubContext } from "../panel-context";
@@ -147,6 +147,7 @@ export class SbPanelRemote extends LitElement {
   private _card: SofabatonRemoteCard | null = null;
   private _unsubscribe: (() => void) | null = null;
   private _mountedFor: string | null = null;
+  private _reportedDirty = false;
   private _document: Record<string, unknown> | null = null;
   /** The card subtab's scale: the whole remote fits between the docks. */
   private _scale = 1;
@@ -192,6 +193,7 @@ export class SbPanelRemote extends LitElement {
       }
     }
     if (changed.has("section")) this._updateCard();
+    this._reportDirty();
     // The stage div is re-rendered with the view; keep the card in it.
     const stage = this.renderRoot.querySelector<HTMLElement>("#stage");
     if (stage && this._card && this._card.parentElement !== stage) stage.appendChild(this._card);
@@ -297,11 +299,10 @@ export class SbPanelRemote extends LitElement {
     const snapshot = backend.snapshot();
     this._snapshot = snapshot;
     const unavailable = !snapshot || snapshot.state === "unavailable";
-    this._banner = unavailable
-      ? backend.lastError
-        ? `The server cannot reach the hub (${backend.lastError}).`
-        : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)."
-      : null;
+    this._banner = unavailableBannerText(snapshot, backend.lastError, backend.controlRefused)
+      ?? (unavailable
+        ? "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected)."
+        : null);
   }
 
   private _setStatus(text: string, ok = true): void {
@@ -375,6 +376,18 @@ export class SbPanelRemote extends LitElement {
     if (split && ev.composedPath().includes(split)) return;
     this._closeMenu();
   };
+
+  /** The shell asks before a move that would drop the unsaved layout (CR-F5a-4). */
+  hasUnsyncedChanges(): boolean {
+    return this._isDirty();
+  }
+
+  private _reportDirty(): void {
+    const dirty = this._isDirty();
+    if (dirty === this._reportedDirty) return;
+    this._reportedDirty = dirty;
+    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty } }));
+  }
 
   /** Save has something to do: the draft (or the JSON text) differs from what the server holds. */
   private _isDirty(): boolean {

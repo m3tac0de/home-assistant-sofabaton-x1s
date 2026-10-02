@@ -1,9 +1,11 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.2.** This release adds X2 number keys and
-> firmware status fields, and returns activities and devices in display order.
-> Read the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25).
-> Consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
+> **This README describes 0.2.3.** This release is mostly fixes to hub
+> writes, backup and restore, and the cache, and limits new device and
+> activity names to the hub's 30 characters.
+> Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-unreleased).
+> Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
+> consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
 > consumers on 0.1.x also need the
 > [0.2.0 migration guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#020-2026-09-16).
 
@@ -74,7 +76,7 @@ Home Assistant integration provide their own listeners on top.
 ## Install
 
 ```
-python -m pip install "sofabaton-x>=0.2.2,<0.3"
+python -m pip install "sofabaton-x>=0.2.3,<0.3"
 ```
 
 From a checkout, run `python -m pip install .` from the repository root
@@ -87,9 +89,10 @@ until you have migrated:
 python -m pip install "sofabaton-x>=0.1,<0.2"
 ```
 
-Python 3.11+. The only dependency is
+Python 3.11+. The dependencies are
 [python-zeroconf](https://pypi.org/project/zeroconf/) (mDNS advertising and
-hub discovery).
+hub discovery) and [ifaddr](https://pypi.org/project/ifaddr/) (interface
+netmasks for app discovery replies; zeroconf requires it as well).
 
 ## Quickstart
 
@@ -263,6 +266,17 @@ the wait times out. Complete cached reads remain available.
 
 Control: `send(entity_id, command_id)` (alias `press`),
 `start_activity(act)`, `stop_activity(act)`, `find_remote()`.
+
+`apply_external_activity_state(activity_id)` feeds an activity change
+learned outside the hub session, such as the X2's MQTT activity topic
+(`activity/<MAC>/activity_control_up`, `None` for powered off). The
+state flips and `activity_changed` fires at once; the session's own
+refresh reconciles afterwards, and commands are held until the hub
+reports ready (at most 60 seconds). It returns `False` when nothing was
+applied (catalog not read yet, unknown id, or no change). The library
+carries no MQTT client; the consumer subscribes and checks the payload
+(drop retained messages, ignore pushes while the session is down, and
+apply an individual `off` only for the running activity).
 
 For the X2 on-screen number pad, use the package-root `ButtonName`
 constants `NUM_0`–`NUM_9`, `NUM_DASH` and `NUM_ENTER` wherever a button

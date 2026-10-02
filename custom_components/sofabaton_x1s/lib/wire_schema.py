@@ -45,16 +45,6 @@ class InputEntryLayout(Enum):
     WIDE_UTF16BE = "wide_utf16be"
 
 
-class InputsTrailingLayout(Enum):
-    """Shape of the trailing region following the entry list in a
-    family-0x46 inputs page. Phase 3 fleshes out the canonical layout;
-    Phase 1 simply needs a stable enum tag per variant so call sites
-    stop branching on raw ``hub_version`` strings.
-    """
-
-    CONTROL_KEYS_PLUS_FAVORITES = "control_keys_plus_favorites"
-
-
 @dataclass(slots=True, frozen=True)
 class WireSchema:
     """All per-variant wire choices for one hub firmware line."""
@@ -92,9 +82,53 @@ class WireSchema:
     #: Tag describing per-entry field layout. See :class:`InputEntryLayout`.
     input_entry_layout: InputEntryLayout
 
-    #: Tag describing the shape of the trailing region (control keys,
-    #: favorite slots, state byte) following the entries.
-    inputs_trailing_layout: InputsTrailingLayout
+
+#: Body bytes one paged family write page carries (family-0x12 macro saves,
+#: family-0x46 inputs), after its 3-byte ``[0x01][page_no_be]`` wrapper.
+PAGED_WRITE_BODY_CHUNK: Final[int] = 247
+PAGED_WRITE_WRAPPER_LEN: Final[int] = 3
+
+
+def paged_write_total_pages(body_len: int) -> int:
+    """How many pages a paged write body of ``body_len`` bytes needs.
+
+    The builders write this into the body header; :func:`page_family_body`
+    produces exactly that many pages. Both use the same chunk size, so a
+    body can never declare a page count its pager does not produce.
+    """
+
+    return max(1, (int(body_len) + PAGED_WRITE_BODY_CHUNK - 1) // PAGED_WRITE_BODY_CHUNK)
+
+
+def page_family_body(body: bytes) -> list[bytes]:
+    """Split a paged write body into wire pages, each ``[0x01][page_no_be]``
+    followed by up to :data:`PAGED_WRITE_BODY_CHUNK` body bytes."""
+
+    data = bytes(body)
+    return [
+        bytes([0x01]) + page.to_bytes(2, "big")
+        + data[(page - 1) * PAGED_WRITE_BODY_CHUNK : page * PAGED_WRITE_BODY_CHUNK]
+        for page in range(1, paged_write_total_pages(len(data)) + 1)
+    ]
+
+
+def encode_label_slot(text: str, slot_len: int, encoding: str) -> bytes:
+    """Encode ``text`` into a fixed-width label slot, zero-padded.
+
+    ``ascii`` drops characters it cannot encode (never a ``?`` stand-in),
+    which is what every other label writer and ``hub_command_label`` do.
+    ``utf-16-be`` cuts at whole code units and never keeps half of a
+    surrogate pair. The one encoder for command and macro labels (CR-L2-14).
+    """
+
+    value = str(text or "")
+    if encoding.replace("_", "-").lower() in ("utf-16-be", "utf-16be"):
+        data = value.encode("utf-16-be")[: slot_len - (slot_len % 2)]
+        if len(data) >= 2 and 0xD8 <= data[-2] <= 0xDB:
+            data = data[:-2]
+    else:
+        data = value.encode(encoding, errors="ignore")[:slot_len]
+    return data.ljust(slot_len, b"\x00")
 
 
 _X1_SCHEMA: Final[WireSchema] = WireSchema(
@@ -108,7 +142,6 @@ _X1_SCHEMA: Final[WireSchema] = WireSchema(
     macro_label_encoding="ascii",
     input_entry_stride=27,
     input_entry_layout=InputEntryLayout.NARROW_ASCII,
-    inputs_trailing_layout=InputsTrailingLayout.CONTROL_KEYS_PLUS_FAVORITES,
 )
 
 
@@ -123,7 +156,6 @@ _X1S_X2_SCHEMA: Final[WireSchema] = WireSchema(
     macro_label_encoding="utf-16-be",
     input_entry_stride=48,
     input_entry_layout=InputEntryLayout.WIDE_UTF16BE,
-    inputs_trailing_layout=InputsTrailingLayout.CONTROL_KEYS_PLUS_FAVORITES,
 )
 
 
@@ -156,8 +188,12 @@ def schema_for(hub_version: str) -> WireSchema:
 
 
 __all__ = [
+    "PAGED_WRITE_BODY_CHUNK",
+    "PAGED_WRITE_WRAPPER_LEN",
+    "page_family_body",
+    "paged_write_total_pages",
+    "encode_label_slot",
     "InputEntryLayout",
-    "InputsTrailingLayout",
     "SCHEMAS",
     "WireSchema",
     "schema_for",

@@ -48,6 +48,8 @@ export function renderHubPicker(params: {
   hubs: HubRuntime[];
   seen: SeenHub[];
   selectedHubId: string | null;
+  /** The server answers REST: false turns every hub's state into "unknown". */
+  reachable: boolean;
   open: boolean;
   manual: boolean;
   actionsHubId: string | null;
@@ -69,7 +71,7 @@ export function renderHubPicker(params: {
 }): TemplateResult {
   const selected = params.hubs.find((r) => r.hub.hub_id === params.selectedHubId) ?? null;
   const label = selected ? hubDisplayName(selected.hub) : params.hubs.length ? "pick a hub" : "no hub";
-  const tone = selected ? hubState(selected.hub).tone : "off";
+  const tone = selected ? hubState(selected.hub, params.reachable).tone : "off";
   const discovered = unregisteredHubs(params.seen, params.hubs.map((r) => r.hub));
   return html`
     <div class="hub-picker" id="hub-picker" @keydown=${params.onKeyDown}>
@@ -94,7 +96,7 @@ export function renderHubPicker(params: {
             <div role="group" aria-label="Registered hubs">
               <div class="picker-heading"><span class="picker-heading-label">Registered hubs</span></div>
               ${params.hubs.length ? params.hubs.map(({ hub }) => {
-                const { text, tone: t } = hubState(hub);
+                const { text, tone: t } = hubState(hub, params.reachable);
                 const name = hubDisplayName(hub);
                 const active = hub.hub_id === params.selectedHubId;
                 const expanded = params.actionsHubId === hub.hub_id;

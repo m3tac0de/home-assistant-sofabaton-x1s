@@ -19,7 +19,6 @@ Two layers under test:
 from __future__ import annotations
 
 import sys
-import types
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -858,3 +857,21 @@ def test_single_command_save_pages_a_long_blob_at_247_byte_chunks() -> None:
     # Each page advertises the rejection byte to the sequencer.
     for step in steps:
         assert step.ack_reject_first_bytes == (0x0C,)
+
+
+def test_run_create_sequence_fails_when_an_earlier_page_is_rejected() -> None:
+    """CR-L2-2: only the last page's ack was classified, so a rejected first
+    page of a paged family-0x46 write reported success."""
+    entries = [
+        InputEntry(key_id=0x33 + idx, fid=0x0000_0000_4E33 + idx, ordinal=idx + 1, label=f"Input {idx + 1}")
+        for idx in range(12)
+    ]
+    payload = build_inputs_write(hub_version=HUB_VERSION_X1, device_id=0x05, entries=entries)
+    step = _step("inputs", FAMILY_INPUTS, payload, ACK_OPCODE_STATUS, ack_first_byte=0)
+    proxy = _FakeProxy(ack_script=[(ACK_OPCODE_STATUS, b"\x0c"), (ACK_OPCODE_STATUS, b"\x00")])
+
+    result = run_create_sequence(proxy, [step])
+
+    assert result.success is False and result.rejected is True
+    assert result.reject_payload == b"\x0c"
+    assert len(proxy.send_log) == 1, "no further page after a rejection"

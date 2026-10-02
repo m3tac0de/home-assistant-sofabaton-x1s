@@ -4,6 +4,7 @@ import type {
   HassLike,
   HubAction,
   HubClickAction,
+  SidebarPanelMode,
   PendingSettingKey,
   SettingKey,
 } from "../shared/ha-context";
@@ -24,13 +25,17 @@ export function renderSettingsTab(params: {
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
   persistentCacheEnabled: boolean;
+  sidebarPanelMode: SidebarPanelMode;
   hubClickAction: HubClickAction;
   hubCommandBusy: boolean;
   pendingSettingKey: PendingSettingKey | null;
   pendingActionKey: HubAction | null;
   onToggleSetting: (setting: SettingKey, enabled: boolean) => void;
   onSelectHubClickAction: (value: HubClickAction) => void;
+  onSelectSidebarPanelMode: (value: SidebarPanelMode) => void;
   onRunAction: (action: HubAction) => void;
+  /** Opens the hub rename dialog (the card owns the dialog state). */
+  onRenameHub: () => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -64,7 +69,16 @@ export function renderSettingsTab(params: {
               </div>
             </div>
             <div class="hub-compact-text">
-              <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+              <div class="hub-compact-name-row">
+                <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+                <button
+                  class="icon-btn hub-rename-btn"
+                  ?disabled=${!canAct}
+                  aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
+                  title=${TOOLS_CARD_STRINGS.settings.renameHub}
+                  @click=${params.onRenameHub}
+                ><ha-icon icon="mdi:pencil"></ha-icon></button>
+              </div>
               ${versionLine ? html`<div class="hub-compact-meta">${versionLine}</div>` : nothing}
               ${firmwareOutdated(hub) ? html`<div class="hub-compact-meta"><span
                 class="hub-fw-chip"
@@ -133,6 +147,29 @@ export function renderSettingsTab(params: {
               </select>`,
             })}
             ${renderSettingTile({
+              title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
+              description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+              classes: busy ? "disabled" : "",
+              footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
+              control: html`<select
+                class="setting-select"
+                .value=${params.sidebarPanelMode}
+                ?disabled=${busy}
+                @click=${(event: Event) => event.stopPropagation()}
+                @change=${(event: Event) => {
+                  event.stopPropagation();
+                  const value = (event.currentTarget as HTMLSelectElement).value;
+                  params.onSelectSidebarPanelMode(
+                    value === "all" || value === "admin" ? value : "off",
+                  );
+                }}
+              >
+                <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
+                <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
+                <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
+              </select>`,
+            })}
+            ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
               description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
               classes: `toggle${busy ? " disabled" : ""}`,
@@ -159,6 +196,7 @@ export function renderSettingsTab(params: {
               classes: `action${canAct ? "" : " disabled"}`,
               control: html`<ha-icon class="setting-icon" icon="mdi:bell-ring-outline"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("find_remote") : undefined,
+              button: true,
             })}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.syncRemoteTitle,
@@ -166,6 +204,7 @@ export function renderSettingsTab(params: {
               classes: `action${canAct ? "" : " disabled"}`,
               control: html`<ha-icon class="setting-icon" icon="mdi:sync"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("sync_remote") : undefined,
+              button: true,
             })}
           </div>
         </div>

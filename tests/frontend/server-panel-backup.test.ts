@@ -96,7 +96,7 @@ test("a failure is one line, from the most specific part of the Problem", () => 
   assert.equal(jobFailureText(failed({ type: "restore_failed", title: "The restore stopped", status: 502, detail: "failed at device 4" }), "x"), "failed at device 4");
   assert.equal(jobFailureText(failed({ type: "restore_failed", title: "The restore stopped", status: 502 }), "x"), "The restore stopped");
   assert.equal(jobFailureText(failed(null), "Restore failed"), "Restore failed");
-  assert.equal(jobProgressMessage(job({ progress: { message: "  Backing up device 1 " } })), "Backing up device 1");
+  assert.equal(jobProgressMessage(job({ progress: { phase: "reading", message: "  Backing up device 1 ", completed_steps: 0, total_steps: 0 } })), "Backing up device 1");
   assert.equal(jobProgressMessage(job()), "");
 });
 

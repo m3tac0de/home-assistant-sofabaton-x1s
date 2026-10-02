@@ -537,7 +537,9 @@ server keeps retrying with backoff, and `POST
 Failures split two ways. An immediate `409` is something the record
 alone decides: `callback_device_exists`, `callback_device_stale`,
 `callback_device_not_stale`, `callback_device_referenced` (the detail
-names the activities and reference kinds), `callback_port_x1`. Anything
+names the activities and reference kinds; an activity the server has not
+read yet is named too, as "not read yet", because it may hold a
+reference; pass `?force=true` to delete anyway), `callback_port_x1`. Anything
 that needs the hub happens inside the accepted job and fails it with a
 coded error: `callback_update_declined` (a record's label matches
 neither what was deployed nor what you asked, so the device was edited
@@ -659,6 +661,19 @@ panel under **Server settings → MQTT broker**, or with `--mqtt-host`, see
   the broker. An admin may still call the test API with supplied settings;
   the panel displays startup settings read-only.
   Invalid settings are `422 invalid_mqtt_config`.
+- **Activity state.** The X2 also publishes every activity transition
+  to `activity/<MAC>/activity_control_up` (`{"activity_id", "state"}`,
+  `255` = everything off), early in its power sequence. The server
+  subscribes to it for every enabled X2 whose MAC is known, device or no
+  device, and feeds the change to the library the way the Home Assistant
+  integration does: `activity_changed` fires and `GET /hubs/{id}/activity`
+  flips at once, the hub session's own refresh reconciles afterwards, and
+  commands sent before the hub reports ready are held (at most 60 s;
+  a command into a running power macro fails and can interrupt it).
+  Retained messages are dropped; pushes while the hub session is down or
+  before its first activities read are ignored; an individual `off`
+  counts only for the running activity. The activity topic shows in
+  `GET /server/mqtt` `topics`. Removing the broker ends it.
 - Saving or removing the broker emits `server_event` kind `mqtt_config`
   with an empty `hub_id`. Removing it stops MQTT press reception for
   existing MQTT Wifi Devices; it does not delete or convert those devices.
@@ -726,7 +741,7 @@ JSON objects discriminated by `type`:
 | --- | --- |
 | `hello` | once on connect: `server_version`, `api_version`, `instance_id`, `hubs` (`hub_id`, `enabled`) |
 | `hub_event` | `hub_id` and the library `event` (`seq`, `kind`, `payload`): `activity_changed`, `activity_list_updated`, `hub_state`, `app_state`, `status_changed`, `catalog_ready`, `snapshot_changed`, `ota` |
-| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`); `auth` with an empty `hub_id` says access was set up, the admin account changed or sessions were signed out (re-read `GET /auth`); `mqtt_config` with an empty `hub_id` says the broker was saved or removed (re-read `GET /server/mqtt/config` and `GET /server/mqtt`) |
+| `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_rekeyed`, `hub_host_changed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`); `auth` with an empty `hub_id` says access was set up, the admin account changed or sessions were signed out (re-read `GET /auth`); `mqtt_config` with an empty `hub_id` says the broker was saved or removed (re-read `GET /server/mqtt/config` and `GET /server/mqtt`) |
 | `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
 | `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |
@@ -737,7 +752,10 @@ library's consumer or the WebSocket client can fall behind. `press.seq` is
 a separate server-instance-wide counter shared with press history; use
 `(instance_id, seq)` to de-duplicate presses.
 `hub_rekeyed` is the one to watch after registering by host: the id
-becomes the hub's MAC once its banner is read. Disabling a hub is
+becomes the hub's MAC once its banner is read. `hub_host_changed` says the
+server saw the hub advertised from another address and followed it:
+`config.host` changed and a running proxy was rebuilt there (re-read the
+hub); the id, name, cache and layouts stay. Disabling a hub is
 announced by `hub_disabled` alone (its proxy is gone before any link
 event could be relayed); enabling it creates a new proxy whose
 `hub_event.event.seq` starts over. A hub transport reconnect alone does not

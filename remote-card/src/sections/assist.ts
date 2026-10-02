@@ -1,6 +1,5 @@
-// Automation Assist row + MQTT discovery modal for the Lit card (legacy
-// assist DOM from _render plus _updateAutomationAssistUI/-ModalUI, now
-// rendered from the AutomationAssistController's state).
+// Automation Assist row + MQTT discovery modal for the Lit card, rendered
+// from the AutomationAssistController's state.
 
 import { html, type TemplateResult } from "lit";
 import type { AutomationAssistController } from "../state/automation-assist-controller";

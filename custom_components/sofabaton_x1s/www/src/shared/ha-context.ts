@@ -9,8 +9,11 @@ export type SettingKey =
   | "wifi_device_enabled";
 /** Global setting: what clicking a row in the Hub tab drawers does. */
 export type HubClickAction = "none" | "send" | "copy";
+/** Global setting: the "Sofabaton X" sidebar panel is absent, shown to
+ *  every user, or to Home Assistant administrators only. */
+export type SidebarPanelMode = "off" | "all" | "admin";
 /** Keys the settings tab can hold pending while the backend persists them. */
-export type PendingSettingKey = SettingKey | "hub_click_action";
+export type PendingSettingKey = SettingKey | "hub_click_action" | "sidebar_panel";
 export type HubAction = "find_remote" | "sync_remote";
 export type RefreshKind = "activity" | "device";
 
@@ -30,12 +33,16 @@ export interface HassLike {
   states: Record<string, HassEntityState>;
   locale?: { language?: string };
   language?: string;
+  user?: { is_admin?: boolean } | null;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,
     service: string,
     serviceData?: Record<string, unknown>,
     target?: Record<string, unknown>,
+    /** Home Assistant shows its own error toast unless this is false: the
+     *  card passes false and reports failures in its dock. */
+    notifyOnError?: boolean,
   ): Promise<unknown>;
   connection?: HassConnectionLike | null;
 }
@@ -56,7 +63,11 @@ export interface ControlPanelHubState {
   ip_address?: string;
   activity_count?: number;
   device_count?: number;
+  /** The hub's TCP session, as the backend sees it (no HA entity needed). */
+  hub_connected?: boolean;
   proxy_client_connected?: boolean;
+  /** Backend-computed: the hub is connected and no app client holds it. */
+  actions?: { can_find_remote?: boolean; can_sync_remote?: boolean };
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
   activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
@@ -84,6 +95,7 @@ export interface ControlPanelHubState {
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   hub_click_action?: HubClickAction;
+  sidebar_panel?: SidebarPanelMode;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }
@@ -108,6 +120,14 @@ export interface ControlPanelRuntimeState {
   total_steps?: number | null;
   device_key?: string | null;
   device_name?: string | null;
+  /** Registry id of a running backup/restore/sync operation. */
+  operation_id?: string;
+  /** When nothing runs: how the most recent registry operation ended. */
+  last_operation?: { operation_id?: string | null; status: "success" | "failed" } | null;
+  /** When nothing runs: last Wifi deploy outcome per device key. */
+  last_wifi_deploys?: Record<string, "success" | "failed"> | null;
+  /** The failure code of each failed deploy (see localizeWifiSyncFailure). */
+  last_wifi_deploy_errors?: Record<string, string> | null;
 }
 
 export interface CacheHubState {
@@ -155,21 +175,69 @@ export interface LogsResponse {
   lines: ControlPanelLogLine[];
 }
 
-/** One configured Wifi Event slot (`sofabaton_x1s/wifi_event/list`). */
+/** One configured Wifi Event slot (`sofabaton_x1s/wifi_event/list`): one
+ *  hub record, one action. Long press is a property of the button binding,
+ *  never of the event (docs/internal/wifi-events-single-record-plan.md). */
 export interface WifiEvent {
   slot_index: number;
   name: string;
-  long_press_enabled: boolean;
   action: Record<string, unknown>;
-  long_press_action: Record<string, unknown>;
-  /** Short law: slot_index + 1. */
+  /** The event's hub record: slot_index + 1. */
   command_id: number;
-  /** Long law: command_id + slot_count. */
-  long_press_command_id: number;
   /** The deployed hub device id, or null before the first deploy lands. */
   device_id: number | null;
   /** False for a staged slot whose deploy hasn't landed (needs sync). */
   deployed: boolean;
+}
+
+/** A Wifi Device's deploy state (command_sync/progress, and folded into each
+ *  command_devices/list row). */
+export interface WifiCommandSyncState {
+  status: string;
+  current_step: number;
+  total_steps: number;
+  /** Stable stage name the deploy pipeline reports; localized for display.
+   *  Cleared (null) for the in-place planner's per-step writes, which carry
+   *  a structured `step_kind` (+ the command's own label in `step_name`)
+   *  instead, falling back to `message` for unknown kinds. */
+  phase?: string | null;
+  step_kind?: string | null;
+  step_name?: string | null;
+  message: string;
+  /** Why the last sync failed (status "failed"); see localizeWifiSyncFailure. */
+  error_code?: string | null;
+  commands_hash: string;
+  managed_command_hashes: string[];
+  sync_needed: boolean;
+}
+
+export interface WifiDeviceSummary extends WifiCommandSyncState {
+  device_key: string;
+  device_name: string;
+  configured_slot_count: number;
+  deployed_device_id?: number | null;
+  commands?: Array<Record<string, unknown>>;
+  power_on_command_id?: number | null;
+  power_off_command_id?: number | null;
+  requested_transport?: string;
+  deployed_transport?: string | null;
+}
+
+export interface WifiDevicesListResponse {
+  devices?: WifiDeviceSummary[];
+  max_devices?: number;
+  mqtt_available?: boolean;
+}
+
+export interface WifiCommandConfigResponse {
+  commands?: unknown[];
+  power_on_command_id?: number | null;
+  power_off_command_id?: number | null;
+}
+
+export interface HubEventActionsResponse {
+  actions?: Record<string, unknown>;
+  activity_actions?: Record<string, unknown>;
 }
 
 export interface WifiEventsListResponse {
@@ -180,6 +248,10 @@ export interface WifiEventsListResponse {
   /** The deployed events-device id, or null before the first deploy ever
    *  (refs use the placeholder id 0 until the Sync flow rewrites them). */
   device_id?: number | null;
+  /** The record's slot count. A deploy from before the single-record model
+   *  also holds a long record per event at `command_id + slot_count`; the
+   *  Sync that retires those moves their references onto the event. */
+  slot_count?: number;
 }
 
 export interface WifiEventCreateResponse extends WifiEventsListResponse {
@@ -187,7 +259,6 @@ export interface WifiEventCreateResponse extends WifiEventsListResponse {
     slot_index: number;
     name: string;
     command_id: number;
-    long_press_command_id: number;
     device_id: number | null;
   };
 }
@@ -328,10 +399,10 @@ export interface BackupBundleDeviceBlock {
   // One byte encodes the whole "Power On/Off Setup" + "Idle Behavior"
   // story. Lives in its own hub query, captured/restored separately from
   // the device record. Absent on backups that predate idle-behavior
-  // capture, which fall back to `power_mode`.
+  // capture; the editor then shows the mode as unknown.
   idle_behavior?: number | null;
-  // Legacy device-record power byte; retained for fallback on older
-  // backups that lack `idle_behavior`.
+  // The device record's tail byte. A different value from idle_behavior
+  // (it sits at 1 on real hubs) and never stands in for it.
   power_mode?: number | null;
 }
 
@@ -476,6 +547,9 @@ export interface BackupProgressEvent {
   failed_at?: string | null;
   filename?: string | null;
   backup?: BackupBundlePayload | null;
+  /** backup/state sends these instead of the bundle itself. */
+  has_backup?: boolean | null;
+  backup_summary?: { devices: number; activities: number } | null;
   backup_downloaded?: boolean | null;
   backup_expired?: boolean | null;
   result?: BackupRestoreResult | null;

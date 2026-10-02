@@ -27,9 +27,55 @@ test.describe("tools-card browser harness", () => {
       }, labels);
     }
 
+    // The card-picker entry follows the active language (CR-X7-2).
+    const pickerName = () => page.evaluate(
+      () => window.customCards.find((card) => card.type === "sofabaton-control-panel")?.name,
+    );
+    expect(await pickerName()).toBe("Sofabaton 控制面板");
+    await page.getByLabel("Language", { exact: true }).selectOption("en");
+    await expect.poll(pickerName).toBe("Sofabaton Control Panel");
+
     expect(await page.evaluate(
       () => window.__toolsCardHarness.getUnhandledCalls(),
     )).toEqual([]);
+  });
+
+  test("the admins-only option shows other users a notice (CR-X2-1)", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("1"));
+    const setUser = (isAdmin) => page.evaluate((admin) => {
+      const card = window.__toolsCardHarness.getCard();
+      const base = window._harnessHass;
+      card.setConfig({ admin_only: true });
+      card.hass = Object.assign(Object.create(Object.getPrototypeOf(base)), base, { user: { is_admin: admin } });
+    }, isAdmin);
+    const view = () => page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot;
+      return {
+        notice: root.querySelector(".backend-unavailable-title")?.textContent?.trim() ?? null,
+        tabs: root.querySelectorAll(".tab-btn-label").length,
+      };
+    });
+
+    await setUser(false);
+    await expect.poll(view).toEqual({ notice: "Admins only", tabs: 0 });
+    await setUser(true);
+    await expect.poll(view).toEqual({ notice: null, tabs: 3 });
+
+    const emitted = await page.evaluate(async () => {
+      const editor = document.createElement("sofabaton-control-panel-editor");
+      editor.setConfig({ card_height: 500 });
+      document.body.appendChild(editor);
+      const configs = [];
+      editor.addEventListener("config-changed", (event) => configs.push(event.detail.config));
+      const box = editor.querySelector("#tools-card-admin-only");
+      box.click();
+      editor.setConfig(configs[0]);
+      editor.querySelector("#tools-card-admin-only").click();
+      editor.remove();
+      return configs;
+    });
+    expect(emitted).toEqual([{ card_height: 500, admin_only: true }, { card_height: 500 }]);
   });
 
   test("compact controls do not clip at narrow width in any supported locale", async ({ page }) => {
@@ -438,5 +484,29 @@ test.describe("tools-card browser harness", () => {
         createModalOpen: wifi?._createDeviceModalOpen ?? false,
       };
     })).toEqual({ selectedDeviceKey: null, createModalOpen: true });
+  });
+
+  test("a refused Wifi sync names its reason in the dock, never as backend text", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-sync-refused"));
+    await page.waitForFunction(() => {
+      const tab = window.__toolsCardHarness.getCard().shadowRoot?.querySelector("sofabaton-wifi-commands-tab");
+      return Boolean(tab?.shadowRoot?.querySelector(".detail-sync-btn:not([disabled])"));
+    });
+    await page.evaluate(() => {
+      const tab = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab");
+      tab.shadowRoot.querySelector(".detail-sync-btn").click();
+    });
+    const dock = () => page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".card-bottom-dock-status")?.textContent?.trim() ?? "");
+    await expect.poll(dock).toBe("Activities on the hub changed. Re-select this Wifi Device's activities, save, and sync again.");
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    expect(calls.some((call) => call.channel === "service")).toBe(false);
+    const allText = await page.evaluate(() => {
+      const collect = (root) => [...root.querySelectorAll("*")].map((el) =>
+        (el.shadowRoot ? collect(el.shadowRoot) : "") + (el.childElementCount ? "" : el.textContent)).join(" ");
+      return collect(window.__toolsCardHarness.getCard().shadowRoot);
+    });
+    expect(allText).not.toContain("Failed Activity validation");
   });
 });

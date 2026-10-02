@@ -25,14 +25,14 @@ import voluptuous as vol
 
 from homeassistant.components.infrared import InfraredEmitterEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 
 from .const import CONF_MAC, DOMAIN, signal_client, signal_hub
-from .hub import get_hub_display_name, get_hub_model
+from .hub import hub_device_info
 from .lib.blob_decoders import build_raw_ir_blob_body, parse_pronto_hex
 
 if TYPE_CHECKING:
@@ -105,14 +105,7 @@ class SofabatonInfraredEmitter(InfraredEmitterEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        firmware = getattr(self._hub, "hub_firmware_version", None)
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
-            name=get_hub_display_name(self._hub, self._entry),
-            manufacturer="Sofabaton",
-            model=get_hub_model(self._entry),
-            sw_version=str(firmware) if firmware is not None else None,
-        )
+        return hub_device_info(self._hub, self._entry)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -124,8 +117,9 @@ class SofabatonInfraredEmitter(InfraredEmitterEntity):
                 async_dispatcher_connect(self.hass, signal, self._schedule_update)
             )
 
+    @callback
     def _schedule_update(self, *_args) -> None:
-        self.schedule_update_ha_state()
+        self.async_write_ha_state()
 
     async def async_send_pronto(self, pronto: str) -> None:
         """Entity service: decode a pronto hex string and emit it.
@@ -162,8 +156,7 @@ class SofabatonInfraredEmitter(InfraredEmitterEntity):
             raise HomeAssistantError(
                 "Hub is not ready to send infrared (connected? Sofabaton app attached?)"
             )
-        recorder = getattr(self._hub, "record_ir_emission", None)
-        if recorder is not None:
-            # IR5 intercept hook: the hub keeps a ring of recent sends
-            # for the intercept sensor. Absent until IR5 lands.
-            recorder(command=command, timings=timings, carrier_hz=carrier_hz, blob=blob)
+        # The hub keeps a ring of recent sends for the intercept sensor.
+        self._hub.record_ir_emission(
+            command=command, timings=timings, carrier_hz=carrier_hz, blob=blob
+        )

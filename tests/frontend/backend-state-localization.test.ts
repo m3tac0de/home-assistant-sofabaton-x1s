@@ -12,9 +12,10 @@ import {
   localizeBackendError,
   localizeBackendOperationDetail,
   localizeBackendProgress,
+  localizeWifiSyncFailure,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
 import { resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
-import { setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
 
 test("structured backend errors are localized without relaying English exception text", () => {
   setToolsCardLanguage("de");
@@ -74,6 +75,24 @@ test("device creation errors are localized from stable codes", () => {
     );
   }
   setToolsCardLanguage("en");
+});
+
+test("Add Activity and the reorders speak the device-create codes (CR-X7-4, CR-X2-11)", () => {
+  setToolsCardLanguage("en");
+  for (const surface of ["activity_create", "catalog_write", "device_create"] as const) {
+    for (const code of ["busy", "unavailable", "another_operation"]) {
+      assert.equal(localizeBackendError({ code }, surface), TOOLS_CARD_STRINGS.errors.anotherOperation, `${surface} ${code}`);
+    }
+    assert.equal(localizeBackendError({ code: "not_found" }, surface), TOOLS_CARD_STRINGS.errors.selectedHubUnavailable);
+  }
+  assert.equal(localizeBackendError({ code: "invalid_name" }, "activity_create"), TOOLS_CARD_STRINGS.errors.activityNameInvalid);
+  assert.equal(localizeBackendError({ code: "create_failed" }, "activity_create"), TOOLS_CARD_STRINGS.errors.activityCreateFailed);
+  assert.equal(localizeBackendError({ code: "reorder_failed" }, "catalog_write"), TOOLS_CARD_STRINGS.errors.reorderFailed);
+  // Backend prose never becomes UI copy.
+  assert.equal(
+    localizeBackendError({ code: "unavailable", message: "sync_in_progress: _ws_activity_create" }, "activity_create"),
+    TOOLS_CARD_STRINGS.errors.anotherOperation,
+  );
 });
 
 test("structured backend progress is localized without relaying its English message", () => {
@@ -501,7 +520,8 @@ test("every Wifi deploy phase the hub emits has frontend copy", () => {
   // Guards the seam that caused this regression in the first place: the hub
   // names a stage, the card translates it. A stage added on one side and not
   // the other degrades to English (or a step counter) silently, so pin it.
-  const source = readFileSync(path.resolve("custom_components/sofabaton_x1s/hub.py"), "utf8");
+  // The deploy lives in wifi_deploy.py since the hub.py split (R6, CR-H1-13).
+  const source = readFileSync(path.resolve("custom_components/sofabaton_x1s/wifi_deploy.py"), "utf8");
 
   const emitted = new Set<string>();
   let cursor = source.indexOf("_set_command_sync_progress(");
@@ -526,4 +546,30 @@ test("every Wifi deploy phase the hub emits has frontend copy", () => {
 
   const dead = Object.keys(WIFI_DEPLOY_PHASES).filter((phase) => !emitted.has(phase)).sort();
   assert.deepEqual(dead, [], `frontend strings for phases the hub never sends: ${dead.join(", ")}`);
+});
+
+test("a failed Wifi sync is named by its code, never by the backend's English", () => {
+  const S = TOOLS_CARD_STRINGS.wifiCommands;
+  assert.equal(localizeWifiSyncFailure("activities_changed"), S.syncFailedActivitiesChanged);
+  // Home Assistant's WS rejection shape: the code decides, the prose is ignored.
+  assert.equal(localizeWifiSyncFailure({ code: "busy", message: "Another hub operation is running" }), S.syncFailedHubBusy);
+  assert.equal(
+    localizeWifiSyncFailure({ code: "writes_refused", message: "Failed applying 2 hub write(s) (binding 0x66/0xB0, ...)" }),
+    S.syncFailedWritesRefused,
+  );
+  assert.equal(localizeWifiSyncFailure({ message: "Failed Activity validation: Activity 101 was ..." }), S.syncFailedGeneric);
+  assert.equal(localizeWifiSyncFailure("a_code_this_card_does_not_know"), S.syncFailedGeneric);
+});
+
+test("every Wifi sync failure code the deploy raises has its own dock text", () => {
+  // The codes live in wifi_deploy.py (WIFI_SYNC_FAILURE_MESSAGES); a code
+  // added there and not here would degrade to the generic sentence.
+  const source = readFileSync(path.resolve("custom_components/sofabaton_x1s/wifi_deploy.py"), "utf8").replace(/\r\n/g, "\n");
+  const start = source.indexOf("WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {");
+  const block = source.slice(start, source.indexOf("\n}\n", start));
+  const codes = [...block.matchAll(/^\s{4}"([a-z_]+)":/gm)].map((m) => m[1]);
+  assert.ok(codes.length >= 12, `expected the deploy's failure codes, saw ${codes.length}`);
+  const generic = TOOLS_CARD_STRINGS.wifiCommands.syncFailedGeneric;
+  const unmapped = codes.filter((code) => code !== "sync_failed" && localizeWifiSyncFailure(code) === generic);
+  assert.deepEqual(unmapped, []);
 });

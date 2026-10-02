@@ -42,7 +42,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 import json
-from typing import Any, Iterable, Iterator, Mapping, Optional, Sequence
+from typing import Any, Collection, Iterable, Mapping, Optional, Sequence
 
 from .activity_sync import (
     ACTIVITY_ID_BASE,
@@ -50,7 +50,9 @@ from .activity_sync import (
     build_activity_sync_plan,
     build_device_sync_plan,
 )
+from .bundle_validation import _validate_name
 from .device_class_profiles import supported_create_classes
+from .entity_refs import is_entity_ref, iter_entity_references
 from .errors import SnapshotIncompleteError
 
 __all__ = [
@@ -78,7 +80,6 @@ ACTIVITY_ID_MIN = ACTIVITY_ID_BASE
 ACTIVITY_ID_MAX = 0xFF
 
 # Delay steps in a macro carry this as their device byte; never an entity.
-MACRO_DELAY_SENTINEL = 0xFF
 
 # Keys that are provenance or derived, not configuration. Stripped from
 # both documents before anything is compared; the runner and the server
@@ -302,64 +303,41 @@ def _name_of(row: Mapping[str, Any]) -> str:
     return str(block.get("name") or "").strip()
 
 
-def _clean_name(value: Any, what: str, entity: Optional[tuple[str, int]]) -> str:
+def _clean_name(
+    value: Any,
+    what: str,
+    entity: Optional[tuple[str, int]],
+    *,
+    model: Optional[str] = None,
+    grandfathered: Collection[str] = (),
+) -> str:
+    """The name, stripped; raises when the hub could not store it as given.
+
+    Device and activity names follow the editor's rule (``bundle_validation``):
+    the slot holds 30 UTF-16 code units, and the X1 only plain ASCII letters,
+    digits and spaces. The hub would otherwise truncate or drop characters
+    silently, and re-applying the document would plan the rename forever.
+    A name the baseline already carries is hub truth and passes.
+    """
+
     name = str(value or "").strip()
     if not name:
         raise InvalidDocumentError(f"{what} needs a name", entity=entity)
-    if len(name) > _MAX_NAME_LENGTH:
-        raise InvalidDocumentError(f"{what} name is longer than {_MAX_NAME_LENGTH} characters", entity=entity)
+    if entity is None or model is None:
+        if len(name) > _MAX_NAME_LENGTH:
+            raise InvalidDocumentError(f"{what} name is longer than {_MAX_NAME_LENGTH} characters", entity=entity)
+        return name
+    try:
+        _validate_name(name, f"{what} name", model, grandfathered=grandfathered)
+    except ValueError as err:
+        raise InvalidDocumentError(str(err), entity=entity) from err
     return name
 
 
 # -- references (the shared walker, plan H1 lifts restore onto it) ------------------------
 
 
-def iter_entity_references(document: Mapping[str, Any]) -> Iterator[tuple[tuple[str, int], str, int]]:
-    """Yield ``(referrer, site, target_id)`` for every entity reference
-    inside the entities of ``document``.
-
-    Sites: ``favorite`` (``favorite_slots[].device_id``), ``binding``
-    (``button_bindings[].device_id``), ``binding_long_press``
-    (``long_press_device_id``), ``macro_step`` (``macros[].steps[].device_id``,
-    a device or a cross-activity reference; delay steps skipped),
-    ``referenced_source`` (the derived ``referenced_source_device_ids``
-    list). A row's own id is not a reference. Device rows are walked too
-    (device-level bindings and macros exist on the hub)."""
-
-    for kind in ("device", "activity"):
-        for row in _rows(document, kind):
-            if not isinstance(row, Mapping):
-                continue
-            self_id = _entity_id(row)
-            if self_id is None:
-                continue
-            referrer = (kind, self_id)
-            for fav in row.get("favorite_slots") or []:
-                if isinstance(fav, Mapping) and _is_ref(fav.get("device_id")):
-                    yield referrer, "favorite", int(fav["device_id"])
-            for binding in row.get("button_bindings") or []:
-                if not isinstance(binding, Mapping):
-                    continue
-                if _is_ref(binding.get("device_id")):
-                    yield referrer, "binding", int(binding["device_id"])
-                if _is_ref(binding.get("long_press_device_id")):
-                    yield referrer, "binding_long_press", int(binding["long_press_device_id"])
-            for macro in row.get("macros") or []:
-                if not isinstance(macro, Mapping):
-                    continue
-                for step in macro.get("steps") or []:
-                    if not isinstance(step, Mapping):
-                        continue
-                    target = step.get("device_id")
-                    if _is_ref(target) and int(target) != MACRO_DELAY_SENTINEL:
-                        yield referrer, "macro_step", int(target)
-            for target in row.get("referenced_source_device_ids") or []:
-                if _is_ref(target):
-                    yield referrer, "referenced_source", int(target)
-
-
-def _is_ref(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value != 0
+_is_ref = is_entity_ref
 
 
 def replace_entity_ids(document: Mapping[str, Any], mapping: Mapping[int, int]) -> dict[str, Any]:
@@ -630,10 +608,17 @@ def _classify(baseline: Mapping[str, Any], desired: Mapping[str, Any]) -> _Diff:
 
 def _validate(diff: _Diff, hub_version: Optional[str]) -> None:
     allowed = supported_create_classes(hub_version) if hub_version else ()
+    baseline_names = {
+        _name_of(row)
+        for key in ("devices", "activities")
+        for row in (diff.baseline.get(key) or [])
+        if isinstance(row, Mapping)
+    }
+    names = {"model": hub_version, "grandfathered": baseline_names}
     for placeholder in diff.created_devices:
         row = diff.want_devices[placeholder]
         entity = ("device", placeholder)
-        _clean_name(_name_of(row), "a new device", entity)
+        _clean_name(_name_of(row), "a new device", entity, **names)
         device_class = str((row.get("device") or {}).get("device_class") or "").strip()
         if not device_class:
             raise InvalidDocumentError("a new device needs device.device_class", entity=entity)
@@ -648,26 +633,37 @@ def _validate(diff: _Diff, hub_version: Optional[str]) -> None:
             if _int(command.get("command_id"), 0) < 1:
                 raise InvalidDocumentError("a command needs a command_id of 1 or more", entity=entity)
     for placeholder in diff.created_activities:
-        _clean_name(_name_of(diff.want_activities[placeholder]), "a new activity", ("activity", placeholder))
+        _clean_name(_name_of(diff.want_activities[placeholder]), "a new activity", ("activity", placeholder), **names)
 
     for eid in diff.edited_devices:
-        _clean_name(_name_of(diff.want_devices[eid]), "a device", ("device", eid))
+        _clean_name(_name_of(diff.want_devices[eid]), "a device", ("device", eid), **names)
     for eid in diff.edited_activities:
-        _clean_name(_name_of(diff.want_activities[eid]), "an activity", ("activity", eid))
+        _clean_name(_name_of(diff.want_activities[eid]), "an activity", ("activity", eid), **names)
 
     # References: every target must be an entity the document keeps or creates.
     device_ids = set(diff.want_devices)
     activity_ids = set(diff.want_activities)
+    written = {("activity", eid) for eid in (*diff.created_activities, *diff.edited_activities)}
     for referrer, site, target in iter_entity_references(diff.desired):
         if referrer[1] == target:
             continue  # an activity's own macro ids ride its own id
+        if tuple(referrer) in written and (target >= ACTIVITY_ID_BASE or target in activity_ids):
+            # One activity never starts or binds another (L-B25). Rows the
+            # document leaves alone pass: they are not written.
+            raise InvalidDocumentError(
+                f"{referrer[0]} {referrer[1]} references activity {target} ({site}); "
+                "an activity cannot reference another activity",
+                entity=referrer,
+            )
         if target in device_ids or target in activity_ids:
             continue
         if target < 0:
-            what = ("activity", target) if target in diff.created_activities else ("device", target)
+            # Every placeholder the document creates is in the sets above, so
+            # this one names nothing. A reference targets a device (macro
+            # steps into activities are not a product feature, L-B25).
             raise DanglingReferenceError(
                 f"{referrer[0]} {referrer[1]} references placeholder {target} ({site}), which no new entity carries",
-                entity=referrer, target=what,
+                entity=referrer, target=("device", target),
             )
         kind = "activity" if target >= ACTIVITY_ID_BASE else "device"
         removed = diff.removed_activities if kind == "activity" else diff.removed_devices
@@ -682,9 +678,9 @@ def _validate(diff: _Diff, hub_version: Optional[str]) -> None:
         )
 
     # Editability: an edited entity must have been captured in full.
-    for kind, edited, existing in (
-        ("device", diff.edited_devices, diff.base_devices),
-        ("activity", diff.edited_activities, diff.base_activities),
+    for kind, edited in (
+        ("device", diff.edited_devices),
+        ("activity", diff.edited_activities),
     ):
         for eid in edited:
             raw = _original_row(diff, kind, eid)
@@ -967,7 +963,11 @@ def _notes_for(
 def _members(activity: Mapping[str, Any]) -> set[int]:
     self_id = _entity_id(activity)
     out: set[int] = set()
-    for referrer, _site, target in iter_entity_references({"activities": [activity]}):
+    # The direct references only, as activity_sync counts members: the
+    # derived referenced_source mirror alone never makes a member step.
+    for referrer, _site, target in iter_entity_references(
+        {"activities": [activity]}, exclude_sites=("referenced_source",)
+    ):
         if referrer[1] == self_id and 0 < target < ACTIVITY_ID_BASE:
             out.add(target)
     return out

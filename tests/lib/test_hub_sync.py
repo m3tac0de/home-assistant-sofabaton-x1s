@@ -354,6 +354,34 @@ def test_dangling_reference_to_an_unknown_placeholder() -> None:
     assert info.value.target == ("device", -5)
 
 
+
+@pytest.mark.parametrize("site", ["binding", "favorite", "macro_step"])
+def test_an_activity_the_document_writes_cannot_reference_another_activity(site: str) -> None:
+    """One activity never starts or binds another (L-B25, CR-F3-19)."""
+
+    base = _bundle()
+    desired = copy.deepcopy(base)
+    activity = _find(desired, "activity", 101)
+    if site == "binding":
+        activity["button_bindings"].append(_binding(VOL_UP, 102, 1))
+    elif site == "favorite":
+        activity["favorite_slots"].append({"button_id": 3, "device_id": 102, "command_id": 1, "name": "Listen"})
+    else:
+        activity["macros"][0]["steps"].append({"device_id": 102, "command_id": 0xC6})
+    with pytest.raises(hub_sync.InvalidDocumentError, match="cannot reference another activity") as info:
+        build(base, desired)
+    assert info.value.entity == ("activity", 101)
+
+
+def test_an_activity_the_document_leaves_alone_is_not_refused_for_its_references() -> None:
+    """Only written rows are checked: an unchanged activity is never sent."""
+
+    base = _bundle()
+    _find(base, "activity", 101)["button_bindings"].append(_binding(VOL_UP, 102, 1))
+    desired = copy.deepcopy(base)
+    _find(desired, "device", 9)["device"]["name"] = "Media"
+    build(base, desired)
+
 def test_out_of_scope_entity_diff_names_the_entity() -> None:
     base = _bundle()
     desired = copy.deepcopy(base)
@@ -637,3 +665,39 @@ def test_derived_binding_labels_are_not_a_change() -> None:
     _find(desired, "activity", 101)["button_bindings"] = [_binding(POWER_ON, 5, 2)]
     plan = build(base, desired)
     assert [s.kind for s in plan.items[0].steps][0] == "binding_write"
+
+
+def test_an_entity_name_must_fit_the_hub_slot() -> None:
+    base = _bundle()
+    too_long = copy.deepcopy(base)
+    _find(too_long, "activity", 101)["device"]["name"] = "A" * 31
+    with pytest.raises(hub_sync.InvalidDocumentError, match="at most 30"):
+        build(base, too_long)
+
+    x1 = copy.deepcopy(base)
+    x1["hub"]["version"] = "X1"
+    cafe = copy.deepcopy(x1)
+    _find(cafe, "activity", 101)["device"]["name"] = "Café"
+    with pytest.raises(hub_sync.InvalidDocumentError, match="unsupported by X1"):
+        build(x1, cafe)
+
+
+def test_a_name_the_hub_already_holds_passes_the_slot_rule() -> None:
+    # A vendor-app name outside the editor's charset is hub truth.
+    base = _bundle()
+    _find(base, "activity", 101)["device"]["name"] = "Movie™ Night"
+    desired = copy.deepcopy(base)
+    desired = _pkg.edits.bind_button(desired, 101, VOL_UP, 7, 3)
+    assert _kinds(build(base, desired)) == [("sync_activity", 101)]
+
+
+def test_a_mirror_only_change_is_not_a_member_change() -> None:
+    # The planners agree on membership: the derived referenced_source list
+    # alone changes no member (the entity planner emits no member step).
+    base = _bundle()
+    desired = copy.deepcopy(base)
+    activity = _find(desired, "activity", 101)
+    activity["referenced_source_device_ids"] = sorted(set(activity.get("referenced_source_device_ids") or []) | {9})
+    desired = _pkg.edits.bind_button(desired, 101, VOL_UP, 7, 3)  # a real edit so the activity is planned
+    plan = build(base, desired)
+    assert not any("member devices change" in note for note in plan.notes)

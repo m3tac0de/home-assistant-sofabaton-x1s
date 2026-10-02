@@ -516,15 +516,7 @@ def test_try_finish_activity_map_burst_ends_matching_burst() -> None:
     assert proxy._burst.active is False
 
 
-def test_try_finish_buttons_burst_requires_expected_final_frame() -> None:
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
-    proxy._burst.start("buttons:101", now=0.0)
-    proxy.note_buttons_frame(0x65, frame_no=1, total_frames=2)
-
-    assert proxy.try_finish_buttons_burst(0x65, frame_no=1) is False
-    assert proxy.try_finish_buttons_burst(0x65, frame_no=2) is True
-    assert proxy._burst.active is False
 
 
 def test_ghost_activity_row_is_ignored_without_request_in_flight() -> None:
@@ -658,16 +650,13 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
 
 
 
-def test_ensure_commands_for_activity_ignores_keybinding_slots(monkeypatch) -> None:
+def test_ensure_commands_for_activity_resolves_favorite_labels(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     cache = ActivityCache()
     act = 0x10
     cache.activity_favorite_slots[act] = [
         {"button_id": 0x01, "device_id": 0x01, "command_id": 0x1111},
-    ]
-    cache.activity_keybinding_slots[act] = [
-        {"button_id": ButtonName.VOL_DOWN, "device_id": 0x01, "command_id": 0x2222},
     ]
     proxy.state = cache
 
@@ -688,43 +677,8 @@ def test_ensure_commands_for_activity_ignores_keybinding_slots(monkeypatch) -> N
     assert calls == [(0x01, 0x1111, True)]
     assert commands_by_device == {0x01: {0x1111: "Favorite One"}}
     assert proxy.state.activity_favorite_labels[act] == {(0x01, 0x1111): "Favorite One"}
-    assert proxy.state.activity_keybinding_labels.get(act, {}) == {}
-    assert proxy._keybinding_label_requests == {}
 
 
-def test_ensure_commands_for_activity_leaves_existing_keybinding_requests_untouched(
-    monkeypatch,
-) -> None:
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
-
-    cache = ActivityCache()
-    act = 0x10
-    cache.activity_favorite_slots[act] = [
-        {"button_id": 0x01, "device_id": 0x01, "command_id": 0x1111},
-    ]
-    cache.activity_keybinding_slots[act] = [
-        {"button_id": ButtonName.VOL_DOWN, "device_id": 0x01, "command_id": 0x2222},
-    ]
-    proxy.state = cache
-    proxy._keybinding_label_requests[(0x01, 0x2222)] = {act}
-
-    calls: list[tuple[int, int, bool]] = []
-
-    def fake_get_single(ent_id: int, command_id: int, fetch_if_missing: bool = True):
-        calls.append((ent_id, command_id, fetch_if_missing))
-        mappings = {
-            (0x01, 0x1111): ({0x1111: "Favorite One"}, True),
-        }
-        return mappings.get((ent_id, command_id), ({}, False))
-
-    monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
-
-    commands_by_device, ready = proxy.ensure_commands_for_activity(act, fetch_if_missing=False)
-
-    assert ready is True
-    assert calls == [(0x01, 0x1111, False)]
-    assert commands_by_device == {0x01: {0x1111: "Favorite One"}}
-    assert proxy._keybinding_label_requests == {(0x01, 0x2222): {act}}
 
 def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
     registered = []
@@ -1156,7 +1110,16 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
                 "command_name": "Input",
                 "long_press_device_id": None,
                 "long_press_command_id": None,
-            }
+            },
+            # Long press only: written with an empty short press (the hub
+            # keeps such rows, bench 2026-09-30).
+            {
+                "button_id": 0x59,
+                "device_id": 11,
+                "command_id": 0,
+                "long_press_device_id": 11,
+                "long_press_command_id": 19,
+            },
         ],
         "macros": [
             {
@@ -1182,11 +1145,12 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
         "status": "success",
         "device_id": 0x22,
         "restored_commands": 2,
-        "restored_button_bindings": 1,
+        "restored_button_bindings": 2,
         "restored_macros": 1,
         "restored_inputs": 1,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
+        "skipped_button_bindings": 0,
         "command_id_map": {"18": 18, "19": 19},
     }
     assert len(sequence_calls) == 2
@@ -1208,6 +1172,12 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
     assert 0x08 in post_families
     assert 0x64 not in post_families
     assert post_families.index(0x0E) < post_families.index(0x3E) < post_families.index(0x41) < post_families.index(0x12) < post_families.index(0x46) < post_families.index(0x08)
+
+    binding_steps = {step.payload[7]: step.payload for step in post_steps if step.family == 0x3E}
+    long_press_only = binding_steps[0x59]
+    # body[5..12] = short device, 6-byte code, id (empty); body[13..20] long.
+    assert long_press_only[3 + 6:3 + 12] == bytes(6) and long_press_only[3 + 12] == 0
+    assert long_press_only[3 + 20] == 19
 
     command_steps = [step for step in post_steps if step.family == 0x0E]
     assert len(command_steps) == 2
@@ -1804,6 +1774,7 @@ def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str)
         "restored_inputs": 0,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
+        "skipped_button_bindings": 0,
         "command_id_map": {"5": 5},
     }
     assert [step.label for step in sequence_calls[0]] == ["device-create"]
@@ -3783,15 +3754,6 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
     family_sends: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: family_sends.append((family, payload)))
 
-    macro_payload = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "02 c6 00 00 00 00 00 00 01 ff "
-        "01 c5 00 00 00 00 00 00 1a ff "
-        "02 c5 00 00 00 00 00 00 00 ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "02 00 00 00 00 00 2d 76 00"
-    )
 
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: MacroRecord(activity_id=_act & 0xFF, key_id=_button & 0xFF, label='', key_sequence=()))
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
@@ -3858,13 +3820,6 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     family_sends: list[int] = []
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: family_sends.append(family))
 
-    macro_payload = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "01 ff ff ff ff ff ff ff ff ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
 
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: MacroRecord(activity_id=_act & 0xFF, key_id=_button & 0xFF, label='', key_sequence=()))
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
@@ -3909,9 +3864,7 @@ def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypat
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     def _request_activities() -> bool:
-        proxy._burst.active = True
-        proxy._burst.kind = "activities"
-        proxy._burst.active = False
+        proxy._activities_commit_serial += 1  # the activities list committed
         proxy.state.activities[0x66] = {"name": "heyo", "active": False, "needs_confirm": True}
         proxy.state.activities[0x65] = {"name": "test", "active": True, "needs_confirm": False}
         return True
@@ -3938,6 +3891,8 @@ def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypat
         "confirmed_activities": [0x66],
         "impacted_activities": [0x66],
         "status": "success",
+        "confirm_incomplete": False,
+        "unconfirmed_activities": [],
     }
     assert [opcode for opcode, _payload in sent] == [0x0109, 0x7B38]
     assert sent[0][1] == b""
@@ -3966,9 +3921,7 @@ def test_delete_device_uses_x1s_finalize_opcode_for_activity_confirmation(monkey
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     def _request_activities() -> bool:
-        proxy._burst.active = True
-        proxy._burst.kind = "activities"
-        proxy._burst.active = False
+        proxy._activities_commit_serial += 1  # the activities list committed
         row_payload = bytearray(214)
         row_payload[0] = 0x04
         row_payload[6:8] = (0x0068).to_bytes(2, "big")
@@ -4005,9 +3958,17 @@ def test_delete_device_uses_120_second_delete_ack_timeout(monkeypatch) -> None:
 
     monkeypatch.setattr(proxy, "wait_for_ack_any", _wait_for_ack_any)
     monkeypatch.setattr(proxy, "request_activities", lambda: False)
+    proxy.state.devices[0x04] = {"name": "TV"}
 
-    assert proxy.delete_device(0x04) is None
+    result = proxy.delete_device(0x04)
+
     assert observed["timeout"] == 120.0
+    # The hub acked the delete: it happened, even though the activities
+    # re-read failed. The device is gone; the follow-up is reported.
+    assert result["status"] == "success" and result["confirm_incomplete"] is True
+    assert 0x04 not in proxy.state.devices
+
+
 def test_delete_device_requires_delete_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -4080,9 +4041,7 @@ def test_delete_device_clears_stale_referencing_activity_caches(monkeypatch) -> 
     )
 
     def _request_activities() -> bool:
-        proxy._burst.active = True
-        proxy._burst.kind = "activities"
-        proxy._burst.active = False
+        proxy._activities_commit_serial += 1  # the activities list committed
         proxy.state.activities[0x66]["needs_confirm"] = True
         return True
 
@@ -4119,11 +4078,7 @@ def test_activities_referencing_device_scans_all_cached_maps() -> None:
     proxy.state.activity_favorite_slots[0x62] = [
         {"device_id": dev, "command_id": 1, "button_id": 2, "source": "cache"}
     ]
-    proxy.state.activity_keybinding_slots[0x63] = [
-        {"device_id": dev, "command_id": 2, "button_id": 0xBE}
-    ]
     proxy.state.activity_favorite_labels[0x64][(dev, 1)] = "Zap"
-    proxy.state.activity_keybinding_labels[0x65][(dev, 2)] = "Blast"
     proxy.state.button_details[0x66][0xBE] = {
         "device_id": 0x09,
         "command_id": 3,
@@ -4147,7 +4102,7 @@ def test_activities_referencing_device_scans_all_cached_maps() -> None:
     proxy.state.button_details[dev][0xBE] = {"device_id": dev, "command_id": 1}
 
     assert proxy.activities_referencing_device(dev) == [
-        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+        0x60, 0x61, 0x62, 0x64, 0x66, 0x67,
     ]
 
 
@@ -5205,6 +5160,47 @@ def test_query_device_input_index_returns_ordinal(monkeypatch) -> None:
     assert sent == [(OP_REQ_ACTIVITY_INPUTS, bytes([0x05]))]
 
 
+def test_an_inputs_page_that_stalls_mid_burst_is_read_whole(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X1")
+
+    header = _make_x1_input_page1_header(device_id=0x05, num_inputs=3)
+    page1 = header + _make_activity_inputs_entry(1, 1)
+    # The second page's 3-byte wrapper, then the rest of the body.
+    page2 = bytes([0x01, 0x00, 0x02]) + (
+        _make_activity_inputs_entry(2, 2) + _make_activity_inputs_entry(3, 3) + bytes(107) + bytes(1)
+    )
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+    # A retransmitted segment: the idle window closes after page 1.
+    returns = iter([(page1,), (page2,)])
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_activity_inputs_burst",
+        lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked, payloads=next(returns)),
+    )
+
+    rows = proxy.fetch_device_input_entries(0x05, timeout=2.0)
+
+    assert [row["command_id"] for row in rows] == [1, 2, 3]
+
+
+def test_an_inputs_page_that_never_completes_is_a_timeout(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X1")
+
+    page1 = _make_x1_input_page1_header(device_id=0x05, num_inputs=3) + _make_activity_inputs_entry(1, 1)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+    served = []
+
+    def _wait(timeout=5.0):
+        if served:
+            return InputsBurstResult(outcome=AckOutcome.timeout)
+        served.append(1)
+        return InputsBurstResult(outcome=AckOutcome.acked, payloads=(page1,))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _wait)
+
+    assert proxy.fetch_device_input_entries(0x05, timeout=0.2) is None
+
+
 def test_query_device_input_index_returns_none_on_timeout(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -5456,21 +5452,9 @@ def test_add_device_to_activity_with_input_cmd_id_sets_c5_byte(monkeypatch) -> N
         hub_version=HUB_VERSION_X1,
     )
 
-    sent_cmd = _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+    _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
 
     # Header must be exactly 9 bytes; byte[8] = row count.
-    power_on_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 01 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "01 00 00 00 00 00 2d 76 00"
-    )
-    power_off_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 01 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -5509,18 +5493,6 @@ def test_add_device_to_activity_x1s_with_input_cmd_id_sets_input_index(monkeypat
 
     _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
 
-    power_on_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 01 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "01 00 00 00 00 00 2d 76 00"
-    )
-    power_off_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 01 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -5560,19 +5532,6 @@ def test_add_device_to_activity_input_cmd_id_updates_existing_c5_record(monkeypa
     _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
 
     # POWER_ON source already contains a 0xC5 record for device 1 with old input_index=0x1A (26)
-    power_on_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c6 02 "
-        "01 c6 00 00 00 00 00 00 01 ff "
-        "01 c5 00 00 00 00 00 00 1a ff "
-        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "02 00 00 00 00 00 2d 76 00"
-    )
-    power_off_source = bytes.fromhex(
-        "01 00 01 01 00 01 65 c7 01 "
-        "01 c7 00 00 00 00 00 00 01 ff "
-        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 ff ff"
-    )
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -5765,7 +5724,9 @@ def test_restore_activity_replays_create_and_remaps_device_ids(monkeypatch) -> N
     assert len(sequence_calls) >= 1
     create_steps = sequence_calls[0]
     assert len(create_steps) == 1
-    assert create_steps[0].family == x1_proxy_module.FAMILY_ACTIVITY_CREATE
+    from custom_components.sofabaton_x1s.lib.device_create import FAMILY_ACTIVITY_CREATE
+
+    assert create_steps[0].family == FAMILY_ACTIVITY_CREATE
 
     # Second sequence call: post-create (bindings + macro + sync).
     post_steps = sequence_calls[1]

@@ -8,7 +8,7 @@
 
 import type { ApiResponse, ApplySummary, HubView, JobView, Operation, PanelApi, SeenHub, ServerInfo } from "./panel-api";
 import { TERMINAL_JOB_STATES, problemText } from "./panel-api";
-import { hashFor, hubRoute, normalizeSub, normalizeToolSub, sameRoute, toolRoute, withHub, type HubTab, type Route } from "./panel-route";
+import { hubRoute, normalizeSub, normalizeToolSub, sameRoute, toolRoute, withHub, type HubTab, type Route } from "./panel-route";
 import { loadPrefs, nextTheme, savePrefs, type ThemeChoice } from "./panel-state";
 import type { PanelStream, StreamMessage } from "./panel-stream";
 import { isHubRefreshTrigger } from "./panel-stream";
@@ -124,6 +124,7 @@ export interface PanelStoreOptions {
   tickMs?: number;
   debounceMs?: number;
   noticeTtlMs?: number;
+  errorNoticeTtlMs?: number;
   /** A finished job older than this leaves no notice on load. */
   noticeWindowMs?: number;
   messageTtlMs?: number;
@@ -133,6 +134,8 @@ export interface PanelStoreOptions {
 
 const ACKS_KEY = "sofabaton-panel-acks";
 const DRAFT_PREFIX = "sofabaton-panel-draft:";
+/** Jobs whose end can leave a stopped apply record (routes_apply.py). */
+const APPLY_JOB_KINDS = new Set(["sync_hub", "resume_apply"]);
 const STOPPED_APPLY_STATES: ReadonlySet<string> = new Set(["stopped", "cancelled"]);
 const CONFLICT_TYPE = "hub_job_running";
 
@@ -149,6 +152,7 @@ export class PanelStore {
   private readonly _tickMs: number;
   private readonly _debounceMs: number;
   private readonly _noticeTtlMs: number;
+  private readonly _errorNoticeTtlMs: number;
   private readonly _noticeWindowMs: number;
   private readonly _messageTtlMs: number;
   private readonly _retryMinMs: number;
@@ -177,6 +181,7 @@ export class PanelStore {
     this._tickMs = options.tickMs ?? 5000;
     this._debounceMs = options.debounceMs ?? 300;
     this._noticeTtlMs = options.noticeTtlMs ?? 6000;
+    this._errorNoticeTtlMs = options.errorNoticeTtlMs ?? 8000;
     this._noticeWindowMs = options.noticeWindowMs ?? 24 * 60 * 60 * 1000;
     this._messageTtlMs = options.messageTtlMs ?? 8000;
     this._retryMinMs = options.retryMinMs ?? 2000;
@@ -408,6 +413,21 @@ export class PanelStore {
     }
   }
 
+  /** Carry a re-keyed hub's persisted draft and acknowledgement to its new id. */
+  private _moveHubKeys(fromId: string, toId: string): void {
+    const draft = loadDraft(this._storage, fromId);
+    if (draft && !loadDraft(this._storage, toId)) {
+      saveDraft(this._storage, toId, draft);
+      this._patchRuntime(toId, { draft, draftCheck: draft.acceptedStale ? "kept" : "unchecked" });
+    }
+    saveDraft(this._storage, fromId, null);
+    if (fromId in this._acks) {
+      const { [fromId]: ack, ...rest } = this._acks;
+      this._acks = { ...rest, [toId]: ack };
+      saveAcks(this._storage, this._acks);
+    }
+  }
+
   private async _loadApplies(hubId: string): Promise<void> {
     try {
       const response = await this._api.listApplies(hubId);
@@ -465,7 +485,16 @@ export class PanelStore {
     // The selection follows a re-key (host id to MAC) and a removal; the
     // route follows the selection, and with no hubs at all lands on setup.
     const selected = this._snapshot.selectedHubId;
-    if (hubs.length && !hubs.some((h) => h.hub_id === selected)) this.selectHub(hubs[0].hub_id);
+    if (hubs.length && !hubs.some((h) => h.hub_id === selected)) {
+      // A re-key (host id to MAC) keeps the hub's host, and the re-keyed
+      // record moves to the end of the list: follow it by host, with its
+      // draft and acknowledgement, rather than jumping to the first hub
+      // (CR-F5a-3). A removal falls back to the first hub.
+      const oldHost = selected ? previous.get(selected)?.hub.config?.host : undefined;
+      const moved = oldHost ? hubs.find((h) => h.config?.host === oldHost) : undefined;
+      if (moved && selected) this._moveHubKeys(selected, moved.hub_id);
+      this.selectHub((moved ?? hubs[0]).hub_id);
+    }
     if (!hubs.length) {
       if (selected !== null) this.selectHub(null);
       if (this._snapshot.route.kind === "hub") this.navigate(toolRoute("setup"), { replace: true });
@@ -478,6 +507,10 @@ export class PanelStore {
     this._set({ stream: { ...this._snapshot.stream, connected } });
     // Every (re)connect is a resync point: whatever happened while deaf is re-read.
     if (connected) void this.refreshAll();
+    // A dropped stream is usually the server going away: ask REST at once
+    // rather than at the next tick, so the picker and the dock stop showing
+    // hubs as connected while nothing can reach them.
+    else if (this._connected && this._snapshot.server.reachable) void this.refreshHubs();
   }
 
   private _onStreamMessage(message: StreamMessage): void {
@@ -494,6 +527,11 @@ export class PanelStore {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "dropped":
+        // The server skipped frames for us: re-read everything (api-reference,
+        // "on a dropped message ... re-read"), applies included (CR-X3-1).
+        void this.refreshAll();
         return;
       case "server_event":
         // An update check finished (either source): the indicator reads GET /server.
@@ -538,6 +576,9 @@ export class PanelStore {
       const again = previous !== null && previous.job_id === job.job_id;
       this._patchRuntime(hubId, { hub: { ...hub, active_job: active, last_job: older ? previous : job }, cancelRequestedJobId });
       if (!older && !again) this._noteFinished(hubId, job, { onLoad: false });
+      // An apply that stopped (or a resume that stopped again) leaves a
+      // record behind: the Resume/Discard banner reads it (CR-X3-1).
+      if (APPLY_JOB_KINDS.has(job.kind)) void this._loadApplies(hubId);
       this.refreshSoon();
     } else {
       this._patchRuntime(hubId, { hub: { ...hub, active_job: job } });
@@ -584,7 +625,7 @@ export class PanelStore {
           this._noticeTimers.delete(hubId);
           const current = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
           if (current?.notice?.jobId === notice.jobId) this.dismissNotice(hubId);
-        }, this._noticeTtlMs),
+        }, notice.tone === "error" ? this._errorNoticeTtlMs : this._noticeTtlMs),
       );
     }
   }
@@ -656,11 +697,17 @@ export class PanelStore {
       const response = await this._api.resumeApply(hubId, applyId);
       if (response.status === 202 && response.body) {
         const runtime = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
-        if (runtime) this._patchRuntime(hubId, { hub: { ...runtime.hub, active_job: response.body } });
-        await this._loadApplies(hubId);
+        // The record flips to running inside the job, so a read right now
+        // could still say stopped; the job's end re-reads it (CR-X3-1).
+        if (runtime) {
+          this._patchRuntime(hubId, {
+            hub: { ...runtime.hub, active_job: response.body },
+            stoppedApplies: runtime.stoppedApplies.filter((a) => a.apply_id !== applyId),
+          });
+        }
         return true;
       }
-      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemLine(response)}`, false);
+      if (!this.noteResponse(hubId, response)) this.say(`Resume refused: ${problemText(response)}`, false);
       return false;
     } catch (err) {
       this.say(`Resume failed: ${String(err)}`, false);
@@ -678,7 +725,7 @@ export class PanelStore {
         await this._loadApplies(hubId);
         return true;
       }
-      this.say(`Discard refused: ${problemLine(response)}`, false);
+      this.say(`Discard refused: ${problemText(response)}`, false);
       return false;
     } catch (err) {
       this.say(`Discard failed: ${String(err)}`, false);
@@ -724,14 +771,6 @@ export class PanelStore {
   }
 }
 
-/** The hash the shell should show for a snapshot. */
-export function hashForSnapshot(snapshot: PanelSnapshot): string {
-  return hashFor(snapshot.route);
-}
-
-function problemLine(response: ApiResponse): string {
-  return problemText(response);
-}
 
 // -- persisted acknowledgements ----------------------------------------------------------------------
 

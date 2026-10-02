@@ -49,7 +49,7 @@ from . import API_PREFIX
 from .jobs import JobView
 from .manager import HubDisabled, HubManager, HubNotFound
 from .models import Problem
-from .problems import ApiProblem, SyncFailed, hub_disabled, hub_errors, hub_not_found
+from .problems import ApiProblem, SyncFailed, hub_disabled, hub_not_found
 from .routes_snapshot import _matches, header_of, start_job
 
 log = logging.getLogger(__name__)
@@ -58,8 +58,10 @@ router = APIRouter(prefix=f"{API_PREFIX}/hubs/{{hub_id}}", tags=["edit"])
 
 _WRITE_ERRORS = {
     404: {"model": Problem}, 409: {"model": Problem}, 412: {"model": Problem},
-    422: {"model": Problem}, 428: {"model": Problem}, 503: {"model": Problem},
+    422: {"model": Problem}, 503: {"model": Problem},
 }
+# Only the row edits require If-Match (L-A11), so only they can answer 428 (CR-X3-7).
+_ROW_EDIT_ERRORS = {**_WRITE_ERRORS, 428: {"model": Problem}}
 _SNAPSHOT_PROVENANCE = ("complete", "editable", "fetched_at", "captured_at", "payload_profile", "kind")
 
 
@@ -70,8 +72,10 @@ class EntityPayload(BaseModel):
     """An edited ``activities[]`` / ``devices[]`` element of the snapshot document.
 
     Only ``device.device_id`` is checked here (it must match the path);
-    the tables are the library's ``hub_bundle`` rows and are validated by
-    the planner, which refuses anything outside the entity being edited.
+    the tables are the library's ``hub_bundle`` rows. The planner refuses
+    anything outside the entity being edited, and a changed name must fit
+    the hub's name slot; the rest of the rows are not validated the way
+    the HA editor validates them.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -110,11 +114,17 @@ class SyncPlan(BaseModel):
 
 
 class RenameRequest(BaseModel):
+    # An activity, device or command name slot holds 30 characters (30
+    # UTF-16 code units; plain ASCII letters, digits and spaces on an X1).
+    name: str = Field(min_length=1, max_length=30)
+
+
+class HubRenameRequest(BaseModel):
     name: str = Field(min_length=1, max_length=64)
 
 
 class DeviceRenameRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=30)
     brand: Optional[str] = Field(None, max_length=64)
 
 
@@ -370,12 +380,22 @@ async def reorder_activities(request: Request, hub_id: str, body: OrderRequest,
 # -- S8: row edits ----------------------------------------------------------------
 
 
+def _body_entity_id(body: EntityPayload) -> Optional[int]:
+    """The body's device.device_id, or None when it is not a number (a 422
+    like a mismatch, never a bare 500; CR-S2-9)."""
+
+    try:
+        return int(body.device.get("device_id", -1))
+    except (TypeError, ValueError):
+        return None
+
+
 @router.put("/activities/{activity_id}", operation_id="editActivity", response_model=JobView, status_code=202,
             summary="Write an edited activity (the snapshot element) as a job; If-Match required",
-            responses=_WRITE_ERRORS)
+            responses=_ROW_EDIT_ERRORS)
 async def edit_activity(request: Request, hub_id: str, activity_id: int, body: ActivityPayload,
                         if_match: Optional[str] = IF_MATCH) -> JobView:
-    if int(body.device.get("device_id", -1)) != activity_id:
+    if _body_entity_id(body) != activity_id:
         raise ApiProblem(422, "invalid_request", "Entity id mismatch", detail="device.device_id must equal the path id", hub_id=hub_id)
     return await _row_edit(request, hub_id, "activity", activity_id, if_match,
                            lambda b: _splice_activity(b, activity_id, body, hub_id),
@@ -384,10 +404,10 @@ async def edit_activity(request: Request, hub_id: str, activity_id: int, body: A
 
 @router.put("/devices/{device_id}", operation_id="editDevice", response_model=JobView, status_code=202,
             summary="Write an edited device (the snapshot element) as a job; If-Match required",
-            responses=_WRITE_ERRORS)
+            responses=_ROW_EDIT_ERRORS)
 async def edit_device(request: Request, hub_id: str, device_id: int, body: EntityPayload,
                       if_match: Optional[str] = IF_MATCH) -> JobView:
-    if int(body.device.get("device_id", -1)) != device_id:
+    if _body_entity_id(body) != device_id:
         raise ApiProblem(422, "invalid_request", "Entity id mismatch", detail="device.device_id must equal the path id", hub_id=hub_id)
     return await _row_edit(request, hub_id, "device", device_id, if_match,
                            lambda b: _splice(b, "device", device_id, body.model_dump()),
@@ -558,7 +578,7 @@ async def add_activity(request: Request, hub_id: str, body: ActivityCreateReques
 
 @router.put("/name", operation_id="renameHub", response_model=JobView, status_code=202,
             summary="Rename the hub", responses=_WRITE_ERRORS)
-async def rename_hub(request: Request, hub_id: str, body: RenameRequest,
+async def rename_hub(request: Request, hub_id: str, body: HubRenameRequest,
                      if_match: Optional[str] = IF_MATCH) -> JobView:
     async def body_fn(proxy: AsyncXProxy):
         await proxy.set_hub_name(body.name)

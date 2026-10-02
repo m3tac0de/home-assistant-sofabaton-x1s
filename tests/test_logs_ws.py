@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+ws_panel_module = importlib.import_module("custom_components.sofabaton_x1s.ws_panel")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Conn:
@@ -44,8 +46,8 @@ def test_ws_get_hub_logs_returns_lines(monkeypatch):
         config_entries=SimpleNamespace(async_get_entry=lambda entry_id: entry if entry_id == "entry-1" else None)
     )
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "async_get_hub_log_lines", fake_get_logs)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(ws_panel_module, "async_get_hub_log_lines", fake_get_logs)
 
     loop = asyncio.new_event_loop()
     try:
@@ -82,8 +84,8 @@ def test_ws_subscribe_hub_logs_registers_subscription_and_forwards_events(monkey
 
         return _unsubscribe
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "async_subscribe_hub_log_lines", fake_subscribe)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(ws_panel_module, "async_subscribe_hub_log_lines", fake_subscribe)
     monkeypatch.setattr(
         integration.websocket_api,
         "event_message",

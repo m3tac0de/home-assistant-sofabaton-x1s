@@ -13,7 +13,7 @@ from pathlib import Path
 from sofabaton_server import API_PREFIX
 from sofabaton_server.auth import AuthStore
 
-from test_callbacks import HUB_ID, HUBS, LOOPBACK, MAC, SERVER, _hub, _rig, _until
+from test_callbacks import HUBS, LOOPBACK, MAC, SERVER, _hub, _rig, _until
 from test_mqtt import TOPIC, FakeBroker, _create, _x2
 
 CONFIG = f"{API_PREFIX}/server/mqtt/config"

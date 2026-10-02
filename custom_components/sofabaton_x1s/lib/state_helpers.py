@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import contextlib
+import functools
+import threading
 import time
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Literal, Mapping, Optional
 
-from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1
 from .commands import (
     COMMAND_RECORD_STRIDE_X1,
     COMMAND_RECORD_STRIDE_X1S_X2,
@@ -14,7 +17,6 @@ from .commands import (
 )
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
-    DEVICE_CLASS_WIFI_IP,
     classify_device_class_code,
     normalize_device_class,
 )
@@ -115,7 +117,6 @@ class ActivityCache:
         self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
         self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
-        self.activity_keybinding_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
         self.activity_members: dict[int, set[int]] = defaultdict(set)
         # Favorites ordering: maps act_lo → list of (fav_id, slot) pairs in hub order
         # Populated by OP_FAV_ORDER_RESP (family 0x63) response to OP_FAV_ORDER_REQ (0x0162)
@@ -136,7 +137,6 @@ class ActivityCache:
         # a consumer can tell the cache moved without hashing it.
         self.generation: int = 0
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
-        self.activity_keybinding_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
@@ -247,8 +247,8 @@ class ActivityCache:
         if button_id in BUTTONNAME_BY_CODE:
             self.buttons[act_lo].add(button_id)
             details: Dict[str, int] = {"device_id": device_id, "command_id": command_id}
-            # Per the official KeyToKeyGets parser, each 18-byte keymap
-            # record's long-press triple lives at:
+            # Each 18-byte binding row carries its long-press triple at
+            # (bench captures):
             #   [10]        long_press_device_id
             #   [11..16]    long_press_button_code (6B BE)
             #   [17]        long_press_button_id   (== long_press_command_id)
@@ -274,52 +274,6 @@ class ActivityCache:
             )
             return True, True
         return favorites_allowed, False
-
-    def _upsert_activity_keybinding_slot(
-        self,
-        act_lo: int,
-        *,
-        button_id: int,
-        device_id: int,
-        command_id: int,
-        source: str,
-    ) -> None:
-        pair = (device_id & 0xFF, command_id & 0xFF)
-        if pair[0] == 0 or pair[1] in (0x00, 0xFC):
-            return
-
-        self.activity_command_refs[act_lo].add(pair)
-        slots = self.activity_keybinding_slots[act_lo]
-
-        for idx, slot in enumerate(slots):
-            if slot["button_id"] != (button_id & 0xFF):
-                continue
-            existing_source = slot.get("source", "keymap")
-            # Preserve legacy activity-map slots for compatibility, but treat
-            # keymap-derived data as the authoritative source when both exist.
-            if existing_source == "activity_map" and source != "activity_map":
-                slots[idx] = {
-                    "button_id": button_id & 0xFF,
-                    "device_id": pair[0],
-                    "command_id": pair[1],
-                    "source": source,
-                }
-            else:
-                slots[idx].update({
-                    "device_id": pair[0],
-                    "command_id": pair[1],
-                    "source": source,
-                })
-            return
-
-        slots.append(
-            {
-                "button_id": button_id & 0xFF,
-                "device_id": pair[0],
-                "command_id": pair[1],
-                "source": source,
-            }
-        )
 
     def _upsert_activity_favorite_slot(
         self,
@@ -371,11 +325,6 @@ class ActivityCache:
 
         return list(self.activity_favorite_slots.get(act_lo, []))
 
-    def get_activity_keybinding_slots(self, act_lo: int) -> list[dict[str, int]]:
-        """Return metadata for keybinding slots in this activity."""
-
-        return list(self.activity_keybinding_slots.get(act_lo, []))
-
     def record_activity_member(self, act_lo: int, device_id: int) -> None:
         """Record a device as being linked to the activity."""
 
@@ -388,33 +337,6 @@ class ActivityCache:
 
         return sorted(self.activity_members.get(act_lo & 0xFF, set()))
 
-    def record_activity_mapping(
-        self,
-        act_lo: int,
-        device_id: int,
-        command_id: int,
-        *,
-        button_id: int | None = None,
-    ) -> None:
-        """Record a legacy activity-map favorite mapping entry.
-
-        Current protocol findings suggest activity favorites primarily come
-        from REQ_BUTTONS/keymap rows; REQ_ACTIVITY_MAP is now treated as a
-        membership roster. This helper remains for compatibility with restored
-        cache data and older tests.
-        """
-
-        dev_lo = device_id & 0xFF
-        self.record_activity_member(act_lo, dev_lo)
-
-        self._upsert_activity_favorite_slot(
-            act_lo,
-            button_id=button_id if button_id is not None else 0,
-            device_id=device_id & 0xFF,
-            command_id=command_id & 0xFF,
-            source="activity_map",
-        )
-
     def record_favorite_label(
         self, act_lo: int, device_id: int, command_id: int, label: str
     ) -> None:
@@ -422,26 +344,12 @@ class ActivityCache:
 
         self.activity_favorite_labels[act_lo][(device_id, command_id)] = label
 
-    def record_keybinding_label(
-        self, act_lo: int, device_id: int, command_id: int, label: str
-    ) -> None:
-        """Store the resolved label for an activity keybinding command."""
-
-        self.activity_keybinding_labels[act_lo][(device_id, command_id)] = label
-
     def get_favorite_label(
         self, act_lo: int, device_id: int, command_id: int
     ) -> str | None:
         """Return the known label for a favorite command, if any."""
 
         return self.activity_favorite_labels.get(act_lo, {}).get((device_id, command_id))
-
-    def get_keybinding_label(
-        self, act_lo: int, device_id: int, command_id: int
-    ) -> str | None:
-        """Return the known label for an activity keybinding command, if any."""
-
-        return self.activity_keybinding_labels.get(act_lo, {}).get((device_id, command_id))
 
     def get_activity_favorite_labels(self, act_lo: int) -> list[dict[str, int | str]]:
         """Return favorite slots decorated with resolved labels."""
@@ -468,34 +376,6 @@ class ActivityCache:
             )
 
         return favorites
-
-    def get_activity_keybinding_labels(self, act_lo: int) -> list[dict[str, int | str]]:
-        """Return keybinding slots decorated with resolved labels."""
-
-        slots = self.activity_keybinding_slots.get(act_lo, [])
-        labels = self.activity_keybinding_labels.get(act_lo, {})
-
-        keybindings: list[dict[str, int | str]] = []
-        seen: set[int] = set()
-        for slot in slots:
-            button_id = slot["button_id"]
-            if button_id in seen:
-                continue
-            pair = (slot["device_id"], slot["command_id"])
-            label = labels.get(pair)
-            if not label:
-                continue
-            seen.add(button_id)
-            keybindings.append(
-                {
-                    "button_id": button_id,
-                    "name": label,
-                    "device_id": slot["device_id"],
-                    "command_id": slot["command_id"],
-                }
-            )
-
-        return keybindings
 
     def replace_activity_macros(
         self, act_lo: int, macros: list[dict[str, int | str]]
@@ -582,18 +462,11 @@ class ActivityCache:
         headers: dict[str, str] | None = None,
         button_name: str | None = None,
     ) -> None:
+        # Observe-mode capture of the vendor app's IP command traffic. It
+        # lives in its own namespace: the device catalog and keymaps are the
+        # hub's truth, and a managed Wifi device's brand is its deploy
+        # commit marker, so this never writes state.devices or state.buttons.
         brand = "Virtual HTTP"
-        self.devices[device_id & 0xFF] = normalize_device_entry(
-            {
-                **(self.devices.get(device_id & 0xFF, {})),
-                "brand": brand,
-                "name": name,
-            },
-            default_class=DEVICE_CLASS_WIFI_IP,
-            default_class_code=0x1C,
-        )
-        if button_id is not None:
-            self.buttons.setdefault(device_id & 0xFF, set()).add(button_id)
         meta: Dict[str, Any] = {
             "device_id": device_id & 0xFF,
             "name": name,
@@ -642,6 +515,32 @@ class ActivityCache:
         return list(self.app_activations)
 
 
+_LIVE_READ_ATTEMPTS = 5
+
+
+def reads_live_state(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Retry a whole-cache read that a concurrent ingest disturbed.
+
+    The frame thread keeps ingesting (new keys in the command, keymap and
+    catalog dicts) while a consumer projects the cache on another thread,
+    and a dict that grows mid-iteration raises ``RuntimeError``. The
+    wrapped reads have no side effects, so they are simply run again.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        for attempt in range(_LIVE_READ_ATTEMPTS):
+            try:
+                return fn(*args, **kwargs)
+            except RuntimeError as exc:
+                if "during iteration" not in str(exc) or attempt == _LIVE_READ_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.005)
+        raise AssertionError("unreachable")
+
+    return wrapper
+
+
 class BurstScheduler:
     # ``response_grace`` is the fallback window the scheduler waits — for the
     # first frame, between frames, and after the last frame — before it treats
@@ -650,10 +549,28 @@ class BurstScheduler:
     # buttons, ir_dump) detects its own completion from the frame stream and
     # calls ``finish()`` / ``try_finish_*`` the instant the last expected frame
     # arrives, so a healthy hub never waits on this timer. Because of that we
-    # can afford a generous 5s window — matching what the official app allows —
-    # with no added latency for healthy hubs, while giving a congested link
+    # can afford a generous 5s window with no added latency for healthy
+    # hubs, while giving a congested link
     # enough time to answer instead of being mistaken for an empty or partial
     # response.
+    #
+    # Threads: executor threads enqueue while the frame thread starts and
+    # finishes bursts, so every state transition happens under ``_lock``.
+    # Senders and listeners always run outside it: the frame thread calls in
+    # here while holding transport locks, and a sender takes those locks.
+    #
+    # Exchanges: an ``exchange:<name>`` pseudo-burst holds the wire for a
+    # blocking request/response scope. A read burst a handler starts inside
+    # it (an exchange that sends REQ_MACRO_LABELS, say) nests under the hold:
+    # its own listeners fire when it ends, but the wire stays held and the
+    # queue waits for :meth:`end_exchange`.
+    #
+    # Claimants: an exchange waiting for the wire (see :meth:`claimant`)
+    # goes ahead of queued reads. While one waits, a burst's end leaves the
+    # wire quiet instead of starting the next queued read, so a steady
+    # stream of catalog reads can never starve an exchange; the queue
+    # drains when the exchange ends. A read burst already queued and not
+    # yet sent absorbs an identical request.
     def __init__(self, *, idle_s: float = 0.15, response_grace: float = 5.0) -> None:
         self.idle_s = idle_s
         self.response_grace = response_grace
@@ -665,6 +582,14 @@ class BurstScheduler:
         # Called for every burst end regardless of key (after the keyed
         # listeners); the engine's cache-generation bump lives here.
         self.any_listeners: list[Callable[[str], None]] = []
+        # Called with the burst kind of every queued read dropped because
+        # commands were blocked when its turn came (it was never sent).
+        self.dropped_listeners: list[Callable[[str], None]] = []
+        # The exchange kind a nested read burst is holding the wire for.
+        self._held_by: str | None = None
+        # Exchanges currently waiting for the wire.
+        self._claimants = 0
+        self._lock = threading.RLock()
 
     def on_burst_end(self, key: str, cb: Callable[[str], None]) -> None:
         self.listeners.setdefault(key, []).append(cb)
@@ -672,11 +597,46 @@ class BurstScheduler:
     def on_any_burst_end(self, cb: Callable[[str], None]) -> None:
         self.any_listeners.append(cb)
 
+    def on_dropped(self, cb: Callable[[str], None]) -> None:
+        self.dropped_listeners.append(cb)
+
+    @staticmethod
+    def _is_exchange(kind: str | None) -> bool:
+        return kind is not None and kind.startswith("exchange:")
+
     def start(self, kind: str, *, now: Optional[float] = None) -> None:
-        self.active = True
-        self.kind = kind
-        base = time.monotonic() if now is None else now
-        self.last_ts = base + self.response_grace
+        with self._lock:
+            if self._is_exchange(kind):
+                self._held_by = None
+            elif self.active and self._is_exchange(self.kind):
+                self._held_by = self.kind
+            self.active = True
+            self.kind = kind
+            base = time.monotonic() if now is None else now
+            self.last_ts = base + self.response_grace
+
+    def try_claim(self, kind: str, *, now: Optional[float] = None) -> bool:
+        """Start ``kind`` only if the wire is quiet, atomically: a burst
+        another thread starts between a caller's check and its start can
+        never be overwritten."""
+
+        with self._lock:
+            if self.active:
+                return False
+            self.start(kind, now=now)
+            return True
+
+    @contextlib.contextmanager
+    def claimant(self):
+        """Scope in which the caller waits for the wire ahead of the queue."""
+
+        with self._lock:
+            self._claimants += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._claimants -= 1
 
     def queue_or_send(
         self,
@@ -695,12 +655,14 @@ class BurstScheduler:
         if not can_issue():
             return False
 
-        if self.active:
-            self.queue.append((opcode, payload, is_burst, burst_kind))
-            return True
-
-        if is_burst:
-            self.start(burst_kind or "generic", now=current_time)
+        with self._lock:
+            if self.active or self.queue or self._claimants:
+                entry = (opcode, payload, is_burst, burst_kind)
+                if not (is_burst and entry in self.queue):
+                    self.queue.append(entry)
+                return True
+            if is_burst:
+                self.start(burst_kind or "generic", now=current_time)
 
         sender(opcode, payload)
         return True
@@ -712,16 +674,23 @@ class BurstScheduler:
         can_issue: Callable[[], bool],
         sender: Callable[[int, bytes], None],
     ) -> None:
-        # An ``exchange:<name>`` pseudo-burst marks the wire as held by a
-        # blocking request/response exchange, which may legitimately outlast
-        # the idle window (e.g. a multi-attempt step retrying a 7.5s wait).
-        # Only the exchange's own ``finally`` may finish it; the idle tick
-        # must never force-drain the queue mid-exchange.
-        if self.kind is not None and self.kind.startswith("exchange:"):
-            return
-        if not self.active:
-            return
-        if now - self.last_ts < self.idle_s:
+        with self._lock:
+            # Only the exchange's own ``end_exchange`` may finish its
+            # pseudo-burst; the idle tick must never drain mid-exchange.
+            if self._is_exchange(self.kind):
+                return
+            if self.active and now - self.last_ts < self.idle_s:
+                return
+            if self._held_by is not None:
+                ended = self._resume_exchange()
+            elif self.active or self.queue:
+                # (Inactive with a queue is a backstop; enqueue never
+                # leaves one behind.)
+                ended = None
+            else:
+                return
+        if ended is not None:
+            self._notify_burst_end(ended)
             return
         self._drain(can_issue=can_issue, sender=sender, now=now)
 
@@ -733,14 +702,52 @@ class BurstScheduler:
         sender: Callable[[int, bytes], None],
         now: Optional[float] = None,
     ) -> bool:
-        if not self.active or self.kind != key:
-            return False
+        with self._lock:
+            if not self.active or self.kind != key:
+                return False
+            nested = self._held_by is not None
+            if nested:
+                self._resume_exchange()
+        if nested:
+            self._notify_burst_end(key)
+            return True
         self._drain(
             can_issue=can_issue,
             sender=sender,
             now=time.monotonic() if now is None else now,
         )
         return True
+
+    def end_exchange(
+        self,
+        *,
+        can_issue: Callable[[], bool],
+        sender: Callable[[int, bytes], None],
+    ) -> None:
+        """Release an exchange's hold and drain what queued behind it.
+
+        A read burst still nested under the hold ends here too (its
+        listeners fire first), so nothing can keep the wire held after
+        the exchange scope closes.
+        """
+
+        with self._lock:
+            ended = self._resume_exchange() if self._held_by is not None else None
+            if not self.active and not self.queue:
+                return
+        if ended is not None:
+            self._notify_burst_end(ended)
+        self._drain(can_issue=can_issue, sender=sender, now=time.monotonic())
+
+    def _resume_exchange(self) -> str:
+        """End a nested read burst and give the wire back to its exchange
+        (caller holds ``_lock``). Returns the ended burst's kind."""
+
+        ended = self.kind or "generic"
+        self.kind = self._held_by
+        self._held_by = None
+        self.active = True
+        return ended
 
     def _drain(
         self,
@@ -749,20 +756,38 @@ class BurstScheduler:
         sender: Callable[[int, bytes], None],
         now: float,
     ) -> None:
-        finished_kind = self.kind or "generic"
-        self.active = False
-        self.kind = None
-        self._notify_burst_end(finished_kind)
+        with self._lock:
+            finished_kind = self.kind or "generic"
+            was_active = self.active
+            self.active = False
+            self.kind = None
+            self._held_by = None
 
-        while self.queue:
-            op, payload, is_burst, next_kind = self.queue.pop(0)
-            if not can_issue():
-                continue
-            if is_burst:
-                self.start(next_kind or "generic", now=now)
+        # Listeners run before the queue is popped: they may inspect what
+        # is still waiting (see CatalogMixin._activities_read_queued).
+        if was_active:
+            self._notify_burst_end(finished_kind)
+
+        to_send: list[tuple[int, bytes]] = []
+        dropped: list[str] = []
+        with self._lock:
+            # Another thread may have started a burst since the lock was
+            # released; the queue then waits for that burst to end.
+            while self.queue and not self.active and not self._claimants:
+                op, payload, is_burst, next_kind = self.queue.pop(0)
+                if not can_issue():
+                    if next_kind:
+                        dropped.append(next_kind)
+                    continue
+                if is_burst:
+                    self.start(next_kind or "generic", now=now)
+                to_send.append((op, payload))
+
+        for op, payload in to_send:
             sender(op, payload)
-            if self.active:
-                break
+        for kind in dropped:
+            for cb in self.dropped_listeners:
+                cb(kind)
 
     def _notify_burst_end(self, key: str) -> None:
         for cb in self.listeners.get(key, []):
@@ -773,4 +798,5 @@ class BurstScheduler:
                 cb(key)
         for cb in self.any_listeners:
             cb(key)
+
 

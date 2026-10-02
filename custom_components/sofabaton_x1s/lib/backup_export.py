@@ -12,6 +12,7 @@
 # changes.
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -42,10 +43,9 @@ from .protocol_const import (
 )
 
 # Shared entity-id space: ids below this are source devices, ids at or
-# above it are activities. Binding/step targets in the activity range
-# (a macro-target binding carries the activity's own id; a chain step
-# carries another activity's id) are not source devices and must never
-# enter ``referenced_source_device_ids``.
+# above it are activities. A binding target in the activity range (a
+# macro-target binding carries the activity's own id) is not a source
+# device and must never enter ``referenced_source_device_ids``.
 ACTIVITY_ID_BASE = 0x65
 
 _NETWORK_CALLBACK_CLASSES = {
@@ -65,6 +65,8 @@ _NETWORK_CALLBACK_CLASSES = {
 # ``full_backup`` for compatibility with existing backup files.
 PAYLOAD_PROFILE_FULL = "full_backup"
 PAYLOAD_PROFILE_STRUCTURAL = "structural"
+
+_log = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -112,8 +114,9 @@ def build_device_block(
     ``idle_behavior`` is the device's automatic-power / idle-behavior mode
     byte (the 0x0242 reply). It lives in a separate hub query rather than
     the device record, so it is threaded in explicitly. ``None`` (the value
-    was not available) omits the field; restore then falls back to the
-    legacy ``power_mode`` reading for older backups.
+    was not available) omits the field; restore then writes no idle
+    behavior (the record-tail ``power_mode`` byte is a different field and
+    never stands in for it).
     """
 
     base: dict[str, Any] = {
@@ -408,12 +411,18 @@ def build_activity_button_rows(
         details = button_details.get(button_id, {})
         target_device_id = int(details.get("device_id", 0)) & 0xFF
         command_id = int(details.get("command_id", 0)) & 0xFF
-        if target_device_id == 0 or command_id == 0:
+        long_press_only = (
+            command_id == 0
+            and int(details.get("long_press_device_id") or 0) & 0xFF != 0
+            and int(details.get("long_press_command_id") or 0) & 0xFF != 0
+        )
+        if target_device_id == 0 or (command_id == 0 and not long_press_only):
             # Slot exists but isn't bound: no target device, or a keymap
             # page placeholder carrying a role-assigned device with no
             # command (command byte 0) — e.g. a playback-role device that
             # has no mapping for this button. Neither is an actionable
-            # binding, and bundle validation rejects command_id 0.
+            # binding. A row whose short press is empty but whose long
+            # press is bound is one (the hub keeps it, bench 2026-09-30).
             continue
         if target_device_id < ACTIVITY_ID_BASE:
             referenced.add(target_device_id)
@@ -565,6 +574,50 @@ def assemble_activity_backup(
     return payload
 
 
+def _drop_steps_into_absent_devices(
+    device_payloads: list[dict[str, Any]],
+    activity_payloads: list[dict[str, Any]],
+) -> int:
+    """Drop activity macro steps that reference a device the bundle lacks.
+
+    A restore refuses a bundle with such a step outright (its preflight
+    resolves every reference against the bundle's own devices), so one
+    stale step would make the whole backup unrestorable. The hub itself
+    ignores such a step. Returns how many were dropped (L-P2: counted and
+    logged, never silent).
+    """
+
+    present = {
+        int((payload.get("device") or {}).get("device_id") or 0) & 0xFF
+        for payload in device_payloads
+        if isinstance(payload, dict)
+    }
+    dropped = 0
+    for payload in activity_payloads:
+        if not isinstance(payload, dict):
+            continue
+        activity_id = (payload.get("device") or {}).get("device_id")
+        for macro in payload.get("macros") or []:
+            if not isinstance(macro, dict):
+                continue
+            kept = []
+            for step in macro.get("steps") or []:
+                device_id = int(step.get("device_id") or 0) & 0xFF if isinstance(step, dict) else 0
+                command_id = int(step.get("command_id") or 0) & 0xFF if isinstance(step, dict) else 0
+                is_delay = device_id == 0xFF or command_id == 0xFF
+                if not is_delay and 0 < device_id < ACTIVITY_ID_BASE and device_id not in present:
+                    dropped += 1
+                    _log.warning(
+                        "[BACKUP] activity %s macro %s: dropped a step into device %d, "
+                        "which the hub no longer has",
+                        activity_id, macro.get("button_id"), device_id,
+                    )
+                    continue
+                kept.append(step)
+            macro["steps"] = kept
+    return dropped
+
+
 def assemble_hub_bundle(
     *,
     device_payloads: list[dict[str, Any]],
@@ -573,6 +626,14 @@ def assemble_hub_bundle(
     total_steps: int | None = None,
     payload_profile: str = PAYLOAD_PROFILE_FULL,
 ) -> dict[str, Any]:
+    # Only a full backup is made restorable this way: the structural
+    # projection is the editor's baseline, compared with fresh reads that
+    # still carry the step, so it must stay the hub's truth.
+    dropped = (
+        _drop_steps_into_absent_devices(device_payloads, activity_payloads)
+        if payload_profile == PAYLOAD_PROFILE_FULL
+        else 0
+    )
     complete = all(bool(p.get("complete")) for p in device_payloads) and all(
         bool(p.get("complete")) for p in activity_payloads
     )
@@ -588,4 +649,6 @@ def assemble_hub_bundle(
     }
     if total_steps is not None:
         bundle["_progress_total_steps"] = total_steps
+    if dropped:
+        bundle["skipped_macro_steps"] = dropped
     return bundle

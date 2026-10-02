@@ -73,7 +73,11 @@ To add a language:
 
 Parameterized entries remain functions so each language controls word order
 and pluralization. The frontend test suite also rejects newly introduced
-literal UI text outside the English table.
+literal UI text outside the English table: html text, UI attributes and
+properties (`.label=`, `aria-label=`, `title=`), ternaries that feed them,
+and `label`/`title`/`chip`-style constants. The same check covers the
+Virtual Remote card; a value that is not English copy (a protocol name, a
+setup notice that stays English) goes on the test's allowlist with a reason.
 
 ## ◇ Style and space constraints
 

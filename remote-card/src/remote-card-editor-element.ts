@@ -1,7 +1,6 @@
-// Lit config editor for the Sofabaton Virtual Remote card — the ported
-// replacement for remote-card-legacy-editor.ts. Layout/config mutations
-// delegate to the pure helpers in remote-card-editor-layout.ts; the sections
-// render via editor-sections/*.
+// Lit config editor for the Sofabaton Virtual Remote card. Layout/config
+// mutations delegate to the pure helpers in remote-card-editor-layout.ts; the
+// sections render via editor-sections/*.
 
 import { LitElement, html, nothing, unsafeCSS, type TemplateResult } from "lit";
 import {
@@ -710,7 +709,18 @@ export class SofabatonRemoteCardEditor extends LitElement {
         : []),
     ];
     if (!selectionOptions.some((option) => option.value === selection)) {
-      this._layoutSelection = "default";
+      // The options come from the entity's attributes, which HA drops while
+      // the entity is unavailable (for example while the Sofabaton app is
+      // connected). Keep the selection and list it as it is: silently
+      // falling back to Default here would leave the preview on the old
+      // target and send every later edit to layouts.default (CR-F4b-2).
+      const deviceId = parseDeviceLayoutKey(selection);
+      selectionOptions.push({
+        value: selection,
+        label: selection === "device:default"
+          ? str().editor.allDevicesOption
+          : deviceId != null ? str().card.deviceFallback(deviceId) : str().card.activityFallback(selection),
+      });
     }
 
     const isEditorX2 = this._isEditorX2();
@@ -847,9 +857,10 @@ export class SofabatonRemoteCardEditor extends LitElement {
           channelEnabled: channelGroupEnabled(layoutCfg),
           mediaEnabled: mediaGroupEnabled(layoutCfg),
           dvrEnabled: dvrGroupEnabled(layoutCfg),
-          // The official integration maps no numeric keys, so the standalone
-          // card never shows the keypad nor its switch.
-          showNumpadSwitch: isEditorX2 && this._isX1sIntegrationForEditor(),
+          // Positive integration check: an undetected entity gets no switch.
+          showNumpadSwitch:
+            isEditorX2 &&
+            (this._isX1sIntegrationForEditor() || this._isHubIntegrationForEditor()),
           numpadEnabled: numpadEnabledForEditor(this._config, this._layoutSelectionKey()),
           isDeviceSelection: isDeviceLayoutKey(this._layoutSelectionKey()),
           shortcutsStrip,

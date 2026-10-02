@@ -1,13 +1,13 @@
 /**
  * Codegen smoke: the committed openapi.json must be consumable by a
  * TypeScript generator, and the generated types must be usable for a
- * client. CI generates `schema.d.ts` from the document with
- * openapi-typescript and type-checks this file against it; nothing here
- * runs. If a rename in the API breaks this file, the document changed in
- * a way generated clients would feel, which is exactly what the check is
- * for.
+ * client. It type-checks against the committed `../openapi.d.ts`, which
+ * CI regenerates from the document and diffs (`npm run gen:server-types`);
+ * nothing here runs. If a rename in the API breaks this file, the document
+ * changed in a way generated clients would feel, which is exactly what the
+ * check is for.
  */
-import type { components, operations, paths } from "./schema";
+import type { components, operations, paths } from "../openapi";
 
 type HubView = components["schemas"]["HubView"];
 type HubStatus = components["schemas"]["HubStatus"];

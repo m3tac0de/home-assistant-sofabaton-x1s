@@ -17,9 +17,6 @@ from custom_components.sofabaton_x1s.const import (
 from custom_components.sofabaton_x1s.lib.commands import (
     COMMAND_RECORD_LABEL_LEN_X1,
     COMMAND_RECORD_LABEL_LEN_X1S_X2,
-    COMMAND_RECORD_LABEL_OFFSET,
-    COMMAND_RECORD_STRIDE_X1,
-    COMMAND_RECORD_STRIDE_X1S_X2,
     iter_command_records_from_assembled,
 )
 

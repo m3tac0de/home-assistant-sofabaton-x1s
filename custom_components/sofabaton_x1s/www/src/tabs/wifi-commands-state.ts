@@ -30,14 +30,14 @@ export function findRunningWifiDevice(
 
 export function shouldFinalizeWifiHubLoad({
   entryId,
-  entityId,
   deviceListLoaded,
 }: {
   entryId: string | null | undefined;
-  entityId: string | null | undefined;
   deviceListLoaded: boolean;
 }) {
-  return Boolean(String(entryId || "").trim()) && Boolean(String(entityId || "").trim()) && deviceListLoaded;
+  // The hub is addressed by its config entry; a disabled remote entity must
+  // not stall the tab (CR-X2-2).
+  return Boolean(String(entryId || "").trim()) && deviceListLoaded;
 }
 
 export function selectedDeviceOwnsPendingSync({

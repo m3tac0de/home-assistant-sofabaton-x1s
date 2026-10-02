@@ -18,6 +18,7 @@ from typing import Any, Literal, Mapping, Optional, Sequence, Union
 from .blob_decoders import (
     build_raw_ir_blob_body,
     encode_decoded_blob,
+    descriptive_ir_descriptor,
     looks_like_descriptive_ir_blob,
     parse_pronto_hex,
     try_decode_blob,
@@ -40,7 +41,6 @@ __all__ = ["IrPayload", "NetworkCommand", "CommandRecord", "CommandPayload", "pa
 MIN_PAYLOAD_BYTES = 10
 # Raw-blob layout: declared length (BE16), zeros, carrier Hz (BE16 at 6:8).
 _RAW_CARRIER_OFFSET = slice(6, 8)
-_DESCRIPTOR_OFFSET = 8
 
 IrPayloadKind = Literal["raw", "descriptive"]
 
@@ -118,11 +118,7 @@ class IrPayload:
     def descriptor(self) -> Optional[str]:
         """The protocol descriptor of a descriptive payload, else None."""
 
-        if self.kind != "descriptive":
-            return None
-        length = int.from_bytes(self.blob[0:2], "big")
-        raw = self.blob[_DESCRIPTOR_OFFSET:_DESCRIPTOR_OFFSET + length]
-        return raw.decode("ascii", errors="replace")
+        return descriptive_ir_descriptor(self.blob)
 
     @property
     def carrier_hz(self) -> Optional[int]:
@@ -193,6 +189,11 @@ def _ascii(text: Any, *, what: str, allow_empty: bool = False) -> str:
     return value
 
 
+# Header lines the wifi_ip request writer emits itself; a second copy in the
+# extra header line does not survive a round trip.
+_WRITER_OWNED_HEADERS = frozenset({"host", "content-type", "content-length"})
+
+
 @dataclass(frozen=True)
 class NetworkCommand:
     """One network command as the hub stores it, in its structured form.
@@ -231,8 +232,16 @@ class NetworkCommand:
         except ValueError as err:
             raise ValueError(f"trailer_hex {self.trailer_hex!r} is not hex") from err
         object.__setattr__(self, "trailer_hex", trailer.hex(" "))
-        # Encode once so a malformed command fails here, not in a sync job.
-        self.blob  # noqa: B018 - validation through the property
+        # Encode and decode once, with the same round-trip check the sync
+        # executor applies, so a command that cannot survive the hub's record
+        # format fails here instead of mid-sync (CR-L2-4).
+        verify = try_decode_blob(cls, self.blob)
+        if verify is None or verify.get("fields") != self.fields or (
+            verify.get("trailer_hex", "") != self.trailer_hex
+        ):
+            raise ValueError(
+                f"these {cls} fields do not round-trip through the hub's record format: {dict(self.fields)!r}"
+            )
 
     # -- constructors ---------------------------------------------------------
 
@@ -269,6 +278,15 @@ class NetworkCommand:
         path_value = _ascii(path, what="path").strip()
         if not path_value.startswith("/"):
             path_value = "/" + path_value
+        header_value = _ascii(header, what="header", allow_empty=True)
+        if "\r" in header_value or "\n" in header_value:
+            raise ValueError("header must be a single line (Name: value)")
+        header_name = header_value.split(":", 1)[0].strip().lower()
+        if header_name in _WRITER_OWNED_HEADERS:
+            raise ValueError(
+                f"header {header_name!r} is written by the hub's request format itself; "
+                f"use the host/content_type/body arguments instead"
+            )
         return cls(
             DEVICE_CLASS_WIFI_IP,
             {
@@ -276,7 +294,7 @@ class NetworkCommand:
                 "port": port_value,
                 "method": method_value,
                 "path": path_value,
-                "header": _ascii(header, what="header", allow_empty=True),
+                "header": header_value,
                 "content_type": _ascii(content_type, what="content_type", allow_empty=True),
                 "body": _ascii(body, what="body", allow_empty=True),
             },

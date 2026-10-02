@@ -39,6 +39,7 @@ from .routes_payload import router as payload_router
 from .routes_settings import router as settings_router
 from .routes_snapshot import router as snapshot_router
 from .store import ApplyStore
+from .tls import CertificateReloader
 from .routes_updates import router as updates_router
 from .updates import UpdateChecker, UpdateStatus
 from .routes_ui import router as ui_router, ui_pages_router
@@ -89,9 +90,12 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
                ws_queue_size: Optional[int] = None,
                callbacks: Optional[CallbackService] = None,
                backup_keep_seconds: Optional[float] = None,
-               update_checker: Optional[UpdateChecker] = None) -> FastAPI:
+               update_checker: Optional[UpdateChecker] = None,
+               tls_reloader: Optional["CertificateReloader"] = None) -> FastAPI:
     """Build the application. ``manager`` is injectable for tests; by
-    default one is created from the settings and started with the app."""
+    default one is created from the settings and started with the app.
+    ``tls_reloader`` (built-in TLS, ``tls.py``) only needs its poll run
+    with the app; the CLI hands its context to uvicorn."""
 
     settings = settings or Settings()
     started = time.monotonic()
@@ -99,6 +103,8 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     discovery_service = discovery or DiscoveryService(settings, hub_manager)
     job_runner = JobRunner(problem_for=problem_body)
     hub_manager.jobs = job_runner
+    # A job follows its hub from host id to MAC id (CR-S1-1).
+    hub_manager.on_rekey(job_runner.rekey)
     # Before the event relay: a finished backup is announced with its expiry set.
     backup_stage = BackupStage(job_runner, **({"keep_seconds": backup_keep_seconds} if backup_keep_seconds is not None else {}))
     callback_service = callbacks or CallbackService(hub_manager, settings)
@@ -117,6 +123,8 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         await callback_service.start()
         # Last, and a schedule only: no request leaves unless update_check is on.
         await checker.start()
+        if tls_reloader is not None:
+            await tls_reloader.start()
         if not auth_store.claimed:
             # Decision 2: as open as 0.2.1 until someone sets up access; say so once per start.
             log.warning("access is not set up: anyone who can reach this server can change hubs and settings; "
@@ -124,6 +132,8 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         try:
             yield
         finally:
+            if tls_reloader is not None:
+                await tls_reloader.stop()
             await checker.stop()
             await job_runner.shutdown()
             backup_stage.close()
@@ -161,12 +171,19 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     app.state.job_runner = job_runner
     app.state.backup_stage = backup_stage
     app.state.apply_store = ApplyStore(settings.data_dir, keep=settings.apply_keep)
+    apply_store = app.state.apply_store
+    # A removed hub's apply records go with it: a re-added hub must not
+    # resume or replay them (CR-S1-6).
+    hub_manager.on_server_event(
+        lambda hub_id, kind: apply_store.delete_hub(hub_id) if kind == "hub_removed" else None
+    )
     relay = EventRelay(hub_manager, jobs=job_runner, **({"maxsize": ws_queue_size} if ws_queue_size else {}))
     relay.instance_id = callback_service.ring.instance_id
     callback_service.on_press(lambda press: relay.publish(press.hub_id, WsPress(**press.to_dict())))
     app.state.event_relay = relay
     app.state.callbacks = callback_service
     app.state.update_checker = checker
+    app.state.tls_reloader = tls_reloader
     app.state.auth = auth_store
     app.state.origin_policy = origin_policy
     app.state.login_throttle = LoginThrottle()

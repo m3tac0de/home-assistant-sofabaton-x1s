@@ -1,6 +1,6 @@
 # Integrating an automation platform with sofabaton-x-server
 
-> Written for sofabaton-x-server 0.2.3 (`api 1`).
+> Written for sofabaton-x-server 0.2.4 (`api 1`).
 > Read the [upgrade notes](../CHANGELOG.md#022-2026-09-25), particularly
 > the catalog ordering and firmware status changes, and regenerate
 > clients from this release's OpenAPI document.
@@ -680,8 +680,13 @@ ignores transport and keeps the deployed choice. MQTT records have
 `target: null`, `effective_destination: null` and `mqtt_topic`; check
 `GET /server/mqtt` instead of callback-listener state. MQTT presses use
 `transport: "mqtt"` and `source: ""`, with the same sequence, history and
-resolution rules as HTTP. The server subscribes for presses only; it does
-not publish commands or consume MQTT activity-state messages.
+resolution rules as HTTP. The server never publishes. It also subscribes
+to the X2's activity topic (`activity/<MAC>/activity_control_up`) for
+every enabled X2 whose MAC is known, with or without MQTT devices: the
+hub announces an activity change there early in its power sequence, so
+`hub_event` / `activity_changed` and `GET /hubs/{id}/activity` reflect a
+change from the remote before the hub session confirms it. Commands sent
+in that window wait until the hub reports ready (at most 60 seconds).
 See the reference for [Wifi Commands](api-reference.md#wifi-commands) and
 [MQTT settings](api-reference.md#mqtt).
 

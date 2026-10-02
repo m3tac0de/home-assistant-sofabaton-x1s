@@ -6,6 +6,7 @@ import type {
   ControlPanelSnapshot,
   HassLike,
   HubClickAction,
+  SidebarPanelMode,
   TabId,
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
@@ -43,6 +44,11 @@ export function selectedHubCache(snapshot: ControlPanelSnapshot): CacheHubState 
 
 export function persistentCacheEnabled(snapshot: ControlPanelSnapshot): boolean {
   return !!snapshot.state?.persistent_cache_enabled;
+}
+
+export function sidebarPanelMode(snapshot: ControlPanelSnapshot): SidebarPanelMode {
+  const mode = snapshot.state?.sidebar_panel;
+  return mode === "all" || mode === "admin" ? mode : "off";
 }
 
 export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {
@@ -88,6 +94,7 @@ export function deviceClassIcon(deviceClass?: string | null) {
     case "wifi_hue":
     case "wifi_mqtt":
     case "wifi_ip":
+    case "wifi_sonos":
       return "mdi:wifi";
     default:
       return "mdi:radio-tower";
@@ -125,7 +132,9 @@ export function isBackendUnavailableError(error: unknown, hass: HassLike | null)
   const code = String(
     candidate.code ?? (candidate.error as Record<string, unknown> | undefined)?.code ?? "",
   ).toLowerCase();
-  if (code === "unknown_command" || code === "not_found" || code === "connection_lost" || code === "disconnected") {
+  // not_found is one hub the backend cannot resolve (a reloading entry), not
+  // a missing integration: it must not blank the whole card (CR-X2-8).
+  if (code === "unknown_command" || code === "connection_lost" || code === "disconnected") {
     return true;
   }
   const message = String(
@@ -233,8 +242,14 @@ export function proxyClientConnected(hass: HassLike | null, hub: ControlPanelHub
   return !!hub?.proxy_client_connected;
 }
 
+/**
+ * The backend's hub_connected decides; the remote entity is only a fast path
+ * (its state changes before the next control-panel poll). A remote entity
+ * the user disabled is gone from hass.states and must not gate the card
+ * (CR-X2-2).
+ */
 export function hubConnected(hass: HassLike | null, hub: ControlPanelHubState | null) {
-  return remoteAvailableForHub(hass, hub) || proxyClientConnected(hass, hub);
+  return remoteAvailableForHub(hass, hub) || proxyClientConnected(hass, hub) || !!hub?.hub_connected;
 }
 
 /** Firmware below the supported floor: write surfaces are blocked because
@@ -249,7 +264,7 @@ export function firmwareOutdated(hub: ControlPanelHubState | null) {
 }
 
 export function canRunHubActions(hass: HassLike | null, hub: ControlPanelHubState | null) {
-  return remoteAvailableForHub(hass, hub);
+  return remoteAvailableForHub(hass, hub) || !!hub?.actions?.can_sync_remote;
 }
 
 export type CardGateState =

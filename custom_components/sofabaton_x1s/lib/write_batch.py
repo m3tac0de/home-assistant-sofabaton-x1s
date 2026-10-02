@@ -24,11 +24,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import threading
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .hub_logging import LogTag
 from .hub_versions import HUB_VERSION_X2, classify_hub_version
 from .protocol_const import OP_REMOTE_SYNC, OP_X2_REMOTE_SYNC_ALL
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 #: The family / opcode byte of the physical remote-sync trigger.
 REMOTE_SYNC_FAMILY = 0x64
@@ -50,16 +53,12 @@ class EngineWriteBatch:
         return self.remote_sync_requests > 0
 
 
-class WriteBatchMixin:
+class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
     """Physical remote-sync trigger and the write batch that coalesces it.
 
-    Expects the host class to provide ``_log``, ``hub_version``, ``mdns_txt``
-    and ``enqueue_cmd`` (:class:`X1Proxy` does).
+    Uses the host's ``_log``, ``hub_version``, ``mdns_txt`` and
+    ``enqueue_cmd`` (declared by ``_ProxyHost``).
     """
-
-    _log: Any
-    hub_version: Any
-    mdns_txt: Any
 
     def _init_write_batch(self) -> None:
         # While set, physical remote-sync triggers are recorded instead of
@@ -120,14 +119,15 @@ class WriteBatchMixin:
     def end_write_batch(self, *, send_remote_sync: bool = True) -> dict[str, Any]:
         """Close the batch and send the one coalesced trigger.
 
-        Returns ``{"remote_sync": "sent" | "failed" | "not_needed",
-        "remote_sync_requests": n, "origins": [...]}``. ``not_needed``
-        means no participating write asked for a trigger (nothing that
-        needs one was written). ``failed`` means the trigger could not
-        be enqueued (the hub is not writable); the configuration
-        writes themselves are unaffected and the caller may retry the
-        trigger alone with ``resync_remote``. ``send_remote_sync=False``
-        drops the pending requests without sending.
+        Returns ``{"remote_sync": "sent" | "failed" | "not_needed" |
+        "skipped", "remote_sync_requests": n, "origins": [...]}``.
+        ``not_needed`` means no participating write asked for a trigger
+        (nothing that needs one was written). ``failed`` means the
+        trigger could not be enqueued (the hub is not writable); the
+        configuration writes themselves are unaffected and the caller may
+        retry the trigger alone with ``resync_remote``. ``skipped`` means
+        writes asked for one but ``send_remote_sync=False`` dropped it:
+        the remotes are not up to date.
         """
 
         with self._write_batch_lock:
@@ -136,8 +136,11 @@ class WriteBatchMixin:
                 raise RuntimeError("no write batch is open")
             self._write_batch = None
         status = "not_needed"
-        if batch.remote_sync_pending and send_remote_sync:
-            status = "sent" if self.resync_remote() else "failed"
+        if batch.remote_sync_pending:
+            if not send_remote_sync:
+                status = "skipped"
+            else:
+                status = "sent" if self.resync_remote() else "failed"
         self._log.info(
             "[BATCH] write batch closed: %d remote-sync request(s) from %s -> %s",
             batch.remote_sync_requests, batch.origins or "nothing", status,

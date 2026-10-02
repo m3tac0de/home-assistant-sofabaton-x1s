@@ -25,14 +25,16 @@ from __future__ import annotations
 import ipaddress
 import re
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
+from .ack import AckOutcome
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from .blob_decoders import render_wifi_ip_http_text, render_wifi_roku_blob_body
 from .device_create import DeviceCreateRequest, DeviceCreateResult, run_device_create
 from .devices import DeviceConfig, build_device_create_payload
 from .inputs import InputEntry, build_inputs_write
 from .macros import MacroKeyEntry, build_macro_save_payload
+from .wire_schema import encode_label_slot
 from .protocol_const import (
     ButtonName,
     DEVICE_CLASS_WIFI_IP,
@@ -41,6 +43,9 @@ from .protocol_const import (
     OP_REQ_BLOB,
 )
 from .state_helpers import normalize_device_entry
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 
 def _hex_to_bytes(raw_hex: str) -> bytes:
@@ -120,7 +125,21 @@ _ROKU_X1S_INPUT_FINALIZE_TAIL = _hex_to_bytes(
 )
 
 
-class WifiDeviceMixin:
+def utf16be_label_slot(text: str, size: int) -> bytes:
+    """Encode ``text`` as a fixed-width X1S/X2 label slot: UTF-16BE, cut to
+    whole code units (never half a surrogate pair), zero-padded.
+
+    Every X1S/X2 label slot is UTF-16BE, Wifi command and device names
+    included: the hub stores the bytes as sent, and the remote and all our
+    readers decode them big-endian (bench_270, 2026-09-29). The earlier
+    one-byte-shifted UTF-16LE form matched only for Latin-1 text and
+    garbled everything else.
+    """
+
+    return encode_label_slot(text, size, "utf-16-be")
+
+
+class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing the wifi-command and IP-button create flows."""
 
     def _build_wifi_device_payload(
@@ -315,8 +334,8 @@ class WifiDeviceMixin:
         payload[7] = device_id & 0xFF
         payload[9] = device_id & 0xFF
         payload.extend(b"\x4d\x00")
-        payload.extend(b"\x00" + device_name.encode("utf-16le")[:59].ljust(59, b"\x00"))
-        payload.extend(b"\x00" + brand_name.encode("utf-16le")[:59].ljust(59, b"\x00"))
+        payload.extend(utf16be_label_slot(device_name, 60))
+        payload.extend(utf16be_label_slot(brand_name, 60))
         payload.extend(_ROKU_X1S_INPUT_FINALIZE_TAIL)
         payload[-1] = (sum(payload[:-1]) - 0x02) & 0xFF
         return bytes(payload)
@@ -349,16 +368,11 @@ class WifiDeviceMixin:
             "[WIFI][STEP] publish-finalize tx opcode=0x%04X expect_ack=0x0103 first_byte=* attempt=1/1",
             0xD508,
         )
-        with self.exchange("publish_finalize"):
-            send_ts = time.monotonic()
-            self._send_cmd_frame(0xD508, finalize_payload)
-            ack = self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts)
-        if ack is None:
-            self._log.warning(
-                "[WIFI][STEP] publish-finalize failed waiting ack=0x0103 first_byte=*"
-            )
+        outcome = self._status_exchange("publish_finalize", 0xD508, finalize_payload)
+        if outcome is not AckOutcome.acked:
+            self._log.warning("[WIFI][STEP] publish-finalize %s (ack=0x0103)", outcome.value)
             return False
-        self._log.info("[WIFI][STEP] publish-finalize acked via 0x%04X", ack[0])
+        self._log.info("[WIFI][STEP] publish-finalize acked via 0x0103")
         return True
 
     def _wait_for_wifi_input_refresh(
@@ -827,15 +841,9 @@ class WifiDeviceMixin:
                 slot, code = _ROKU_APP_SLOTS[idx]
                 if isinstance(command_spec, dict):
                     command_name = _wifi_command_label(command_spec, idx)
-                    trigger_name = str(
-                        command_spec.get("trigger_name")
-                        or command_spec.get("name")
-                        or command_name
-                    ).strip() or command_name
                     press_type = str(command_spec.get("press_type") or "short").strip().lower()
                 else:
                     command_name = _wifi_command_label(command_spec, idx)
-                    trigger_name = command_name
                     press_type = "short"
                 command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
                 action = self._build_launch_action_path(
@@ -846,12 +854,8 @@ class WifiDeviceMixin:
                 command_defs.append((slot, code, command_name, action))
 
         for slot, code, name, action in command_defs:
-            if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
-                name_utf16 = name.encode("utf-16le")[:59]
-                name_blob = b"\x00" + name_utf16
-                name_blob = name_blob.ljust(60, b"\x00")
-            else:
-                name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
+            # Only X1 hubs take the Roku flow (X1S/X2 use the virtual-IP one).
+            name_blob = encode_label_slot(name, 30, "ascii")
             # Cap the path at 255 bytes so render_wifi_roku_blob_body's
             # 1-byte length prefix never overflows. The canonical
             # writer in blob_decoders is what backups round-trip
@@ -1030,19 +1034,14 @@ class WifiDeviceMixin:
             slot = (idx + 1) & 0xFF
             if isinstance(command_spec, dict):
                 command_name = _wifi_command_label(command_spec, idx)
-                trigger_name = str(
-                    command_spec.get("trigger_name")
-                    or command_spec.get("name")
-                    or command_name
-                ).strip() or command_name
                 press_type = str(command_spec.get("press_type") or "short").strip().lower()
             else:
                 command_name = _wifi_command_label(command_spec, idx)
-                trigger_name = command_name
                 press_type = "short"
-            # Observed X1S/X2 0x?E0E payloads encode command labels in a 59-byte field.
-            # Using 59 keeps downstream request bytes aligned so method parses as POST (not xPOST).
-            command_utf16 = command_name.encode("utf-16le")[:59].ljust(59, b"\x00")
+            # The command label is a 60-byte UTF-16BE slot at payload offset 15
+            # (the byte before it is the last of the zero run). Its width keeps
+            # the request bytes after it aligned, so the method parses as POST.
+            command_slot = utf16be_label_slot(command_name, 60)
             command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
             request_blob = self._build_virtual_ip_http_request(
                 host=ip_address,
@@ -1055,8 +1054,8 @@ class WifiDeviceMixin:
             )
             payload_base = (
                 bytes([slot, 0x00, 0x01, 0x03, 0x00, 0x01, device_id, 0x00, 0x1C])
-                + (b"\x00" * 7)
-                + command_utf16
+                + (b"\x00" * 6)
+                + command_slot
                 + request_ip
                 + int(request_port & 0xFFFF).to_bytes(2, "big")
                 + b"\x00"

@@ -21,6 +21,7 @@ import type {
   HassLike,
   RemoteCardConfig,
 } from "../../remote-card/src/remote-card-types";
+import { createRemoteCardHass, type ServiceCall } from "./helpers/remote-card-hass";
 
 const ENTITY = "remote.living_room";
 
@@ -46,11 +47,6 @@ const flush = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
-interface ServiceCall {
-  domain: string;
-  service: string;
-  data: Record<string, unknown>;
-}
 
 function deviceState(overrides: Record<string, unknown> = {}) {
   return {
@@ -75,41 +71,8 @@ function deviceState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createHass(options: {
-  platform?: string;
-  state?: Record<string, unknown> | null;
-  calls?: ServiceCall[];
-  keymapResponse?: unknown;
-  keymapCalls?: Array<Record<string, unknown>>;
-  powerStateResponse?: unknown;
-  powerStateCalls?: Array<Record<string, unknown>>;
-} = {}): HassLike {
-  const platform = options.platform ?? "sofabaton_x1s";
-  const calls = options.calls ?? [];
-  return {
-    states: options.state ? { [ENTITY]: options.state as never } : {},
-    async callWS<T>(message: Record<string, unknown>) {
-      if (String(message.type) === "config/entity_registry/get") {
-        return { platform } as T;
-      }
-      if (String(message.type) === "sofabaton_x1s/device/keymap") {
-        options.keymapCalls?.push(message);
-        if (options.keymapResponse instanceof Error) throw options.keymapResponse;
-        return (options.keymapResponse ?? { keymap: null, reason: "cache_miss" }) as T;
-      }
-      if (String(message.type) === "sofabaton_x1s/device/power_state") {
-        options.powerStateCalls?.push(message);
-        if (options.powerStateResponse instanceof Error) throw options.powerStateResponse;
-        return (options.powerStateResponse ?? { power_state: null }) as T;
-      }
-      return { ok: true } as T;
-    },
-    async callService(domain: string, service: string, data?: Record<string, unknown>) {
-      calls.push({ domain, service, data: data ?? {} });
-      return undefined;
-    },
-  };
-}
+// The shared fake (tests/frontend/helpers/remote-card-hass.ts).
+const createHass = createRemoteCardHass;
 
 function createStore(hass?: HassLike, config: Partial<RemoteCardConfig> = {}) {
   const store = new RemoteCardStore(() => undefined, {

@@ -137,7 +137,6 @@ test("backup tab rehydrates a stale running restore when the hub no longer repor
   assert.equal(backupStateCalls, 1);
   assert.equal(unsubscribed, true);
   assert.equal((element._restoreProgress as any)?.status, "success");
-  assert.equal(element._restoreSuccess, "Restore completed.");
 });
 
 test("backup tab rejects restore files from newer hub generations", async () => {
@@ -172,6 +171,31 @@ test("backup tab rejects restore files from newer hub generations", async () => 
   assert.equal(element._restoreFilename, "");
   assert.match(String(element._restoreError || ""), /cannot be restored onto a Sofabaton X1S hub/i);
   assert.equal(input.value, "");
+});
+
+test("the state poll does not wipe a local restore error (CR-F3-1)", async () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, any>;
+  let backupStateCalls = 0;
+  element.hass = {
+    states: {},
+    callWS: async () => { backupStateCalls += 1; return { backup_export: null, backup_restore: null, active_operation: null }; },
+  };
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(backupStateCalls, 1);
+
+  element._restoreError = "This backup cannot be restored onto a Sofabaton X1S hub.";
+  // The poll hands over a new hub object with nothing changed.
+  element.hub = { entry_id: "hub-1", version: "X1S" };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  assert.equal(backupStateCalls, 1);
+  assert.ok(element._restoreError);
+
+  // A running operation appearing is a real change and re-hydrates.
+  element.hub = { entry_id: "hub-1", version: "X1S", active_backup_operation: { operation_id: "op-1", status: "running" } };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  assert.equal(backupStateCalls, 2);
 });
 
 test("backup tab drops a loaded restore bundle when the hub picker switches hubs", () => {
@@ -309,9 +333,10 @@ test("backup edit detail rename updates the selected device name in the bundle",
   };
   element.kind = "device";
   element.entityId = 7;
-  element._editDetailNameDraft = "Media Center";
+  element._openDetailRenameDialog();
+  element._editRenameDialogDraft = "Media Center";
 
-  element._applyEditDetailRename();
+  element._applyEditRenameDialog();
 
   assert.equal(element._selectedEditTitle(), "Media Center");
   assert.equal((element.bundle as { devices: Array<{ device?: { name?: string } }> }).devices[0].device?.name, "Media Center");
@@ -338,9 +363,10 @@ test("edit detail element reports edits through bundle-change", () => {
   (element as unknown as EventTarget).addEventListener("bundle-change", (event) => {
     emitted = (event as CustomEvent<{ bundle: typeof emitted }>).detail.bundle;
   });
-  element._editDetailNameDraft = "Media Center";
+  element._openDetailRenameDialog();
+  element._editRenameDialogDraft = "Media Center";
 
-  element._applyEditDetailRename();
+  element._applyEditRenameDialog();
 
   assert.ok(emitted, "bundle-change should fire on commit");
   assert.equal(emitted!.devices[0].device?.name, "Media Center");
@@ -547,8 +573,8 @@ test("activity add binding dialog offers shortcut target types and all devices",
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const result = element._renderBindingDialog();
+  element._binding.openAdd("activity");
+  const result = element._binding.render();
 
   assert.equal(templateHasValue(result, "Device command"), true);
   assert.equal(templateHasValue(result, "Macro"), true);
@@ -581,11 +607,11 @@ test("activity button binding can create a macro target", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "action";
-  element._bindingActionName = "Scene Prep";
-  element._applyBinding();
+  element._binding.openAdd("activity");
+  const buttonId = element._binding.buttonId;
+  element._binding.targetKind = "action";
+  element._binding.actionName = "Scene Prep";
+  element._binding.apply();
 
   const activity = element.bundle.activities[0];
   const macro = activity.macros.find((entry: any) => entry.name === "Scene Prep");
@@ -595,7 +621,7 @@ test("activity button binding can create a macro target", () => {
   assert.ok(binding, "expected the selected button to be bound");
   assert.equal(binding.device_id, 101);
   assert.equal(binding.command_id, macro.button_id);
-  assert.deepEqual(element._macroEditor, {
+  assert.deepEqual(element._steps.editor, {
     scope: "activity",
     entityId: 101,
     buttonId: macro.button_id,
@@ -628,12 +654,12 @@ test("activity button binding can reuse an existing macro target", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "action";
-  element._bindingMacroMode = "existing";
-  element._bindingMacroId = 5;
-  element._applyBinding();
+  element._binding.openAdd("activity");
+  const buttonId = element._binding.buttonId;
+  element._binding.targetKind = "action";
+  element._binding.macroMode = "existing";
+  element._binding.macroId = 5;
+  element._binding.apply();
 
   const activity = element.bundle.activities[0];
   const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
@@ -642,7 +668,7 @@ test("activity button binding can reuse an existing macro target", () => {
   assert.ok(binding, "expected the selected button to be bound");
   assert.equal(binding.device_id, 101);
   assert.equal(binding.command_id, 5);
-  assert.equal(element._macroEditor, null);
+  assert.equal(element._steps.editor, null);
 });
 
 test("activity long-press binding can reuse an existing macro target", () => {
@@ -670,16 +696,16 @@ test("activity long-press binding can reuse an existing macro target", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "command";
-  element._bindingDeviceId = 7;
-  element._bindingCommandId = 3;
-  element._bindingLongPressEnabled = true;
-  element._bindingLpTargetKind = "action";
-  element._bindingLpMacroMode = "existing";
-  element._bindingLpMacroId = 5;
-  element._applyBinding();
+  element._binding.openAdd("activity");
+  const buttonId = element._binding.buttonId;
+  element._binding.targetKind = "command";
+  element._binding.deviceId = 7;
+  element._binding.commandId = 3;
+  element._binding.longPressEnabled = true;
+  element._binding.lpTargetKind = "action";
+  element._binding.lpMacroMode = "existing";
+  element._binding.lpMacroId = 5;
+  element._binding.apply();
 
   const activity = element.bundle.activities[0];
   const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
@@ -718,9 +744,9 @@ test("activity binding dialog gives long-press the same target types", () => {
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openAddBindingDialog("activity");
-  element._bindingLongPressEnabled = true;
-  const result = element._renderBindingDialog();
+  element._binding.openAdd("activity");
+  element._binding.longPressEnabled = true;
+  const result = element._binding.render();
 
   assert.equal(templateHasString(result, "sb-binding-lp-kind"), true);
   assert.equal(templateHasValue(result, "Device command"), true);
@@ -753,17 +779,17 @@ test("activity long-press enable defaults command target to a real device", () =
   element.kind = "activity";
   element.entityId = 101;
 
-  element._openEditBindingDialog("activity", 0xB0);
-  assert.equal(element._bindingTargetKind, "action");
+  element._binding.openEdit("activity", 0xB0);
+  assert.equal(element._binding.targetKind, "action");
 
-  element._handleBindingLongPressToggle({ target: { checked: true } });
+  element._binding.handleLongPressToggle({ target: { checked: true } });
 
-  assert.equal(element._bindingLpTargetKind, "command");
-  assert.equal(element._bindingLpDeviceId, 7);
-  assert.equal(element._bindingLpCommandId, 3);
+  assert.equal(element._binding.lpTargetKind, "command");
+  assert.equal(element._binding.lpDeviceId, 7);
+  assert.equal(element._binding.lpCommandId, 3);
 });
 
-test("activity shortcut macro flow can reuse an existing activity macro", () => {
+test("activity shortcut macro flow only creates: an existing macro is a shortcut already", () => {
   const bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -790,17 +816,18 @@ test("activity shortcut macro flow can reuse an existing activity macro", () => 
 
   element._openAddShortcutDialog();
   element._addShortcutKind = "action";
-  element._addShortcutMacroMode = "existing";
-  element._addShortcutMacroId = 5;
+  element._addShortcutActionName = "Scene Two";
   element._applyAddShortcut();
 
+  // "Scene Prep" (5) is already on the shortcut list, so the dialog never
+  // references it: Add creates the next macro and opens its step editor.
   const activity = element.bundle.activities[0];
-  assert.equal(activity.macros.length, 1);
-  assert.deepEqual(element._macroEditor, {
+  assert.deepEqual(activity.macros.map((macro: any) => [macro.button_id, macro.name]), [[5, "Scene Prep"], [6, "Scene Two"]]);
+  assert.deepEqual(element._steps.editor, {
     scope: "activity",
     entityId: 101,
-    buttonId: 5,
-    name: "Scene Prep",
+    buttonId: 6,
+    name: "Scene Two",
   });
 });
 

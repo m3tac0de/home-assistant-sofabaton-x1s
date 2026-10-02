@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from sofabaton import AsyncXProxy, HubConfig, HubEvent, HubStatus, StateDocumentError
 
@@ -51,6 +51,15 @@ class HubConflict(ValueError):
 
 class HubDisabled(RuntimeError):
     """The hub is configured but disabled; no proxy is running for it."""
+
+
+class HubBusy(RuntimeError):
+    """A job holds the hub, so it cannot be disabled or removed now."""
+
+    def __init__(self, hub_id: str, active: Any) -> None:
+        super().__init__(f"job {active.job_id} ({active.kind}) holds hub {hub_id}")
+        self.hub_id = hub_id
+        self.active = active
 
 
 class HubStartFailed(RuntimeError):
@@ -138,8 +147,11 @@ class HubManager:
     async def stop(self) -> None:
         """Shutdown: stop every running proxy (no release; the hubs come back)."""
 
-        for hub_id in list(self._proxies):
-            await self._stop_hub(hub_id, release=False)
+        async with self._transition:
+            # Popped one at a time under the lock: a re-key that ran while
+            # an earlier hub stopped cannot hide a proxy (CR-S1-4).
+            while self._proxies:
+                await self._stop_hub(next(iter(self._proxies)), release=False)
         self._started = False
 
     # -- listeners -----------------------------------------------------------
@@ -187,8 +199,10 @@ class HubManager:
         jobs = self.jobs
         hub_name = record.hub_name
         if hub_name is None and proxy is not None:
-            # Not yet remembered (a record from before this field): the cached banner, no traffic.
-            info = await proxy.hub_info()
+            # Not yet remembered: the banner the engine already holds. Never
+            # a fetch, so the list and status routes stay pure state reads
+            # (a banner request here duplicated the initial sync's, CR-X3-3).
+            info = await proxy.hub_info(cached_only=True)
             hub_name = info.name if info.known else None
         return HubView(
             hub_id=record.hub_id,
@@ -234,9 +248,19 @@ class HubManager:
             await self._start_hub(record)
         return record
 
+    def _refuse_while_job_runs(self, hub_id: str) -> None:
+        """Under the transition lock, with no await before the proxy is
+        popped: a job started between a route's check and the stop can
+        no longer have the proxy pulled from under it (CR-X5-3)."""
+
+        active = self.jobs.active(hub_id) if self.jobs is not None else None
+        if active is not None and active.status in ("queued", "running"):
+            raise HubBusy(hub_id, active)
+
     async def remove(self, hub_id: str) -> None:
         async with self._transition:
             record = self.record(hub_id)
+            self._refuse_while_job_runs(hub_id)
             if hub_id in self._proxies:
                 await self._stop_hub(hub_id, release=True)
             async with self._lock:
@@ -244,6 +268,8 @@ class HubManager:
                 self._persist()
             self._state.delete(record.hub_id)
             self.ui_documents.delete(record.hub_id)
+            if self.jobs is not None:
+                self.jobs.forget_hub(record.hub_id)
         self._emit_server("hub_removed", hub_id)
 
     async def enable(self, hub_id: str) -> HubRecord:
@@ -260,6 +286,7 @@ class HubManager:
     async def disable(self, hub_id: str) -> HubRecord:
         async with self._transition:
             record = self.record(hub_id)
+            self._refuse_while_job_runs(hub_id)
             if record.enabled:
                 record.enabled = False
                 self._persist()
@@ -293,6 +320,44 @@ class HubManager:
         if changed:
             self._emit_server("hub_proxy_enabled" if enabled else "hub_proxy_disabled", hub_id)
         log.info("hub %s: app proxy %s", hub_id, "enabled" if enabled else "disabled")
+        return record
+
+    async def set_host(self, hub_id: str, host: str) -> HubRecord:
+        """The hub moved to another address (mDNS saw it there): follow it.
+
+        The record keeps its id, name, cache and web remote layout; only
+        ``config.host`` changes. A running proxy is rebuilt in place, the
+        way the Home Assistant integration does on an entry update: the
+        engine's hub address is fixed per instance, and the old one would
+        page the stale address forever while the hub's dial-back from the
+        new address was dropped as unknown. The state file written at the
+        stop seeds the new engine, so the cache survives. A job holds the
+        proxy, so the move waits for the next advertisement (``HubBusy``).
+        """
+
+        async with self._transition:
+            record = self.record(hub_id)
+            if record.config.host == host:
+                return record
+            # Validate the way a manual add would: a bad address never reaches the record.
+            new_config = HubConfig.from_dict({**record.config.to_dict(), "host": host})
+            running = hub_id in self._proxies
+            if running:
+                self._refuse_while_job_runs(hub_id)
+            old_host = record.config.host
+            async with self._lock:
+                record.config = new_config
+                self._persist()
+            log.info("hub %s moved from %s to %s", hub_id, old_host, host)
+            if running:
+                await self._stop_hub(hub_id, release=False)
+                try:
+                    await self._start_hub(record)
+                except HubStartFailed:
+                    # Logged by _start_hub; the record keeps the new host and
+                    # stays enabled, so enable() (Retry start) tries again.
+                    pass
+        self._emit_server("hub_host_changed", hub_id)
         return record
 
     # -- internals -----------------------------------------------------------
@@ -354,6 +419,9 @@ class HubManager:
             log.debug("cleanup of a proxy that failed to start raised", exc_info=True)
 
     async def _stop_hub(self, hub_id: str, *, release: bool) -> None:
+        # Out of the map before the first await: from here on proxy()
+        # refuses the hub, so no job can start on a proxy being stopped.
+        proxy = self._proxies.pop(hub_id, None)
         watcher = self._watchers.pop(hub_id, None)
         if watcher is not None:
             watcher.cancel()
@@ -361,7 +429,6 @@ class HubManager:
                 await watcher
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
-        proxy = self._proxies.pop(hub_id, None)
         if proxy is not None:
             await self._export_state(hub_id, proxy)
             await proxy.stop(release_hub=release)
@@ -396,10 +463,15 @@ class HubManager:
 
         current_id = hub_id
         async for event in proxy.events():
-            if event.kind == "catalog_ready" and getattr(event.payload, "ready", False):
-                async with self._transition:
-                    current_id = await self._note_ready(current_id, proxy)
-                await self._advertise(current_id, proxy)
+            try:
+                if event.kind == "catalog_ready" and getattr(event.payload, "ready", False):
+                    async with self._transition:
+                        current_id = await self._note_ready(current_id, proxy)
+                    await self._advertise(current_id, proxy)
+            except Exception:  # noqa: BLE001
+                # A transient store error (a locked hubs.json, a full disk)
+                # must not end this hub's relay for good (CR-S1-3).
+                log.exception("hub %s: handling %s failed", current_id, event.kind)
             self._emit_hub(current_id, event)
             if event.kind == "snapshot_changed":
                 # Every refresh, write rebase, import and app-session flag
@@ -429,21 +501,45 @@ class HubManager:
         info = await proxy.hub_info()
         if info.known and info.name:
             record.hub_name = info.name
+        if info.known and info.model and record.config.hub_version != info.model:
+            # The banner names the model; a record added by address (or with a
+            # MAC but no model) learns it here, re-key or not. Consumers that
+            # key behaviour on the model (the X2 MQTT topics) read it from the
+            # record, so it must not stay at what the registration guessed.
+            record.config = dataclasses.replace(record.config, hub_version=info.model)
         if info.known and info.mac:
             new_id = mac_key(info.mac)
             if new_id != record.hub_id and new_id not in self._records:
                 # Re-key once: the host was only ever a placeholder id.
+                # The files move first; memory and hubs.json follow only
+                # when they did, so a failed move leaves the host id
+                # everywhere and the next ready sync retries (CR-S1-3).
+                self._state.rename(hub_id, new_id)
+                try:
+                    self.ui_documents.rename(hub_id, new_id)
+                except Exception:
+                    self._state.rename(new_id, hub_id)
+                    raise
+                old_config = record.config
                 self._records.pop(record.hub_id)
                 record.hub_id = new_id
                 record.config = record.config.__class__.from_dict(
                     {**record.config.to_dict(), "mac": info.mac, "hub_version": info.model or record.config.hub_version}
                 )
                 self._records[new_id] = record
+                try:
+                    self._persist()
+                except Exception:
+                    self._records.pop(new_id)
+                    record.hub_id = hub_id
+                    record.config = old_config
+                    self._records[hub_id] = record
+                    self.ui_documents.rename(new_id, hub_id)
+                    self._state.rename(new_id, hub_id)
+                    raise
                 self._proxies[new_id] = self._proxies.pop(hub_id)
                 if hub_id in self._watchers:
                     self._watchers[new_id] = self._watchers.pop(hub_id)
-                self._state.rename(hub_id, new_id)
-                self.ui_documents.rename(hub_id, new_id)
                 for listener in list(self._rekey_listeners):
                     try:
                         listener(hub_id, new_id)

@@ -560,7 +560,7 @@ def test_unknown_attribute_raises_with_hint() -> None:
     async def main():
         proxy = _wrap(FakeProxy())
         try:
-            proxy.definitely_not_a_method
+            _ = proxy.definitely_not_a_method
         except AttributeError as err:
             assert ".sync" in str(err)
         else:
@@ -847,6 +847,29 @@ def test_press_and_activity_control() -> None:
     asyncio.run(main())
 
 
+def test_external_activity_state_runs_the_engine_apply_in_the_executor() -> None:
+    class Engine(FakeProxy):
+        def __init__(self):
+            super().__init__()
+            self.applied: list = []
+            self.apply_thread: threading.Thread | None = None
+
+        def apply_external_activity_state(self, activity_id):
+            self.applied.append(activity_id)
+            self.apply_thread = threading.current_thread()
+            return activity_id is not None
+
+    async def main():
+        fake = Engine()
+        proxy = _wrap(fake)
+        assert await proxy.apply_external_activity_state(105) is True
+        assert await proxy.apply_external_activity_state(None) is False
+        assert fake.applied == [105, None]
+        assert fake.apply_thread is not threading.current_thread(), "the engine call runs off the loop thread"
+
+    asyncio.run(main())
+
+
 # ---------------------------------------------------------------------------
 # executor delegation / lifecycle / marshaling
 # ---------------------------------------------------------------------------
@@ -875,14 +898,14 @@ def test_delegated_method_runs_in_executor() -> None:
     async def main():
         call_thread = {}
 
-        # restore_device is a delegated PROXY_METHODS name.
+        # backup_device is a delegated PROXY_METHODS name.
         class WithProvision(FakeProxy):
-            def restore_device(self, *args, **kwargs):
+            def backup_device(self, *args, **kwargs):
                 call_thread["t"] = threading.get_ident()
                 return {"ok": True}
 
         proxy = _wrap(WithProvision())
-        assert await proxy.restore_device({}) == {"ok": True}
+        assert await proxy.backup_device(5) == {"ok": True}
         assert call_thread["t"] != threading.get_ident()
 
     asyncio.run(main())
@@ -1027,7 +1050,7 @@ def test_async_discover_hubs_delegates(monkeypatch) -> None:
 
 
 def test_async_hub_browser_marshals_callbacks() -> None:
-    discovery = importlib.import_module(f"{_pkg.__name__}.discovery")
+    importlib.import_module(f"{_pkg.__name__}.discovery")
     hub_versions = importlib.import_module(f"{_pkg.__name__}.hub_versions")
 
     class FakeServiceInfo:
@@ -1417,7 +1440,7 @@ def test_events_bounded_queue_drops_oldest_and_counts() -> None:
         # before consuming.
         first_task = asyncio.ensure_future(agen.__anext__())
         await asyncio.sleep(0.01)
-        for i in range(5):
+        for _i in range(5):
             fake.fire_simple("ota")
         await asyncio.sleep(0.01)
         first = await first_task
@@ -1563,7 +1586,7 @@ def test_initial_sync_waits_for_control_mode() -> None:
     async def main():
         fake = FakeProxy()
         fake.set_connected(hub=False)
-        proxy = aio.AsyncXProxy.wrap(fake, initial_sync=True)
+        _proxy = aio.AsyncXProxy.wrap(fake, initial_sync=True)
         fake.set_connected(hub=True, client=True)   # observe: app holds the hub
         await asyncio.sleep(0.02)
         assert fake.banner_fetches == 0 and fake.fetch_calls == []
@@ -2082,6 +2105,7 @@ def test_intents_raise_typed_rejection_and_validate_inputs() -> None:
     async def main():
         fake = _write_fake()
         fake.reject = True
+        fake.lands_catalogs = True  # the rejected create's verification read is answered
         proxy = _wrap(fake)
         for coro in (proxy.add_device("Lamp", "ir"), proxy.remove_device(5),
                      proxy.set_hub_name("Den"), proxy.erase(), proxy.play(bytes(16))):
@@ -2671,7 +2695,8 @@ class _ApplyFake(FakeProxy):
         self.batch_calls.append(("end", send_remote_sync))
         asked = sum(1 for c in self.write_calls if c[0] in ("create_device", "create_activity",
                                                              "reorder_devices", "reorder_activities"))
-        return {"remote_sync": "sent" if asked and send_remote_sync else "not_needed",
+        status = ("sent" if send_remote_sync else "skipped") if asked else "not_needed"
+        return {"remote_sync": status,
                 "remote_sync_requests": asked, "origins": []}
 
     def _sync(self, kind, baseline, edited, entity_id, kw):
@@ -2927,6 +2952,74 @@ def test_sync_hub_resume_adopts_a_create_that_landed_without_its_id() -> None:
     asyncio.run(main())
 
 
+def _created_device_run(fake, proxy):
+    """Run 1 of an apply that creates device -1 (with a binding, so it has
+    a sync item) to success; the tests rewrite its record into the state
+    an interrupted run leaves behind."""
+
+    async def run():
+        base = copy.deepcopy((await proxy.snapshot()).bundle)
+        desired = copy.deepcopy(base)
+        desired["devices"].append({"device": {"device_id": -1, "name": "Projector", "device_class": "ir"},
+                                   "button_bindings": [_apply_binding(0xB6, -1, 1)], "commands": [], "macros": []})
+        first = await proxy.sync_hub(baseline=base, desired=desired)
+        assert first.ok and first.id_map == {-1: 8}
+        assert [i.kind for i in first.items][:2] == ["add_device", "sync_device"]
+        return first.state.to_dict()
+
+    return run()
+
+
+def test_sync_hub_resume_runs_the_pending_sync_of_a_created_entity() -> None:
+    """CR-L5-1: the create landed, its sync item never ran. The created
+    entity is not in the baseline, so stage B must not compare it with the
+    baseline (that always read as 'changed on the hub')."""
+
+    async def main():
+        fake = _ApplyFake()
+        proxy = _wrap(fake)
+        doc = await _created_device_run(fake, proxy)
+        doc["status"], doc["cursor"] = "stopped", 1
+        for item in doc["items"]:
+            if item["kind"] != "add_device":
+                item["status"] = "not_attempted"
+        assert doc["items"][1]["entity_id"] == 8
+        syncs_before = len(fake.syncs)
+
+        second = await proxy.sync_hub(state=hub_apply.ApplyState.from_dict(doc))
+        assert second.ok, (second.failed_at, second.message)
+        assert [(k, e) for k, e, _s, _strict in fake.syncs[syncs_before:]] == [("device", 8)]
+        assert [c[0] for c in fake.write_calls] == ["create_device"], "no duplicate create"
+
+    asyncio.run(main())
+
+
+def test_sync_hub_resume_adopts_a_create_whose_read_back_failed() -> None:
+    """CR-L5-13: the create landed and its id was persisted, only the
+    read-back failed (uncertain / reread). Resume adopts the known id
+    instead of creating the entity a second time."""
+
+    async def main():
+        fake = _ApplyFake()
+        proxy = _wrap(fake)
+        doc = await _created_device_run(fake, proxy)
+        doc["status"], doc["cursor"] = "stopped", 0
+        for item in doc["items"]:
+            if item["kind"] == "add_device":
+                item["status"], item["failed_at"] = "uncertain", "reread"
+                item["message"] = "created as 8 but could not be read back"
+            else:
+                item["status"] = "not_attempted"
+
+        second = await proxy.sync_hub(state=hub_apply.ApplyState.from_dict(doc))
+        assert second.ok, (second.failed_at, second.message)
+        assert second.id_map == {-1: 8}
+        assert [c[0] for c in fake.write_calls] == ["create_device"], "no duplicate create"
+        assert [i.status for i in second.items][:2] == ["done", "done"]
+
+    asyncio.run(main())
+
+
 def test_sync_hub_refuses_bad_input_before_any_traffic() -> None:
     async def main():
         fake = _ApplyFake()
@@ -3080,6 +3173,26 @@ def test_the_holder_reads_the_hub_itself_and_nested_holds_release_once() -> None
     asyncio.run(main())
 
 
+def test_the_app_is_kept_out_while_the_facade_holds_the_hub() -> None:
+    class _GatedTransport(FakeProxy._Transport):
+        gate = None
+
+        def set_busy_gate(self, gate):
+            self.gate = gate
+
+    async def main():
+        fake = FakeProxy()
+        fake.transport = _GatedTransport()
+        proxy = _wrap(fake)
+        gate = fake.transport.gate
+        assert gate is not None and gate() is False
+        async with proxy._holding_hub("a restore"):
+            assert gate() is True  # a CALL_ME now waits, as it does in HA
+        assert gate() is False
+
+    asyncio.run(main())
+
+
 def test_a_failed_replacing_restore_says_the_hub_was_erased() -> None:
     async def main():
         fake = FakeProxy()
@@ -3103,5 +3216,237 @@ def test_a_failed_replacing_restore_says_the_hub_was_erased() -> None:
         replaced = await _wrap(failing).restore({"kind": "hub_bundle", "tag": "t"}, replace=True)
         assert not replaced.ok and replaced.erased and not replaced.wrote_nothing
         assert replaced.to_dict()["erased"] is True
+
+    asyncio.run(main())
+
+
+def test_sync_hub_awaits_an_async_state_persister_before_returning() -> None:
+    async def main():
+        fake = _ApplyFake()
+        proxy = _wrap(fake)
+        base, desired = _apply_docs(await proxy.snapshot())
+        persisted: list = []
+
+        async def persist(state) -> None:
+            await asyncio.sleep(0.05)  # a slow store
+            persisted.append(state.status)
+
+        result = await proxy.sync_hub(baseline=base, desired=desired, on_state=persist)
+
+        # The final record landed before sync_hub returned: a script that
+        # exits right after (asyncio.run) no longer loses it.
+        assert result.ok and persisted and persisted[-1] == "success"
+
+    asyncio.run(main())
+
+
+def test_two_writes_in_two_tasks_never_overlap_in_the_engine() -> None:
+    import threading
+    import time as _time
+
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+        active = []
+        overlap = []
+        lock = threading.Lock()
+
+        def _slow_write(*_a, **_kw):
+            with lock:
+                active.append(1)
+                if len(active) > 1:
+                    overlap.append(True)
+            _time.sleep(0.05)
+            with lock:
+                active.pop()
+            return {"status": "success"}
+
+        await asyncio.gather(
+            proxy._write("one", _slow_write),
+            proxy._write("two", _slow_write),
+        )
+        assert overlap == []
+
+    asyncio.run(main())
+
+
+def test_a_cancelled_write_keeps_the_hold_until_the_engine_lands() -> None:
+    import threading
+
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+        release = threading.Event()
+        landed = []
+
+        def _write(*_a, **_kw):
+            release.wait(2)
+            landed.append(1)
+            return {"status": "success"}
+
+        task = asyncio.ensure_future(proxy._write("slow", _write))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert proxy._hub_holds == 1  # still held: the engine is writing
+        release.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert landed == [1] and proxy._hub_holds == 0
+
+    asyncio.run(main())
+
+
+def test_payload_and_banner_reads_wait_out_another_operations_hold() -> None:
+    async def main():
+        fake = FakeProxy()
+        proxy = _wrap(fake)
+        dumps: list = []
+        banners: list = []
+        fake.request_ir_command_dump = lambda *a, **kw: dumps.append(a)  # type: ignore[attr-defined]
+        fake.fetch_banner_info = lambda **kw: banners.append(kw)  # type: ignore[attr-defined]
+        fake.get_banner_info = lambda: {}  # type: ignore[attr-defined]
+        release = asyncio.Event()
+
+        async def _hold():
+            async with proxy._holding_hub("a restore"):
+                await release.wait()
+
+        holder = asyncio.ensure_future(_hold())
+        await asyncio.sleep(0.01)
+        try:
+            await proxy.read_payload(5, 1, timeout=0.05)
+        except errors.FetchTimeoutError as err:
+            assert "a restore holds the hub" in str(err)
+        else:
+            raise AssertionError("expected FetchTimeoutError")
+        assert dumps == []  # nothing went to the hub mid-restore
+        release.set()
+        await holder
+
+    asyncio.run(main())
+
+
+def test_a_create_that_landed_despite_a_failure_is_adopted_not_rejected() -> None:
+    class LostAck(FakeProxy):
+        def create_device(self, name, *, device_class):
+            super().create_device(name, device_class=device_class)
+            return None  # the device exists, the id never came back
+
+    async def main():
+        fake = LostAck()
+        fake.lands_catalogs = True
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+
+        new_id = await proxy.add_device("Lamp", "ir")
+
+        assert new_id == 6  # adopted: a resume must not create it again
+
+        # Nothing changed on the hub: a real rejection stays one.
+        fake.reject = True
+        try:
+            await proxy.add_device("Fan", "ir")
+        except errors.HubRejectedError:
+            pass
+        else:
+            raise AssertionError("expected HubRejectedError")
+
+    asyncio.run(main())
+
+
+def test_a_replacing_restore_applies_the_bundles_hub_name() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.lands_catalogs = True
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+        bundle = {"kind": "hub_bundle", "tag": "t", "hub": {"name": "Living Room"}}
+
+        replaced = await proxy.restore(bundle, replace=True)
+        assert ("set_hub_name", "Living Room") in fake.write_calls
+        assert replaced.hub_name == "Living Room" and replaced.hub_name_restored is True
+
+        # A merge keeps the hub's own name.
+        fake.write_calls.clear()
+        merged = await proxy.restore(bundle, replace=False)
+        assert not any(call[0] == "set_hub_name" for call in fake.write_calls)
+        assert merged.hub_name is None and merged.hub_name_restored is None
+
+    asyncio.run(main())
+
+
+def test_the_facade_pauses_reconnects_when_the_hub_announces_a_firmware_update() -> None:
+    class _OtaTransport(FakeProxy._Transport):
+        def __init__(self):
+            self.paused = []
+
+        def pause_for_ota(self, seconds):
+            self.paused.append(seconds)
+
+    async def main():
+        fake = FakeProxy()
+        fake.transport = _OtaTransport()
+        listeners = []
+        fake.on_ota_update = listeners.append  # type: ignore[attr-defined]
+        _wrap(fake)
+
+        assert len(listeners) == 1  # registered at construction, not with events()
+        listeners[0]()  # the frame thread reports 0x0167
+        await asyncio.sleep(0.01)
+        assert fake.transport.paused == [aio.OTA_PAUSE_S]
+
+    asyncio.run(main())
+
+
+def test_cancelling_the_first_refresh_caller_leaves_a_joined_caller_its_snapshot() -> None:
+    async def main():
+        started, release = threading.Event(), threading.Event()
+
+        class Slow(FakeProxy):
+            def backup_device(self, device_id, **kwargs):
+                started.set()
+                assert release.wait(10)
+                return super().backup_device(device_id, **kwargs)
+
+        fake = Slow()
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+
+        async def catalog(**kwargs):
+            return []
+
+        proxy.devices = proxy.activities = catalog     # skip the catalog bursts
+        first = asyncio.ensure_future(proxy.refresh())
+        assert await asyncio.get_running_loop().run_in_executor(None, started.wait, 2)
+        joined = asyncio.ensure_future(proxy.refresh())
+        await asyncio.sleep(0.02)
+        first.cancel()
+        await asyncio.sleep(0.02)
+        release.set()
+        snap = await asyncio.wait_for(joined, 5)       # not cancelled: it gets the snapshot
+        assert snap is not None and not joined.cancelled()
+        try:
+            await first
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(main())
+
+
+def test_a_raising_progress_callback_never_breaks_a_write() -> None:
+    reporter_cls = aio._ProgressReporter
+
+    async def main():
+        def _broken(_report):
+            raise RuntimeError("the UI closed its sink")
+
+        reporter = reporter_cls(asyncio.get_running_loop(), _broken)
+        reporter(phase="writing", message="x", completed_steps=0, total_steps=1)  # logged, not raised
 
     asyncio.run(main())

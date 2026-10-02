@@ -9,7 +9,10 @@
     "build:remote-embed": "node ./scripts/build-remote-embed.mjs",
     "build:remote-web-assets": "node ./scripts/build-remote-web-assets.mjs",
     "build:server-panel": "node ./scripts/build-server-panel.mjs",
-    "build:frontend": "npm run build:tools-card && npm run build:remote-card && npm run build:remote-web && npm run build:remote-embed && npm run build:server-panel",
+    "gen:server-types": "node ./scripts/gen-server-types.mjs",
+    "pyright:check": "node ./scripts/pyright-baseline.mjs",
+    "pyright:baseline": "node ./scripts/pyright-baseline.mjs --update",
+    "build:frontend": "npm run build:remote-web-assets && npm run build:tools-card && npm run build:remote-card && npm run build:remote-web && npm run build:remote-embed && npm run build:server-panel",
     "build:tools-card-harness-site": "node ./scripts/build-tools-card-harness-site.mjs",
     "build:readme-remote-shot": "node ./scripts/build-readme-remote-shot.mjs",
     "build:readme-banner": "npm run build:readme-remote-shot && node ./scripts/build-readme-banner.mjs",
@@ -31,6 +34,7 @@
     "@types/node": "^20.19.43",
     "esbuild": "^0.27.0",
     "lit": "^3.3.1",
+    "pyright": "^1.1.414",
     "typescript": "^5.9.3"
   }
 }

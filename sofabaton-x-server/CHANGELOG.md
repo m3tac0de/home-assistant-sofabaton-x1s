@@ -4,9 +4,202 @@ Changes to `sofabaton-x-server`, compared against its own release tags.
 Protocol-library changes are recorded in the
 [library changelog](../sofabaton-x/CHANGELOG.md).
 
-## Unreleased
+## 0.2.4 (unreleased)
 
-No changes yet.
+Changes since `sofabaton-x-server-v0.2.3`. Requires
+**sofabaton-x >=0.2.3,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+This release is mostly fixes from a whole-codebase review. The library
+fixes it picks up (hub writes that failed or were reported wrongly,
+backup and restore safety, Wifi names outside Latin-1 on the X1S and X2)
+are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased).
+
+### Added
+
+- **Published container images.** Each release is pushed to Docker Hub
+  (`m3tac0de/sofabaton-x-server`) and GHCR
+  (`ghcr.io/m3tac0de/sofabaton-x-server`) for `linux/amd64` and
+  `linux/arm64`, tagged with the release, its minor line and `latest`.
+  The image installs the wheel the release published to PyPI. The
+  Compose file now names the Docker Hub image; building from a checkout
+  stays possible (`WHEEL_SOURCE=checkout`, the Dockerfile's default).
+  Synology Container Manager offers updates for the Docker Hub image on
+  its own. See [Docker](docs/running-server.md#docker).
+- **Built-in TLS reloads a renewed certificate without a restart.** With
+  `--tls-cert` / `--tls-key` the server now owns its TLS context and
+  watches the two files; a changed pair is loaded within a minute and
+  new connections present it. A pair it cannot load (half-written, key
+  mismatch) keeps the running certificate and is retried, with one
+  warning. A container with the certificate directory mounted therefore
+  follows renewals on its own, which is what an https dashboard
+  embedding the web remote needs. The image's health check follows the
+  scheme. Requires uvicorn 0.47 or newer (the package now says so). The
+  running guide gained [TLS without a proxy](docs/running-server.md#tls-without-a-proxy)
+  and reverse-proxy recipes for Traefik, Nginx Proxy Manager and
+  Synology DSM.
+- **The update check says how the server was installed.** `GET
+  /server/updates` (and the `update` block of `GET /server`) carries
+  `install_kind`: `container`, `pipx`, `pip`, `checkout` or `unknown`,
+  detected at startup and overridable with `SOFABATON_INSTALL`. The
+  control panel shows it and words the next step once a newer release
+  is known: pull the new image, `pipx upgrade`, or the pip line. The
+  `upgrade_url` of a container points at the Docker recipe. The server
+  still never installs anything.
+- **X2 activity changes arrive over MQTT.** With a broker set, the server
+  subscribes to `activity/<MAC>/activity_control_up` for every enabled
+  X2 whose MAC is known, whether or not it has MQTT Wifi Devices, and
+  applies the change the way the Home Assistant integration does: the
+  `activity_changed` event and `GET /hubs/{id}/activity` reflect a change
+  made on the remote early in the hub's power sequence, the hub session
+  reconciles afterwards, and commands sent before the hub reports ready
+  are held (at most 60 seconds). Retained messages are dropped; pushes
+  while the hub is disconnected or before its first activities read are
+  ignored. The topic shows in `GET /server/mqtt`. See
+  [MQTT](docs/api-reference.md#mqtt).
+- **A hub that changes IP address is followed.** When a registered hub
+  advertises itself from another address (a new DHCP lease), the server
+  matches it by MAC, updates the registration and rebuilds its proxy on
+  the new address, as the Home Assistant integration does on a zeroconf
+  rediscovery. The event stream announces it as the `server_event` kind
+  `hub_host_changed`. Hubs registered by address are followed once their
+  MAC is known (the first ready sync).
+- **Control panel: hubs no longer read as connected while the server is
+  unreachable.** The hub picker and the dock's Hub/App pill showed each
+  hub's last status while the panel could not reach the server at all.
+  They now read "status unknown" with a dark dot until the server
+  answers again, and a dropped event stream asks REST at once instead of
+  waiting for the next poll.
+- The record's hub model (`config.hub_version`) follows the hub's banner
+  on every ready sync, not only when a host-registered hub is re-keyed
+  to its MAC.
+
+### Upgrade notes
+
+- Update the server to `sofabaton-x-server>=0.2.4,<0.3` with the same data
+  directory, then reload open panel and remote pages. No manual
+  conversion of registrations, access settings, Wifi Devices or saved
+  layouts is needed.
+- **Docker users can switch to the published image.** Replace the
+  `build:` block in your Compose file with
+  `image: m3tac0de/sofabaton-x-server:latest` (or a release tag) and keep
+  the `./data` volume; nothing in the data directory changes. A locally
+  built image keeps working.
+- **Device and activity names are limited to 30 characters.** The
+  rename bodies and the create-device name accept at most 30 characters
+  (they accepted 64, which the hub silently truncated). The hub rename
+  keeps its 64-character limit and now has its own `HubRenameRequest`
+  schema. Snapshot applies refuse a new or changed name the hub cannot
+  store.
+- **A backup or snapshot in which one activity references another
+  activity is refused** before anything is written. The official app
+  never creates these.
+- The OpenAPI document no longer lists a `428` answer on the routes that
+  never send it. A non-numeric entity id in the row-edit routes answers
+  `422` instead of `500`, and a coded refusal inside a job keeps its code
+  instead of becoming `internal_error`. Regenerate clients from this
+  release's `openapi.json` if you rely on the response lists.
+- The npm package `sofabaton-x-remote` 0.1.1 carries the same remote
+  fixes; it is released separately and still works with server 0.2.2
+  and later.
+
+### Changed
+
+- **Button assignments in the activity editor create at most one new
+  macro.** While one press creates a new macro, the other press offers
+  existing macros only.
+- Unknown hub versions keep the Wifi power and input options in the
+  editors, as in the Home Assistant control panel.
+- Remote → Layout uses the panel's language (English) instead of
+  following the browser.
+
+### Fixed
+
+Server:
+
+- Removing a stale Wifi Device deleted whatever device had since taken
+  its old id.
+- Wifi Device records could be lost or orphaned when redeploying an MQTT
+  device while MQTT was down, when a create landed while the hub was
+  still connecting, when deleting a device whose create was still
+  pending, and when switching MQTT brokers during a reconnect.
+- Presses that arrived while a Wifi Device was being updated were lost.
+- Resuming an interrupted apply always stopped with "entity diverged",
+  and could create a device or activity a second time. Replaying an
+  apply after a server restart reported an interrupted apply as done.
+- The official app could take the hub in the middle of a restore or apply.
+- After the server renamed a hub to its MAC, a running job was not seen,
+  so the hub could be disabled or removed during it.
+- Concurrent panel actions could interleave their writes, and a
+  cancelled write kept writing.
+- One persistence error could stop a hub's events for good, with nothing
+  logged.
+- Stopping the server during IR learn waited up to 60 seconds. A hub
+  renamed during shutdown was never stopped.
+- Adding, removing or claiming a hub froze the server for about half a
+  second. Status reads could wait up to 2 seconds on the hub.
+- The hub's firmware-update reconnect pause did not work.
+- Adding a hub with a malformed MAC created a hub no route could reach.
+- Errors inside Wifi Device jobs came back as a bare "internal error".
+- The Wifi Device delete guard did not warn about activities whose
+  details were not loaded yet.
+- A client that disconnected before the event stream's hello leaked its
+  subscription.
+
+Control panel:
+
+- Browser Back, or editing the URL, dropped unsynced Wifi Device edits
+  and editor drafts without asking.
+- Deleting a second Wifi Event in the device editor removed a
+  neighbouring event's long-press action.
+- Editing a keyed Wifi Device in the device editor made its later Wifi
+  Device syncs fail.
+- An editor sync, refresh or delete that finished after you moved to
+  another entity acted on that entity. Catalog refreshes, reorders and
+  adds could act on a hub you had switched to.
+- An editor that failed to load stayed on "Loading..." for good. Leaving
+  during an editor's own sync showed a false "Unsynced changes" dialog
+  afterwards. Opening an editor discarded an older draft before the
+  "Keep editing / Discard" prompt was answered.
+- The selected hub jumped to the first hub when it was renamed to its MAC.
+- The Remote → Layout draft was dropped on a hub switch or reload.
+- A running job was reported as failed after one missed poll, or after
+  600 polls.
+- A stopped apply's Resume / Discard banner did not appear.
+- The Wifi Devices view showed the stale flag and Redeploy late, and its
+  leave dialog's "Sync now" was enabled for a device still being created.
+- Backup: switching hubs deleted the other hub's saved edit session, the
+  device list was never re-read after devices changed, finishing on one
+  hub dismissed the other hubs' notices, and the Backup editor's "Rename
+  hub" was ignored on restore. A backup of an empty device selection
+  became a backup of the whole hub.
+- The Events view's filter and pause changed the stream the rest of the
+  panel relies on.
+- The Server → Status ports and MQTT broker forms lost their edits when
+  the view came back.
+- The API console's "Follow job" flooded the history and could not be
+  stopped.
+- An enabled hub whose proxy failed to start said "This hub is disabled".
+- The account form reported every refusal as a wrong current password.
+- Catalog rows can be opened from the keyboard. "Up to date" and test
+  success texts meet contrast on the dark palette.
+
+Web remote and embed:
+
+- Device mode could fetch a keymap in a tight endless loop; a failed
+  fetch now backs off.
+- The web remote could get stuck loading after a reload during a page read.
+- The web remote and embed kept polling a dead hub id after the server
+  renamed the hub to its MAC.
+- Failed button presses showed no message, and after one retry succeeded
+  the remote kept waiting longer and longer between later retries.
+- Embed: setting the `config` property was ignored while a `config`
+  attribute was present.
+- A device cache miss showed Home Assistant recovery advice.
+- Macro, favorite and device-command buttons work from the keyboard. The
+  X2 number pad can be closed from the keyboard and keeps focus.
+- The X2 Exit key and the key names were always English; zh-CN browsers
+  got English, and the remote's own notices stayed English.
 
 ## 0.2.3 (2026-09-28)
 

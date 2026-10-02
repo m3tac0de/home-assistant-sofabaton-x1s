@@ -94,9 +94,3 @@ export function renderTabBar(params: {
     </div>
   `;
 }
-
-/** The cog button's own click, so the shell can tell it from an outside click. */
-export function isCogToggle(target: EventTarget | null, root: ParentNode): boolean {
-  const button = root.querySelector("#cog-btn");
-  return Boolean(button && target instanceof Node && button.contains(target));
-}

@@ -140,7 +140,7 @@ A→H a5 5a 3c 12 01 00 01 01 00 01 65 04 02 <2 rows> "test 5 step" ...     (rep
 ### Delete a key-row = 0x0210 (+ 0x61 reorder + 0x65 commit)
 
 One primitive covers **button-binding removal, favorite removal, and
-user-macro deletion** — the hub's KeyToKey table is uniform, so all
+user-macro deletion** — the hub's binding table is uniform, so all
 three are "delete the row for (activity, key code)".
 
 - `0x0210` (family `0x10`, `FAMILY_FAV_DELETE`) payload `[act][key]`,
@@ -234,7 +234,7 @@ Confirmed on **both** X1 and X1S:
   <self>, long_press_command_id}` — identical in shape to app-created
   reference rows.
 - **Key-row delete at device scope** — `0x0210 [dev][key]` + `0x0165`
-  commit, previously proven only for activities. The hub's KeyToKey
+  commit, previously proven only for activities. The hub's binding
   table treats device and activity ids uniformly (split purely by the
   id range, `>= 0x65` = activity).
 - **Device macro writes (power sequences 198/199)** — the single-page
@@ -380,6 +380,10 @@ Confirmed:
   activity already on the hub but absent from the bundle is rejected;
   standalone `restore_activity` handles it via an explicit
   `activity_id_map={id: id}`.
+  **Removed 2026-09-30 (CR-F3-19):** one activity never references
+  another (ledger L-B25), so the remap, the dependency order and
+  `activity_id_map` are gone; restore and the document planner now
+  refuse such a row before any write.
 - **HA-action blobs without inner-record trailer (former pending
   gate)**: the hub accepts the editor's trailer-less `wifi_ip` records
   as-is — every family-0x0E page acked `0x0103/0x00`, the record is
@@ -1586,6 +1590,54 @@ real activity switches from the remote.
   externally_applied guard (skip redundant-OFF arming when the settle
   gate was armed) is consistent with either behavior.
 
+## ◇ Validated: MQTT activity-state fast path via sofabaton-x-server (X2, 2026-10-01)
+
+Reproduction tooling:
+[`bench_291_mqtt_activity_state.py`](../../scripts/hub-bench/bench_291_mqtt_activity_state.py)
+(`ha` and `server` legs; its own subscriber on the activity topic
+timestamps the hub's publish independently of the consumer). Production
+X2 at .123, broker at .77, activity 105 "Play Steamdeck" started and
+stopped by the consumer (`remote.turn_on`/`turn_off` on HA, `POST
+/activities/105/start|stop` on the server), one transition each way per
+leg.
+
+- **Server leg (15/15 checks)**: a bench server registered the X2 by
+  address; the ready sync re-keyed the record to `fc012c39d390` with
+  model `X2`, and the server subscribed to
+  `activity/FC012C39D390/activity_control_up` with **no Wifi Device
+  deployed** (the activity topic alone brings the broker connection up).
+  Both pushes (`{"activity_id":105,"state":"on"}`, then
+  `{"activity_id":255,"state":"off"}`) were applied through
+  `AsyncXProxy.apply_external_activity_state` within 1 ms of the
+  publish; `hub_event`/`activity_changed` reached the WebSocket stream
+  1 ms after the publish and `GET /hubs/{id}/activity` flipped
+  accordingly. Close-out re-enabled the HA entry and HA held the hub
+  again.
+- **HA leg (same transitions)**: the integration applied both pushes
+  (`[MQTT_ACT] applied`) and the activity sensor flipped; same timings.
+- **Timing finding (consumer-triggered changes)**: in all ten
+  transitions of the day (105 on/off on both legs, then the sequence
+  off → 101 "Watch a movie" → 102 "Play Xbox" → off on both legs, with
+  power sequences of 2.1 to 3.5 s) ACK_READY arrived **about 70 ms
+  before** the MQTT push, whatever the macro length. The hub finishes
+  the macro, acknowledges on the TCP session, then publishes. Both
+  consumers therefore took the engine's "hub already ready" branch:
+  state applied from the push without arming the settling gate, the
+  ACK_READY-triggered refresh reconciling behind it. This differs from
+  the 2026-08-17 observation (push early in the power sequence, 1 to
+  1.5 s before ACK_READY), where the trigger was the **physical remote**;
+  today's trigger was the consumer's own `REQ_ACTIVATE` over TCP. The
+  working hypothesis is that the ordering depends on the trigger source
+  (a remote-initiated change publishes at macro start, a TCP-initiated
+  one after ACK_READY); a remote-triggered run with the same bench
+  (`--trigger remote`) is the open comparison. Not a regression: HA's
+  path is unchanged by the 2026-10-01 work and shows the same ordering.
+  The hub also published the `255` all-off on every OFF transition, so
+  an OFF initiated through the consumer is announced on the topic (the
+  earlier finding that a *redundant* OFF is not published still
+  stands). A direct switch 101 → 102 produced a single
+  `{"activity_id":102,"state":"on"}` publish, no `off` for 101.
+
 ## ◇ Measured: MQTT vs TCP command-send latency (X2, 2026-08-17)
 
 Reproduction tooling:
@@ -2492,3 +2544,114 @@ project as `[1]` / none; one Wifi cycle shrank the raw tables to
 `POST` / `DELETE /activities/{id}/favorites` left `fav1` / empty. Both
 activities clean at the end of the session. The X2's table was not
 checked.
+
+## ◇ Validated: labels, hub name and favorite ids, code review bench BP1 (X1S, 2026-09-30)
+
+Bench program BP1 of the code review (scripts `bench_281` to `bench_285`,
+throwaway devices and activities, all removed again; the X1S ended with
+its four devices, three activities and name `X1S HUB test`).
+
+- **Hub name encoding (CR-L3a-8).** `set_hub_name` writes GB2312, and the
+  hub keeps those bytes: after a reconnect the banner carried `4b a8 b9
+  63 68 65 20 48 75 62` for `Küche Hub` and `bf cd cc fc 20 48 75 62` for
+  `客厅 Hub`. The banner reader decoded them as UTF-8 and showed `Kche Hub`
+  and `Hub`; it now reads GB2312 (UTF-8 first, which GB2312 bytes above
+  ASCII never are).
+- **Label writers (CR-L2-1, CR-L2-14).** A Wifi device (device and command
+  labels) and an IR device restore (command labels) with `Küche`,
+  `灯光控制`, 29 letters plus an emoji (31 UTF-16 units) and 28 letters plus
+  an emoji (30 units) read back exactly as the one slot encoder predicts:
+  the 31-unit name loses the whole emoji, never half of it; the 30-unit
+  name keeps it.
+- **Favorite command ids (CR-L4b-7).** The favorite map (family `0x3E`) is
+  accepted for command ids up to **199** (`0xC7`, answer `0x013E`) and
+  refused for **200 and above** with `STATUS_ACK 0x09`, on a throwaway
+  device and activity where ids 1, 2, 64 ... 199 were all accepted. The
+  code-byte carry past `0xFF` is therefore never reached. Before the
+  wave 1 fix that made a non-zero `STATUS_ACK` a rejection (CR-L4b-5), a
+  refused map counted as success. A control favorite on the real "Watch
+  TV" activity was accepted and removed again. The X1 path (fixed code
+  `0x4E24`) was not probed.
+
+## ◇ Validated: restore and backup, code review bench BP2 (X1S + X1, 2026-09-30)
+
+Bench program BP2 of the code review (`bench_286` to `bench_288`).
+
+- **Long-press-only rows (CR-R1-10, CR-L5-7), X1S.** A binding row with an
+  empty short press (command 0, code 0) and a bound long press is kept by
+  the hub on a device page and on an activity page, and reads back as
+  written. Restore now writes such rows, the activity export keeps them
+  (a role placeholder, command 0 without a long press, is still no
+  binding), and validation accepts them.
+- **Power byte (CR-L2-5), X1S.** A device created from the Add-device
+  payload has the record-tail power byte 0, and it stays 0 after its power
+  is set up (idle byte 1 plus POWER_ON/POWER_OFF macros). The tail byte is
+  not a power flag: the backup macro read now also counts the idle byte
+  (modes 1-3), so such a device's power macros are captured.
+- **Idle write race (CR-BP2-1), X1S.** `SET_IDLE_BEHAVIOR` was sent
+  fire-and-forget; a power-macro page sent right after it landed in the
+  hub's `STATUS_ACK` and was dropped (ack timeout). The write is now
+  ack-gated; the same sequence then landed.
+- **Erase and replacing restore (CR-L4a-7, CR-L4a-9, CR-L4a-10, CR-X1-4),
+  X1, through the facade.** A full backup (12 devices, 6 activities, IR
+  blobs) read each catalog once. The erase answered `STATUS_ACK 0x0103`
+  status `0x00`. The replacing restore rebuilt all 12 devices and 6
+  activities in 392 s with two catalog reads per kind (the bundle's one
+  refresh and the read-back), left no new burst listeners, and applied the
+  bundle's hub name. A second full backup matched the first entity by
+  entity (names, classes, command, binding, macro, favorite and input
+  counts). The X1's HA entry was disabled for the run and re-enabled.
+
+## ◇ Validated: engine timing under load, code review bench BP3 (X1S + X1, 2026-09-30)
+
+Bench program BP3 of the code review (`bench_289`, read-only).
+
+- **Inputs pages come back whole (CR-L3b-8).** Every device's inputs record
+  (family `0x46`) on both hubs parsed to its full entry count, multi-frame
+  records included (an X1 device with 5 inputs answers a full 255-byte
+  page plus a short tail frame). A device without an inputs page answers a
+  non-success `STATUS_ACK` and reads as empty.
+- **Exchanges under a stream of catalog reads (CR-L3b-2, new CR-BP3-1).**
+  A second thread requested the devices and activities catalogs every
+  50 ms while the inputs reads repeated. Before the fix every read timed
+  out (X1S, 20 of 20): each catalog burst's end started the next queued
+  read, so the exchange never saw a quiet wire, and after its 8 s wait it
+  forced its request into a live burst, where the hub dropped it. An
+  exchange waiting for the wire now goes ahead of queued reads, and a
+  queued, unsent catalog read absorbs identical repeats. After the fix:
+  X1S 20 of 20 in 11 s, X1 36 of 36 in 48 s, no mismatches, no forced
+  claims. The X1's HA entry was disabled for the run and re-enabled.
+- Not run live: the `CALL_ME` busy gate during a facade job (CR-L3b-5)
+  needs the vendor app, the OTA pause (CR-X5-6) a firmware announcement,
+  and the NOTIFY_ME subnet broadcast (CR-L3b-7) a LAN that is not a /24;
+  all three stay covered by unit tests.
+
+## ◇ Validated: the HA path after wave 2, code review bench BP4 (X1 via HA, 2026-09-30)
+
+Bench program BP4 of the code review (`bench_290_ha_path.py`), run against
+the deployed integration through HA's own REST and WebSocket APIs; the X1's
+entry stayed enabled throughout.
+
+- **Presses are never part of the one-operation rule.** Ten
+  `remote.send_command` presses with no delay reached the wire within one
+  second on an idle hub, and five more did the same while a whole-hub backup
+  ran.
+- **While a registry operation runs (a whole-hub backup, 13 devices and 6
+  activities):**
+  - `device/power_state` answers unknown at once (CR-X1-3).
+  - A guarded hub read (`blobs/fetch`) answers `busy` (CR-X1-6).
+  - A hub service (`get_favorites`) is refused with `hub_busy` (CR-H2-2).
+    HA's REST API reports a service's `HomeAssistantError` as a bare 500;
+    the reason is in the log.
+  - The Resync remote button is refused (CR-X1-5).
+  - `backup/state` carries `has_backup` and the entity counts, not the
+    bundle (CR-X2-5).
+  - Afterwards the power-state read and the button work again.
+- **Wifi deploy (replace path).** The X1 accepts a binding for the X2-only
+  button A (0x99), so a refused binding (CR-H1-4) cannot be forced on an X1;
+  that fix stays suite-proven. A cleanup that landed while the deploy still
+  ran was refused `busy`, as the new rule intends.
+- **Wifi callback answer (CR-H3-9).** A press on the deployed device with a
+  slow action (`homeassistant.check_config`) was answered 6 ms after the
+  callback arrived, with the action dispatched rather than awaited, and the
+  hub delivered it once.

@@ -29,6 +29,7 @@ from .discovery import (
     discover_hubs,
 )
 from .backup_export import normalize_dump_to_blobs, now_iso as _now_iso
+from .bundle_validation import validate_entity_rename
 from .errors import (
     FetchTimeoutError,
     HubBusyError,
@@ -52,7 +53,12 @@ from .hub_versions import (
     firmware_is_unsupported,
 )
 from .commands import hub_command_label
-from .wifi_inplace_plan import baseline_snapshot_from_bundle, build_wifi_inplace_plan
+from .wifi_inplace_plan import (
+    REFERENCED_RECORD_STEP_KINDS,
+    baseline_snapshot_from_bundle,
+    build_wifi_inplace_plan,
+    classify_live_slots,
+)
 from .wifi_device import (
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
@@ -107,6 +113,10 @@ __all__ = [
 ]
 
 _LOG = logging.getLogger("x1proxy.facade")
+
+# How long reconnects stay paused after the hub announces a firmware update
+# (the same window the HA integration uses).
+OTA_PAUSE_S = 300.0
 
 # Default deadline for an awaited read that has to fetch from the hub.
 DEFAULT_FETCH_TIMEOUT = 10.0
@@ -253,11 +263,8 @@ class _FacadeBatch:
     force: bool = False
 
 
-# Sync step kinds that rewrite or remove a command record. Every activity
-# naming the device holds resolved copies of those records (labels, codes,
-# the rows a delete cascades into), so they are read back after the write.
-# A command_add is left out: nothing references a command that is new.
-_COMMAND_RECORD_STEP_KINDS = frozenset({"command_rename", "command_payload", "command_delete"})
+# Sync step kinds after which every activity naming the device is read back.
+_COMMAND_RECORD_STEP_KINDS = REFERENCED_RECORD_STEP_KINDS
 
 
 def _sync_succeeded(result: Any) -> bool:
@@ -277,8 +284,11 @@ class _ProgressReporter:
         progress = WriteProgress.from_engine(**payload)
         if inspect.iscoroutinefunction(self._callback):
             self._loop.create_task(self._callback(progress))
-        else:
+            return
+        try:
             self._callback(progress)
+        except Exception:  # noqa: BLE001  (L-P28: a consumer callback never breaks the write)
+            _LOG.exception("progress callback raised")
 
 
 # True inside the task that holds a hub for an exclusive operation (see
@@ -399,12 +409,10 @@ class AsyncXProxy:
             "update_discovery_identity",
             "enable_proxy",
             "disable_proxy",
-            # per-entity backup / restore (the whole-hub forms are the
-            # explicit backup() / restore() coroutines)
+            # per-entity backup (the whole-hub form is the explicit
+            # backup() coroutine; per-entity restore is engine-only)
             "backup_device",
             "backup_activity",
-            "restore_device",
-            "restore_activity",
         }
     )
 
@@ -433,6 +441,7 @@ class AsyncXProxy:
             "get_macros_for_activity",
             "ensure_commands_for_activity",
             "send_command",
+            "apply_external_activity_state",
             "can_issue_commands",
             "find_remote",
             "sync_activity",
@@ -603,9 +612,26 @@ class AsyncXProxy:
         # an on-demand read gets when it cannot wait any longer.
         self._hub_holds = 0
         self._hub_held_by: Optional[str] = None
+        # Holders run one at a time: two writes (or a write and a refresh)
+        # in two tasks would otherwise interleave their exchanges.
+        self._hub_exclusive = asyncio.Lock()
         self._hub_free = asyncio.Event()
         self._hub_free.set()
+        # The vendor app's CALL_ME waits while an exclusive operation holds
+        # the hub, as it does in HA: an app taking the session mid-restore
+        # would stop the job partway. Read on the demuxer thread; an int
+        # read is atomic.
+        transport = getattr(self._proxy, "transport", None)
+        if transport is not None and hasattr(transport, "set_busy_gate"):
+            transport.set_busy_gate(lambda: self._hub_holds > 0)
+        # A hub that announces a firmware update goes silent for minutes;
+        # reconnecting and reading into that window is what HA's pause
+        # avoids. The engine only reports it, so the facade reacts too.
+        on_ota = getattr(self._proxy, "on_ota_update", None)
+        if callable(on_ota):
+            on_ota(self._on_engine_ota)
         self._whole_refresh_task: Optional[asyncio.Task] = None
+        self._whole_refresh_waiters = 0
         # Id of the last projection handed out or announced; a rebase
         # emits ``snapshot_changed`` only when the id moved past it.
         self._last_snapshot_id: Optional[str] = None
@@ -969,9 +995,21 @@ class AsyncXProxy:
 
         # ensure_commands_for_activity resolves each favorite's command
         # label, but the per-command fetches it kicks complete
-        # asynchronously: poll until it reports ready (or timeout).
+        # asynchronously: poll until it reports ready (or timeout). A
+        # cache-only pass first: labels already cached need no hub, and
+        # only a real fetch waits out another operation's hold.
+        _, ready = await self.run(
+            self._proxy.ensure_commands_for_activity, activity_id, fetch_if_missing=False
+        )
+        if not ready:
+            try:
+                await self._wait_for_free_hub(f"favorites:{int(activity_id) & 0xFF}", timeout)
+            except FetchTimeoutError:
+                # Held for too long: answer with the labels known so far,
+                # as a timed-out fetch always has.
+                ready = True
         deadline = self._loop.time() + timeout
-        while True:
+        while not ready:
             _, ready = await self.run(
                 self._proxy.ensure_commands_for_activity,
                 activity_id,
@@ -1086,7 +1124,7 @@ class AsyncXProxy:
             verdict["firmware_min_recommended"] = MIN_RECOMMENDED_FIRMWARE.get(hub_version or "")
         return verdict
 
-    async def hub_info(self, *, refresh: bool = False) -> HubInfo:
+    async def hub_info(self, *, refresh: bool = False, cached_only: bool = False) -> HubInfo:
         """Return the hub's identity as read from its connect banner.
 
         Cached-else-fetch like the reads: the banner known from the
@@ -1095,7 +1133,8 @@ class AsyncXProxy:
         raises :class:`HubBusyError` / :class:`HubNotConnectedError`
         otherwise. When nothing is known yet and no fetch is possible the
         result has ``known=False`` rather than raising, so a status page
-        can render before the first banner lands.
+        can render before the first banner lands. ``cached_only=True``
+        never reaches the hub: what the session knows, or ``known=False``.
         """
 
         def _from_banner(info: dict) -> HubInfo:
@@ -1118,14 +1157,15 @@ class AsyncXProxy:
             )
 
         cached = await self.run(self._proxy.get_banner_info)
-        if cached and not refresh:
-            return _from_banner(cached)
+        if cached_only or (cached and not refresh):
+            return _from_banner(cached or {})
         if not self._proxy.can_issue_commands():
             # An explicit refresh is refused with the typed reason; a plain
             # read degrades to whatever is known (possibly nothing).
             if refresh:
                 self._raise_if_cannot_fetch("banner")
             return _from_banner(cached or {})
+        await self._wait_for_free_hub("banner", DEFAULT_FETCH_TIMEOUT)
         await self.run(
             functools.partial(self._proxy.fetch_banner_info, force_refresh=True)
         )
@@ -1306,6 +1346,21 @@ class AsyncXProxy:
         self._proxy.on_client_state_change(on_app_state)
         self._proxy.on_ota_update(lambda: emit("ota", None))
 
+    def _on_engine_ota(self) -> None:
+        # Frame thread, inside transport locks: marshal, as every engine
+        # callback (the pause takes those locks itself).
+        self._loop.call_soon_threadsafe(self._pause_for_ota)
+
+    def _pause_for_ota(self) -> None:
+        pause = getattr(getattr(self._proxy, "transport", None), "pause_for_ota", None)
+        if not callable(pause):
+            return
+        _LOG.warning("hub announced a firmware update; pausing reconnects for %.0fs", OTA_PAUSE_S)
+        try:
+            pause(OTA_PAUSE_S)
+        except Exception:  # noqa: BLE001  (never let the pause break the loop)
+            _LOG.exception("could not arm the OTA pause")
+
     def _emit_mode_change(self) -> None:
         # Loop thread only: reads the transport flags, which take the
         # transport's locks.
@@ -1392,6 +1447,32 @@ class AsyncXProxy:
 
         return await self.run(self._proxy.send_command, activity_id, ButtonName.POWER_OFF)
 
+    async def apply_external_activity_state(self, activity_id: Optional[int]) -> bool:
+        """Apply an activity change learned outside the hub session.
+
+        The X2 publishes activity transitions to its MQTT broker
+        (``activity/<MAC>/activity_control_up``) early in the power
+        sequence, before the hub session confirms them. A consumer that
+        listens to that topic feeds the new id here (``None`` for powered
+        off): the state flips at once and the usual ``activity_changed``
+        event fires, while the session's own refresh stays behind it as
+        reconciliation and corrects a wrong or stale push on its own.
+        Until the hub reports ready again, :meth:`send` and the activity
+        controls are held (at most ``EXTERNAL_SETTLE_TIMEOUT`` seconds),
+        because a command sent into a running power macro fails and
+        can interrupt the macro.
+
+        Returns ``False`` when nothing was applied: before the first
+        complete activities read, for an id the catalog does not know,
+        or when the state already matches. The caller is expected to
+        check the push the way the Home Assistant integration does: drop
+        retained messages, ignore pushes while the hub session is down,
+        and treat an individual ``off`` as a change only when it names
+        the running activity.
+        """
+
+        return await self.run(self._proxy.apply_external_activity_state, activity_id)
+
     async def find_remote(self) -> bool:
         """Trigger the hub's find-my-remote signal.
 
@@ -1455,8 +1536,12 @@ class AsyncXProxy:
 
         self._raise_if_cannot_fetch(f"sync_activity({int(activity_id) & 0xFF})")
         await self._check_sync_baseline(baseline, "activity", activity_id, snapshot_id)
+        validate_entity_rename(
+            baseline, edited, kind="activity", entity_id=activity_id,
+            hub_version=getattr(self._proxy, "hub_version", None),
+        )
         async with self._holding_hub("a sync"):
-            result = await self.run(
+            result = await self._run_draining(
                 self._proxy.sync_activity,
                 baseline=baseline,
                 edited=edited,
@@ -1499,10 +1584,14 @@ class AsyncXProxy:
         dev_lo = int(device_id) & 0xFF
         self._raise_if_cannot_fetch(f"sync_device({dev_lo})")
         await self._check_sync_baseline(baseline, "device", device_id, snapshot_id)
+        validate_entity_rename(
+            baseline, edited, kind="device", entity_id=dev_lo,
+            hub_version=getattr(self._proxy, "hub_version", None),
+        )
         # Asked before the write: the cache's references are what the scan reads.
         referencing = await self._activities_referencing(dev_lo)
         async with self._holding_hub("a sync"):
-            result = await self.run(
+            result = await self._run_draining(
                 self._proxy.sync_device,
                 baseline=baseline,
                 edited=edited,
@@ -1761,7 +1850,14 @@ class AsyncXProxy:
 
         if self._batch is not None:
             raise RuntimeError("a write batch is already open on this proxy")
-        await self.run(self._proxy.begin_write_batch)
+        try:
+            await self._run_draining(self._proxy.begin_write_batch)
+        except asyncio.CancelledError:
+            # The engine may have opened its batch before the cancel landed;
+            # left open, it would defer every later remote sync forever.
+            if getattr(self._proxy, "write_batch_open", False):
+                await self._run_draining(self._proxy.end_write_batch, send_remote_sync=False)
+            raise
         batch = _FacadeBatch(start_snapshot_id=self._last_snapshot_id)
         self._batch = batch
         handle = WriteBatch()
@@ -1811,6 +1907,11 @@ class AsyncXProxy:
         while a panel polled ``devices()``). While a hold is active such
         a fetch waits for it to end instead (``_wait_for_free_hub``).
 
+        Holders exclude one another: a second write, refresh or restore
+        in another task waits its turn (the engine's exchanges and ack
+        queues are not safe to interleave). A holder counts as holding
+        while it waits, so on-demand reads wait for it too.
+
         Re-entrant per task: the holder's own nested operations and reads
         (``restore`` calling ``erase``, a refresh reading the catalogs)
         pass straight through.
@@ -1823,15 +1924,44 @@ class AsyncXProxy:
         if self._hub_holds == 1:
             self._hub_held_by = what
             self._hub_free.clear()
-        token = _HUB_HOLDER.set(True)
         try:
-            yield
+            async with self._hub_exclusive:
+                self._hub_held_by = what
+                token = _HUB_HOLDER.set(True)
+                try:
+                    yield
+                finally:
+                    _HUB_HOLDER.reset(token)
         finally:
-            _HUB_HOLDER.reset(token)
             self._hub_holds -= 1
             if self._hub_holds == 0:
                 self._hub_held_by = None
                 self._hub_free.set()
+
+    async def _run_draining(self, func: Callable, /, *args: Any, **kwargs: Any) -> Any:
+        """Run an engine call that a cancellation cannot abandon mid-flight.
+
+        Cancelling the awaiting task does not stop the executor thread, so
+        releasing the hold, the refresh lock or a write batch right away
+        would let other traffic (or the batch's remote-sync trigger) reach
+        the hub in the middle of the write. The call is shielded; on
+        cancellation (repeated ones included) the caller waits for it to
+        land, then the cancellation continues. As
+        :meth:`_read_entity_detail_draining` does for reads.
+        """
+
+        call = asyncio.ensure_future(self.run(func, *args, **kwargs))
+        try:
+            return await asyncio.shield(call)
+        except asyncio.CancelledError:
+            while not call.done():
+                try:
+                    await asyncio.shield(call)
+                except asyncio.CancelledError:
+                    continue
+                except BaseException:  # noqa: BLE001  (the call's own failure is not ours to report)
+                    break
+            raise
 
     def _hub_held_by_another(self) -> bool:
         return self._hub_holds > 0 and not _HUB_HOLDER.get()
@@ -1855,7 +1985,7 @@ class AsyncXProxy:
 
         self._raise_if_cannot_fetch(what)
         async with self._holding_hub(what):
-            result = await self.run(func, *args, **kwargs)
+            result = await self._run_draining(func, *args, **kwargs)
         if result is None or result is False:
             raise HubRejectedError(f"the hub did not accept {what}")
         return result
@@ -1881,9 +2011,12 @@ class AsyncXProxy:
                 f"device class {device_class!r} cannot be created on a {hub_version}; "
                 f"one of: {', '.join(allowed)}"
             )
-        result = await self._write(
-            f"add_device({clean!r})", self._proxy.create_device, clean, device_class=device_class
-        )
+        what = f"add_device({clean!r})"
+        before = {int(i) & 0xFF for i in await self.run(self._proxy.get_known_device_ids)}
+        try:
+            result = await self._write(what, self._proxy.create_device, clean, device_class=device_class)
+        except HubRejectedError as err:
+            result = {"device_id": await self._adopt_landed_create("device", clean, before, what, err)}
         device_id = int(result.get("device_id") or 0) & 0xFF
         # The create seeds a head and nothing else; the read-back makes the
         # new device complete (and editable) in the snapshot that follows.
@@ -1896,10 +2029,44 @@ class AsyncXProxy:
         clean = str(name or "").strip()
         if not clean:
             raise ValueError("an activity needs a name")
-        result = await self._write(f"add_activity({clean!r})", self._proxy.create_activity, clean)
+        what = f"add_activity({clean!r})"
+        before = {int(i) & 0xFF for i in await self.run(self._proxy.get_known_activity_ids)}
+        try:
+            result = await self._write(what, self._proxy.create_activity, clean)
+        except HubRejectedError as err:
+            result = {"activity_id": await self._adopt_landed_create("activity", clean, before, what, err)}
         activity_id = int(result.get("activity_id") or 0) & 0xFF
         await self._rebase_after_write(result, reread_activities=(activity_id,), force=True)
         return activity_id
+
+    async def _adopt_landed_create(
+        self, kind: str, name: str, before: set[int], what: str, err: HubRejectedError
+    ) -> int:
+        """A create that reported failure may still have landed (the hub
+        made the entity, then an ack or the id went missing). Re-read the
+        catalog before calling it rejected: exactly one new entity with the
+        requested name is that create, adopted; any other change leaves the
+        outcome unknown (a plain error, which a document apply records as
+        uncertain, never as a failure a resume would repeat)."""
+
+        try:
+            if kind == "device":
+                rows = [(d.device_id, d.name) for d in await self.devices(refresh=True, timeout=5.0)]
+            else:
+                rows = [(a.activity_id, a.name) for a in await self.activities(refresh=True, timeout=5.0)]
+        except Exception:  # noqa: BLE001  (the re-read failing leaves the rejection standing)
+            raise err from None
+        new = [(eid, ename) for eid, ename in rows if (eid & 0xFF) not in before]
+        named = [eid for eid, ename in new if str(ename or "").strip() == name]
+        if len(named) == 1:
+            _LOG.warning("%s reported a failure, but the hub made %s %d; adopting it", what, kind, named[0])
+            return named[0] & 0xFF
+        if new:
+            raise RuntimeError(
+                f"{what}: the hub reported a failure but its {kind} list changed; "
+                "refresh before retrying"
+            ) from err
+        raise err
 
     async def remove_device(self, device_id: int) -> DeviceRemoved:
         """Delete a device; the hub cascades the removal into its activities."""
@@ -2049,6 +2216,26 @@ class AsyncXProxy:
         finally:
             await self._resync_remote_after(f"deploy_wifi_device({spec.name!r})")
 
+    async def _repair_x1_quick_access(self, activity_ids: Iterable[int]) -> tuple[int, ...]:
+        """X1: rewrite each activity's quick-access order that leaves out a
+        live favorite or macro shortcut (an older restore wrote such tables;
+        the remote then covers an entry and shows an empty row). Best
+        effort, never fails the caller; call inside the hub hold. Returns
+        the activities it rewrote, for the caller's re-read."""
+
+        if self._proxy.hub_version != HUB_VERSION_X1:
+            return ()
+        repaired: list[int] = []
+        for act in sorted({int(a) & 0xFF for a in activity_ids if (int(a) & 0xFF) >= 101}):
+            try:
+                result = await self._run_draining(self._proxy.repair_x1_quick_access_order, act)
+            except Exception:  # noqa: BLE001 - the repair never fails a write
+                _LOG.warning("quick-access order repair failed for activity %s", act, exc_info=True)
+                continue
+            if result is True:
+                repaired.append(act)
+        return tuple(repaired)
+
     async def _resync_remote_after(self, what: str) -> None:
         """The physical remote-sync trigger closing a multi-write operation.
 
@@ -2170,9 +2357,12 @@ class AsyncXProxy:
 
         def _read_baseline() -> tuple[Any, list[dict]]:
             device_entry = self._proxy.backup_device(dev_lo, include_blobs=False)
+            # One activity catalog read for the loop (best effort, as each
+            # per-activity read's own refresh was), not one per activity.
+            self._proxy._refresh_catalog("activities", timeout=5.0)
             entries: list[dict] = []
             for act_id in activity_ids:
-                payload = self._proxy.backup_activity(act_id)
+                payload = self._proxy.backup_activity(act_id, refresh_catalog=False)
                 if isinstance(payload, dict):
                     entries.append(payload)
             return device_entry, entries
@@ -2196,25 +2386,13 @@ class AsyncXProxy:
             cid: slot.label for cid, slot in deployed.slots.items()
         }
 
-        missing = sorted(cid for cid in expected if cid not in baseline.slots)
-        if missing:
-            raise WifiUpdateDeclined("missing", command_ids=missing)
-        drift: list[int] = []
-        resumed: list[int] = []
-        for cid, live_slot in baseline.slots.items():
-            live = project(live_slot.label)
-            expected_label = expected.get(cid)
-            if expected_label is not None and project(expected_label) == live:
-                continue
-            desired_slot = desired.slots.get(cid)
-            if desired_slot is not None and project(desired_slot.label) == live:
-                resumed.append(cid)
-                continue
-            drift.append(cid)
-        if drift:
-            raise WifiUpdateDeclined("drift", command_ids=sorted(drift))
-        if resumed:
-            _LOG.info("%s: resuming an interrupted update (command ids %s)", what, sorted(resumed))
+        live = classify_live_slots(baseline.slots, expected, desired.slots, label_key=project)
+        if live.missing:
+            raise WifiUpdateDeclined("missing", command_ids=list(live.missing))
+        if live.drift:
+            raise WifiUpdateDeclined("drift", command_ids=list(live.drift))
+        if live.resumed:
+            _LOG.info("%s: resuming an interrupted update (command ids %s)", what, list(live.resumed))
 
         plan = build_wifi_inplace_plan(baseline, desired, deployed=deployed, label_key=project)
         if plan.is_fallback:
@@ -2229,14 +2407,29 @@ class AsyncXProxy:
             transport=deployment.transport,
         )
         if not plan.steps:
+            if self._proxy.hub_version != HUB_VERSION_X1:
+                return updated
+            # Nothing to write, but an X1 order table an older restore left
+            # short still heals here, as on the Home Assistant path.
+            referencing = await self._activities_referencing(dev_lo)
+            async with self._holding_hub("a callback device write"):
+                repaired = await self._repair_x1_quick_access({*desired.activities, *referencing})
+            if repaired:
+                await self._rebase_after_write({"status": "success"}, force=True, reread_activities=repaired)
+                if remote_sync:
+                    await self._resync_remote_after(what)
             return updated
 
         # Asked before the write, on the cache the baseline read just filled.
         referencing = await self._activities_referencing(dev_lo)
         async with self._holding_hub("a callback device write"):
-            result = await self.run(
+            result = await self._run_draining(
                 self._proxy.run_wifi_inplace_plan, plan, progress_callback=self._engine_progress(progress)
             )
+            if isinstance(result, dict) and result.get("status") == "success":
+                repaired = await self._repair_x1_quick_access({*desired.activities, *referencing})
+            else:
+                repaired = ()
         touched = {
             int(step.payload.get("activity_id")) & 0xFF
             for step in plan.steps
@@ -2251,6 +2444,7 @@ class AsyncXProxy:
             touched.update(referencing)
         # A device-page binding step names the device in ``activity_id``
         # (one id space, activities from 101 up).
+        touched.update(repaired)
         await self._rebase_after_write(
             result, force=True, reread_devices=(dev_lo,),
             reread_activities=tuple(sorted(a for a in touched if a >= 101)),
@@ -2336,10 +2530,12 @@ class AsyncXProxy:
 
         self._raise_if_cannot_fetch("backup")
         async with self._holding_hub("a backup"), self._refresh_lock:
-            bundle = await self.run(
+            bundle = await self._run_draining(
                 self._proxy.backup_hub_bundle,
                 include_blobs=include_blobs,
-                device_ids=[int(i) & 0xFF for i in device_ids] if device_ids else None,
+                # None means every device; an empty or out-of-range list is
+                # the engine's to refuse (ValueError), never widened or masked.
+                device_ids=None if device_ids is None else [int(i) for i in device_ids],
                 wait_timeout=timeout,
                 progress=self._engine_progress(progress),
             )
@@ -2376,7 +2572,7 @@ class AsyncXProxy:
             if replace:
                 await self.erase()
             async with self._refresh_lock:
-                result = await self.run(
+                result = await self._run_draining(
                     self._proxy.restore_hub_bundle,
                     bundle,
                     progress_callback=self._engine_progress(progress),
@@ -2386,11 +2582,24 @@ class AsyncXProxy:
             # follows shows the hub and not a row of unfetched entities.
             restored = result if isinstance(result, dict) else {}
             await self._reread_after_write(
-                [row.get("device_id") or 0 for row in restored.get("restored_devices") or () if isinstance(row, dict)],
+                [row.get("device_id") or 0 for row in restored.get("restored_devices") or () if isinstance(row, dict)]
+                + [int(i) for i in restored.get("partial_device_ids") or () if isinstance(i, int)],
                 [row.get("activity_id") or 0 for row in restored.get("restored_activities") or () if isinstance(row, dict)],
                 refresh_catalog=True,
                 progress=progress,
             )
+            # A replacing restore rebuilds the hub from the bundle, its name
+            # included (as the HA integration does): the bundle's edited hub
+            # name must not be lost. A merge keeps the hub's own name.
+            hub_name = str((bundle.get("hub") or {}).get("name") or "").strip() if isinstance(bundle, dict) else ""
+            if replace and hub_name and restored.get("status") == "success":
+                try:
+                    await self.set_hub_name(hub_name)
+                    renamed = True
+                except (HubRejectedError, ValueError) as err:
+                    _LOG.warning("replacing restore finished, but restoring hub name %r failed: %s", hub_name, err)
+                    renamed = False
+                result = {**restored, "hub_name": hub_name, "hub_name_restored": renamed}
         new_id = await self._rebase_after_write(None, force=True)
         return RestoreResult.from_engine(result, snapshot_id=new_id, erased=bool(replace))
 
@@ -2411,6 +2620,7 @@ class AsyncXProxy:
 
         dev_lo, cmd_lo = int(device_id) & 0xFF, int(command_id) & 0xFF
         self._raise_if_cannot_fetch(f"payload:{dev_lo}:{cmd_lo}")
+        await self._wait_for_free_hub(f"payload:{dev_lo}:{cmd_lo}", timeout)
         dump = await self.run(self._proxy.request_ir_command_dump, dev_lo, cmd_lo, timeout=timeout)
         if dump is None:
             raise FetchTimeoutError(f"the hub did not return the payload of {dev_lo}/{cmd_lo}")
@@ -2555,21 +2765,61 @@ class AsyncXProxy:
             raise ValueError("refresh() takes activity_id or device_id, not both")
         if activity_id is None and device_id is None:
             task = self._whole_refresh_task
-            if task is not None and not task.done():
-                return await asyncio.shield(task)
-            task = self._loop.create_task(self._refresh_whole(progress, timeout))
-            self._whole_refresh_task = task
-            try:
-                return await task
-            finally:
-                if self._whole_refresh_task is task:
-                    self._whole_refresh_task = None
+            if task is None or task.done():
+                task = self._loop.create_task(self._refresh_whole(progress, timeout))
+                self._whole_refresh_task = task
+
+                def _forget(done: asyncio.Task) -> None:
+                    if self._whole_refresh_task is done:
+                        self._whole_refresh_task = None
+
+                task.add_done_callback(_forget)
+            return await self._join_whole_refresh(task)
         return await self._refresh_one(
             "device" if device_id is not None else "activity",
             int(device_id if device_id is not None else activity_id) & 0xFF,
             progress,
             timeout,
         )
+
+    async def _join_whole_refresh(self, task: asyncio.Task) -> HubSnapshot:
+        """Wait for the shared whole-hub refresh; every caller, the first
+        included, joins the same way.
+
+        Cancelling one caller cancels only that caller; the refresh itself
+        stops once its last caller has left. A caller that was not
+        cancelled but whose refresh was (every other caller left) gets a
+        typed error, never a CancelledError it did not ask for.
+        """
+
+        self._whole_refresh_waiters += 1
+        waiting = True
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            me = asyncio.current_task()
+            if me is None or not me.cancelling():
+                raise FetchTimeoutError(
+                    "the whole-hub refresh was cancelled by its other callers"
+                ) from None
+            self._whole_refresh_waiters -= 1
+            waiting = False
+            if self._whole_refresh_waiters == 0 and not task.done():
+                # The last caller left: stop the refresh, and stay until it
+                # has (its in-flight entity read drains; repeated cancels
+                # are absorbed), so the hub is quiet when this returns.
+                task.cancel()
+                while not task.done():
+                    try:
+                        await asyncio.shield(task)
+                    except asyncio.CancelledError:
+                        continue
+                    except BaseException:  # noqa: BLE001  (the refresh's own failure is not ours)
+                        break
+            raise
+        finally:
+            if waiting:
+                self._whole_refresh_waiters -= 1
 
     async def _refresh_one(
         self, kind: str, ent_lo: int, progress: Optional[Callable], timeout: float
@@ -2826,7 +3076,7 @@ class AsyncXProxy:
             try:
                 await asyncio.wait_for(future, timeout)
             except TimeoutError:
-                raise FetchTimeoutError(f"timed out after {timeout}s fetching {key!r}")
+                raise FetchTimeoutError(f"timed out after {timeout}s fetching {key!r}") from None
         except BaseException:
             self._drop_burst_waiter(key, future)
             raise
@@ -3015,7 +3265,7 @@ _R_SYNC = (
     "single-shot write primitive composed by sync_activity/sync_device "
     "(phase 1 plan, decision 2)"
 )
-_R_PHASE3 = "parked past phase 3 W3 (idle behaviour reads, favorites order, MQTT state)"
+_R_PHASE3 = "parked past phase 3 W3 (idle behaviour reads, favorites order)"
 _R_INTEGRATION = (
     "Home Assistant orchestration hosted in the library, not promoted "
     "(phase 1 plan, decision 3)"
@@ -3027,6 +3277,11 @@ _R_INTERNAL_READ = (
     "per-entity request/assembly internal behind the facade reads and backup_*"
 )
 _R_CARD = "Home Assistant card concern"
+_R_ENTITY_RESTORE = (
+    "a per-entity restore is a write the facade cannot hold, read back or "
+    "announce like its own writes; restore() takes a hub_bundle, and the "
+    "engine call stays reachable through .sync"
+)
 
 
 def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
@@ -3034,6 +3289,7 @@ def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
 
 
 ENGINE_ONLY: dict[str, str] = {
+    **_reasons(_R_ENTITY_RESTORE, ("restore_device", "restore_activity")),
     **_reasons(
         _R_TRANSPORT,
         (
@@ -3043,7 +3299,6 @@ ENGINE_ONLY: dict[str, str] = {
             "notify_hub_ready",
             "notify_ota_in_progress",
             "note_ack_ready_refresh",
-            "note_buttons_frame",
             "note_catalog_status_ack",
             "ingest_activity_row",
             "ingest_device_row",
@@ -3052,9 +3307,9 @@ ENGINE_ONLY: dict[str, str] = {
             "record_hub_name",
             "record_idle_behavior_value",
             "record_idle_behavior_absent",
+            "forget_idle_behavior",
             "try_finish_activities_burst",
             "try_finish_activity_map_burst",
-            "try_finish_buttons_burst",
             "try_finish_devices_burst",
             "try_finish_ir_dump_burst",
             "flag_pending_redundant_off_check",
@@ -3077,7 +3332,6 @@ ENGINE_ONLY: dict[str, str] = {
             "wait_for_assigned_device_id",
             "wait_for_macro_record",
             "wait_for_activity_inputs_burst",
-            "wait_for_read_burst_quiesce",
             "wait_for_x2_remote_sync_id",
             "wait_for_virtual_device",
             "clear_ack_queue",
@@ -3101,6 +3355,8 @@ ENGINE_ONLY: dict[str, str] = {
             "command_to_favorite",
             "delete_favorite",
             "reorder_favorites",
+            # the X1 quick-access order check sync_activity runs after its plan
+            "repair_x1_quick_access_order",
             "add_device_to_activity",
             "persist_ir_blob",
         ),
@@ -3112,7 +3368,6 @@ ENGINE_ONLY: dict[str, str] = {
             "fetch_idle_behavior",
             "request_idle_behavior",
             "request_favorites_order",
-            "apply_external_activity_state",
         ),
     ),
     **_reasons(
@@ -3135,8 +3390,6 @@ ENGINE_ONLY: dict[str, str] = {
             "get_single_command_for_entity",
             "request_buttons_for_entity",
             "request_commands_for_entity",
-            "request_macros_for_activity",
-            "request_ip_commands_for_device",
         ),
     ),
     **_reasons(_R_CARD, ("on_redundant_off_press",)),

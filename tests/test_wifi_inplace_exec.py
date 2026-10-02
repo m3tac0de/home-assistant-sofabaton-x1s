@@ -132,3 +132,45 @@ def test_new_step_kinds_resolve_to_drivers():
         "wifi_head_commit",
     ):
         assert callable(getattr(ActivitySyncMixin, f"_sync_step_{kind}", None)), kind
+
+
+class _LiveFavProxy(FakeProxy):
+    """Dispatch resolves favorites through the per-run live cache, the way
+    ``_sync_step_favorite_delete`` does, against a hub map that can change
+    between walks."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.live_map: dict[tuple[int, int], int] = {}
+        self.live_reads = 0
+        self.resolved: list[int | None] = []
+
+    def _activity_sync_current_favorite_fav_ids(self, activity_id: int):
+        self.live_reads += 1
+        return dict(self.live_map)
+
+    def _dispatch_activity_sync_step(self, step) -> bool:
+        live = self._activity_sync_live_favorite_fav_ids(0x65)
+        self.resolved.append(live.get((DEV, 2)))
+        return super()._dispatch_activity_sync_step(step)
+
+
+def test_walker_does_not_reuse_the_live_favorite_cache_across_runs():
+    """CR-L4b-1: a second walk must re-read the hub's favorites, not resolve
+    against the first walk's cached fav ids."""
+    plan = _multi_kind_plan()
+    proxy = _LiveFavProxy()
+
+    proxy.live_map = {(DEV, 1): 6}
+    assert proxy.run_wifi_inplace_plan(plan)["status"] == "success"
+    assert proxy.live_reads == 1
+
+    # Between the runs the hub's favorites changed (the first run's own
+    # writes, or a vendor-app edit).
+    proxy.live_map = {(DEV, 2): 7}
+    proxy.resolved.clear()
+    assert proxy.run_wifi_inplace_plan(plan)["status"] == "success"
+    assert proxy.live_reads == 2
+    assert set(proxy.resolved) == {7}
+    # Run state never outlives the walk.
+    assert proxy._activity_sync_live_fav_cache == {}

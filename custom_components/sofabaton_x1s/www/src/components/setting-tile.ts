@@ -7,10 +7,21 @@ export function renderSettingTile(params: {
   control: unknown;
   footerLabel?: string;
   onClick?: () => void;
+  /** The whole tile is the control (no switch or select inside it). */
+  button?: boolean;
 }) {
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    params.onClick?.();
+  };
   return html`
     <div
       class="setting-tile ${params.classes ?? ""}"
+      role=${params.button ? "button" : nothing}
+      tabindex=${params.button ? "0" : nothing}
+      aria-disabled=${params.button && !params.onClick ? "true" : nothing}
+      @keydown=${params.button ? onKeyDown : nothing}
       @pointerdown=${(event: PointerEvent) => {
         const tile = event.currentTarget as HTMLElement;
         if (tile.classList.contains("disabled")) return;

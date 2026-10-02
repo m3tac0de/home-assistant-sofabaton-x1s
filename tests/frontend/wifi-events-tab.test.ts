@@ -15,11 +15,8 @@ const WifiCommandsTabElement = customElements.get("sofabaton-wifi-commands-tab")
 const EVENT: WifiEvent = {
   slot_index: 0,
   name: "Movie Night",
-  long_press_enabled: true,
   action: { action: "perform-action", perform_action: "script.short" },
-  long_press_action: { action: "perform-action", perform_action: "script.long" },
   command_id: 1,
-  long_press_command_id: 51,
   device_id: 10,
   deployed: true,
 };
@@ -35,24 +32,23 @@ function makeTab(callWS?: (msg: Record<string, unknown>) => Promise<unknown>) {
   return element;
 }
 
-test("action target routing reads short and long actions per press type", () => {
+test("action target routing reads the event's one action", () => {
   const tab = makeTab();
-  const shortAction = tab._actionForHubEventTarget({ kind: "wifi_event", slotIndex: 0, pressType: "short" });
-  const longAction = tab._actionForHubEventTarget({ kind: "wifi_event", slotIndex: 0, pressType: "long" });
-  assert.equal(shortAction.perform_action, "script.short");
-  assert.equal(longAction.perform_action, "script.long");
+  const action = tab._actionForHubEventTarget({ kind: "wifi_event", slotIndex: 0 });
+  assert.equal(action.perform_action, "script.short");
   // unknown slot falls back to the default (do-nothing) action
-  const missing = tab._actionForHubEventTarget({ kind: "wifi_event", slotIndex: 7, pressType: "short" });
+  const missing = tab._actionForHubEventTarget({ kind: "wifi_event", slotIndex: 7 });
   assert.equal(missing.perform_action, undefined);
 });
 
-test("modal titles distinguish short and long press", () => {
+test("the modal title names the event", () => {
   const tab = makeTab();
-  assert.match(tab._hubEventEditorTitle({ kind: "wifi_event", slotIndex: 0, pressType: "short" }), /Movie Night/);
-  assert.match(tab._hubEventEditorTitle({ kind: "wifi_event", slotIndex: 0, pressType: "long" }), /pressed and held/i);
+  const title = tab._hubEventEditorTitle({ kind: "wifi_event", slotIndex: 0 });
+  assert.match(title, /Movie Night/);
+  assert.doesNotMatch(title, /held/i);
 });
 
-test("press flash matches on device id + slot index + press type", () => {
+test("press flash matches on device id + slot index, for any press", () => {
   const tab = makeTab();
   const press = (over: Record<string, unknown>) => ({
     entryId: "entry-1",
@@ -65,12 +61,12 @@ test("press flash matches on device id + slot index + press type", () => {
     receivedAt: Date.now(),
     ...over,
   });
-  assert.equal(tab._pressMatchesWifiEvent(press({}), EVENT, "short"), true);
-  assert.equal(tab._pressMatchesWifiEvent(press({ pressType: "long" }), EVENT, "long"), true);
-  assert.equal(tab._pressMatchesWifiEvent(press({ pressType: "long" }), EVENT, "short"), false);
-  assert.equal(tab._pressMatchesWifiEvent(press({ deviceId: 9 }), EVENT, "short"), false);
-  assert.equal(tab._pressMatchesWifiEvent(press({ commandIndex: 1 }), EVENT, "short"), false);
-  assert.equal(tab._pressMatchesWifiEvent(null, EVENT, "short"), false);
+  assert.equal(tab._pressMatchesWifiEvent(press({}), EVENT), true);
+  // A long record of the old layout still fires until the Sync retires it.
+  assert.equal(tab._pressMatchesWifiEvent(press({ pressType: "long" }), EVENT), true);
+  assert.equal(tab._pressMatchesWifiEvent(press({ deviceId: 9 }), EVENT), false);
+  assert.equal(tab._pressMatchesWifiEvent(press({ commandIndex: 1 }), EVENT), false);
+  assert.equal(tab._pressMatchesWifiEvent(null, EVENT), false);
 });
 
 test("set_action write goes through the narrow wifi_event endpoint", async () => {
@@ -80,14 +76,14 @@ test("set_action write goes through the narrow wifi_event endpoint", async () =>
     return { events: [{ ...EVENT, action: { action: "perform-action", perform_action: "script.new" } }] };
   });
   const saved = await tab._writeHubEventAction(
-    { kind: "wifi_event", slotIndex: 0, pressType: "short" },
+    { kind: "wifi_event", slotIndex: 0 },
     { action: "perform-action", perform_action: "script.new" },
   );
   assert.equal(saved, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].type, "sofabaton_x1s/wifi_event/set_action");
   assert.equal(calls[0].slot_index, 0);
-  assert.equal(calls[0].press_type, "short");
+  assert.equal("press_type" in calls[0], false);
   // the response's events list replaces the rows
   assert.equal(tab._wifiEventsRows[0].action.perform_action, "script.new");
 });
@@ -116,12 +112,29 @@ test("orphaned notice gates on configured rows plus a null record device id", ()
 
 test("state payloads carry the record-level device id into the tab", () => {
   const tab = makeTab();
-  tab._applyWifiEventsState({ events: [EVENT], device_id: 10 });
+  tab._applyWifiEventsState({ events: [EVENT], device_id: 10, record_needs_sync: true });
   assert.equal(tab._wifiEventsDeviceId, 10);
+  assert.equal(tab._wifiEventsRecordNeedsSync, true);
   assert.equal(tab._wifiEventsRows.length, 1);
   // a payload without device_id reads as not deployed
   tab._applyWifiEventsState({ events: [EVENT] });
   assert.equal(tab._wifiEventsDeviceId, null);
+  assert.equal(tab._wifiEventsRecordNeedsSync, false);
+});
+
+test("a record waiting for a sync shows the passive notice once", async () => {
+  const tab = makeTab();
+  const notice = /changes waiting for a sync/;
+  const render = () => tab._renderWifiEventsGroup(null);
+  // Deployed device, every event deployed, record out of step: the notice.
+  tab._applyWifiEventsState({ events: [EVENT], device_id: 10, record_needs_sync: true });
+  assert.match(JSON.stringify(render().values), notice);
+  // In step: no notice.
+  tab._applyWifiEventsState({ events: [EVENT], device_id: 10, record_needs_sync: false });
+  assert.doesNotMatch(JSON.stringify(render().values), notice);
+  // A staged event explains itself with its row badge: no notice.
+  tab._applyWifiEventsState({ events: [{ ...EVENT, deployed: false }], device_id: 10, record_needs_sync: true });
+  assert.doesNotMatch(JSON.stringify(render().values), notice);
 });
 
 test("remove-config goes through wifi_event/clear_all and applies the response", async () => {
@@ -141,18 +154,9 @@ test("remove-config goes through wifi_event/clear_all and applies the response",
 
 test("configured detection drives the section pill and unconfigured filter", () => {
   const tab = makeTab();
-  // EVENT has both actions configured.
+  // EVENT has its action configured.
   assert.equal(tab._wifiEventConfigured(EVENT), true);
-  // Long action alone counts only while long press is enabled.
-  const longOnly = { ...EVENT, action: { action: "perform-action" } };
-  assert.equal(tab._wifiEventConfigured(longOnly), true);
-  assert.equal(tab._wifiEventConfigured({ ...longOnly, long_press_enabled: false }), false);
-  const bare = {
-    ...EVENT,
-    action: { action: "perform-action" },
-    long_press_action: { action: "perform-action" },
-  };
-  assert.equal(tab._wifiEventConfigured(bare), false);
+  assert.equal(tab._wifiEventConfigured({ ...EVENT, action: { action: "perform-action" } }), false);
 
   // Activity entries: start or stop configured counts.
   tab._activityEventActions = {

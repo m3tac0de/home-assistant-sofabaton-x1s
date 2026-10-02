@@ -53,6 +53,7 @@ import conftest  # noqa: F401
 
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib import x1_proxy as x1_proxy_module
+from custom_components.sofabaton_x1s.lib.macros import MacroRecord
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
@@ -60,6 +61,16 @@ from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 # Helpers
 # ---------------------------------------------------------------------------
 
+
+
+def _stub_device_restore(monkeypatch, proxy, fn) -> None:
+    """Stub a bundle restore's device phase, catalog read included; ``fn``
+    has restore_device's signature (the bundle calls
+    _restore_device_outcome, which also reports a half-made device)."""
+
+    monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (fn(payload=payload), None))
+    # The bundle's one catalog read belongs to the device phase too.
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
 
 def _device_payload(
     *,
@@ -163,7 +174,8 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     proxy = _proxy(monkeypatch)
     backed_up: list[int] = []
 
-    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True, refresh_catalog: bool = True):
+        assert refresh_catalog is False  # the bundle read the catalog once itself
         backed_up.append(device_id)
         return {
             "kind": "device_backup",
@@ -171,7 +183,7 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
             "device": {"device_id": device_id, "name": f"Device {device_id}"},
         }
 
-    def _backup_activity(activity_id, *, wait_timeout: float = 10.0):
+    def _backup_activity(activity_id, *, wait_timeout: float = 10.0, refresh_catalog: bool = True):
         raise AssertionError("activities must not be backed up in subset mode")
 
     monkeypatch.setattr(proxy, "backup_device", _backup_device)
@@ -195,7 +207,7 @@ def test_backup_hub_bundle_structural_propagates_include_blobs(monkeypatch) -> N
     proxy = _proxy(monkeypatch)
     seen: list[bool] = []
 
-    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True, refresh_catalog: bool = True):
         seen.append(include_blobs)
         return {"kind": "device_backup", "complete": True, "device": {"device_id": device_id, "name": "D"}}
 
@@ -282,7 +294,7 @@ def test_backup_hub_bundle_stamps_payload_profile(monkeypatch) -> None:
 
     proxy = _proxy(monkeypatch)
 
-    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True, refresh_catalog: bool = True):
         return {"kind": "device_backup", "complete": True, "device": {"device_id": device_id, "name": "D"}}
 
     monkeypatch.setattr(proxy, "backup_device", _backup_device)
@@ -446,7 +458,7 @@ def test_restore_bundle_devices_only_succeeds_and_returns_map(monkeypatch) -> No
             "command_id_map": {"1": 11, "2": 12},
         }
 
-    monkeypatch.setattr(proxy, "restore_device", _restore_device)
+    _stub_device_restore(monkeypatch, proxy, _restore_device)
 
     bundle = {
         "kind": "hub_bundle",
@@ -478,9 +490,9 @@ def test_restore_bundle_sends_single_terminal_remote_sync(monkeypatch) -> None:
 
     proxy = _proxy(monkeypatch)
 
-    monkeypatch.setattr(
+    _stub_device_restore(
+        monkeypatch,
         proxy,
-        "restore_device",
         lambda *, payload, wifi_commands_request_port=8060: {
             "status": "success",
             "device_id": payload["device"]["device_id"] + 0x10,
@@ -541,7 +553,7 @@ def test_restore_bundle_partial_device_failure_returns_failed_at(monkeypatch) ->
             "command_id_map": {},
         }
 
-    monkeypatch.setattr(proxy, "restore_device", _restore_device)
+    _stub_device_restore(monkeypatch, proxy, _restore_device)
     # restore_activity must never be reached when devices phase fails.
     monkeypatch.setattr(
         proxy,
@@ -595,7 +607,7 @@ def test_restore_bundle_resolves_input_ordinals(monkeypatch) -> None:
             "command_id_map": {"5": 0x45, "6": 0x46, "7": 0x47},
         }
 
-    monkeypatch.setattr(proxy, "restore_device", _restore_device)
+    _stub_device_restore(monkeypatch, proxy, _restore_device)
 
     # The 0xC5 resolver calls query_device_input_index on the proxy
     # for the freshly-restored device with the mapped command id.
@@ -710,7 +722,7 @@ def test_restore_bundle_logs_skipped_input_ordinal(monkeypatch, caplog) -> None:
             "command_id_map": {"5": 0x45},  # no entry for cmd 6
         }
 
-    monkeypatch.setattr(proxy, "restore_device", _restore_device)
+    _stub_device_restore(monkeypatch, proxy, _restore_device)
     monkeypatch.setattr(proxy, "query_device_input_index", lambda *a, **kw: None)
 
     build_records: list[dict[str, int]] = []
@@ -876,10 +888,13 @@ def _erase_proxy(monkeypatch: pytest.MonkeyPatch) -> X1Proxy:
     proxy.state.activity_macros[0x65] = [{"button_id": 0xC6}]
     proxy.state.activity_members[0x65] = {0x01, 0x02}
     proxy.state.activity_favorite_slots[0x65] = [{"button_id": 0xA0}]
-    proxy.state.activity_keybinding_slots[0x65] = [{"button_id": 0xA1}]
     proxy.state.activity_favorite_labels[0x65] = {(0x01, 1): "POWER"}
-    proxy.state.activity_keybinding_labels[0x65] = {(0x01, 1): "POWER"}
     proxy.state.activity_command_refs[0x65] = {(0x01, 1)}
+    proxy.state.activity_favorites_order[0x65] = [(1, 1)]
+    proxy.cache_macro_record(
+        MacroRecord(activity_id=0x65, key_id=5, label="Movie", key_sequence=())
+    )
+    proxy._idle_behavior_values[0x01] = 3
     proxy._commands_complete.add(0x01)
     proxy._macros_complete.add(0x65)
     proxy._activity_map_complete.add(0x65)
@@ -924,10 +939,12 @@ def test_erase_configuration_success_wipes_state_and_returns_true(
     assert proxy.state.activity_macros == {}
     assert proxy.state.activity_members == {}
     assert proxy.state.activity_favorite_slots == {}
-    assert proxy.state.activity_keybinding_slots == {}
     assert proxy.state.activity_favorite_labels == {}
-    assert proxy.state.activity_keybinding_labels == {}
     assert proxy.state.activity_command_refs == {}
+    # The hub reuses ids after an erase: nothing may project onto them.
+    assert proxy.state.activity_favorites_order == {}
+    assert proxy._macro_records_cache == {}
+    assert proxy.get_idle_behavior(0x01, fetch_if_missing=False) == (None, False)
     assert proxy._commands_complete == set()
     assert proxy._macros_complete == set()
     assert proxy._activity_map_complete == set()
@@ -994,6 +1011,22 @@ def test_erase_configuration_post_ack_disconnect_is_tolerated(
 
     assert ok is True
     assert proxy.state.devices == {}
+
+
+def test_erase_configuration_rejected_by_the_hub_wipes_nothing(monkeypatch) -> None:
+    """A non-zero STATUS_ACK is a rejection: the hub kept its configuration,
+    so nothing local is wiped and a replace restore must not go on."""
+
+    proxy = _erase_proxy(monkeypatch)
+
+    def _send(opcode: int, payload: bytes) -> None:
+        proxy.notify_ack(0x0103, b"\x04")
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    assert proxy.erase_configuration(timeout=5.0, settle_seconds=0.0) is False
+    assert proxy.state.devices == {0x01: {"name": "TV"}}
+    assert proxy.state.activity_favorites_order == {0x65: [(1, 1)]}
 
 
 def test_erase_configuration_ignored_when_proxy_client_connected(
@@ -1093,6 +1126,48 @@ def test_async_restore_backup_rejects_structural_before_erase() -> None:
     with pytest.raises(ValueError, match="structural cache bundles"):
         _run(hub.async_restore_backup(bundle))
 
+    hub._proxy.erase_configuration.assert_not_called()
+    hub._proxy.restore_hub_bundle.assert_not_called()
+
+
+def test_async_restore_backup_runs_the_bundle_preflight_before_erase() -> None:
+    """CR-L4a-1: a bundle the restore would refuse (a chain to a missing
+    activity, an unknown class, ...) fails before the replace-mode erase."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.preflight_restore_bundle = MagicMock(
+        side_effect=ValueError("activity 0x66 chains to an activity missing from the bundle")
+    )
+    hub._proxy.erase_configuration = MagicMock(
+        side_effect=AssertionError("erase must not run for a bundle the preflight refuses")
+    )
+    hub._proxy.restore_hub_bundle = MagicMock(
+        side_effect=AssertionError("restore must not run for a bundle the preflight refuses")
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    with pytest.raises(ValueError, match="missing from the bundle"):
+        _run(hub.async_restore_backup(bundle))
+
+    hub._proxy.preflight_restore_bundle.assert_called_once_with(bundle)
     hub._proxy.erase_configuration.assert_not_called()
     hub._proxy.restore_hub_bundle.assert_not_called()
 
@@ -1459,7 +1534,7 @@ def test_preflight_rejects_bad_activities_before_any_write(monkeypatch, mutate, 
 
     proxy = _proxy(monkeypatch)
     writes: list[str] = []
-    monkeypatch.setattr(proxy, "restore_device", lambda **kw: writes.append("device") or {"status": "success", "device_id": 0x17})
+    _stub_device_restore(monkeypatch, proxy, lambda **kw: writes.append("device") or {"status": "success", "device_id": 0x17})
     monkeypatch.setattr(proxy, "restore_activity", lambda **kw: writes.append("activity") or {"status": "success", "activity_id": 0x66})
     activity = _activity_payload(source_activity_id=0x65, macro_steps=[{"device_id": 7, "command_id": 1}])
     mutate(activity)
@@ -1472,21 +1547,23 @@ def test_preflight_rejects_bad_activities_before_any_write(monkeypatch, mutate, 
     assert writes == []
 
 
-def test_preflight_resolves_activity_references_against_the_bundle(monkeypatch) -> None:
-    """References to bundle devices and to other bundle activities are fine,
-    whatever the bundle order; a device with source id 0 is skipped by the
-    restore and so does not count as a reference target."""
+def test_preflight_resolves_references_against_the_bundle(monkeypatch) -> None:
+    """References to bundle devices are fine; a reference to another
+    activity is refused even when the bundle carries it (L-B25, CR-F3-19);
+    a device with source id 0 is skipped by the restore and so does not
+    count as a reference target."""
 
     proxy = _proxy(monkeypatch)
-    chained = _activity_payload(source_activity_id=0x66, macro_steps=[{"device_id": 7, "command_id": 1}])
-    # 0x65 chains to 0x66, listed first: the preflight checks coverage, the
-    # sort handles order.
-    caller = _activity_payload(source_activity_id=0x65, macro_steps=[{"device_id": 0x66, "command_id": 1}])
-    bundle = _bundle_with_activity(caller)
-    bundle["activities"].append(chained)
-    assert proxy.preflight_restore_bundle(bundle) == {"devices": 1, "activities": 2}
+    plain = _activity_payload(source_activity_id=0x66, macro_steps=[{"device_id": 7, "command_id": 1}])
+    assert proxy.preflight_restore_bundle(_bundle_with_activity(plain)) == {"devices": 1, "activities": 1}
 
-    zero = _bundle_with_activity(chained, devices=[_device_payload(source_device_id=0)])
+    caller = _activity_payload(source_activity_id=0x65, macro_steps=[{"device_id": 0x66, "command_id": 1}])
+    chained = _bundle_with_activity(caller)
+    chained["activities"].append(plain)
+    with pytest.raises(ValueError, match="references other activities"):
+        proxy.preflight_restore_bundle(chained)
+
+    zero = _bundle_with_activity(plain, devices=[_device_payload(source_device_id=0)])
     with pytest.raises(ValueError, match="missing the following source device ids"):
         proxy.preflight_restore_bundle(zero)
 
@@ -1500,4 +1577,108 @@ def test_restore_activity_still_validates_standalone(monkeypatch) -> None:
         proxy.restore_activity(payload=activity, device_id_map={})
     chained = _activity_payload(source_activity_id=0x65, macro_steps=[{"device_id": 0x66, "command_id": 1}])
     with pytest.raises(ValueError, match="references other activities"):
-        proxy.restore_activity(payload=chained, device_id_map={}, activity_id_map={})
+        proxy.restore_activity(payload=chained, device_id_map={})
+
+
+def test_a_failed_bundle_restore_still_syncs_the_remotes_when_something_landed(monkeypatch) -> None:
+    proxy = _proxy(monkeypatch)
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
+    syncs: list[int] = []
+    monkeypatch.setattr(proxy, "resync_remote", lambda *a, **kw: syncs.append(1) or True)
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [_device_payload(source_device_id=7), _device_payload(source_device_id=8)],
+        "activities": [],
+    }
+
+    # Device 7 lands, device 8 fails: the remotes must learn about 7.
+    outcomes = iter([({"status": "success", "device_id": 0x17}, None), (None, None)])
+    monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: next(outcomes))
+    result = proxy.restore_hub_bundle(bundle)
+    assert result["failed_at"] == ["device", 8] and syncs == [1]
+
+    # The first device fails and nothing landed: no trigger.
+    syncs.clear()
+    monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (None, None))
+    result = proxy.restore_hub_bundle(bundle)
+    assert result["failed_at"] == ["device", 7] and syncs == []
+
+
+def test_restore_catalog_refreshes_add_no_listeners_and_run_once_per_bundle(monkeypatch) -> None:
+    proxy = _proxy(monkeypatch)
+    reads: list[str] = []
+    monkeypatch.setattr(proxy, "request_devices", lambda: reads.append("devices") or False)
+    monkeypatch.setattr(proxy, "request_activities", lambda: reads.append("activities") or False)
+    before = sum(len(v) for v in proxy._burst.listeners.values())
+
+    for _ in range(5):
+        proxy._refresh_destination_catalog(timeout=0.01)
+    assert sum(len(v) for v in proxy._burst.listeners.values()) - before <= 2
+
+    reads.clear()
+    calls: list[int] = []
+
+    def _outcome(payload):
+        proxy._refresh_destination_catalog(timeout=0.01)  # what each device create does
+        calls.append(1)
+        return {"status": "success", "device_id": 0x10 + len(calls)}, None
+
+    monkeypatch.setattr(proxy, "_restore_device_outcome", _outcome)
+    monkeypatch.setattr(proxy, "resync_remote", lambda *a, **kw: True)
+    proxy.restore_hub_bundle({
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [_device_payload(source_device_id=7), _device_payload(source_device_id=8)],
+        "activities": [],
+    })
+    assert len(calls) == 2 and reads == ["devices", "activities"]
+    assert not proxy._bundle_catalog_fresh
+
+
+def test_a_full_backup_drops_steps_into_devices_the_hub_no_longer_has() -> None:
+    from custom_components.sofabaton_x1s.lib import backup_export as bx
+
+    def _activity_with_steps() -> dict:
+        return {
+            "kind": "activity_backup",
+            "device": {"device_id": 101, "name": "Watch TV"},
+            "macros": [{"button_id": 198, "steps": [
+                {"device_id": 1, "command_id": 5},
+                {"device_id": 9, "command_id": 5},    # device 9 is gone
+                {"device_id": 0xFF, "command_id": 0xFF, "delay": 3},
+            ]}],
+        }
+
+    devices = [{"kind": "device_backup", "device": {"device_id": 1}, "complete": True}]
+    full = bx.assemble_hub_bundle(
+        device_payloads=devices, activity_payloads=[_activity_with_steps()], hub_info={},
+    )
+    assert [s["device_id"] for s in full["activities"][0]["macros"][0]["steps"]] == [1, 0xFF]
+    assert full["skipped_macro_steps"] == 1
+
+    # The structural projection is the editor's baseline: hub truth, untouched.
+    structural = bx.assemble_hub_bundle(
+        device_payloads=devices, activity_payloads=[_activity_with_steps()], hub_info={},
+        payload_profile=bx.PAYLOAD_PROFILE_STRUCTURAL,
+    )
+    assert len(structural["activities"][0]["macros"][0]["steps"]) == 3
+    assert "skipped_macro_steps" not in structural
+
+
+def test_a_device_whose_power_is_set_up_by_idle_behaviour_keeps_its_macros() -> None:
+    # Bench 2026-09-30 (CR-L2-5): a device created through Add device keeps
+    # the record-tail power byte 0 after its power is set up; the idle byte
+    # (modes 1-3) is what says so.
+    from custom_components.sofabaton_x1s.lib.devices import DeviceConfig
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False,
+                    hub_version=HUB_VERSION_X1S)
+    tail_zero = DeviceConfig(name="Lamp", brand="", device_id=5, power_mode=0)
+    tail_one = DeviceConfig(name="TV", brand="", device_id=6, power_mode=1)
+
+    proxy._idle_behavior_values[5] = 1
+    assert proxy._device_power_set_up(5, tail_zero) is True     # set up via the idle byte
+    proxy._idle_behavior_values[5] = 0
+    assert proxy._device_power_set_up(5, tail_zero) is False    # never set up: placeholders
+    assert proxy._device_power_set_up(6, tail_one) is True      # existing hub devices, as before

@@ -1,4 +1,4 @@
-# sofabaton-x-server with Docker Compose.
+# sofabaton-x-server with Docker Compose, from the published image.
 #
 # This deployment uses Linux host networking: the app finds the proxy over mDNS
 # and (iOS) UDP broadcast, and the hub dials back to TCP 8200 on this host.
@@ -10,6 +10,11 @@
 #   docker compose up -d
 #   docker compose logs -f
 #
+# Upgrade: docker compose pull && docker compose up -d (the data directory
+# is kept). Synology Container Manager shows "Update available" for this
+# image because it comes from Docker Hub with the latest tag; see
+# docs/running-server.md#docker.
+#
 # Fully close the official Sofabaton app first: connected hubs do not advertise.
 # Then open http://<server>:8480/ and add hubs in the control panel.
 # Set up access there to require credentials for configuration writes.
@@ -18,17 +23,27 @@
 # SOFABATON_HUBS is an optional seed for first startup only.
 services:
   sofabaton-x-server:
-    build:
-      context: ..
-      dockerfile: sofabaton-x-server/Dockerfile
-    image: sofabaton-x-server:local
+    image: m3tac0de/sofabaton-x-server:latest
+    # To run your own build from a checkout instead of the published image,
+    # replace the image line with (the context is the repository root):
+    # build:
+    #   context: ..
+    #   dockerfile: sofabaton-x-server/Dockerfile
+    # image: sofabaton-x-server:local
     container_name: sofabaton-x-server
     network_mode: host
     restart: unless-stopped
     volumes:
       - ./data:/data
+      # Built-in TLS without a reverse proxy (an https dashboard can only
+      # embed an https web remote): mount the certificate directory and
+      # name the files below. Renewed files are picked up within a minute,
+      # no restart. See docs/running-server.md#tls-without-a-proxy.
+      # - /path/to/certs:/ssl:ro
     environment:
       SOFABATON_PORT: "8480"
+      # SOFABATON_TLS_CERT: "/ssl/fullchain.pem"
+      # SOFABATON_TLS_KEY: "/ssl/privkey.pem"
       # SOFABATON_HUBS: "192.168.1.50,192.168.1.51"
       # SOFABATON_ADVERTISE_URL: "https://sofabaton.home.example"
       # SOFABATON_TRUSTED_PROXIES: "127.0.0.1"

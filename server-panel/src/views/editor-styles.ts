@@ -44,7 +44,7 @@ export const EDITOR_CSS = css`
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
     .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
-    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: #2e7d32; opacity: 1; }
+    .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); opacity: 1; }
     .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
     .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
     .icon-btn:active, .dialog-close:active { transform: translateY(1px); }
@@ -95,7 +95,7 @@ export const EDITOR_CSS = css`
     .quick-access-sortable-item.is-dragging { position: relative; z-index: 2; background: var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); border-top-color: transparent; }
     .detail-view.is-sorting, .quick-access-row--step { user-select: none; -webkit-user-select: none; }
     /* The band is a <label>; undo the panel's generic form-label rule. */
-    .step-wait { display: flex; align-items: center; gap: 6px; margin: 0; padding: 3px 14px 6px; text-transform: none; letter-spacing: 0; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
+    .step-wait { display: flex; align-items: center; gap: 6px; margin: 0; padding: 4px 14px; text-transform: none; letter-spacing: 0; background: color-mix(in srgb, var(--sbp-panel-2) 45%, transparent); cursor: text; }
     .step-wait-caption { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--sbp-muted); pointer-events: none; }
     .step-wait-field { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px 2px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); }
     .step-wait-field:focus-within { border-color: var(--sbp-accent); }

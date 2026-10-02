@@ -4,6 +4,7 @@ import {
   automationAssistButtonYaml,
   automationAssistNotificationBody,
   automationAssistRemoteYaml,
+  yamlScalar,
 } from "../../remote-card/src/remote-card-assist-yaml";
 
 const ENTITY = "remote.living_room";
@@ -139,4 +140,15 @@ test("device-mode captures head the notification with Device/Command wording", (
   assert.doesNotMatch(body, /Activity: play xbox/);
   // The service YAML still targets the device scope.
   assert.match(body, /device: 5/);
+});
+
+test("user-named values are quoted when YAML would misread them (CR-F4a-6)", () => {
+  assert.equal(yamlScalar("Watch a movie"), "Watch a movie");
+  assert.equal(yamlScalar("TV: On"), '"TV: On"');
+  assert.equal(yamlScalar("#1 favorite"), '"#1 favorite"');
+  assert.equal(yamlScalar("*Party"), '"*Party"');
+  assert.equal(yamlScalar("On"), '"On"');
+  assert.equal(yamlScalar("2024"), '"2024"');
+  assert.equal(yamlScalar('Say "hi"'), 'Say "hi"');
+  assert.equal(yamlScalar('"Quoted"'), '"\\"Quoted\\""');
 });

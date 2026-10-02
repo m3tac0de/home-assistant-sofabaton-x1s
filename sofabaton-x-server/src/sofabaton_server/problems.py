@@ -177,6 +177,9 @@ def hub_disabled(hub_id: str) -> ApiProblem:
 def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
     """The ``ApiProblem`` for one of the library's typed errors, else None."""
 
+    if isinstance(err, ApiProblem):
+        # A coded refusal raised inside a job body keeps its code (CR-S2-8).
+        return err
     if isinstance(err, HubBusyError):
         return ApiProblem(409, "hub_busy", "An app client holds the hub", detail=str(err), hub_id=hub_id, mode="observe")
     if isinstance(err, HubNotConnectedError):
@@ -218,7 +221,10 @@ def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
         return ApiProblem(status, "restore_failed", "The restore did not complete",
                           detail=f"{detail}; {err.result.restored_devices} device(s) and "
                                  f"{err.result.restored_activities} activity(ies) were restored first"
-                                 + ("; the hub had been erased for the replace" if err.result.erased else ""),
+                                 + ("; the hub had been erased for the replace" if err.result.erased else "")
+                                 + ("; a half-made device stayed on the hub (id "
+                                    + ", ".join(str(i) for i in err.result.partial_device_ids) + ")"
+                                    if err.result.partial_device_ids else ""),
                           hub_id=hub_id)
     if isinstance(err, SyncFailed):
         status = 409 if err.result.wrote_nothing else 502
@@ -246,6 +252,6 @@ async def hub_errors(hub_id: str) -> AsyncIterator[None]:
         yield
     except Exception as err:  # noqa: BLE001
         mapped = problem_for(err, hub_id)
-        if mapped is None:
+        if mapped is None or mapped is err:
             raise
         raise mapped from err

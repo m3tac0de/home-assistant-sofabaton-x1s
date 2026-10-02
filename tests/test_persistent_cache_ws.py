@@ -4,6 +4,9 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+ws_panel_module = importlib.import_module("custom_components.sofabaton_x1s.ws_panel")
+frontend_module = importlib.import_module("custom_components.sofabaton_x1s.frontend_resources")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 class _Conn:
@@ -32,9 +35,13 @@ class _CacheStore:
 
 
 class _UiSettingsStore:
-    def __init__(self, hub_click_action="none"):
+    def __init__(self, hub_click_action="none", sidebar_panel_mode="off"):
         self.hub_click_action = hub_click_action
         self.set_hub_click_action_to = None
+        self.sidebar_panel_mode = sidebar_panel_mode
+
+    async def async_set_sidebar_panel_mode(self, mode):
+        self.sidebar_panel_mode = mode
 
     async def async_set_hub_click_action(self, action):
         self.hub_click_action = action
@@ -85,7 +92,6 @@ class _Hub:
             "devices": {"1": {"name": "TV"}},
             "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
             "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
-            "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
             "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
         }
 
@@ -103,28 +109,6 @@ class _Hub:
 
     async def async_resync_remote(self):
         self.sync_remote_called = True
-
-
-def test_ws_set_persistent_cache(monkeypatch):
-    conn = _Conn()
-    store = _CacheStore(enabled=False)
-
-    async def fake_store(_hass):
-        return store
-
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(
-            integration._ws_set_persistent_cache(SimpleNamespace(), conn, {"id": 1, "enabled": True})
-        )
-    finally:
-        loop.close()
-
-    assert conn.error is None
-    assert conn.result == (1, {"enabled": True})
-    assert store.set_enabled_to is True
 
 
 def test_ws_refresh_persistent_cache_entry(monkeypatch):
@@ -145,8 +129,8 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
 
     store.async_set_hub_cache = fake_set_hub_cache
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -180,7 +164,7 @@ def test_ws_get_persistent_cache_contents_disabled(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
     loop = asyncio.new_event_loop()
     try:
@@ -202,8 +186,8 @@ def test_ws_get_persistent_cache_contents_returns_derived_activity_data(monkeypa
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
 
     loop = asyncio.new_event_loop()
     try:
@@ -226,43 +210,7 @@ def test_ws_get_persistent_cache_contents_returns_derived_activity_data(monkeypa
                     "devices": {"1": {"name": "TV"}},
                     "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
                     "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
-                    "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
                     "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
-                }
-            ],
-        },
-    )
-
-
-def test_ws_get_persistent_cache_includes_cache_generation(monkeypatch):
-    conn = _Conn()
-    store = _CacheStore(enabled=True)
-    hub = _Hub()
-
-    async def fake_store(_hass):
-        return store
-
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
-
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(
-            integration._ws_get_persistent_cache(SimpleNamespace(data={}), conn, {"id": 34})
-        )
-    finally:
-        loop.close()
-
-    assert conn.error is None
-    assert conn.result == (
-        34,
-        {
-            "enabled": True,
-            "hubs": [
-                {
-                    "entry_id": "entry-1",
-                    "name": "Living Room",
-                    "cache_generation": 7,
                 }
             ],
         },
@@ -289,8 +237,8 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
 
     store.async_set_hub_cache = fake_set_hub_cache
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -340,11 +288,11 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
         ),
     )
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
-    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
-    monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(frontend_module, "_async_get_integration_version", fake_version)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(ws_panel_module, "get_hub_model", lambda _entry: "X1S")
 
     loop = asyncio.new_event_loop()
     try:
@@ -361,6 +309,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
             "persistent_cache_enabled": False,
             # Global Hub-tab click behavior from the UI settings store.
             "hub_click_action": "send",
+            "sidebar_panel": "off",
             "tools_frontend_version": "2026.5.1",
             "hubs": [
                 {
@@ -402,6 +351,9 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "total_steps": None,
                         "device_key": None,
                         "device_name": None,
+                        "last_operation": None,
+                        "last_wifi_deploys": {},
+                        "last_wifi_deploy_errors": {},
                     },
                 }
             ],
@@ -434,11 +386,11 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
         ),
     )
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
-    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
-    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
-    monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(frontend_module, "_async_get_integration_version", fake_version)
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(ws_panel_module, "get_hub_model", lambda _entry: "X1S")
 
     loop = asyncio.new_event_loop()
     try:
@@ -463,7 +415,7 @@ def test_ws_control_panel_set_setting_updates_hub_setting(monkeypatch):
         assert data["entry_id"] == "entry-1"
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -494,7 +446,7 @@ def test_ws_control_panel_set_setting_updates_hub_click_action(monkeypatch):
     async def fake_ui_settings(_hass):
         return ui_settings
 
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
 
     loop = asyncio.new_event_loop()
     try:
@@ -525,7 +477,7 @@ def test_ws_control_panel_set_setting_hub_click_action_requires_value(monkeypatc
     async def fake_ui_settings(_hass):
         return ui_settings
 
-    monkeypatch.setattr(integration, "_async_get_ui_settings_store", fake_ui_settings)
+    monkeypatch.setattr(runtime_module, "_async_get_ui_settings_store", fake_ui_settings)
 
     loop = asyncio.new_event_loop()
     try:
@@ -555,7 +507,7 @@ def test_ws_control_panel_set_setting_boolean_requires_enabled(monkeypatch):
     async def fake_resolve(_hass, data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:
@@ -590,7 +542,7 @@ def test_ws_control_panel_run_action_triggers_hub_action(monkeypatch):
         assert data["entry_id"] == "entry-1"
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     loop = asyncio.new_event_loop()
     try:

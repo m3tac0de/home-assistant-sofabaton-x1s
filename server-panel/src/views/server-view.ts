@@ -19,6 +19,34 @@ import {
 } from "../panel-api";
 import { PANEL_BASE_CSS } from "../panel-styles";
 
+/** The "installed as" fact, from `UpdateStatus.install_kind`. */
+export function installKindLabel(kind: UpdateStatus["install_kind"] | undefined): string {
+  switch (kind) {
+    case "container": return "container image";
+    case "pipx": return "pipx";
+    case "pip": return "pip";
+    case "checkout": return "source checkout";
+    default: return "unknown";
+  }
+}
+
+/** The next step once a newer release is known, per install kind. The server never installs
+ *  anything; a container is replaced by pulling the new image. */
+export function installHowTo(kind: UpdateStatus["install_kind"] | undefined, version: string): string {
+  switch (kind) {
+    case "container":
+      return "This server runs from a container image: pull the new image and recreate the container with the same data directory. Synology Container Manager offers it under Image when the image comes from Docker Hub.";
+    case "pipx":
+      return `Stop the server, then run: pipx upgrade sofabaton-x-server`;
+    case "pip":
+      return `Stop the server, then run in the same Python environment: python -m pip install "sofabaton-x-server==${version}"`;
+    case "checkout":
+      return "This server runs from a source checkout: pull the release and reinstall both packages.";
+    default:
+      return "";
+  }
+}
+
 export const SERVER_VIEW_TAG = "sb-panel-server";
 
 // Labels and descriptions from the integration's config flow
@@ -136,7 +164,9 @@ export class SbPanelServer extends LitElement {
       const response = await this.api.serverSettings();
       if (response.ok && response.body) {
         this._ports = response.body;
-        this._portDraft = {};
+        // The draft is left alone: a re-attach from the view cache re-reads
+        // the ports but keeps what the user typed (CR-F5a-12); a save
+        // clears the draft itself.
       } else {
         this._setPortStatus(problemText(response), true);
       }
@@ -307,16 +337,21 @@ export class SbPanelServer extends LitElement {
           <a href=${u.pypi_url} target="_blank" rel="noopener">PyPI</a>
         </div>`
       : "";
+    // The next step depends on how this server was installed; the server never installs anything.
+    const howTo = u?.status === "update_available" ? installHowTo(u.install_kind, u.latest_version ?? "") : "";
+    const howToLine = howTo ? html`<div class="hint" id="update-howto">${howTo}</div>` : "";
     const busy = this._checking || u?.checking === true;
     return html`
       <div class="panel updates" id="server-updates">
         <h2>Updates</h2>
         <dl class="facts">
           <div><dt>installed version</dt><dd id="update-installed">${installed}</dd></div>
+          <div><dt>installed as</dt><dd id="update-kind">${installKindLabel(u?.install_kind)}</dd></div>
           <div><dt>last checked</dt><dd id="update-checked">${checked}</dd></div>
           ${u?.next_check_at ? html`<div><dt>next check</dt><dd id="update-next">${localTime(u.next_check_at)}</dd></div>` : ""}
         </dl>
         <div class="update-line ${cls}" id="update-status" data-status=${u?.status ?? "not_checked"}>${line}</div>
+        ${howToLine}
         ${links}
         <div class="actions">
           <button class="small" id="update-check" ?disabled=${busy || !this.reachable} @click=${this._checkForUpdates} title="POST /server/updates/check">${busy ? "checking…" : "Check for updates"}</button>
@@ -359,7 +394,7 @@ export class SbPanelServer extends LitElement {
     const info = this.info;
     const listener = this._listener ?? info?.callback_listener ?? null;
     const listenerText = !listener ? "unknown" : listener.bound ? `bound on :${listener.bound_port}` : listener.wanted ? "wanted, not bound" : "idle (no callback devices)";
-    // Set on the server's command line or in its environment only; the panel shows it, never edits it.
+    // Edited on the MQTT broker page (mqtt.json), or set read-only by flags or the environment.
     const mqtt = (info?.mqtt ?? null) as { configured?: boolean; connected?: boolean; wanted?: boolean; host?: string | null; port?: number | null; tls?: boolean; last_error?: string | null } | null;
     const mqttAt = mqtt ? `${mqtt.host}:${mqtt.port}${mqtt.tls ? " (TLS)" : ""}` : "";
     const mqttText = !mqtt ? "unknown" : !mqtt.configured ? "not configured (see MQTT broker)" : mqtt.connected ? `connected to ${mqttAt}` : mqtt.wanted ? `not connected to ${mqttAt}${mqtt.last_error ? `: ${mqtt.last_error}` : ""}` : `${mqttAt}, idle (no mqtt devices)`;

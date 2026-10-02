@@ -81,7 +81,7 @@ modules (a frontend test fails when an icon is missing from the table).
 
 ## ◇ Running the tests
 
-There are three suites:
+There are three test suites, plus the lint gates in section 5:
 
 ### 1. Python (pytest)
 
@@ -167,6 +167,29 @@ Add step dialog with its native selects) and are part of the default set.
 A test in `tests/frontend/tools-card-harness.test.ts` keeps the audit's
 default scenario list and the harness in sync.
 
+### 5. Lint gates
+
+CI turns a push red when one of these finds something new
+(`.github/workflows/python-lint.yml`, and frontend CI's typecheck):
+
+```powershell
+.venv-py313\Scripts\ruff check .   # bug rules from pyproject.toml; must be clean
+npm run pyright:check              # library + server: no errors beyond pyright-baseline.json
+npm run typecheck                  # tsc strict, unused locals included
+```
+
+- ruff checks only rules that flag code that is almost always wrong
+  (unused names, closures over loop variables, dangling asyncio tasks, ...).
+  The wider style and complexity report never gates:
+  `ruff check --extend-select BLE,S110,C901,PLR0912,PLR0915,SIM --exit-zero .`
+- pyright's existing errors are type-level only and recorded in
+  `pyright-baseline.json`; the check fails on a new one and names it. After
+  fixing some, `npm run pyright:baseline` lowers the recorded set (commit the
+  file). Pyright reads the installed `sofabaton` for the server, so install
+  the library from this tree first:
+  `.venv-py313\Scripts\python -m pip install --no-deps --force-reinstall .`
+  CI builds the same environment from `scripts/pyright-requirements.txt`.
+
 ## ◇ Documentation
 
 - User docs live in `docs/`; keep links **relative** (they are read on GitHub).
@@ -187,7 +210,7 @@ The integration, library and server are **versioned independently**:
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HA integration        | `custom_components/sofabaton_x1s/manifest.json` | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). The README release badge updates automatically. |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
-| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.2,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.3,<0.3` in its `pyproject.toml`) must be on PyPI first. |
 
 The Virtual Remote has its own `CARD_VERSION` in
 `remote-card/src/remote-card-shared.ts`. When an integration release includes
@@ -231,8 +254,10 @@ Server release checklist (after the library it depends on is on PyPI):
 2. `npm run build:frontend` and commit the bundles (the web remote,
    embeddable remote and control panel ship inside the wheel; frontend CI
    checks for drift).
-3. `python -m sofabaton_server.openapi` after any API or server version change; commit
-   `openapi.json`. Server README links must be absolute GitHub URLs (PyPI
+3. `PYTHONPATH=sofabaton-x-server/src python -m sofabaton_server.openapi sofabaton-x-server/openapi.json`
+   after any API or server version change; commit `openapi.json`. (Without
+   a path it writes next to the package, and refuses when that is an
+   installed copy rather than the checkout.) Server README links must be absolute GitHub URLs (PyPI
    renders it outside the repository).
 4. `pytest sofabaton-x-server/tests -q`, `npm run test:frontend`, and the
    Playwright specs `server-panel.spec.js` and `web-remote.spec.js`.

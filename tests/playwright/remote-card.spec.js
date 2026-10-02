@@ -125,6 +125,27 @@ test.describe("remote card playwright harness", () => {
       .toBe(2);
   });
 
+  test("drawer items send from the keyboard (CR-F4b-1)", async ({ page }) => {
+    await mountCard(page, "active");
+    const sends = () => page.evaluate(
+      () => window.__remoteCardHarness
+        .getServiceCalls()
+        .filter((call) => call.domain === "remote" && call.service === "send_command")
+        .length,
+    );
+    await page.locator(".macroFavoritesButton").nth(1).click();
+    const favorite = page.locator(".mf-overlay--favorites .drawer-btn").first();
+    await expect(favorite).toBeVisible();
+    const before = await sends();
+    await favorite.focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(sends).toBe(before + 1);
+    // Space works too, once the dedupe window has passed.
+    await page.waitForTimeout(500);
+    await page.keyboard.press(" ");
+    await expect.poll(sends).toBe(before + 2);
+  });
+
   test("centers native controls and keeps tab and drawer labels fully visible", async ({ page }) => {
     await mountCard(page, "active");
 
@@ -647,6 +668,27 @@ test.describe("remote card playwright harness", () => {
     await expect(dpad).not.toHaveClass(/dpad--numpad-open/);
   });
 
+  test("number pad: keyboard users open it, land on a key, and Escape closes it (CR-F4b-7)", async ({ page }) => {
+    await mountCard(page, "numpad");
+    const dpad = page.locator(".dpad");
+    const toggle = page.locator(".dpad-numpad-toggle");
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(dpad).toHaveClass(/dpad--numpad-open/);
+    const focusedInKeypad = () => page.evaluate(() => {
+      const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
+      const active = root.activeElement;
+      return Boolean(active?.closest(".dpad-face--numpad"));
+    });
+    await expect.poll(focusedInKeypad).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(dpad).not.toHaveClass(/dpad--numpad-open/);
+    await expect.poll(() => page.evaluate(() => {
+      const root = document.querySelector("sofabaton-virtual-remote").shadowRoot;
+      return root.activeElement?.classList.contains("dpad-numpad-toggle") ?? false;
+    })).toBe(true);
+  });
+
   test("number pad: the second activity has no keypad bound, so no hint and no flip", async ({ page }) => {
     await mountCard(page, "numpad");
     await page.locator("ha-select").click();
@@ -689,6 +731,37 @@ test.describe("remote card playwright harness", () => {
     // Neither switch on: the slot is empty.
     await mountCard(page, "numpad", { show_dpad: false, show_numpad: false });
     await expect(page.locator(".dpad")).toHaveCount(0);
+  });
+
+  test("number pad: the official integration sends a digit as an assigned key", async ({ page }) => {
+    await mountCard(page, "hub_numpad");
+    const dpad = page.locator(".dpad");
+    await expect(dpad).toHaveClass(/dpad--numpad-ready/);
+    await page.locator(".dpad-numpad-toggle").click();
+    await expect(dpad).toHaveClass(/dpad--numpad-open/);
+
+    // 5 is code 165; unbound keys (dash, Enter) stay disabled.
+    await page.locator(".dpad-face--numpad sb-key-button", { hasText: "5" }).click();
+    await expect
+      .poll(async () => page.evaluate(() => window.__remoteCardHarness.getServiceCalls()))
+      .toContainEqual(
+        expect.objectContaining({
+          domain: "remote",
+          service: "send_command",
+          data: expect.objectContaining({
+            command: ["type:send_assigned_key", "activity_id:201", "key_id:165"],
+          }),
+        }),
+      );
+    await expect(
+      page.locator(".dpad-face--numpad sb-key-button.disabled", { hasText: "E" }),
+    ).toHaveCount(1);
+  });
+
+  test("number pad: the official integration without keypad keys shows no toggle", async ({ page }) => {
+    await mountCard(page, "hub_x2");
+    await expect(page.locator(".dpad")).not.toHaveClass(/dpad--numpad-ready/);
+    await expect(page.locator(".dpad-numpad-toggle")).toHaveCount(0);
   });
 
   test("number pad: an X1S never carries the keypad", async ({ page }) => {

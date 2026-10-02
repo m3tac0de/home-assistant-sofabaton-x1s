@@ -10,17 +10,13 @@
 # tests/lib/test_sequencer_boundary.py enforces this at CI time.
 from __future__ import annotations
 
-import contextlib
 import logging
-import ipaddress
 import re
 import socket
-import struct
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import replace
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from .hub_versions import (
     HUB_VERSION_X1,
@@ -31,45 +27,23 @@ from .hub_versions import (
     classify_hub_version,
     mdns_service_type_for_props,
 )
+from .ack import AckOutcome
 from .hub_logging import LogTag, get_hub_logger
-from .ack import AckOutcome, InputsBurstResult, SendStepResult
 from .commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
-    descriptive_play_blob_text,
-    extract_ir_dump_blob,
-    extract_ir_dump_label_field,
-    looks_like_descriptive_play_blob,
-    parse_ir_command_dump_frame,
 )
 from .device_create import (
     ACK_OPCODE_STATUS,
     ACK_STATUS_BYTE_OK,
-    FAMILY_ACTIVITY_CREATE,
     FAMILY_INPUTS,
     CreateStep,
-    build_button_binding_step,
-    build_command_write_steps,
-    build_device_create_step,
-    build_device_update_step,
-    build_macro_step,
-    build_macro_step_record,
-    build_remote_sync_step,
-    run_create_sequence,
-    synthesize_command_code,
+    # Not called here: proxy_restore routes create sequences through this
+    # module attribute so tests can monkeypatch one symbol.
+    run_create_sequence,  # noqa: F401
 )
-from .devices import device_config_from_backup
-from .inputs import (
-    ControlKeyBlock,
-    FavoriteSlot,
-    InputEntry,
-    InputsRecord,
-    build_inputs_write,
-    parse_inputs_burst,
-)
-from .wire_schema import InputEntryLayout, schema_for
+from .wire_schema import page_family_body
 from .macros import (
-    MACRO_WRITE_PAGE_BODY_CHUNK,
     MacroAssembler,
     MacroKeyEntry,
     MacroRecord,
@@ -77,78 +51,21 @@ from .macros import (
 )
 
 from .protocol_const import (
-    BUTTONNAME_BY_CODE,
     ButtonName,
-    DEVICE_CLASS_BLUETOOTH,
-    DEVICE_CLASS_IR,
-    DEVICE_CLASS_RF_315,
-    DEVICE_CLASS_RF_433,
-    DEVICE_CLASS_WIFI_HUE,
-    DEVICE_CLASS_WIFI_IP,
-    DEVICE_CLASS_WIFI_MQTT,
-    DEVICE_CLASS_WIFI_ROKU,
-    DEVICE_CLASS_WIFI_SONOS,
-    known_public_device_classes,
     OPNAMES,
-    normalize_device_class,
     opcode_family,
-    opcode_lo,
-    OP_ACK_READY,
-    OP_BANNER,
-    OP_CALL_ME,
-    OP_CATALOG_ROW_ACTIVITY,
-    OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_HEADER,
-    OP_DEVBTN_MORE,
-    OP_DEVBTN_PAGE,
-    OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
     OP_SET_HUB_NAME,
-    OP_INFO_BANNER,
-    OP_CREATE_DEVICE_HEAD,
-    OP_DEFINE_IP_CMD,
-    OP_DEFINE_IP_CMD_EXISTING,
-    OP_PREPARE_SAVE,
-    OP_FINALIZE_DEVICE,
-    OP_DEVICE_SAVE_HEAD,
-    OP_SAVE_COMMIT,
-    OP_KEYMAP_CONT,
-    OP_KEYMAP_TBL_A,
-    OP_KEYMAP_TBL_B,
-    OP_KEYMAP_TBL_C,
-    OP_KEYMAP_TBL_D,
-    OP_KEYMAP_TBL_E,
-    OP_KEYMAP_EXTRA,
-    OP_MACROS_A1,
-    OP_MACROS_A2,
-    OP_MACROS_B1,
-    OP_MACROS_B2,
-    OP_MARKER,
-    OP_PING2,
     OP_SET_IDLE_BEHAVIOR,
     OP_REQ_ACTIVITIES,
     OP_REQ_ACTIVATE,
     OP_REQ_IDLE_BEHAVIOR,
-    OP_REQ_ACTIVITY_MAP,
     OP_REQ_BANNER,
-    OP_DELETE_DEVICE,
-    OP_STATUS_ACK,
-    OP_ACTIVITY_ASSIGN_FINALIZE,
-    OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
     OP_REQ_BLOB,
     OP_REQ_COMMANDS,
-    OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
-    OP_REQ_MACRO_LABELS,
-    OP_IDLE_BEHAVIOR,
-    OP_ACTIVITY_DEVICE_CONFIRM,
-    OP_REQ_ACTIVITY_INPUTS,
-    OP_REQ_VERSION,
-    OP_WIFI_FW,
-    FAMILY_FAV_DELETE,
-    FAMILY_FAV_ORDER_REQ,
     FAMILY_HUB_NAME_REPLY,
     SYNC0,
     SYNC1,
@@ -284,14 +201,6 @@ def _input_create_step(
     )
 
 
-def _hex_to_bytes(raw_hex: str) -> bytes:
-    return bytes.fromhex(raw_hex)
-
-
-def _ascii_padded(value: str, *, length: int) -> bytes:
-    return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
-
-
 def _to_dbc(value: str) -> str:
     """Collapse full-width forms to the GB2312-friendly half-width variant."""
 
@@ -311,25 +220,26 @@ def _encode_hub_name_wire(value: str) -> bytes:
     return _to_dbc(value).encode("gb2312", errors="ignore")
 
 
+def _decode_hub_name_bytes(raw: bytes) -> str:
+    """A hub name as the hub stores it: the GB2312 bytes set_hub_name
+    writes (bench 2026-09-30, X1S: the banner carries them back verbatim).
+    Valid UTF-8 is taken as UTF-8 first; GB2312 bytes outside ASCII never
+    are, so an ASCII or UTF-8 name reads the same either way."""
+
+    data = bytes(raw).split(b"\x00", 1)[0]
+    for codec in ("utf-8", "gb2312"):
+        try:
+            return data.decode(codec).strip()
+        except UnicodeDecodeError:
+            continue
+    return data.decode("gb2312", errors="ignore").strip()
+
+
 def _decode_hub_name_wire(payload: bytes, *, hub_version: str | None) -> str:
     raw = payload
     if hub_version == HUB_VERSION_X2 and len(raw) >= 2:
         raw = raw[2:]
-    return raw.decode("gb2312", errors="ignore").strip("\x00").strip()
-
-
-# Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
-# See the activity-row schema comment in ``opcode_handlers`` for details.
-_ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
-_ACTIVITY_ROW_TAIL_LEN = 60
-
-
-# ACTIVITY_INPUTS (family 0x46 / response 0x47) schema lives in
-# :mod:`lib.inputs`; see its module docstring for the canonical
-# per-variant entry stride and trailing-region layout. Parser and
-# builder are exposed there as :func:`parse_inputs_burst` and
-# :func:`build_inputs_write`.
-
+    return _decode_hub_name_bytes(raw)
 
 
 def _normalize_mdns_instance(name: str) -> str:
@@ -337,6 +247,7 @@ def _normalize_mdns_instance(name: str) -> str:
 
     normalized = re.sub(r"\s+", "-", name.strip())
     return normalized or "X1-HUB-PROXY"
+
 
 def _route_local_ip(peer_ip: str) -> str:
     try:
@@ -349,38 +260,6 @@ def _route_local_ip(peer_ip: str) -> str:
         try: s.close()
         except Exception: pass
 
-def _pick_port_near(base: int, tries: int = 64) -> int:
-    for i in range(tries):
-        cand = base + i
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("0.0.0.0", cand))
-            s.close()
-            return cand
-        except OSError:
-            continue
-    raise OSError("No free port near %d" % base)
-
-def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10, count: int = 3) -> None:
-    try: sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    except Exception: pass
-    try:  # Linux
-        TCP_KEEPIDLE = getattr(socket, "TCP_KEEPIDLE", None)
-        TCP_KEEPINTVL = getattr(socket, "TCP_KEEPINTVL", None)
-        TCP_KEEPCNT = getattr(socket, "TCP_KEEPCNT", None)
-        if TCP_KEEPIDLE is not None:  sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPIDLE, idle)
-        if TCP_KEEPINTVL is not None: sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPINTVL, interval)
-        if TCP_KEEPCNT is not None:   sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPCNT, count)
-    except Exception: pass
-    try:  # macOS/Windows approx
-        TCP_KEEPALIVE = getattr(socket, "TCP_KEEPALIVE", None)
-        if TCP_KEEPALIVE is not None: sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, idle)
-    except Exception: pass
-
-
-
-# Deframer moved to lib/deframer.py — re-exported above.
 
 # ============================================================================
 # Proxy
@@ -433,6 +312,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # deframers
         self._df_h2a = Deframer()
         self._df_a2h = Deframer()
+        self._handler_failures_seen: set[tuple[str, str]] = set()
         self._adv_started = False
 
         self.state = ActivityCache()
@@ -441,7 +321,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._macro_assembler = MacroAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
-        self._button_burst_expected_frames: dict[int, int] = {}
         # Track pending command fetches per device, so multiple targeted
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
@@ -477,7 +356,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._activity_pending_payloads: dict[int, bytes] = {}
         self._activity_pending_hint: int | None = None
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
-        self._keybinding_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._activity_list_update_listeners: list[Callable[[], None]] = []
         self._hub_state_listeners: list[callable] = []
@@ -494,6 +372,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._pending_virtual: dict[str, Any] | None = None
         self._pending_virtual_event = threading.Event()
         self._pending_virtual_lock = threading.Lock()
+        self._last_virtual_result: dict[str, Any] | None = None
         self._pending_assigned_device_id: int | None = None
         self._pending_assigned_device_event = threading.Event()
         self._pending_assigned_device_lock = threading.Lock()
@@ -560,6 +439,11 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # to its power macro than it would on the TCP-only path.
         self._external_settle_event = threading.Event()
         self._external_settle_event.set()
+        # Presses leave the settle gate in arrival order: every
+        # send_command takes a ticket, and enqueues only on its turn.
+        self._press_order = threading.Condition()
+        self._press_next_ticket = 0
+        self._press_serving = 0
         self._external_settle_deadline = 0.0
         # True between an ACK_READY-triggered REQ_ACTIVITIES and the end of
         # its burst. An external push landing inside that window belongs
@@ -596,6 +480,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._burst.on_burst_end("devices", self._on_devices_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
         self._burst.on_any_burst_end(lambda _key: self.bump_cache_generation())  # W0 generation
+        self._burst.on_dropped(self._on_read_dropped)
         self._hub_connected: bool = False
         self._client_connected: bool = False
 
@@ -971,13 +856,22 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         dev_lo = device_id & 0xFF
         normalized_mode = int(mode) & 0xFF
-        ok = self.enqueue_cmd(
-            OP_SET_IDLE_BEHAVIOR,
-            bytes([dev_lo, normalized_mode]),
+        if not self.can_issue_commands():
+            return False
+        # Ack-gated: a fire-and-forget write returned before the hub had
+        # answered, and the next step's frame then landed in that answer
+        # and was dropped (bench 2026-09-30: an idle write followed by a
+        # power-macro page, as a device sync runs them).
+        outcome = self._status_exchange(
+            "idle_behavior", OP_SET_IDLE_BEHAVIOR, bytes([dev_lo, normalized_mode])
         )
-        if ok:
-            self.record_idle_behavior_value(dev_lo, normalized_mode, source="local_set")
-        return ok
+        if outcome is not AckOutcome.acked:
+            self._log.warning(
+                "%s idle behaviour dev=0x%02X mode=%d %s", LogTag.REMOTE, dev_lo, normalized_mode, outcome.value
+            )
+            return False
+        self.record_idle_behavior_value(dev_lo, normalized_mode, source="local_set")
+        return True
 
     def get_idle_behavior(
         self,
@@ -988,17 +882,17 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         """Return cached idle behavior, optionally querying the hub if missing."""
 
         dev_lo = device_id & 0xFF
+        with self._idle_behavior_lock:
+            absent = dev_lo in self._idle_behavior_absent
+            value = self._idle_behavior_values.get(dev_lo)
+        if absent:
+            return (None, True)
+
         cached = self.state.entities("device").get(dev_lo, {}).get("idle_behavior")
         if isinstance(cached, int):
             return (cached & 0xFF, True)
-
-        with self._idle_behavior_lock:
-            value = self._idle_behavior_values.get(dev_lo)
-
         if value is not None:
             return (value, True)
-        if dev_lo in self._idle_behavior_absent:
-            return (None, True)
 
         if fetch_if_missing and self.can_issue_commands():
             self.request_idle_behavior(dev_lo)
@@ -1123,7 +1017,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         batch = payload[8:12].hex()
         firmware_version = payload[12] & 0xFF
-        banner_name = payload[15:].decode("utf-8", errors="ignore").strip("\x00").strip()
+        banner_name = _decode_hub_name_bytes(payload[15:])
         # payload[0:6] is the hub's OWN MAC address (bench-verified on
         # X1, X1S and X2). This is authoritative device ground truth:
         # real Sofabaton MACs can carry the locally-administered or even
@@ -1184,8 +1078,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
         existing = dict(self.state.entities("device").get(dev_lo, {}))
         existing["idle_behavior"] = normalized_mode
-        existing["power_mode"] = normalized_mode
-        existing["power_model"] = normalized_mode
         self.state.devices[dev_lo] = normalize_device_entry(existing)
 
         self._log.info(
@@ -1345,13 +1237,26 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             )
             return False
 
-        self._wait_external_settle()
+        # Held presses all wake on the same gate release; the ticket keeps
+        # digits 1 then 2 from reaching the hub as 2 then 1.
+        with self._press_order:
+            ticket = self._press_next_ticket
+            self._press_next_ticket += 1
+        try:
+            self._wait_external_settle()
+        finally:
+            with self._press_order:
+                self._press_order.wait_for(lambda: self._press_serving == ticket)
+        try:
+            if key_code == ButtonName.POWER_ON:
+                self.state.set_hint(ent_id)
 
-        if key_code == ButtonName.POWER_ON:
-            self.state.set_hint(ent_id)
-
-        id_lo = ent_id & 0xFF
-        return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
+            id_lo = ent_id & 0xFF
+            return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
+        finally:
+            with self._press_order:
+                self._press_serving += 1
+                self._press_order.notify_all()
 
     def record_app_activation(
         self,
@@ -1377,8 +1282,12 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         return record
 
     def find_remote(self, hub_version: str | None = None) -> bool:
-        """Trigger the hub's "find my remote" feature."""
-        version = hub_version or self.hub_version
+        """Trigger the hub's "find my remote" feature.
+
+        ``hub_version`` only picks the opcode while the engine does not know
+        its variant yet; the banner owns ``self.hub_version``.
+        """
+        version = self.hub_version or hub_version
         if not version:
             try:
                 version = classify_hub_version(self.mdns_txt)
@@ -1387,7 +1296,6 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
                     "%s find-remote: hub_version unknown; cannot pick opcode.", LogTag.REMOTE
                 )
                 return False
-        self.hub_version = version
 
         if version == HUB_VERSION_X2:
             return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")
@@ -1451,6 +1359,12 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
                 button_name=snapshot.get("button_name"),
             )
 
+        if kwargs.get("status") == "success":
+            # The save committed: consume the capture so later ACK_SUCCESS
+            # frames do not keep re-recording it.
+            with self._pending_virtual_lock:
+                self._pending_virtual = None
+                self._last_virtual_result = snapshot
         if kwargs.get("status") == "success" or kwargs.get("device_id") is not None:
             self._pending_virtual_event.set()
 
@@ -1460,11 +1374,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._pending_virtual_event.wait(timeout)
         with self._pending_virtual_lock:
             if self._pending_virtual is None:
-                return None
-            snapshot = dict(self._pending_virtual)
-            if snapshot.get("status") == "success":
-                self._pending_virtual = None
-        return snapshot
+                result, self._last_virtual_result = self._last_virtual_result, None
+                return result
+            return dict(self._pending_virtual)
 
     def _build_macro_record_entry(
         self,
@@ -1496,15 +1408,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         if len(payload) < 4:
             return [payload]
 
-        body = payload[3:]
-        chunk_size = 247
-        total_pages = max(1, (len(body) + chunk_size - 1) // chunk_size)
-
-        paged_payloads: list[bytes] = []
-        for seq in range(1, total_pages + 1):
-            chunk = body[(seq - 1) * chunk_size : seq * chunk_size]
-            paged_payloads.append(bytes([0x01]) + seq.to_bytes(2, "big") + bytes(chunk))
-        return paged_payloads
+        return page_family_body(payload[3:])
 
     def _send_paged_macro_save(
         self,
@@ -1615,8 +1519,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         schema (no need to re-scan for 0xFF separators, codec heuristics, or
         expanded-pair collapses).
 
-        We append, rather than dedup/reorder, to mirror the official app's
-        in-memory model: the device list grows by one when a device is added
+        We append, rather than dedup/reorder, because that is how the hub's
+        own list behaves on the wire: it grows by one when a device is added
         and the new device's rows land at the end of the sequence.
         """
 
@@ -1873,13 +1777,36 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             try:
                 ent_lo = int(key.split(":", 1)[1])
                 self._pending_button_requests.discard(ent_lo)
-                self._button_burst_expected_frames.pop(ent_lo, None)
             except ValueError:
                 self._pending_button_requests.clear()
-                self._button_burst_expected_frames.clear()
         else:
             self._pending_button_requests.clear()
-            self._button_burst_expected_frames.clear()
+
+    def _on_read_dropped(self, kind: str) -> None:
+        """A queued read was dropped unsent (commands blocked when its turn
+        came). Release its pending flag so the next request is not
+        suppressed as a duplicate; nothing was fetched, so nothing is
+        marked complete."""
+
+        prefix, _, rest = kind.partition(":")
+        try:
+            ent_lo = int(rest.split(":", 1)[0]) & 0xFF if rest else None
+        except ValueError:
+            ent_lo = None
+        if ent_lo is None:
+            return
+        if prefix == "buttons":
+            self._pending_button_requests.discard(ent_lo)
+        elif prefix == "macros":
+            self._pending_macro_requests.discard(ent_lo)
+        elif prefix == "activity_map":
+            self._pending_activity_map_requests.discard(ent_lo)
+        elif prefix == "commands":
+            pending = self._pending_command_requests.get(ent_lo)
+            if pending is not None:
+                pending.discard(0xFF)
+                if not pending:
+                    self._pending_command_requests.pop(ent_lo, None)
 
     def _handle_idle(self, now: float) -> None:
         if self._frame_thread_ident is None:
@@ -1976,6 +1903,14 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._stop_discovery()
         self.transport.stop()
         self._log.info("%s proxy stopped", LogTag.PROXY)
+
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
+    # The proxy satisfies the contract its mixins are written against
+    # (CR-L3a-17); tests/lib/test_proxy_host.py checks it at runtime.
+    _host_contract: type[_ProxyHost] = X1Proxy
 
 
 from . import opcode_handlers  # noqa: F401  # register frame handlers

@@ -204,6 +204,9 @@ test("names: the card's sanitiser per hub model, 20 wide, and the save checks", 
   assert.equal(supportsPowerInput("X1"), false);
   assert.equal(supportsPowerInput("X1S"), true);
   assert.equal(supportsPowerInput("X2"), true);
+  // An unknown version keeps the full UI, as on the card (CR-X6-3).
+  assert.equal(supportsPowerInput(null), true);
+  assert.equal(supportsPowerInput(""), true);
   const messages = { required: "required", leadingSpace: "leading" };
   assert.equal(nameProblem("", messages), "required");
   assert.equal(nameProblem("   ", messages), "required");

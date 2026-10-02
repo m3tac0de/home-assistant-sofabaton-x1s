@@ -111,19 +111,7 @@ export const backupTabStyles = css`
       gap: 12px;
     }
     .backup-scope-group { display: grid; gap: 8px; }
-    ha-radio-group.scope-form--md {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      width: 100%;
-      --ha-radio-option-active-color: var(--primary-color);
-      --ha-radio-option-checked-background-color: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
-    }
-    ha-radio-group.scope-form--md ha-radio-option {
-      min-width: 0;
-    }
     @container sofabaton-card (max-width: 360px) {
-      ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
     }
     .compat-radio-group {
       display: grid;
@@ -614,62 +602,6 @@ export const backupTabStyles = css`
     .back-btn:hover {
       border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
     }
-    .edit-detail-card {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-lg);
-      padding: 14px;
-      background: var(--ha-card-background, var(--card-background-color));
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .edit-detail-copy {
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .edit-field-group {
-      display: grid;
-      gap: 8px;
-    }
-    .edit-field-label {
-      color: var(--secondary-text-color);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .edit-field-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-    .edit-row-input {
-      flex: 1 1 auto;
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--primary-text-color);
-      background: var(--ha-card-background, var(--card-background-color));
-      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
-      border-radius: var(--backup-radius-sm);
-      padding: 4px 10px;
-      outline: none;
-    }
-    .edit-row-input:focus { border-color: var(--primary-color); }
-    .edit-support-card {
-      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
-      border-radius: var(--backup-radius-md);
-      padding: 12px 14px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      line-height: 1.5;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
-    }
     .icon-btn, .dialog-close {
       flex: 0 0 auto;
       width: 34px;
@@ -719,40 +651,6 @@ export const backupTabStyles = css`
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    .power-device-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
-      padding: 12px 14px;
-    }
-    .power-device-main {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .power-device-controls {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .power-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      min-width: 0;
-      flex: 1 1 160px;
-    }
-    .power-field--delay { flex: 0 1 120px; }
-    .power-field-label {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--secondary-text-color);
-    }
-    .power-device-controls .decoded-field-input { font-size: 13px; }
     .quick-access-section {
       display: grid;
       gap: 12px;
@@ -874,7 +772,7 @@ export const backupTabStyles = css`
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 3px 14px 6px;
+      padding: 4px 14px;
       background: color-mix(in srgb, var(--secondary-background-color, var(--divider-color)) 45%, transparent);
       cursor: text;
     }
@@ -929,6 +827,10 @@ export const backupTabStyles = css`
       justify-content: center;
       cursor: grab;
       touch-action: none;
+    }
+    .quick-access-drag:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 1px;
     }
     .quick-access-drag:active {
       cursor: grabbing;
@@ -1046,18 +948,6 @@ export const backupTabStyles = css`
       color: var(--warning-color, #ffa726);
       flex: none;
       margin-top: 1px;
-    }
-    /* "Advanced" foldout that wraps the structured-payload form
-       inside the Change Command dialog. Mirrors the Wifi Commands
-       command-config popup so the affordance reads the same way
-       across the card. */
-    .advanced-section {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 6px;
-      padding-top: 10px;
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
     }
     .advanced-toggle {
       width: fit-content;
@@ -1235,13 +1125,8 @@ export const backupTabStyles = css`
       line-height: 1.45;
       color: var(--secondary-text-color);
     }
-    .status-box.success {
-      color: #2e7d32;
-      border-color: color-mix(in srgb, #2e7d32 35%, var(--divider-color));
-      background: color-mix(in srgb, #2e7d32 5%, var(--ha-card-background, var(--card-background-color)));
-    }
     .status-box.error {
-      color: var(--error-color, #db4437);
+      color: color-mix(in srgb, var(--error-color, #db4437) 40%, var(--primary-text-color));
       border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color));
       background: color-mix(in srgb, var(--error-color, #db4437) 5%, var(--ha-card-background, var(--card-background-color)));
     }
@@ -1275,17 +1160,6 @@ export const backupTabStyles = css`
     .primary-btn:hover:not(:disabled), .secondary-btn:hover:not(:disabled) { transform: translateY(-1px); }
     .primary-btn:disabled, .secondary-btn:disabled { opacity: 0.48; cursor: default; transform: none; }
 
-    .file-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: var(--backup-radius-pill);
-      border: 1px solid var(--divider-color);
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
-    }
 
     .backup-complete-card {
       display: flex;
@@ -1341,20 +1215,6 @@ export const backupTabStyles = css`
       --mdc-icon-size: 16px;
     }
 
-    .mode-option-btn {
-      width: 100%;
-      min-width: 0;
-      min-height: 36px;
-      border: none;
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
-      padding: 8px 14px;
-    }
     .restore-action-row {
       display: flex;
       justify-content: flex-start;
@@ -1452,26 +1312,11 @@ export const backupTabStyles = css`
     }
 
     @container sofabaton-card (max-width: 360px) {
-      .backup-scope-options { grid-template-columns: 1fr; }
-      .backup-scope-option + .backup-scope-option {
-        border-left: none;
-        border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-      }
       .quick-access-row {
         grid-template-columns: auto minmax(0, 1fr) auto;
       }
       .quick-access-actions {
         justify-content: flex-end;
-      }
-      /* .restore-action-row deliberately does NOT stack here: the action
-         button and the file picker stay side by side at every width. The
-         picker keeps its base flex: 1 1 0 and swallows the squeeze — its
-         label ellipsizes down to almost nothing, which is the intended
-         trade. Stacking instead cost a whole row and collapsed the picker's
-         height (basis 0 in the block axis + its own overflow clipping). */
-      .edit-field-row {
-        align-items: stretch;
-        flex-direction: column;
       }
       .detail-title-actions {
         gap: 6px;

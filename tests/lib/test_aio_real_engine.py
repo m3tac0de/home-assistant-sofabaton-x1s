@@ -31,6 +31,16 @@ LIB_DIR = (
 )
 
 
+
+def _stub_device_restore(monkeypatch, proxy, fn) -> None:
+    """Stub a bundle restore's device phase, catalog read included; ``fn``
+    has restore_device's signature (the bundle calls
+    _restore_device_outcome, which also reports a half-made device)."""
+
+    monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (fn(payload=payload), None))
+    # The bundle's one catalog read belongs to the device phase too.
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
+
 def _load_lib() -> types.ModuleType:
     name = "sofabaton_real_engine_test_pkg"
     if name in sys.modules:
@@ -749,7 +759,7 @@ def test_restore_preflight_rejects_a_bad_bundle_before_any_write(monkeypatch) ->
         _hub_link(engine, True)
         writes = []
         monkeypatch.setattr(engine, "erase_configuration", lambda **kw: writes.append("erase") or True)
-        monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: writes.append("restore_device") or {"status": "success", "device_id": 9})
+        _stub_device_restore(monkeypatch, engine, lambda payload, **kw: writes.append("restore_device") or {"status": "success", "device_id": 9})
         monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
         proxy = aio.AsyncXProxy.wrap(engine)
         bad = [
@@ -763,6 +773,13 @@ def test_restore_preflight_rejects_a_bad_bundle_before_any_write(monkeypatch) ->
             _full_bundle(activities=[_activity(device={"device_id": 0x65, "name": "A"})]),
             _full_bundle(activities=[_activity(macros=[{"button_id": 0xC6, "steps": [{"device_id": 0x20, "command_id": 1}]}])]),
             _full_bundle(activities=[_activity(macros=[{"button_id": 0xC6, "steps": [{"device_id": 0x70, "command_id": 1}]}])]),
+            # Device content the device phase would raise on (CR-L4a-2):
+            # a duplicate command id and an unreadable command payload.
+            _full_bundle(devices=[{**_full_bundle()["devices"][0], "commands": [
+                {"command_id": 1, "name": "A"}, {"command_id": 1, "name": "B"}]}]),
+            _full_bundle(devices=[{**_full_bundle()["devices"][0], "commands": [
+                {"command_id": 1, "name": "A", "restore_data": {
+                    "transport": "hub_code_record", "data_hex": "zz", "library_type": 13}}]}]),
         ]
         for bundle in bad:
             try:
@@ -795,7 +812,7 @@ def test_restore_adapts_the_engine_result_shape(monkeypatch) -> None:
     async def main():
         engine = _engine()
         _hub_link(engine, True)
-        monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: {"status": "success", "device_id": 9, "restored_commands": 0})
+        _stub_device_restore(monkeypatch, engine, lambda payload, **kw: {"status": "success", "device_id": 9, "restored_commands": 0})
         monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
         rereads = _record_rereads(monkeypatch)
         proxy = aio.AsyncXProxy.wrap(engine)
@@ -806,10 +823,26 @@ def test_restore_adapts_the_engine_result_shape(monkeypatch) -> None:
         assert rereads == [((9,), (), True)]             # what the rebuild made, lists included
 
         # A first-entity failure keeps the counts honest and is not a success.
-        monkeypatch.setattr(engine, "restore_device", lambda payload, **kw: None)
+        _stub_device_restore(monkeypatch, engine, lambda payload, **kw: None)
         failed = await proxy.restore(_full_bundle())
         assert not failed.ok and failed.failed_at == ("device", 5) and failed.wrote_nothing
         assert len(rereads) == 1                         # nothing made, nothing to read back
+
+        # A create whose finalize and rollback both failed leaves a device
+        # behind: the hub is NOT as it was, and the orphan is read back.
+        monkeypatch.setattr(engine, "_restore_device_outcome", lambda payload: (None, 0x21))
+        orphan = await proxy.restore(_full_bundle())
+        assert orphan.failed_at == ("device", 5) and orphan.partial_device_ids == (0x21,)
+        assert not orphan.wrote_nothing
+        assert rereads[-1][0] == (0x21,)
+
+        # A device phase that raises still says where it stopped.
+        def _raise(payload):
+            raise ValueError("invalid data_hex")
+
+        monkeypatch.setattr(engine, "_restore_device_outcome", _raise)
+        raised = await proxy.restore(_full_bundle())
+        assert not raised.ok and raised.failed_at == ("device", 5)
 
     asyncio.run(main())
 
@@ -1357,13 +1390,14 @@ def test_write_batch_reports_a_failed_trigger_and_can_drop_it(monkeypatch) -> No
     engine.begin_write_batch()
     engine.resync_remote()
     assert engine.end_write_batch()["remote_sync"] == "failed"
-    # send_remote_sync=False drops the pending requests without sending.
+    # send_remote_sync=False drops the pending requests without sending,
+    # and says so: the remotes are not up to date.
     enqueued: list = []
     monkeypatch.setattr(engine, "enqueue_cmd", lambda *a, **kw: enqueued.append(a) or True)
     engine.begin_write_batch()
     engine.resync_remote()
     summary = engine.end_write_batch(send_remote_sync=False)
-    assert summary["remote_sync"] == "not_needed" and summary["remote_sync_requests"] == 1
+    assert summary["remote_sync"] == "skipped" and summary["remote_sync_requests"] == 1
     assert enqueued == []
 
 
@@ -1394,7 +1428,7 @@ def test_strict_preflight_refuses_what_the_lenient_one_lets_through(monkeypatch)
     verdict, message = engine._activity_sync_preflight(doc, 101, strict=True)
     assert verdict == "unreadable" and "re-read" in message and "nothing was written" in message
     assert engine._device_sync_preflight(doc, 5, strict=True)[0] == "unreadable"
-    assert engine._activity_sync_is_stale(doc, 101) is False  # the lenient wrapper is unchanged
+    assert engine._activity_sync_preflight(doc, 101, strict=False)[0] != "changed"  # lenient: proceeds
 
     monkeypatch.setattr(engine, "backup_activity", lambda *a, **kw: {**doc["activities"][0], "complete": False})
     assert engine._activity_sync_preflight(doc, 101, strict=False) == (None, None)
@@ -1571,3 +1605,102 @@ def test_inbound_frames_are_dispatched_whatever_the_diag_flags(diag_dump, diag_p
     info = engine.get_banner_info()
     assert info.get("model") == "X1S" and str(info.get("mac", "")).upper() == "E26A44861B45", info
     assert engine.has_banner_identity()
+
+
+def test_a_cancel_during_the_batch_begin_never_leaves_the_engine_batch_open(monkeypatch) -> None:
+    import threading
+
+    async def main():
+        engine = _engine()
+        proxy = aio.AsyncXProxy.wrap(engine)
+        real_begin = engine.begin_write_batch
+        entered = threading.Event()
+        release = threading.Event()
+
+        def _slow_begin():
+            real_begin()  # the engine batch is open from here
+            entered.set()
+            release.wait(2)
+
+        monkeypatch.setattr(engine, "begin_write_batch", _slow_begin)
+
+        async def _batch():
+            async with proxy.batch_writes():
+                pass
+
+        task = asyncio.ensure_future(_batch())
+        while not entered.is_set():
+            await asyncio.sleep(0.01)
+        task.cancel()
+        release.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert not engine.write_batch_open
+        async with proxy.batch_writes():  # a later batch opens normally
+            pass
+
+    asyncio.run(main())
+
+
+def test_backup_with_an_empty_or_out_of_range_id_list_is_refused_not_widened() -> None:
+    async def main():
+        engine = _engine()
+        _hub_link(engine, True)
+        proxy = aio.AsyncXProxy.wrap(engine)
+        for ids in ([], [256]):
+            try:
+                await proxy.backup(device_ids=ids)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"backup(device_ids={ids}) must be refused")
+
+    asyncio.run(main())
+
+
+def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
+    """X1: after the plan (and even with nothing to write) the update checks
+    each activity's quick-access order and rewrites one an older restore left
+    short; what it rewrote is read back and closed by one remote sync. The
+    X1S keeps macros outside its order table: never checked there."""
+
+    async def main():
+        for hub_version, expect_repairs in (("X1", True), ("X1S", False)):
+            dep = _deployment(hub_version)
+            engine, runs = _update_engine(monkeypatch, dep, hub_version=hub_version)
+            repairs: list[int] = []
+
+            # Runs within this iteration: bind its list and engine.
+            def repair(act_id, repairs=repairs, engine=engine):
+                repairs.append(act_id)
+                engine.trace.append(("repair", act_id))
+                return True
+
+            monkeypatch.setattr(engine, "repair_x1_quick_access_order", repair)
+            # The device is a member of 101 (the fixture's live activity lists it).
+            monkeypatch.setattr(engine, "activities_referencing_device", lambda dev_id: [101])
+            proxy = aio.AsyncXProxy.wrap(engine)
+            routed = _WifiDeviceSpec(name="Server", slots=(
+                _WifiSlotSpec("Play", favorite=True, activities=(101,)), _WifiSlotSpec("Pause")))
+
+            await proxy.update_wifi_device(dep, routed)
+            if expect_repairs:
+                assert engine.trace[engine.trace.index("run"):] == [
+                    "run", ("repair", 101), ("device", 12), ("activity", 101), "resync"]
+            else:
+                assert repairs == []
+
+            # Nothing to write: an X1 still heals, then re-reads and resyncs.
+            engine.trace.clear()
+            repairs.clear()
+            await proxy.update_wifi_device(dep, _WifiDeviceSpec.from_dict(dep.spec.to_dict()))
+            assert len(runs) == 1
+            if expect_repairs:
+                assert repairs == [101]
+                assert engine.trace[-3:] == [("repair", 101), ("activity", 101), "resync"]
+            else:
+                assert repairs == [] and "resync" not in engine.trace
+
+    asyncio.run(main())

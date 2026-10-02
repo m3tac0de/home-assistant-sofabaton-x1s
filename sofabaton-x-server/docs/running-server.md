@@ -3,7 +3,7 @@
 Installation, deployment and settings for the computer hosting the server.
 For your first setup, follow [Getting started](getting-started.md).
 
-[Install](#run) · [Docker](#docker) · [Reverse proxy](#behind-a-reverse-proxy-tls) ·
+[Install](#run) · [Docker](#docker) · [Reverse proxy](#behind-a-reverse-proxy-tls) · [TLS without a proxy](#tls-without-a-proxy) ·
 [Settings](#settings) · [Security](#security) · [Set up access](#set-up-access) ·
 [Tokens](#tokens) · [Recovery](#recovery) · [Storage and upgrades](#storage-and-upgrades)
 
@@ -20,7 +20,7 @@ and you have tested control. Disable any existing proxy for that hub first.
 Install from PyPI (Python 3.11+; the library comes with it):
 
 ```
-python -m pip install "sofabaton-x-server>=0.2.3,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
 sofabaton-x-server
 ```
 
@@ -33,7 +33,10 @@ see registered hubs and hubs discovered on the LAN. Add a discovered hub
 with its Add button, or choose **Add by address…** for manual registration.
 Each registered hub's **⋯** actions enable, disable or remove it (see
 [hub management guide](managing-hubs.md)). If the hub is missing, make sure the app
-is fully closed and scan again. Keep the data directory (default `./data`)
+is fully closed and scan again. A registered hub whose address changes
+later (a new DHCP lease) is followed automatically: the server matches
+the advertisement by MAC, updates the registration and reconnects. That
+needs mDNS to reach the server, the same as discovery. Keep the data directory (default `./data`)
 across restarts. `--hub <physical IP>` is an alternative for seeding the
 first startup, not for adding hubs to an existing data directory.
 
@@ -48,14 +51,18 @@ and the API port.
 
 ### Docker
 
-Build from the repository root (both distributions come from one repo)
-or use the [Compose file](../docker-compose.yml):
+Every release is published as a container image for `linux/amd64` and
+`linux/arm64`, on Docker Hub as `m3tac0de/sofabaton-x-server` and on
+GitHub as `ghcr.io/m3tac0de/sofabaton-x-server`. Tags: the release
+(`0.2.4`), its minor line (`0.2`) and `latest`. The image runs the same
+wheel the release put on PyPI.
 
 ```
-docker build -f sofabaton-x-server/Dockerfile -t sofabaton-x-server .
 docker run -d --name sofabaton-x-server --network host -v ./data:/data \
-  sofabaton-x-server
+  m3tac0de/sofabaton-x-server
 ```
+
+or, with the [Compose file](../docker-compose.yml):
 
 ```
 cd sofabaton-x-server && docker compose up -d
@@ -65,6 +72,34 @@ The supplied Compose file uses Linux **host networking** so mDNS, the
 app's UDP broadcast and the hub's TCP dial-back can reach the LAN interface.
 Docker Desktop compatibility with this project's discovery and dial-back
 requirements is unverified; this is a Linux deployment recipe.
+
+To upgrade, pull the new image and recreate the container with the same
+data directory: `docker compose pull && docker compose up -d`, or
+whatever your container tool calls that. The server never upgrades
+itself inside a container; its control panel says "pull the new image"
+when a newer release is on PyPI (see [update check](#update-check)).
+
+To build your own image instead, from the repository root (both
+distributions come from one repository; needs BuildKit, the default
+since Docker 23):
+
+```
+docker build -f sofabaton-x-server/Dockerfile -t sofabaton-x-server .
+```
+
+The Compose file has the matching `build:` block as a comment.
+
+#### Synology Container Manager
+
+Create a **Project** from the Compose file above (Container Manager →
+Project → Create, paste the file's contents) with the data directory on
+a shared folder. Host networking works there; the Registry tab is not
+needed for a public image. Container Manager checks Docker Hub images
+tagged `latest` for updates on its own, roughly every twelve hours, and
+shows **Update available** under Image and on the Overview; use that
+to pull the new image, then rebuild the project so the container is
+recreated from it. It does not notice updates for images from other
+registries, which is why the Compose file names the Docker Hub image.
 
 Callback devices also need the hub to reach the separate HTTP callback
 listener (TCP 8060 by default). A bridge deployment would need a reachable
@@ -128,11 +163,79 @@ location / {
 }
 ```
 
+Traefik, as labels on the Compose service (host networking means the
+server is reached on the Docker host's address, so a file-provider
+service pointing at `http://<host>:8480` is the usual shape; with the
+labels below Traefik must share the host network or route to the host):
+
+```yaml
+labels:
+  traefik.enable: "true"
+  traefik.http.routers.sofabaton.rule: "Host(`sofabaton.home.example`)"
+  traefik.http.routers.sofabaton.entrypoints: "websecure"
+  traefik.http.routers.sofabaton.tls.certresolver: "letsencrypt"
+  traefik.http.services.sofabaton.loadbalancer.server.port: "8480"
+```
+
+Traefik forwards `X-Forwarded-*` by default and handles the WebSocket.
+
+Nginx Proxy Manager: a proxy host for `sofabaton.home.example`,
+scheme `http`, forward hostname the Docker host, port `8480`, with
+**Websockets Support** on and a certificate under the SSL tab. It sends
+the forwarded headers; set `--trusted-proxy` to its address.
+
+Synology DSM (Control Panel → Login Portal → Advanced → Reverse Proxy):
+source `https://sofabaton.home.example:443` with a DSM-managed
+certificate, destination `http://localhost:8480`; under **Custom
+Header** choose **Create → WebSocket** so `Upgrade` and `Connection`
+are forwarded. DSM sends `X-Forwarded-For` and `X-Forwarded-Proto`;
+set `--trusted-proxy 127.0.0.1`.
+
 Mounting under a prefix (`https://home.example/sofabaton/`): configure the
 proxy to strip `/sofabaton` when forwarding, add `--root-path /sofabaton`,
 and set `--advertise-url https://home.example/sofabaton`. The API then lives
 at `https://home.example/sofabaton/api/v1`; do not include `/api/v1` in
 `--advertise-url`.
+
+### TLS without a proxy
+
+Without a reverse proxy, give the server a certificate of its own:
+`--tls-cert` / `--tls-key` (`SOFABATON_TLS_CERT` / `SOFABATON_TLS_KEY`),
+a certificate chain and private key in PEM. The port then speaks https
+only; open `https://<server>:8480/` and set
+`--advertise-url https://<name>:8480` so discovery and the panel use
+that address. The certificate must be one the dashboard's browser
+trusts: a dashboard embedding the web remote in an iframe gets no
+prompt for an untrusted certificate, the frame just stays empty.
+
+**Renewals need no restart.** The server watches both files and loads
+a changed pair within a minute; new connections present the renewed
+certificate. A change it cannot load (the renewal tool has written one
+file but not the other yet, or the key does not match) keeps the running
+certificate and is retried on the next poll, with one warning in the
+log. The first load at startup must succeed. (This needs uvicorn 0.47
+or newer, which the package requires; with an older one the files are
+read once and a renewal needs a restart.)
+
+In a container, mount the directory your certificate tool writes to
+and name the files (the Compose file has the lines as comments):
+
+```yaml
+volumes:
+  - /volume1/docker/certs:/ssl:ro
+environment:
+  SOFABATON_TLS_CERT: "/ssl/fullchain.pem"
+  SOFABATON_TLS_KEY: "/ssl/privkey.pem"
+```
+
+The image's health check follows the scheme, so a container with
+built-in TLS reports healthy.
+
+For the web remote in an https dashboard: an iframe of
+`https://<server>:8480/ui/remote?hub=<id>` needs nothing more; the
+[embeddable element](web-remote.md#embed-the-remote-in-your-own-dashboard)
+calls the API from the dashboard's origin, so list that origin in
+`allowed_origins`.
 
 **Set up access before you expose the server.** Until an admin account
 exists, anyone who reaches the server can create one. The server only
@@ -172,7 +275,7 @@ variables, then flags; each layer overrides the one before.
 | `--root-path` | `SOFABATON_ROOT_PATH` | none | path prefix a reverse proxy mounts the API under |
 | `--trusted-proxy ADDR` (repeatable) | `SOFABATON_TRUSTED_PROXIES=a,b` | none | sources whose `X-Forwarded-*` headers are honoured |
 | `--allowed-origin ORIGIN` (repeatable) | `SOFABATON_ALLOWED_ORIGINS=a,b` | none | browser origins on another host or port (a dashboard such as `http://nas:8123`) whose pages may call the API; exact origins, no path, no wildcard; see [Browser origins](#browser-origins). Also `allowed_origins` in `server.json`, and editable in the control panel |
-| `--tls-cert` / `--tls-key` | `SOFABATON_TLS_CERT` / `_KEY` | none | bring your own certificate (a reverse proxy is the usual way) |
+| `--tls-cert` / `--tls-key` | `SOFABATON_TLS_CERT` / `_KEY` | none | bring your own certificate, PEM; renewed files are reloaded without a restart (see [TLS without a proxy](#tls-without-a-proxy)) |
 | `--callback-host` | `SOFABATON_CALLBACK_HOST` | routed local IP per hub | IPv4 address the hubs call back on for callback devices (see [button events](api-reference.md#button-events)); set the host's LAN address inside a container on a bridge network |
 | `--callback-port` | `SOFABATON_CALLBACK_PORT` | `8060` | port of the callback listener; the X1 can call no other |
 | `--hub-listen-port` | `SOFABATON_HUB_LISTEN_PORT` | `8200` | TCP port the hubs connect back to, shared by every hub |
@@ -435,24 +538,27 @@ The server does not maintain a backup archive.
 Before upgrading, read the [changelog and upgrade notes](../CHANGELOG.md),
 save a hub backup, and retain a copy of the server's data directory. Stop
 the server, install the selected release in the same Python environment
-(or rebuild the Docker image), then restart with the same data directory
-and settings. Confirm your hubs reconnect and test the web remote.
+(or pull the new image and recreate the container, see [Docker](#docker)),
+then restart with the same data directory and settings. Confirm your
+hubs reconnect and test the web remote.
 
-For the 0.2.3 release, after stopping the server:
+For the 0.2.4 release, after stopping the server:
 
 ```sh
-python -m pip install --upgrade "sofabaton-x-server>=0.2.3,<0.3"
+python -m pip install --upgrade "sofabaton-x-server>=0.2.4,<0.3"
 ```
 
-The library requirement remains `sofabaton-x>=0.2.2,<0.3`. Existing
-registrations, callback devices and saved layouts require no manual conversion. Reload
-open browser pages after restarting. The 0.2.3 REST and WebSocket operations
-are unchanged from 0.2.2; the API prefix remains `/api/v1`. Integrations
-upgrading from an earlier release should regenerate clients from the
-release's OpenAPI document.
+The library requirement becomes `sofabaton-x>=0.2.3,<0.3`; pip installs
+it with the server. Existing registrations, callback devices and saved
+layouts require no manual conversion. Reload open browser pages after
+restarting. The 0.2.4 REST and WebSocket operations are unchanged from
+0.2.3 and the API prefix remains `/api/v1`, but device and activity names
+are now limited to 30 characters and the OpenAPI response lists changed
+(see the [changelog](../CHANGELOG.md#024-unreleased)). Integrations
+should regenerate clients from the release's OpenAPI document.
 
 The [embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)
-is served by 0.2.3 at `/ui/embed/sofabaton-remote.js`. Existing iframe
+is served from 0.2.3 onward at `/ui/embed/sofabaton-remote.js`. Existing iframe
 embeds need no changes; a dashboard using the new element must have its
 origin listed in `allowed_origins`.
 
@@ -487,6 +593,13 @@ check, update available (with links to the changelog, the upgrade steps
 above and the release on PyPI) and could not check. A failed check never
 reads as up to date. A found update shows as a dot on the panel's cog
 menu and a badge on its Server entry.
+
+The panel also says how this server was installed (`install_kind`:
+`container`, `pipx`, `pip`, `checkout` or `unknown`) and words the
+next step for it: pull the new image, `pipx upgrade`, or the pip line
+above. The kind is detected at startup; the published image sets
+`SOFABATON_INSTALL=container`, and setting that variable to one of the
+kinds corrects a wrong guess. The server never installs an update.
 
 Over the API: `GET /server/updates` reports the last check and the
 schedule, `POST /server/updates/check` performs one check now, and `PUT

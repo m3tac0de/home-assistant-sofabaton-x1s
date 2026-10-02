@@ -19,9 +19,10 @@ live here because they are pure consumers of the inputs burst.
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING, Sequence
 
 from .ack import AckOutcome, InputsBurstResult
-from .inputs import parse_inputs_burst
+from .inputs import inputs_burst_complete, parse_inputs_burst
 from .macros import MacroRecord
 from .protocol_const import (
     FAMILY_KEY_SORT_REQ,
@@ -30,8 +31,11 @@ from .protocol_const import (
     OPNAMES,
 )
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
-class AckWaitersMixin:
+
+class AckWaitersMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing ack-queue management and burst waits."""
 
     def reset_ack_queues(self) -> None:
@@ -164,7 +168,7 @@ class AckWaitersMixin:
 
     def _wait_for_ack_any_impl(
         self,
-        candidates: list[tuple[int, int | None]],
+        candidates: Sequence[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,
@@ -199,7 +203,7 @@ class AckWaitersMixin:
 
     def wait_for_ack_any(
         self,
-        candidates: list[tuple[int, int | None]],
+        candidates: Sequence[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,
@@ -474,19 +478,61 @@ class AckWaitersMixin:
                 return InputsBurstResult(outcome=AckOutcome.timeout)
             self._activity_inputs_event.wait(min(remaining, 0.2))
 
-    def query_device_input_index(self, device_id: int, cmd_id: int, *, timeout: float = 5.0) -> int | None:
-        """Return the 1-based ordinal of cmd_id in the device's ACTIVITY_INPUTS list, or None if not found."""
-        with self.exchange("inputs_query"):
-            # Clear only after the exchange has quiesced the wire so stray
-            # 0x47 frames from a prior (orphaned) inputs response cannot be
-            # counted toward this request's burst.
+    def _read_inputs_burst(
+        self, device_id: int, name: str, *, timeout: float
+    ) -> InputsBurstResult:
+        """One REQ_ACTIVITY_INPUTS read: arm, send, wait for a whole page.
+
+        The pending flag and the reject flag are armed only after the
+        exchange has quiesced the wire: arming before it lets a finishing
+        catalog burst's terminal STATUS_ACK (e.g. the "macro table empty"
+        0x07 that ends a macros burst) be misattributed as a rejection of
+        the not-yet-sent inputs request (observed live: X1 recon
+        2026-07-18, dev 0x04).
+
+        A burst that goes idle short of the entries its header declares
+        keeps waiting (up to ``timeout``); one still short then reads as a
+        timeout, never as a complete page.
+        """
+
+        deadline = time.monotonic() + timeout
+        with self.exchange(name):
             with self._activity_inputs_lock:
                 self._activity_inputs_payloads.clear()
                 self._activity_inputs_seen = 0
                 self._activity_inputs_last_ts = 0.0
                 self._activity_inputs_event.clear()
-            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-            burst = self.wait_for_activity_inputs_burst(timeout=timeout)
+                self._inputs_burst_reject_pending = False
+                self._activity_inputs_pending = True
+            try:
+                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+                payloads: list[bytes] = []
+                while True:
+                    burst = self.wait_for_activity_inputs_burst(
+                        timeout=max(0.0, deadline - time.monotonic())
+                    )
+                    if burst.outcome is not AckOutcome.acked:
+                        return burst
+                    payloads.extend(burst.payloads)
+                    if inputs_burst_complete(payloads, hub_version=self.hub_version):
+                        return InputsBurstResult(
+                            outcome=AckOutcome.acked, payloads=tuple(payloads)
+                        )
+                    if time.monotonic() >= deadline:
+                        self._log.warning(
+                            "[INPUT_QUERY] inputs page dev=0x%02X still incomplete after %.1fs",
+                            device_id & 0xFF,
+                            timeout,
+                        )
+                        return InputsBurstResult(outcome=AckOutcome.timeout)
+            finally:
+                with self._activity_inputs_lock:
+                    self._activity_inputs_pending = False
+                    self._inputs_burst_reject_pending = False
+
+    def query_device_input_index(self, device_id: int, cmd_id: int, *, timeout: float = 5.0) -> int | None:
+        """Return the 1-based ordinal of cmd_id in the device's ACTIVITY_INPUTS list, or None if not found."""
+        burst = self._read_inputs_burst(device_id, "inputs_query", timeout=timeout)
         if burst.outcome is AckOutcome.rejected:
             self._log.info(
                 "[INPUT_QUERY] hub rejected inputs request dev=0x%02X cmd=0x%02X",
@@ -536,26 +582,7 @@ class AckWaitersMixin:
         faithful backup needs.
         """
 
-        with self.exchange("inputs_fetch"):
-            # Arm the pending flag only after the exchange has quiesced the
-            # wire: arming before it lets a finishing catalog burst's
-            # terminal STATUS_ACK (e.g. the "macro table empty" 0x07 that
-            # ends a macros burst) be misattributed as a rejection of the
-            # not-yet-sent inputs request (observed live: X1 recon
-            # 2026-07-18, dev 0x04).
-            with self._activity_inputs_lock:
-                self._activity_inputs_payloads.clear()
-                self._activity_inputs_seen = 0
-                self._activity_inputs_last_ts = 0.0
-                self._activity_inputs_event.clear()
-                self._inputs_burst_reject_pending = False
-                self._activity_inputs_pending = True
-            try:
-                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-                burst = self.wait_for_activity_inputs_burst(timeout=timeout)
-            finally:
-                with self._activity_inputs_lock:
-                    self._activity_inputs_pending = False
+        burst = self._read_inputs_burst(device_id, "inputs_fetch", timeout=timeout)
 
         if burst.outcome is AckOutcome.rejected:
             self._log.info(
@@ -600,22 +627,7 @@ class AckWaitersMixin:
         record without entries for the known-absent page.
         """
 
-        with self.exchange("inputs_record"):
-            # Arm only after the exchange has quiesced the wire — see the
-            # misattribution note in :meth:`fetch_device_input_entries`.
-            with self._activity_inputs_lock:
-                self._activity_inputs_payloads.clear()
-                self._activity_inputs_seen = 0
-                self._activity_inputs_last_ts = 0.0
-                self._activity_inputs_event.clear()
-                self._inputs_burst_reject_pending = False
-                self._activity_inputs_pending = True
-            try:
-                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-                burst = self.wait_for_activity_inputs_burst(timeout=timeout)
-            finally:
-                with self._activity_inputs_lock:
-                    self._activity_inputs_pending = False
+        burst = self._read_inputs_burst(device_id, "inputs_record", timeout=timeout)
 
         if burst.outcome is AckOutcome.rejected:
             self._log.info(

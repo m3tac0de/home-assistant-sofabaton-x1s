@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
+import re
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
@@ -22,14 +24,12 @@ from .const import (
     DEFAULT_HUB_LISTEN_BASE,
     CONF_ENABLE_X2_DISCOVERY,
     CONF_ROKU_LISTEN_PORT,
-    HUB_VERSION_X1,
-    HUB_VERSION_X1S,
+    CONF_BANNER_MAC,
     HUB_VERSION_X2,
     MDNS_SERVICE_TYPES,
     DEFAULT_ROKU_LISTEN_PORT,
     classify_hub_version,
     format_hub_entry_title,
-    HVER_BY_HUB_VERSION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +45,20 @@ def generate_static_mac(host: str, port: int) -> str:
     mac_int[0] = (mac_int[0] & 0xFE) | 0x02
 
     return ":".join(f"{b:02x}" for b in mac_int)
+
+
+def _normalized_mac(value: Any) -> str:
+    """A MAC in any of its spellings (colons, case) as 12 lowercase hex."""
+
+    text = re.sub(r"[^0-9a-f]", "", str(value or "").lower())
+    return text if len(text) == 12 else ""
+
+
+def _valid_ipv4(value: str) -> bool:
+    try:
+        return ipaddress.ip_address(value).version == 4
+    except ValueError:
+        return False
 
 
 def _decode_properties(raw_props: Optional[Dict[str, str | bytes]]) -> Dict[str, str]:
@@ -99,6 +113,22 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._chosen_hub: Optional[Dict[str, Any]] = None
         self._discovered_from_zeroconf: Optional[Dict[str, Any]] = None
 
+    def _entry_for_hub(self, *, host: str, mac: str = ""):
+        """An existing entry for the same hub under another identity.
+
+        A manual entry's id is a synthetic MAC and a discovered one's the
+        real MAC, so the ids never match for one hub (CR-H3-4): the host,
+        or the MAC the hub reported in its banner, finds it instead.
+        """
+
+        wanted_mac = _normalized_mac(mac)
+        for entry in self._async_current_entries():
+            if host and entry.data.get(CONF_HOST) == host:
+                return entry
+            if wanted_mac and _normalized_mac(entry.data.get(CONF_BANNER_MAC)) == wanted_mac:
+                return entry
+        return None
+
     def _x2_enabled(self) -> bool:
         hass = getattr(self, "hass", None)
         if hass is None:
@@ -122,9 +152,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # step manual: user types IP address only
     # ------------------------------------------------------------------
     async def async_step_manual(self, user_input: Dict[str, Any] | None = None):
+        errors: Dict[str, str] = {}
         if user_input is not None:
-            # build a hub-like dict
-            host = user_input["host"]
+            # The shared hub listener matches the hub's dial-back by its
+            # exact IP, so a name or a stray space could never connect
+            # (CR-H3-3); the text entity applies the same rule.
+            host = str(user_input.get("host") or "").strip()
+            if not _valid_ipv4(host):
+                errors["host"] = "invalid_host"
+        if user_input is not None and not errors:
+            if self._entry_for_hub(host=host) is not None:
+                return self.async_abort(reason="already_configured")
             port = DEFAULT_PROXY_UDP_PORT
             mac = generate_static_mac(host, port)
             props = {"MAC": mac}
@@ -148,6 +186,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="manual",
             data_schema=schema,
+            errors=errors,
         )
 
     # ------------------------------------------------------------------
@@ -176,6 +215,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             proxy_udp_port = user_input["proxy_udp_port"]
             hub_listen_base = user_input["hub_listen_base"]
             roku_listen_port = user_input.get(CONF_ROKU_LISTEN_PORT, current_roku_listen_port)
+            hub_info = self._chosen_hub
+
+            # unique id: prefer MAC from discovery, otherwise manual.
+            # Checked before the shared ports are pushed to the other
+            # entries: an aborted add must not reconfigure every hub.
+            mac = hub_info.get("props", {}).get("MAC") \
+                  or hub_info.get("mac") \
+                  or hub_info["name"]
+
+            await self.async_set_unique_id(mac)
+            self._abort_if_unique_id_configured()
 
             # sync shared port settings back to all existing entries
             shared_options = {
@@ -190,17 +240,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         existing_entry,
                         options=merged,
                     )
-
-            # finish
-            hub_info = self._chosen_hub
-
-            # unique id: prefer MAC from discovery, otherwise manual
-            mac = hub_info.get("props", {}).get("MAC") \
-                  or hub_info.get("mac") \
-                  or hub_info["name"]
-
-            await self.async_set_unique_id(mac)
-            self._abort_if_unique_id_configured()
 
             # build data. ``version`` may be ``None`` for manual entries
             # where no mDNS advertisement was seen; the proxy resolves
@@ -298,6 +337,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
+        if existing_entry is None:
+            other = self._entry_for_hub(host=host, mac=mac)
+            if other is not None:
+                if other.data.get(CONF_HOST) != host:
+                    self.hass.config_entries.async_update_entry(
+                        other, data={**other.data, CONF_HOST: host}
+                    )
+                return self.async_abort(reason="already_configured")
+
         if existing_entry is not None:
             if (
                 existing_entry.data.get(CONF_HOST) == host
@@ -338,21 +386,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # now ask for ports, just like the other path
         return await self.async_step_ports()
         
-        # return self.async_create_entry(
-            # title=info["name"],
-            # data={
-                # CONF_MAC: info["mac"],
-                # CONF_NAME: info["name"],
-                # CONF_HOST: info["host"],
-                # CONF_PORT: info["port"],
-                # CONF_MDNS_TXT: info["props"],
-            # },
-            # # drop defaults in here too
-            # options={
-                # "proxy_udp_port": DEFAULT_PROXY_UDP_PORT,
-                # "hub_listen_base": DEFAULT_HUB_LISTEN_BASE,
-            # },
-        # )
 
     @staticmethod
     @callback
@@ -398,13 +431,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                     existing_entry,
                     options=merged_options,
                 )
-
-            self.hass.config_entries.async_update_entry(
-                self.entry,
-                data={
-                    **self.entry.data,
-                },
-            )
 
             return self.async_create_entry(title="", data=new_options)
 

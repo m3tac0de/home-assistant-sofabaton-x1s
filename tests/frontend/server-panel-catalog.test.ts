@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PanelApi, type JobView, type SnapshotDocument } from "../../server-panel/src/panel-api";
+import { PanelApi, jobOutcomeText, type JobView, type SnapshotDocument } from "../../server-panel/src/panel-api";
 import { boundButtons, buildCatalog, countLine, countsFromSnapshot, entryKey, jobPhrase, movedIds, workingOrder } from "../../server-panel/src/views/catalog-view";
 
 const DEVICES = [
@@ -68,7 +68,7 @@ test("countLine is the card's wording, singular and plural", () => {
 });
 
 test("activity summaries exclude internal power sequences while counting user macros", () => {
-  const activity = { ...SNAPSHOT.activities[0], macros: [
+  const activity = { ...SNAPSHOT.activities![0], macros: [
     { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 1 }] },
     { button_id: 199, name: "POWER_OFF", steps: [] },
   ] };
@@ -88,13 +88,14 @@ test("boundButtons keeps the buttons the hub maps to a command", () => {
 });
 
 test("jobPhrase says what the refresh is doing and its step count, never the raw status", () => {
-  const job = (status: string, progress: JobView["progress"]): JobView => ({
+  const job = (status: JobView["status"], progress: JobView["progress"]): JobView => ({
     job_id: "j", hub_id: "h", kind: "refresh", status, cancellable: false, created_at: "t", started_at: null, finished_at: null, progress, result: null, error: null,
   });
   assert.equal(jobPhrase(job("queued", null)), "Queued…");
   assert.equal(jobPhrase(job("running", null)), "Refreshing…");
-  assert.equal(jobPhrase(job("running", { completed_steps: 2, total_steps: 5 })), "Refreshing 2/5");
-  assert.equal(jobPhrase(job("running", { total_steps: 5 })), "Refreshing 0/5");
+  assert.equal(jobPhrase(job("running", { phase: "item", message: "", completed_steps: 2, total_steps: 5 })), "Refreshing 2/5");
+  // A progress without its step count reads as step 0.
+  assert.equal(jobPhrase(job("running", { total_steps: 5 } as JobView["progress"])), "Refreshing 0/5");
 });
 
 test("the catalog routes and refresh scopes hit the documented paths; followJob polls to a terminal state", async () => {
@@ -149,4 +150,25 @@ test("the catalog routes and refresh scopes hit the documented paths; followJob 
   polls = -1000;
   const stuck = await api.followJob("h", "j1", { maxPolls: 2, sleep: async () => {} });
   assert.equal(stuck?.status, "running");
+});
+
+test("followJob rides out a failed poll and reports a still-running job as running (CR-F5a-5)", async () => {
+  let polls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    polls++;
+    if (polls === 1) throw new TypeError("network blip");
+    if (polls === 2) return new Response("{}", { status: 503, headers: { "content-type": "application/json" } });
+    const status = polls < 4 ? "running" : "done";
+    return new Response(JSON.stringify({ job_id: "j1", hub_id: "h", kind: "sync_device", status }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const api = new PanelApi("http://host", fetchImpl);
+  const job = await api.followJob("h", "j1", { sleep: async () => {} });
+  assert.equal(job?.status, "done");
+
+  // A 404 (the job is gone) ends the follow.
+  const gone = new PanelApi("http://host", async () => new Response("{}", { status: 404, headers: { "content-type": "application/json" } }));
+  assert.equal(await gone.followJob("h", "j1", { sleep: async () => {} }), null);
+
+  // After the cap the job may still finish: the text says so instead of "failed".
+  assert.match(String(jobOutcomeText({ job_id: "j1", hub_id: "h", kind: "sync_device", status: "running" } as never)), /Still running/);
 });

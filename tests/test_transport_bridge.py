@@ -600,3 +600,40 @@ def test_stop_fallback_after_join_timeout_does_not_count_selector_errors():
                 sock.close()
             except OSError:
                 pass
+
+
+def test_replacing_hub_socket_under_a_running_bridge_keeps_the_new_socket():
+    """CR-L3b-1: a hub that re-dials replaces socket A with B. Closing A wakes
+    the bridge thread, which reads EOF on A; it must drop A only, never the
+    socket that replaced it. Repeated: the race is timing dependent."""
+    for _attempt in range(5):
+        bridge = _make_bridge()
+        bridge._init_wake_channel()
+        states: list[bool] = []
+        bridge.on_hub_state(states.append)
+        a_side, a_peer = socket.socketpair()
+        b_side, b_peer = socket.socketpair()
+        thr = threading.Thread(target=bridge._bridge_forever, daemon=True)
+        try:
+            bridge._install_hub_socket(a_side, ("192.168.2.10", 51234))
+            thr.start()
+            time.sleep(0.2)  # the bridge is selecting on A
+            bridge._install_hub_socket(b_side, ("192.168.2.10", 51235))
+            time.sleep(0.3)  # the bridge wakes on A's close and handles it
+            assert bridge._hub_sock is b_side
+            assert bridge.is_hub_connected is True
+            assert states[-1] is True
+
+            # B is really served: bytes from the hub still arrive.
+            got = threading.Event()
+            bridge.on_hub_frame(lambda _data, _cid, got=got: got.set())
+            b_peer.sendall(b"still-here")
+            assert got.wait(5.0)
+        finally:
+            bridge.stop()
+            thr.join(5.0)
+            for sock in (a_peer, b_peer):
+                try:
+                    sock.close()
+                except OSError:
+                    pass

@@ -6,6 +6,13 @@ function toNumber(value) {
   const n7 = Number(value);
   return Number.isFinite(n7) ? n7 : null;
 }
+var HttpError = class extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+};
+var CONTROL_REFUSED_BANNER_MS = 6e3;
 function errorText(err) {
   return err instanceof Error ? err.message : String(err);
 }
@@ -38,6 +45,8 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     /** The catalog has been read at least once (a disabled hub answers 409 to reads). */
     this.catalogLoaded = false;
     this._lastError = null;
+    /** When the server last refused a control request (for the host's banner). */
+    this._controlRefusedAt = null;
     /** True until the server has answered (or failed) once for this target. */
     this.firstAnswerPending = true;
     // Load ordering
@@ -47,6 +56,9 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     this.runningEpoch = 0;
     this.statusPromise = null;
     this.statusDirty = false;
+    // One page read per activity per load epoch: a reload supersedes the
+    // read in flight, which then discards its answer, so a new epoch must
+    // start its own read instead of waiting on the stale one (CR-F4a-4).
     this.pagePromises = {};
     // Retry of failed HTTP work (independent of the socket)
     this.retryTimer = null;
@@ -222,7 +234,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     const response = await this.fetchImpl(this.url(path), {
       headers: { accept: "application/json" }
     });
-    if (!response.ok) throw new Error(`GET ${path} -> ${response.status}`);
+    if (!response.ok) throw new HttpError(`GET ${path} -> ${response.status}`, response.status);
     return await response.json();
   }
   async post(path, body) {
@@ -231,7 +243,24 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       headers: body ? { accept: "application/json", "content-type": "application/json" } : { accept: "application/json" },
       body: body ? JSON.stringify(body) : void 0
     });
-    if (!response.ok) throw new Error(`POST ${path} -> ${response.status}`);
+    if (!response.ok) {
+      this.noteControlRefused();
+      throw new HttpError(`POST ${path} -> ${response.status}`, response.status);
+    }
+  }
+  /** The last control request the server refused, while it is recent. */
+  get controlRefused() {
+    return this._controlRefusedAt !== null;
+  }
+  noteControlRefused() {
+    const at = Date.now();
+    this._controlRefusedAt = at;
+    this.notify();
+    setTimeout(() => {
+      if (this._controlRefusedAt !== at) return;
+      this._controlRefusedAt = null;
+      this.notify();
+    }, CONTROL_REFUSED_BANNER_MS);
   }
   // ---------- loading ----------
   /** Load once; a load already in flight is shared. */
@@ -295,6 +324,10 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       this.cancelRetry();
     } catch (err) {
       if (!current()) return;
+      if (err instanceof HttpError && err.status === 404 && await this.relocateHub(hubId)) {
+        void this.reload();
+        return;
+      }
       this._lastError = errorText(err);
       this.hubStatus = null;
       this.firstAnswerPending = false;
@@ -304,6 +337,37 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
     this.invalidate();
     this.notify();
     if (current() && this.running) await this.ensureActivityPages(this.running.activity_id);
+  }
+  /**
+   * A hub opened by host is re-keyed to its MAC on its first sync. The
+   * stream announces that (hub_rekeyed), but a page whose socket was down
+   * at the time (a server restart, a sleeping phone tab) only sees the old
+   * id answer 404. The host stays in the hub's config, so look it up there
+   * and follow it (CR-X3-2). True when the target moved.
+   */
+  async relocateHub(oldId) {
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}${SERVER_API_PREFIX}/hubs`, {
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok || oldId !== this.hubId) return false;
+      const hubs = await response.json();
+      const moved = Array.isArray(hubs) ? hubs.find((row) => row?.hub_id && row.hub_id !== oldId && row.config?.host === oldId) : null;
+      if (!moved?.hub_id || oldId !== this.hubId) return false;
+      this.moveTarget(String(moved.hub_id));
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+  /** Follow the hub to its new id; the socket re-narrows to it. */
+  moveTarget(nextId) {
+    this.hubId = nextId;
+    this.pagePromises = {};
+    const wasStreaming = this.streaming;
+    this.closeSocket();
+    if (wasStreaming) this.openSocket();
+    this.notify();
   }
   /** Re-read /status (and the running activity); one in flight, one pending. */
   refreshStatus() {
@@ -332,6 +396,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       this.hubStatus = status;
       this.firstAnswerPending = false;
       this._lastError = null;
+      this.retryDelay = this.retryBaseMs;
       if (_ServerRemoteBackend.readable(status)) {
         if (!this.catalogLoaded) {
           void this.reload();
@@ -356,12 +421,13 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
   ensureActivityPages(activityId) {
     const key = String(activityId);
     if (this.activityPages[key]) return Promise.resolve();
-    if (!this.pagePromises[key]) {
-      this.pagePromises[key] = this.loadActivityPages(activityId).finally(() => {
-        delete this.pagePromises[key];
-      });
-    }
-    return this.pagePromises[key];
+    const inFlight = this.pagePromises[key];
+    if (inFlight && inFlight.epoch === this.loadEpoch) return inFlight.promise;
+    const promise = this.loadActivityPages(activityId).finally(() => {
+      if (this.pagePromises[key]?.promise === promise) delete this.pagePromises[key];
+    });
+    this.pagePromises[key] = { epoch: this.loadEpoch, promise };
+    return promise;
   }
   async loadActivityPages(activityId) {
     const hubId = this.hubId;
@@ -375,6 +441,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       ]);
       if (!current()) return;
       this.activityPages[String(activityId)] = { buttons, macros, favorites };
+      this.retryDelay = this.retryBaseMs;
     } catch (err) {
       if (!current()) return;
       this._lastError = errorText(err);
@@ -503,6 +570,7 @@ var ServerRemoteBackend = class _ServerRemoteBackend {
       case "server_event":
         if (message.kind === "hub_rekeyed" && message.hub_id && message.hub_id !== this.hubId) {
           this.hubId = String(message.hub_id);
+          this.notify();
           void this.reload();
           return;
         }
@@ -1721,44 +1789,6 @@ function numpadEnabled(layout) {
   return true;
 }
 var POWERED_OFF_LABELS = /* @__PURE__ */ new Set(["powered off", "powered_off", "off"]);
-var HARD_BUTTON_ID_MAP = {
-  up: ID.UP,
-  down: ID.DOWN,
-  left: ID.LEFT,
-  right: ID.RIGHT,
-  ok: ID.OK,
-  back: ID.BACK,
-  home: ID.HOME,
-  menu: ID.MENU,
-  volup: ID.VOL_UP,
-  voldn: ID.VOL_DOWN,
-  mute: ID.MUTE,
-  chup: ID.CH_UP,
-  chdn: ID.CH_DOWN,
-  guide: ID.GUIDE,
-  dvr: ID.DVR,
-  play: ID.PLAY,
-  exit: ID.EXIT,
-  rew: ID.REW,
-  pause: ID.PAUSE,
-  fwd: ID.FWD,
-  red: ID.RED,
-  green: ID.GREEN,
-  yellow: ID.YELLOW,
-  blue: ID.BLUE,
-  a: ID.A,
-  b: ID.B,
-  c: ID.C
-};
-var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([
-  ID.C,
-  ID.B,
-  ID.A,
-  ID.EXIT,
-  ID.DVR,
-  ID.PLAY,
-  ID.GUIDE
-]);
 
 // remote-card/src/remote-card-compat.ts
 function hubVersionFromState(remoteState) {
@@ -1821,7 +1851,10 @@ var REMOTE_CARD_STRINGS_EN = {
     switchToDeviceMode: "Switch to device mode",
     switchToActivityMode: "Switch to activity mode",
     deviceKeymapMissing: "This device's commands are not cached yet. Refresh this device in the Hub tab of the Sofabaton Control Panel, then reload the dashboard.",
+    deviceKeymapMissingServer: "This device is not in the hub's catalog. Refresh the hub in the Sofabaton control panel, then reload this page.",
     deviceKeymapError: "Could not load this device's commands.",
+    serverReadFailed: "Could not load hub data from the server. Check the connection and try again.",
+    controlRefused: "The command could not be completed. Try again.",
     poweredOff: "Powered Off",
     defaultLayout: "Default activity layout",
     activityFallback: (id) => `Activity ${id}`,
@@ -1831,7 +1864,6 @@ var REMOTE_CARD_STRINGS_EN = {
   },
   assist: {
     label: "Key capture",
-    start: "Start",
     waiting: "Waiting for keypress",
     exitEditMode: "Exit Edit mode to begin",
     captured: (label) => `Captured: ${label}`,
@@ -1880,18 +1912,8 @@ var REMOTE_CARD_STRINGS_EN = {
       theme: "Apply a theme to the card",
       use_background_override: "Customize background color",
       background_override: "Select background color",
-      show_activity: "Activity/device selector",
-      show_dpad: "Direction pad",
-      show_nav: "Back/Home/Menu keys",
-      show_mid: "Volume/Channel rockers",
-      show_media: "Playback",
-      show_colors: "Red/Green/Yellow/Blue",
-      show_abc: "A/B/C buttons",
-      show_macros_button: "Macros button",
-      show_favorites_button: "Favorites button",
       max_width: "Maximum card width (px)",
-      key_style: "Button style",
-      group_order: "Group order"
+      key_style: "Button style"
     },
     generalOptionsTitle: "General options",
     keyCapture: "Key capture",
@@ -1927,6 +1949,9 @@ var REMOTE_CARD_STRINGS_EN = {
     visibleRows: "Visible rows",
     moveGroupUp: (groupLabel) => `Move ${groupLabel} up`,
     moveGroupDown: (groupLabel) => `Move ${groupLabel} down`,
+    fewerVisibleRows: "Fewer visible rows",
+    moreVisibleRows: "More visible rows",
+    reorderGroupHandle: (groupLabel) => `Reorder ${groupLabel} (arrow keys)`,
     macros: "Macros",
     favorites: "Favorites",
     volume: "Volume",
@@ -2034,8 +2059,14 @@ function deepMerge(base, overlay) {
   }
   return out;
 }
+var REMOTE_CARD_LOCALE_ALIASES = {
+  "zh": "zh-hans",
+  "zh-cn": "zh-hans",
+  "zh-sg": "zh-hans"
+};
 function resolveTranslation(language) {
-  const lang = String(language || "").toLowerCase();
+  const raw = String(language || "").toLowerCase().replaceAll("_", "-");
+  const lang = REMOTE_CARD_LOCALE_ALIASES[raw] ?? (raw.startsWith("zh-hans-") ? "zh-hans" : raw);
   if (!lang) return null;
   if (TRANSLATIONS[lang]) return TRANSLATIONS[lang];
   const base = lang.split(/[-_]/)[0];
@@ -3547,8 +3578,8 @@ function attachPrimaryAction(els, fn, options = {}) {
     (el) => Boolean(el)
   );
   const gate = createPrimaryActionGate();
-  const wrapped = (ev) => {
-    if (!primaryActionGateAllows(gate, ev, Date.now())) return;
+  const wrapped = (ev, gateType = ev.type) => {
+    if (!primaryActionGateAllows(gate, { type: gateType, pointerId: ev.pointerId }, Date.now())) return;
     if (typeof ev.preventDefault === "function") ev.preventDefault();
     if (typeof ev.stopPropagation === "function") ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === "function")
@@ -3559,21 +3590,34 @@ function attachPrimaryAction(els, fn, options = {}) {
     } catch (e6) {
     }
   };
+  const keyboardClick = (ev) => {
+    if (ev.detail !== 0) return;
+    wrapped(ev, "keyboard");
+  };
+  const keyboardKey = (ev) => {
+    const key = ev.key;
+    if (key !== "Enter" && key !== " ") return;
+    const host = ev.currentTarget;
+    if (ev.target !== host || host?.getAttribute("role") !== "button") return;
+    wrapped(ev, "keyboard");
+  };
   const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
   for (const el of targets) {
+    el.addEventListener("keydown", keyboardKey);
     if (hasPointer) {
-      el.addEventListener("pointerup", wrapped, {
+      el.addEventListener("pointerup", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
+      el.addEventListener("click", keyboardClick);
     } else {
-      el.addEventListener("touchend", wrapped, {
+      el.addEventListener("touchend", (ev) => wrapped(ev), {
         capture: true,
         passive: false
       });
-      el.addEventListener("click", wrapped, { capture: true });
+      el.addEventListener("click", (ev) => wrapped(ev), { capture: true });
     }
-    el.addEventListener("ha-click", wrapped, { capture: true });
+    el.addEventListener("ha-click", (ev) => wrapped(ev), { capture: true });
   }
 }
 var DRAWER_MAX_HEIGHT = 350;
@@ -4130,7 +4174,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.4";
+var CARD_VERSION = "0.2.6";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -4354,6 +4398,11 @@ var RemoteCardStore = class {
     this._deviceId = null;
     this.deviceKeymaps = {};
     this.deviceKeymapFetching = /* @__PURE__ */ new Set();
+    /** Backoff after the backend could not answer a keymap (CR-F4a-1): without
+     *  it, the render that follows the null answer re-fetched at once, a loop
+     *  paced only by the HTTP round trip while the hub was busy or offline. */
+    this.deviceKeymapRetry = /* @__PURE__ */ new Map();
+    this.deviceKeymapRetryTimer = null;
     this.initialViewApplied = false;
     this.commandFilter = "";
     // Drawer / menu UI state (direction math stays in the element)
@@ -4453,6 +4502,8 @@ var RemoteCardStore = class {
     this.commandPulseTimeout = null;
     this.commandPulseUntil = 0;
     this.activityLoadTimeout = null;
+    if (this.deviceKeymapRetryTimer) clearTimeout(this.deviceKeymapRetryTimer);
+    this.deviceKeymapRetryTimer = null;
   }
   // ---------- update gating ----------
   invalidateFingerprint() {
@@ -4485,6 +4536,9 @@ var RemoteCardStore = class {
       stableJsonSignature(attrs?.assigned_keys),
       stableJsonSignature(attrs?.macro_keys),
       stableJsonSignature(attrs?.favorite_keys),
+      // A binding-only edit changes only this; the keys' long-press arming
+      // is computed at render time from it (CR-F4a-3).
+      stableJsonSignature(attrs?.long_press_keys),
       stableJsonSignature(this._config?.background_override),
       themeName,
       themeMode,
@@ -4702,12 +4756,24 @@ var RemoteCardStore = class {
     if (entry.status === "loading") return false;
     return (entry.version ?? 0) !== this.keymapVersion(deviceId);
   }
+  /** Re-render once the keymap backoff ends, so the fetch is retried even
+   *  when nothing else changes meanwhile. */
+  scheduleKeymapRetry(delayMs) {
+    if (this.deviceKeymapRetryTimer) clearTimeout(this.deviceKeymapRetryTimer);
+    this.deviceKeymapRetryTimer = setTimeout(() => {
+      this.deviceKeymapRetryTimer = null;
+      this.invalidateFingerprint();
+      this.onChange();
+    }, delayMs);
+  }
   async ensureDeviceKeymap(deviceId) {
     const key = String(deviceId);
     if (!this.keymapStale(deviceId)) return;
     const backend = this._backend;
     if (!backend) return;
     if (this.deviceKeymapFetching.has(key)) return;
+    const retry = this.deviceKeymapRetry.get(key);
+    if (retry && Date.now() < retry.at) return;
     const version = this.keymapVersion(deviceId);
     const previous = this.deviceKeymaps[key];
     if (!previous) {
@@ -4717,6 +4783,9 @@ var RemoteCardStore = class {
     try {
       const response = await backend.deviceKeymap(deviceId);
       if (response === null) {
+        const delayMs = Math.min((retry?.delayMs ?? 500) * 2, 3e4);
+        this.deviceKeymapRetry.set(key, { at: Date.now() + delayMs, delayMs });
+        this.scheduleKeymapRetry(delayMs);
         if (!previous) {
           delete this.deviceKeymaps[key];
           this.invalidateFingerprint();
@@ -4724,6 +4793,7 @@ var RemoteCardStore = class {
         }
         return;
       }
+      this.deviceKeymapRetry.delete(key);
       const keymap = response?.keymap;
       if (!keymap) {
         this.deviceKeymaps[key] = {
@@ -4943,6 +5013,17 @@ var RemoteCardStore = class {
         this.onChange();
       }
     }, 6e4);
+  }
+  /**
+   * A control request was refused (the server answers 409/404, HA raises).
+   * The card must not keep waiting for an activity switch that will not
+   * happen; the rejection itself stops here (CR-F4a-7). The server backend
+   * shows it on the host's banner.
+   */
+  controlFailed() {
+    this.pendingActivity = null;
+    this.pendingActivityAt = null;
+    this.stopActivityLoading();
   }
   stopActivityLoading(notify = true) {
     if (!this.activityLoadActive) return;
@@ -5337,7 +5418,7 @@ var RemoteCardStore = class {
     const deviceModeAvailable = this.deviceModeAvailable() && deviceToggleEnabled(layoutConfig);
     const layoutKey = mode === "device" ? deviceLayoutKey(deviceId) : activityId;
     const commands = keymapEntry?.status === "ready" ? this.filterAndSortCommands(keymapEntry.commands) : [];
-    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
+    const deviceNotice = mode !== "device" ? "" : keymapEntry?.status === "cache_miss" ? this._backend?.kind === "server" ? str().card.deviceKeymapMissingServer : str().card.deviceKeymapMissing : keymapEntry?.status === "error" ? str().card.deviceKeymapError : "";
     return {
       remote,
       isUnavailable,
@@ -5382,6 +5463,11 @@ var RemoteCardStore = class {
 };
 
 // remote-card/src/remote-card-assist-yaml.ts
+function yamlScalar(value) {
+  const text = String(value ?? "");
+  const plain = text !== "" && text === text.trim() && !/^[-?:,[\]{}#&*!|>'"%@`]/.test(text) && !/: |:$| #/.test(text) && !/^(?:y|yes|n|no|true|false|on|off|null|~)$/i.test(text) && !/^[-+]?(?:\d|\.\d)/.test(text) && !/[\u0000-\u001f]/.test(text);
+  return plain ? text : JSON.stringify(text);
+}
 function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
@@ -5403,7 +5489,7 @@ function automationAssistRemoteYaml(capture, entityId, hubIntegration) {
       "target:",
       `  entity_id: ${entityId}`,
       "data:",
-      `  activity: ${capture.activityName}`
+      `  activity: ${yamlScalar(capture.activityName)}`
     ].join("\n");
   }
   if (kind === "power") {
@@ -5456,7 +5542,7 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
-    `name: ${label}`,
+    `name: ${yamlScalar(label)}`,
     `icon: ${icon}`,
     "tap_action:",
     "  action: perform-action",
@@ -5536,6 +5622,11 @@ var AutomationAssistController = class {
     this.hubMacDetecting = false;
     this.mqttUnsub = null;
     this.mqttTopic = null;
+    // The current subscription, set BEFORE subscribeMessage resolves (HA acks
+    // it a round trip later). A render in that window must not subscribe
+    // again, and a subscription that resolves after being superseded is
+    // cancelled on arrival and never delivers (CR-F4a-2).
+    this.mqttToken = null;
     this.mqttLookupId = 0;
     this.mqttDeviceNames = /* @__PURE__ */ new Map();
     this.mqttDeviceCommands = /* @__PURE__ */ new Map();
@@ -5545,7 +5636,6 @@ var AutomationAssistController = class {
     // Activity-change baseline (drives capture of activity switches)
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
     this.host = host;
   }
   // ---------- session (per-tab, shared across card instances) ----------
@@ -5577,12 +5667,10 @@ var AutomationAssistController = class {
     const currentId = this.host.currentActivityId();
     this.lastActivityLabel = currentLabel;
     this.lastActivityId = Number.isFinite(Number(currentId)) ? Number(currentId) : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
   resetActivityBaseline() {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
   setActive(active) {
     const next = !!active;
@@ -5705,7 +5793,6 @@ var AutomationAssistController = class {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
   // ---------- notification ----------
@@ -5863,21 +5950,29 @@ var AutomationAssistController = class {
     const mac = this.hubMac;
     if (!mac) return;
     const topic = `${mac}/up`;
-    if (this.mqttTopic === topic && this.mqttUnsub) return;
+    if (this.mqttTopic === topic && this.mqttToken) return;
     this.unsubscribeMqtt();
     const hass = this.host.getHass();
     if (!hass?.connection?.subscribeMessage) return;
     this.mqttTopic = topic;
-    hass.connection.subscribeMessage((msg) => this.handleMqtt(msg), {
+    const token = /* @__PURE__ */ Symbol("mqtt-subscription");
+    this.mqttToken = token;
+    hass.connection.subscribeMessage((msg) => {
+      if (this.mqttToken === token) this.handleMqtt(msg);
+    }, {
       type: "mqtt/subscribe",
       topic
     }).then((unsub) => {
-      this.mqttUnsub = unsub;
+      if (this.mqttToken === token) this.mqttUnsub = unsub;
+      else this.safeUnsubscribe(unsub);
     }).catch(() => {
-      this.mqttUnsub = null;
+      if (this.mqttToken !== token) return;
+      this.mqttToken = null;
+      this.mqttTopic = null;
     });
   }
   unsubscribeMqtt() {
+    this.mqttToken = null;
     if (this.mqttUnsub) {
       const unsubscribe = this.mqttUnsub;
       this.mqttUnsub = null;
@@ -6651,7 +6746,9 @@ var SbKeyButton = class extends BaseElement {
     this._labelEl.hidden = !this._label;
     this._control.setAttribute(
       "aria-label",
-      this._accessibilityLabel || this._label || "Remote button"
+      // An unresolved Shortcuts slot has neither; the fallback is localized
+      // like every other name (CR-F4b-11).
+      this._accessibilityLabel || this._label || str().assist.buttonFallback
     );
   }
   connectedCallback() {
@@ -6688,11 +6785,6 @@ var SbKeyButton = class extends BaseElement {
     attachPrimaryAction([this, control], (ev) => this.trigger(ev), {
       fireHaptic: () => this.fireHaptic()
     });
-    control.addEventListener("click", (ev) => {
-      if (ev.detail !== 0 || this._disabled) return;
-      this.fireHaptic();
-      this.trigger(ev);
-    });
   }
   disconnectedCallback() {
     this._hold.stop();
@@ -6704,6 +6796,13 @@ if (!customElements.get("sb-key-button")) {
 }
 
 // remote-card/src/sections/key-groups.ts
+function keyFaceLabel(spec) {
+  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+}
+function keyAccessibleLabel(spec) {
+  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
+}
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
   ID.C,
   ID.B,
@@ -6735,7 +6834,7 @@ var NUMPAD_KEYS = [
   { key: "num9", id: ID.NUM_9, cmd: ID.NUM_9, label: "9", icon: "", size: "small" },
   { key: "numdash", id: ID.NUM_DASH, cmd: ID.NUM_DASH, label: "-", icon: "", size: "small" },
   { key: "num0", id: ID.NUM_0, cmd: ID.NUM_0, label: "0", icon: "", size: "small" },
-  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small" }
+  { key: "numenter", id: ID.NUM_ENTER, cmd: ID.NUM_ENTER, label: "E", icon: "", size: "small", glyphFace: true }
 ];
 var NAV_KEYS = [
   { key: "back", id: ID.BACK, cmd: ID.BACK, label: "", icon: "mdi:arrow-u-left-top" },
@@ -6760,7 +6859,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit" }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -6780,14 +6879,11 @@ function renderKey(params, spec) {
   if (!shouldShow) return A;
   const enabled = !params.disableAll && (params.editMode || params.isEnabled(spec.id));
   const wrapClassName = spec.color ? "key key--color" : `key key--${spec.size ?? "normal"} ${spec.extraClass ?? ""}`.trim();
-  const accessibleLabel = automationAssistLabelForKey(
-    spec.key,
-    spec.color ? spec.key : spec.label
-  );
+  const accessibleLabel = keyAccessibleLabel(spec);
   return b2`
     <sb-key-button
       class="${wrapClassName}${enabled ? "" : " disabled"}"
-      .label=${spec.label}
+      .label=${keyFaceLabel(spec)}
       .icon=${spec.icon || null}
       .accessibilityLabel=${accessibleLabel}
       .color=${spec.color ?? null}
@@ -6817,8 +6913,25 @@ function renderDpad(params, visible, numpad = null) {
     ready ? "dpad--numpad-ready" : "",
     open ? "dpad--numpad-open" : ""
   ].filter(Boolean).join(" ");
+  const onKeydown = (ev) => {
+    if (!open || ev.key !== "Escape") return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    numpad?.onClose?.(true);
+  };
+  const onFocusout = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || ev.currentTarget.contains(next)) return;
+    numpad?.onClose?.(false);
+  };
   return b2`
-    <div class=${className} ${numpad?.hostRef ? n5(numpad.hostRef) : A}>
+    <div
+      class=${className}
+      ${numpad?.hostRef ? n5(numpad.hostRef) : A}
+      @keydown=${ready ? onKeydown : null}
+      @focusout=${ready ? onFocusout : null}
+    >
       <div class="dpad-face dpad-face--keys" ?inert=${open}>
         ${DPAD_KEYS.map((k2) => renderKey(params, k2))}
       </div>
@@ -7669,9 +7782,12 @@ var SofabatonRemoteCard = class extends i4 {
     this._lastSelectedActivityValue = String(value);
     this._lastSelectedActivityAt = now;
     this._fireEvent("haptic", "light");
-    Promise.resolve(this._store.setActivity(value)).catch((err) => {
-      console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
-    });
+    this._control(this._store.setActivity(value));
+  }
+  /** Run a control request: a refusal ends any activity wait instead of
+   *  escaping as an unhandled rejection (CR-F4a-7). */
+  _control(request) {
+    request.catch(() => this._store.controlFailed());
   }
   /**
    * Single stable entry point for the activity/device dropdown. The select's
@@ -7707,6 +7823,20 @@ var SofabatonRemoteCard = class extends i4 {
     this._numpadOpen = true;
     this._fireEvent("haptic", "light");
     this.requestUpdate();
+    void this.updateComplete.then(() => this._focusDpadControl(".dpad-face--numpad .key"));
+  }
+  _closeNumpad(restoreFocus) {
+    if (!this._numpadOpen) return;
+    this._numpadOpen = false;
+    this.requestUpdate();
+    if (restoreFocus) void this.updateComplete.then(() => this._focusDpadControl(".dpad-numpad-toggle"));
+  }
+  // Select by class, never by an internal tag name: the embed renames the
+  // card's elements, and a tag inside a selector string is not rewritten.
+  _focusDpadControl(selector) {
+    const target = this._dpadRef.value?.querySelector(selector);
+    const control = target?.shadowRoot?.querySelector(".sb-key-control") ?? target;
+    control?.focus();
   }
   _handleModeToggle() {
     if (this._editMode) return;
@@ -7963,7 +8093,7 @@ var SofabatonRemoteCard = class extends i4 {
       this._drawerMeasureSignature = drawerMeasureSignature;
       this._drawerMeasurePending = Boolean(store.activeDrawer);
     }
-    const numpadAvailable = derived.isX2 && !store.isHubIntegration() && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
+    const numpadAvailable = derived.isX2 && numpadEnabled(layoutConfig) && (this._editMode || store.anyKeyBound(NUMPAD_KEY_IDS));
     const numpadPageKey = `${derived.mode}:${deviceMode ? derived.deviceId ?? "" : derived.activityId ?? ""}`;
     if (!numpadAvailable || numpadPageKey !== this._numpadPageKey) {
       this._numpadOpen = false;
@@ -8025,7 +8155,7 @@ var SofabatonRemoteCard = class extends i4 {
           icon: model.icon
         });
         store.triggerCommandPulse();
-        void store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem);
+        this._control(store.sendDrawerItem(itemType, model.commandId, model.deviceId, rawItem));
       },
       onCustomFavorite: ({ model, rawFavorite }) => {
         if (this._assist.active) {
@@ -8039,7 +8169,7 @@ var SofabatonRemoteCard = class extends i4 {
           return;
         }
         store.triggerCommandPulse();
-        void store.sendCustomFavoriteCommand(model.commandId, model.deviceId);
+        this._control(store.sendCustomFavoriteCommand(model.commandId, model.deviceId));
       }
     };
     const powerVisible = deviceMode && powerButtonEnabled(layoutConfig) && (this._editMode || store.devicePowerConfigured());
@@ -8048,7 +8178,7 @@ var SofabatonRemoteCard = class extends i4 {
       disabled: disableAll,
       label: str().card.powerButton,
       onToggle: () => {
-        void store.toggleDevicePower();
+        this._control(store.toggleDevicePower());
       }
     };
     const shortcutConfigs = deviceMode ? deviceShortcutsFromConfig(store.config, derived.deviceId) : {};
@@ -8168,7 +8298,8 @@ var SofabatonRemoteCard = class extends i4 {
         available: numpadAvailable,
         open: this._numpadOpen,
         hostRef: this._dpadRef,
-        onOpen: () => this._openNumpad()
+        onOpen: () => this._openNumpad(),
+        onClose: (restoreFocus) => this._closeNumpad(restoreFocus)
       }),
       nav: () => renderNavRow(keyParams, Boolean(layoutConfig.show_nav)),
       mid: () => renderMid(keyParams, midEnabled),
@@ -8236,12 +8367,12 @@ var SofabatonRemoteCard = class extends i4 {
         this._assist.setStatus(str().assist.notCaptured);
       }
       this._store.triggerCommandPulse();
-      void this._store.sendLongPress(spec.cmd, targetDeviceId);
+      this._control(this._store.sendLongPress(spec.cmd, targetDeviceId));
       return;
     }
     if (holdRepeatIndexOf(ev) <= 1) {
       this._assist.recordClick({
-        label: automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label),
+        label: keyAccessibleLabel(spec),
         commandId: spec.cmd,
         deviceId: targetDeviceId ?? null,
         commandType: "assigned",
@@ -8251,7 +8382,7 @@ var SofabatonRemoteCard = class extends i4 {
       });
     }
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(spec.cmd, targetDeviceId);
+    this._control(this._store.sendCommand(spec.cmd, targetDeviceId));
   }
   _onShortcutPress(slot) {
     if (slot.commandId == null) return;
@@ -8267,7 +8398,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(slot.commandId, deviceId);
+    this._control(this._store.sendCommand(slot.commandId, deviceId));
   }
   _onCommandItem(command) {
     const deviceId = this._store.currentDeviceId();
@@ -8282,7 +8413,7 @@ var SofabatonRemoteCard = class extends i4 {
       deviceName: this._store.deviceNameForId(deviceId)
     });
     this._store.triggerCommandPulse();
-    void this._store.sendCommand(command.command_id, deviceId);
+    this._control(this._store.sendCommand(command.command_id, deviceId));
   }
   updated(_changed) {
     const themeChanged = this._applyLocalTheme(String(this._store.config?.theme ?? ""));
@@ -8441,10 +8572,11 @@ async function loadStoredDocument(serverBase, hubId, fetchImpl) {
     return null;
   }
 }
-function unavailableBannerText(snapshot, lastError) {
+function unavailableBannerText(snapshot, lastError, controlRefused = false) {
   const unavailable = !snapshot || snapshot.state === "unavailable";
-  if (!unavailable) return null;
-  return lastError ? `The server cannot reach the hub (${lastError}).` : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected).";
+  if (unavailable && lastError) return str().card.serverReadFailed;
+  if (controlRefused) return str().card.controlRefused;
+  return null;
 }
 
 // remote-card/src/shims/ha-card.ts
@@ -8492,9 +8624,6 @@ var mdiAlert = "M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z";
 var mdiAlertCircle = "M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiAlertCircleOutline = "M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z";
 var mdiAlertOutline = "M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16";
-var mdiAlphaACircleOutline = "M11,7H13A2,2 0 0,1 15,9V17H13V13H11V17H9V9A2,2 0 0,1 11,7M11,9V11H13V9H11M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2Z";
-var mdiAlphaBCircleOutline = "M15,10.5C15,11.3 14.3,12 13.5,12C14.3,12 15,12.7 15,13.5V15A2,2 0 0,1 13,17H9V7H13A2,2 0 0,1 15,9V10.5M13,15V13H11V15H13M13,11V9H11V11H13M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
-var mdiAlphaCCircleOutline = "M11,7H13A2,2 0 0,1 15,9V10H13V9H11V15H13V14H15V15A2,2 0 0,1 13,17H11A2,2 0 0,1 9,15V9A2,2 0 0,1 11,7M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiAmplifier = "M10,2H14A1,1 0 0,1 15,3H21V21H19A1,1 0 0,1 18,22A1,1 0 0,1 17,21H7A1,1 0 0,1 6,22A1,1 0 0,1 5,21H3V3H9A1,1 0 0,1 10,2M5,5V9H19V5H5M7,6A1,1 0 0,1 8,7A1,1 0 0,1 7,8A1,1 0 0,1 6,7A1,1 0 0,1 7,6M12,6H14V7H12V6M15,6H16V8H15V6M17,6H18V8H17V6M12,11A4,4 0 0,0 8,15A4,4 0 0,0 12,19A4,4 0 0,0 16,15A4,4 0 0,0 12,11M10,6A1,1 0 0,1 11,7A1,1 0 0,1 10,8A1,1 0 0,1 9,7A1,1 0 0,1 10,6Z";
 var mdiApple = "M18.71,19.5C17.88,20.74 17,21.95 15.66,21.97C14.32,22 13.89,21.18 12.37,21.18C10.84,21.18 10.37,21.95 9.1,22C7.79,22.05 6.8,20.68 5.96,19.47C4.25,17 2.94,12.45 4.7,9.39C5.57,7.87 7.13,6.91 8.82,6.88C10.1,6.86 11.32,7.75 12.11,7.75C12.89,7.75 14.37,6.68 15.92,6.84C16.57,6.87 18.39,7.1 19.56,8.82C19.47,8.88 17.39,10.1 17.41,12.63C17.44,15.65 20.06,16.66 20.09,16.67C20.06,16.74 19.67,18.11 18.71,19.5M13,3.5C13.73,2.67 14.94,2.04 15.94,2C16.07,3.17 15.6,4.35 14.9,5.19C14.21,6.04 13.07,6.7 11.95,6.61C11.8,5.46 12.36,4.26 13,3.5Z";
 var mdiArrowDown = "M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z";
@@ -8550,11 +8679,9 @@ var mdiChevronDoubleLeft = "M18.41,7.41L17,6L11,12L17,18L18.41,16.59L13.83,12L18
 var mdiChevronDoubleRight = "M5.59,7.41L7,6L13,12L7,18L5.59,16.59L10.17,12L5.59,7.41M11.59,7.41L13,6L19,12L13,18L11.59,16.59L16.17,12L11.59,7.41Z";
 var mdiChevronDoubleUp = "M7.41,18.41L6,17L12,11L18,17L16.59,18.41L12,13.83L7.41,18.41M7.41,12.41L6,11L12,5L18,11L16.59,12.41L12,7.83L7.41,12.41Z";
 var mdiChevronDown = "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z";
-var mdiChevronDownCircleOutline = "M22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12M20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12M6,10L12,16L18,10L16.6,8.6L12,13.2L7.4,8.6L6,10Z";
 var mdiChevronLeft = "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z";
 var mdiChevronRight = "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z";
 var mdiChevronUp = "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z";
-var mdiChevronUpCircleOutline = "M22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12M20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12M7.4,15.4L12,10.8L16.6,15.4L18,14L12,8L6,14L7.4,15.4Z";
 var mdiCircle = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiCircleOutline = "M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiClock = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M16.2,16.2L11,13V7H12.5V12.2L17,14.9L16.2,16.2Z";
@@ -8819,9 +8946,6 @@ var MDI_ICON_PATHS = {
   "alert-circle": mdiAlertCircle,
   "alert-circle-outline": mdiAlertCircleOutline,
   "alert-outline": mdiAlertOutline,
-  "alpha-a-circle-outline": mdiAlphaACircleOutline,
-  "alpha-b-circle-outline": mdiAlphaBCircleOutline,
-  "alpha-c-circle-outline": mdiAlphaCCircleOutline,
   "amplifier": mdiAmplifier,
   "apple": mdiApple,
   "arrow-down": mdiArrowDown,
@@ -8877,11 +9001,9 @@ var MDI_ICON_PATHS = {
   "chevron-double-right": mdiChevronDoubleRight,
   "chevron-double-up": mdiChevronDoubleUp,
   "chevron-down": mdiChevronDown,
-  "chevron-down-circle-outline": mdiChevronDownCircleOutline,
   "chevron-left": mdiChevronLeft,
   "chevron-right": mdiChevronRight,
   "chevron-up": mdiChevronUp,
-  "chevron-up-circle-outline": mdiChevronUpCircleOutline,
   "circle": mdiCircle,
   "circle-outline": mdiCircleOutline,
   "clock": mdiClock,
@@ -9349,10 +9471,11 @@ var SbHaSelect = class extends HTMLElement {
         if (this.disabled) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
-          if (!this.hasAttribute("open")) this._openMenu();
+          const wasOpen = this.hasAttribute("open");
+          if (!wasOpen) this._openMenu();
           const buttons = Array.from(this._menu?.querySelectorAll(".option") ?? []);
-          const index = Math.max(0, this._options.findIndex((option) => option.value === this._value));
-          const next = event.key === "ArrowDown" ? Math.min(buttons.length - 1, index + 1) : Math.max(0, index - 1);
+          const selected = this._options.findIndex((option) => option.value === this._value);
+          const next = !wasOpen ? Math.max(0, selected) : event.key === "ArrowDown" ? Math.min(buttons.length - 1, selected + 1) : Math.max(0, selected - 1);
           buttons[next]?.focus();
         } else if (event.key === "Escape" && this.hasAttribute("open")) {
           event.preventDefault();
@@ -9685,6 +9808,9 @@ var REMOTE_CARD_STRINGS_AR = {
     switchToActivityMode: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0625\u0644\u0649 \u0648\u0636\u0639 \u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     deviceKeymapMissing: `\u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u062E\u0632\u0651\u0646\u0629 \u0645\u0624\u0642\u062A\u064B\u0627 \u0628\u0639\u062F. \u062D\u062F\u0650\u0651\u062B \u0627\u0644\u062C\u0647\u0627\u0632 \u0645\u0646 \u062A\u0628\u0648\u064A\u0628 ${isolate("Hub")} \u0641\u064A ${isolate("Sofabaton Control Panel")}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062A.`,
     deviceKeymapError: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0623\u0648\u0627\u0645\u0631 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
+    deviceKeymapMissingServer: `\u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0643\u062A\u0627\u0644\u0648\u062C ${isolate("Hub")}. \u062D\u062F\u0650\u0651\u062B ${isolate("Hub")} \u0641\u064A \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 ${SOFABATON}\u060C \u062B\u0645 \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062D\u0629.`,
+    serverReadFailed: `\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A ${isolate("Hub")} \u0645\u0646 \u0627\u0644\u062E\u0627\u062F\u0645. \u062A\u062D\u0642\u0651\u0642 \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0648\u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627.`,
+    controlRefused: "\u062A\u0639\u0630\u0651\u0631 \u062A\u0646\u0641\u064A\u0630 \u0627\u0644\u0623\u0645\u0631. \u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627.",
     poweredOff: "\u0645\u064F\u0637\u0641\u0623",
     defaultLayout: "\u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0644\u0644\u0623\u0646\u0634\u0637\u0629",
     activityFallback: (id) => `\u0627\u0644\u0646\u0634\u0627\u0637 ${isolate(id)}`,
@@ -9694,7 +9820,6 @@ var REMOTE_CARD_STRINGS_AR = {
   },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-    start: "\u0628\u062F\u0621",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
     exitEditMode: "\u063A\u0627\u062F\u0631 \u0648\u0636\u0639 \u0627\u0644\u062A\u062D\u0631\u064A\u0631 \u0644\u0644\u0628\u062F\u0621",
     captured: (label) => `\u062A\u0645 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0645\u0631: ${isolate(label)}`,
@@ -9743,18 +9868,8 @@ var REMOTE_CARD_STRINGS_AR = {
       theme: "\u062A\u0637\u0628\u064A\u0642 \u0633\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629",
       use_background_override: "\u062A\u062E\u0635\u064A\u0635 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
       background_override: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0644\u0648\u0646 \u0627\u0644\u062E\u0644\u0641\u064A\u0629",
-      show_activity: "\u0645\u062D\u062F\u0650\u0651\u062F \u0627\u0644\u0646\u0634\u0627\u0637/\u0627\u0644\u062C\u0647\u0627\u0632",
-      show_dpad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0627\u062A\u062C\u0627\u0647\u0627\u062A",
-      show_nav: "\u0623\u0632\u0631\u0627\u0631 \u0627\u0644\u0631\u062C\u0648\u0639/\u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629/\u0627\u0644\u0642\u0627\u0626\u0645\u0629",
-      show_mid: "\u0623\u0632\u0631\u0627\u0631 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A \u0648\u0627\u0644\u0642\u0646\u0648\u0627\u062A",
-      show_media: "\u0627\u0644\u062A\u0634\u063A\u064A\u0644",
-      show_colors: "\u0623\u062D\u0645\u0631\u060C \u0623\u062E\u0636\u0631\u060C \u0623\u0635\u0641\u0631\u060C \u0623\u0632\u0631\u0642",
-      show_abc: `\u0623\u0632\u0631\u0627\u0631 ${ABC}`,
-      show_macros_button: "\u0632\u0631 \u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
-      show_favorites_button: "\u0632\u0631 \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
       max_width: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u0631\u0636 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 (\u0628\u0643\u0633\u0644)",
-      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
-      group_order: "\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A"
+      key_style: "\u0646\u0645\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631"
     },
     generalOptionsTitle: "\u0627\u0644\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629",
     keyCapture: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
@@ -9790,6 +9905,9 @@ var REMOTE_CARD_STRINGS_AR = {
     visibleRows: "\u0627\u0644\u0635\u0641\u0648\u0641 \u0627\u0644\u0645\u0631\u0626\u064A\u0629",
     moveGroupUp: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0639\u0644\u0649`,
     moveGroupDown: (groupLabel) => `\u0646\u0642\u0644 ${isolate(groupLabel)} \u0625\u0644\u0649 \u0627\u0644\u0623\u0633\u0641\u0644`,
+    fewerVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0642\u0644",
+    moreVisibleRows: "\u0635\u0641\u0648\u0641 \u0645\u0631\u0626\u064A\u0629 \u0623\u0643\u062B\u0631",
+    reorderGroupHandle: (groupLabel) => `\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 ${isolate(groupLabel)} (\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u0623\u0633\u0647\u0645)`,
     macros: "\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     favorites: "\u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A",
     volume: "\u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0635\u0648\u062A",
@@ -9881,8 +9999,7 @@ registerRemoteCardTranslation("en-gb", {
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
-      background_override: "Select background colour",
-      show_favorites_button: "Favourites button"
+      background_override: "Select background colour"
     },
     favorites: "Favourites",
     macrosFavoritesAsRows: "Macros/Favourites as rows"
@@ -9916,6 +10033,9 @@ var REMOTE_CARD_STRINGS_DE = {
     switchToActivityMode: "In den Aktivit\xE4tsmodus wechseln",
     deviceKeymapMissing: "Die Befehle dieses Ger\xE4ts sind noch nicht im Cache. Aktualisiere das Ger\xE4t im Hub-Tab der Sofabaton-Steuerzentrale und lade danach das Dashboard neu.",
     deviceKeymapError: "Die Befehle dieses Ger\xE4ts konnten nicht geladen werden.",
+    deviceKeymapMissingServer: "Dieses Ger\xE4t ist nicht im Katalog des Hubs. Aktualisiere den Hub in der Sofabaton-Steuerzentrale und lade diese Seite dann neu.",
+    serverReadFailed: "Die Hub-Daten konnten nicht vom Server geladen werden. Pr\xFCfe die Verbindung und versuche es erneut.",
+    controlRefused: "Der Befehl konnte nicht ausgef\xFChrt werden. Versuche es erneut.",
     poweredOff: "Ausgeschaltet",
     defaultLayout: "Standard-Aktivit\xE4tslayout",
     activityFallback: (id) => `Aktivit\xE4t ${id}`,
@@ -9925,7 +10045,6 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   assist: {
     label: "Tastendr\xFCcke erfassen",
-    start: "Starten",
     waiting: "Warten auf Tastendruck",
     exitEditMode: "Bearbeitungsmodus verlassen, um zu beginnen",
     captured: (label) => `Erfasst: ${label}`,
@@ -9974,18 +10093,8 @@ var REMOTE_CARD_STRINGS_DE = {
       theme: "Theme auf die Karte anwenden",
       use_background_override: "Hintergrundfarbe anpassen",
       background_override: "Hintergrundfarbe ausw\xE4hlen",
-      show_activity: "Aktivit\xE4ts-/Ger\xE4teauswahl",
-      show_dpad: "Steuerkreuz",
-      show_nav: "Zur\xFCck-, Home- und Men\xFC-Tasten",
-      show_mid: "Lautst\xE4rke- und Kanalwippen",
-      show_media: "Wiedergabe",
-      show_colors: "Rot/Gr\xFCn/Gelb/Blau",
-      show_abc: "A/B/C-Tasten",
-      show_macros_button: "Makrotaste",
-      show_favorites_button: "Favoritentaste",
       max_width: "Maximale Kartenbreite (px)",
-      key_style: "Tastenstil",
-      group_order: "Gruppenreihenfolge"
+      key_style: "Tastenstil"
     },
     generalOptionsTitle: "Allgemeine Optionen",
     keyCapture: "Tastendr\xFCcke erfassen",
@@ -10021,6 +10130,9 @@ var REMOTE_CARD_STRINGS_DE = {
     visibleRows: "Sichtbare Zeilen",
     moveGroupUp: (groupLabel) => `${groupLabel} nach oben verschieben`,
     moveGroupDown: (groupLabel) => `${groupLabel} nach unten verschieben`,
+    fewerVisibleRows: "Weniger sichtbare Zeilen",
+    moreVisibleRows: "Mehr sichtbare Zeilen",
+    reorderGroupHandle: (groupLabel) => `${groupLabel} verschieben (Pfeiltasten)`,
     macros: "Makros",
     favorites: "Favoriten",
     volume: "Lautst\xE4rke",
@@ -10126,6 +10238,9 @@ var REMOTE_CARD_STRINGS_ES = {
     switchToActivityMode: "Cambiar al modo de actividad",
     deviceKeymapMissing: "Los comandos de este dispositivo a\xFAn no est\xE1n en cach\xE9. Actualiza el dispositivo en la pesta\xF1a Hub del Panel de control Sofabaton y vuelve a cargar el panel de Home Assistant.",
     deviceKeymapError: "No se pudieron cargar los comandos de este dispositivo.",
+    deviceKeymapMissingServer: "Este dispositivo no est\xE1 en el cat\xE1logo del hub. Actualiza el hub en el panel de control de Sofabaton y vuelve a cargar esta p\xE1gina.",
+    serverReadFailed: "No se pudieron cargar los datos del hub desde el servidor. Comprueba la conexi\xF3n y vuelve a intentarlo.",
+    controlRefused: "No se pudo completar el comando. Vuelve a intentarlo.",
     poweredOff: "Apagado",
     defaultLayout: "Dise\xF1o predeterminado de actividades",
     activityFallback: (id) => `Actividad ${id}`,
@@ -10135,7 +10250,6 @@ var REMOTE_CARD_STRINGS_ES = {
   },
   assist: {
     label: "Captura de botones",
-    start: "Iniciar",
     waiting: "Esperando a que se pulse un bot\xF3n",
     exitEditMode: "Sal del modo de edici\xF3n para comenzar",
     captured: (label) => `Capturado: ${label}`,
@@ -10184,18 +10298,8 @@ var REMOTE_CARD_STRINGS_ES = {
       theme: "Aplicar un tema a la tarjeta",
       use_background_override: "Personalizar el color de fondo",
       background_override: "Seleccionar el color de fondo",
-      show_activity: "Selector de actividad/dispositivo",
-      show_dpad: "Control direccional",
-      show_nav: "Botones Atr\xE1s/Inicio/Men\xFA",
-      show_mid: "Controles de volumen y canal",
-      show_media: "Reproducci\xF3n",
-      show_colors: "Rojo/Verde/Amarillo/Azul",
-      show_abc: "Botones A/B/C",
-      show_macros_button: "Bot\xF3n de macros",
-      show_favorites_button: "Bot\xF3n de favoritos",
       max_width: "Ancho m\xE1ximo de la tarjeta (px)",
-      key_style: "Estilo de los botones",
-      group_order: "Orden de los grupos"
+      key_style: "Estilo de los botones"
     },
     generalOptionsTitle: "Opciones generales",
     keyCapture: "Captura de botones",
@@ -10231,6 +10335,9 @@ var REMOTE_CARD_STRINGS_ES = {
     visibleRows: "Filas visibles",
     moveGroupUp: (groupLabel) => `Mover ${groupLabel} hacia arriba`,
     moveGroupDown: (groupLabel) => `Mover ${groupLabel} hacia abajo`,
+    fewerVisibleRows: "Menos filas visibles",
+    moreVisibleRows: "M\xE1s filas visibles",
+    reorderGroupHandle: (groupLabel) => `Reordenar ${groupLabel} (teclas de flecha)`,
     macros: "Macros",
     favorites: "Favoritos",
     volume: "Volumen",
@@ -10336,6 +10443,9 @@ var REMOTE_CARD_STRINGS_FR = {
     switchToActivityMode: "Passer en mode activit\xE9",
     deviceKeymapMissing: "Les commandes de cet appareil ne sont pas encore en cache. Actualisez l\u2019appareil dans l\u2019onglet Hub du Panneau de contr\xF4le Sofabaton, puis rechargez le tableau de bord.",
     deviceKeymapError: "Impossible de charger les commandes de cet appareil.",
+    deviceKeymapMissingServer: "Cet appareil ne figure pas dans le catalogue du hub. Actualisez le hub dans le panneau de contr\xF4le Sofabaton, puis rechargez cette page.",
+    serverReadFailed: "Impossible de charger les donn\xE9es du hub depuis le serveur. V\xE9rifiez la connexion, puis r\xE9essayez.",
+    controlRefused: "La commande n\u2019a pas pu \xEAtre ex\xE9cut\xE9e. R\xE9essayez.",
     poweredOff: "\xC9teinte",
     defaultLayout: "Disposition par d\xE9faut des activit\xE9s",
     activityFallback: (id) => `Activit\xE9 ${id}`,
@@ -10345,7 +10455,6 @@ var REMOTE_CARD_STRINGS_FR = {
   },
   assist: {
     label: "Capture de touches",
-    start: "D\xE9marrer",
     waiting: "En attente d\u2019une pression sur une touche",
     exitEditMode: "Quittez le mode d\u2019\xE9dition pour commencer",
     captured: (label) => `Capture\xA0: ${label}`,
@@ -10394,18 +10503,8 @@ var REMOTE_CARD_STRINGS_FR = {
       theme: "Appliquer un th\xE8me \xE0 la carte",
       use_background_override: "Personnaliser la couleur d\u2019arri\xE8re-plan",
       background_override: "S\xE9lectionner la couleur d\u2019arri\xE8re-plan",
-      show_activity: "S\xE9lecteur d\u2019activit\xE9/appareil",
-      show_dpad: "Pav\xE9 directionnel",
-      show_nav: "Touches Retour/Accueil/Menu",
-      show_mid: "Touches de volume et de cha\xEEne",
-      show_media: "Lecture",
-      show_colors: "Rouge/Vert/Jaune/Bleu",
-      show_abc: "Touches A/B/C",
-      show_macros_button: "Bouton des macros",
-      show_favorites_button: "Bouton des favoris",
       max_width: "Largeur maximale de la carte (px)",
-      key_style: "Style des touches",
-      group_order: "Ordre des groupes"
+      key_style: "Style des touches"
     },
     generalOptionsTitle: "Options g\xE9n\xE9rales",
     keyCapture: "Capture de touches",
@@ -10441,6 +10540,9 @@ var REMOTE_CARD_STRINGS_FR = {
     visibleRows: "Lignes visibles",
     moveGroupUp: (groupLabel) => `D\xE9placer ${groupLabel} vers le haut`,
     moveGroupDown: (groupLabel) => `D\xE9placer ${groupLabel} vers le bas`,
+    fewerVisibleRows: "Moins de lignes visibles",
+    moreVisibleRows: "Plus de lignes visibles",
+    reorderGroupHandle: (groupLabel) => `R\xE9ordonner ${groupLabel} (touches fl\xE9ch\xE9es)`,
     macros: "Macros",
     favorites: "Favoris",
     volume: "Volume",
@@ -10545,6 +10647,9 @@ var REMOTE_CARD_STRINGS_NL = {
     switchToActivityMode: "Naar activiteitsmodus schakelen",
     deviceKeymapMissing: "De commando's van dit apparaat zijn nog niet gecachet. Vernieuw het apparaat op het tabblad Hub van het Sofabaton-bedieningspaneel en laad daarna het dashboard opnieuw.",
     deviceKeymapError: "Kan de commando's van dit apparaat niet laden.",
+    deviceKeymapMissingServer: "Dit apparaat staat niet in de catalogus van de hub. Vernieuw de hub in het Sofabaton-bedieningspaneel en laad deze pagina daarna opnieuw.",
+    serverReadFailed: "De hubgegevens konden niet van de server worden geladen. Controleer de verbinding en probeer het opnieuw.",
+    controlRefused: "Het commando kon niet worden uitgevoerd. Probeer het opnieuw.",
     poweredOff: "Uitgeschakeld",
     defaultLayout: "Standaardindeling voor activiteiten",
     activityFallback: (id) => `Activiteit ${id}`,
@@ -10554,7 +10659,6 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   assist: {
     label: "Knopdrukken registreren",
-    start: "Starten",
     waiting: "Wachten op een knopdruk",
     exitEditMode: "Verlaat de bewerkingsmodus om te beginnen",
     captured: (label) => `Vastgelegd: ${label}`,
@@ -10603,18 +10707,8 @@ var REMOTE_CARD_STRINGS_NL = {
       theme: "Pas een thema toe op de kaart",
       use_background_override: "Achtergrondkleur aanpassen",
       background_override: "Kies een achtergrondkleur",
-      show_activity: "Activiteits-/apparaatkiezer",
-      show_dpad: "Richtingsknoppen",
-      show_nav: "Terug/Home/Menu-knoppen",
-      show_mid: "Volume-/kanaalknoppen",
-      show_media: "Afspelen",
-      show_colors: "Rood/groen/geel/blauw",
-      show_abc: "A/B/C-knoppen",
-      show_macros_button: "Macroknop",
-      show_favorites_button: "Favorietenknop",
       max_width: "Maximale kaartbreedte (px)",
-      key_style: "Knopstijl",
-      group_order: "Groepsvolgorde"
+      key_style: "Knopstijl"
     },
     generalOptionsTitle: "Algemene opties",
     keyCapture: "Knopdrukken registreren",
@@ -10650,6 +10744,9 @@ var REMOTE_CARD_STRINGS_NL = {
     visibleRows: "Zichtbare rijen",
     moveGroupUp: (groupLabel) => `Verplaats ${groupLabel} omhoog`,
     moveGroupDown: (groupLabel) => `Verplaats ${groupLabel} omlaag`,
+    fewerVisibleRows: "Minder zichtbare rijen",
+    moreVisibleRows: "Meer zichtbare rijen",
+    reorderGroupHandle: (groupLabel) => `${groupLabel} verplaatsen (pijltjestoetsen)`,
     macros: "Macro's",
     favorites: "Favorieten",
     volume: "Volume",
@@ -10754,6 +10851,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     switchToActivityMode: "\u5207\u6362\u5230\u6D3B\u52A8\u6A21\u5F0F",
     deviceKeymapMissing: "\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u5C1A\u672A\u7F13\u5B58\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u7684 Hub \u6807\u7B7E\u9875\u4E2D\u5237\u65B0\u6B64\u8BBE\u5907\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u4EEA\u8868\u677F\u3002",
     deviceKeymapError: "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u8BBE\u5907\u7684\u547D\u4EE4\u3002",
+    deviceKeymapMissingServer: "\u6B64\u8BBE\u5907\u4E0D\u5728 Hub \u7684\u76EE\u5F55\u4E2D\u3002\u8BF7\u5728 Sofabaton \u63A7\u5236\u9762\u677F\u4E2D\u5237\u65B0 Hub\uFF0C\u7136\u540E\u91CD\u65B0\u52A0\u8F7D\u6B64\u9875\u9762\u3002",
+    serverReadFailed: "\u65E0\u6CD5\u4ECE\u670D\u52A1\u5668\u52A0\u8F7D Hub \u6570\u636E\u3002\u8BF7\u68C0\u67E5\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002",
+    controlRefused: "\u65E0\u6CD5\u5B8C\u6210\u8BE5\u547D\u4EE4\u3002\u8BF7\u91CD\u8BD5\u3002",
     poweredOff: "\u5DF2\u5173\u673A",
     defaultLayout: "\u9ED8\u8BA4\u6D3B\u52A8\u5E03\u5C40",
     activityFallback: (id) => `\u6D3B\u52A8 ${id}`,
@@ -10763,7 +10863,6 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",
-    start: "\u5F00\u59CB",
     waiting: "\u7B49\u5F85\u6309\u952E",
     exitEditMode: "\u9000\u51FA\u7F16\u8F91\u6A21\u5F0F\u540E\u5373\u53EF\u5F00\u59CB",
     captured: (label) => `\u5DF2\u6355\u83B7\uFF1A${label}`,
@@ -10812,18 +10911,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
       theme: "\u4E3A\u5361\u7247\u5E94\u7528\u4E3B\u9898",
       use_background_override: "\u81EA\u5B9A\u4E49\u80CC\u666F\u989C\u8272",
       background_override: "\u9009\u62E9\u80CC\u666F\u989C\u8272",
-      show_activity: "\u6D3B\u52A8/\u8BBE\u5907\u9009\u62E9\u5668",
-      show_dpad: "\u65B9\u5411\u952E",
-      show_nav: "\u8FD4\u56DE/\u4E3B\u9875/\u83DC\u5355\u952E",
-      show_mid: "\u97F3\u91CF/\u9891\u9053\u8C03\u8282\u952E",
-      show_media: "\u64AD\u653E",
-      show_colors: "\u7EA2/\u7EFF/\u9EC4/\u84DD",
-      show_abc: "A/B/C \u6309\u952E",
-      show_macros_button: "\u5B8F\u6309\u94AE",
-      show_favorites_button: "\u6536\u85CF\u6309\u94AE",
       max_width: "\u5361\u7247\u6700\u5927\u5BBD\u5EA6\uFF08px\uFF09",
-      key_style: "\u6309\u952E\u6837\u5F0F",
-      group_order: "\u5206\u7EC4\u987A\u5E8F"
+      key_style: "\u6309\u952E\u6837\u5F0F"
     },
     generalOptionsTitle: "\u5E38\u89C4\u9009\u9879",
     keyCapture: "\u6309\u952E\u6355\u83B7",
@@ -10859,6 +10948,9 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     visibleRows: "\u53EF\u89C1\u884C",
     moveGroupUp: (groupLabel) => `\u5C06${groupLabel}\u4E0A\u79FB`,
     moveGroupDown: (groupLabel) => `\u5C06${groupLabel}\u4E0B\u79FB`,
+    fewerVisibleRows: "\u51CF\u5C11\u53EF\u89C1\u884C\u6570",
+    moreVisibleRows: "\u589E\u52A0\u53EF\u89C1\u884C\u6570",
+    reorderGroupHandle: (groupLabel) => `\u8C03\u6574${groupLabel}\u7684\u987A\u5E8F\uFF08\u65B9\u5411\u952E\uFF09`,
     macros: "\u5B8F",
     favorites: "\u6536\u85CF",
     volume: "\u97F3\u91CF",
@@ -10936,7 +11028,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     num8: "8",
     num9: "9",
     numdash: "-",
-    numenter: "\u786E\u5B9A"
+    numenter: "\u786E\u8BA4 (E)"
   }
 };
 registerRemoteCardTranslation("zh-hans", REMOTE_CARD_STRINGS_ZH_HANS);
@@ -11047,7 +11139,7 @@ var SofabatonRemoteWeb = class extends HTMLElement {
   _syncBanner() {
     const banner = this._shadow.getElementById("banner");
     if (!banner || !this._backend) return;
-    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError);
+    const text = unavailableBannerText(this._backend.snapshot(), this._backend.lastError, this._backend.controlRefused);
     if (text === this._lastBanner) return;
     this._lastBanner = text;
     banner.hidden = !text;

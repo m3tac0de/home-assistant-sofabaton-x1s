@@ -29,10 +29,16 @@ export function renderBottomDock(params: {
   press: PressEvent | null;
   docLink: DockLink | null;
   onDismiss: () => void;
+  onShowDetails?: (label: string, detail: string) => void;
   onResume: (applyId: string) => void;
   onDiscard: (applyId: string) => void;
   onKeepDraft: () => void;
   onDiscardDraft: () => void;
+  /** A Discard that is waiting for its inline Yes/Keep (never a native
+   *  confirm(): it answers "cancel" wherever dialogs are suppressed, L-S5). */
+  confirming?: "apply" | "draft" | null;
+  onConfirmDiscard?: () => void;
+  onCancelDiscard?: () => void;
 }): TemplateResult {
   const { model, message } = params;
   let tone = "";
@@ -40,17 +46,24 @@ export function renderBottomDock(params: {
   let actions: TemplateResult | typeof nothing = nothing;
   // The one-line status, with the whole text in its title for when the row cuts it.
   const status = (text: string, id = "dock-status") => html`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const confirmActions = html`
+    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
+    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
   if (model.kind === "running") {
     tone = "dock--running";
     center = status(model.text);
-  } else if (message) {
+  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
     tone = message.ok ? "dock--message" : "dock--error";
     center = status(message.text, "hubs-msg");
   } else if (model.kind === "notice") {
     const notice = model.notice;
     tone = `dock--${notice.tone}`;
-    const full = notice.detail ? `${notice.label} · ${notice.detail}` : notice.label;
-    const body = html`${notice.label}${notice.detail ? html`<span class="dock-detail"> · ${notice.detail}</span>` : nothing}`;
+    const full = notice.label;
+    const body = html`${notice.label}`;
+    if (notice.detail && params.onShowDetails) {
+      actions = html`<button class="small dock-action" id="dock-details" type="button"
+        @click=${() => params.onShowDetails?.(notice.label, notice.detail!)}>Details</button>`;
+    }
     center = notice.sticky
       ? html`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
           @click=${params.onDismiss}
@@ -61,6 +74,14 @@ export function renderBottomDock(params: {
             }
           }}>${body}</span>`
       : html`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
+  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
+    tone = "dock--warn";
+    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
+    actions = confirmActions;
+  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+    tone = "dock--warn";
+    center = status("Discard your unsaved changes? The hub is not changed.");
+    actions = confirmActions;
   } else if (model.kind === "apply_stopped") {
     tone = "dock--warn";
     center = status(model.text);

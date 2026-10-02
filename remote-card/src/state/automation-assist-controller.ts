@@ -1,11 +1,8 @@
 // Automation Assist controller: the key-capture + MQTT trigger-discovery
-// subsystem extracted from the legacy card class (~980 lines of card methods,
-// now DOM-free). The host interface supplies hass/config/hub-queue context;
-// onChange() replaces the legacy _updateAutomationAssistUI/_updateAutomation-
-// AssistModalUI calls — the Lit card re-renders from the controller's state.
-//
-// Cleanup vs legacy (noted in the refactor plan): disconnected() actually
-// unsubscribes the MQTT listener — the legacy card leaked it on disconnect.
+// subsystem, DOM-free. The host interface supplies hass/config/hub-queue
+// context; onChange() asks the Lit card to re-render from the controller's
+// state. disconnected() unsubscribes the MQTT listener, including one still
+// waiting for HA's ack.
 
 import {
   automationAssistButtonYaml,
@@ -123,6 +120,11 @@ export class AutomationAssistController {
   private hubMacDetecting = false;
   private mqttUnsub: (() => unknown) | null = null;
   private mqttTopic: string | null = null;
+  // The current subscription, set BEFORE subscribeMessage resolves (HA acks
+  // it a round trip later). A render in that window must not subscribe
+  // again, and a subscription that resolves after being superseded is
+  // cancelled on arrival and never delivers (CR-F4a-2).
+  private mqttToken: symbol | null = null;
   private mqttLookupId = 0;
   private mqttDeviceNames = new Map<string, string | null>();
   private mqttDeviceCommands = new Map<string, Map<number, string> | null>();
@@ -133,7 +135,6 @@ export class AutomationAssistController {
   // Activity-change baseline (drives capture of activity switches)
   private lastActivityLabel: string | null = null;
   private lastActivityId: number | null = null;
-  private lastPoweredOff: boolean | null = null;
 
   constructor(host: AutomationAssistHost) {
     this.host = host;
@@ -175,13 +176,11 @@ export class AutomationAssistController {
     this.lastActivityId = Number.isFinite(Number(currentId))
       ? Number(currentId)
       : null;
-    this.lastPoweredOff = isPoweredOffLabel(currentLabel);
   }
 
   resetActivityBaseline(): void {
     this.lastActivityLabel = null;
     this.lastActivityId = null;
-    this.lastPoweredOff = null;
   }
 
   setActive(active: boolean): void {
@@ -357,7 +356,6 @@ export class AutomationAssistController {
     } else {
       this.lastActivityLabel = current;
       this.lastActivityId = params.activityId;
-      this.lastPoweredOff = isPoweredOffLabel(current);
     }
   }
 
@@ -586,7 +584,7 @@ export class AutomationAssistController {
     if (!mac) return;
 
     const topic = `${mac}/up`;
-    if (this.mqttTopic === topic && this.mqttUnsub) return;
+    if (this.mqttTopic === topic && this.mqttToken) return;
 
     this.unsubscribeMqtt();
 
@@ -594,20 +592,28 @@ export class AutomationAssistController {
     if (!hass?.connection?.subscribeMessage) return;
 
     this.mqttTopic = topic;
+    const token = Symbol("mqtt-subscription");
+    this.mqttToken = token;
     hass.connection
-      .subscribeMessage((msg: MqttMessageLike) => this.handleMqtt(msg), {
+      .subscribeMessage((msg: MqttMessageLike) => {
+        if (this.mqttToken === token) this.handleMqtt(msg);
+      }, {
         type: "mqtt/subscribe",
         topic,
       })
       .then((unsub) => {
-        this.mqttUnsub = unsub;
+        if (this.mqttToken === token) this.mqttUnsub = unsub;
+        else this.safeUnsubscribe(unsub);
       })
       .catch(() => {
-        this.mqttUnsub = null;
+        if (this.mqttToken !== token) return;
+        this.mqttToken = null;
+        this.mqttTopic = null;
       });
   }
 
   unsubscribeMqtt(): void {
+    this.mqttToken = null;
     if (this.mqttUnsub) {
       const unsubscribe = this.mqttUnsub;
       this.mqttUnsub = null;

@@ -47,6 +47,7 @@ exists (``command_rename``, ``member_replay``, ``favorite_add/delete``,
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
@@ -55,6 +56,7 @@ from .activity_sync import (
     POWER_ON_MACRO_BUTTON_ID,
     POWER_OFF_MACRO_BUTTON_ID,
     SyncStep,
+    build_activity_sync_plan,
 )
 
 __all__ = [
@@ -62,16 +64,34 @@ __all__ = [
     "WifiActivityRefs",
     "ManagedWifiSnapshot",
     "WifiInplacePlan",
+    "LiveSlotClassification",
+    "COMMAND_RECORD_STEP_KINDS",
+    "REFERENCED_RECORD_STEP_KINDS",
     "build_wifi_inplace_plan",
+    "classify_live_slots",
     "derive_device_level_bindings",
     "desired_snapshot_from_config",
     "baseline_snapshot_from_bundle",
+    "clone_wifi_record_for_add",
+    "retarget_long_record_refs",
+    "wifi_events_retarget_steps",
 ]
 
 # Deploy constants (mirror hub.py's _WIFI_COMMAND_SLOT_COUNT / long offset —
 # kept local so this module stays pure and import-light).
 WIFI_COMMAND_SLOT_COUNT = 10
 WIFI_COMMAND_LONG_PRESS_OFFSET = 10
+
+# Step kinds that write the device's command table: its commands are read
+# back after any of them.
+COMMAND_RECORD_STEP_KINDS = frozenset(
+    {"command_add", "command_rename", "command_payload", "command_delete"}
+)
+# The ones that change or remove a record something else may name. Every
+# activity naming the device holds resolved copies of those records (labels,
+# codes, the rows a delete cascades into), so those activities are read back
+# too. A command_add is left out: nothing references a command that is new.
+REFERENCED_RECORD_STEP_KINDS = frozenset({"command_rename", "command_payload", "command_delete"})
 
 
 @dataclass(frozen=True)
@@ -170,6 +190,53 @@ class WifiInplacePlan:
     @property
     def is_fallback(self) -> bool:
         return self.fallback_reason is not None
+
+
+@dataclass(frozen=True)
+class LiveSlotClassification:
+    """How the live command records compare with the last deploy.
+
+    ``drift``: records matching neither the deployed nor the desired label
+    (a foreign edit, e.g. the Sofabaton app). ``resumed``: records already
+    matching the desired label (an interrupted run of our own; the planner
+    diffs against the live read, so re-running resumes it). ``missing``:
+    deployed records absent on the hub. Each caller sets its own policy for
+    ``missing`` (the HA path lets the planner re-add them).
+    """
+
+    drift: tuple[int, ...]
+    resumed: tuple[int, ...]
+    missing: tuple[int, ...]
+
+
+def classify_live_slots(
+    live_slots: Mapping[int, WifiCommandSlot],
+    expected_labels: Mapping[int, str],
+    desired_slots: Mapping[int, WifiCommandSlot],
+    *,
+    label_key: Callable[[str], str],
+) -> LiveSlotClassification:
+    """Classify every live record against the deployed expansion.
+
+    Labels are compared through ``label_key`` (how the hub stores them: a
+    "<20-char name> Long Press" label reads back cut to the slot and is not
+    drift).
+    """
+
+    drift: list[int] = []
+    resumed: list[int] = []
+    for cid, slot in live_slots.items():
+        live = label_key(slot.label)
+        expected = expected_labels.get(cid)
+        if expected is not None and label_key(expected) == live:
+            continue
+        desired = desired_slots.get(cid)
+        if desired is not None and label_key(desired.label) == live:
+            resumed.append(cid)
+            continue
+        drift.append(cid)
+    missing = sorted(cid for cid in expected_labels if cid not in live_slots)
+    return LiveSlotClassification(tuple(sorted(drift)), tuple(sorted(resumed)), tuple(missing))
 
 
 def _fallback(reason: str) -> WifiInplacePlan:
@@ -325,7 +392,7 @@ def build_wifi_inplace_plan(
         )
 
     # ── 3b. device-page key bindings (role-group capability rows) ────────
-    # Same keymap primitives as activity bindings — the KeyToKey table is
+    # Same keymap primitives as activity bindings — the binding table is
     # uniform, addressed here with the device's own id. Ownership follows
     # the same rule: desired keys are written over whatever is live, only
     # keys WE deployed are cleaned up, foreign device-page rows survive.
@@ -619,6 +686,7 @@ def desired_snapshot_from_config(
     hard_button_codes: Mapping[str, int],
     slot_count: int = WIFI_COMMAND_SLOT_COUNT,
     long_press_offset: int = WIFI_COMMAND_LONG_PRESS_OFFSET,
+    long_records: bool = True,
 ) -> ManagedWifiSnapshot:
     """Store command-config payload → desired :class:`ManagedWifiSnapshot`.
 
@@ -636,6 +704,10 @@ def desired_snapshot_from_config(
       favorite or has a hard button (issue #258);
     * membership = activities referenced by favorites / hard buttons /
       input assignments.
+
+    ``long_records=False`` expands each slot to its short record only: the
+    Wifi Events layout, one record per event
+    (docs/internal/wifi-events-single-record-plan.md).
 
     ``hard_button_codes`` is the HA layer's name→code map (kept an argument
     so this module stays pure).
@@ -656,6 +728,8 @@ def desired_snapshot_from_config(
     for idx in range(len(commands)):
         short_id = idx + 1
         slots[short_id] = WifiCommandSlot(command_id=short_id, label=names[idx])
+        if not long_records:
+            continue
         long_id = idx + 1 + long_press_offset
         slots[long_id] = WifiCommandSlot(
             command_id=long_id, label=f"{names[idx]} Long Press", press_type="long"
@@ -853,3 +927,139 @@ def baseline_snapshot_from_bundle(
         device_bindings=device_bindings,
         target_host=str(dev_block.get("ip_address") or "") or None,
     )
+
+
+# ── Wifi Events long-record retirement ──────────────────────────────────
+#
+# docs/internal/wifi-events-single-record-plan.md §3.3. The Wifi Events
+# device used to carry a long record per event (short id + slot_count).
+# Deleting one the hub still references makes the hub cascade the
+# reference away silently, so every reference to a long record is moved
+# onto its event's record first.
+
+
+def _retarget(row: dict[str, Any], dev_key: str, cmd_key: str, device_id: int, slot_count: int) -> bool:
+    try:
+        dev = int(row[dev_key])
+        cmd = int(row[cmd_key])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if dev != device_id or not (slot_count < cmd <= 2 * slot_count):
+        return False
+    row[cmd_key] = cmd - slot_count
+    return True
+
+
+def retarget_long_record_refs(
+    activity: Mapping[str, Any],
+    *,
+    device_id: int,
+    slot_count: int,
+) -> tuple[dict[str, Any], bool]:
+    """Copy of one activity entry with every reference to a long record of
+    *device_id* (``slot_count < id <= 2 * slot_count``) moved to its short
+    record (``id - slot_count``). Returns ``(edited, changed)``.
+
+    Written over every reference site (favorites, both binding legs, macro
+    steps), although the card only ever bound long records as a binding's
+    long leg: the Sofabaton app may have used them anywhere.
+    """
+
+    edited = deepcopy(dict(activity))
+    changed = False
+    for fav in edited.get("favorite_slots") or []:
+        if isinstance(fav, dict):
+            changed |= _retarget(fav, "device_id", "command_id", device_id, slot_count)
+    for binding in edited.get("button_bindings") or []:
+        if isinstance(binding, dict):
+            changed |= _retarget(binding, "device_id", "command_id", device_id, slot_count)
+            changed |= _retarget(
+                binding, "long_press_device_id", "long_press_command_id", device_id, slot_count
+            )
+    for macro in edited.get("macros") or []:
+        if not isinstance(macro, dict):
+            continue
+        for step in macro.get("steps") or []:
+            if isinstance(step, dict):
+                changed |= _retarget(step, "device_id", "command_id", device_id, slot_count)
+    return edited, changed
+
+
+def wifi_events_retarget_steps(
+    activity_entries: Sequence[Mapping[str, Any]],
+    *,
+    device_id: int,
+    slot_count: int,
+) -> tuple[SyncStep, ...]:
+    """The activity writes that move long-record references onto their
+    events' records, for every activity in *activity_entries* (live
+    ``backup_activity`` reads). Empty when nothing references a long record.
+
+    Each activity is diffed by the activity sync planner against its own
+    retargeted copy, so the writes are exactly the ones the live activity
+    editor would issue. The per-activity remote sync is dropped: the caller
+    resyncs the remote once at the end of its batch. Raises ``ValueError``
+    when an activity cannot be planned; the caller must then write nothing.
+    """
+
+    steps: list[SyncStep] = []
+    for entry in activity_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        edited, changed = retarget_long_record_refs(
+            entry, device_id=device_id, slot_count=slot_count
+        )
+        if not changed:
+            continue
+        activity_id = int((entry.get("device") or {}).get("device_id") or 0)
+        plan = build_activity_sync_plan(
+            {"activities": [dict(entry)], "devices": []},
+            {"activities": [edited], "devices": []},
+            activity_id,
+        )
+        steps.extend(step for step in plan if step.kind != "remote_sync")
+    return tuple(steps)
+
+
+# ── Re-adding a missing command record ──────────────────────────────────
+#
+# A full-table deploy only adds a record the hub no longer has: one a
+# device-editor sync or a Wifi Event delete removed. The generic
+# ``command_add`` step writes record bytes from ``restore_data``; a
+# managed Wifi record is a sibling's record with its own callback, so the
+# bytes are a sibling's decoded block with the callback path swapped.
+
+
+def clone_wifi_record_for_add(
+    template: Mapping[str, Any],
+    *,
+    template_tail: str,
+    new_tail: str,
+    command_id: int,
+) -> dict[str, Any] | None:
+    """A ``command_add`` ``restore_data`` cloned from a sibling record.
+
+    *template* is the sibling's decoded block (``decoded`` of a blob
+    fetch). Path-bearing classes (``wifi_ip``, ``wifi_roku``) must end in
+    *template_tail*, the sibling's own launch path, which is replaced by
+    *new_tail*. A ``wifi_mqtt`` body is inert (the hub publishes its own
+    ids), so only its nominal command id follows. Returns ``None`` when the
+    template does not have the expected shape: the caller then writes
+    nothing rather than a record with someone else's callback.
+    """
+
+    decoded = deepcopy(dict(template))
+    fields = decoded.get("fields")
+    if not isinstance(fields, dict):
+        return None
+    if "path" in fields:
+        path = str(fields.get("path") or "")
+        if not template_tail or not path.endswith(template_tail):
+            return None
+        fields["path"] = path[: len(path) - len(template_tail)] + new_tail
+    elif "command_id" in fields:
+        fields["command_id"] = int(command_id) & 0xFF
+    else:
+        return None
+    decoded["edited"] = True
+    return {"decoded": decoded}

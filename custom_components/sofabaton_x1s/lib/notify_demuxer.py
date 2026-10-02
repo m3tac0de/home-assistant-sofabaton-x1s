@@ -52,13 +52,46 @@ def _route_local_ip(peer_ip: str) -> str:
             pass
 
 
+def _local_ipv4_networks() -> list[ipaddress.IPv4Network]:
+    """The IPv4 networks of this host's interfaces, most specific first.
+
+    ``ifaddr`` ships with zeroconf (the library's one dependency); without
+    it the caller falls back to assuming a /24.
+    """
+
+    try:
+        import ifaddr
+    except ImportError:
+        return []
+    networks: list[ipaddress.IPv4Network] = []
+    try:
+        for adapter in ifaddr.get_adapters():
+            for ip in adapter.ips:
+                if isinstance(ip.ip, str) and ip.network_prefix:
+                    networks.append(
+                        ipaddress.IPv4Network(f"{ip.ip}/{ip.network_prefix}", strict=False)
+                    )
+    except Exception:
+        return []
+    return sorted(networks, key=lambda net: net.prefixlen, reverse=True)
+
+
 def _broadcast_ip(peer_ip: str) -> str:
+    """The subnet broadcast address the app at ``peer_ip`` hears.
+
+    Taken from the netmask of the local interface on the app's subnet, as
+    the physical hub does: a /24 guess is an ordinary host address on a
+    /23 or /16 LAN, and off-subnet on a /25.
+    """
+
     try:
         addr = ipaddress.ip_address(peer_ip)
-        network = ipaddress.ip_network(f"{addr}/24", strict=False)
-        return str(network.broadcast_address)
     except ValueError:
         return "255.255.255.255"
+    for network in _local_ipv4_networks():
+        if addr in network:
+            return str(network.broadcast_address)
+    return str(ipaddress.ip_network(f"{addr}/24", strict=False).broadcast_address)
 
 
 @dataclass(frozen=True)
@@ -218,13 +251,24 @@ class NotifyDemuxer:
         sock = self._sock
         if sock is None:
             return
+        last_error_log = 0.0
         while not self._stop_event.is_set():
             try:
                 pkt, (src_ip, src_port) = sock.recvfrom(2048)
             except socket.timeout:
                 continue
-            except OSError:
-                break
+            except OSError as exc:
+                # Only a closed socket ends the loop; a transient error
+                # (Windows reports an ICMP port-unreachable for an earlier
+                # send as WSAECONNRESET here) must not stop discovery.
+                if self._stop_event.is_set() or sock.fileno() == -1:
+                    break
+                now = time.monotonic()
+                if now - last_error_log >= 5.0:
+                    last_error_log = now
+                    log.warning("[DEMUX] receive failed, still listening: %s", exc)
+                time.sleep(0.1)
+                continue
 
             if pkt == NOTIFY_ME_PAYLOAD:
                 self._handle_notify_me(sock, pkt, src_ip, src_port)
@@ -245,7 +289,8 @@ class NotifyDemuxer:
         # Physical hubs use a variable-length UTF-8 name field. The byte after the
         # sync header is a length covering the 6-byte device-id tail, 9-byte version
         # block, and UTF-8 name bytes; it does not count the fixed leading 0xC2.
-        name_bytes = name[:30]
+        # 30 bytes, cut on a character boundary.
+        name_bytes = name[:30].decode("utf-8", "ignore").encode("utf-8")
         version_block = self._build_notify_version_block(reg)
         payload_len = (len(reg.device_id) - 1) + len(version_block) + len(name_bytes)
         frame = (
@@ -371,6 +416,16 @@ class NotifyDemuxer:
             for reg in registrations:
                 if reg.mac_bytes == mac_hint:
                     return reg
+            # The X1/X1S hint is the MAC's first five bytes plus a model
+            # suffix byte; the five MAC bytes alone still name the hub when
+            # the suffix disagrees with the model we classified.
+            for reg in registrations:
+                if any(reg.mac_bytes[:5]) and reg.mac_bytes[:5] == mac_hint[:5]:
+                    return reg
+            # A hint that matches nobody names another hub (one whose proxy
+            # was disabled, say); connecting the only registered proxy would
+            # show that hub under the wrong identity.
+            return None
 
         if len(registrations) == 1:
             return registrations[0]

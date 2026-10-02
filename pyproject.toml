@@ -32,6 +32,7 @@ classifiers = [
 ]
 dependencies = [
     "zeroconf>=0.131",
+    "ifaddr>=0.2",
 ]
 
 [project.urls]
@@ -50,8 +51,12 @@ sofabaton = "sofabaton.cli:main"
 path = "custom_components/sofabaton_x1s/lib/version.py"
 
 [tool.hatch.build.targets.wheel]
-# The in-tree package directory ships as top-level "sofabaton".
-[tool.hatch.build.targets.wheel.force-include]
+# The in-tree package directory ships as top-level "sofabaton". A sources
+# remap (not force-include) so the normal file selection applies: ignored
+# files such as a local version.py.bak or __pycache__ never ship (CR-R1-14).
+packages = ["custom_components/sofabaton_x1s/lib"]
+
+[tool.hatch.build.targets.wheel.sources]
 "custom_components/sofabaton_x1s/lib" = "sofabaton"
 
 [tool.hatch.build.targets.sdist]
@@ -62,3 +67,54 @@ include = [
     "sofabaton-x/examples/**",
     "LICENSE",
 ]
+
+# Code review program (docs/internal/code-review-plan.md, R0): report-only
+# static analysis. Not a CI gate yet; see the plan's section 13.
+[tool.ruff]
+target-version = "py311"
+extend-exclude = [
+    "IrScrutinizer", "scripts/hub-bench", "node_modules", "dist", "dist-bench",
+    "out", "artifacts", "test-results", ".venv*",
+]
+
+# The CI gate (R7, .github/workflows/python-lint.yml): rules that flag code
+# that is almost always wrong. The review's wider report adds style and
+# complexity rules and never gates:
+#   ruff check --extend-select BLE,S110,C901,PLR0912,PLR0915,SIM --exit-zero .
+[tool.ruff.lint]
+select = ["F", "E9", "PLE", "B", "ASYNC", "RUF006"]
+# ASYNC109 asks for asyncio.timeout() instead of a `timeout` parameter: an
+# API style, and the facade's public methods take `timeout` by design.
+ignore = ["ASYNC109"]
+
+[tool.ruff.lint.per-file-ignores]
+# Command-line tools own their event loop: a blocking open() or a polling
+# sleep there stalls nothing else.
+"custom_components/sofabaton_x1s/lib/cli.py" = ["ASYNC230"]
+"sofabaton-x/examples/*.py" = ["ASYNC110", "ASYNC230"]
+# Tests poll for a condition with short sleeps, and start helper tasks that
+# live only within the test's own awaits.
+"tests/**" = ["ASYNC110", "RUF006"]
+"sofabaton-x-server/tests/**" = ["RUF006"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares parameters through calls in the defaults.
+extend-immutable-calls = ["fastapi.Query", "fastapi.Header", "fastapi.Body", "fastapi.Depends"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.pyright]
+include = [
+    "custom_components/sofabaton_x1s/lib",
+    "sofabaton-x-server/src",
+]
+typeCheckingMode = "basic"
+# The mixins subclass _ProxyHost for the type checker (CR-L3a-17): these
+# make a drifted member an error at its definition.
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+pythonVersion = "3.11"
+pythonPlatform = "Linux"
+venvPath = "."
+venv = ".venv-py313"

@@ -89,6 +89,10 @@ export const cardStyles = [secondaryTabStyles, css`
     color: var(--primary-text-color);
   }
   *, *::before, *::after { box-sizing: border-box; }
+  /* fill_height (the sidebar panel host): the card is as tall as its
+     container; .card-inner gets height:100% inline from the card. */
+  :host([fill-height]) { height: 100%; }
+  :host([fill-height]) ha-card { height: 100%; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
   .card-topbar {
     position: relative;
@@ -199,11 +203,13 @@ export const cardStyles = [secondaryTabStyles, css`
   .card-bottom-dock-status {
     color: var(--secondary-text-color);
   }
+  /* The tone mixed into the theme's text colour, like the pills and the dirty
+     state: mixed with black it fell below 4.5:1 on HA's own themes (CR-F1-10). */
   .card-bottom-dock--success .card-bottom-dock-status {
-    color: color-mix(in srgb, var(--success-color, #22c55e) 88%, black 10%);
+    color: color-mix(in srgb, var(--success-color, #22c55e) 35%, var(--primary-text-color));
   }
   .card-bottom-dock--error .card-bottom-dock-status {
-    color: color-mix(in srgb, var(--error-color, #db4437) 88%, black 10%);
+    color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--primary-text-color));
   }
   .card-bottom-dock--dirty .card-bottom-dock-status {
     color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
@@ -305,7 +311,7 @@ export const cardStyles = [secondaryTabStyles, css`
     }
   }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
-  .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
+  .tab-panel.scrollable, .logs-console { overflow-y: auto; }
   .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-start; }
   .card-topbar > .hub-picker { flex: 0 0 auto; align-items: flex-end; margin-left: 2px; }
   .hub-picker-btn { display: inline-flex; align-items: center; gap: 6px; max-width: min(100%, 420px); min-height: 24px; border: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent); border-radius: 999px; padding: 0 10px 0 9px; background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 80%, var(--primary-color) 6%); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; transition: border-color 120ms ease, background 120ms ease; }
@@ -342,7 +348,7 @@ export const cardStyles = [secondaryTabStyles, css`
     display: flex;
     flex-direction: column;
   }
-  .logs-header, .hub-hero { display: grid; }
+  .logs-header { display: grid; }
   .logs-header { gap: 4px; }
   .logs-title-row { display: flex; align-items: center; gap: 10px; }
   .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
@@ -358,39 +364,9 @@ export const cardStyles = [secondaryTabStyles, css`
   .log-line-level--warning { color: #ffcf70; }
   .log-line-level--error, .log-line-level--critical { color: #ff8d8d; }
   .log-line-msg { color: #e7edf6; }
-  .hub-hero { gap: 10px; padding: 2px 0 0; }
-  .hub-ident-name { font-size: 18px; line-height: 1.1; font-weight: 800; letter-spacing: -0.02em; color: var(--primary-text-color); }
-  .hub-connection-strip { display: grid; grid-template-columns: auto minmax(26px, 1fr) auto minmax(26px, 1fr) auto; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 4px); background: radial-gradient(circle at top center, color-mix(in srgb, var(--primary-color) 8%, transparent), transparent 55%), linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, transparent), color-mix(in srgb, var(--card-background-color, #fff) 86%, transparent)); overflow: hidden; }
-  .hub-connection-node { position: relative; width: 54px; height: 54px; display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); background: color-mix(in srgb, var(--card-background-color, #fff) 94%, transparent); color: color-mix(in srgb, var(--primary-text-color) 34%, var(--secondary-text-color)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease; }
-  .hub-connection-node.is-active { color: color-mix(in srgb, var(--primary-color) 72%, white 10%); border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color)); background: color-mix(in srgb, var(--primary-color) 10%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 12%, transparent), 0 0 18px color-mix(in srgb, var(--primary-color) 14%, transparent); }
-  .hub-connection-node.is-bridged { color: color-mix(in srgb, #67b7ff 75%, white 10%); border-color: color-mix(in srgb, #67b7ff 45%, var(--divider-color)); background: color-mix(in srgb, #67b7ff 11%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, #67b7ff 12%, transparent), 0 0 18px color-mix(in srgb, #67b7ff 16%, transparent); }
-  .hub-connection-node.is-active .hub-connection-node-icon { animation: hubNodePulse 2.8s ease-in-out infinite; }
-  .hub-connection-node-icon { display: inline-flex; align-items: center; justify-content: center; }
-  .hub-connection-node-icon--hub { width: 33px; height: 33px; }
-  .hub-connection-node-icon--mdi ha-icon { --mdc-icon-size: 24px; }
-  .hub-connection-link { position: relative; height: 12px; display: flex; align-items: center; }
-  .hub-connection-link-line { position: relative; width: 100%; height: 2px; border-radius: 999px; background: color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); overflow: hidden; }
-  .hub-connection-link-line::after { content: ""; position: absolute; inset: 0 auto 0 -35%; width: 35%; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-color) 45%, white 10%), transparent); opacity: 0; }
-  .hub-connection-link.is-active .hub-connection-link-line { background: color-mix(in srgb, var(--primary-color) 28%, var(--divider-color)); box-shadow: 0 0 8px color-mix(in srgb, var(--primary-color) 14%, transparent); }
-  .hub-connection-link.is-active .hub-connection-link-line::after { opacity: 0.9; animation: hubSignalTravel 2.4s ease-in-out infinite alternate; }
-  @keyframes hubSignalTravel { from { transform: translateX(0); } to { transform: translateX(380%); } }
-  @keyframes hubNodePulse { 0%, 100% { transform: scale(1); opacity: 0.96; } 50% { transform: scale(1.03); opacity: 1; } }
-  .hub-hero-icon { width: 33px; height: 33px; display: block; }
-  .hub-badges { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 4px; }
-  .hub-conn-badge, .hub-proxy-badge { display: inline-flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 14px 0 12px; border-radius: 999px; border: 1px solid var(--divider-color); font-size: 13px; font-weight: 700; }
-  .hub-conn-badge::before, .hub-proxy-badge::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
-  .hub-conn-badge--on { color: #48b851; border-color: color-mix(in srgb, #48b851 45%, var(--divider-color)); }
-  .hub-proxy-badge--on { color: #67b7ff; border-color: color-mix(in srgb, #67b7ff 42%, var(--divider-color)); }
-  .hub-info-list { border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 4px); overflow: hidden; }
-  .hub-row { min-height: 50px; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 0 14px; border-top: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); }
-  .hub-row:first-child { border-top: none; }
-  .hub-row-icon-svg { width: 22px; height: 22px; }
-  .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
-  .hub-row-label { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
-  .hub-row-value { font-size: 12px; font-weight: 700; text-align: right; word-break: break-word; }
+  .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .hub-tab-layout > .tab-panel { flex: 1; }
-  .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
   .bottom-dock-status { width: 100%; display: flex; align-items: stretch; justify-content: center; }
   .card-bottom-dock-right {
     position: absolute;
@@ -467,7 +443,6 @@ export const cardStyles = [secondaryTabStyles, css`
     font-size: 13px;
     line-height: 1.6;
   }
-  .dock-status-value { font-weight: 700; font-family: "SF Mono", "Fira Code", Consolas, monospace; }
   .settings-list { border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 4px); overflow: hidden; }
   .setting-tile { min-height: 52px; display: flex; flex-direction: row; align-items: center; gap: 16px; padding: 12px 16px; background: var(--ha-card-background, var(--card-background-color, #fff)); border-top: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); }
   .setting-tile:first-child { border-top: none; }
@@ -475,6 +450,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .setting-tile.toggle:hover, .setting-tile.action:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color, #fff))); }
   .setting-tile.toggle:active, .setting-tile.action:active, .setting-tile.pressed { background: color-mix(in srgb, var(--primary-color) 12%, var(--ha-card-background, var(--card-background-color, #fff))); }
   .setting-tile.disabled { opacity: 0.55; cursor: default; }
+  .setting-tile[role="button"]:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
   .setting-tile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .setting-tile-control { flex-shrink: 0; display: flex; align-items: center; }
   .setting-title { font-size: 14px; font-weight: 700; color: var(--primary-text-color); display: flex; align-items: center; gap: 7px; }
@@ -494,14 +470,6 @@ export const cardStyles = [secondaryTabStyles, css`
   .cache-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
   .cache-panel .secondary-view-shell,
   .cache-panel .secondary-tab-panel { min-width: 0; }
-  .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
-  .accordion-section:first-child { border-top: none; }
-  .accordion-section.open { flex: 1; }
-  .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
-  .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
-  .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; transition: color 120ms ease; }
-  .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-  .accordion-section.open .acc-header-icon { color: var(--primary-color); }
   .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
   .badge, .id-badge { border: 1px solid var(--divider-color); border-radius: 999px; }
   .badge { font-size: 11px; padding: 1px 7px; }
@@ -513,8 +481,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .icon-btn.spinning ha-icon { animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .chevron, .entity-chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
-  .accordion-section.open .chevron, .entity-block.open .entity-chevron { transform: rotate(180deg); }
-  .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: grid; gap: 6px; align-content: start; }
+  .entity-block.open .entity-chevron { transform: rotate(180deg); }
   .entity-block { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color, var(--ha-card-background)); overflow-x: clip; transition: border-color 120ms ease; }
   .entity-block:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
   .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: var(--ha-card-border-radius, 12px); transition: background-color 120ms ease; }
@@ -617,6 +584,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
   .inner-row:hover { background: var(--sb-overlay-hover); }
   .inner-row--clickable { cursor: pointer; }
+  .entity-summary[role="button"]:focus-visible, .inner-row--clickable:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
   .inner-row--clickable:hover { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
   .inner-row--clickable:active { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
   .inner-label { font-size: 12px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -669,7 +637,10 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-badge--on { color: #67b7ff; }
   .hub-compact-badge--off { color: color-mix(in srgb, var(--secondary-text-color) 45%, transparent); }
   .hub-compact-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .hub-compact-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-rename-btn { width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0; }
+  .hub-rename-btn ha-icon { --mdc-icon-size: 15px; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
@@ -681,6 +652,52 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-stat-value { font-size: 17px; font-weight: 800; color: var(--primary-text-color); line-height: 1; }
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
+  /* The small modal dialog, as the backup editor draws it
+     (backup-tab-styles.ts): hosts that render inside the card's own shadow
+     root (the Settings tab's hub rename) get the same rules here. */
+  .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog.small { width: min(500px, calc(100vw - 36px)); }
+  .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+  .dialog-header { border-bottom: 1px solid var(--divider-color); }
+  .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
+  .dialog-close { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
+  .dialog-close:hover { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); }
+  .dialog-close:active { transform: translateY(1px); }
+  .dialog-close ha-icon { --mdc-icon-size: 16px; }
+  .dialog-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    --ha-color-form-background: var(
+      --sb-field-surface,
+      var(
+        --secondary-background-color,
+        color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
+      )
+    );
+    --ha-color-form-background-hover: var(--ha-color-form-background);
+  }
+  .dialog-body ha-input, .dialog-body ha-textfield { width: 100%; }
+  .dialog-field-helper { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); overflow-wrap: anywhere; }
+  .dialog-body ha-input { --ha-input-padding-top: 0; --ha-input-padding-bottom: 0; }
+  .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; flex-wrap: wrap; }
+  .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
+  .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--error-color, #db4437); }
+  .dialog-btn { border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  .dialog-btn:disabled, .dialog-close:disabled { opacity: 0.45; cursor: default; }
+  @container sofabaton-card (max-width: 480px) {
+    .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+    .dialog, .dialog.small { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: calc(var(--ha-card-border-radius, 12px) * 1.8) calc(var(--ha-card-border-radius, 12px) * 1.8) 0 0; }
+    .dialog-footer { flex-direction: column; align-items: stretch; }
+    .dialog-footer-actions { width: 100%; }
+    .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
+    .dialog-footer-note { min-height: 0; }
+  }
   @container sofabaton-card (max-width: 480px) {
     /* Pull the primary tabs together: the longer translated labels
        (Automatisierung, Automatisering, Sauvegarde) need the room more
@@ -694,10 +711,6 @@ export const cardStyles = [secondaryTabStyles, css`
        "DevID:" prefix costs more than it explains — keep the number. */
     .entity-meta .id-badge { min-width: 0; justify-content: center; }
     .entity-meta .id-badge span:first-child { display: none; }
-    .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
-    .hub-connection-node { width: 42px; height: 42px; border-radius: 14px; }
-    .hub-hero-icon { width: 25px; height: 25px; }
-    .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
     .card-topbar { padding: 4px 8px; gap: 6px; }

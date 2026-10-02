@@ -15,8 +15,11 @@ from sofabaton_server.app import create_app
 from sofabaton_server.config import Settings, load_settings
 from sofabaton_server.manager import HubManager
 from sofabaton_server.updates import (
+    CONTAINER_UPGRADE_URL,
     STATE_FILE,
+    UPGRADE_URL,
     UpdateChecker,
+    detect_install_kind,
     is_newer,
     newest_release,
     parse_version,
@@ -317,3 +320,53 @@ def test_a_finished_check_is_announced_on_the_stream(tmp_path: Path) -> None:
 
 def test_installed_version_is_the_package_version(tmp_path: Path) -> None:
     assert UpdateChecker(Settings(data_dir=tmp_path)).installed_version == __version__
+
+
+# -- how the server was installed ----------------------------------------------------
+
+_SITE = Path("/opt/venv/lib/python3.12/site-packages/sofabaton_server")
+_NO_MARKER = lambda _path: False  # noqa: E731
+
+
+def test_install_kind_detection_order() -> None:
+    kind = lambda **kw: detect_install_kind(environ=kw.pop("environ", {}), marker_exists=kw.pop("marker", _NO_MARKER),  # noqa: E731
+                                            package_path=kw.pop("package", _SITE), prefix=kw.pop("prefix", "/opt/venv"))
+    # The environment wins when it names a known kind; junk is ignored.
+    assert kind(environ={"SOFABATON_INSTALL": "container"}, package=Path("/src/sofabaton_server")) == "container"
+    assert kind(environ={"SOFABATON_INSTALL": " Pipx "}) == "pipx"
+    assert kind(environ={"SOFABATON_INSTALL": "snap"}) == "pip"
+    # A container marker, whichever runtime left it.
+    assert kind(marker=lambda path: path == "/.dockerenv") == "container"
+    assert kind(marker=lambda path: path == "/run/.containerenv") == "container"
+    # Outside site-packages: a checkout (editable install or PYTHONPATH=src).
+    assert kind(package=Path("/home/me/x1s/sofabaton-x-server/src/sofabaton_server")) == "checkout"
+    # pipx keeps its environments under .../pipx/venvs/<name>.
+    assert kind(prefix="/home/me/.local/share/pipx/venvs/sofabaton-x-server") == "pipx"
+    assert kind(prefix=r"C:\Users\me\pipx\venvs\sofabaton-x-server",
+                package=Path("C:/Users/me/pipx/venvs/sofabaton-x-server/Lib/site-packages/sofabaton_server")) == "pipx"
+    # Debian's dist-packages counts as an installed package too.
+    assert kind(package=Path("/usr/local/lib/python3.12/dist-packages/sofabaton_server")) == "pip"
+    assert kind() == "pip"
+    # A marker probe that raises is not a container.
+    def boom(_path: str) -> bool:
+        raise OSError("no")
+    assert kind(marker=boom) == "pip"
+
+
+def test_install_kind_is_reported_and_chooses_the_upgrade_link(tmp_path: Path) -> None:
+    checker, _ = _checker(tmp_path, [], install_kind="container")
+    view = checker.status()
+    assert view.install_kind == "container"
+    assert view.upgrade_url == CONTAINER_UPGRADE_URL
+    checker, _ = _checker(tmp_path, [], install_kind="pipx")
+    assert checker.status().upgrade_url == UPGRADE_URL
+    # The default detection yields one of the documented kinds.
+    assert UpdateChecker(Settings(data_dir=tmp_path)).install_kind in ("container", "pipx", "pip", "checkout", "unknown")
+
+
+def test_routes_carry_the_install_kind(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    checker, _ = _checker(tmp_path, [], install_kind="container")
+    with TestClient(_app(settings, checker)) as client:
+        assert client.get(URL).json()["install_kind"] == "container"
+        assert client.get(f"{API_PREFIX}/server").json()["update"]["install_kind"] == "container"

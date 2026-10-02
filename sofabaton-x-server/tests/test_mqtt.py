@@ -1,6 +1,7 @@
 """The mqtt transport (server panel wifi commands plan, section 7): the
-broker settings come from the command line and the environment only and
-the password shows up nowhere; the small MQTT client against a fake
+broker settings from the command line and the environment (the panel's
+own path has its tests in test_mqtt_config), and the password shows up
+nowhere; the small MQTT client against a fake
 broker that speaks the real protocol (credentials, subscribe, keepalive,
 reconnect); and the service end to end: an X2 is offered the transport, a
 deploy names no address and needs no listener, the hub's publish on
@@ -19,7 +20,6 @@ import pytest
 
 from sofabaton import WIFI_SLOT_COUNT as N
 
-from sofabaton_server import mqtt_client
 from sofabaton_server.cli import build_parser, settings_from_args
 from sofabaton_server.config import Settings, load_settings
 from sofabaton_server.mqtt_client import MqttSubscriber, encode_str, packet, read_packet
@@ -259,6 +259,7 @@ def test_an_x2_with_a_broker_gets_mqtt_devices_whose_presses_arrive_from_the_top
         client, factory = _rig(tmp_path, mqtt_host=LOOPBACK, mqtt_port=broker.port, mqtt_username="hub", mqtt_password="s3cret")
         with client:
             hub_id, proxy = _hub(client, factory)
+            proxy.fetched.update(a.activity_id for a in proxy.activities_data)   # every activity read
             # Not an X2: http only, and asking for mqtt anyway is refused with the reason.
             assert client.get(f"{HUBS}/{hub_id}/wifi-devices").json()["transports"] == ["http"]
             r = client.post(f"{HUBS}/{hub_id}/wifi-devices", json={"name": "Lights", "transport": "mqtt"})
@@ -360,3 +361,115 @@ def test_without_a_broker_mqtt_is_not_offered_and_a_lost_device_redeploys_over_m
             proxy.place_wifi_device(new_dev, spec, brand=spec.brand, device_class="wifi_mqtt")
             client.portal.call(functools.partial(proxy._emit_snapshot_changed, device_ids=(new_dev,)))
             _until(lambda: not client.get(f"{HUBS}/{HUB_ID}/wifi-devices/{key}").json()["stale"])
+
+
+def test_a_redeploy_without_a_broker_keeps_the_stale_record(tmp_path: Path) -> None:
+    """CR-S2-2: the record (name, slots, labels, activities) survives a
+    redeploy the missing broker refuses, on the route and in the service."""
+    with FakeBroker() as broker:
+        import functools
+        client, factory = _rig(tmp_path, mqtt_host=LOOPBACK, mqtt_port=broker.port, on_build=lambda p: (setattr(p, "mac", MAC), _x2(p)))
+        with client:
+            _, proxy = _hub(client, factory)
+            device = _create(client, HUB_ID, {"name": "Lights", "transport": "mqtt", "slots": [{"label": "On"}]})
+            key, dev = device["key"], device["device_id"]
+            proxy.devices_data = [d for d in proxy.devices_data if d.device_id != dev]
+            client.portal.call(functools.partial(proxy._emit_snapshot_changed, device_ids=(dev,)))
+            _until(lambda: client.get(f"{HUBS}/{HUB_ID}/wifi-devices/{key}").json()["stale"])
+
+            service = client.app.state.callbacks
+            # The broker is gone (removed in the panel, or a restart without its flags).
+            service.mqtt_unavailable_reason = lambda *_args: "the server has no MQTT broker"
+            r = client.post(f"{HUBS}/{HUB_ID}/wifi-devices/{key}/redeploy")
+            assert r.status_code == 409 and r.json()["type"] == "mqtt_unavailable"
+            assert client.get(f"{HUBS}/{HUB_ID}/wifi-devices/{key}").json()["spec"]["name"] == "Lights"
+
+            from sofabaton_server.callbacks import MqttUnavailable
+            with pytest.raises(MqttUnavailable):
+                client.portal.call(functools.partial(service.redeploy, HUB_ID, proxy, key=key))
+            assert service.record(HUB_ID, key) is not None
+
+
+def test_a_broker_change_never_leaves_the_old_subscriber_running(tmp_path: Path) -> None:
+    """CR-S2-5: an ensure_listener that lands while the old subscriber is
+    being stopped must not start it again."""
+    from sofabaton_server.mqtt_config import MqttConfig
+
+    client, factory = _rig(tmp_path)
+    with client:
+        service = client.app.state.callbacks
+
+        async def main():
+            old = service.mqtt
+            old.host = LOOPBACK        # configured, so a subscription would connect
+            old.port = 1
+            gate = asyncio.Event()
+
+            async def slow_stop():
+                # As the real stop(): the task is cleared first, then the
+                # cancel and the broker goodbye are awaited (up to 2 s).
+                task, old._task = old._task, None
+                await gate.wait()
+                if task is not None:
+                    task.cancel()
+
+            old.stop = slow_stop
+            service._mqtt_topics = lambda: {TOPIC: HUB_ID}
+            apply = asyncio.ensure_future(service.apply_mqtt_config(MqttConfig(host=LOOPBACK, port=1)))
+            await asyncio.sleep(0.01)
+            listener = asyncio.ensure_future(service.ensure_listener())
+            await asyncio.sleep(0.01)
+            gate.set()
+            await apply
+            await listener
+            restarted = old._task is not None
+            await service.mqtt.close()
+            return restarted, service.mqtt is not old
+
+        restarted, swapped = client.portal.call(main)
+        assert swapped and not restarted
+
+
+ACTIVITY_TOPIC = "activity/E26A44861B45/activity_control_up"
+
+
+def test_an_x2_feeds_its_activity_transitions_from_the_broker_into_the_engine(tmp_path: Path) -> None:
+    """The X2 publishes every activity transition to the broker early in the
+    power sequence. With a broker set, the server subscribes for every
+    enabled X2 whose MAC is known (no device needed) and feeds the push to
+    the library's apply with the Home Assistant integration's guards."""
+
+    with FakeBroker() as broker:
+        client, factory = _rig(tmp_path, mqtt_host=LOOPBACK, mqtt_port=broker.port, on_build=_x2)
+        with client:
+            hub_id, proxy = _hub(client, factory)
+            assert client.get(f"{HUBS}/{hub_id}").json()["config"]["hub_version"] == "X2"   # learned from the banner
+            # Not one device, and still a subscription: the activity topic alone brings the connection up.
+            _until(lambda: broker.subscriptions == [ACTIVITY_TOPIC])
+            mqtt = _until(lambda: (lambda s: s if s["connected"] else None)(client.get(f"{SERVER}/mqtt").json()))
+            assert mqtt["topics"] == [ACTIVITY_TOPIC]
+
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 101, "state": "on"}, retain=True)   # a replay: never applied
+            broker.publish(ACTIVITY_TOPIC, b"not json")
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 102, "state": "off"})               # off for an activity that is not running
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 101, "state": "on"})
+            _until(lambda: proxy.external_states == [101])
+            assert client.get(f"{HUBS}/{hub_id}/activity").json() == {"activity_id": 101, "name": "Watch TV"}
+            broker.publish(ACTIVITY_TOPIC, {"data": {"activity_id": 101, "state": "off"}})     # the request-side envelope, for the running one
+            _until(lambda: proxy.external_states == [101, None])
+            assert client.get(f"{HUBS}/{hub_id}/activity").json() is None
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 255, "state": "on"})                # 255 = all off, whatever the state says
+            _until(lambda: proxy.external_states == [101, None, None])
+
+            # Before the activities are read (or with the hub session down) the push is left alone.
+            proxy.catalog_ready = False
+            broker.publish(ACTIVITY_TOPIC, {"activity_id": 101, "state": "on"})
+            time.sleep(0.3)
+            assert proxy.external_states == [101, None, None]
+            proxy.catalog_ready = True
+
+            # A device on the transport adds its press topic next to it; disabling the hub drops both.
+            _create(client, hub_id, {"name": "Lights", "transport": "mqtt", "slots": [{"label": "On"}]})
+            _until(lambda: sorted(client.get(f"{SERVER}/mqtt").json()["topics"]) == [TOPIC, ACTIVITY_TOPIC])
+            client.post(f"{HUBS}/{hub_id}/disable")
+            _until(lambda: client.get(f"{SERVER}/mqtt").json()["wanted"] is False)

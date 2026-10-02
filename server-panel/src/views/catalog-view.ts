@@ -275,6 +275,7 @@ export class SbPanelCatalog extends LitElement {
       .entity-block:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
       .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: 12px; transition: background-color 120ms ease; }
       .entity-summary:hover { background: color-mix(in srgb, var(--sbp-accent) 5%, var(--sbp-panel-2)); }
+      .entity-summary[role="button"]:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: -2px; }
       /* The card pins the open drawer's header at the top of its scroll body;
          here the page scrolls under the shell's sticky top dock, so the
          header pins just under it (the shell measures the dock's height). */
@@ -409,6 +410,8 @@ export class SbPanelCatalog extends LitElement {
         this._notice = null;
         this._reorder = null;
         this._add = null;
+        // Work still running for the previous hub reports there, not here (CR-F5a-6).
+        this._refresh = null;
         this._sorter.cancel();
         if (id) void this._load();
       } else {
@@ -566,26 +569,29 @@ export class SbPanelCatalog extends LitElement {
     const hubId = this.hub?.hub_id;
     if (!hubId || this._refresh) return;
     this._refresh = { key, text: "Starting…" };
+    // Every write after an await checks the hub is still the one shown.
+    const here = () => this._loadedFor === hubId;
     try {
       const started = await this.api.refreshSnapshot(hubId, scope);
       if (started.status !== 202 || !started.body) {
-        this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
+        if (here()) this._notice = `Refreshing ${label} failed: ${problemText(started)}`;
         return;
       }
       const job = await this.api.followJob(hubId, started.body.job_id, {
         onUpdate: (j) => {
-          this._refresh = { key, text: jobPhrase(j) };
+          if (here()) this._refresh = { key, text: jobPhrase(j) };
         },
       });
+      if (!here()) return;
       if (!job || job.status !== "done") this._notice = `Refreshing ${label} failed: ${jobOutcomeText(job)}`;
       else this._notice = null;
       if (job) this._lastJobId = job.job_id;
     } catch (err) {
-      this._notice = `Refreshing ${label} failed: ${String(err)}`;
+      if (here()) this._notice = `Refreshing ${label} failed: ${String(err)}`;
     } finally {
-      this._refresh = null;
+      if (here()) this._refresh = null;
     }
-    await this._reloadAll();
+    if (here()) await this._reloadAll();
   }
 
   private _refreshAll(): void {
@@ -643,6 +649,7 @@ export class SbPanelCatalog extends LitElement {
     } catch (err) {
       error = String(err);
     }
+    if (this._loadedFor !== hubId) return;
     if (error) {
       this._reorder = { ...reorder, syncing: false, error };
       return;
@@ -670,7 +677,7 @@ export class SbPanelCatalog extends LitElement {
     const name = sanitizeName(this._hubVersion, dialog.name).trim();
     if (!name || (dialog.kind === "device" && !dialog.deviceClass)) return;
     this._add = { ...dialog, busy: true, error: null };
-    const fail = (error: string) => { this._add = { ...dialog, busy: false, error }; };
+    const fail = (error: string) => { if (this._loadedFor === hubId) this._add = { ...dialog, busy: false, error }; };
     try {
       const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
       if (started.status !== 202 || !started.body) return fail(problemText(started));
@@ -689,6 +696,9 @@ export class SbPanelCatalog extends LitElement {
           if (read) this._lastJobId = read.job_id;
         }
       }
+      // The picker moved on meanwhile: the entity exists, but it is not
+      // opened on some other hub.
+      if (this._loadedFor !== hubId) return;
       this._add = null;
       this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { tab: "hub", sub: dialog.kind === "device" ? "devices" : "activities", entity: id } }));
     } catch (err) {
@@ -749,7 +759,14 @@ export class SbPanelCatalog extends LitElement {
     const count = countLine(e.kind, e.counts) ?? (e.kind === "device" ? e.device?.device_class ?? "device" : "activity");
     const fetched = e.fetched_at ? `read from the hub ${formatWhen(e.fetched_at)}${e.complete ? "" : ", incomplete"}` : "not read from the hub in full yet";
     return html`<div class="entity-block ${isOpen ? "open" : ""}" data-entity=${key} data-entity-id=${e.id}>
-      <div class="entity-summary" @click=${() => this._toggle(e)}>
+      <div class="entity-summary" role="button" tabindex="0" aria-expanded=${isOpen ? "true" : "false"}
+        @click=${() => this._toggle(e)}
+        @keydown=${(event: KeyboardEvent) => {
+          // Only the row itself: its Edit and Refresh buttons keep their own keys.
+          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+          event.preventDefault();
+          this._toggle(e);
+        }}>
         <span class="entity-name">
           <span class="entity-name-icon">${icon(e.kind === "device" ? deviceClassIconPath(e.device?.device_class) : mdiPlayCircleOutline)}</span>
           <span class="entity-name-copy">

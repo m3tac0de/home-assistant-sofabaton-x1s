@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from collections.abc import Collection
+from typing import Any, TYPE_CHECKING
 
 from .hub_versions import (
     ACTIVITY_BACKUP_SCHEMA_VERSION,
@@ -23,8 +24,10 @@ from .hub_versions import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
 )
+from .ack import AckOutcome
 from .hub_logging import LogTag
 from .macros import MacroRecord
+from .wire_schema import encode_label_slot
 from .device_create import (
     FAMILY_REMOTE_SYNC,
     build_button_binding_step,
@@ -43,6 +46,9 @@ from .protocol_const import (
     OP_ACTIVITY_DEVICE_CONFIRM,
     OP_REQ_MACRO_LABELS,
 )
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 log = logging.getLogger("x1proxy")
 
@@ -67,8 +73,13 @@ _ACTIVITY_ROW_NAME_OFFSET = 32
 _ACTIVITY_ROW_NAME_ASCII_LEN = 60
 
 
+# The highest command id the X1S accepts as a favorite: 199 is taken, 200
+# and above get STATUS_ACK 0x09 (bench_285, 2026-09-30). The X2 shares the
+# wide layout; the X1 path writes a fixed code and was not probed.
+MAX_FAVORITE_COMMAND_ID = 0xC7
 
-class ActivityOpsMixin:
+
+class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing activity-edit orchestration."""
 
     def _wait_for_activity_map_burst(self, act_id: int, *, timeout: float = 5.0) -> bool:
@@ -129,16 +140,24 @@ class ActivityOpsMixin:
 
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             row_payload = self._activity_row_payloads.get(act_lo)
-            if isinstance(row_payload, (bytes, bytearray)) and len(row_payload) >= 120:
-                row = bytearray(row_payload)
-                if name is not None:
-                    # Overwrite the UTF-16BE name field, zero-padded up to the
-                    # tail token block, preserving every other byte of the row.
-                    start = _ACTIVITY_ROW_NAME_OFFSET
-                    end = min(len(row), _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD)
-                    encoded = name.encode("utf-16-be")[: end - start]
-                    row[start:end] = encoded.ljust(end - start, b"\x00")
-                return self._clear_x1s_confirm_flag(bytes(row))
+            if not isinstance(row_payload, (bytes, bytearray)) or len(row_payload) < 120:
+                # The row is rewritten from the hub's own copy; the X1 layout
+                # below would go out under a wide opcode whose length it
+                # does not match. Fail the step instead.
+                self._log.warning(
+                    "%s no cached activity row for act=0x%02X; cannot rewrite it",
+                    LogTag.ACTIVITY,
+                    act_lo,
+                )
+                return None
+            row = bytearray(row_payload)
+            if name is not None:
+                # Overwrite the UTF-16BE name field, zero-padded up to the
+                # tail token block, preserving every other byte of the row.
+                start = _ACTIVITY_ROW_NAME_OFFSET
+                end = min(len(row), _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD)
+                row[start:end] = encode_label_slot(name, end - start, "utf-16-be")
+            return self._clear_x1s_confirm_flag(bytes(row))
 
         row_name = str(activity.get("name", "")) if name is None else str(name)
         encoded_name = row_name.encode("ascii", errors="ignore")[
@@ -190,29 +209,25 @@ class ActivityOpsMixin:
         if not _step.ok:
             return None
 
-        if not self.request_activities():
-            self._log.warning("[DELETE] failed to refresh activities after deleting dev=0x%02X", dev_lo)
-            return None
-
-        deadline = time.monotonic() + 15.0
-        while time.monotonic() < deadline:
-            if self._burst.active and self._burst.kind == "activities":
-                break
-            time.sleep(0.01)
-        while time.monotonic() < deadline:
-            if not self._burst.active:
-                break
-            time.sleep(0.01)
-        if self._burst.active:
-            self._log.warning("[DELETE] timeout waiting for activities burst after deleting dev=0x%02X", dev_lo)
-            return None
-
+        # The hub has deleted the device. From here on nothing may report
+        # the delete as failed: a caller would "roll back" a delete that
+        # happened (or keep listing a device that is gone). An incomplete
+        # follow-up is reported alongside the success instead.
         confirmed_activities: list[int] = []
-        for act_lo in self._activities_requiring_confirmation():
+        unconfirmed_activities: list[int] = []
+        refreshed = self._request_activities_and_wait(timeout=15.0)
+        if not refreshed:
+            self._log.warning(
+                "[DELETE] activities could not be re-read after deleting dev=0x%02X; "
+                "impacted activities are not confirmed",
+                dev_lo,
+            )
+        for act_lo in self._activities_requiring_confirmation() if refreshed else ():
             confirm_payload = self._build_activity_confirm_payload(act_lo)
             if confirm_payload is None:
                 self._log.warning("[DELETE] missing cached activity row for confirm act=0x%02X", act_lo)
-                return None
+                unconfirmed_activities.append(act_lo)
+                continue
 
             confirm_opcode = (
                 OP_ACTIVITY_ASSIGN_FINALIZE
@@ -220,15 +235,11 @@ class ActivityOpsMixin:
                 else OP_ACTIVITY_CONFIRM
             )
             self._log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
-            with self.exchange("delete_confirm"):
-                send_ts = time.monotonic()
-                self._send_cmd_frame(confirm_opcode, confirm_payload)
-                confirm_ack = self.wait_for_ack_any(
-                    [(0x0103, None)], timeout=5.0, not_before=send_ts
-                )
-            if confirm_ack is None:
-                self._log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
-                return None
+            outcome = self._status_exchange("delete_confirm", confirm_opcode, confirm_payload)
+            if outcome is not AckOutcome.acked:
+                self._log.warning("[DELETE] activity confirm %s act=0x%02X", outcome.value, act_lo)
+                unconfirmed_activities.append(act_lo)
+                continue
 
             activity = self.state.entities("activity").get(act_lo)
             if isinstance(activity, dict):
@@ -241,7 +252,7 @@ class ActivityOpsMixin:
         # and bindings. Drop those views so the stale references can't
         # survive into exports or the persisted cache; the caller re-warms
         # them from the hub's already-cascaded truth.
-        stale_referencing = referencing - set(confirmed_activities)
+        stale_referencing = (referencing | set(unconfirmed_activities)) - set(confirmed_activities)
         for act_lo in sorted(stale_referencing):
             self.clear_entity_cache(
                 act_lo, clear_buttons=True, clear_favorites=True, clear_macros=True
@@ -253,6 +264,7 @@ class ActivityOpsMixin:
         self.state.ip_buttons.pop(dev_lo, None)
         self.state.device_input_records.pop(dev_lo, None)
         self._forget_detail("device", dev_lo)
+        self.forget_idle_behavior(dev_lo)
         # Full clear: the bare form leaves the device's macro records,
         # button details, and command metadata orphaned under a dead id —
         # nothing ever overwrites entries keyed by an id that no longer
@@ -274,23 +286,35 @@ class ActivityOpsMixin:
             "confirmed_activities": confirmed_activities,
             "impacted_activities": impacted,
             "status": "success",
+            # The hub deleted the device either way; these name what is
+            # left for the vendor app to confirm.
+            "confirm_incomplete": not refreshed or bool(unconfirmed_activities),
+            "unconfirmed_activities": unconfirmed_activities,
         }
 
-    def _request_activities_and_wait(self, *, timeout: float = 15.0) -> bool:
-        """Kick a catalog refresh and block until the activities burst lands."""
+    def _request_catalog_and_wait(self, kind: str, *, timeout: float) -> bool:
+        """Ask for a fresh devices or activities list and wait until it is
+        committed. The kind's commit serial is the signal: a burst of
+        another kind (a queued keymap read starting right after), an
+        incomplete burst that never commits (L-P5), or one that starts and
+        ends between two polls cannot fool it."""
 
-        if not self.request_activities():
+        serial_attr = "_devices_commit_serial" if kind == "devices" else "_activities_commit_serial"
+        before = getattr(self, serial_attr)
+        request = self.request_devices if kind == "devices" else self.request_activities
+        if not request():
             return False
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self._burst.active and self._burst.kind == "activities":
-                break
-            time.sleep(0.01)
-        while time.monotonic() < deadline:
-            if not self._burst.active:
+            if getattr(self, serial_attr) != before:
                 return True
             time.sleep(0.01)
-        return not self._burst.active
+        return getattr(self, serial_attr) != before
+
+    def _request_activities_and_wait(self, *, timeout: float = 15.0) -> bool:
+        """Kick an activities refresh and block until it is committed."""
+
+        return self._request_catalog_and_wait("activities", timeout=timeout)
 
     def _build_entity_sort_payload(self, rows: list[tuple[int, int]]) -> bytes:
         """Build a display-order write payload (families 0x51 / 0x11).
@@ -411,20 +435,9 @@ class ActivityOpsMixin:
         return known
 
     def _request_devices_and_wait(self, *, timeout: float = 15.0) -> bool:
-        """Kick a catalog refresh and block until the devices burst lands."""
+        """Kick a devices refresh and block until it is committed."""
 
-        if not self.request_devices():
-            return False
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if self._burst.active and self._burst.kind == "devices":
-                break
-            time.sleep(0.01)
-        while time.monotonic() < deadline:
-            if not self._burst.active:
-                return True
-            time.sleep(0.01)
-        return not self._burst.active
+        return self._request_catalog_and_wait("devices", timeout=timeout)
 
     def reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
         """Write *ordered_ids* as the hub's stored device display order
@@ -636,9 +649,7 @@ class ActivityOpsMixin:
         self.state.activity_members.pop(act_lo, None)
         self.state.activity_command_refs.pop(act_lo, None)
         self.state.activity_favorite_slots.pop(act_lo, None)
-        self.state.activity_keybinding_slots.pop(act_lo, None)
         self.state.activity_favorite_labels.pop(act_lo, None)
-        self.state.activity_keybinding_labels.pop(act_lo, None)
         self._clear_favorite_label_requests_for_activity(act_lo)
 
         if not self.request_activity_mapping(act_lo):
@@ -684,15 +695,11 @@ class ActivityOpsMixin:
                 member & 0xFF,
                 include_flag,
             )
-            with self.exchange("assign_confirm"):
-                send_ts = time.monotonic()
-                self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
-                member_ack = self.wait_for_ack_any(
-                    [(0x0103, None)], timeout=5.0, not_before=send_ts
-                )
-            if member_ack is None:
+            outcome = self._status_exchange("assign_confirm", OP_ACTIVITY_DEVICE_CONFIRM, payload)
+            if outcome is not AckOutcome.acked:
                 self._log.warning(
-                    "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
+                    "[ACTIVITY_ASSIGN] 0x024F %s dev=0x%02X include=0x%02X",
+                    outcome.value,
                     member & 0xFF,
                     include_flag,
                 )
@@ -716,6 +723,7 @@ class ActivityOpsMixin:
             self._log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
             with self.exchange("assign_macro_fetch"):
                 fetch_ts = time.monotonic()
+                self._macro_assembler.reset(act_lo)
                 self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
                 # A freshly created activity has no power macros yet: the hub
@@ -845,6 +853,13 @@ class ActivityOpsMixin:
         )
         cmd_lo = command_id & 0xFF
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+            if cmd_lo > MAX_FAVORITE_COMMAND_ID:
+                # The hub refuses the map for these (STATUS_ACK 0x09); say
+                # so before any write instead of reporting a rejection.
+                raise ValueError(
+                    f"command id {cmd_lo} cannot be a favorite: the hub accepts "
+                    f"favorites for command ids up to {MAX_FAVORITE_COMMAND_ID}"
+                )
             payload.extend([0x4E, 0x20 + cmd_lo])
         else:
             payload.extend((0x4E24).to_bytes(2, "big"))
@@ -880,16 +895,15 @@ class ActivityOpsMixin:
         display slot, making it invisible on the physical remote's touch screen.
         """
 
+        # X1S/X2 only: the X1 stage lists the current order instead
+        # (command_to_favorite builds it with _build_favorites_reorder_payload).
         act_lo = activity_id & 0xFF
-        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
-            payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo])
-            for i in range(1, max(1, fav_count) + 1):
-                payload.append(i & 0xFF)  # fav_id
-                payload.append(i & 0xFF)  # slot = fav_id (sequential 1-based)
-            payload.append((sum(payload) - 2) & 0xFF)
-            return bytes(payload)
-
-        return bytes([0x00, 0x01, 0x01, 0x00, 0x01, act_lo, 0x01, 0x01, 0x6A])
+        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo])
+        for i in range(1, max(1, fav_count) + 1):
+            payload.append(i & 0xFF)  # fav_id
+            payload.append(i & 0xFF)  # slot = fav_id (sequential 1-based)
+        payload.append((sum(payload) - 2) & 0xFF)
+        return bytes(payload)
 
     def _build_favorites_reorder_payload(
         self,
@@ -950,7 +964,136 @@ class ActivityOpsMixin:
             self._log.debug("[FAV_ORDER] empty quick-access table act=0x%02X", act_lo)
             self.state.activity_favorites_order[act_lo] = []
             return []
-        return self.state.activity_favorites_order.get(act_lo)
+        # FavoritesOrderHandler stores the order before it acks, so an
+        # answered request always has one; None stays reserved for no answer.
+        return list(self.state.activity_favorites_order.get(act_lo) or [])
+
+    def _x1_live_quick_access_ids(self, act_lo: int) -> set[int] | None:
+        """The ids of every favorite and macro shortcut the X1 holds for the
+        activity, read fresh from the hub; ``None`` when either read did not
+        complete (a partial read must never decide what the order lists).
+
+        On the X1 the two share one id space and one family-0x61 order
+        table. A record the table does not list still takes a row on the
+        remote, at the slot equal to its own id, covering whatever the table
+        put there and leaving the last row empty (seen on Marcel's X1,
+        2026-09-30, after a restore that wrote the table per favorite).
+        """
+
+        act_lo &= 0xFF
+        self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=True, clear_macros=True)
+        if not self._fetch_and_wait(
+            f"buttons:{act_lo}",
+            lambda: self.get_buttons_for_entity(act_lo, fetch_if_missing=True),
+            lambda: act_lo in self.state.buttons,
+            timeout=10.0,
+        ):
+            return None
+        if not self._fetch_and_wait(
+            f"macros:{act_lo}",
+            lambda: self.get_macros_for_activity(act_lo, fetch_if_missing=True),
+            lambda: act_lo in self._macros_complete,
+            timeout=10.0,
+        ):
+            return None
+        live = {int(slot.get("button_id", 0)) & 0xFF for slot in self.state.get_activity_favorite_slots(act_lo)}
+        live |= {int(macro.get("command_id", 0)) & 0xFF for macro in self.state.get_activity_macros(act_lo)}
+        live.discard(0)
+        return live
+
+    @staticmethod
+    def _with_x1_unlisted_records(order_ids: list[int], live_ids: set[int] | None) -> list[int]:
+        """*order_ids* with every live record it leaves out put back.
+
+        Each missing id goes to the position equal to its id (clamped to the
+        end): that is where the remote already draws it, so the repair only
+        brings back the entry it covered and fills the empty last row. Ids
+        in *order_ids* are kept as they are.
+        """
+
+        result = list(order_ids)
+        if not live_ids:
+            return result
+        for fav_id in sorted(set(live_ids) - set(result)):
+            result.insert(min(max(fav_id - 1, 0), len(result)), fav_id)
+        return result
+
+    def repair_x1_quick_access_order(self, activity_id: int) -> bool | None:
+        """X1: rewrite the activity's order table when it leaves out a live
+        favorite or macro shortcut (the repair syncs run for activities a
+        restore left with such a table, 2026-09-30).
+
+        Returns True when it wrote, False when nothing was missing, None when
+        this is not an X1, the hub is not controllable, or a read or write
+        failed. Reads only when nothing is missing.
+        """
+
+        if self.hub_version != HUB_VERSION_X1 or not self.can_issue_commands():
+            return None
+        act_lo = activity_id & 0xFF
+        live = self._x1_live_quick_access_ids(act_lo)
+        if live is None:
+            return None
+        order = self.request_favorites_order(act_lo)
+        if order is None:
+            return None
+        order_ids = [fav_id for fav_id, _slot in sorted(order, key=lambda pair: pair[1])]
+        repaired = self._with_x1_unlisted_records(order_ids, live)
+        if repaired == order_ids:
+            return False
+        self._log.info(
+            "[FAV_ORDER] act=0x%02X order %s leaves out live records %s; writing %s",
+            act_lo,
+            order_ids,
+            sorted(live - set(order_ids)),
+            repaired,
+        )
+        self.reset_ack_queues()
+        step = self._send_step(
+            step_name=f"fav-order-repair-61[act=0x{act_lo:02X}]",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, repaired),
+            ack_opcode=0x0103,
+        )
+        if not step.ok:
+            return None
+        step = self._send_step(
+            step_name=f"fav-order-repair-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        )
+        if not step.ok:
+            return None
+        self.state.activity_favorites_order[act_lo] = [
+            (fav_id, slot) for slot, fav_id in enumerate(repaired, start=1)
+        ]
+        return True
+
+    def _x1_repaired_order(self, act_lo: int, order_ids: list[int], *, exclude: Collection[int] = ()) -> list[int]:
+        """*order_ids* completed with the X1's unlisted records (see
+        :meth:`_with_x1_unlisted_records`); unchanged on other hubs or when the
+        live read fails. *exclude* names ids this write is removing."""
+
+        if self.hub_version != HUB_VERSION_X1:
+            return list(order_ids)
+        live = self._x1_live_quick_access_ids(act_lo)
+        if live is None:
+            self._log.warning(
+                "[FAV_ORDER] act=0x%02X the favorites and macros could not be re-read; "
+                "writing the order without the unlisted-record repair",
+                act_lo,
+            )
+            return list(order_ids)
+        repaired = self._with_x1_unlisted_records(order_ids, live - set(exclude))
+        if repaired != list(order_ids):
+            self._log.info(
+                "[FAV_ORDER] act=0x%02X order %s leaves out live records; writing %s",
+                act_lo,
+                list(order_ids),
+                repaired,
+            )
+        return repaired
 
     def _validate_favorite_fav_id(
         self,
@@ -1036,6 +1179,10 @@ class ActivityOpsMixin:
             self._log.warning("[FAV_REORDER] no valid fav_ids for act=0x%02X", act_lo)
             return None
 
+        # X1: the table is rewritten whole, so it lists every live record,
+        # also one an earlier write left out (the repair for affected hubs).
+        ordered_fav_ids_checked = self._x1_repaired_order(act_lo, ordered_fav_ids_checked)
+
         self.reset_ack_queues()
 
         _step = self._send_step(
@@ -1113,6 +1260,11 @@ class ActivityOpsMixin:
             return None
 
         remaining_fav_ids = [fid for fid, _slot in current_order if fid != validated_fav_id]
+        # X1: the remaining order is written whole; list every live record
+        # (read before the delete, so the deleted one is excluded by id).
+        remaining_fav_ids = self._x1_repaired_order(
+            act_lo, remaining_fav_ids, exclude={validated_fav_id}
+        )
         self._log.info(
             "[FAV_DELETE] act=0x%02X deleting fav_id=0x%02X; %d remaining",
             act_lo,
@@ -1175,8 +1327,17 @@ class ActivityOpsMixin:
         slot_id: int | None = None,
         refresh_after_write: bool = True,
         query_existing_order: bool = True,
+        existing_order_ids: list[int] | None = None,
+        repair_order: bool = True,
     ) -> dict[str, Any] | None:
-        """Add a command favorite to an arbitrary activity."""
+        """Add a command favorite to an arbitrary activity.
+
+        X1 only: the stage rewrites the whole order table, from the order read
+        back (``query_existing_order``) or, when given, *existing_order_ids*
+        (a caller that knows the table, e.g. a restore building it up), with
+        live records the table leaves out put back (``repair_order``; a
+        caller that rewrites the order afterwards may skip the extra read).
+        """
 
         if not self.can_issue_commands():
             self._log.info("[FAVORITE] command_to_favorite ignored: proxy client is connected")
@@ -1194,8 +1355,21 @@ class ActivityOpsMixin:
         # On X1, macros share the same fav_id/slot namespace as command favorites
         # and must be included in the stage payload with their actual slot numbers.
         x1_existing_fav_ids: list[int] = []
-        if self.hub_version == HUB_VERSION_X1 and query_existing_order:
-            existing_order = self.request_favorites_order(act_lo) or []
+        if self.hub_version == HUB_VERSION_X1 and existing_order_ids is not None:
+            x1_existing_fav_ids = [int(fav_id) & 0xFF for fav_id in existing_order_ids]
+        elif self.hub_version == HUB_VERSION_X1 and query_existing_order:
+            existing_order = self.request_favorites_order(act_lo)
+            if existing_order is None:
+                # The stage below rewrites the whole order table: without
+                # the current one, every other favorite and macro would
+                # lose its display slot. Refuse before any write.
+                self._log.warning(
+                    "%s[STEP] favorite-map[act=0x%02X] the current favorites order "
+                    "could not be read; not adding the favorite",
+                    LogTag.ACTIVITY,
+                    act_lo,
+                )
+                return None
             x1_existing_fav_ids = [
                 fav_id
                 for fav_id, _slot in sorted(existing_order, key=lambda x: x[1])
@@ -1206,6 +1380,8 @@ class ActivityOpsMixin:
                 act_lo,
                 x1_existing_fav_ids,
             )
+            if repair_order:
+                x1_existing_fav_ids = self._x1_repaired_order(act_lo, x1_existing_fav_ids)
 
         # Step 1: Map — inlined so we can read the assigned fav_id from the
         # 0x013E ACK payload.  That fav_id is used to build the stage payload.
@@ -1246,6 +1422,16 @@ class ActivityOpsMixin:
 
         # The 0x013E ACK payload's first byte is the hub-assigned fav_id.
         map_ack_opcode, map_ack_payload = map_ack
+        if map_ack_opcode == 0x0103 and map_ack_payload and map_ack_payload[0] != 0x00:
+            # A rejection (L-P3): no favorite was mapped, so there is nothing
+            # to stage (the fallback stage would rewrite the order table).
+            self._log.warning(
+                "%s[STEP] %s hub rejected status=0x%02X",
+                LogTag.ACTIVITY,
+                map_step,
+                map_ack_payload[0],
+            )
+            return None
         new_fav_id: int | None = None
         if map_ack_opcode == 0x013E and map_ack_payload:
             new_fav_id = map_ack_payload[0] or None
@@ -1360,7 +1546,7 @@ class ActivityOpsMixin:
             device_id=act_lo,
             button_id=btn_lo,
             short_press_device_id=dev_lo,
-            short_press_button_code=synthesize_command_code(cmd_lo),
+            short_press_button_code=synthesize_command_code(cmd_lo) if cmd_lo else 0,
             short_press_button_id=cmd_lo,
             **long_press_kwargs,
         )

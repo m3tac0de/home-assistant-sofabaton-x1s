@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .blob_decoders import (
     X2_PARSER_RESET_CARRIER_HZ,
@@ -36,6 +36,8 @@ from .device_create import (
     build_command_write_steps,
     build_key_sort_steps,
     encode_command_sort_body,
+    rebuild_command_sort,
+    sort_pairs_from_hex,
 )
 from .protocol_const import (
     FAMILY_IR_LEARN_DATA,
@@ -47,11 +49,13 @@ from .protocol_const import (
     OPNAMES,
     PLAY_BLOB_BODY_HEADER_LEN,
     PLAY_BLOB_CHUNK_SIZE,
-    PLAY_BLOB_MAX_PAYLOAD,
     PLAY_BLOB_PAGE_HEADER_LEN,
     opcode_family,
     opcode_family_name,
 )
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 
 def _run_create_sequence(*args, **kwargs):
@@ -68,7 +72,7 @@ def x2_parser_reset_blob() -> bytes:
     )
 
 
-class IrBlobMixin:
+class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing IR playback and single-command persist writes."""
 
     def play_ir_blob(
@@ -614,35 +618,21 @@ class IrBlobMixin:
         """
 
         metadata = self.state.command_metadata.get(dev_lo) or {}
-        known_command_ids = set(metadata.keys())
-        device_commands = self.state.commands.get(dev_lo) or {}
-        known_command_ids.update(device_commands.keys())
-        known_command_ids.add(new_command_id)
-
-        positioned: list[tuple[int, int]] = []
-        unpositioned: list[int] = []
-        for command_id in known_command_ids:
-            if command_id == new_command_id:
-                continue
-            entry = metadata.get(command_id) or {}
-            sort_id = int(entry.get("sort_id", 0)) & 0xFF
-            # The command-list record carries the hub's 0xFF "unpositioned"
-            # sentinel in this byte for commands that were never given a
-            # slot (0x00 means the same); treating 0xFF as a real position
-            # wrote an all-0xFF table with the new command at 0x00 (X2
-            # bench 2026-09-16), which orders nothing.
-            if sort_id and sort_id != 0xFF:
-                positioned.append((command_id & 0xFF, sort_id))
-            else:
-                unpositioned.append(command_id & 0xFF)
-
-        positioned.sort(key=lambda pair: pair[1])
-        next_position = (positioned[-1][1] if positioned else 0) + 1
-        ordered_pairs: list[tuple[int, int]] = list(positioned)
-        for command_id in sorted(unpositioned):
-            ordered_pairs.append((command_id, next_position))
-            next_position += 1
-        ordered_pairs.append((new_command_id & 0xFF, next_position))
+        known_command_ids = set(metadata.keys()) | set((self.state.commands.get(dev_lo) or {}).keys())
+        # The hub's own table, as the delete path reads it: a vendor-app
+        # reorder can leave the cached positions stale. Fall back to them
+        # only when the table cannot be read.
+        table = self.fetch_device_key_sort(dev_lo)
+        if isinstance(table, dict):
+            current_pairs = sort_pairs_from_hex(str(table.get("msg_hex") or ""))
+        else:
+            current_pairs = [
+                (command_id & 0xFF, int((metadata.get(command_id) or {}).get("sort_id", 0)) & 0xFF)
+                for command_id in known_command_ids
+            ]
+        ordered_pairs = rebuild_command_sort(
+            current_pairs, known_command_ids, appended=[new_command_id]
+        )
 
         try:
             body = encode_command_sort_body(ordered_pairs)
@@ -920,20 +910,6 @@ class IrBlobMixin:
         self._send_cmd_frame(opcode, payload)
 
     @staticmethod
-    def _looks_like_descriptive_play_blob(blob: bytes) -> bool:
-        """Return True for human-readable protocol-descriptor replay blobs."""
-        return looks_like_descriptive_play_blob(blob)
-
-    @staticmethod
-    def _looks_like_x1_database_capture_blob(blob: bytes) -> bool:
-        """Return True for observed non-descriptor X1/X1S database-style blobs."""
-        return (
-            len(blob) >= 14
-            and blob[2:6] == b"\x00\x00\x00\x00"
-            and blob[6:8] in (b"\x9c\x40", b"\x94\xcf", b"\x94\x74")
-        )
-
-    @staticmethod
     def _extract_single_frame_play_blob(payload: bytes) -> bytes | None:
         """Extract a complete single-frame replay library_data from a family-0x0F payload.
 
@@ -984,16 +960,6 @@ class IrBlobMixin:
         body[PLAY_BLOB_BODY_HEADER_LEN:PLAY_BLOB_BODY_HEADER_LEN + len(library_data)] = library_data
         body[-1] = sum(body[:-1]) & 0xFF
         return bytes(body)
-
-    def _finalize_play_blob_body(self, library_data: bytes) -> bytes:
-        """Return ``library_data`` with the trailing body sum8 byte appended.
-
-        Equivalent to slicing off the 12-byte body header from the sealed
-        body buffer built by :meth:`_build_play_blob_body_buffer`.
-        """
-
-        body_buffer = self._build_play_blob_body_buffer(bytes(library_data))
-        return body_buffer[PLAY_BLOB_BODY_HEADER_LEN:]
 
     def _play_blob_total_frames(self, body_len: int) -> int:
         """Return the number of family-0x0F frames needed for a body buffer."""

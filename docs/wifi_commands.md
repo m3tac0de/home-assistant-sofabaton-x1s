@@ -79,7 +79,7 @@ Leaving without syncing keeps a newly created event but discards its unsynchroni
 
 ### Actions and event maintenance
 
-All staged and deployed events appear under **Automation → Events → Wifi Events**. You can configure an optional short-press Action there; a long-press Action appears after long press is enabled on a physical-button assignment. Leaving an Action as _do nothing_ does not disable the event: every activation still updates `sensor.<hub>_wifi_commands`. **Needs sync** describes deployment state but does not prevent Action configuration.
+All staged and deployed events appear under **Automation → Events → Wifi Events**. Each event has one optional Action, configured there. It runs whenever the event fires, whether a shortcut, a short press, a long press, or a macro triggered it. To react differently to a long press, assign a second event to the long press. Leaving an Action as _do nothing_ does not disable the event: every activation still updates `sensor.<hub>_wifi_commands`. **Needs sync** describes deployment state but does not prevent Action configuration.
 
 Selecting an Action link opens Home Assistant's Action selector; the small × resets it to _do nothing_. Action changes apply immediately and do not require a hub sync. While the Control Panel is open, an event's row briefly highlights when it fires.
 
@@ -88,8 +88,10 @@ All events live on one reserved hub device named **Wifi Events**. It is hidden f
 Use **Hub → Devices → Wifi Events → Edit** to maintain deployed events:
 
 - Rename the device or an event, then select **Sync**. Home Assistant follows the hub-side name.
-- Delete an event, then select **Sync**. This also removes its short/long records and references from shortcuts, buttons, macros, power sequences, and inputs, including any macro left empty.
+- Delete an event, then select **Sync**. This also removes its record and its references from shortcuts, buttons, macros, power sequences, and inputs, including any macro left empty.
 - Create new events only from an Activity editor; direct command creation on this device is blocked.
+
+If **Automation → Events** says the Wifi Events device has changes waiting for a sync, open **Hub → Devices → Wifi Events → Edit** and select **Sync**. This happens once after updating from a version where each event had a separate long-press record: everything keeps working until you sync, and the sync moves existing long-press assignments onto their events before removing the unused records from the hub.
 
 If the shared device is deleted outside the integration, event names and Actions remain in Home Assistant. Either add a retained event to an Activity and sync to redeploy them all, or choose **remove this configuration from Home Assistant** while the hub device is absent.
 
@@ -111,7 +113,7 @@ Activity Actions are stored by numeric Activity ID and removed when an authorita
 
 Every Wifi Command and Wifi Event activated from the physical remote, Sofabaton app, or virtual remote updates `sensor.<hub>_wifi_commands`. This happens whether or not an Action is configured; a configured Action runs in addition to the sensor update.
 
-The state is `<device>/<command>` (or `<device>/<command>/longpress`) and returns to `Waiting for button press` after about 0.3 seconds. Automations should trigger on a change away from the waiting, `unknown`, and `unavailable` states instead of one fixed command name.
+The state is `<device>/<command>` (or `<device>/<command>/longpress` for a long press on a Wifi Device command; a Wifi Event always reports `<device>/<event>`) and returns to `Waiting for button press` after about 0.3 seconds. Automations should trigger on a change away from the waiting, `unknown`, and `unavailable` states instead of one fixed command name.
 
 | Attribute          | Meaning                                      |
 | ------------------ | -------------------------------------------- |

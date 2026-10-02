@@ -44,7 +44,7 @@ import {
   mdiWifiCog,
 } from "@mdi/js";
 
-import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import type { BackupBundleDevicePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import {
   IDLE_BEHAVIOR_ALWAYS_ON,
   IDLE_BEHAVIOR_AUTO_OFF,
@@ -93,7 +93,8 @@ import { OPERATION_PROGRESS_CSS } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import { SbPanelEntityEditor, icon, type EntityFrameStrings } from "./entity-editor-base";
-import type { EntityElement } from "./entity-editor-state";
+import { byteToSeconds, secondsToByte, type EntityElement } from "./entity-editor-state";
+import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import { PointerReorder } from "../pointer-reorder";
 import type { PayloadSaveDetail } from "./payload-dialog";
 import {
@@ -108,146 +109,149 @@ export const DEVICE_EDITOR_TAG = "sb-panel-device-editor";
 
 // -- the card's strings, verbatim ------------------------------------------------------------
 
+// Imported so they stay verbatim (CR-R1-13).
+const B = TOOLS_CARD_STRINGS.backup;
+const A = TOOLS_CARD_STRINGS.activities;
+const C = TOOLS_CARD_STRINGS.common;
+
 const S = {
-  crumbDevices: "Devices",
-  renameDevice: "Rename device",
-  deleteDeviceAria: "Delete device",
-  syncToHub: "Sync to Hub",
-  syncUpToDate: "Up to date",
-  detailPower: "On/Off",
-  detailNetwork: "Network",
-  detailCommands: "Commands",
-  detailButtons: "Buttons",
-  detailSectionsAria: "Detail sections",
-  powerSetupTitle: "Power control",
-  powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
-  powerOnLabel: "Power-on sequence",
-  powerOffLabel: "Power-off sequence",
-  macroStepsCount: (count: number) => `${count} step${count === 1 ? "" : "s"}`,
-  powerControlTitle: "Automatic power control",
-  powerControlUnset: "Not captured",
-  powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
-  powerControlDisabled: "Don't control power",
-  powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
-  powerControlAutoOff: "Turn off when idle",
-  powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
-  powerControlStayOn: "Stay on between activities",
-  powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
-  powerControlAlwaysOn: "Always stay on",
-  powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
-  powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
-  networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
-  hubNameNotSet: "(not set)",
-  ipChip: "ip",
-  ipv4Description: "IPv4 dotted-decimal address",
-  editIpAria: "Edit IP address",
-  ipAddress: "IP address",
-  commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
-  unsaved: "Unsaved",
-  unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
-  deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
-  deleteSimpleBody: "This removes it from the loaded backup.",
-  deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
-  commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit.",
-  addCommand: "Add command",
-  noDeviceCommands: "This device does not currently have any commands.",
-  commandChip: "command",
-  newCommandChip: "new command",
-  commandId: "Command ID",
-  renameCommandAria: "Rename command",
-  renameCommand: "Rename command",
-  editPayloadAria: "Edit payload",
-  fetchEditCommandAria: "Fetch and edit this command's payload",
-  deleteCommandAria: "Delete command",
-  buttonBindingsTitle: "Button assignments",
-  buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
-  buttonBindingsEmpty: "No button assignments configured.",
-  addBinding: "Add assignment",
-  buttonChip: "button",
-  bindingLongPressMeta: (label: string) => `Long press · ${label}`,
-  editBindingAria: "Edit assignment",
-  deleteBindingAria: "Delete assignment",
-  bindingButton: "Button",
-  bindingCommand: "Command",
-  bindingEnableLongPress: "Enable long-press assignment",
-  bindingLongPressCommand: "Long-press command",
-  bindingIncomplete: "Choose a button and target first.",
-  bindingNoButtons: "Every button on this hub model is already assigned.",
-  bindingNoCommands: "This device has no commands to assign.",
-  bindingAdd: "Add",
-  bindingSave: "Save",
-  bindingCancel: "Cancel",
-  bindingDialogAddTitle: "Add button assignment",
-  bindingDialogEditTitle: (name: string) => `Edit ${name} assignment`,
-  deleteBindingTitle: (name: string) => `Delete ${name} assignment?`,
-  deleteDeviceTitle: (name: string) => `Delete device "${name}"?`,
-  deleteCommandTitle: (name: string) => `Delete command "${name}"?`,
-  deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
-  deleteSimpleBodyLive: "This removes it.",
-  deleteImmediateNote: "This is applied to the hub immediately.",
-  deleteSyncNote: "This change is written to the hub on the next Sync.",
-  deleteImpactActivities: (count: number) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
-  deleteImpactFavorites: (count: number) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
-  deleteImpactMacroSteps: (count: number) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
-  deleteImpactPowerSteps: (count: number) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-  deleteImpactBindings: (count: number) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
-  deleteCancel: "Cancel",
-  deleteConfirm: "Delete",
-  thisItem: "this item",
-  name: "Name",
-  enterName: "Enter a name to continue.",
-  ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
-  cancel: "Cancel",
-  save: "Save",
+  crumbDevices: B.crumbDevices,
+  renameDevice: B.renameDevice,
+  deleteDeviceAria: B.deleteDeviceAria,
+  syncToHub: A.syncToHub,
+  syncUpToDate: A.syncUpToDate,
+  detailPower: B.detailPower,
+  detailNetwork: B.detailNetwork,
+  detailCommands: B.detailCommands,
+  detailButtons: B.detailButtons,
+  detailSectionsAria: B.detailSectionsAria,
+  powerSetupTitle: B.powerSetupTitle,
+  powerSetupDeviceSub: B.powerSetupDeviceSub,
+  powerOnLabel: B.powerOnLabel,
+  powerOffLabel: B.powerOffLabel,
+  macroStepsCount: B.macroStepsCount,
+  powerControlTitle: B.powerControlTitle,
+  powerControlUnset: B.powerControlUnset,
+  powerControlUnsetSub: B.powerControlUnsetSub,
+  powerControlDisabled: B.powerControlDisabled,
+  powerControlDisabledSub: B.powerControlDisabledSub,
+  powerControlAutoOff: B.powerControlAutoOff,
+  powerControlAutoOffSub: B.powerControlAutoOffSub,
+  powerControlStayOn: B.powerControlStayOn,
+  powerControlStayOnSub: B.powerControlStayOnSub,
+  powerControlAlwaysOn: B.powerControlAlwaysOn,
+  powerControlAlwaysOnSub: B.powerControlAlwaysOnSub,
+  powerSequencesDisabledNote: B.powerSequencesDisabledNote,
+  networkDescription: B.networkDescription,
+  hubNameNotSet: B.hubNameNotSet,
+  ipChip: B.ipChip,
+  ipv4Description: B.ipv4Description,
+  editIpAria: B.editIpAria,
+  ipAddress: B.ipAddress,
+  commandsBackupHelp: B.commandsBackupHelp,
+  unsaved: B.unsaved,
+  unsavedTooltip: B.unsavedTooltip,
+  deleteCascadeIntro: B.deleteCascadeIntro,
+  deleteSimpleBody: B.deleteSimpleBody,
+  deleteReplaceNote: B.deleteReplaceNote,
+  commandsLiveHelp: B.commandsLiveHelp,
+  addCommand: B.addCommand,
+  noDeviceCommands: B.noDeviceCommands,
+  commandChip: B.commandChip,
+  newCommandChip: B.newCommandChip,
+  commandId: B.commandId,
+  renameCommandAria: B.renameCommandAria,
+  renameCommand: B.renameCommand,
+  editPayloadAria: B.editPayloadAria,
+  fetchEditCommandAria: B.fetchEditCommandAria,
+  deleteCommandAria: B.deleteCommandAria,
+  buttonBindingsTitle: B.buttonBindingsTitle,
+  buttonBindingsDeviceSub: B.buttonBindingsDeviceSub,
+  buttonBindingsEmpty: B.buttonBindingsEmpty,
+  addBinding: B.addBinding,
+  buttonChip: B.buttonChip,
+  bindingLongPressMeta: B.bindingLongPressMeta,
+  editBindingAria: B.editBindingAria,
+  deleteBindingAria: B.deleteBindingAria,
+  bindingButton: B.bindingButton,
+  bindingCommand: B.bindingCommand,
+  bindingEnableLongPress: B.bindingEnableLongPress,
+  bindingLongPressCommand: B.bindingLongPressCommand,
+  bindingIncomplete: B.bindingIncomplete,
+  bindingNoButtons: B.bindingNoButtons,
+  bindingNoCommands: B.bindingNoCommands,
+  bindingAdd: B.bindingAdd,
+  bindingSave: B.bindingSave,
+  bindingCancel: B.bindingCancel,
+  bindingDialogAddTitle: B.bindingDialogAddTitle,
+  bindingDialogEditTitle: B.bindingDialogEditTitle,
+  deleteBindingTitle: B.deleteBindingTitle,
+  deleteDeviceTitle: B.deleteDeviceTitle,
+  deleteCommandTitle: B.deleteCommandTitle,
+  deleteCascadeIntroLive: B.deleteCascadeIntroLive,
+  deleteSimpleBodyLive: B.deleteSimpleBodyLive,
+  deleteImmediateNote: B.deleteImmediateNote,
+  deleteSyncNote: B.deleteSyncNote,
+  deleteImpactActivities: B.deleteImpactActivities,
+  deleteImpactFavorites: B.deleteImpactFavorites,
+  deleteImpactMacroSteps: B.deleteImpactMacroSteps,
+  deleteImpactPowerSteps: B.deleteImpactPowerSteps,
+  deleteImpactBindings: B.deleteImpactBindings,
+  deleteCancel: B.deleteCancel,
+  deleteConfirm: B.deleteConfirm,
+  thisItem: B.thisItem,
+  name: B.name,
+  enterName: B.enterName,
+  ipv4Required: B.ipv4Required,
+  cancel: C.cancel,
+  save: C.save,
   // The live host's screens.
-  loading: "Loading device from the hub cache…",
+  loading: A.capturingFromCache("device"),
   refreshEntity: "Refresh device",
   missingTitle: "Device not found",
   missingBody: "This device is not in the hub's snapshot.",
-  firmwareUnsupportedTitle: "Hub firmware update required",
-  firmwareUnsupportedBody: (installed: string | number, required: string | number) =>
-    `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
-  needsRefreshTitle: "Refresh the hub cache to edit",
-  needsRefreshBody: "This device isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.",
-  refreshDevice: "Refresh device",
-  back: "Back",
-  syncFailedTitle: "Sync didn't finish",
-  syncStaleTitle: "This device changed on the hub",
-  syncStaleBody: "The device was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue — your unsaved edits will be discarded.",
-  syncRetry: "Retry sync",
-  syncReload: "Reload from hub",
-  syncKeepEditing: "Keep editing",
-  exitUnsyncedTitle: "Unsynced changes",
-  exitUnsyncedBody: "This device has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
-  exitSyncNow: "Sync now",
-  exitWithoutSync: "Leave without syncing",
+  firmwareUnsupportedTitle: A.firmwareUnsupportedTitle,
+  firmwareUnsupportedBody: A.firmwareUnsupportedBody,
+  needsRefreshTitle: A.needsRefreshTitle,
+  needsRefreshBody: A.needsRefreshBody("device"),
+  back: A.back,
+  syncFailedTitle: A.syncFailedTitle,
+  syncStaleTitle: A.syncStaleTitle("device"),
+  syncStaleBody: A.syncStaleBody("device"),
+  syncRetry: A.syncRetry,
+  syncReload: A.syncReload,
+  syncKeepEditing: A.syncKeepEditing,
+  exitUnsyncedTitle: A.exitUnsyncedTitle,
+  exitUnsyncedBody: A.exitUnsyncedBody("device"),
+  exitSyncNow: A.exitSyncNow,
+  exitWithoutSync: A.exitWithoutSync,
   // The step editor (the card's macro step editor, device scope).
-  steps: "Steps",
-  macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
-  noMacroSteps: "No steps yet.",
-  addStep: "Add step",
-  stepDialogAddTitle: "Add step",
-  stepDialogEditTitle: "Edit step",
-  stepCommand: "Command",
-  stepHoldSeconds: "Hold (seconds, 0 = short press)",
-  holdLabel: (seconds: string) => `Hold ${seconds}s`,
-  stepAdd: "Add",
-  stepSave: "Save",
-  stepCancel: "Cancel",
-  stepNoCommands: "This device has no commands.",
-  stepWaitAria: "Wait after this step (seconds)",
-  stepWaitLabel: "Delay",
-  stepWaitUnit: "s",
-  deleteStepAria: "Delete step",
-  editStepAria: "Edit step",
+  steps: B.steps,
+  macroStepsSortableHelp: B.macroStepsSortableHelp,
+  noMacroSteps: B.noMacroSteps,
+  addStep: B.addStep,
+  stepDialogAddTitle: B.stepDialogAddTitle,
+  stepDialogEditTitle: B.stepDialogEditTitle,
+  stepCommand: B.stepCommand,
+  stepHoldSeconds: B.stepHoldSeconds,
+  holdLabel: B.holdLabel,
+  stepAdd: B.stepAdd,
+  stepSave: B.stepSave,
+  stepCancel: B.stepCancel,
+  stepNoCommands: B.stepNoCommands,
+  stepWaitAria: B.stepWaitAria,
+  stepWaitLabel: B.stepWaitLabel,
+  stepWaitUnit: B.stepWaitUnit,
+  deleteStepAria: B.deleteStepAria,
+  editStepAria: B.editStepAria,
   dragStepAria: "Drag to reorder (arrow keys move the step)",
   stepChipCommand: "command",
   // The panel's own lines (plan decisions 11 and 12).
   managedWifiWarning: "This device is managed by Home Assistant's Wifi Commands. Changes made here are written to the hub, and that configuration will disagree with the hub after a sync.",
   callbackDeviceNote: "This is the server's callback device (its Wifi Events). Button assignments can be edited here; renaming it or its events lands with the next phase.",
-  deviceMissing: "This device is not in the hub's snapshot.",
-  noPayloadReturned: "The hub returned no payload for this command.",
-  noFreeCommandSlot: "This device has no free command slot left.",
+  serverWifiDeviceNote: "This Wifi Device is edited in the Wifi Commands tab. Button assignments can be edited here; its commands are the Wifi Commands tab's slots.",
+  noPayloadReturned: B.noPayloadReturned,
+  noFreeCommandSlot: B.noFreeCommandSlot,
 };
 
 type SectionId = "power" | "network" | "commands" | "bindings";
@@ -550,17 +554,6 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     this._stepDialog = null;
   };
 
-  /** Macro time bytes are in 0.5 s units (a byte of 4 = 2.0 s); 0 = a click / no wait. */
-  private _byteToSeconds(byteValue: number): string {
-    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-  }
-
-  private _secondsToByte(value: string): number {
-    const seconds = parseFloat(String(value));
-    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-  }
-
   private _stepItems(): BackupMacroStepItem[] {
     const editor = this._stepEditor;
     if (!editor || !this._working || this.deviceId == null) return [];
@@ -574,7 +567,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   };
 
   private _openEditStep(item: BackupMacroStepItem): void {
-    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: this._byteToSeconds(item.hold), error: "" };
+    this._stepDialog = { editIndex: item.index, commandId: item.commandId, hold: byteToSeconds(item.hold), error: "" };
   }
 
   private _closeStepDialog = (): void => {
@@ -591,7 +584,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
       this._stepDialog = { ...dialog, error: S.stepNoCommands };
       return;
     }
-    const hold = this._secondsToByte(dialog.hold);
+    const hold = secondsToByte(dialog.hold);
     const next = dialog.editIndex === null
       ? addDeviceMacroCommandStep(this._working, deviceId, editor.buttonId, commandId, hold)
       : updateDeviceMacroStep(this._working, deviceId, editor.buttonId, dialog.editIndex, { commandId, hold });
@@ -630,9 +623,9 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const editor = this._stepEditor;
     if (!editor || this.deviceId == null || !this._working) return;
     const input = event.target as HTMLInputElement;
-    const wait = this._secondsToByte(input.value);
+    const wait = secondsToByte(input.value);
     // Reflect the snapped 0.5 s value at once: a re-render alone cannot fix a value that rounds to the current byte.
-    input.value = this._byteToSeconds(wait);
+    input.value = byteToSeconds(wait);
     this._commit(setDeviceMacroStepWait(this._working, this.deviceId, editor.buttonId, item.index, wait));
   }
 
@@ -702,9 +695,20 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     return isManagedWifiBrand(this._brand) && !isWifiEventsBrand(this._brand);
   }
 
-  /** The server's callback device: its spec-owned parts wait for DE6 (plan decision 12). */
-  private get _isCallbackDevice(): boolean {
+  /** A keyed server Wifi Device (brand `c0-<key>`, callbacks.py): its commands are the Wifi
+   *  Commands tab's slots, and editing them here would make its next Sync decline (CR-F5b-5). */
+  private get _isServerWifiDevice(): boolean {
+    return !this._offline && this._brand.startsWith("c0-") && !this._isDefaultCallbackDevice;
+  }
+
+  private get _isDefaultCallbackDevice(): boolean {
     return this._callbackDeviceId != null && this.deviceId === this._callbackDeviceId;
+  }
+
+  /** The server's callback devices (the default one and every keyed Wifi Device): their
+   *  spec-owned parts are not edited here (plan decision 12). */
+  private get _isCallbackDevice(): boolean {
+    return this._isDefaultCallbackDevice || this._isServerWifiDevice;
   }
 
   /** The card's Wifi Events pairing applies to both the HA events device and the server's callback device. */
@@ -793,7 +797,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const deleteOptions = { reconcileMembership: this._offline };
     let next = applyBundleDelete(this._working, target, deleteOptions);
     if (target.kind === "command" && this._pairedRecords && !this._offline) {
-      const slots = wifiEventsSlotCount(this._workingElement);
+      // The count as the editor opened it: the working copy loses two records per paired delete.
+      const slots = wifiEventsSlotCount(this._baselineEntity as BackupBundleDevicePayload | null);
       if (slots > 0 && Number(target.commandId) <= slots) {
         next = applyBundleDelete(next, { kind: "command", deviceId, commandId: Number(target.commandId) + slots }, deleteOptions);
       }
@@ -915,7 +920,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   }
 
   private _renderStepRow(item: BackupMacroStepItem, position: number, count: number): TemplateResult {
-    const meta = item.kind === "command" && item.hold > 0 ? S.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const meta = item.kind === "command" && item.hold > 0 ? S.holdLabel(byteToSeconds(item.hold)) : "";
     const isLast = position === count - 1;
     const drag = this._drag;
     const dragging = drag?.from === position;
@@ -945,7 +950,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
           : html`<label class="step-wait" title=${S.stepWaitAria}>
               <span class="step-wait-caption">${S.stepWaitLabel}</span>
               <span class="step-wait-field">
-                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S.stepWaitAria} .value=${this._byteToSeconds(item.wait)} @change=${(event: Event) => this._setStepWait(item, event)} />
+                <input class="step-wait-input" type="number" min="0" max="120" step="0.5" aria-label=${S.stepWaitAria} .value=${byteToSeconds(item.wait)} @change=${(event: Event) => this._setStepWait(item, event)} />
                 <span class="step-wait-unit">${S.stepWaitUnit}</span>
               </span>
             </label>`}
@@ -977,7 +982,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
               <label class="decoded-field-label" for="sb-step-hold">${S.stepHoldSeconds}</label>
               <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
                 @input=${(event: Event) => { this._stepDialog = { ...dialog, hold: (event.currentTarget as HTMLInputElement).value }; }}
-                @change=${(event: Event) => { this._stepDialog = { ...dialog, hold: this._byteToSeconds(this._secondsToByte((event.currentTarget as HTMLInputElement).value)) }; }} />
+                @change=${(event: Event) => { this._stepDialog = { ...dialog, hold: byteToSeconds(secondsToByte((event.currentTarget as HTMLInputElement).value)) }; }} />
             </div>
           </div>
           <div class="dialog-footer">
@@ -1034,7 +1039,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
           <div class="detail-scroll">
             ${this._renderDeleteErrorBanner()}
             ${this._managedByHa ? html`<div class="notice-banner" id="editor-managed-warning">${icon(mdiWifiCog)}<span>${S.managedWifiWarning}</span></div>` : nothing}
-            ${callback ? html`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon(mdiInformationOutline)}<span>${S.callbackDeviceNote}</span></div>` : nothing}
+            ${callback ? html`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S.serverWifiDeviceNote : S.callbackDeviceNote}</span></div>` : nothing}
             ${this._renderPowerSection(deviceId)}
             ${this._renderNetworkSection(deviceId)}
             ${this._renderCommandsSection(deviceId)}
@@ -1148,7 +1153,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                           ${pendingAdd(item.commandId) || (this._offline && !this._commandHasEditablePayload(item.commandId))
                             ? nothing
                             : html`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S.editPayloadAria} title=${S.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? element : null, item.commandId)
+                          ${isLongRecord(this._pairedRecords ? (this._baselineEntity as BackupBundleDevicePayload | null) : null, item.commandId)
                             ? nothing
                             : html`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S.deleteCommandAria} title=${S.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon(mdiTrashCanOutline)}</button>`}`}
                   </div>

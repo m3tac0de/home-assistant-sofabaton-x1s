@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import argparse
 import logging
+import ssl
 import sys
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 from . import __version__
 from .config import DEFAULT_PORT, Settings, load_settings
+
+if TYPE_CHECKING:
+    from .tls import CertificateReloader
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -147,7 +151,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     from .app import create_app
 
-    app = create_app(settings)
+    tls_reloader = None
+    if settings.tls_cert and settings.tls_key:
+        from .tls import CertificateReloader
+
+        try:
+            tls_reloader = CertificateReloader(settings.tls_cert, settings.tls_key)
+        except (OSError, ssl.SSLError, ValueError) as err:
+            print(f"error: cannot load the TLS certificate ({settings.tls_cert}, {settings.tls_key}): {err}",
+                  file=sys.stderr)
+            return 2
+
+    app = create_app(settings, tls_reloader=tls_reloader)
     uvicorn.run(
         app,
         host=settings.bind,
@@ -157,10 +172,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # (plan section 8); with none configured they are ignored.
         proxy_headers=bool(settings.trusted_proxies),
         forwarded_allow_ips=",".join(settings.trusted_proxies) or None,
-        ssl_certfile=str(settings.tls_cert) if settings.tls_cert else None,
-        ssl_keyfile=str(settings.tls_key) if settings.tls_key else None,
+        **tls_kwargs(settings, tls_reloader),
     )
     return 0
+
+
+def tls_kwargs(settings: Settings, reloader: Optional["CertificateReloader"]) -> dict[str, Any]:
+    """uvicorn's TLS arguments. With a reloader, uvicorn serves with the
+    reloader's context (``ssl_context_factory``, uvicorn 0.47+), so a
+    renewed certificate is picked up without a restart; the file
+    arguments stay set because uvicorn reads them to decide it is https.
+    An older uvicorn gets the files only and a warning."""
+
+    if reloader is None:
+        return {}
+    kwargs: dict[str, Any] = {"ssl_certfile": str(settings.tls_cert), "ssl_keyfile": str(settings.tls_key)}
+    import inspect
+
+    import uvicorn
+
+    if "ssl_context_factory" in inspect.signature(uvicorn.Config.__init__).parameters:
+        kwargs["ssl_context_factory"] = reloader.ssl_context_factory
+    else:
+        logging.getLogger(__name__).warning(
+            "tls: this uvicorn (%s) cannot take the server's certificate context; a renewed certificate "
+            "needs a restart (uvicorn 0.47 or newer reloads it)", getattr(uvicorn, "__version__", "?"))
+    return kwargs
 
 
 def _reset_password(settings: Settings) -> int:

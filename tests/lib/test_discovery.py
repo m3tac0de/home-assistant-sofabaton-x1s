@@ -102,7 +102,7 @@ def test_decode_txt_properties_handles_bytes_str_and_none() -> None:
 def test_normalize_classifies_known_hub() -> None:
     hub = discovery.normalize_advertisement(
         X1HUB_TYPE,
-        f"SOFABATON._x1hub._udp.local.",
+        "SOFABATON._x1hub._udp.local.",
         host="192.168.1.50",
         port=8102,
         properties={b"HVER": b"2", b"MAC": b"AA:BB", b"NAME": b"Den"},
@@ -253,7 +253,6 @@ def test_discover_hubs_one_shot(monkeypatch) -> None:
     infos = {name: FakeServiceInfo(properties={b"HVER": b"2", b"NAME": b"Den"})}
 
     started: dict[str, object] = {}
-    original_start = discovery.HubBrowser.start
 
     def fake_start(self):
         # Engine injected, browser stubbed: simulate one advertisement

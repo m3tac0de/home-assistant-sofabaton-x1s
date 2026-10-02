@@ -162,6 +162,7 @@ There is no single global string encoding across the protocol.
 Observed command-label encodings:
 - X1S/X2 `0x5D` page and single-command labels: UTF-16BE
 - X1 labels: ASCII/UTF-8 are common
+- X1S/X2 WiFi/IP command and device labels: UTF-16BE as well (bench_270)
 - some labels can legitimately contain raw byte `0xFF` as part of UTF-16BE text
   (for example `U+00FF`), so consumers must not split records on bare `0xFF`
   unless a full record separator pattern is present
@@ -197,7 +198,7 @@ payload[0:6]   = 01 00 01 01 00 01
 payload[6]     = device id
 payload[7]     = input slot / command slot
 payload[8]     = format marker
-payload[16:76] = fixed-width label region, UTF-16LE
+payload[15:75] = 60-byte label slot, UTF-16BE
 payload[76:]   = device-specific metadata, observed as IP/port + HTTP template
 ```
 
@@ -559,8 +560,14 @@ Observed content includes:
 - URL/path fragments
 - body or request-template bytes
 
-Observed text encoding for the name fields in this family:
-- UTF-16LE
+Text encoding for the name fields in this family: UTF-16BE, in the same
+60-byte slot as every other X1S/X2 label.
+
+These fields were once described as UTF-16LE starting one byte later. For
+Latin-1 text the two readings are byte-identical, which is all the early
+captures contained. A bench run with Cyrillic and CJK names (bench_270,
+2026-09-29, X1S) settled it: the hub stores the slot bytes verbatim and the
+physical remote decodes them as UTF-16BE.
 
 ---
 

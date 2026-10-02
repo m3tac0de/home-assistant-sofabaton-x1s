@@ -6,7 +6,7 @@
 // tests cover them without a DOM.
 
 import type { HubView, JobView } from "./panel-api";
-import { TERMINAL_JOB_STATES, humanizeSlug, problemSummary } from "./panel-api";
+import { TERMINAL_JOB_STATES, humanizeSlug, problemSummary, jobFailureReason } from "./panel-api";
 import type { Draft, DraftCheck, HubNotice, HubRuntime, PanelSnapshot } from "./panel-store";
 
 // -- selection ----------------------------------------------------------------------
@@ -27,13 +27,15 @@ export function selectedHub(snapshot: PanelSnapshot): HubView | null {
 // -- gates ----------------------------------------------------------------------------
 
 /** Why a hub cannot be worked on right now, or "pass". */
-export type Gate = "server_unreachable" | "hub_disabled" | "hub_offline" | "app_holds_hub" | "first_sync" | "pass";
+export type Gate = "server_unreachable" | "hub_disabled" | "hub_not_running" | "hub_offline" | "app_holds_hub" | "first_sync" | "pass";
 
 export function gateFor(snapshot: PanelSnapshot, runtime: HubRuntime | null): Gate {
   if (!snapshot.server.reachable) return "server_unreachable";
   if (!runtime) return "pass";
   const hub = runtime.hub;
-  if (!hub.enabled || !hub.status) return "hub_disabled";
+  if (!hub.enabled) return "hub_disabled";
+  // Enabled but no status: the proxy did not start (the picker offers Retry start).
+  if (!hub.status) return "hub_not_running";
   if (!hub.status.hub_connected || hub.status.mode === "disconnected") return "hub_offline";
   if (hub.status.mode === "observe") return "app_holds_hub";
   if (!hub.status.catalog_ready) return "first_sync";
@@ -43,6 +45,7 @@ export function gateFor(snapshot: PanelSnapshot, runtime: HubRuntime | null): Ga
 export const GATE_LABELS: Record<Exclude<Gate, "pass">, string> = {
   server_unreachable: "The server is not answering",
   hub_disabled: "This hub is disabled",
+  hub_not_running: "The hub's proxy did not start",
   hub_offline: "Waiting for the hub to connect",
   app_holds_hub: "The Sofabaton app holds the hub",
   first_sync: "First sync running",
@@ -172,52 +175,45 @@ function stepMessage(job: JobView): string {
   return typeof message === "string" ? message.trim().replace(/(…|\.+)$/u, "").trim() : "";
 }
 
-/** A step that says the headline again ("Refreshing the hub" over "Refreshing device 13",
- *  "Backing up the hub" over "Backed up device 3"): both open on the same verb. */
-function restates(headline: string, step: string): boolean {
-  const verb = (text: string) => text.split(/\s+/u)[0].toLowerCase();
-  const stem = verb(headline).replace(/ing$/u, "");
-  return stem.length > 2 && verb(step).startsWith(stem);
-}
-
-/** "Restoring device 8 · 3/12" style, from the kind and the last progress. Each
- *  thing is said once: a step that restates the headline replaces it, unless
- *  the headline is the one naming the entity. */
+/** One current step, or the operation when no step is available, with one counter. */
 export function jobNarration(job: JobView): string {
-  const headline = jobHeadline(job);
-  const entity = jobEntity(job);
-  let step = stepMessage(job);
-  // "Syncing device 13 to the hub · Updating inputs on device 13": the headline said which.
-  if (entity && headline.includes(entity) && step.endsWith(` on ${entity}`)) step = step.slice(0, -` on ${entity}`.length);
-  const parts: string[] = [];
-  if (!step || step.toLowerCase() === headline.toLowerCase()) parts.push(headline);
-  else if (restates(headline, step)) parts.push(job.kind in ENTITY_JOB_LABELS ? headline : step);
-  else parts.push(headline, step);
-  const entityId = (job.progress as { entity_id?: unknown } | null)?.entity_id;
-  if (entity && !new RegExp(`\\b${entityId}\\b`, "u").test(parts.join(" "))) parts.push(entity);
+  const text = stepMessage(job) || jobHeadline(job);
+  if (job.status === "queued") return text + " · queued";
+  // Some backend messages already carry a counter. Never add a second one.
+  if (/\d+\s*\/\s*\d+/u.test(text)) return text;
   const p = (job.progress ?? {}) as Record<string, unknown>;
-  const itemIndex = typeof p.item_index === "number" ? p.item_index : null;
-  const itemCount = typeof p.item_count === "number" ? p.item_count : null;
-  const hasItems = itemIndex !== null && itemCount !== null && itemCount > 0;
-  if (hasItems) parts.push(`item ${itemIndex + 1}/${itemCount}`);
+  const index = p.item_index;
+  const count = p.item_count;
+  if (typeof index === "number" && Number.isFinite(index) && typeof count === "number" && Number.isFinite(count) && count > 0) {
+    return text + " · " + Math.min(count, Math.max(1, index + 1)) + "/" + count;
+  }
   const progress = jobProgress(job);
-  // Two counters side by side need their names; one alone reads as the job's own.
-  if (!progress.indeterminate) parts.push(`${hasItems ? "step " : ""}${progress.current ?? 0}/${progress.total}`);
-  else if (job.status === "queued") parts.push("queued");
-  return parts.join(" · ");
+  return progress.indeterminate ? text : text + " · " + Math.min(progress.total!, Math.max(0, progress.current ?? 0)) + "/" + progress.total;
 }
 
-/** The notice a finished job leaves (decision 6); null while it is not finished. */
+const JOB_COMPLETIONS: Record<string, string> = {
+  refresh: "Hub refreshed.", refresh_entity: "Cache refreshed.",
+  sync_device: "Device synced.", sync_activity: "Activity synced.",
+  add_device: "Device added.", remove_device: "Device deleted.",
+  add_activity: "Activity added.", remove_activity: "Activity deleted.",
+  reorder_devices: "Device order updated.", reorder_activities: "Activity order updated.",
+  rename_hub: "Hub renamed.", sync_hub: "Changes applied.", resume_apply: "Changes applied.",
+  backup: "Backup completed.", restore: "Restore completed.", erase: "Hub erased.",
+  learn_ir: "IR code captured.",
+  deploy_callback_device: "Wifi Events deployed.", update_callback_device: "Wifi Events synced.",
+  remove_callback_device: "Wifi Events deleted.", redeploy_callback_device: "Wifi Events redeployed.",
+  deploy_wifi_device: "Wifi Device deployed.", update_wifi_device: "Wifi Device synced.",
+  remove_wifi_device: "Wifi Device deleted.", redeploy_wifi_device: "Wifi Device redeployed.",
+};
+
+/** Compact outcomes; backend diagnostics are available through Details. */
 export function noticeForJob(job: JobView, at: number): HubNotice | null {
   if (!TERMINAL_JOB_STATES.has(job.status)) return null;
-  const label = jobHeadline(job);
   if (job.status === "failed") {
-    const problem = job.error;
-    const head = problemSummary(problem ? { ...problem, detail: null } : null) || "failed";
-    return { tone: "error", label: `${label}: ${head}`, detail: problem?.detail ?? null, jobId: job.job_id, sticky: true, at };
+    return { tone: "error", label: jobFailureReason(job.error), detail: problemSummary(job.error) || null, jobId: job.job_id, sticky: false, at };
   }
-  if (job.status === "cancelled") return { tone: "neutral", label: `${label}: cancelled`, detail: null, jobId: job.job_id, sticky: false, at };
-  return { tone: "success", label: `${label}: done`, detail: null, jobId: job.job_id, sticky: false, at };
+  if (job.status === "cancelled") return { tone: "neutral", label: "Operation cancelled.", detail: null, jobId: job.job_id, sticky: false, at };
+  return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
 
 // -- the dock ---------------------------------------------------------------------------------
@@ -253,7 +249,7 @@ export function draftBannerText(scope: string): string {
 /** What the bottom dock narrates for a hub, by the card's precedence: a
  *  running job, then a notice, then a stopped apply, then a gate, then idle.
  *  An unreachable server is said even with no hub selected. */
-export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean; unsyncedWifi?: boolean } = {}): DockModel {
+export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, view: { unsavedBackup?: boolean; unsyncedWifi?: boolean; unsavedLayout?: boolean } = {}): DockModel {
   const job = activeJob(runtime?.hub);
   if (job) {
     const cancelling = runtime?.cancelRequestedJobId === job.job_id;
@@ -269,6 +265,8 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, v
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" };
   // The Wifi Device's draft lives in its view (wifi commands plan, section 3); Sync to Hub is up in the view's header.
   if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes — sync to the hub to apply them" };
+  // The Remote > Layout document lives in its view; Save is in the view (CR-F5a-4).
+  if (view.unsavedLayout) return { kind: "unsynced_view", text: "Unsaved layout changes — Save keeps them" };
   const gate = gateFor(snapshot, runtime);
   if (gate === "server_unreachable" || (gate !== "pass" && runtime)) return { kind: "gate", gate, text: GATE_LABELS[gate] };
   return { kind: "idle" };
@@ -279,7 +277,10 @@ export interface Connectivity {
   app: boolean;
 }
 
-export function connectivityFor(runtime: HubRuntime | null): Connectivity {
+/** The dock's Hub/App pill. Both halves go dark while the server is unreachable:
+ *  the last status is not a link anyone can use. */
+export function connectivityFor(runtime: HubRuntime | null, reachable = true): Connectivity {
+  if (!reachable) return { hub: false, app: false };
   const status = runtime?.hub.status ?? null;
   return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }

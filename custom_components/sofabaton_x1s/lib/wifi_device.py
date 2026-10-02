@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import ipaddress
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional
 
 from .hub_versions import HUB_VERSION_X1
 from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
@@ -147,7 +147,10 @@ class WifiSlotSpec:
         label = _clean(self.label or f"Button {index}", what=f"slot {index}", limit=MAX_SLOT_LABEL_LEN)
         long_label = self.long_label
         if long_label is None or not str(long_label).strip():
-            long_label = f"{label} Long"
+            # The derived default must fit the slot too: shorten the base
+            # label, not the caller's (they never set this field).
+            suffix = " Long"
+            long_label = f"{label[: MAX_SLOT_LABEL_LEN - len(suffix)].rstrip()}{suffix}"
         long_label = _clean(long_label, what=f"slot {index} long press", limit=MAX_SLOT_LABEL_LEN)
         button: Optional[int] = None
         if self.button is not None and str(self.button).strip() != "":
@@ -533,14 +536,12 @@ def command_defs_from_spec(spec: WifiDeviceSpec) -> list[dict[str, Any]]:
     for index, slot in enumerate(normalized.slots):
         defs.append({
             "display_name": slot.label,
-            "trigger_name": slot.label,
             "press_type": "short",
             "command_index": index,
         })
     for index, slot in enumerate(normalized.slots):
         defs.append({
             "display_name": str(slot.long_label),
-            "trigger_name": slot.label,
             "press_type": "long",
             "command_index": index,
         })

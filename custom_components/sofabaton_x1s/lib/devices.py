@@ -21,7 +21,7 @@ existing CatalogDeviceHandler decode path).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final, Mapping
 
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
@@ -149,8 +149,9 @@ class DeviceConfig:
 
     #: Tail power byte. NOT the power-key capability signal: bench
     #: captures (2026-08-25) show ``1`` on every hub device, including
-    #: devices whose power is unconfigured or disabled, because ``1``
-    #: is also the parse floor when the tail marker block is absent.
+    #: devices whose power is unconfigured or disabled. The parser does NOT
+    #: floor it: a record without the tail byte reads ``0``, and devices
+    #: created through Add device are written with ``0``.
     #: The authoritative capability/style signal is the separate
     #: idle-behavior byte (0x0140 -> 0x0242 exchange). This byte is
     #: still hub-functional: rewriting a Wifi device head without
@@ -211,15 +212,19 @@ class DeviceConfig:
         """``True`` when the tail power byte is non-zero.
 
         Caution: this is NOT "the user configured a power key". Bench
-        captures (2026-08-25) show ``power_mode`` at ``1`` on every hub
-        device, including power-disabled ones, and the parser floors it
-        to ``1`` when the tail marker block is absent, so this property
-        is effectively always true on real hubs. The real power-key
-        capability signal is the idle-behavior byte (0x0242): modes
-        1-3 mean power is configured, 4 means no power key, 0 means
-        never set up. Kept because a zero here still matters to the
-        hub (see :attr:`power_mode`): callers use it to detect a tail
-        that must be carried through head rewrites.
+        captures (2026-08-25) show ``power_mode`` at ``1`` on every
+        existing hub device, including power-disabled ones. It is ``0``
+        when the record has no tail byte (the parser does not floor it)
+        and on devices created through Add device, which write ``0``
+        (device_class_profiles). The real power-key capability signal is
+        the idle-behavior byte (0x0242): modes 1-3 mean power is
+        configured, 4 means no power key, 0 means never set up. Kept
+        because a zero here still matters to the hub (see
+        :attr:`power_mode`): callers use it to detect a tail that must be
+        carried through head rewrites. It does not follow power setup: a
+        device created through Add device keeps ``0`` after its idle byte
+        and power macros are written (bench 2026-09-30, CR-L2-5), so
+        nothing may gate on it as "has power macros".
         """
 
         return self.power_mode != 0

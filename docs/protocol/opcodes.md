@@ -20,7 +20,7 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x0001` | `REQ_BANNER` | none observed | All observed | Request family-`0x02` banner with model, batch, and hub firmware |
 | `0x000A` | `REQ_DEVICES` | none observed | All | Request device catalog |
 | `0x001D` | `ERASE_CONFIGURATION` | none observed | All observed | Wipe the hub configuration tables; see [erase.md](erase.md) |
-| `0x0030` | `SET_HUB_NAME` | variable text bytes | All observed | Set hub name; observed send-side encoding is GB2312-compatible |
+| `0x0030` | `SET_HUB_NAME` | variable text bytes | All observed | Set hub name; observed send-side encoding is GB2312-compatible. The app's rename field only accepts printable ASCII without the backslash, 30 characters max, and the name also rides in the mDNS TXT record, so the integration's rename applies that rule |
 | `0x003A` | `REQ_ACTIVITIES` | none observed | All | Request activity catalog |
 | `0x023C` | `REQ_BUTTONS` | `[act_lo, 0xFF]` | All | Request activity keymap and favorite rows |
 | `0x025C` | `REQ_COMMANDS` | `[dev_lo, 0xFF]` or `[dev_lo, cmd_lo]` | All | Request full command list or one command label |

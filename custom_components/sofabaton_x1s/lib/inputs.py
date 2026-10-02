@@ -25,9 +25,7 @@ Layout (described in our own field names)::
       [0]         body marker (0x01)
       [1..2]      total_pages big-endian
       [3]         device_id
-      [4]         source_id_byte    (what the app sometimes calls
-                                     "source_type" or "input_id" --
-                                     0x00 for "no inputs configured",
+      [4]         source_id_byte    (0x00 for "no inputs configured",
                                      0x01 for direct-inputs, 0x02 for
                                      "no input switching", etc.)
       [5]         entry_count       (== len(entries))
@@ -67,7 +65,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final, Sequence
 
-from .wire_schema import InputEntryLayout, schema_for
+from .wire_schema import InputEntryLayout, paged_write_total_pages, schema_for
 
 
 #: Width of the trailing region in bytes: four control-key rows + ten
@@ -92,10 +90,6 @@ INPUTS_BODY_HEADER_LEN: Final[int] = 8
 #: page on the wire (page marker + 2-byte sequence number).
 INPUTS_OUTER_WRAPPER_LEN: Final[int] = 3
 
-#: Page chunk size used by the family-0x12 / family-0x46 paged writers.
-#: Mirrored from :data:`~custom_components.sofabaton_x1s.lib.macros.MACRO_WRITE_PAGE_BODY_CHUNK`
-#: so we don't import the macros module from here.
-_PAGE_BODY_CHUNK: Final[int] = 247
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +319,7 @@ def build_inputs_write(
     body.extend(trailing)
     body.append(0x00)                          # checksum slot
 
-    total_pages = max(1, (len(body) + _PAGE_BODY_CHUNK - 1) // _PAGE_BODY_CHUNK)
+    total_pages = paged_write_total_pages(len(body))
     body[1:3] = (total_pages & 0xFFFF).to_bytes(2, "big")
     body[-1] = sum(body[:-1]) & 0xFF
 
@@ -378,6 +372,27 @@ def _decode_favorites(region: bytes) -> tuple[FavoriteSlot, ...]:
         FavoriteSlot(payload=bytes(region[i * rl : (i + 1) * rl]))
         for i in range(_TRAILING_FAVORITE_ROWS)
     )
+
+
+def inputs_burst_complete(payloads: Sequence[bytes], *, hub_version: str) -> bool:
+    """False while the burst lacks entry bytes its header declares.
+
+    Frames arrive whole, so a burst can only be short by whole pages: one
+    still in flight when the reader's idle window closed (a retransmitted
+    segment on Wi-Fi). Without a header there is nothing to wait for.
+    """
+
+    if not payloads:
+        return True
+    page1 = payloads[0]
+    header_offset = INPUTS_OUTER_WRAPPER_LEN
+    if len(page1) < header_offset + INPUTS_BODY_HEADER_LEN:
+        return True
+    entry_count = page1[header_offset + 5]
+    body_len = len(page1) - header_offset - INPUTS_BODY_HEADER_LEN + sum(
+        max(0, len(page) - INPUTS_OUTER_WRAPPER_LEN) for page in payloads[1:]
+    )
+    return body_len >= entry_count * schema_for(hub_version).input_entry_stride
 
 
 def parse_inputs_burst(payloads: Sequence[bytes], *, hub_version: str) -> InputsRecord:
@@ -497,5 +512,6 @@ __all__ = [
     "InputEntry",
     "InputsRecord",
     "build_inputs_write",
+    "inputs_burst_complete",
     "parse_inputs_burst",
 ]

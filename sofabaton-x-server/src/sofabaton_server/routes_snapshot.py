@@ -17,7 +17,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -184,6 +184,10 @@ def header_of(snap: HubSnapshot) -> dict[str, Any]:
 
 
 def start_job(request: Request, hub_id: str, kind: str, body, *, cancellable: bool, on_cancel=None) -> JobView:
+    # The route awaited hub reads since it took its proxy; a disable or
+    # remove may have stopped it meanwhile. No await between this check
+    # and the start, so the manager's own guard covers the rest (CR-X5-3).
+    _proxy(request, hub_id)
     try:
         return _jobs(request).start(hub_id, kind, body, cancellable=cancellable, on_cancel=on_cancel)
     except JobConflict as err:

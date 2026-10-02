@@ -10,7 +10,7 @@ from typing import Any, Callable, Iterable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
-from .const import CONF_HOST, CONF_MAC, DOMAIN
+from .const import CONF_BANNER_MAC, CONF_HOST, CONF_MAC, DOMAIN
 from .logging_utils import extract_hub_log_entry_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,6 +92,25 @@ class _InMemoryLogHandler(logging.Handler):
             logger = logging.getLogger(logger_name)
             logger.removeHandler(self)
 
+class _ForwardToRootHandler(logging.Handler):
+    """Pass records at or above the user's own level on to the root logger.
+
+    The capture lowers our loggers to DEBUG (so the Logs tab gets every
+    line) and stops propagation (so HA's log is not flooded with DEBUG).
+    Without this handler that also silenced every WARNING and ERROR the
+    integration and the library log. Its level is the logger's effective
+    level from before the capture, so what HA would have logged still
+    reaches home-assistant.log and the system log, exactly once.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # callHandlers, not handle: since Python 3.13 Logger.handle has a
+        # thread-local recursion guard shared by all loggers, and this runs
+        # while the originating logger is still handling the record, so
+        # handle() would silently drop it.
+        logging.getLogger().callHandlers(record)
+
+
 def _get_handler(hass: HomeAssistant) -> _InMemoryLogHandler:
     domain_data = hass.data.setdefault(DOMAIN, {})
     handler: _InMemoryLogHandler | None = domain_data.get("_diag_handler")
@@ -132,6 +151,14 @@ def _attach_capture(hass: HomeAssistant) -> None:
             # User wants normal/debug logging to flow to HA; honor their choice.
             continue
 
+        forwarders: dict[str, _ForwardToRootHandler] = domain_data.setdefault(
+            "_forward_handlers", {}
+        )
+        if logger_name not in forwarders:
+            forwarder = _ForwardToRootHandler(logger.getEffectiveLevel())
+            logger.addHandler(forwarder)
+            forwarders[logger_name] = forwarder
+
         logger.setLevel(logging.DEBUG)
         logger.propagate = False
 
@@ -161,7 +188,8 @@ def _redact_data_structure(data: Any) -> Any:
                 redacted[key] = "[REDACTED_IP]"
                 continue
 
-            if key_lower in _MAC_KEYS:
+            if key_lower in _MAC_KEYS or key_lower.endswith("mac"):
+                # banner_mac included (CR-H3-10)
                 redacted[key] = "[REDACTED_MAC]"
                 continue
 
@@ -198,6 +226,9 @@ def _detach_capture(hass: HomeAssistant) -> None:
     logger_state: dict[str, tuple[int, bool]] = domain_data.get("_logger_state", {})
     if handler:
         handler.detach()
+
+    for logger_name, forwarder in domain_data.pop("_forward_handlers", {}).items():
+        logging.getLogger(logger_name).removeHandler(forwarder)
 
     for logger_name, (level, propagate) in logger_state.items():
         logger = logging.getLogger(logger_name)
@@ -319,6 +350,12 @@ def _sanitize_log_lines(lines: Iterable[str], entry: ConfigEntry) -> list[str]:
 
     if isinstance(host, str) and host:
         patterns.append((re.compile(re.escape(host), re.IGNORECASE), "[REDACTED_HOST]"))
+    # The hub's own MACs also appear bare, in MQTT topics and Wifi
+    # callback paths ("A1B2C3D4E5F6/up", "/launch/a1b2c3d4e5f6/...").
+    for known in (entry.data.get(CONF_MAC), entry.data.get(CONF_BANNER_MAC)):
+        bare = re.sub(r"[^0-9a-f]", "", str(known or "").lower())
+        if len(bare) == 12:
+            patterns.append((re.compile(bare, re.IGNORECASE), "[REDACTED_MAC]"))
     if hostname:
         patterns.append((re.compile(re.escape(hostname), re.IGNORECASE), "[REDACTED_HOSTNAME]"))
 
@@ -336,8 +373,6 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-
-    handler = _get_handler(hass)
 
     entry_dict = {
         "data": _redact_data_structure(dict(entry.data)),

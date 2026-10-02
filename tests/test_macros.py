@@ -16,7 +16,6 @@ opcode-handler integration is exercised in ``tests/test_opcode_handlers.py``.
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
 from tests._stub_packages import ensure_stub_package
 
@@ -86,12 +85,7 @@ def test_parse_macro_burst_frame_x1s_utf16_record_start() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_x1_ascii_multi_macro_burst_assembles_and_parses() -> None:
-    """Real captured X1 burst with 7 user macros plus POWER_ON / POWER_OFF.
-    Exercises ``MacroAssembler`` page-cycle handling plus the schema-based
-    :func:`parse_macro_records_from_burst` for X1 ASCII labels."""
-
-    raw_hex = """
+_X1_MULTI_MACRO_BURST_HEX = """
     a5 5a fa 13 01 00 01 09 00 02 68 01 1b 03 1d 00 00 00 00 27 e4 00 ff 03 26 00 00 00 00 01 13
     00 ff 03 30 00 00 00 00 00 2a 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff
     03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 25
@@ -124,9 +118,10 @@ def test_x1_ascii_multi_macro_burst_assembles_and_parses() -> None:
     00 00 00 00 00 00 58 1a
     """
 
-    stream = bytes(int(value, 16) for value in raw_hex.split())
 
-    # Walk frame-by-frame on the SYNC0/SYNC1 boundaries
+def _x1_burst_frames() -> list[bytes]:
+    """The captured X1 burst (activity 0x68, nine macros), split on SYNC0/SYNC1."""
+    stream = bytes(int(value, 16) for value in _X1_MULTI_MACRO_BURST_HEX.split())
     frames: list[bytes] = []
     idx = 0
     while idx < len(stream):
@@ -136,6 +131,15 @@ def test_x1_ascii_multi_macro_burst_assembles_and_parses() -> None:
             break
         frames.append(stream[idx:next_idx])
         idx = next_idx
+    return frames
+
+
+def test_x1_ascii_multi_macro_burst_assembles_and_parses() -> None:
+    """Real captured X1 burst with 7 user macros plus POWER_ON / POWER_OFF.
+    Exercises ``MacroAssembler`` page-cycle handling plus the schema-based
+    :func:`parse_macro_records_from_burst` for X1 ASCII labels."""
+
+    frames = _x1_burst_frames()
 
     assembler = MacroAssembler()
     completed: list[tuple[int, bytes, list[int]]] = []
@@ -170,3 +174,46 @@ def test_x1_ascii_multi_macro_burst_assembles_and_parses() -> None:
         (0x68, 0xC6, "POWER_ON"),
         (0x68, 0xC7, "POWER_OFF"),
     ]
+
+
+def test_macro_assembler_reset_drops_an_interrupted_burst() -> None:
+    """CR-L2-3: an interrupted REQ_MACROS burst left a partial buffer that the
+    next fetch for the same activity appended to (stale record, duplicate
+    key, a record missing). A new request resets the activity's buffer."""
+
+    frames = _x1_burst_frames()
+
+    def feed(assembler: MacroAssembler, batch: list[bytes]) -> list:
+        done = []
+        for frame in batch:
+            done.extend(assembler.feed(int.from_bytes(frame[2:4], "big"), frame[4:-1], frame))
+        return done
+
+    assembler = MacroAssembler()
+    assert feed(assembler, frames[:3]) == []          # the connection dropped mid-burst
+    assembler.reset(0x68)                              # the next REQ_MACROS for the activity
+    completed = feed(assembler, frames)
+    assert len(completed) == 1
+    activity_id, blob, boundaries = completed[0]
+    records = parse_macro_records_from_burst(
+        blob, activity_id=activity_id, record_boundaries=boundaries, hub_version=HUB_VERSION_X1,
+    )
+    assert [r.key_id for r in records] == [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0xC6, 0xC7]
+    assert [r.label for r in records][:2] == ["PS5 Start", "PS5 Off"]
+
+
+
+def test_frame_parser_and_assembler_agree_on_continuation_offsets() -> None:
+    """CR-L2-12: parse_macro_burst_frame reported data_start 7 for a
+    continuation while the assembler strips 3; both now use one rule."""
+    from custom_components.sofabaton_x1s.lib.macros import parse_macro_burst_frame
+
+    frames = _x1_burst_frames()
+    continuation = frames[1]  # the second frame of the capture continues record 1
+    opcode = int.from_bytes(continuation[2:4], "big")
+    parsed = parse_macro_burst_frame(opcode, continuation)
+    assert parsed is not None and parsed.role == "continuation"
+    assert parsed.data_start == 3
+    head = parse_macro_burst_frame(int.from_bytes(frames[0][2:4], "big"), frames[0])
+    assert head is not None and head.role == "record_start" and head.data_start == 7
+    assert head.activity_id == 0x68

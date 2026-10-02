@@ -105,6 +105,12 @@ def signal_hub_events(entry_id: str) -> str:
     return f"sofabaton_x1s_hub_events_{entry_id}"
 
 
+def signal_settings(entry_id: str) -> str:
+    """Proxy and hex-logging toggles (the tools card flips them too)."""
+
+    return f"sofabaton_x1s_settings_{entry_id}"
+
+
 def signal_wifi_device(entry_id: str) -> str:
     return f"sofabaton_x1s_wifi_device_{entry_id}"
 

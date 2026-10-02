@@ -5,7 +5,9 @@
 // same notices. Pure over an injected fetch, so the node suite covers it;
 // the DOM glue stays in the two hosts.
 
+import type { components } from "../../sofabaton-x-server/openapi";
 import { SERVER_API_PREFIX } from "./backend/server-backend";
+import { str } from "./remote-card-strings";
 import { normalizeHubId } from "./remote-web-config";
 
 /** One row of `GET /hubs`, as far as a host needs it. */
@@ -16,11 +18,12 @@ export interface HubSummary {
   status?: { hub_version?: string | null; mode?: string } | null;
 }
 
-interface UiDocumentResponse {
-  hub_id: string;
-  document: Record<string, unknown> | null;
-  updated_at: string | null;
-}
+type UiDocumentResponse = components["schemas"]["RemoteCardDocument"];
+
+// HubSummary is the part of `HubView` a host reads: the server's row must
+// stay assignable to it (CR-X3-5).
+const _hubViewIsASummary = (row: components["schemas"]["HubView"]): HubSummary => row;
+void _hubViewIsASummary;
 
 /** The error codes a host maps to a notice and, on the element, an event. */
 export type HostErrorCode =
@@ -292,14 +295,18 @@ export function embedHtmlSnippet(options: {
   );
 }
 
-/** The banner text for a hub the server cannot control right now, or null. */
+/** Localized read/control failure notice, without assuming where it failed. */
 export function unavailableBannerText(
   snapshot: { state?: string } | undefined,
   lastError: string | null,
+  controlRefused = false,
 ): string | null {
+  // The card shows its own localized notice for an unavailable hub; the
+  // banner adds a read or control failure. An HTTP/fetch error does not
+  // establish that the hub is unreachable or rejected the command. Keep
+  // diagnostic details out of localized interface text.
   const unavailable = !snapshot || snapshot.state === "unavailable";
-  if (!unavailable) return null;
-  return lastError
-    ? `The server cannot reach the hub (${lastError}).`
-    : "The hub is not controllable right now (offline, disabled, or the Sofabaton app is connected).";
+  if (unavailable && lastError) return str().card.serverReadFailed;
+  if (controlRefused) return str().card.controlRefused;
+  return null;
 }

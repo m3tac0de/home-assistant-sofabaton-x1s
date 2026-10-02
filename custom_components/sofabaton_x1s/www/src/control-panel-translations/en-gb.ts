@@ -28,15 +28,8 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
     },
   },
   activities: {
-    review: {
-      roleCustomized: (group: string) => `${group} customised.`,
-      idleChanged: (device: string, label: string) => `"${device}" idle behaviour → ${label}.`,
-    },
   },
   backup: {
-    powerNoDevices: "No devices yet. Add a favourite, assignment, or macro that uses one.",
-    activityMeta: (favourites: number, macros: number) =>
-      `${favourites} ${favourites === 1 ? "favourite" : "favourites"} · ${macros} ${macros === 1 ? "macro" : "macros"}`,
     roleCustomized: (name: string) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",
@@ -47,7 +40,7 @@ export const TOOLS_CARD_STRINGS_EN_GB = {
   },
   wifiCommands: {
     colorGroup: "Colour",
-    favorite: "Set as Favourite",
+    favorite: "Set as favourite",
   },
 } satisfies ToolsCardTranslation;
 

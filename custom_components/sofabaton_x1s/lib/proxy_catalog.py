@@ -16,9 +16,8 @@ ingest path.
 
 from __future__ import annotations
 
-import threading
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .hub_versions import HUB_VERSION_X2
 from .commands import extract_ir_dump_blob, extract_ir_dump_label_field
@@ -27,10 +26,13 @@ from .protocol_const import (
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_DEVICES,
-    OP_REQ_IPCMD_SYNC,
     OP_REQ_MACRO_LABELS,
 )
+from .entity_tables import WRITE_GROUPS, forget_entity
 from .state_helpers import normalize_device_entry
+
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
 
 
 ACTIVITY_INCOMPLETE_RETRY_DELAY_S = 0.75
@@ -42,7 +44,7 @@ def _to_export_view():
     return to_export_view
 
 
-class CatalogMixin:
+class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing catalog request, snapshot ingest, and cache reads."""
 
     def request_activity_mapping(self, act_id: int) -> bool:
@@ -66,53 +68,6 @@ class CatalogMixin:
             burst_kind=f"activity_map:{act_lo}",
         )
 
-    def request_macros_for_activity(self, act_id: int) -> bool:
-        if not self.can_issue_commands():
-            self._log.info("[CMD] request_macros_for_activity ignored: proxy client is connected"); return False
-
-        act_lo = act_id & 0xFF
-        if act_lo in self._pending_macro_requests:
-            self._log.debug(
-                "[CMD] request_macros_for_activity ignored: burst already pending for 0x%02X",
-                act_lo,
-            )
-            return False
-
-        self._pending_macro_requests.add(act_lo)
-        return self.enqueue_cmd(
-            OP_REQ_MACRO_LABELS,
-            bytes([act_lo, 0xFF]),
-            expects_burst=True,
-            burst_kind=f"macros:{act_lo}",
-        )
-
-    def request_ip_commands_for_device(self, dev_id: int, *, wait: bool = False, timeout: float = 1.0) -> bool:
-        """Fetch IP command definitions for an existing device."""
-
-        if not self.can_issue_commands():
-            self._log.info("[CMD] request_ip_commands_for_device ignored: proxy client is connected"); return False
-
-        dev_lo = dev_id & 0xFF
-        event = threading.Event() if wait else None
-
-        if event:
-            def _done(_: str) -> None:
-                event.set()
-
-            self._burst.on_burst_end(f"commands:{dev_lo}", _done)
-
-        ok = self.enqueue_cmd(
-            OP_REQ_IPCMD_SYNC,
-            bytes([dev_lo, 0xFF, 0x14]),
-            expects_burst=True,
-            burst_kind=f"commands:{dev_lo}",
-        )
-
-        if event:
-            event.wait(timeout)
-
-        return ok
-
     def get_activities(self, *, force_refresh: bool = True) -> tuple[dict[int, dict], bool]:
         to_export_view = _to_export_view()
         if force_refresh:
@@ -126,7 +81,16 @@ class CatalogMixin:
 
         return ({}, False)
 
-    def get_devices(self, *, force_refresh: bool = False) -> tuple[dict[int, dict], bool]:
+    def get_devices(
+        self, *, force_refresh: bool = False, fetch_if_missing: bool = True
+    ) -> tuple[dict[int, dict], bool]:
+        """The device catalog and whether it is complete.
+
+        Without a complete catalog this requests one, unless
+        ``fetch_if_missing`` is False (a burst listener reading what just
+        landed must not turn a failed read into a retry loop).
+        """
+
         to_export_view = _to_export_view()
         if force_refresh:
             if self.can_issue_commands():
@@ -137,7 +101,7 @@ class CatalogMixin:
         if self._devices_catalog_ready:
             return ({k: to_export_view(v) for k, v in devices_view.items()}, True)
 
-        if self.can_issue_commands():
+        if fetch_if_missing and self.can_issue_commands():
             self.enqueue_cmd(OP_REQ_DEVICES, expects_burst=True, burst_kind="devices")
         return ({}, False)
 
@@ -429,6 +393,20 @@ class CatalogMixin:
             sender=self._send_cmd_frame,
         )
 
+    def forget_idle_behavior(self, device_id: int | None = None) -> None:
+        """Drop what is known about a device's idle record (every device when
+        ``device_id`` is None). The hub reuses freed device ids, and a new
+        device never has an idle record, so nothing may outlive the id."""
+
+        with self._idle_behavior_lock:
+            if device_id is None:
+                self._idle_behavior_values.clear()
+                self._idle_behavior_absent.clear()
+                return
+            dev_lo = int(device_id) & 0xFF
+            self._idle_behavior_values.pop(dev_lo, None)
+            self._idle_behavior_absent.discard(dev_lo)
+
     def record_idle_behavior_absent(self, device_id: int) -> None:
         """The hub holds no idle record for the device: remember that and
         wake the waiter. ``get_idle_behavior`` then answers ``(None, True)``
@@ -440,6 +418,9 @@ class CatalogMixin:
             self._idle_behavior_absent.add(dev_lo)
             self._idle_behavior_pending = None
             event = self._idle_behavior_events.get(dev_lo)
+        entry = self.state.devices.get(dev_lo)
+        if isinstance(entry, dict):
+            entry.pop("idle_behavior", None)
         if event is not None:
             event.set()
         self._log.info("[REMOTE] idle dev=0x%02X: no idle record on the hub", dev_lo)
@@ -586,24 +567,6 @@ class CatalogMixin:
             return finished
 
         return False
-
-    def note_buttons_frame(self, act_lo: int, *, frame_no: int | None, total_frames: int | None) -> None:
-        if frame_no != 1:
-            return
-        if total_frames is None or total_frames <= 0:
-            return
-        self._button_burst_expected_frames[act_lo & 0xFF] = total_frames
-
-    def try_finish_buttons_burst(self, act_lo: int, *, frame_no: int | None) -> bool:
-        ent_lo = act_lo & 0xFF
-        expected = self._button_burst_expected_frames.get(ent_lo)
-        if expected is None or frame_no is None or frame_no < expected:
-            return False
-        return self._burst.finish(
-            f"buttons:{ent_lo}",
-            can_issue=self.can_issue_commands,
-            sender=self._send_cmd_frame,
-        )
 
     def try_finish_activity_map_burst(self, act_lo: int) -> bool:
         ent_lo = act_lo & 0xFF
@@ -753,9 +716,17 @@ class CatalogMixin:
                 cached_mode = int(prior["idle_behavior"]) & 0xFF
             if cached_mode is not None:
                 merged["idle_behavior"] = cached_mode
-                merged["power_mode"] = cached_mode
-                merged["power_model"] = cached_mode
             committed[dev_id] = merged
+        with self._idle_behavior_lock:
+            gone = (set(self._idle_behavior_values) | self._idle_behavior_absent) - set(committed)
+        for dev_id in gone:
+            self.forget_idle_behavior(dev_id)
+        # The observe-mode capture of a device the hub no longer lists
+        # would keep it "known" (get_known_device_ids) forever, and a
+        # whole-hub backup would then ask the hub for it and fail.
+        for dev_id in set(self.state.ip_devices) - set(committed):
+            self.state.ip_devices.pop(dev_id, None)
+            self.state.ip_buttons.pop(dev_id, None)
         self.state.devices = committed
         self._devices_catalog_ready = True
 
@@ -916,6 +887,7 @@ class CatalogMixin:
         if fetch_if_missing and self.can_issue_commands():
             if act_lo not in self._pending_macro_requests:
                 self._pending_macro_requests.add(act_lo)
+                self._macro_assembler.reset(act_lo)
                 self.enqueue_cmd(
                     OP_REQ_MACRO_LABELS,
                     bytes([act_lo, 0xFF]),
@@ -1062,41 +1034,18 @@ class CatalogMixin:
         point.
         """
 
-        ent_lo = ent_id & 0xFF
-
-        if clear_commands:
-            self.state.commands.pop(ent_lo, None)
-            # command_metadata is captured by the same REQ_COMMANDS parse
-            # that fills state.commands; clearing one without the other
-            # leaves record metadata (library_type/button_code) describing
-            # commands that no longer exist in the label map.
-            self.state.command_metadata.pop(ent_lo, None)
-            self.state.device_key_sorts.pop(ent_lo, None)
-            self._commands_complete.discard(ent_lo)
-            self._pending_command_requests.pop(ent_lo, None)
-
-        if clear_buttons:
-            self.state.buttons.pop(ent_lo, None)
-            self.state.button_details.pop(ent_lo, None)
-            self._pending_button_requests.discard(ent_lo)
-
-        if clear_favorites:
-            self.state.activity_command_refs.pop(ent_lo, None)
-            self.state.activity_favorite_slots.pop(ent_lo, None)
-            self.state.activity_keybinding_slots.pop(ent_lo, None)
-            self.state.activity_members.pop(ent_lo, None)
-            self.state.activity_favorite_labels.pop(ent_lo, None)
-            self.state.activity_keybinding_labels.pop(ent_lo, None)
-            self._clear_favorite_label_requests_for_activity(ent_lo)
-            self._clear_keybinding_label_requests_for_activity(ent_lo)
-            self._pending_activity_map_requests.discard(ent_lo)
-            self._activity_map_complete.discard(ent_lo)
-
-        if clear_macros:
-            self.state.activity_macros.pop(ent_lo, None)
-            self._macros_complete.discard(ent_lo)
-            self._pending_macro_requests.discard(ent_lo)
-            self.drop_cached_macro_records(ent_lo)
+        # Each flag names a group of entity_tables. The commands group keeps
+        # the label map, record metadata and key-sort together: clearing
+        # one without the others would describe commands that are gone.
+        flags = {
+            "commands": clear_commands,
+            "buttons": clear_buttons,
+            "favorites": clear_favorites,
+            "macros": clear_macros,
+        }
+        groups = [group for group in WRITE_GROUPS if flags[group]]
+        if groups:
+            forget_entity(self, ent_id, groups=groups)
 
     def activities_referencing_device(self, device_id: int) -> list[int]:
         """Return catalog activity ids whose cached structures reference *device_id*.
@@ -1123,22 +1072,12 @@ class CatalogMixin:
         for act_lo, refs in self.state.activity_command_refs.items():
             if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in refs):
                 referencing.add(act_lo)
-        for slot_map in (
-            self.state.activity_favorite_slots,
-            self.state.activity_keybinding_slots,
-        ):
-            for act_lo, slots in slot_map.items():
-                if any(
-                    (int(slot.get("device_id", 0)) & 0xFF) == dev_lo for slot in slots
-                ):
-                    referencing.add(act_lo)
-        for label_map in (
-            self.state.activity_favorite_labels,
-            self.state.activity_keybinding_labels,
-        ):
-            for act_lo, labels in label_map.items():
-                if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in labels):
-                    referencing.add(act_lo)
+        for act_lo, slots in self.state.activity_favorite_slots.items():
+            if any((int(slot.get("device_id", 0)) & 0xFF) == dev_lo for slot in slots):
+                referencing.add(act_lo)
+        for act_lo, labels in self.state.activity_favorite_labels.items():
+            if any((int(ref_dev) & 0xFF) == dev_lo for ref_dev, _cmd in labels):
+                referencing.add(act_lo)
         for act_lo, details in self.state.button_details.items():
             for meta in details.values():
                 if (int(meta.get("device_id", 0)) & 0xFF) == dev_lo or (
@@ -1172,17 +1111,6 @@ class CatalogMixin:
 
         for pair in to_delete:
             self._favorite_label_requests.pop(pair, None)
-
-    def _clear_keybinding_label_requests_for_activity(self, act_lo: int) -> None:
-        to_delete: list[tuple[int, int]] = []
-
-        for pair, act_ids in self._keybinding_label_requests.items():
-            act_ids.discard(act_lo)
-            if not act_ids:
-                to_delete.append(pair)
-
-        for pair in to_delete:
-            self._keybinding_label_requests.pop(pair, None)
 
 
 __all__ = ["CatalogMixin"]

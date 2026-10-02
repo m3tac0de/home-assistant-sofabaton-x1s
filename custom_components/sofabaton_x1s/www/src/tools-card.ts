@@ -20,6 +20,7 @@ import {
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
+  sidebarPanelMode,
   hubActiveRefreshLabel,
   hubExternalCommandLabel,
   hubRefreshBusy,
@@ -35,13 +36,18 @@ import {
 import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
+import { renderRenameDialog } from "./components/rename-dialog";
+import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
+import { DOC_URLS } from "./shared/doc-links";
 import { setToolsCardLanguage, TOOLS_CARD_STRINGS } from "./strings";
 import { toolsCardLocaleLoader } from "./control-panel-language-loader";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
+// The full-page host behind the "Sidebar Panel" setting; it mounts this card.
+import "./sidebar-panel";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -63,11 +69,11 @@ const TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
 function docLinks(): Partial<Record<TabId, { href: string; label: string }>> {
   return {
     wifi_commands: {
-      href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
+      href: DOC_URLS.wifiCommands,
       label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands,
     },
     backup: {
-      href: TOOLS_CARD_STRINGS.docs.backupUrl,
+      href: DOC_URLS.backup,
       label: TOOLS_CARD_STRINGS.tabDocs.backup,
     },
   };
@@ -219,6 +225,11 @@ class SofabatonControlPanelCard extends LitElement {
   private _addActivityError: string | null = null;
   // "Add Device" dialog state.
   private _addDeviceOpen = false;
+  // Settings tab hub rename dialog (the pencil next to the hub name).
+  private _hubRenameOpen = false;
+  private _hubRenameDraft = "";
+  private _hubRenameError = "";
+  private _hubRenameBusy = false;
   private _addDeviceBusy = false;
   private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
@@ -239,6 +250,7 @@ class SofabatonControlPanelCard extends LitElement {
   // text colour and card surface. Read after every render.
   private _themeProbe: HTMLElement | null = null;
   private _lastThemesRef: unknown = undefined;
+  private _userIsAdmin: boolean | null = null;
 
   constructor() {
     super();
@@ -254,6 +266,11 @@ class SofabatonControlPanelCard extends LitElement {
 
   setConfig(config: Record<string, unknown>) {
     this._config = config || {};
+    // `fill_height: true` (the sidebar panel host) sizes the card to its
+    // container instead of the fixed `card_height`; card-styles.ts keys the
+    // host and ha-card heights on this attribute.
+    this.toggleAttribute("fill-height", this._config.fill_height === true);
+    this.requestUpdate();
     // When created from a hub-specific entity (card picker), pre-select that hub.
     const hub = typeof this._config.hub === "string" ? this._config.hub.trim() : "";
     this._store.setPreferredHub(hub || null);
@@ -263,6 +280,12 @@ class SofabatonControlPanelCard extends LitElement {
     const languageChanged = this.selectLanguage(
       value?.locale?.language ?? value?.language,
     );
+    const isAdmin = value?.user ? value.user.is_admin === true : null;
+    const adminChanged = isAdmin !== this._userIsAdmin;
+    this._userIsAdmin = isAdmin;
+    if (adminChanged) this.requestUpdate();
+    // An admins-only card never starts its hub traffic for other users.
+    if (this.adminOnlyBlocked()) return;
     this._store.setHass(value);
     // A theme or dark-mode switch replaces hass.themes without touching any
     // store state; re-render so the polarity probe sees the new variables.
@@ -427,6 +450,12 @@ class SofabatonControlPanelCard extends LitElement {
   private toggleToolsMenu() {
     this._toolsMenuOpen = !this._toolsMenuOpen;
     if (this._toolsMenuOpen) this._hubPickerOpen = false;
+    this.requestUpdate();
+  }
+
+  private closeToolsMenu() {
+    if (!this._toolsMenuOpen) return;
+    this._toolsMenuOpen = false;
     this.requestUpdate();
   }
 
@@ -599,6 +628,78 @@ class SofabatonControlPanelCard extends LitElement {
     this.requestUpdate();
   }
 
+  private openHubRename() {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return;
+    this._hubRenameDraft = sanitizeHubName(String(hub.name ?? ""));
+    this._hubRenameError = "";
+    this._hubRenameBusy = false;
+    this._hubRenameOpen = true;
+    this.requestUpdate();
+  }
+
+  private closeHubRename() {
+    if (this._hubRenameBusy) return;
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this._hubRenameError = "";
+    this.requestUpdate();
+  }
+
+  private handleHubRenameInput(value: string) {
+    // Drop what the hub name cannot carry as the user types, like the
+    // editor's rename dialogs, so what they see is the name that gets
+    // written.
+    this._hubRenameDraft = sanitizeHubName(value);
+    this._hubRenameError = "";
+    this.requestUpdate();
+  }
+
+  private async confirmHubRename() {
+    if (this._hubRenameBusy) return;
+    const hub = selectedHub(this._snapshot);
+    const next = sanitizeHubName(this._hubRenameDraft);
+    if (!next) {
+      this._hubRenameError = TOOLS_CARD_STRINGS.backup.enterName;
+      this.requestUpdate();
+      return;
+    }
+    if (next === String(hub?.name ?? "")) {
+      this.closeHubRename();
+      return;
+    }
+    this._hubRenameBusy = true;
+    this._hubRenameError = "";
+    this.requestUpdate();
+    const error = await this._store.renameHub(next);
+    this._hubRenameBusy = false;
+    if (error) {
+      this._hubRenameError = error;
+      this.requestUpdate();
+      return;
+    }
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this.requestUpdate();
+  }
+
+  private renderHubRenameDialog() {
+    return renderRenameDialog({
+      open: this._hubRenameOpen,
+      title: TOOLS_CARD_STRINGS.settings.renameHub,
+      label: TOOLS_CARD_STRINGS.settings.hubNameLabel,
+      helper: TOOLS_CARD_STRINGS.settings.hubNameHelper,
+      value: this._hubRenameDraft,
+      error: this._hubRenameError,
+      maxLength: HUB_NAME_MAX,
+      busy: this._hubRenameBusy,
+      inputId: "sb-settings-hub-name",
+      onInput: (value) => this.handleHubRenameInput(value),
+      onCancel: () => this.closeHubRename(),
+      onConfirm: () => void this.confirmHubRename(),
+    });
+  }
+
   private handleSettingToggle(setting: SettingKey, enabled: boolean) {
     void this._store.setSetting(setting, enabled);
   }
@@ -675,7 +776,7 @@ class SofabatonControlPanelCard extends LitElement {
   private scrollEntityToTop(key: string) {
     const entity = this.renderRoot.querySelector<HTMLElement>(`#entity-${key}`);
     if (!entity) return;
-    const body = entity.closest(".cache-panel-body, .secondary-panel-body, .acc-body") as HTMLElement | null;
+    const body = entity.closest(".cache-panel-body, .secondary-panel-body") as HTMLElement | null;
     if (!body) return;
     const entityTop = entity.getBoundingClientRect().top;
     const bodyTop = body.getBoundingClientRect().top;
@@ -802,10 +903,39 @@ class SofabatonControlPanelCard extends LitElement {
       : TOOLS_CARD_STRINGS.card.irPress(device, command);
   }
 
-  private renderBackendUnavailable(height: number) {
+  /** The editor's "Only Home Assistant admins" option (CR-X2-1). This is a
+   *  UI gate: the integration's services and WS commands stay open. */
+  private adminOnlyBlocked(): boolean {
+    return this._config.admin_only === true && this._userIsAdmin !== true;
+  }
+
+  /** The inline height of .card-inner: the configured pixel height, or
+   *  100% of the host when `fill_height` is on. */
+  private cardHeightStyle(): string {
+    if (this._config.fill_height === true) return "height:100%";
+    return `height:${Number(this._config.card_height ?? 600)}px`;
+  }
+
+  private renderAdminOnly(heightStyle: string) {
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
+          <div class="card-body">
+            <div class="backend-unavailable-state">
+              <div class="backend-unavailable-icon"><ha-icon icon="mdi:shield-account-outline"></ha-icon></div>
+              <div class="backend-unavailable-title">${TOOLS_CARD_STRINGS.adminOnly.title}</div>
+              <div class="backend-unavailable-copy">${TOOLS_CARD_STRINGS.adminOnly.copy}</div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  private renderBackendUnavailable(heightStyle: string) {
+    return html`
+      <ha-card>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
@@ -820,10 +950,10 @@ class SofabatonControlPanelCard extends LitElement {
     `;
   }
 
-  private renderVersionMismatch(height: number) {
+  private renderVersionMismatch(heightStyle: string) {
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-body">
             <div class="version-mismatch-state">
               <div class="version-mismatch-header">
@@ -897,13 +1027,13 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   protected render() {
-    const height = Number(this._config.card_height ?? 600);
+    const heightStyle = this.cardHeightStyle();
     if (this._localeLoading) {
       return html`
         <ha-card>
           <div
             class="locale-loading"
-            style=${`height:${height}px`}
+            style=${heightStyle}
             role="status"
             aria-busy="true"
           >
@@ -913,19 +1043,19 @@ class SofabatonControlPanelCard extends LitElement {
       `;
     }
     if (this._preview) return this.renderPreview();
+    if (this.adminOnlyBlocked()) return this.renderAdminOnly(heightStyle);
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const cardGateState = resolveCardGateState(this._snapshot);
     if (cardGateState.kind === "version_mismatch") {
-      return this.renderVersionMismatch(height);
+      return this.renderVersionMismatch(heightStyle);
     }
     if (cardGateState.kind === "backend_unavailable") {
-      return this.renderBackendUnavailable(height);
+      return this.renderBackendUnavailable(heightStyle);
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
-    const activeBackupOperation = hub?.active_backup_operation;
     const runtimeState = resolveRuntimeState(this._snapshot);
     const runtimeOperationBusy = runtimeState?.kind === "operation_running";
     const hubEntryId = hub?.entry_id ?? null;
@@ -937,23 +1067,22 @@ class SofabatonControlPanelCard extends LitElement {
       hubExternalLabel !== null ||
       this._snapshot.pendingActionKey,
     );
-    const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
-      || hubExternalLabel
-      || (hubRefreshing ? TOOLS_CARD_STRINGS.backend.refreshingCache : null)
-      || (this._snapshot.pendingActionKey ? TOOLS_CARD_STRINGS.backend.hubCommandInProgress : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
       hub,
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
+      sidebarPanelMode: sidebarPanelMode(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
       pendingActionKey: this._snapshot.pendingActionKey,
       onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
       onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
+      onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
       onRunAction: (action) => this.handleAction(action),
+      onRenameHub: () => this.openHubRename(),
     });
 
     if (this._snapshot.selectedTab === "logs") {
@@ -973,11 +1102,11 @@ class SofabatonControlPanelCard extends LitElement {
           .hub=${hub}
           .hass=${this._snapshot.hass}
           .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .lastHubEvent=${this._snapshot.lastHubEvent}
           .selectedSection=${this._snapshot.selectedWifiSection}
           .setSelectedSection=${(section: WifiSectionId) => this._store.setSelectedWifiSection(section)}
+          .showCompletion=${(notice: { tone: "success" | "error"; label: string }, entryId: string) => this._store.showRuntimeCompletion(notice, entryId)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
           @editor-dirty-changed=${this._handleEditorDirtyChanged}
@@ -995,9 +1124,7 @@ class SofabatonControlPanelCard extends LitElement {
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
           .persistentCacheEnabled=${cacheEnabled}
-          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
           .selectedSection=${this._snapshot.selectedBackupSection}
           .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
@@ -1083,6 +1210,7 @@ class SofabatonControlPanelCard extends LitElement {
           addDeviceBusy: this._addDeviceBusy,
           addDeviceError: this._addDeviceError,
           addDeviceClasses: creatableDeviceClasses(hubLineFor(this._snapshot.hass, hub)),
+          hubVersion: hubLineFor(this._snapshot.hass, hub),
           addDeviceClass: this._addDeviceClass,
           onOpenAddDevice: () => this.openAddDevice(),
           onCloseAddDevice: () => this.closeAddDevice(),
@@ -1094,7 +1222,8 @@ class SofabatonControlPanelCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="card-inner" style=${`height:${height}px`}>
+        ${this.renderHubRenameDialog()}
+        <div class="card-inner" style=${heightStyle}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
             ${hubs.length > 1
@@ -1132,6 +1261,7 @@ class SofabatonControlPanelCard extends LitElement {
             toolsMenuOpen: this._toolsMenuOpen,
             onSelect: (tabId) => this.handleTabSelect(tabId),
             onToggleToolsMenu: () => this.toggleToolsMenu(),
+            onCloseToolsMenu: () => this.closeToolsMenu(),
           })}
           ${selectedHubConnected ? html`<div class="card-body">${activeTab}</div>` : this.renderHubUnavailable()}
           ${this.renderBottomDock(hub)}
@@ -1182,6 +1312,7 @@ class SofabatonControlPanelEditor extends HTMLElement {
       return;
     }
     const height = Number(this._config.card_height ?? 600);
+    const adminOnly = this._config.admin_only === true;
     this.innerHTML = `
       <style>
         .editor-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
@@ -1194,7 +1325,22 @@ class SofabatonControlPanelEditor extends HTMLElement {
         <input id="tools-card-height" type="number" min="240" step="10" value="${height}" />
       </div>
       <div class="editor-hint">${TOOLS_CARD_STRINGS.card.editorHeightHint}</div>
+      <div class="editor-row">
+        <label for="tools-card-admin-only">${TOOLS_CARD_STRINGS.card.editorAdminOnly}</label>
+        <input id="tools-card-admin-only" type="checkbox" ${adminOnly ? "checked" : ""} />
+      </div>
+      <div class="editor-hint">${TOOLS_CARD_STRINGS.card.editorAdminOnlyHint}</div>
     `;
+    this.querySelector<HTMLInputElement>("#tools-card-admin-only")?.addEventListener("change", (event) => {
+      const config = { ...this._config };
+      if ((event.currentTarget as HTMLInputElement).checked) config.admin_only = true;
+      else delete config.admin_only;
+      this.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      }));
+    });
     this.querySelector<HTMLInputElement>("#tools-card-height")?.addEventListener("change", (event) => {
       const value = Number((event.currentTarget as HTMLInputElement).value || 600);
       this.dispatchEvent(new CustomEvent("config-changed", {
@@ -1240,8 +1386,10 @@ window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TOOLS_TYPE)) {
   window.customCards.push({
     type: TOOLS_TYPE,
-    name: TOOLS_CARD_STRINGS.card.pickerName,
-    description: TOOLS_CARD_STRINGS.card.pickerDescription,
+    // Getters, so the picker shows the active language rather than the
+    // English the module saw at load time (CR-X7-2).
+    get name() { return TOOLS_CARD_STRINGS.card.pickerName; },
+    get description() { return TOOLS_CARD_STRINGS.card.pickerDescription; },
     // No `preview: true`: the "By card" grid renders the *real* card (squished),
     // not renderPreview() — it only honours `preview` in the by-entity flow.
     // Card picker (HA 2026.6+): recommend this card for the hub-control

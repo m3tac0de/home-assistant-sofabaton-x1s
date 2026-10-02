@@ -142,8 +142,8 @@ def test_unchanged_spec_plans_nothing() -> None:
 def test_command_defs_match_the_ha_deploy_shape() -> None:
     defs = wifi_device.command_defs_from_spec(WifiDeviceSpec(name="S", slots=(WifiSlotSpec("Play"),)))
     assert len(defs) == 2 * N
-    assert defs[0] == {"display_name": "Play", "trigger_name": "Play", "press_type": "short", "command_index": 0}
-    assert defs[N] == {"display_name": "Play Long", "trigger_name": "Play", "press_type": "long", "command_index": 0}
+    assert defs[0] == {"display_name": "Play", "press_type": "short", "command_index": 0}
+    assert defs[N] == {"display_name": "Play Long", "press_type": "long", "command_index": 0}
     assert defs[N - 1]["display_name"] == f"Button {N}" and defs[N - 1]["command_index"] == N - 1
 
 
@@ -477,3 +477,9 @@ def test_network_command_trailer_round_trips() -> None:
     assert NetworkCommand.from_dict(cmd.to_dict()) == cmd
     assert cmd.decoded["trailer_hex"] == "f1"
     assert _pkg.payloads.payload_from_body("wifi_roku", cmd.blob) == cmd
+
+
+def test_the_derived_long_label_fits_the_slot() -> None:
+    spec = WifiSlotSpec(label="Living room lamp scene bright")  # 29 characters
+    slot = spec.normalized(1)
+    assert len(slot.long_label) <= 30 and slot.long_label.endswith(" Long")

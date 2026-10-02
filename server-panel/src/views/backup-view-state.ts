@@ -97,7 +97,7 @@ export function loadResultAcks(storage: StorageLike | null): Set<string> {
   }
 }
 
-/** Persist the acks, keeping only ids some hub still lists, so the set cannot grow without bound. */
+/** Persist the acks, keeping the newest 50 (insertion order), so the set cannot grow without bound. */
 export function saveResultAcks(storage: StorageLike | null, acks: ReadonlySet<string>): void {
   if (!storage) return;
   try {

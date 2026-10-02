@@ -1,7 +1,7 @@
 // The remote card's backend port (docs/internal/web-remote-plan.md, section
 // 4.1). The store talks to a hub only through this interface; the HA adapter
-// (ha-backend.ts) wraps the Lovelace `hass` object, the server adapter (R3)
-// will wrap sofabaton-x-server's REST + WebSocket API.
+// (ha-backend.ts) wraps the Lovelace `hass` object, and the server adapter
+// (server-backend.ts) wraps sofabaton-x-server's REST + WebSocket API.
 //
 // The snapshot deliberately keeps the remote entity's attribute contract
 // (`RemoteEntityAttributes`): every pure derivation in remote-card-state.ts

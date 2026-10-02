@@ -48,8 +48,8 @@ needs_library = pytest.mark.skipif(
 )
 
 #: Library submodule behind each vector's protocol. Older library releases
-#: (the manifest floor 5.8.1 has no rc6/pioneer) skip those vectors; the
-#: converter itself refuses them with ``unsupported_protocol`` there.
+#: (5.8.1, the oldest we validated, has no rc6/pioneer) skip those vectors;
+#: the converter itself refuses them with ``unsupported_protocol`` there.
 ENCODER_MODULES = {
     "NEC": "nec",
     "SONY": "sony",

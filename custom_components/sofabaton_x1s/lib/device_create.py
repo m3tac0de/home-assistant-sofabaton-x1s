@@ -33,10 +33,10 @@ from __future__ import annotations
 import contextlib
 import time
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal, Protocol
+from typing import Any, Iterable, Literal, Protocol, Sequence
 
 from .devices import DeviceConfig, build_device_create_payload
-from .wire_schema import schema_for
+from .wire_schema import PAGED_WRITE_WRAPPER_LEN, encode_label_slot, page_family_body, schema_for
 
 
 #: Discriminant for :class:`DeviceCreateRequest.transport`. ``"ir"`` covers
@@ -143,8 +143,6 @@ ACK_STATUS_BYTE_OK = 0x00
 # ---------------------------------------------------------------------------
 
 
-_PAGED_WRITE_OUTER_WRAPPER_LEN = 3
-_PAGED_WRITE_BODY_CHUNK = 247
 
 
 class _ProxyLike(Protocol):
@@ -154,13 +152,13 @@ class _ProxyLike(Protocol):
 
     def wait_for_ack_any(
         self,
-        candidates: list[tuple[int, int | None]],
+        candidates: Sequence[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,
     ) -> tuple[int, bytes] | None: ...
 
-    def exchange(self, name: str): ...
+    def exchange(self, name: str) -> contextlib.AbstractContextManager[None]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,17 +244,11 @@ def _page_create_step_payloads(step: CreateStep) -> list[bytes]:
     if (
         step.family != FAMILY_INPUTS
         or len(step.payload) <= 250
-        or len(step.payload) <= _PAGED_WRITE_OUTER_WRAPPER_LEN
+        or len(step.payload) <= PAGED_WRITE_WRAPPER_LEN
     ):
         return [step.payload]
 
-    body = step.payload[_PAGED_WRITE_OUTER_WRAPPER_LEN:]
-    payloads: list[bytes] = []
-    total_pages = max(1, (len(body) + _PAGED_WRITE_BODY_CHUNK - 1) // _PAGED_WRITE_BODY_CHUNK)
-    for seq in range(1, total_pages + 1):
-        chunk = body[(seq - 1) * _PAGED_WRITE_BODY_CHUNK : seq * _PAGED_WRITE_BODY_CHUNK]
-        payloads.append(bytes([0x01]) + seq.to_bytes(2, "big") + bytes(chunk))
-    return payloads
+    return page_family_body(step.payload[PAGED_WRITE_WRAPPER_LEN:])
 
 
 def run_create_sequence(
@@ -315,6 +307,19 @@ def run_create_sequence(
         for reject_byte in step.ack_reject_first_bytes:
             candidates.append((step.ack_opcode, reject_byte & 0xFF))
 
+        # Called only within this step's attempts: bind the step's values.
+        def _is_rejection(
+            ack_payload: bytes,
+            step: CreateStep = step,
+            wildcard_status_reject: bool = wildcard_status_reject,
+        ) -> bool:
+            first_byte = ack_payload[0] if ack_payload else None
+            if first_byte is None:
+                return False
+            if step.ack_reject_first_bytes and (first_byte & 0xFF) in step.ack_reject_first_bytes:
+                return True
+            return wildcard_status_reject and (first_byte & 0xFF) != ACK_STATUS_BYTE_OK
+
         matched: tuple[int, bytes] | None = None
         page_payloads = _page_create_step_payloads(step)
 
@@ -349,6 +354,17 @@ def run_create_sequence(
 
             if matched is None:
                 break
+            # Every page carries its own verdict: a rejected page fails the
+            # step, and no further page is sent after it.
+            if _is_rejection(matched[1]):
+                return CreateSequenceResult(
+                    success=False,
+                    assigned_device_id=assigned_device_id,
+                    failed_step=step,
+                    failed_index=index,
+                    rejected=True,
+                    reject_payload=bytes(matched[1]),
+                )
 
         if matched is None:
             return CreateSequenceResult(
@@ -361,27 +377,6 @@ def run_create_sequence(
             )
 
         _ack_opcode, ack_payload = matched
-        first_byte = ack_payload[0] if ack_payload else None
-        is_explicit_reject = (
-            step.ack_reject_first_bytes
-            and first_byte is not None
-            and (first_byte & 0xFF) in step.ack_reject_first_bytes
-        )
-        is_status_wildcard_reject = (
-            wildcard_status_reject
-            and first_byte is not None
-            and (first_byte & 0xFF) != ACK_STATUS_BYTE_OK
-        )
-        if is_explicit_reject or is_status_wildcard_reject:
-            return CreateSequenceResult(
-                success=False,
-                assigned_device_id=assigned_device_id,
-                failed_step=step,
-                failed_index=index,
-                rejected=True,
-                reject_payload=bytes(ack_payload),
-            )
-
         if step.capture_device_id and ack_payload:
             assigned_device_id = ack_payload[0] & 0xFF
 
@@ -451,6 +446,10 @@ class DeviceCreateRequest:
     inputs: list[dict[str, Any]] = field(default_factory=list)
     input_record: dict[str, Any] | None = None
     favorites: list[dict[str, Any]] = field(default_factory=list)
+    #: The activity's quick-access display order (source ids of favorites
+    #: and macro shortcuts, the backup's ``favorites_order``). The X1 keeps
+    #: both in one order table, which the activity restore writes from it.
+    favorites_order: list[int] = field(default_factory=list)
     key_sort: dict[str, Any] | None = None
     network_callback_profile: dict[str, Any] | None = None
     entity_kind: Literal["device", "activity"] = "device"
@@ -460,12 +459,6 @@ class DeviceCreateRequest:
     #: those devices new ids at restore time. Empty for device-create
     #: requests (which have no cross-device references).
     device_id_map: dict[int, int] = field(default_factory=dict)
-    #: Source-activity-id -> destination-activity-id translation for
-    #: cross-activity references (e.g. a power-off macro step that
-    #: starts another activity). The bundle orchestrator restores
-    #: activities in dependency order and threads this map in; the
-    #: activity's OWN id maps through a dedicated branch instead.
-    activity_id_map: dict[int, int] = field(default_factory=dict)
     #: Source-device-id -> {source_command_id: new_command_id} mapping
     #: captured during a bundle restore's devices phase. Used by the
     #: activity-create path to resolve macro steps whose ``key_id`` is
@@ -520,6 +513,7 @@ class DeviceCreateResult:
     restored_inputs: int = 0
     skipped_favorites: int = 0
     skipped_macro_steps: int = 0
+    skipped_button_bindings: int = 0
     #: Bundle-restore specific: macro 0xC5 ("set input on device") rows
     #: whose source-ordinal could not be re-resolved against the
     #: destination device's freshly-assigned command ids. Always 0
@@ -678,20 +672,6 @@ def build_device_update_step(
     )
 
 
-def _body_checksum(body: bytes) -> int:
-    """Compute the internal body-checksum byte.
-
-    Every multi-byte write body in this family ends with a 1-byte
-    checksum at the last position; the hub validates it before
-    accepting the write. The reduction is ``sum(body[:-1]) & 0xFF``
-    (the same algorithm the transport uses for the outer frame
-    checksum). Pass the body **without** the trailing checksum byte
-    or with that byte zeroed; both produce the same result.
-    """
-
-    return sum(body[:-1] if body else b"") & 0xFF
-
-
 def _seal_body(body: bytearray) -> bytes:
     """Write the body checksum into ``body[-1]`` and return as bytes."""
 
@@ -775,7 +755,6 @@ def build_command_write_steps(
     label: str,
     library_data: bytes,
     ack_timeout: float = 5.0,
-    inter_page_retry_delay: float = 0.0,
 ) -> list[CreateStep]:
     """Build the paged command-record write for one command (family ``0x0E``).
 
@@ -818,16 +797,12 @@ def build_command_write_steps(
             IR-DB sourced devices, others for BT / RF / learned codes.
         button_code: 48-bit canonical command identifier used by
             binding and macro flows to reference this command.
-        label: User-visible command label, ASCII, truncated to 30
-            bytes.
+        label: User-visible command label. 30-byte ASCII slot on X1
+            (non-ASCII characters dropped), 60-byte UTF-16BE on X1S/X2.
         library_data: Opaque codec bytes appended after the label
             slot. Format depends on ``library_type``.
         ack_timeout: Per-page ack timeout. Defaults to 5 s, matching
             the hub's typical command-write turnaround.
-        inter_page_retry_delay: Sleep between page retries on the
-            sequencer. Defaults to ``0`` -- pages do not retry by
-            default; the caller can pass a positive value to enable a
-            single-retry pattern.
     """
 
     if command_seq < 1 or command_seq > 0xFF:
@@ -848,8 +823,7 @@ def build_command_write_steps(
     schema = schema_for(hub_version)
     label_slot_len = schema.command_label_slot_len
     label_encoding = schema.command_label_encoding
-    label_bytes = label.encode(label_encoding, errors="replace")[:label_slot_len]
-    label_slot_bytes = label_bytes + b"\x00" * (label_slot_len - len(label_bytes))
+    label_slot_bytes = encode_label_slot(label, label_slot_len, label_encoding)
 
     # Body content excluding final checksum byte. Pages chunk this
     # buffer; the checksum is computed over the whole sealed body and
@@ -896,10 +870,49 @@ def build_command_write_steps(
                 ack_first_byte=ACK_STATUS_BYTE_OK,
                 ack_reject_first_bytes=(_REJECT_BYTE_BAD_SAVE,),
                 timeout=ack_timeout,
-                retry_delay=inter_page_retry_delay,
             )
         )
     return steps
+
+
+def sort_pairs_from_hex(msg_hex: str) -> list[tuple[int, int]]:
+    """``(command_id, sort_position)`` pairs from a key-sort table's hex."""
+
+    try:
+        raw = bytes.fromhex(str(msg_hex or "").replace(" ", ""))
+    except ValueError:
+        return []
+    return [(raw[i], raw[i + 1]) for i in range(0, len(raw) - 1, 2)]
+
+
+def rebuild_command_sort(
+    current_pairs: Iterable[tuple[int, int]],
+    known_ids: Iterable[int],
+    *,
+    removed: Iterable[int] = (),
+    appended: Iterable[int] = (),
+) -> list[tuple[int, int]]:
+    """The one device key-sort policy, for adds and deletes alike.
+
+    Commands the table positions keep their order; every other known
+    command follows in id order; ``appended`` go last; ``removed`` go.
+    Then renumber 1..n. Positions 0x00 and 0xFF are the hub's
+    "never positioned" sentinels, not slots (an all-0xFF table orders
+    nothing, X2 bench 2026-09-16).
+    """
+
+    gone = {int(c) & 0xFF for c in removed}
+    tail = [int(c) & 0xFF for c in appended if (int(c) & 0xFF) not in gone]
+    skip = gone | set(tail)
+    positioned = sorted(
+        ((cmd & 0xFF, pos & 0xFF) for cmd, pos in current_pairs
+         if (cmd & 0xFF) not in skip and 1 <= (pos & 0xFF) <= 0xFE),
+        key=lambda pair: pair[1],
+    )
+    listed = {cmd for cmd, _ in positioned}
+    rest = sorted({int(c) & 0xFF for c in known_ids} - listed - skip)
+    ordered = [cmd for cmd, _ in positioned] + rest + tail
+    return [(cmd, index + 1) for index, cmd in enumerate(ordered)]
 
 
 def encode_command_sort_body(
@@ -1137,8 +1150,7 @@ def build_macro_step(
             f"max {max_steps} for hub_version={hub_version!r}"
         )
     label_encoding = schema.macro_label_encoding
-    label_bytes = label.encode(label_encoding, errors="replace")[:label_slot_len]
-    label_slot = label_bytes + b"\x00" * (label_slot_len - len(label_bytes))
+    label_slot = encode_label_slot(label, label_slot_len, label_encoding)
 
     # body layout: 6-byte preamble + steps + L-byte label slot + 1-byte checksum
     body_len = 6 + len(step_records) + label_slot_len + 1

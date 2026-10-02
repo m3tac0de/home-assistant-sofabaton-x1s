@@ -1,6 +1,6 @@
 /**
- * The live entity editor session (Phase L2 of
- * docs/internal/live-activity-editor-plan.md, extended to devices).
+ * The live entity editor session (docs/internal/live-activity-editor-plan.md,
+ * extended to devices).
  *
  * Opened from the Hub tab's Activities or Devices list (wrench button) with
  * `kind` + `entityId` set: it captures that entity's bundle from the
@@ -22,7 +22,7 @@ import type {
   WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { entityForHub, formatError } from "../shared/utils/control-panel-selectors";
+import { formatError } from "../shared/utils/control-panel-selectors";
 import { localizeBackendProgress } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import {
@@ -30,6 +30,7 @@ import {
   isWifiEventsBrand,
   reconcileActivityPowerMacros,
   removeBundleDevice,
+  retireWifiEventLongRecords,
   rewriteWifiEventPlaceholderRefs,
 } from "./backup-state";
 import type { IrLearnHost, WifiEventsHost } from "./edit-detail-view";
@@ -59,9 +60,9 @@ class SofabatonActivitiesTab extends LitElement {
     _entityId: { state: true },
     _baseline: { state: true },
     _working: { state: true },
-    _captureProgress: { state: true },
     _captureError: { state: true },
     _dirty: { state: true },
+    _eventsRecordNeedsSync: { state: true },
     _deleteError: { state: true },
     _exitConfirmOpen: { state: true },
     _syncProgress: { state: true },
@@ -150,7 +151,7 @@ class SofabatonActivitiesTab extends LitElement {
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
-    /* Review / discard / sync dialogs (§4.4). */
+    /* Exit-confirm and delete dialogs (§4.4). */
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
     .dialog {
       width: min(640px, calc(100vw - 36px));
@@ -177,14 +178,6 @@ class SofabatonActivitiesTab extends LitElement {
     .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
     .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
     .dialog-footer-actions { display: flex; gap: 8px; }
-    .review-group { display: flex; flex-direction: column; gap: 6px; }
-    .review-group-title {
-      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color);
-    }
-    .review-entry-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
-    .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
-    .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
-    .review-empty { font-size: 14px; color: var(--secondary-text-color); }
     /* Viewport, not container: these dialogs are position: fixed over the
        whole window, so a narrow card on a wide screen should still get the
        centered floating dialog rather than the full-bleed phone sheet. */
@@ -216,19 +209,20 @@ class SofabatonActivitiesTab extends LitElement {
   private _entityId: number | null = null;
   private _baseline: BackupBundlePayload | null = null;
   private _working: BackupBundlePayload | null = null;
-  private _captureProgress: BackupProgressEvent | null = null;
   private _captureError: string | null = null;
   private _dirty = false;
+  /** Device editor on the Wifi Events device whose record waits for a
+   *  sync (e.g. a deploy from before the single-record model): Sync is
+   *  offered even without edits and runs the events deploy first
+   *  (docs/internal/wifi-events-single-record-plan.md §3.4). */
+  private _eventsRecordNeedsSync = false;
   private _deleteError: string | null = null;
   private _exitConfirmOpen = false;
   private _syncProgress: BackupProgressEvent | null = null;
   private _syncError: string | null = null;
   private _syncFailedAt: string | null = null;
 
-  private _captureOperationId: string | null = null;
-  private _syncOperationId: string | null = null;
   private _progressUnsub: (() => void) | null = null;
-  private _syncStateHydratedFor: string | null = null;
   private _exitAfterSync = false;
   // Which requested activityId we already auto-opened, so returning to the
   // idle stage (close) doesn't immediately re-capture the same activity.
@@ -257,13 +251,8 @@ class SofabatonActivitiesTab extends LitElement {
       if (this._hubEntryId !== null && nextEntryId !== this._hubEntryId) {
         this._teardownProgressSubscription();
         this._resetToList();
-        this._syncStateHydratedFor = null;
       }
       this._hubEntryId = nextEntryId;
-    }
-    if (this.hub && this._syncStateHydratedFor !== this.hub.entry_id) {
-      this._syncStateHydratedFor = this.hub.entry_id;
-      void this._hydrateRunningSync();
     }
     this._maybeAutoOpen();
     this._notifyDirtyDock();
@@ -300,25 +289,6 @@ class SofabatonActivitiesTab extends LitElement {
     return !!this.hub?.firmware_unsupported
       || this.selectedHubProxyConnected
       || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
-  }
-
-  // Card reloaded mid-sync: pick up a running sync op for this kind from the
-  // shared backup/state registry and resubscribe to its progress.
-  private async _hydrateRunningSync() {
-    if (!this.hub || !this.hass) return;
-    try {
-      const state = await this.api().getBackupState(this.hub.entry_id);
-      const op = (this.kind === "device" ? state?.device_sync : state?.activity_sync) ?? null;
-      const running = !!op && ["pending", "running"].includes(String(op.status || ""));
-      if (running && op?.operation_id) {
-        this._syncOperationId = op.operation_id;
-        this._syncProgress = op;
-        this._stage = "syncing";
-        await this._subscribeSync(op.operation_id);
-      }
-    } catch {
-      // Best-effort; a fresh sync can still be started.
-    }
   }
 
   private api() {
@@ -386,11 +356,13 @@ class SofabatonActivitiesTab extends LitElement {
   // ── Wifi Events facade for the Add dialogs (plan §4) ────────────────
   // The detail view is hass-free; this host owns the WS calls AND the
   // bundle grafting (both `_baseline` and `_working` must gain the
-  // deployed events-device block — review diff + the sync validator's
-  // baseline grandfathering depend on it).
+  // deployed events-device block: the sync validator's baseline
+  // grandfathering depends on it).
 
-  private _wifiEventsEntityId(): string {
-    return String(entityForHub(this.hass, this.hub) || "").trim();
+  /** The hub the Wifi Events calls address: its config entry, never the
+   *  remote entity (a disabled remote entity must not hide the events). */
+  private _wifiEventsHubId(): string {
+    return String(this.hub?.entry_id || "").trim();
   }
 
   /** A stable positive device id for the not-yet-deployed events device
@@ -421,8 +393,8 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   /** Synthetic device block for the events device (real id when deployed,
-   *  else the placeholder) carrying every STAGED event's short + long
-   *  records, so refs resolve for display and the scope guard stays
+   *  else the placeholder) carrying every STAGED event's record, so refs
+   *  resolve for display and the scope guard stays
    *  balanced (grafted into BOTH bundles). The Sync flow retires it for
    *  the real deployed block after phase 1. */
   private _syntheticEventsBlock(events: WifiEvent[], deviceId: number) {
@@ -433,10 +405,7 @@ class SofabatonActivitiesTab extends LitElement {
         brand: "m3-haevents-staged0000000",
         device_class: "wifi_ip",
       },
-      commands: events.flatMap((event) => [
-        { command_id: event.command_id, name: event.name },
-        { command_id: event.long_press_command_id, name: `${event.name} Long Press` },
-      ]),
+      commands: events.map((event) => ({ command_id: event.command_id, name: event.name })),
     } as never;
   }
 
@@ -446,8 +415,8 @@ class SofabatonActivitiesTab extends LitElement {
    *  block would lack its command records — building the block from the
    *  events list instead keeps new events' favorites/bindings/steps
    *  resolvable in the UI immediately, before any sync. The synthetic
-   *  block carries every configured event's short + long records; the
-   *  real deployed block replaces it on the post-sync rebase (and, for the
+   *  block carries every configured event's record; the real deployed
+   *  block replaces it on the post-sync rebase (and, for the
    *  first-ever event, in the Sync flow's placeholder swap). */
   private async _graftWifiEventsDevice(options: { forceRefresh?: boolean } = {}): Promise<BackupBundlePayload | null> {
     if (!this.hub) return this._working;
@@ -456,7 +425,7 @@ class SofabatonActivitiesTab extends LitElement {
         || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId,
     );
     if (present && !options.forceRefresh) return this._working;
-    const entityId = this._wifiEventsEntityId();
+    const entityId = this._wifiEventsHubId();
     const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
     const blockId = state.device_id ?? this._placeholderDeviceId();
     const entry = this._syntheticEventsBlock(state.events ?? [], blockId);
@@ -467,7 +436,7 @@ class SofabatonActivitiesTab extends LitElement {
 
   private _wifiEventsFacade: WifiEventsHost = {
     list: async (): Promise<WifiEvent[]> => {
-      const entityId = this._wifiEventsEntityId();
+      const entityId = this._wifiEventsHubId();
       if (!entityId) return [];
       const res = await this.api().listWifiEvents(entityId);
       return this._withEventDeviceIds(res.events ?? [], res.device_id ?? null);
@@ -475,7 +444,7 @@ class SofabatonActivitiesTab extends LitElement {
     create: async (name: string) => {
       // W7 full deferral: a pure store allocation — instant, no deploy.
       // The Sync press runs the events-record deploy as phase 1.
-      const entityId = this._wifiEventsEntityId();
+      const entityId = this._wifiEventsHubId();
       if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
       const res = await this.api().createWifiEvent(entityId, name);
       const filled = this._withEventDeviceIds(res?.events ?? [], res?.device_id ?? null);
@@ -485,11 +454,6 @@ class SofabatonActivitiesTab extends LitElement {
       return { event: full, bundle };
     },
     ensureGrafted: async () => this._graftWifiEventsDevice(),
-    enableLongPress: async (slotIndex: number) => {
-      const entityId = this._wifiEventsEntityId();
-      if (!entityId) throw new Error(TOOLS_CARD_STRINGS.backup.wifiEventCreateFailed);
-      await this.api().setWifiEventLongpress(entityId, slotIndex, true);
-    },
   };
 
   /** W7 phase 1 of the Sync press: deploy the events record when it is
@@ -497,7 +461,7 @@ class SofabatonActivitiesTab extends LitElement {
    *  swap the synthetic block for the deployed one in both bundles.
    *  Returns false (with `_syncProgress` set) when phase 1 fails. */
   private async _syncWifiEventsPhase(): Promise<boolean> {
-    const entityId = this._wifiEventsEntityId();
+    const entityId = this._wifiEventsHubId();
     if (!entityId || this._entityId == null || !this.hub) return true;
     const placeholderId = this._wifiEventsPlaceholderId;
     const referencesEvents = (bundle: BackupBundlePayload | null): boolean => {
@@ -528,7 +492,8 @@ class SofabatonActivitiesTab extends LitElement {
     const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
       (entry) => Number(entry?.device?.device_id ?? -1) === placeholderId,
     );
-    if (state.record_needs_sync || (hasPlaceholder && state.device_id == null)) {
+    const deployed = state.record_needs_sync || (hasPlaceholder && state.device_id == null);
+    if (deployed) {
       this._syncProgress = { message: S.wifiEventsPhaseMessage } as BackupProgressEvent;
       try {
         state = await this.api().syncWifiEvents(entityId);
@@ -541,6 +506,11 @@ class SofabatonActivitiesTab extends LitElement {
       }
     }
     const realId = state.device_id;
+    // The deploy may have retired the long records of the old layout and
+    // moved every reference to one onto its event, in every activity.
+    // Follow it in both bundles, or this activity's stale preflight and
+    // diff would still hold the deleted records.
+    if (deployed && realId != null) this._retireWifiEventLongRecords(realId, state.slot_count);
     if (hasPlaceholder && placeholderId != null && realId != null) {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
       const entry = (res?.bundle?.devices ?? []).find(
@@ -564,12 +534,57 @@ class SofabatonActivitiesTab extends LitElement {
     return true;
   }
 
+  /** Apply the hub-side long-record retirement to the baseline and the
+   *  working bundle alike: the user's own edits (the diff) stay as they are. */
+  private _retireWifiEventLongRecords(deviceId: number, slotCount: number | undefined) {
+    if (!(Number(slotCount) > 0)) return;
+    this._baseline = retireWifiEventLongRecords(this._baseline, deviceId, Number(slotCount));
+    this._working = retireWifiEventLongRecords(this._working, deviceId, Number(slotCount));
+    this._recomputeDirty();
+  }
+
+  /** True when the captured device is the Wifi Events device. */
+  private _isWifiEventsDevice(bundle: BackupBundlePayload | null, entityId: number): boolean {
+    const entry = (bundle?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === Number(entityId),
+    );
+    return isWifiEventsBrand(String(entry?.device?.brand ?? ""));
+  }
+
+  /** Device editor on the Wifi Events device: run the events deploy the
+   *  record waits for, then follow it in both bundles. Returns false (with
+   *  the failure staged) when the deploy fails. */
+  private async _syncWifiEventsDevice(): Promise<boolean> {
+    const hubId = this._wifiEventsHubId();
+    if (!hubId || this._entityId == null) return true;
+    this._syncProgress = { message: S.wifiEventsPhaseMessage } as BackupProgressEvent;
+    let state;
+    try {
+      state = await this.api().syncWifiEvents(hubId);
+    } catch (error) {
+      this._syncError = formatError(error);
+      this._syncFailedAt = null;
+      this._syncProgress = null;
+      this._stage = "sync_failed";
+      return false;
+    }
+    this._eventsRecordNeedsSync = Boolean(state.record_needs_sync);
+    if (state.device_id !== this._entityId) {
+      // A replace deploy recreated the device under a new id: this editor's
+      // entity is gone.
+      this._syncProgress = null;
+      this._stage = "needs_refresh";
+      return false;
+    }
+    this._retireWifiEventLongRecords(this._entityId, state.slot_count);
+    return true;
+  }
+
   private _startCapture = async (entityId: number) => {
     if (!this.hub || !this.hass) return;
     this._entityId = entityId;
     this._wifiEventsPlaceholderId = null;
     this._captureError = null;
-    this._captureProgress = null;
     this._stage = "capturing";
     try {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -585,6 +600,15 @@ class SofabatonActivitiesTab extends LitElement {
       this._baseline = bundle;
       this._working = structuredClone(bundle);
       this._dirty = false;
+      this._eventsRecordNeedsSync = false;
+      if (this.kind === "device" && this._isWifiEventsDevice(bundle, entityId)) {
+        try {
+          const state = await this.api().listWifiEvents(this.hub.entry_id);
+          this._eventsRecordNeedsSync = Boolean(state.record_needs_sync);
+        } catch {
+          /* the editor works without it; Sync then needs an edit */
+        }
+      }
       this._stage = "editing";
     } catch (error) {
       this._captureError = formatError(error);
@@ -603,11 +627,11 @@ class SofabatonActivitiesTab extends LitElement {
     return !!progress && ["pending", "running"].includes(String(progress.status || ""));
   }
 
-  // ── Editing (§4.3) — interactive but ephemeral in L2 ───────────────
+  // ── Editing (§4.3) ───────────────────────────────────────────────────
 
   private _handleBundleChange = (event: CustomEvent<{ bundle: BackupBundlePayload }>) => {
-    // The detail element already ran its HA-action prune sweep. Store the
-    // edited bundle and recompute dirty against the captured baseline.
+    // Store the edited bundle and recompute dirty against the captured
+    // baseline.
     this._working = event.detail.bundle;
     this._recomputeDirty();
   };
@@ -623,29 +647,42 @@ class SofabatonActivitiesTab extends LitElement {
   // Start the real sync engine (§4.5): diff baseline vs working on the
   // backend and issue targeted in-place writes, streaming progress.
   private _requestSync = async () => {
-    if (!this._dirty || this._entityId == null || !this.hub || !this._baseline || !this._working) return;
+    if (!(this._dirty || this._eventsRecordNeedsSync)) return;
+    if (this._entityId == null || !this.hub || !this._baseline || !this._working) return;
     this._exitConfirmOpen = false;
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncProgress = null;
     this._stage = "syncing";
-    // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
-    // refs) BEFORE the entity sync, so every referenced record exists on
-    // the hub when the activity writes land.
-    if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
-      this._exitAfterSync = false;
-      return;
-    }
     try {
+      // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
+      // refs) BEFORE the entity sync, so every referenced record exists on
+      // the hub when the activity writes land. A rejection here lands in
+      // sync_failed like any other (CR-F2-3).
+      if (this.kind === "activity" && !(await this._syncWifiEventsPhase())) {
+        this._exitAfterSync = false;
+        return;
+      }
+      if (this.kind === "device" && this._eventsRecordNeedsSync) {
+        if (!(await this._syncWifiEventsDevice())) {
+          this._exitAfterSync = false;
+          return;
+        }
+        if (!this._dirty) {
+          // Nothing of the user's own to write: the events deploy was all.
+          await this._onSyncSuccess(null);
+          return;
+        }
+      }
       const start = this.kind === "device"
         ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working)
         : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
-      this._syncOperationId = start.operation_id;
       await this.refreshControlPanelState?.();
       await this._subscribeSync(start.operation_id);
     } catch (error) {
       this._syncError = formatError(error);
       this._syncFailedAt = null;
+      this._syncProgress = null;
       this._exitAfterSync = false;
       this._stage = "sync_failed";
     }
@@ -673,12 +710,13 @@ class SofabatonActivitiesTab extends LitElement {
     this._progressUnsub = unsub;
   }
 
-  private async _onSyncSuccess(operationId: string) {
+  private async _onSyncSuccess(operationId: string | null) {
     this._syncProgress = null;
-    this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
-    try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
+    if (operationId != null) {
+      try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
+    }
     try { await this.refreshControlPanelState?.(); } catch { /* ignore */ }
     if (exitAfterSync) {
       this._resetToList();
@@ -774,16 +812,14 @@ class SofabatonActivitiesTab extends LitElement {
     this._entityId = null;
     this._baseline = null;
     this._working = null;
-    this._captureProgress = null;
     this._captureError = null;
-    this._captureOperationId = null;
     this._dirty = false;
+    this._eventsRecordNeedsSync = false;
     this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
-    this._syncOperationId = null;
     this._exitAfterSync = false;
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
@@ -907,7 +943,6 @@ class SofabatonActivitiesTab extends LitElement {
           <div class="guard-sub">${S.needsRefreshBody(this.kind)}</div>
           <div class="action-row">
             <sofabaton-refresh-cache-button
-              .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               .runRefresh=${this.startRefreshAll ?? null}
               @refreshed=${() => { if (this._entityId != null) void this._startCapture(this._entityId); }}
@@ -927,7 +962,7 @@ class SofabatonActivitiesTab extends LitElement {
           .bundle=${this._working}
           .kind=${this.kind}
           .entityId=${this._entityId}
-          .dirty=${this._dirty}
+          .dirty=${this._dirty || this._eventsRecordNeedsSync}
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
@@ -992,7 +1027,6 @@ class SofabatonActivitiesTab extends LitElement {
               ? nothing
               : html`<button class="btn btn-primary" @click=${this._retrySync}>${S.syncRetry}</button>`}
             <sofabaton-refresh-cache-button
-              .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               .runRefresh=${this.startRefreshAll ?? null}
               .label=${S.syncReload}
@@ -1012,7 +1046,7 @@ class SofabatonActivitiesTab extends LitElement {
         <div class="dialog dialog--small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${S.exitUnsyncedTitle}</div>
-            <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body"><div class="dialog-text">${S.exitUnsyncedBody(this.kind)}</div></div>
           <div class="dialog-footer">

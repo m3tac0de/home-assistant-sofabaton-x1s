@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   addBundleActivityFavorite,
   bundleDeviceBrand,
-  bundleEditableDeviceOptions,
+  bundleDeviceOptions,
   graftDeviceIntoBundle,
   isManagedWifiBrand,
   isWifiEventsBrand,
@@ -175,17 +175,17 @@ test("rewriteWifiEventPlaceholderRefs swaps id 0 for the real id in all ref kind
   assert.equal(rewriteWifiEventPlaceholderRefs(bundle, 101, 0), bundle);
 });
 
-test("bundleEditableDeviceOptions itself keeps every device (offline path)", () => {
+test("bundleDeviceOptions itself keeps every device (offline path)", () => {
   // The live-mode filter lives in the detail view's _editableDeviceOptions;
   // the shared helper must keep showing everything for the offline editor.
-  const options = bundleEditableDeviceOptions(liveBundle());
+  const options = bundleDeviceOptions(liveBundle());
   assert.deepEqual(options.map((o) => o.id).sort((a, b) => a - b), [1, 5, 10]);
 });
 
 test("live picker filtering drops exactly the events device", () => {
   // Mirror of _editableDeviceOptions' live-mode filter expression.
   const bundle = liveBundle();
-  const filtered = bundleEditableDeviceOptions(bundle).filter(
+  const filtered = bundleDeviceOptions(bundle).filter(
     (option) => !isWifiEventsBrand(bundleDeviceBrand(bundle, option.id)),
   );
   assert.deepEqual(filtered.map((o) => o.id).sort((a, b) => a - b), [1, 5]);

@@ -1058,6 +1058,37 @@ def test_catalog_device_handler_decodes_shared_device_class_code() -> None:
     }
 
 
+def test_catalog_device_handler_ingests_a_name_with_a_lone_surrogate() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy._begin_device_request()
+
+    payload = bytearray(218)
+    payload[0] = 0x01
+    payload[3] = 0x01
+    payload[6:8] = (0x0007).to_bytes(2, "big")
+    payload[10] = 0x0D
+    raw = bytearray([0xA5, 0x5A, 0xD5, 0x0B]) + payload + bytearray([0x00])
+    # "TV" followed by the high half of an emoji the slot cut off.
+    name = "TV".encode("utf-16be") + b"\xd8\x3d"
+    raw[36 : 36 + len(name)] = name
+
+    CatalogDeviceHandler().handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=OP_CATALOG_ROW_DEVICE,
+            direction="H→A",
+            payload=bytes(payload),
+            raw=bytes(raw),
+            name="CATALOG_ROW_DEVICE",
+        )
+    )
+    proxy._on_devices_burst_end("devices")
+
+    assert proxy.state.devices[0x07]["name"] == "TV"
+
+
 def test_x1_activity_row_updates_state_and_trims_label() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -1491,8 +1522,7 @@ def test_idle_behavior_reply_updates_device_cache() -> None:
     handler.handle(frame)
 
     assert proxy.state.devices[0x0C]["idle_behavior"] == 3
-    assert proxy.state.devices[0x0C]["power_mode"] == 3
-    assert proxy.state.devices[0x0C]["power_model"] == 3
+    assert "power_mode" not in proxy.state.devices[0x0C]
 
 
 def test_set_idle_behavior_handler_updates_cache_from_app_command() -> None:
@@ -1538,8 +1568,6 @@ def test_device_snapshot_commit_preserves_cached_idle_behavior() -> None:
         "name": "TV",
         "brand": "Sony",
         "idle_behavior": 3,
-        "power_mode": 3,
-        "power_model": 3,
     }
     proxy.record_idle_behavior_value(0x0C, 3)
     proxy._begin_device_request()
@@ -1560,8 +1588,6 @@ def test_device_snapshot_commit_preserves_cached_idle_behavior() -> None:
     proxy._on_devices_burst_end("devices")
 
     assert proxy.state.devices[0x0C]["idle_behavior"] == 3
-    assert proxy.state.devices[0x0C]["power_mode"] == 3
-    assert proxy.state.devices[0x0C]["power_model"] == 3
 
 
 def test_keymap_handler_parses_x2_followup_d73d_page_buttons() -> None:
@@ -2056,6 +2082,40 @@ def test_send_command_waits_out_settle_gate() -> None:
     assert _time.monotonic() - started < 0.04
 
 
+def test_presses_held_by_the_settle_gate_leave_in_arrival_order() -> None:
+    import threading
+    import time as _time
+
+    proxy, _changes = _external_state_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    sent: list[int] = []
+    proxy.enqueue_cmd = lambda opcode, payload=b"", **kw: sent.append(payload[1]) or True  # type: ignore[assignment]
+    proxy.apply_external_activity_state(0x68)
+
+    # Digit 1 is pressed first but its thread wakes last from the release.
+    real_wait = proxy._wait_external_settle
+
+    def _wait() -> None:
+        real_wait()
+        if threading.current_thread().name == "digit-1":
+            _time.sleep(0.05)
+
+    proxy._wait_external_settle = _wait  # type: ignore[assignment]
+    threads = []
+    for key in (1, 2, 3):
+        t = threading.Thread(target=proxy.send_command, args=(0x68, key), name=f"digit-{key}")
+        t.start()
+        threads.append(t)
+        while proxy._press_next_ticket < key:
+            _time.sleep(0.001)
+
+    proxy.notify_hub_ready()
+    for t in threads:
+        t.join(timeout=2)
+
+    assert sent == [1, 2, 3]
+
+
 def _favorites_order_frame(proxy, act_lo: int, pairs: list[tuple[int, int]]) -> FrameContext:
     payload = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo]) + bytes(b for pair in pairs for b in pair)
     return FrameContext(proxy=proxy, opcode=0x0063, direction="H→A", payload=payload, raw=b"", name="FAV_ORDER_RESP")
@@ -2080,3 +2140,68 @@ def test_favorites_order_keeps_one_slot_per_id() -> None:
     # A clean table is stored as read.
     handler.handle(_favorites_order_frame(proxy, 0x6B, [(2, 1), (1, 2)]))
     assert proxy.state.activity_favorites_order[0x6B] == [(2, 1), (1, 2)]
+
+
+def test_hub_no_idle_record_answer_beats_a_stale_cached_value() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.state.devices[0x05] = {"name": "Old", "brand": "Sony"}
+    proxy.record_idle_behavior_value(0x05, 3)
+
+    proxy.record_idle_behavior_absent(0x05)
+
+    assert "idle_behavior" not in proxy.state.devices[0x05]
+    assert proxy.get_idle_behavior(0x05, fetch_if_missing=False) == (None, True)
+
+
+def test_idle_behavior_is_forgotten_for_ids_a_devices_snapshot_drops() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.record_idle_behavior_value(0x05, 3)
+    proxy.record_idle_behavior_absent(0x06)
+    proxy._begin_device_request()
+    proxy.ingest_device_row(
+        row_idx=1,
+        expected_rows=1,
+        dev_id=0x0C,
+        device={"brand": "Sony", "name": "TV", "device_class": "ir", "device_class_code": 0x0D},
+    )
+    proxy._on_devices_burst_end("devices")
+
+    # The hub reuses freed ids; a device created at 0x05 later must not
+    # inherit mode 3, and 0x06 must be asked again.
+    proxy.state.devices[0x05] = {"name": "New", "brand": "LG"}
+    assert proxy.get_idle_behavior(0x05, fetch_if_missing=False) == (None, False)
+    assert proxy.get_idle_behavior(0x06, fetch_if_missing=False) == (None, False)
+
+
+def test_a_devices_commit_drops_captures_of_devices_the_hub_no_longer_lists() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    # The vendor app synced Wifi device 9 through the proxy, then deleted it.
+    proxy.state.record_virtual_device(9, name="Lamp", button_id=1, method="GET", url="/x")
+    proxy._begin_device_request()
+    proxy.ingest_device_row(
+        row_idx=1,
+        expected_rows=1,
+        dev_id=0x01,
+        device={"brand": "Sony", "name": "TV", "device_class": "ir", "device_class_code": 0x0D},
+    )
+    proxy._on_devices_burst_end("devices")
+
+    assert proxy.get_known_device_ids() == {0x01}
+    assert 9 not in proxy.state.ip_buttons
+
+
+def test_record_banner_payload_reads_the_gb2312_name_the_hub_stores() -> None:
+    # Bench 2026-09-30 (X1S, bench_281): set_hub_name writes GB2312 and the
+    # banner carries those bytes back verbatim; a UTF-8 read dropped them.
+    header = bytes.fromhex("e26a44861b45000220221120050100")
+    for name_hex, want in (("bfcdccfc20487562", "客厅 Hub"), ("4ba8b963686520487562", "Küche Hub")):
+        payload = header + bytes.fromhex(name_hex)
+        proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+        info = proxy.record_banner_payload((len(payload) << 8) | 0x02, payload)
+        assert info["name"] == want

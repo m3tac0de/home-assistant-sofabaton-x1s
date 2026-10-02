@@ -1001,6 +1001,7 @@
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
+      sidebar_panel: "off",
       tools_frontend_version: TOOLS_FRONTEND_VERSION,
       hubs: [HUB_1],
     };
@@ -1383,30 +1384,20 @@
       {
         slot_index: 0,
         name: "Movie Night",
-        long_press_enabled: true,
         action: {
           action: "perform-action",
           perform_action: "scene.turn_on",
           target: { entity_id: ["scene.movie_time"] },
         },
-        long_press_action: {
-          action: "perform-action",
-          perform_action: "light.turn_off",
-          target: { entity_id: ["light.downstairs"] },
-        },
         command_id: 1,
-        long_press_command_id: 51,
         device_id: 10,
         deployed: true,
       },
       {
         slot_index: 1,
         name: "Guests",
-        long_press_enabled: false,
         action: { ...DEFAULT_ACTION },
-        long_press_action: { ...DEFAULT_ACTION },
         command_id: 2,
-        long_press_command_id: 52,
         device_id: 10,
         deployed: false,
       },
@@ -1603,6 +1594,8 @@
                 mock.contents.enabled = Boolean(message.enabled);
               } else if (message.setting === "hub_click_action") {
                 mock.state.hub_click_action = String(message.value ?? "none");
+              } else if (message.setting === "sidebar_panel") {
+                mock.state.sidebar_panel = String(message.value ?? "off");
               } else {
                 const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id);
                 if (hub?.settings) hub.settings[message.setting] = Boolean(message.enabled);
@@ -1661,6 +1654,11 @@
               return respond(type, { status: "success" });
             case "sofabaton_x1s/device/delete":
               return respond(type, { status: "success" });
+            case "sofabaton_x1s/hub/rename": {
+              const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id) ?? mock.state.hubs[0];
+              if (hub) hub.name = String(message.name ?? hub.name);
+              return respond(type, { status: "success", name: hub?.name ?? message.name });
+            }
             case "sofabaton_x1s/activity/reorder":
             case "sofabaton_x1s/device/reorder":
               return respond(type, {
@@ -1772,6 +1770,15 @@
               mock.wifiCommandsByKey[key] = clone(message.commands ?? []);
               return respond(type, { ok: true });
             }
+            case "sofabaton_x1s/command_sync/run": {
+              // The Wifi tab's Sync: the deploy lands, the device reads synced.
+              const key = String(message.device_key ?? "");
+              mock.wifiSyncByKey[key] = {
+                ...(mock.wifiSyncByKey[key] ?? scenario.wifiSyncState ?? WIFI_SYNC_IDLE),
+                status: "success", error_code: null, sync_needed: false, message: "Sync complete",
+              };
+              return respond(type, { status: "success" });
+            }
             case "sofabaton_x1s/command_sync/progress": {
               const key = String(message.device_key ?? "");
               return respond(
@@ -1818,11 +1825,8 @@
               const event = {
                 slot_index: slotIndex,
                 name: String(message.name || `Event ${slotIndex + 1}`),
-                long_press_enabled: false,
                 action: { ...DEFAULT_ACTION },
-                long_press_action: { ...DEFAULT_ACTION },
                 command_id: slotIndex + 1,
-                long_press_command_id: slotIndex + 51,
                 device_id: null,
                 deployed: false,
               };
@@ -1845,22 +1849,12 @@
               const event = mock.wifiEvents.find(
                 (item) => item.slot_index === Number(message.slot_index),
               );
-              if (event) {
-                const key = message.press_type === "long" ? "long_press_action" : "action";
-                event[key] = clone(message.action ?? DEFAULT_ACTION);
-              }
+              if (event) event.action = clone(message.action ?? DEFAULT_ACTION);
               return respond(type, wifiEventsResponse());
             }
             case "sofabaton_x1s/wifi_event/clear_all":
               mock.wifiEvents = [];
               return respond(type, wifiEventsResponse());
-            case "sofabaton_x1s/wifi_event/set_longpress": {
-              const event = mock.wifiEvents.find(
-                (item) => item.slot_index === Number(message.slot_index),
-              );
-              if (event) event.long_press_enabled = Boolean(message.enabled);
-              return respond(type, wifiEventsResponse());
-            }
             default: {
               const error = new Error(`Unhandled harness API call: ${type}`);
               recordUnhandled("ws", message);
@@ -1870,7 +1864,7 @@
           }
         },
 
-        // callService needed by wifi-commands-tab → sync_command_config
+        // callService: the Hub tab's send and copy actions
         callService(domain, service, data) {
           const key = `${domain}.${service}`;
           structuredCalls.push({ channel: "service", domain, service, data: clone(data) });
@@ -2480,7 +2474,7 @@
           // returns. The blob is the synthetic NEC vector from
           // tests/fixtures/ir-format-vectors.json (raw layout, so the Pronto
           // tab is available and selected).
-          detail._openLivePayloadDialog(1, 10, {
+          detail._payload.openLive(1, 10, {
             dataHex: "00180000000094700000232800001194000002300000069a0000023000009c4000000000",
             decoded: null,
           });
@@ -2605,10 +2599,10 @@
           await detail.updateComplete;
           // The "Volume Combo" macro (button 3) of activity 101, then its Add
           // step dialog: native device / command selects plus the hold input.
-          detail._openMacroEditor("activity", 101, 3, "Volume Combo");
+          detail._steps.openEditor("activity", 101, 3, "Volume Combo");
           detail.requestUpdate();
           await detail.updateComplete;
-          detail._openAddStepDialog();
+          detail._steps.openAdd();
           detail.requestUpdate();
           await detail.updateComplete;
         },
@@ -2653,6 +2647,24 @@
           tab._restoreSuccess = "Restore completed.";
           tab.requestUpdate();
           await tab.updateComplete;
+        },
+      },
+      {
+        id: "dock-completion", group: "Hub Status",
+        label: "Dock: error completion",
+        states: STATES_CONNECTED,
+        postLoad: async (card) => {
+          await clickTab(card, "Settings");
+          card._store.showRuntimeCompletion({ tone: "error", label: "Restore failed at device 3." }, "hub-1", 600000);
+        },
+      },
+      {
+        id: "dock-completion-success", group: "Hub Status",
+        label: "Dock: success completion",
+        states: STATES_CONNECTED,
+        postLoad: async (card) => {
+          await clickTab(card, "Settings");
+          card._store.showRuntimeCompletion({ tone: "success", label: "Synced to your hub." }, "hub-1", 600000);
         },
       },
       {
@@ -2822,6 +2834,30 @@
         wifiDevices: [{ ...WIFI_DEVICE_LR, ...WIFI_SYNC_NEEDED }, WIFI_DEVICE_BR],
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_NEEDED },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Living Room Remote");
+        },
+      },
+      {
+        id: "wifi-sync-refused", group: "WiFi Commands",
+        label: "Wifi sync refused: the dock names the reason",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        wifiDevices: [{ ...WIFI_DEVICE_LR, ...WIFI_SYNC_NEEDED }, WIFI_DEVICE_BR],
+        wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
+        wifiSyncByKey:     { "dev-lr": WIFI_SYNC_NEEDED },
+        handlers: {
+          // The backend refuses with its code; the verbose English is the
+          // log's, and must never reach the card.
+          "sofabaton_x1s/command_sync/run": () => Promise.reject({
+            code: "activities_changed",
+            message: "Failed Activity validation: Activity 101 was \"TV\" when this Wifi Device was configured but is now \"Movie Night\".",
+          }),
+        },
         async postLoad(card) {
           await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");

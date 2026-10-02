@@ -1,7 +1,7 @@
 // The web remote's configuration document (docs/internal/web-remote-plan.md,
 // section 7): the HA card's config minus what only Home Assistant can act
-// on. Shared by the HA editor's "Copy config for the web remote" action
-// and the page host, so both sides agree on what the document holds.
+// on. cardConfigForWebRemote applies it for the hosts that run the card on
+// the server (the web remote page and the embed).
 
 import type { RemoteCardConfig } from "./remote-card-types";
 

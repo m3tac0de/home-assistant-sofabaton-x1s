@@ -32,6 +32,7 @@ import {
 import { problemText, type PanelApi } from "../panel-api";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { sanitizeName } from "./device-editor-state";
+import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
 export const PAYLOAD_DIALOG_TAG = "sb-payload-dialog";
 
@@ -39,37 +40,41 @@ const DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/
 
 // -- the card's strings, verbatim -------------------------------------------------------------
 
+// The card's strings, imported so they stay verbatim (CR-R1-13).
+const B = TOOLS_CARD_STRINGS.backup;
+const C = TOOLS_CARD_STRINGS.common;
+
 const S = {
-  addCommandTitle: "Add command",
-  editPayloadTitle: "Edit payload",
-  deviceClass: "Device class",
-  name: "Name",
-  nameHelper: "Shown on the remote and in every command picker.",
-  prontoHexTab: "Pronto Hex",
-  sofabatonHexTab: "Sofabaton Hex",
-  descriptorTab: "Descriptor",
-  prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+  addCommandTitle: B.addCommandTitle,
+  editPayloadTitle: B.editPayloadTitle,
+  deviceClass: B.deviceClass,
+  name: B.name,
+  nameHelper: B.nameHelper,
+  prontoHexTab: B.prontoHexTab,
+  sofabatonHexTab: B.sofabatonHexTab,
+  descriptorTab: B.descriptorTab,
+  prontoUnavailable: B.prontoUnavailable,
   prontoHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB …". The editor converts it to Sofabaton bytes automatically.',
-  payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
-  invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
-  descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+  payloadHexHelper: B.payloadHexHelper,
+  invalidProntoHex: B.invalidProntoHex,
+  descriptorX2Only: B.descriptorX2Only,
   ucHexUnsupported: "Unfolded Circle HEX codes are not supported here. Paste a Pronto Hex code or the Sofabaton bytes instead.",
-  rawPayload: "Raw payload",
-  rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
-  payloadHex: "Payload (hex bytes)",
-  verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
-  verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
-  sendingToHub: "Sending to the hub…",
-  sentToHub: "Sent to the hub for one-shot playback.",
-  testFailed: "Test failed.",
-  nothingToTest: "Nothing to test yet.",
-  test: "Test",
-  cancel: "Cancel",
-  save: "Save",
+  rawPayload: B.rawPayload,
+  rawPayloadDescription: B.rawPayloadDescription,
+  payloadHex: B.payloadHex,
+  verifyPayloadLive: B.verifyPayloadLive,
+  verifyPayloadBackup: B.verifyPayloadBackup,
+  sendingToHub: B.sendingToHub,
+  sentToHub: B.sentToHub,
+  testFailed: B.testFailed,
+  nothingToTest: B.nothingToTest,
+  test: B.test,
+  cancel: C.cancel,
+  save: C.save,
   payloadDocs: "Payload documentation",
-  newCommandNameRequired: "Enter a name for the new command.",
-  descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
-  payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
+  newCommandNameRequired: B.newCommandNameRequired,
+  descriptiveIrRequired: B.descriptiveIrRequired,
+  payloadHexRequired: B.payloadHexRequired,
 };
 
 /** What the dialog hands back on Save: the row's `restore_data` as the card writes it, and the name in add mode. */
@@ -183,7 +188,7 @@ export class SbPayloadDialog extends LitElement {
       .section-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
       .section-status .mdi { width: 18px; height: 18px; }
       .section-status.error { color: var(--sbp-err); border-color: color-mix(in srgb, var(--sbp-err) 30%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-err) 6%, var(--sbp-panel)); }
-      .section-status.success { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
+      .section-status.success { color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); border-color: color-mix(in srgb, #2e7d32 30%, var(--sbp-line)); background: color-mix(in srgb, #2e7d32 6%, var(--sbp-panel)); }
       @media (max-width: 640px) {
         .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
         .dialog { width: min(100vw, 100%); max-height: calc(100vh - max(env(safe-area-inset-top), 8px)); border-radius: 22px 22px 0 0; }

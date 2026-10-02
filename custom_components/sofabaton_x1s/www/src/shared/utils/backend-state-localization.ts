@@ -8,7 +8,9 @@ type BackendOperation =
   | "entity_sync"
   | "wifi_deploy";
 
-export type BackendErrorSurface = "device_create" | "ir_learn" | "ir_emissions" | "ir_convert";
+export type BackendErrorSurface =
+  | "device_create" | "activity_create" | "catalog_write" | "ir_learn" | "ir_emissions" | "ir_convert"
+  | "hub_request" | "wifi_event" | "hub_rename";
 
 /**
  * The `ir_payload/convert` rejection carries the refused protocol as its
@@ -52,13 +54,84 @@ export function backendErrorCode(value: unknown): string | null {
 }
 
 /**
+ * Why a Wifi Commands sync stopped, for the dock. Takes the deploy's failure
+ * code (a command_sync/run rejection, or the code stored with the sync's
+ * progress), never its English prose.
+ */
+export function localizeWifiSyncFailure(value: unknown): string {
+  const S = TOOLS_CARD_STRINGS.wifiCommands;
+  const code = typeof value === "string" ? value : backendErrorCode(value);
+  switch (code) {
+    case "sync_in_progress": return S.syncFailedAnotherSync;
+    case "busy": return S.syncFailedHubBusy;
+    case "port_in_use": return S.syncFailedPortInUse;
+    case "activities_changed": return S.syncFailedActivitiesChanged;
+    case "hub_no_answer": return S.syncFailedHubNoAnswer;
+    case "device_ambiguous": return S.syncFailedDeviceAmbiguous;
+    case "invalid_power_command": return S.syncFailedPowerCommand;
+    case "delete_failed": return S.syncFailedDelete;
+    case "create_failed": return S.syncFailedCreate;
+    case "readback_failed": return S.syncFailedReadback;
+    case "attach_failed": return S.syncFailedAttach;
+    case "writes_refused": return S.syncFailedWritesRefused;
+    case "inplace_failed": return S.syncFailedRejected;
+    case "not_found": return S.syncFailedNotFound;
+    default: return S.syncFailedGeneric;
+  }
+}
+
+/**
  * Translate structured backend failures at the UI boundary. Unknown codes
  * use localized generic copy rather than leaking their English `message`.
  */
 export function localizeBackendError(value: unknown, surface: BackendErrorSurface): string {
+  if (surface === "hub_request" || surface === "wifi_event") {
+    // Payload fetch/test and the Wifi Event writes in the editors (CR-F2-1).
+    const E = TOOLS_CARD_STRINGS.errors;
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "another_operation") return E.anotherOperation;
+    if (code === "not_found" && surface === "hub_request") return E.selectedHubUnavailable;
+    if (surface === "hub_request") {
+      if (code === "unavailable") return E.hubNotReady;
+      if (code === "no_response") return E.hubNoResponse;
+      if (code === "invalid_blob") return E.payloadInvalid;
+      return E.hubRequestFailed;
+    }
+    if (code === "wifi_events_full") return E.wifiEventsFull;
+    if (code === "wifi_events_pending_delete") return E.wifiEventPendingDelete;
+    if (code === "duplicate_name") return E.wifiEventNameTaken;
+    if (code === "empty_name" || code === "invalid_format") return E.wifiEventNameInvalid;
+    if (code === "not_found") return E.selectedHubUnavailable;
+    return E.wifiEventFailed;
+  }
+  if (surface === "hub_rename") {
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "unavailable" || code === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (code === "invalid_name") return TOOLS_CARD_STRINGS.errors.hubNameInvalid;
+    return TOOLS_CARD_STRINGS.errors.hubRenameFailed;
+  }
+  if (surface === "activity_create" || surface === "catalog_write") {
+    // The Add Activity dialog and the reorders share one backend guard with
+    // Add Device, so they speak its codes too (CR-X7-4).
+    const code = backendErrorCode(value);
+    if (code === "busy" || code === "unavailable" || code === "another_operation") {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    if (code === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
+    if (code === "not_found") return TOOLS_CARD_STRINGS.errors.selectedHubUnavailable;
+    if (surface === "activity_create") {
+      if (code === "invalid_name") return TOOLS_CARD_STRINGS.errors.activityNameInvalid;
+      return TOOLS_CARD_STRINGS.errors.activityCreateFailed;
+    }
+    return TOOLS_CARD_STRINGS.errors.reorderFailed;
+  }
   if (surface === "device_create") {
     const code = backendErrorCode(value);
-    if (code === "busy" || code === "another_operation") {
+    // "unavailable" is the same guard refusing (CR-X2-11).
+    if (code === "busy" || code === "unavailable" || code === "another_operation") {
       return TOOLS_CARD_STRINGS.errors.anotherOperation;
     }
     if (code === "no_hub_selected") return TOOLS_CARD_STRINGS.errors.noHubSelectedLong;
@@ -90,7 +163,6 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
     || code === "ir_learn_refused"
     || code === "unavailable"
     || code === "busy"
-    || code === "operation_locked"
   ) {
     return S.learnHubRefused;
   }

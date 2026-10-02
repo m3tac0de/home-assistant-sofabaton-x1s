@@ -46,14 +46,17 @@ import {
 
 import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
-import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/tabs/activity-editor";
+import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
+  activityHasFavorite,
   activityMacroStepItems,
   activityMemberViews,
   activityQuickAccessItems,
   activityRoleAssignments,
+  activityShortcutCommandItems,
+  activityShortcutDeviceOptions,
   activityUserMacroSummaries,
   addActivityMacroCommandStep,
   addActivityMemberDevice,
@@ -62,7 +65,7 @@ import {
   applyBundleDelete,
   backupDeleteHasCascade,
   bundleDeleteImpact,
-  bundleEditableDeviceOptions,
+  bundleDeviceOptions,
   buttonName,
   clearActivityDeviceInput,
   deviceCommandItems,
@@ -331,7 +334,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   }
 
   private _deviceOptions(): Array<{ id: number; label: string }> {
-    return bundleEditableDeviceOptions(this._working).filter((option) => this._pickable(option));
+    return bundleDeviceOptions(this._working).filter((option) => this._pickable(option));
   }
 
   private _addableMembers(): Array<{ id: number; label: string }> {
@@ -350,6 +353,28 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
 
   private _firstCommandId(deviceId: number | null): number | null {
     return deviceId != null && this._working ? deviceCommandItems(this._working, deviceId)[0]?.commandId ?? null : null;
+  }
+
+  // A shortcut references a command (or Wifi Event) at most once per activity, so the Add
+  // shortcut dialog offers only what is not a shortcut yet. Button bindings have no such
+  // limit: any number of buttons may play the same command or macro.
+
+  private _shortcutDeviceOptions(): Array<{ id: number; label: string }> {
+    if (!this._working || this.activityId == null) return [];
+    return activityShortcutDeviceOptions(this._working, this.activityId, this._deviceOptions());
+  }
+
+  private _shortcutCommandOptions(deviceId: number | null): Array<{ value: number; label: string }> {
+    if (deviceId == null || !this._working || this.activityId == null) return [];
+    return activityShortcutCommandItems(this._working, this.activityId, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+
+  /** The Wifi Events not shortcutted on the activity yet (the short record is the favorite). */
+  private _shortcutWifiSlots(): WifiEventSlot[] {
+    const callbackDeviceId = this._callbackDeviceId;
+    const activityId = this.activityId;
+    if (callbackDeviceId == null || activityId == null) return [];
+    return this._wifiSlots.filter((slot) => !activityHasFavorite(this._working, activityId, callbackDeviceId, slot.shortCommandId));
   }
 
   private _defaultMacroTarget(): MacroTargetState {
@@ -519,8 +544,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
 
   private _openAddShortcut = (): void => {
     if (!this._working || this.activityId == null) return;
-    const deviceId = this._deviceOptions()[0]?.id ?? null;
-    this._addShortcut = { kind: "command", deviceId, commandId: this._firstCommandId(deviceId), slot: this._wifiSlots[0]?.slot ?? null, error: "", ...this._defaultMacroTarget() };
+    const deviceId = this._shortcutDeviceOptions()[0]?.id ?? null;
+    // The macro kind only creates: every existing macro of the activity is a shortcut already.
+    this._addShortcut = { kind: "command", deviceId, commandId: this._shortcutCommandOptions(deviceId)[0]?.value ?? null, slot: this._shortcutWifiSlots()[0]?.slot ?? null, error: "", mode: "new", macroId: null, name: "" };
   };
 
   private _closeAddShortcut = (): void => {
@@ -566,7 +592,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       this._addShortcut = null;
       return;
     }
-    // "action": an existing macro just opens; a new one is created, then opens.
+    // "action": a new macro is created, then opens.
     const resolved = this._resolveMacro(this._working, dialog);
     if (!resolved) {
       this._addShortcut = { ...dialog, error: B.bindingIncomplete };
@@ -877,7 +903,32 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return this._wifiEventsAvailable ? ["command", "action", "wifi_event"] : ["command", "action"];
   }
 
-  private _macroTargetFields(idPrefix: string, target: MacroTargetState, onChange: (target: MacroTargetState) => void): TemplateResult {
+  /** The Add shortcut dialog offers the Wifi Event kind only while an event is left to shortcut. */
+  private _shortcutTargetKinds(): ActivityTargetKind[] {
+    return this._shortcutWifiSlots().length > 0 ? ["command", "action", "wifi_event"] : ["command", "action"];
+  }
+
+  /** A button assignment creates at most one new item: while one leg creates
+   *  a new macro, the other leg offers existing macros only. */
+  private _bindingCreatesNew(dialog: BindingDialogState): { primary: boolean; longPress: boolean } {
+    return {
+      primary: dialog.kind === "action" && dialog.macro.mode === "new",
+      longPress: dialog.longPress && dialog.lpKind === "action" && dialog.lpMacro.mode === "new",
+    };
+  }
+
+  /** A leg's kinds: Macro is left out when its only choice would be a new
+   *  macro while the other leg already creates one. */
+  private _bindingLegKinds<K extends ActivityTargetKind>(kinds: K[], otherCreatesNew: boolean): K[] {
+    return otherCreatesNew && this._macroOptions().length === 0 ? kinds.filter((kind) => kind !== "action") : kinds;
+  }
+
+  private _macroTargetFields(
+    idPrefix: string,
+    target: MacroTargetState,
+    onChange: (target: MacroTargetState) => void,
+    allowNew = true,
+  ): TemplateResult {
     const macros = this._macroOptions();
     return html`
       ${macros.length
@@ -888,22 +939,25 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
               onChange(value === "__new__" ? { ...target, mode: "new", macroId: null } : { ...target, mode: "existing", macroId: Number(value) });
             }}>
               ${macros.map((macro) => html`<option value=${macro.value} ?selected=${target.mode === "existing" && macro.value === target.macroId}>${macro.label}</option>`)}
-              <option value="__new__" ?selected=${target.mode === "new"}>${B.macroTargetCreateNew}</option>
+              ${allowNew ? html`<option value="__new__" ?selected=${target.mode === "new"}>${B.macroTargetCreateNew}</option>` : nothing}
             </select>
-          </div>`
+          </div>
+          ${allowNew ? nothing : html`<div class="decoded-field-helper">${B.bindingOneNewNote}</div>`}`
         : html`<div class="quick-access-empty">${B.macroTargetNoExisting}</div>`}
-      ${target.mode === "new"
-        ? html`<div class="decoded-field">
-            <label class="decoded-field-label" for=${`${idPrefix}-macro-name`}>${B.addShortcutActionName}</label>
-            <input id=${`${idPrefix}-macro-name`} class="decoded-field-input" maxlength="20" .value=${target.name} @input=${(event: Event) => onChange({ ...target, name: (event.currentTarget as HTMLInputElement).value })} />
-            <div class="decoded-field-helper">${B.addShortcutActionHelper}</div>
-          </div>`
-        : nothing}
+      ${target.mode === "new" ? this._macroNameField(idPrefix, target.name, (name) => onChange({ ...target, name })) : nothing}
     `;
   }
 
-  private _wifiEventFields(idPrefix: string, slot: number | null, onChange: (slot: number) => void): TemplateResult {
-    return this._select(`${idPrefix}-wifi-event`, B.wifiEventTargetLabel, slot, this._wifiSlots.map((entry) => ({ value: entry.slot, label: entry.label })), P.wifiEventNoSlots, onChange);
+  private _macroNameField(idPrefix: string, name: string, onChange: (name: string) => void): TemplateResult {
+    return html`<div class="decoded-field">
+      <label class="decoded-field-label" for=${`${idPrefix}-macro-name`}>${B.addShortcutActionName}</label>
+      <input id=${`${idPrefix}-macro-name`} class="decoded-field-input" maxlength="20" .value=${name} @input=${(event: Event) => onChange((event.currentTarget as HTMLInputElement).value)} />
+      <div class="decoded-field-helper">${B.addShortcutActionHelper}</div>
+    </div>`;
+  }
+
+  private _wifiEventFields(idPrefix: string, slot: number | null, onChange: (slot: number) => void, slots: WifiEventSlot[] = this._wifiSlots): TemplateResult {
+    return this._select(`${idPrefix}-wifi-event`, B.wifiEventTargetLabel, slot, slots.map((entry) => ({ value: entry.slot, label: entry.label })), P.wifiEventNoSlots, onChange);
   }
 
   private _dialog(id: string, title: string, close: () => void, body: TemplateResult, footer: TemplateResult, error = ""): TemplateResult {
@@ -1261,6 +1315,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             ${impact.macroSteps > 0 ? html`<li>${icon(mdiFormatListNumbered)}<span>${B.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : nothing}
             ${impact.powerSteps > 0 ? html`<li>${icon(mdiPower)}<span>${B.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : nothing}
             ${impact.bindings > 0 ? html`<li>${icon(mdiGestureTapButton)}<span>${B.deleteImpactBindings(impact.bindings)}</span></li>` : nothing}
+            ${impact.members > 0 ? html`<li>${icon(mdiPower)}<span>${B.deleteImpactMembers(impact.members)}</span></li>` : nothing}
           </ul>`
         : nothing}
       <div class="delete-replace-note">${icon(mdiInformationOutline)}<span>${this._offline ? B.deleteReplaceNote : immediate ? B.deleteImmediateNote : B.deleteSyncNote}</span></div>`, html`
@@ -1280,13 +1335,14 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const dialog = this._addShortcut;
     if (!dialog || !this._working) return nothing;
     const set = (patch: Partial<AddShortcutState>) => { this._addShortcut = { ...dialog, ...patch, error: "" }; };
-    const devices = this._deviceOptions();
-    const commands = this._commandOptions(dialog.deviceId);
+    // Only what is not a shortcut yet: a command once per activity; a macro is always a new one.
+    const devices = this._shortcutDeviceOptions();
+    const commands = this._shortcutCommandOptions(dialog.deviceId);
     const canAdd = dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : dialog.kind === "wifi_event" ? dialog.slot != null : true;
     const commandFields = devices.length === 0
-      ? html`<div class="backup-drawer-sub">${B.addFavoriteNoDevices}</div>`
+      ? html`<div class="backup-drawer-sub">${this._deviceOptions().length === 0 ? B.addFavoriteNoDevices : B.addShortcutNoCommandsLeft}</div>`
       : html`
-          ${this._select("sb-add-fav-device", B.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+          ${this._select("sb-add-fav-device", B.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._shortcutCommandOptions(value)[0]?.value ?? null }))}
           <div class="decoded-field">
             <label class="decoded-field-label" for="sb-add-fav-command">${B.addFavoriteCommand}</label>
             ${commands.length === 0
@@ -1297,12 +1353,12 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             <div class="decoded-field-helper">${B.addShortcutCommandHelper}</div>
           </div>`;
     return this._dialog("add-shortcut-dialog", B.addShortcutTitle, this._closeAddShortcut, html`
-      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._targetKinds(), (kind) => set(kind === "action" ? { kind, ...this._defaultMacroTarget() } : kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind }))}
+      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._shortcutTargetKinds(), (kind) => set(kind === "action" ? { kind, mode: "new", macroId: null, name: "" } : kind === "wifi_event" ? { kind, slot: this._shortcutWifiSlots()[0]?.slot ?? null } : { kind }))}
       ${dialog.kind === "command"
         ? commandFields
         : dialog.kind === "wifi_event"
-          ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot }))
-          : this._macroTargetFields("sb-add", dialog, (target) => set(target))}`, html`
+          ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot }), this._shortcutWifiSlots())
+          : this._macroNameField("sb-add", dialog.name, (name) => set({ name }))}`, html`
       <button class="dialog-btn" type="button" @click=${this._closeAddShortcut}>${B.addFavoriteCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="add-shortcut-save" type="button" ?disabled=${!canAdd} @click=${this._applyAddShortcut}>${B.addFavoriteAdd}</button>`, dialog.error);
   }
@@ -1333,19 +1389,22 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const unbound = unboundButtonsForActivity(this._working, activityId);
     const devices = this._deviceOptions().map((device) => ({ value: device.id, label: device.label }));
     const primaryIsWifiEvent = dialog.kind === "wifi_event";
-    const canSave = dialog.buttonId != null && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true);
+    const createsNew = this._bindingCreatesNew(dialog);
+    const canSave = dialog.buttonId != null
+      && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true)
+      && !(createsNew.primary && createsNew.longPress);
     const title = isEdit ? B.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : B.bindingDialogAddTitle;
     return this._dialog("binding-dialog", title, this._closeBinding, html`
       ${isEdit
         ? html`<div class="decoded-field"><span class="decoded-field-label">${B.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>`
         : this._select("sb-binding-button", B.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), B.bindingNoButtons, (value) => set({ buttonId: value }))}
-      ${this._kindSelect("sb-binding-kind", dialog.kind, this._targetKinds(), (kind) => this._setBindingKind(kind))}
+      ${this._kindSelect("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
       ${dialog.kind === "command"
         ? html`${this._select("sb-binding-device", B.bindingTargetDevice, dialog.deviceId, devices, B.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
             ${this._select("sb-binding-command", B.bindingCommand, dialog.commandId, this._commandOptions(dialog.deviceId), B.bindingNoCommands, (value) => set({ commandId: value }))}`
         : primaryIsWifiEvent
           ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot }))
-          : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }))}
+          : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
       <div class="binding-toggle-row">
         <span class="decoded-field-label">${B.bindingEnableLongPress}</span>
         <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event: Event) => this._toggleBindingLongPress((event.currentTarget as HTMLInputElement).checked)} />
@@ -1353,11 +1412,11 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       ${dialog.longPress
         ? primaryIsWifiEvent
           ? html`<div class="decoded-field-helper">${P.wifiEventLongPressNote}</div>`
-          : html`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, ["command", "action"], (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
+          : html`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds<ActivityTargetKind>(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
               ${dialog.lpKind === "command"
                 ? html`${this._select("sb-binding-lp-device", B.bindingLongPressDevice, dialog.lpDeviceId, devices, B.bindingNoDevices, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }))}
                     ${this._select("sb-binding-lp-command", B.bindingLongPressCommand, dialog.lpCommandId, this._commandOptions(dialog.lpDeviceId), B.bindingNoCommands, (value) => set({ lpCommandId: value }))}`
-                : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }))}`
+                : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }), !createsNew.primary)}`
         : nothing}`, html`
       <button class="dialog-btn" type="button" @click=${this._closeBinding}>${B.bindingCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B.bindingSave : B.bindingAdd}</button>`, dialog.error);

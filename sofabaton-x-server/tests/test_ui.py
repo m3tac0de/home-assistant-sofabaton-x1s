@@ -151,7 +151,7 @@ def test_page_routes_are_outside_the_api_contract(rig) -> None:
     client, _, _ = rig
     spec = client.get(f"{API_PREFIX}/openapi.json").json()
     assert not any(path.startswith("/ui") or path in ("/", "/harness") for path in spec["paths"])
-    assert f"/api/v1/hubs/{{hub_id}}/ui/remote-card" in spec["paths"]
+    assert "/api/v1/hubs/{hub_id}/ui/remote-card" in spec["paths"]
 
 
 def test_remote_card_document_round_trip(rig) -> None:

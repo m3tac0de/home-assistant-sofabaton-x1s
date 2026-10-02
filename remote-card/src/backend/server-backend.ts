@@ -20,6 +20,7 @@
 // coalesced to one in flight plus one pending. A failed load or page fetch
 // is retried with backoff for as long as someone is subscribed.
 
+import type { components } from "../../../sofabaton-x-server/openapi";
 import type {
   DeviceKeymapResponse,
   RemoteEntityAttributes,
@@ -34,72 +35,21 @@ import type {
 export const SERVER_API_PREFIX = "/api/v1";
 
 // ---------- server wire shapes (openapi.json components) ----------
+// Aliases of the schemas generated from sofabaton-x-server/openapi.json
+// (`npm run gen:server-types`, CR-X3-5). The WS envelope stays local: its
+// generated `type` discriminants come out optional (they have defaults).
 
-interface ServerRunningActivity {
-  activity_id: number;
-  name: string | null;
-}
+type Schemas = components["schemas"];
 
-interface ServerHubStatus {
-  hub_connected: boolean;
-  app_connected: boolean;
-  controllable: boolean;
-  mode: "disconnected" | "observe" | "control";
-  hub_version: string | null;
-  running_activity: ServerRunningActivity | null;
-  catalog_ready?: boolean;
-}
-
-interface ServerHubStatusView {
-  hub_id: string;
-  enabled: boolean;
-  status: ServerHubStatus | null;
-}
-
-interface ServerActivity {
-  activity_id: number;
-  name: string;
-  active: boolean;
-}
-
-interface ServerDevice {
-  device_id: number;
-  name: string;
-  device_class: string | null;
-  power_state: number | null;
-  idle_behavior: number | null;
-}
-
-interface ServerCommand {
-  command_id: number;
-  label: string;
-}
-
-interface ServerButton {
-  button_code: number;
-  name: string | null;
-  device_id: number | null;
-  command_id: number | null;
-  long_press_device_id?: number | null;
-  long_press_command_id?: number | null;
-}
-
-interface ServerMacro {
-  command_id: number;
-  label: string | null;
-}
-
-interface ServerFavorite {
-  device_id: number;
-  command_id: number;
-  label: string | null;
-}
-
-interface ServerHubEvent {
-  seq: number;
-  kind: string;
-  payload: Record<string, unknown> | null;
-}
+type ServerRunningActivity = Schemas["RunningActivity"];
+type ServerHubStatusView = Schemas["HubStatusView"];
+type ServerActivity = Schemas["Activity"];
+type ServerDevice = Schemas["Device"];
+type ServerCommand = Schemas["Command"];
+type ServerButton = Schemas["Button"];
+type ServerMacro = Schemas["Macro"];
+type ServerFavorite = Schemas["Favorite"];
+type ServerHubEvent = Schemas["HubEvent"];
 
 interface ServerWsMessage {
   type: string;
@@ -152,6 +102,16 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A non-2xx answer, with its status for the callers that branch on it. */
+class HttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+/** How long the host shows that the hub refused a command. */
+const CONTROL_REFUSED_BANNER_MS = 6000;
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -199,6 +159,8 @@ export class ServerRemoteBackend implements RemoteBackend {
   /** The catalog has been read at least once (a disabled hub answers 409 to reads). */
   private catalogLoaded = false;
   private _lastError: string | null = null;
+  /** When the server last refused a control request (for the host's banner). */
+  private _controlRefusedAt: number | null = null;
   /** True until the server has answered (or failed) once for this target. */
   private firstAnswerPending = true;
 
@@ -209,7 +171,10 @@ export class ServerRemoteBackend implements RemoteBackend {
   private runningEpoch = 0;
   private statusPromise: Promise<void> | null = null;
   private statusDirty = false;
-  private pagePromises: Record<string, Promise<void>> = {};
+  // One page read per activity per load epoch: a reload supersedes the
+  // read in flight, which then discards its answer, so a new epoch must
+  // start its own read instead of waiting on the stale one (CR-F4a-4).
+  private pagePromises: Record<string, { epoch: number; promise: Promise<void> }> = {};
 
   // Retry of failed HTTP work (independent of the socket)
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -428,7 +393,7 @@ export class ServerRemoteBackend implements RemoteBackend {
     const response = await this.fetchImpl(this.url(path), {
       headers: { accept: "application/json" },
     });
-    if (!response.ok) throw new Error(`GET ${path} -> ${response.status}`);
+    if (!response.ok) throw new HttpError(`GET ${path} -> ${response.status}`, response.status);
     return (await response.json()) as T;
   }
 
@@ -440,7 +405,26 @@ export class ServerRemoteBackend implements RemoteBackend {
         : { accept: "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (!response.ok) throw new Error(`POST ${path} -> ${response.status}`);
+    if (!response.ok) {
+      this.noteControlRefused();
+      throw new HttpError(`POST ${path} -> ${response.status}`, response.status);
+    }
+  }
+
+  /** The last control request the server refused, while it is recent. */
+  get controlRefused(): boolean {
+    return this._controlRefusedAt !== null;
+  }
+
+  private noteControlRefused(): void {
+    const at = Date.now();
+    this._controlRefusedAt = at;
+    this.notify();
+    setTimeout(() => {
+      if (this._controlRefusedAt !== at) return;
+      this._controlRefusedAt = null;
+      this.notify();
+    }, CONTROL_REFUSED_BANNER_MS);
   }
 
   // ---------- loading ----------
@@ -509,6 +493,10 @@ export class ServerRemoteBackend implements RemoteBackend {
       this.cancelRetry();
     } catch (err) {
       if (!current()) return;
+      if (err instanceof HttpError && err.status === 404 && (await this.relocateHub(hubId))) {
+        void this.reload();
+        return;
+      }
       this._lastError = errorText(err);
       this.hubStatus = null;
       this.firstAnswerPending = false;
@@ -518,6 +506,41 @@ export class ServerRemoteBackend implements RemoteBackend {
     this.invalidate();
     this.notify();
     if (current() && this.running) await this.ensureActivityPages(this.running.activity_id);
+  }
+
+  /**
+   * A hub opened by host is re-keyed to its MAC on its first sync. The
+   * stream announces that (hub_rekeyed), but a page whose socket was down
+   * at the time (a server restart, a sleeping phone tab) only sees the old
+   * id answer 404. The host stays in the hub's config, so look it up there
+   * and follow it (CR-X3-2). True when the target moved.
+   */
+  private async relocateHub(oldId: string): Promise<boolean> {
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}${SERVER_API_PREFIX}/hubs`, {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok || oldId !== this.hubId) return false;
+      const hubs = (await response.json()) as Array<{ hub_id?: string; config?: { host?: string } }>;
+      const moved = Array.isArray(hubs)
+        ? hubs.find((row) => row?.hub_id && row.hub_id !== oldId && row.config?.host === oldId)
+        : null;
+      if (!moved?.hub_id || oldId !== this.hubId) return false;
+      this.moveTarget(String(moved.hub_id));
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  /** Follow the hub to its new id; the socket re-narrows to it. */
+  private moveTarget(nextId: string): void {
+    this.hubId = nextId;
+    this.pagePromises = {};
+    const wasStreaming = this.streaming;
+    this.closeSocket();
+    if (wasStreaming) this.openSocket();
+    this.notify();
   }
 
   /** Re-read /status (and the running activity); one in flight, one pending. */
@@ -548,6 +571,7 @@ export class ServerRemoteBackend implements RemoteBackend {
       this.hubStatus = status;
       this.firstAnswerPending = false;
       this._lastError = null;
+      this.retryDelay = this.retryBaseMs;
       if (ServerRemoteBackend.readable(status)) {
         if (!this.catalogLoaded) {
           // Became readable with nothing loaded (opened while disabled).
@@ -574,12 +598,13 @@ export class ServerRemoteBackend implements RemoteBackend {
   private ensureActivityPages(activityId: number): Promise<void> {
     const key = String(activityId);
     if (this.activityPages[key]) return Promise.resolve();
-    if (!this.pagePromises[key]) {
-      this.pagePromises[key] = this.loadActivityPages(activityId).finally(() => {
-        delete this.pagePromises[key];
-      });
-    }
-    return this.pagePromises[key];
+    const inFlight = this.pagePromises[key];
+    if (inFlight && inFlight.epoch === this.loadEpoch) return inFlight.promise;
+    const promise = this.loadActivityPages(activityId).finally(() => {
+      if (this.pagePromises[key]?.promise === promise) delete this.pagePromises[key];
+    });
+    this.pagePromises[key] = { epoch: this.loadEpoch, promise };
+    return promise;
   }
 
   private async loadActivityPages(activityId: number): Promise<void> {
@@ -594,6 +619,7 @@ export class ServerRemoteBackend implements RemoteBackend {
       ]);
       if (!current()) return;
       this.activityPages[String(activityId)] = { buttons, macros, favorites };
+      this.retryDelay = this.retryBaseMs;
     } catch (err) {
       if (!current()) return;
       // Nothing to show for this activity until the read succeeds: retry.
@@ -741,6 +767,7 @@ export class ServerRemoteBackend implements RemoteBackend {
           // by host before its first sync. Move with it; the old id is
           // gone from the API, and anything in flight under it is stale.
           this.hubId = String(message.hub_id);
+          this.notify();
           void this.reload();
           return;
         }
@@ -765,7 +792,8 @@ export class ServerRemoteBackend implements RemoteBackend {
   }
 
   private handleHubEvent(event: ServerHubEvent): void {
-    const payload = event.payload ?? {};
+    // The payload's schema follows `kind`; each case reads the fields it knows.
+    const payload = (event.payload ?? {}) as Record<string, unknown>;
     switch (event.kind) {
       case "activity_changed": {
         const id = toNumber(payload.activity_id);

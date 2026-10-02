@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TYPE_CHECKING
 
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import (
@@ -22,12 +22,15 @@ from .protocol_const import (
     opcode_family_name,
 )
 
+if TYPE_CHECKING:
+    from .proxy_host import _ProxyHost
+
 
 def _hexdump(data: bytes) -> str:
     return data.hex(" ")
 
 
-class FrameDecodeMixin:
+class FrameDecodeMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing deframer feed hooks and structured frame logs."""
 
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
@@ -238,5 +241,26 @@ class FrameDecodeMixin:
             for handler in frame_handler_registry.iter_for(op, direction):
                 try:
                     handler.handle(context)
-                except Exception:
-                    self._log.debug("%s error while decoding op 0x%04X via %s", LogTag.PARSE, op, handler.__class__.__name__, exc_info=True)
+                except Exception as exc:
+                    self._log_handler_failure(handler, op, direction, exc)
+
+    def _log_handler_failure(self, handler: object, op: int, direction: str, exc: Exception) -> None:
+        """A handler failure is isolated, but never silent: the first one per
+        (handler, exception type) is a WARNING with the traceback, repeats
+        drop to DEBUG. Otherwise a parser regression surfaces only as a
+        downstream timeout or an incomplete snapshot."""
+
+        key = (handler.__class__.__name__, type(exc).__name__)
+        seen = self._handler_failures_seen
+        level = logging.DEBUG if key in seen else logging.WARNING
+        seen.add(key)
+        self._log.log(
+            level,
+            "%s %s failed on op 0x%04X %s: %s",
+            LogTag.PARSE,
+            key[0],
+            op,
+            direction,
+            exc,
+            exc_info=exc,
+        )

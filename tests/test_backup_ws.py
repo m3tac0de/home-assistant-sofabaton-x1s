@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import importlib
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
 class _Conn:
@@ -75,8 +77,8 @@ def test_ws_backup_export_starts_operation(monkeypatch):
         return SimpleNamespace()
 
     hass = SimpleNamespace(async_create_task=fake_create_task, data={integration.DOMAIN: {}})
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -99,13 +101,13 @@ def test_ws_backup_export_starts_operation(monkeypatch):
 
 def test_ws_backup_progress_subscribe_forwards_initial_and_live_events(monkeypatch):
     conn = _Conn()
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     operation_id = registry.create(
       kind="backup_export",
       entry_id="entry-1",
       initial_state={"status": "running", "phase": "queued", "message": "Queued", "completed_steps": 0, "total_steps": 1},
     )
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
 
     monkeypatch.setattr(
         integration.websocket_api,
@@ -146,8 +148,8 @@ def test_ws_backup_restore_starts_merge_operation(monkeypatch):
         return SimpleNamespace()
 
     hass = SimpleNamespace(async_create_task=fake_create_task, data={integration.DOMAIN: {}})
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
     loop = asyncio.new_event_loop()
     try:
@@ -194,7 +196,7 @@ def test_run_backup_restore_operation_preserves_final_progress_counts():
     loop = asyncio.new_event_loop()
     try:
         hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         operation_id = registry.create(
             kind="backup_restore",
             entry_id="entry-1",
@@ -245,7 +247,7 @@ def test_run_backup_restore_operation_ignores_late_running_progress_after_succes
     loop = asyncio.new_event_loop()
     try:
         hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         operation_id = registry.create(
             kind="backup_restore",
             entry_id="entry-1",
@@ -273,7 +275,7 @@ def test_run_backup_restore_operation_ignores_late_running_progress_after_succes
 def test_dismiss_operation_drops_terminal_op_and_refuses_running():
     loop = asyncio.new_event_loop()
     try:
-        registry = integration._BackupOperationRegistry(SimpleNamespace(loop=loop))
+        registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=loop))
         op_id = registry.create(
             kind="backup_export",
             entry_id="entry-1",
@@ -304,7 +306,7 @@ def test_ws_backup_clear_result_fully_drops_terminal_op():
     loop = asyncio.new_event_loop()
     try:
         hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         op_id = registry.create(
             kind="backup_export",
             entry_id="entry-1",
@@ -336,7 +338,7 @@ def test_ws_backup_clear_result_refuses_to_dismiss_running_op():
     loop = asyncio.new_event_loop()
     try:
         hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         op_id = registry.create(
             kind="backup_export",
             entry_id="entry-1",
@@ -376,7 +378,7 @@ def test_run_backup_restore_operation_dismisses_preflight_failures():
     loop = asyncio.new_event_loop()
     try:
         hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         op_id = registry.create(
             kind="backup_restore",
             entry_id="entry-1",
@@ -399,10 +401,12 @@ def test_run_backup_restore_operation_dismisses_preflight_failures():
     finally:
         loop.close()
 
-    # The op gets the failed-status update so any live subscriber
-    # sees the error message, then is immediately dismissed from the
-    # registry so no card refresh can snap a stale failure view back.
-    assert registry.get(op_id) is None
+    # The op gets the failed-status update and stays briefly, so a
+    # subscriber that arrives after the failure still receives it
+    # (CR-H2-3); backup/state never surfaces it, so no card refresh can
+    # snap a stale failure view back.
+    state = (registry.get(op_id) or {}).get("state") or {}
+    assert state.get("status") == "failed" and state.get("transient") is True
     assert registry.latest_for_entry("entry-1", kind="backup_restore") is None
 
 
@@ -436,7 +440,7 @@ def test_run_backup_restore_operation_persists_inflight_failures():
     loop = asyncio.new_event_loop()
     try:
         hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
-        registry = integration._backup_operation_registry(hass)
+        registry = operations_module._backup_operation_registry(hass)
         op_id = registry.create(
             kind="backup_restore",
             entry_id="entry-1",

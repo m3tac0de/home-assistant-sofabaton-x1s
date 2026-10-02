@@ -9,6 +9,9 @@ import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+entity_sync_module = importlib.import_module("custom_components.sofabaton_x1s.entity_sync")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
+operations_module = importlib.import_module("custom_components.sofabaton_x1s.operations")
 
 
 class _Conn:
@@ -32,7 +35,7 @@ class _Hub:
 def _bundle(activity_favs):
     return {
         "kind": "hub_bundle",
-        "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+        "schema_version": entity_sync_module.HUB_BUNDLE_SCHEMA_VERSION,
         "hub": {"name": "Living Room", "version": "X1S"},
         "devices": [{
             "device": {"device_id": 1, "name": "TV"},
@@ -66,17 +69,18 @@ def _run(coro):
         loop.close()
 
 
-def _patch(monkeypatch, *, hub=_Hub(), locked=False):
+def _patch(monkeypatch, *, hub=None, locked=False):
+    hub = hub if hub is not None else _Hub()
     async def fake_resolve(_hass, _data):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
 
     def fake_lock(*_a, **_k):
         if locked:
             raise HomeAssistantError("The Sofabaton app is connected")
 
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", fake_lock)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", fake_lock)
 
 
 def test_ws_activity_sync_starts_operation(monkeypatch):
@@ -99,11 +103,11 @@ def test_ws_activity_sync_starts_operation(monkeypatch):
 def test_ws_activity_sync_busy(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="activity_sync", entry_id="entry-1",
                     initial_state={"status": "running"})
     hass = SimpleNamespace(async_create_task=lambda c: SimpleNamespace(),
-                           data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+                           data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     _run(integration._ws_activity_sync(hass, conn, {
         "id": 2, "entry_id": "entry-1", "activity_id": 101,
         "baseline": _bundle([]), "edited": _bundle([]),
@@ -185,10 +189,10 @@ def test_ws_activity_sync_rejects_nested_invalid_payload_before_operation(monkey
     conn = _Conn()
     _patch(monkeypatch)
     created_tasks = []
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     hass = SimpleNamespace(
         async_create_task=lambda coro: created_tasks.append(coro),
-        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+        data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}},
     )
     edited = copy.deepcopy(_bundle([
         {"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"},
@@ -274,7 +278,7 @@ def test_ws_activity_sync_tolerates_hub_dangling_command_refs(monkeypatch):
 
 def test_ws_activity_sync_tolerates_unbound_zero_command_binding_rows(monkeypatch):
     # The vendor app clears a hard-button slot by writing command_id 0 into
-    # the KeyToKey row instead of deleting it (user report: FWD button on
+    # the binding row instead of deleting it (user report: FWD button on
     # cloud-provisioned Apple TV and PS5 pages). Both bundles carry that hub
     # truth on an unchanged bystander device; it must not block syncing an
     # activity edit.
@@ -398,7 +402,7 @@ def test_ws_activity_sync_plan_returns_step_summary(monkeypatch):
 def _device_bundle(bindings):
     return {
         "kind": "hub_bundle",
-        "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+        "schema_version": entity_sync_module.HUB_BUNDLE_SCHEMA_VERSION,
         "hub": {"name": "Living Room", "version": "X1S"},
         "devices": [
             {
@@ -445,10 +449,10 @@ def test_ws_device_sync_registry_kind_is_device_sync(monkeypatch):
     conn = _Conn()
     started = {}
     _patch(monkeypatch)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     hass = SimpleNamespace(
         async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
-        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+        data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}},
     )
     _run(integration._ws_device_sync(hass, conn, {
         "id": 8, "entry_id": "entry-1", "device_id": 1,
@@ -565,7 +569,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     cascaded favorite/binding labels follow."""
     from custom_components.sofabaton_x1s.command_config import CommandConfigStore
 
-    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
 
     store = CommandConfigStore(SimpleNamespace())
@@ -580,7 +584,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     class _DisabledStore:
         enabled = False
@@ -588,7 +592,7 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     async def fake_cache_store(_hass):
         return _DisabledStore()
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_cache_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_cache_store)
 
     class _SyncingHub(_Hub):
         sync_kwargs = None
@@ -611,12 +615,12 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
             self.refreshed_referencing = device_id
 
     hub = _SyncingHub()
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
     )
-    result = _run(integration._run_entity_sync_operation(
+    result = _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=_device_bundle_with_commands([10, 11]),
         edited=_device_bundle_with_commands([10]),
@@ -628,6 +632,84 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
     assert hub.refreshed_referencing == 1
     assert reconciled == []
     assert ((registry.get(operation_id) or {}).get("state") or {}).get("status") == "success"
+
+
+def test_wifi_events_device_sync_stamps_the_brand_the_store_will_hold(monkeypatch):
+    """Deleting an event in the device editor keeps the record in step: the
+    reconcile pass mirrors the hub brand hash into the store on every read,
+    so the sync writes the hash the store holds after its own reconcile
+    (S5 bench finding, wifi-events-single-record-plan)."""
+    from custom_components.sofabaton_x1s.command_config import (
+        WIFI_EVENTS_DEVICE_KEY,
+        CommandConfigStore,
+    )
+
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(runtime_module, "_resolve_roku_listen_port", lambda *_a, **_k: 8060)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    for name in ("One", "Two"):
+        _run(store.async_allocate_wifi_event("entry-1", name))
+    payload = _run(store.async_get_hub_config("entry-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    _run(store.async_save_deployed_wifi_commands(
+        "entry-1", WIFI_EVENTS_DEVICE_KEY, payload["commands"],
+        deployed_device_id=1, commands_hash=payload["commands_hash"],
+    ))
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
+
+    class _DisabledStore:
+        enabled = False
+
+    async def fake_cache_store(_hass):
+        return _DisabledStore()
+
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_cache_store)
+
+    class _SyncingHub(_Hub):
+        sync_kwargs = None
+
+        async def async_sync_device(self, **kwargs):
+            self.sync_kwargs = kwargs
+            return {"status": "success", "completed_steps": 2, "total_steps": 2, "counters": {}}
+
+        async def async_request_catalog(self, kind):
+            pass
+
+        async def async_refresh_entity_structure(self, *, kind, ent_id):
+            pass
+
+        async def async_refresh_activities_referencing_device(self, device_id):
+            pass
+
+    def _events_bundle(command_ids):
+        bundle = _device_bundle_with_commands(command_ids)
+        bundle["devices"][0]["device"]["brand"] = f"m3-haevents-{payload['commands_hash']}"
+        return bundle
+
+    hub = _SyncingHub()
+    registry = operations_module._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="device_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+    result = _run(entity_sync_module._run_entity_sync_operation(
+        hass, operation_id, hub=hub,
+        baseline=_events_bundle([1, 2, 3]),
+        edited=_events_bundle([1, 3]),
+        entity_kind="device", entity_id=1,
+    ))
+
+    assert result["status"] == "success"
+    after = _run(store.async_get_hub_config("entry-1", device_key=WIFI_EVENTS_DEVICE_KEY))
+    assert [e["name"] for e in store.list_wifi_events("entry-1")] == ["One"]
+    assert after["deployed_commands_hash"] == after["commands_hash"]
+    brand = hub.sync_kwargs["edited"]["devices"][0]["device"]["brand"]
+    assert brand == f"m3-haevents-{after['commands_hash']}"
 
 
 # ── Immediate entity delete (activity / device) ─────────────────────────
@@ -685,9 +767,9 @@ def test_ws_entity_delete_busy(monkeypatch):
     conn = _Conn()
     hub = _DeletingHub({"status": "success"})
     _patch(monkeypatch, hub=hub)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     _run(integration._ws_device_delete(hass, conn, {
         "id": 43, "entry_id": "entry-1", "device_id": 3,
     }))
@@ -707,10 +789,10 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
     "running" until the cache refresh has completed."""
     tail_statuses = []
 
-    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
 
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="activity_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
@@ -735,15 +817,17 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
     async def fake_store(_hass):
         return _DisabledStore()
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=_SyncingHub(),
         baseline=_bundle([]), edited=_bundle([]),
         entity_kind="activity", entity_id=101,
     ))
 
-    assert tail_statuses == [("catalog", "running"), ("refresh", "running")]
+    # The engine's settle loop already read the entity back; the tail only
+    # re-reads the catalog (CR-X1-8).
+    assert tail_statuses == [("catalog", "running")]
     assert _status() == "success"
 
 
@@ -756,10 +840,9 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     device_key, baseline, edited, dispatched, hub)."""
     from custom_components.sofabaton_x1s.command_config import (
         CommandConfigStore,
-        compute_commands_hash,
     )
 
-    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+    monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
 
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
 
@@ -778,7 +861,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     async def fake_store(_hass):
         return store
 
-    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_get_command_config_store", fake_store)
 
     class _DisabledStore:
         enabled = False
@@ -786,11 +869,11 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     async def fake_cache_store(_hass):
         return _DisabledStore()
 
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_cache_store)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_cache_store)
 
     dispatched = []
     monkeypatch.setattr(
-        integration, "async_dispatcher_send",
+        entity_sync_module, "async_dispatcher_send",
         lambda _hass, signal, *args: dispatched.append(signal),
     )
 
@@ -799,7 +882,7 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
     def _dev_bundle(name):
         return {
             "kind": "hub_bundle",
-            "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+            "schema_version": entity_sync_module.HUB_BUNDLE_SCHEMA_VERSION,
             "hub": {"name": "Living Room", "version": "X1S"},
             "devices": [{
                 "device": {"device_id": 5, "name": name, "brand": brand},
@@ -826,18 +909,17 @@ def _wifi_rename_env(monkeypatch, *, in_sync):
 
 
 def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypatch):
-    from custom_components.sofabaton_x1s.command_config import compute_commands_hash
 
     hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
         monkeypatch, in_sync=True
     )
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
     )
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=baseline, edited=edited,
         entity_kind="device", entity_id=5,
@@ -853,20 +935,20 @@ def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypat
     # pass (which mirrors the brand hash back into the store) agrees too.
     synced_brand = hub.synced_edited["devices"][0]["device"]["brand"]
     assert synced_brand == f"m3-{device_key}-{new_hash}"
-    assert integration.signal_command_sync("entry-1") in dispatched
+    assert entity_sync_module.signal_command_sync("entry-1") in dispatched
 
 
 def test_device_sync_rename_of_out_of_sync_record_updates_name_only(monkeypatch):
     hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
         monkeypatch, in_sync=False
     )
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
     )
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=baseline, edited=edited,
         entity_kind="device", entity_id=5,
@@ -889,13 +971,13 @@ def test_device_sync_rename_of_unmanaged_device_leaves_store_alone(monkeypatch):
     for bundle in (baseline, edited):
         bundle["devices"][0]["device"]["brand"] = "Sony"
         bundle["devices"][0]["device"]["device_id"] = 9
-    registry = integration._backup_operation_registry(hass)
+    registry = operations_module._backup_operation_registry(hass)
     operation_id = registry.create(
         kind="device_sync", entry_id="entry-1",
         initial_state={"status": "pending", "phase": "queued"},
     )
 
-    _run(integration._run_entity_sync_operation(
+    _run(entity_sync_module._run_entity_sync_operation(
         hass, operation_id, hub=hub,
         baseline=baseline, edited=edited,
         entity_kind="device", entity_id=9,
@@ -909,12 +991,13 @@ def test_device_sync_rename_of_unmanaged_device_leaves_store_alone(monkeypatch):
 def test_ws_entity_delete_blocked_when_locked(monkeypatch):
     conn = _Conn()
     hub = _DeletingHub({"status": "success"})
-    _patch(monkeypatch, hub=hub, locked=True)
+    hub.is_sync_in_progress = True  # a Wifi Command sync holds the hub
+    _patch(monkeypatch, hub=hub)
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
     _run(integration._ws_activity_delete(hass, conn, {
         "id": 44, "entry_id": "entry-1", "activity_id": 104,
     }))
-    assert conn.error[1] == "unavailable"
+    assert conn.error[1] == "busy"
     assert hub.deleted is None
 
 
@@ -957,6 +1040,63 @@ def test_ws_device_create_rejects_bad_names(monkeypatch, name):
     }))
     assert conn.error[1] == "invalid_name"
     assert hub.created is None
+
+
+@pytest.mark.parametrize(
+    ("version", "name", "ok"),
+    [
+        ("X1", "Küche TV", False),  # the X1 encoder would drop the ü
+        ("X1", "Kitchen TV", True),
+        ("X1S", "Küche TV", True),
+        ("X2", "TV 💡", False),
+        ("X1S", "नमस्ते", True),
+    ],
+)
+def test_ws_device_create_refuses_names_the_hub_cannot_store(monkeypatch, version, name, ok):
+    # CR-X4-2: the editors' name rule, not only its length.
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 7}, version=version)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 55, "entry_id": "entry-1", "name": name, "device_class": "ir",
+    }))
+    if ok:
+        assert conn.error is None
+        assert hub.created == (name, "ir")
+    else:
+        assert conn.error[1] == "invalid_name"
+        assert hub.created is None
+
+
+class _CreatingActivityHub(_CreatingHub):
+    async def async_create_activity(self, name):
+        self.created = name
+        return self._result
+
+
+@pytest.mark.parametrize(
+    ("version", "name", "error"),
+    [
+        ("X1", "Movie Night", None),
+        ("X1", "Café", "invalid_name"),
+        ("X1S", "Café", None),
+        ("X1S", "", "invalid_name"),
+        ("X2", "x" * 31, "invalid_name"),
+    ],
+)
+def test_ws_activity_create_applies_the_name_rule(monkeypatch, version, name, error):
+    conn = _Conn()
+    hub = _CreatingActivityHub({"status": "success", "activity_id": 104}, version=version)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_activity_create(hass, conn, {"id": 56, "entry_id": "entry-1", "name": name}))
+    if error is None:
+        assert conn.error is None
+        assert hub.created == name
+    else:
+        assert conn.error[1] == error
+        assert hub.created is None
 
 
 @pytest.mark.parametrize(
@@ -1003,9 +1143,9 @@ def test_ws_device_create_busy(monkeypatch):
     conn = _Conn()
     hub = _CreatingHub({"status": "success", "device_id": 7})
     _patch(monkeypatch, hub=hub)
-    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry = operations_module._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
     registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
-    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hass = SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}})
     _run(integration._ws_device_create(hass, conn, {
         "id": 55, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
     }))
@@ -1016,10 +1156,11 @@ def test_ws_device_create_busy(monkeypatch):
 def test_ws_device_create_blocked_when_locked(monkeypatch):
     conn = _Conn()
     hub = _CreatingHub({"status": "success", "device_id": 7})
-    _patch(monkeypatch, hub=hub, locked=True)
+    hub.hub_work_active = True  # another immediate write is running
+    _patch(monkeypatch, hub=hub)
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
     _run(integration._ws_device_create(hass, conn, {
         "id": 56, "entry_id": "entry-1", "name": "TV", "device_class": "ir",
     }))
-    assert conn.error[1] == "unavailable"
+    assert conn.error[1] == "busy"
     assert hub.created is None

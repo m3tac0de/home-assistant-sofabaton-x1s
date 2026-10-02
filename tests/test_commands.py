@@ -1,7 +1,6 @@
 import logging
 import re
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -47,12 +46,8 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_PAGE_ALT7,
     OP_DEVBTN_TAIL,
     OP_DEVBTN_SINGLE,
-    OP_KEYMAP_CONT,
     OP_KEYMAP_FINAL_X1S,
     OP_KEYMAP_OVERLAY_X1,
-    OP_KEYMAP_PAGE_X1_AE3D,
-    OP_KEYMAP_PAGE_X2_C03D,
-    OP_KEYMAP_TBL_B,
     OP_MARKER,
     SYNC0,
     SYNC1,
@@ -547,7 +542,6 @@ def test_x1_wifi_header_variant_uses_header_device_and_frame_count() -> None:
     assert len(completed) == 1
     assembled_dev_id, _ = completed[0]
     assert assembled_dev_id == 0x0A
-    assert assembler.finalize_contiguous(0x0A) == []
 
 
 def test_x1s_x2_unenumerated_page_completes_from_header_metadata() -> None:
@@ -1105,32 +1099,7 @@ def test_single_command_handler_routes_favorite_labels() -> None:
 
 
 
-def test_single_command_handler_routes_keybinding_labels() -> None:
-    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
-    handler = DeviceButtonSingleHandler()
 
-    proxy._keybinding_label_requests[(1, 2)] = {0x66}
-
-    raw = bytes.fromhex(
-        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
-        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
-    )
-
-    payload = raw[4:-1]
-    frame = FrameContext(
-        proxy=proxy,
-        opcode=OP_DEVBTN_SINGLE,
-        direction="H→A",
-        payload=payload,
-        raw=raw,
-        name="DEVBTN_SINGLE",
-    )
-
-    handler.handle(frame)
-
-    assert proxy.state.commands == {}
-    assert proxy.state.activity_keybinding_labels[0x66] == {(1, 2): "Exit"}
 
 def test_single_command_handler_normalizes_x1s_0x1c_command_id() -> None:
     proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
@@ -1761,8 +1730,11 @@ def test_parse_device_commands_keeps_single_character_numeric_labels() -> None:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=1, hub_version=HUB_VERSION_X1))
 
+    # The capture holds only the first frames of the burst (its header
+    # declares more), so it never completes on its own: join what arrived.
     if not completed:
-        completed.extend(assembler.finalize_contiguous(1))
+        burst = assembler._buffers[1]
+        completed.append((1, b"".join(burst.frames[i] for i in sorted(burst.frames))))
 
     assert len(completed) == 1
     _, assembled_payload = completed[0]
@@ -1808,9 +1780,6 @@ def test_parse_device_commands_handles_alt_command_pages() -> None:
     for raw in frames:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id, hub_version=HUB_VERSION_X1))
-
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(dev_id))
 
     assert len(completed) == 1
     assembled_dev_id, assembled_payload = completed[0]
@@ -1878,9 +1847,6 @@ def test_parse_device_commands_handles_wifi_device_twenty_command_capture() -> N
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id, hub_version=HUB_VERSION_X1))
 
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(dev_id))
-
     assert len(completed) == 1
 
     assembled_dev_id, assembled_payload = completed[0]
@@ -1921,9 +1887,6 @@ def test_parse_device_commands_handles_x2_wifi_fixed_width_capture() -> None:
     for raw in frames:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id, hub_version=HUB_VERSION_X1))
-
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(dev_id))
 
     assert len(completed) == 1
 
@@ -2114,9 +2077,6 @@ def test_parse_device_commands_handles_dev_id_one_sequence() -> None:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id, hub_version=HUB_VERSION_X1))
 
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(dev_id))
-
     assert len(completed) == 1
     assembled_dev_id, assembled_payload = completed[0]
 
@@ -2206,9 +2166,6 @@ def test_parse_device_commands_handles_extended_req_commands_sequence() -> None:
     for raw in frames:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id, hub_version=HUB_VERSION_X1))
-
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(dev_id))
 
     assert len(completed) == 1
     assembled_dev_id, assembled_payload = completed[0]
@@ -2336,9 +2293,6 @@ def test_parse_device_commands_keeps_sequential_numeric_labels_when_x1s_dev_matc
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, hub_version=HUB_VERSION_X1S))
 
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(0x04))
-
     assert len(completed) == 1
 
     proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
@@ -2376,9 +2330,6 @@ def test_parse_device_commands_keeps_x1_ascii_rows_aligned_when_dev_matches_firs
     for raw in frames:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, hub_version=HUB_VERSION_X1))
-
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(0x07))
 
     assert len(completed) == 1
 
@@ -2455,10 +2406,6 @@ a5 5a 49 5d 01 00 29 03 79 0d 00 00 00 00 2e 77 00 56 00 6f 00 6c 00 75 00 6d 00
         opcode = int.from_bytes(raw[2:4], "big")
         # We know all frames belong to the same device; override to keep them together
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id, hub_version=HUB_VERSION_X1))
-
-    # Some assemblers emit on finalize; make sure we complete any dangling chain
-    if not completed:
-        completed.extend(assembler.finalize_contiguous(dev_id))
 
     assert len(completed) == 1
     assembled_dev_id, assembled_payload = completed[0]

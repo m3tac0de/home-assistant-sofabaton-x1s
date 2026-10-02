@@ -37,6 +37,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 def _hx(s: str) -> bytes:
@@ -356,7 +357,7 @@ def _patch_resolve(monkeypatch, hub) -> None:
     async def _resolve(hass, call):
         return hub
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
 
 def test_service_toggles_both_ways(monkeypatch) -> None:

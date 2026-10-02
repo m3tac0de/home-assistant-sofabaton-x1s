@@ -22,6 +22,7 @@ from custom_components.sofabaton_x1s.hub import SofabatonHub
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
+runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +260,7 @@ def hub():
 
 
 def _silence_dispatcher(monkeypatch) -> None:
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub_proxy_events.async_dispatcher_send", lambda *_: None)
 
 
 def test_uncommitted_activities_burst_keeps_catalog_and_generation(hub, monkeypatch):
@@ -434,9 +435,9 @@ def test_ws_refresh_catalog_reports_timeout(monkeypatch):
     async def fake_store(_hass):
         raise AssertionError("no cache persist after a failed refresh")
 
-    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
-    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
-    monkeypatch.setattr(integration, "_raise_if_hub_operation_locked", lambda *a, **k: None)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *a, **k: None)
 
     conn = _Conn()
     loop = asyncio.new_event_loop()

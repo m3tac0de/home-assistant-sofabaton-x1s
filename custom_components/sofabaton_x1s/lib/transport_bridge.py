@@ -13,11 +13,9 @@ from typing import Callable, Dict, Optional, Tuple
 from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
+from .deframer import Deframer
 from .notify_demuxer import (
-    BROADCAST_LISTEN_PORT,
-    build_connect_ready_beacon,
     get_notify_demuxer,
-    _broadcast_ip,
 )
 
 log = logging.getLogger("x1proxy.transport")
@@ -592,6 +590,40 @@ class TransportBridge:
         self._signal_wake()
         self._log.info("%s connected <- HUB %s:%d (shared listener)", LogTag.TRANSPORT, *hub_addr)
 
+    @staticmethod
+    def _close_quietly(sock: socket.socket) -> None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+    def _drop_hub(self, hub: socket.socket) -> bool:
+        """Close ``hub`` and clear it as the hub socket only if it still IS
+        the hub socket. A hub that re-dials replaces the socket under the
+        bridge thread (``_install_hub_socket``); closing the old one wakes the
+        bridge, and that EOF must never clear the replacement. Returns True
+        when the current socket was dropped (the caller then reports the
+        hub as disconnected)."""
+        with self._hub_lock:
+            self._close_quietly(hub)
+            if self._hub_sock is not hub:
+                return False
+            self._hub_sock = None
+            return True
+
+    def _drop_app(self, app: socket.socket) -> bool:
+        """The app-side counterpart of :meth:`_drop_hub`."""
+        with self._app_lock:
+            self._close_quietly(app)
+            if self._app_sock is not app:
+                return False
+            self._app_sock = None
+            return True
+
     def _handle_app_session(self, app_addr: Tuple[str, int]) -> None:
         self._stop_notify_listener()
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -662,7 +694,7 @@ class TransportBridge:
     def _run_bridge_loop(self, selector: selectors.BaseSelector) -> None:
         app_to_hub = bytearray()
         hub_to_app = bytearray()
-        app_partial_frame = bytearray()
+        app_deframer = Deframer(on_drop=self._log_client_drop)
 
         while not self._stop.is_set():
             with self._hub_lock:
@@ -705,7 +737,7 @@ class TransportBridge:
                     wake_reader,
                     app_to_hub,
                     hub_to_app,
-                    app_partial_frame,
+                    app_deframer,
                 )
                 time.sleep(0.05)
                 continue
@@ -731,18 +763,9 @@ class TransportBridge:
                 if data is None:
                     pass
                 elif not data:
-                    with self._hub_lock:
-                        try:
-                            hub.shutdown(socket.SHUT_RDWR)
-                        except Exception:
-                            pass
-                        try:
-                            hub.close()
-                        except Exception:
-                            pass
-                        self._hub_sock = None
-                    self._notify_hub_state(False)
-                    app_to_hub.clear()
+                    if self._drop_hub(hub):
+                        self._notify_hub_state(False)
+                        app_to_hub.clear()
                 else:
                     self._chunk_id += 1
                     cid = self._chunk_id
@@ -767,89 +790,25 @@ class TransportBridge:
                 if data is None:
                     pass
                 elif not data:
-                    with self._app_lock:
-                        try:
-                            app.shutdown(socket.SHUT_RDWR)
-                        except Exception:
-                            pass
-                        try:
-                            app.close()
-                        except Exception:
-                            pass
-                        self._app_sock = None
-                    app_to_hub.clear()
-                    app_partial_frame.clear()
-                    hub_to_app.clear()
-                    self._notify_client_state(False)
+                    if self._drop_app(app):
+                        app_to_hub.clear()
+                        app_deframer.reset()
+                        hub_to_app.clear()
+                        self._notify_client_state(False)
                 else:
                     self._chunk_id += 1
                     cid = self._chunk_id
                     for cb in self._app_frame_cbs:
                         cb(data, cid)
-                    # Split the app-side stream into whole frames using
-                    # the opcode-hi length invariant (frame_len = 5 +
-                    # buf[2]). See docs/protocol/frame-format.md.
-                    buffer = bytearray(app_partial_frame)
-                    buffer.extend(data)
-                    app_partial_frame.clear()
-
-                    frames_to_send: list[bytes] = []
-                    while True:
-                        if len(buffer) < 2:
-                            break
-                        if buffer[0] != SYNC0 or buffer[1] != SYNC1:
-                            idx = buffer.find(bytes([SYNC0, SYNC1]))
-                            if idx < 0:
-                                # Keep a trailing lone SYNC0 across reads.
-                                if buffer and buffer[-1] == SYNC0:
-                                    del buffer[:-1]
-                                else:
-                                    buffer.clear()
-                                break
-                            if idx and self._log.isEnabledFor(logging.DEBUG):
-                                self._log.debug(
-                                    "%s drop %dB junk before sync (client→hub)",
-                                    LogTag.PARSE,
-                                    idx,
-                                )
-                            del buffer[:idx]
-                        if len(buffer) < 5:
-                            break
-                        frame_len = 5 + buffer[2]
-                        if len(buffer) < frame_len:
-                            break
-                        cand = bytes(buffer[:frame_len])
-                        if cand[-1] == (_sum8(cand[:-1]) & 0xFF):
-                            frames_to_send.append(cand)
-                            del buffer[:frame_len]
-                            continue
-                        # Bad checksum at this sync — drop one byte and
-                        # rescan for the next sync pair.
-                        if self._log.isEnabledFor(logging.DEBUG):
-                            self._log.debug(
-                                "%s drop malformed frame len=%d (client→hub)",
-                                LogTag.PARSE,
-                                frame_len,
-                            )
-                        del buffer[0]
-
-                    app_partial_frame.extend(buffer)
+                    # Forward whole frames only (docs/protocol/frame-format.md).
+                    frames_to_send = [raw for _op, raw, *_ in app_deframer.feed(data, cid)]
 
                     for idx, frame in enumerate(frames_to_send):
                         app_to_hub.extend(frame)
                         if hub is not None:
                             if self._flush_to_hub(hub, app_to_hub, "client"):
-                                with self._hub_lock:
-                                    try:
-                                        hub.shutdown(socket.SHUT_RDWR)
-                                    except Exception:
-                                        pass
-                                    try:
-                                        hub.close()
-                                    except Exception:
-                                        pass
-                                    self._hub_sock = None
-                                self._notify_hub_state(False)
+                                if self._drop_hub(hub):
+                                    self._notify_hub_state(False)
                                 break
                             if (
                                 self._inter_command_gap > 0
@@ -860,50 +819,23 @@ class TransportBridge:
             if hub is not None and hub in w:
                 if self._local_to_hub:
                     if self._flush_to_hub(hub, self._local_to_hub, "local"):
-                        with self._hub_lock:
-                            try:
-                                hub.shutdown(socket.SHUT_RDWR)
-                            except Exception:
-                                pass
-                            try:
-                                hub.close()
-                            except Exception:
-                                pass
-                            self._hub_sock = None
-                        self._notify_hub_state(False)
-                        app_to_hub.clear()
+                        if self._drop_hub(hub):
+                            self._notify_hub_state(False)
+                            app_to_hub.clear()
                         continue
                 if app_to_hub:
                     if self._flush_to_hub(hub, app_to_hub, "client"):
-                        with self._hub_lock:
-                            try:
-                                hub.shutdown(socket.SHUT_RDWR)
-                            except Exception:
-                                pass
-                            try:
-                                hub.close()
-                            except Exception:
-                                pass
-                            self._hub_sock = None
-                        self._notify_hub_state(False)
-                        app_to_hub.clear()
+                        if self._drop_hub(hub):
+                            self._notify_hub_state(False)
+                            app_to_hub.clear()
 
             if app is not None and app in w:
                 if hub_to_app:
                     if _flush_buffer(app, hub_to_app, "hub", self._log):
-                        with self._app_lock:
-                            try:
-                                app.shutdown(socket.SHUT_RDWR)
-                            except Exception:
-                                pass
-                            try:
-                                app.close()
-                            except Exception:
-                                pass
-                            self._app_sock = None
-                        hub_to_app.clear()
-                        app_partial_frame.clear()
-                        self._notify_client_state(False)
+                        if self._drop_app(app):
+                            hub_to_app.clear()
+                            app_deframer.reset()
+                            self._notify_client_state(False)
 
             for cb in self._idle_cbs:
                 cb(time.monotonic())
@@ -912,6 +844,14 @@ class TransportBridge:
                 with self._hub_lock:
                     if self._hub_sock is None:
                         self._local_to_hub.clear()
+
+    def _log_client_drop(self, kind: str, n: int) -> None:
+        if not self._log.isEnabledFor(logging.DEBUG):
+            return
+        if kind == "junk":
+            self._log.debug("%s drop %dB junk before sync (client→hub)", LogTag.PARSE, n)
+        else:
+            self._log.debug("%s drop malformed frame len=%d (client→hub)", LogTag.PARSE, n)
 
     @staticmethod
     def _sync_selector(
@@ -946,7 +886,7 @@ class TransportBridge:
         wake_reader: Optional[socket.socket],
         app_to_hub: bytearray,
         hub_to_app: bytearray,
-        app_partial_frame: bytearray,
+        app_deframer: Deframer,
     ) -> None:
         """React to a failed selector pass instead of retrying blindly.
 
@@ -981,21 +921,7 @@ class TransportBridge:
             self._select_failure_streak = 0
 
         if hub is not None and (force or not _socket_is_usable(hub)):
-            with self._hub_lock:
-                if self._hub_sock is hub:
-                    try:
-                        hub.shutdown(socket.SHUT_RDWR)
-                    except Exception:
-                        pass
-                    try:
-                        hub.close()
-                    except Exception:
-                        pass
-                    self._hub_sock = None
-                    dropped = True
-                else:
-                    dropped = False
-            if dropped:
+            if self._drop_hub(hub):
                 app_to_hub.clear()
                 self._notify_hub_state(False)
                 self._log.warning(
@@ -1004,23 +930,9 @@ class TransportBridge:
                 )
 
         if app is not None and (force or not _socket_is_usable(app)):
-            with self._app_lock:
-                if self._app_sock is app:
-                    try:
-                        app.shutdown(socket.SHUT_RDWR)
-                    except Exception:
-                        pass
-                    try:
-                        app.close()
-                    except Exception:
-                        pass
-                    self._app_sock = None
-                    dropped = True
-                else:
-                    dropped = False
-            if dropped:
+            if self._drop_app(app):
                 app_to_hub.clear()
-                app_partial_frame.clear()
+                app_deframer.reset()
                 hub_to_app.clear()
                 self._notify_client_state(False)
                 self._log.warning(
