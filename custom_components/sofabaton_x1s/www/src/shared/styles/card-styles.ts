@@ -93,7 +93,14 @@ export const cardStyles = [secondaryTabStyles, css`
      container; .card-inner gets height:100% inline from the card. */
   :host([fill-height]) { height: 100%; }
   :host([fill-height]) ha-card { height: 100%; }
-  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
+  /* The card shell's corners (ha-card and the clipping .card-inner) follow
+     --tools-card-outer-radius; it defaults to the theme's card radius. A
+     host that wants a squared shell (the sidebar panel on a phone, where
+     the card is the page) sets only this variable: everything inside the
+     card keeps deriving its corners from --ha-card-border-radius, so the
+     theme's radius still shows on tabs, blocks, menus and dialogs. */
+  ha-card { border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
+  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
   .card-topbar {
     position: relative;
     flex-shrink: 0;

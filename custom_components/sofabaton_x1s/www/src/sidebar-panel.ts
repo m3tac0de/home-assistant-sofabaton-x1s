@@ -14,7 +14,8 @@ import { TOOLS_CARD_STRINGS } from "./strings";
  * The card is created once with `fill_height` and handed every `hass`
  * update; its own store, tabs, dialogs and dock work unchanged. The page
  * keeps the server panel's reading width (1040px) and, on a narrow screen,
- * drops the gutters and the card's rounded corners so the card is the page.
+ * drops the gutters and squares the card shell so the card is the page
+ * (its contents keep the theme's corner radius).
  */
 
 const PANEL_TYPE = "sofabaton-x-panel";
@@ -81,8 +82,11 @@ class SofabatonXPanel extends LitElement {
       padding: 0;
       padding-bottom: env(safe-area-inset-bottom);
     }
+    /* Only the card shell goes square; --ha-card-border-radius is left
+       alone so the tabs, blocks, menus and dialogs inside the card keep
+       the theme's corner radius. */
     :host([narrow]) sofabaton-control-panel {
-      --ha-card-border-radius: 0;
+      --tools-card-outer-radius: 0;
       --ha-card-border-width: 0;
     }
   `;
