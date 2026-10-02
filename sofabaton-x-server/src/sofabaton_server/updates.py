@@ -105,13 +105,20 @@ def detect_install_kind(*, environ: Optional[Mapping[str, str]] = None, package_
     except OSError:
         pass
     package = package_path if package_path is not None else Path(__file__).resolve().parent
-    parts = [part.lower() for part in package.parts]
+    parts = _path_parts(package)
     if "site-packages" not in parts and "dist-packages" not in parts:
         return "checkout"
-    prefix_parts = [part.lower() for part in Path(prefix if prefix is not None else sys.prefix).parts]
+    prefix_parts = _path_parts(prefix if prefix is not None else sys.prefix)
     if "pipx" in prefix_parts and "venvs" in prefix_parts:
         return "pipx"
     return "pip"
+
+
+def _path_parts(path: Any) -> list[str]:
+    """Lower-cased path components, split on both separators: a Windows
+    path is still one when the server runs on Linux (and in the tests)."""
+
+    return [part.lower() for part in re.split(r"[\\/]+", str(path)) if part]
 
 
 def upgrade_url_for(kind: InstallKind) -> str:
