@@ -17,6 +17,35 @@ are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased
 
 ### Added
 
+- **Published container images.** Each release is pushed to Docker Hub
+  (`m3tac0de/sofabaton-x-server`) and GHCR
+  (`ghcr.io/m3tac0de/sofabaton-x-server`) for `linux/amd64` and
+  `linux/arm64`, tagged with the release, its minor line and `latest`.
+  The image installs the wheel the release published to PyPI. The
+  Compose file now names the Docker Hub image; building from a checkout
+  stays possible (`WHEEL_SOURCE=checkout`, the Dockerfile's default).
+  Synology Container Manager offers updates for the Docker Hub image on
+  its own. See [Docker](docs/running-server.md#docker).
+- **Built-in TLS reloads a renewed certificate without a restart.** With
+  `--tls-cert` / `--tls-key` the server now owns its TLS context and
+  watches the two files; a changed pair is loaded within a minute and
+  new connections present it. A pair it cannot load (half-written, key
+  mismatch) keeps the running certificate and is retried, with one
+  warning. A container with the certificate directory mounted therefore
+  follows renewals on its own, which is what an https dashboard
+  embedding the web remote needs. The image's health check follows the
+  scheme. Requires uvicorn 0.47 or newer (the package now says so). The
+  running guide gained [TLS without a proxy](docs/running-server.md#tls-without-a-proxy)
+  and reverse-proxy recipes for Traefik, Nginx Proxy Manager and
+  Synology DSM.
+- **The update check says how the server was installed.** `GET
+  /server/updates` (and the `update` block of `GET /server`) carries
+  `install_kind`: `container`, `pipx`, `pip`, `checkout` or `unknown`,
+  detected at startup and overridable with `SOFABATON_INSTALL`. The
+  control panel shows it and words the next step once a newer release
+  is known: pull the new image, `pipx upgrade`, or the pip line. The
+  `upgrade_url` of a container points at the Docker recipe. The server
+  still never installs anything.
 - **X2 activity changes arrive over MQTT.** With a broker set, the server
   subscribes to `activity/<MAC>/activity_control_up` for every enabled
   X2 whose MAC is known, whether or not it has MQTT Wifi Devices, and
@@ -51,6 +80,11 @@ are listed in the [library changelog](../sofabaton-x/CHANGELOG.md#023-unreleased
   directory, then reload open panel and remote pages. No manual
   conversion of registrations, access settings, Wifi Devices or saved
   layouts is needed.
+- **Docker users can switch to the published image.** Replace the
+  `build:` block in your Compose file with
+  `image: m3tac0de/sofabaton-x-server:latest` (or a release tag) and keep
+  the `./data` volume; nothing in the data directory changes. A locally
+  built image keeps working.
 - **Device and activity names are limited to 30 characters.** The
   rename bodies and the create-device name accept at most 30 characters
   (they accepted 64, which the hub silently truncated). The hub rename

@@ -73,6 +73,10 @@ See [security](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/mai
 <a id="settings"></a>
 <a id="security"></a>
 
+A container image is published with each release as
+`m3tac0de/sofabaton-x-server` on Docker Hub and
+`ghcr.io/m3tac0de/sofabaton-x-server` (Linux host networking, amd64 and arm64).
+
 For [Docker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#docker),
 [networking and reverse proxies](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#behind-a-reverse-proxy-tls),
 [settings](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#settings),

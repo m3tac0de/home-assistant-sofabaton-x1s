@@ -25573,6 +25573,34 @@ function defineRemoteView() {
 }
 
 // server-panel/src/views/server-view.ts
+function installKindLabel(kind) {
+  switch (kind) {
+    case "container":
+      return "container image";
+    case "pipx":
+      return "pipx";
+    case "pip":
+      return "pip";
+    case "checkout":
+      return "source checkout";
+    default:
+      return "unknown";
+  }
+}
+function installHowTo(kind, version) {
+  switch (kind) {
+    case "container":
+      return "This server runs from a container image: pull the new image and recreate the container with the same data directory. Synology Container Manager offers it under Image when the image comes from Docker Hub.";
+    case "pipx":
+      return `Stop the server, then run: pipx upgrade sofabaton-x-server`;
+    case "pip":
+      return `Stop the server, then run in the same Python environment: python -m pip install "sofabaton-x-server==${version}"`;
+    case "checkout":
+      return "This server runs from a source checkout: pull the release and reinstall both packages.";
+    default:
+      return "";
+  }
+}
 var SERVER_VIEW_TAG = "sb-panel-server";
 var PORT_FIELDS = [
   {
@@ -25792,16 +25820,20 @@ var SbPanelServer = class extends i4 {
           <a href=${u6.upgrade_url} target="_blank" rel="noopener">Update instructions</a>
           <a href=${u6.pypi_url} target="_blank" rel="noopener">PyPI</a>
         </div>` : "";
+    const howTo = u6?.status === "update_available" ? installHowTo(u6.install_kind, u6.latest_version ?? "") : "";
+    const howToLine = howTo ? b2`<div class="hint" id="update-howto">${howTo}</div>` : "";
     const busy = this._checking || u6?.checking === true;
     return b2`
       <div class="panel updates" id="server-updates">
         <h2>Updates</h2>
         <dl class="facts">
           <div><dt>installed version</dt><dd id="update-installed">${installed}</dd></div>
+          <div><dt>installed as</dt><dd id="update-kind">${installKindLabel(u6?.install_kind)}</dd></div>
           <div><dt>last checked</dt><dd id="update-checked">${checked}</dd></div>
           ${u6?.next_check_at ? b2`<div><dt>next check</dt><dd id="update-next">${localTime2(u6.next_check_at)}</dd></div>` : ""}
         </dl>
         <div class="update-line ${cls}" id="update-status" data-status=${u6?.status ?? "not_checked"}>${line}</div>
+        ${howToLine}
         ${links}
         <div class="actions">
           <button class="small" id="update-check" ?disabled=${busy || !this.reachable} @click=${this._checkForUpdates} title="POST /server/updates/check">${busy ? "checking\u2026" : "Check for updates"}</button>

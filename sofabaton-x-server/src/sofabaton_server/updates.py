@@ -20,6 +20,13 @@ cadence and the "last checked" line.
 A failed request never reads as up to date: the status is one of
 ``not_checked``, ``up_to_date``, ``update_available`` and ``failed``, and
 the panel words them as such.
+
+The status also says how this server was installed (``install_kind``),
+so the panel can word the next step: a container is replaced by pulling
+the new image, a pipx install by ``pipx upgrade``, a pip install by pip.
+Detected once at startup (section 4 of the updater plan); the published
+image sets ``SOFABATON_INSTALL=container`` and anyone can set that
+variable to correct a wrong guess. Nothing here installs anything.
 """
 
 from __future__ import annotations
@@ -29,12 +36,13 @@ import json
 import logging
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Literal, Optional
+from typing import Any, Awaitable, Callable, Literal, Mapping, Optional
 
 from . import __version__
 from .config import Settings
@@ -45,7 +53,10 @@ PROJECT = "sofabaton-x-server"
 PYPI_JSON_URL = f"https://pypi.org/pypi/{PROJECT}/json"
 PYPI_PROJECT_URL = f"https://pypi.org/project/{PROJECT}/"
 RELEASE_NOTES_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md"
-UPGRADE_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#storage-and-upgrades"
+_RUNNING_DOC = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md"
+UPGRADE_URL = f"{_RUNNING_DOC}#storage-and-upgrades"
+# A container is not upgraded in place: the next step is the image recipe.
+CONTAINER_UPGRADE_URL = f"{_RUNNING_DOC}#docker"
 STATE_FILE = "update-check.json"
 CHECK_INTERVAL = timedelta(days=1)
 RETRY_AFTER_FAILURE = timedelta(hours=1)
@@ -57,8 +68,54 @@ USER_AGENT = f"{PROJECT} update check (+https://github.com/m3tac0de/home-assista
 
 UpdateStatusKind = Literal["not_checked", "up_to_date", "update_available", "failed"]
 CheckSource = Literal["manual", "automatic"]
+InstallKind = Literal["container", "pipx", "pip", "checkout", "unknown"]
 
 Fetch = Callable[[], Awaitable[Any]]
+
+INSTALL_KINDS: tuple[InstallKind, ...] = ("container", "pipx", "pip", "checkout", "unknown")
+# Set by the published image; an operator sets it to correct the guess.
+INSTALL_KIND_ENV = "SOFABATON_INSTALL"
+# Docker and Podman leave one of these in a container's root.
+CONTAINER_MARKERS = ("/.dockerenv", "/run/.containerenv")
+
+
+# -- how this server was installed ------------------------------------------------
+
+
+def detect_install_kind(*, environ: Optional[Mapping[str, str]] = None, package_path: Optional[Path] = None,
+                        prefix: Optional[str] = None, marker_exists: Optional[Callable[[str], bool]] = None) -> InstallKind:
+    """How this server was installed, for the panel's upgrade wording.
+
+    In order: ``SOFABATON_INSTALL`` when it names a known kind (the image
+    sets ``container``); a container marker file; ``checkout`` when the
+    package does not live in a site-packages directory (an editable
+    install, or ``PYTHONPATH=src``); ``pipx`` when the interpreter's
+    prefix is a pipx-managed environment; otherwise ``pip``. Never raises:
+    the answer only chooses a sentence.
+    """
+
+    env = os.environ if environ is None else environ
+    wanted = (env.get(INSTALL_KIND_ENV) or "").strip().lower()
+    if wanted in INSTALL_KINDS:
+        return wanted  # type: ignore[return-value]
+    exists = marker_exists or (lambda path: Path(path).exists())
+    try:
+        if any(exists(marker) for marker in CONTAINER_MARKERS):
+            return "container"
+    except OSError:
+        pass
+    package = package_path if package_path is not None else Path(__file__).resolve().parent
+    parts = [part.lower() for part in package.parts]
+    if "site-packages" not in parts and "dist-packages" not in parts:
+        return "checkout"
+    prefix_parts = [part.lower() for part in Path(prefix if prefix is not None else sys.prefix).parts]
+    if "pipx" in prefix_parts and "venvs" in prefix_parts:
+        return "pipx"
+    return "pip"
+
+
+def upgrade_url_for(kind: InstallKind) -> str:
+    return CONTAINER_UPGRADE_URL if kind == "container" else UPGRADE_URL
 
 
 # -- versions (PEP 440, the parts this project uses) ------------------------------
@@ -192,6 +249,10 @@ class UpdateStatus:
     """
 
     installed_version: str
+    # How this server was installed, for the next-step wording: a
+    # container is replaced by pulling the new image, never upgraded in
+    # place (``SOFABATON_INSTALL`` overrides the detection).
+    install_kind: InstallKind
     status: UpdateStatusKind
     latest_version: Optional[str]
     checked_at: Optional[str]
@@ -225,11 +286,13 @@ class UpdateChecker:
     """Runs and remembers update checks; owns the daily schedule."""
 
     def __init__(self, settings: Settings, *, installed_version: str = __version__,
+                 install_kind: Optional[InstallKind] = None,
                  fetch: Optional[Fetch] = None, now: Optional[Callable[[], datetime]] = None,
                  interval: timedelta = CHECK_INTERVAL, retry_after_failure: timedelta = RETRY_AFTER_FAILURE,
                  startup_delay: timedelta = STARTUP_DELAY) -> None:
         self._data_dir = Path(settings.data_dir)
         self.installed_version = installed_version
+        self.install_kind: InstallKind = install_kind or detect_install_kind()
         self.automatic = bool(settings.update_check)
         self.automatic_pinned = "update_check" in settings.pinned
         self._fetch: Fetch = fetch or fetch_pypi_json
@@ -386,6 +449,7 @@ class UpdateChecker:
         next_at = self.next_check_at()
         return UpdateStatus(
             installed_version=self.installed_version,
+            install_kind=self.install_kind,
             status=kind,
             latest_version=latest,
             checked_at=last.checked_at.isoformat() if last is not None else None,
@@ -396,7 +460,7 @@ class UpdateChecker:
             next_check_at=next_at.isoformat() if next_at is not None else None,
             checking=self.checking,
             release_notes_url=RELEASE_NOTES_URL,
-            upgrade_url=UPGRADE_URL,
+            upgrade_url=upgrade_url_for(self.install_kind),
             pypi_url=f"{PYPI_PROJECT_URL}{latest}/" if latest else PYPI_PROJECT_URL,
         )
 

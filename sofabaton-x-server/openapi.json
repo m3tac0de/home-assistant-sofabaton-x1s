@@ -4314,6 +4314,17 @@
             ],
             "title": "Error"
           },
+          "install_kind": {
+            "enum": [
+              "container",
+              "pipx",
+              "pip",
+              "checkout",
+              "unknown"
+            ],
+            "title": "Install Kind",
+            "type": "string"
+          },
           "installed_version": {
             "title": "Installed Version",
             "type": "string"
@@ -4365,6 +4376,7 @@
         },
         "required": [
           "installed_version",
+          "install_kind",
           "status",
           "latest_version",
           "checked_at",

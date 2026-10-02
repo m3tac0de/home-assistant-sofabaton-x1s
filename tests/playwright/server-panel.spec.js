@@ -89,7 +89,7 @@ function makeRoutes(state) {
   const find = (id) => state.hubs.find((h) => h.hub_id === id);
   const UPDATE_LINKS = { release_notes_url: "https://example.test/changelog", upgrade_url: "https://example.test/upgrade", pypi_url: "https://example.test/pypi" };
   if (!state.update) {
-    state.update = { installed_version: "0.2.0", status: "not_checked", latest_version: null, checked_at: null, checked_by: null, error: null, automatic: false, automatic_pinned: false, next_check_at: null, checking: false, ...UPDATE_LINKS };
+    state.update = { installed_version: "0.2.0", install_kind: "pip", status: "not_checked", latest_version: null, checked_at: null, checked_by: null, error: null, automatic: false, automatic_pinned: false, next_check_at: null, checking: false, ...UPDATE_LINKS };
   }
   const announceUpdateCheck = () => {
     for (const ws of state.sockets ?? []) ws.send(JSON.stringify({ type: "server_event", hub_id: "", kind: "update_check" }));
@@ -702,6 +702,7 @@ test.describe("control panel, shell", () => {
 
     // The update check: off and unchecked until asked; one check finds a release, the cog gets its dot.
     await expect(page.locator("#update-status")).toHaveText("Not checked.");
+    await expect(page.locator("#update-howto")).toHaveCount(0);
     await expect(page.locator("#update-checked")).toHaveText("Never");
     await expect(page.locator("#update-installed")).toHaveText("0.2.0");
     await expect(page.locator("#update-dot")).toHaveCount(0);
@@ -710,6 +711,9 @@ test.describe("control panel, shell", () => {
     await page.click("#update-check");
     await expect(page.locator("#update-status")).toContainText("Update available: 0.2.2");
     await expect(page.locator("#update-links a")).toHaveCount(3);
+    // The next step is worded for how the server was installed (a pip install here).
+    await expect(page.locator("#update-kind")).toHaveText("pip");
+    await expect(page.locator("#update-howto")).toContainText('pip install "sofabaton-x-server==0.2.2"');
     await expect(page.locator("#update-checked")).toContainText("2026");
     await expect(page.locator("#update-dot")).toBeVisible();
     await page.click("#cog-btn");

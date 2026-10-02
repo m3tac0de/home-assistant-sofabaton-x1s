@@ -10,12 +10,26 @@
 # -> Publishing -> pending publisher: project sofabaton-x-server, owner
 # m3tac0de, repo home-assistant-sofabaton-x1s, workflow
 # sofabaton-x-server-release.yml, environment pypi.
+#
+# Container images: after the PyPI publish, the image is built from the
+# published wheel and pushed to GHCR and Docker Hub (publish-image job).
+#
+# Dry run (Actions -> this workflow -> Run workflow): builds the wheels
+# from the chosen ref, the library from the checkout too, and pushes the
+# image under the given tag only (default "test"). No PyPI, no "latest",
+# no version tag. Exercises both registry logins before a real release.
 name: sofabaton-x-server release
 
 on:
   push:
     tags:
       - "sofabaton-x-server-v*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Dry run: push the image from this ref under this tag only (no PyPI, no latest)"
+        default: "test"
+        required: true
 
 jobs:
   test:
@@ -45,6 +59,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Verify tag matches the package version
+        if: github.event_name == 'push'
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#sofabaton-x-server-v}"
           PKG_VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' sofabaton-x-server/src/sofabaton_server/__init__.py)"
@@ -52,6 +67,9 @@ jobs:
           test -n "$PKG_VERSION"
           test "$TAG_VERSION" = "$PKG_VERSION"
       - run: pip install build
+      - name: "Dry run: the library wheel from this checkout too (nothing goes to PyPI)"
+        if: github.event_name == 'workflow_dispatch'
+        run: python -m build --wheel --outdir dist .
       - run: python -m build --outdir dist sofabaton-x-server
       - name: Install the wheel (library from PyPI) and smoke-test
         run: |
@@ -65,6 +83,7 @@ jobs:
 
   publish:
     name: publish to PyPI
+    if: github.event_name == 'push'
     needs: [test, build]
     runs-on: ubuntu-latest
     environment:
@@ -80,3 +99,102 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  # The container image runs exactly the wheel published above (the
+  # library comes from PyPI as the wheel requires it). GHCR always; Docker
+  # Hub when the DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets are set
+  # (Synology Container Manager only notices updates for Docker Hub
+  # images on the latest tag). Tags: X.Y.Z, X.Y, latest.
+  publish-image:
+    name: publish container image
+    needs: [test, build, publish]
+    # After a real publish, or as a dry run (publish skipped).
+    if: >-
+      !cancelled() && needs.test.result == 'success' && needs.build.result == 'success'
+      && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # GHCR
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          name: sofabaton-x-server-dist
+          path: release-wheels/
+      - name: Keep the wheels only (the image installs wheels, not sdists)
+        run: rm -f release-wheels/*.tar.gz && ls -l release-wheels/
+      - name: Image names and tags
+        id: names
+        env:
+          DRY_RUN_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#sofabaton-x-server-v}"
+            TAGS="type=raw,value=${VERSION}"$'\n'"type=raw,value=${VERSION%.*}"$'\n'"type=raw,value=latest"
+          else
+            VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' sofabaton-x-server/src/sofabaton_server/__init__.py)"
+            TAGS="type=raw,value=${DRY_RUN_TAG}"
+          fi
+          IMAGES="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sofabaton-x-server"
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            IMAGES="$IMAGES"$'\n'"docker.io/${DOCKERHUB_USERNAME}/sofabaton-x-server"
+          fi
+          {
+            echo "version=$VERSION"
+            echo "images<<EOT"
+            echo "$IMAGES"
+            echo "EOT"
+            echo "tags<<EOT"
+            echo "$TAGS"
+            echo "EOT"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"; echo "$IMAGES"; echo "$TAGS"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build for this runner and smoke-test before anything is pushed
+        run: |
+          docker build -f sofabaton-x-server/Dockerfile --build-arg WHEEL_SOURCE=release -t sofabaton-x-server:release .
+          docker run -d --name sbx --network host -e SOFABATON_PORT=8482 sofabaton-x-server:release
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8482/api/v1/server && break; sleep 1; done
+          curl -sf http://127.0.0.1:8482/api/v1/server | python3 -c "import sys, json; d = json.load(sys.stdin); assert d['version'] == '${{ steps.names.outputs.version }}', d; assert d['update']['install_kind'] == 'container', d; print(d['version'], d['update']['install_kind'])"
+          docker logs sbx | tail -5
+          docker rm -f sbx
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.names.outputs.images }}
+          tags: ${{ steps.names.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=sofabaton-x-server
+            org.opencontainers.image.description=Self-hosted hub management, web remote and local API for Sofabaton X1 / X1S / X2
+            org.opencontainers.image.licenses=MIT
+      - name: Build for amd64 + arm64 and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sofabaton-x-server/Dockerfile
+          build-args: WHEEL_SOURCE=release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # No attestation manifests: they show up as "unknown/unknown"
+          # platforms in registry UIs and in Synology Container Manager.
+          provenance: false
+          sbom: false

@@ -77,18 +77,33 @@ jobs:
 
   docker-image:
     name: docker image builds
+    needs: [build-smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Build
+      - name: Build from the checkout (the default)
         run: docker build -f sofabaton-x-server/Dockerfile -t sofabaton-x-server:ci .
-      - name: Image starts and answers
+      - name: Image starts, answers, and knows it is a container
         run: |
           docker run -d --name sbx --network host -e SOFABATON_PORT=8482 sofabaton-x-server:ci
           for i in $(seq 1 20); do curl -sf http://127.0.0.1:8482/api/v1/server && break; sleep 1; done
-          curl -sf http://127.0.0.1:8482/api/v1/server
+          curl -sf http://127.0.0.1:8482/api/v1/server | python3 -c "import sys, json; d = json.load(sys.stdin); assert d['update']['install_kind'] == 'container', d; print(d)"
           docker logs sbx | tail -5
           docker rm -f sbx
+      # The release workflow builds from published wheels (WHEEL_SOURCE=release).
+      # Here both wheels come from build-smoke, so the path is exercised without PyPI.
+      - uses: actions/download-artifact@v6
+        with:
+          name: sofabaton-x-server-dist
+          path: release-wheels/
+      - name: Build from wheels, as the release workflow does
+        run: |
+          ls -l release-wheels/
+          docker build -f sofabaton-x-server/Dockerfile --build-arg WHEEL_SOURCE=release -t sofabaton-x-server:release .
+          docker run -d --name sbxr --network host -e SOFABATON_PORT=8483 sofabaton-x-server:release
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8483/api/v1/server && break; sleep 1; done
+          curl -sf http://127.0.0.1:8483/api/v1/server
+          docker rm -f sbxr
 
   codegen-smoke:
     name: openapi.json feeds a TypeScript generator
