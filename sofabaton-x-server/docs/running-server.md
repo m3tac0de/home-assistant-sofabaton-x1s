@@ -38,7 +38,7 @@ layouts.
 ### On a computer: pipx or pip
 
 For Windows, macOS and Linux, desktops and servers alike. Python 3.11 or
-newer. [pipx](https://pipx.pypa.io/stable/installation/) is the
+newer. [pipx](https://pipx.pypa.io/latest/how-to/install-pipx.html) is the
 recommended way: it gives the server its own Python environment and
 upgrades it with one command.
 
