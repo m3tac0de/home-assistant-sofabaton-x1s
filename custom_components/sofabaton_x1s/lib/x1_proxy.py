@@ -29,6 +29,7 @@ from .hub_versions import (
 )
 from .ack import AckOutcome
 from .hub_logging import LogTag, get_hub_logger
+from .network import route_local_ip as _route_local_ip
 from .commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
@@ -247,18 +248,6 @@ def _normalize_mdns_instance(name: str) -> str:
 
     normalized = re.sub(r"\s+", "-", name.strip())
     return normalized or "X1-HUB-PROXY"
-
-
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try: s.close()
-        except Exception: pass
 
 
 # ============================================================================
@@ -1580,7 +1569,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
 
 
     def get_routed_local_ip(self) -> str:
-        """Return the local IPv4 address selected by OS routing toward the real hub."""
+        """Return the local IPv4 source selected for the real hub."""
 
         return _route_local_ip(self.real_hub_ip)
 

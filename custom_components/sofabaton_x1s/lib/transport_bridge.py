@@ -12,6 +12,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
+from .network import route_local_ip as _route_local_ip
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 from .deframer import Deframer
 from .notify_demuxer import (
@@ -23,20 +24,6 @@ log = logging.getLogger("x1proxy.transport")
 
 def _sum8(b: bytes) -> int:
     return sum(b) & 0xFF
-
-
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
 
 
 def _enable_keepalive(
@@ -492,40 +479,38 @@ class TransportBridge:
         TCP accept lives in the shared :class:`HubListener`.
         """
 
-        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            last = 0.0
-            while not self._stop.is_set():
-                if self.is_hub_connected:
-                    time.sleep(0.3)
-                    continue
-                if self._ota_pause_active():
-                    time.sleep(0.5)
-                    continue
-                now = time.time()
-                if now - last >= 2.0 + random.uniform(-0.25, 0.25):
-                    try:
-                        my_ip = _route_local_ip(self.real_hub_ip)
-                        payload = (
-                            b"\x00" * 6
-                            + socket.inet_aton(my_ip)
-                            + struct.pack(">H", self.hub_listen_base)
-                        )
-                        frame = (
-                            bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF])
-                            + payload
-                        )
-                        frame += bytes([_sum8(frame)])
+        last = 0.0
+        while not self._stop.is_set():
+            if self.is_hub_connected:
+                time.sleep(0.3)
+                continue
+            if self._ota_pause_active():
+                time.sleep(0.5)
+                continue
+            now = time.time()
+            if now - last >= 2.0 + random.uniform(-0.25, 0.25):
+                try:
+                    my_ip = _route_local_ip(self.real_hub_ip)
+                    payload = (
+                        b"\x00" * 6
+                        + socket.inet_aton(my_ip)
+                        + struct.pack(">H", self.hub_listen_base)
+                    )
+                    frame = (
+                        bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF])
+                        + payload
+                    )
+                    frame += bytes([_sum8(frame)])
+                    # Keep the packet source and callback address consistent.
+                    # Reopen per attempt to recover from address changes or
+                    # bind errors.
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+                        udp.bind((my_ip, 0))
                         udp.sendto(frame, (self.real_hub_ip, self.real_hub_udp_port))
-                    except OSError:
-                        self._log.debug("%s CALL_ME send failed", LogTag.TRANSPORT, exc_info=True)
-                    last = now
-                time.sleep(0.2)
-        finally:
-            try:
-                udp.close()
-            except Exception:
-                pass
+                except OSError:
+                    self._log.debug("%s CALL_ME send failed", LogTag.TRANSPORT, exc_info=True)
+                last = now
+            time.sleep(0.2)
 
     def _install_hub_socket(
         self, hub_sock: socket.socket, hub_addr: Tuple[str, int]
@@ -629,6 +614,7 @@ class TransportBridge:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             s.settimeout(5.0)
+            s.bind((_route_local_ip(app_addr[0]), 0))
             s.connect(app_addr)
             s.settimeout(0.0)
             _disable_nagle(s)
@@ -1018,5 +1004,3 @@ class TransportBridge:
         if self._notify_registered:
             get_notify_demuxer().unregister_proxy(self.proxy_id)
             self._notify_registered = False
-
-

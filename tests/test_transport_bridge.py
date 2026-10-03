@@ -3,6 +3,7 @@ import selectors
 import socket
 import threading
 import time
+from itertools import count
 
 from custom_components.sofabaton_x1s.lib import transport_bridge
 from custom_components.sofabaton_x1s.lib.transport_bridge import TransportBridge
@@ -12,6 +13,238 @@ def _make_bridge() -> TransportBridge:
     return TransportBridge(
         "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
     )
+
+
+def test_call_me_binds_to_the_advertised_lan_source(monkeypatch):
+    """The UDP request must use the same interface as its callback address."""
+    bridge = TransportBridge(
+        "192.0.2.20", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
+    sent = []
+
+    class DatagramSocket:
+        source_ip = "198.51.100.10"
+
+        def bind(self, address):
+            self.source_ip = address[0]
+
+        def sendto(self, frame, destination):
+            sent.append((frame, destination, self.source_ip))
+            bridge._stop.set()
+
+        def close(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.close()
+
+    monkeypatch.setattr(transport_bridge.socket, "socket", lambda *_: DatagramSocket())
+    monkeypatch.setattr(transport_bridge, "_route_local_ip", lambda _: "192.0.2.10")
+    monkeypatch.setattr(transport_bridge.time, "sleep", lambda _: None)
+
+    bridge._call_me_loop()
+
+    assert len(sent) == 1
+    frame, destination, source_ip = sent[0]
+    assert source_ip == "192.0.2.10"
+    assert destination == ("192.0.2.20", 8102)
+    assert frame[:4] == bytes.fromhex("a55a0cc3")
+    assert frame[4:10] == b"\x00" * 6
+    assert socket.inet_ntoa(frame[10:14]) == "192.0.2.10"
+    assert int.from_bytes(frame[14:16], "big") == 8200
+    assert frame[-1] == sum(frame[:-1]) & 0xFF
+
+
+def test_call_me_packet_source_matches_callback_over_real_udp(monkeypatch):
+    """Exercise socket binding and the actual packet, entirely on loopback."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+        receiver.bind(("127.0.0.1", 0))
+        receiver.settimeout(3.0)
+        bridge = TransportBridge(
+            "127.0.0.1", receiver.getsockname()[1], 8102, 8200,
+            proxy_id="proxy", mdns_instance="proxy", mdns_txt={},
+        )
+        monkeypatch.setattr(transport_bridge, "_route_local_ip", lambda _: "127.0.0.2")
+        worker = threading.Thread(target=bridge._call_me_loop, daemon=True)
+        worker.start()
+        try:
+            frame, source = receiver.recvfrom(2048)
+        finally:
+            bridge._stop.set()
+            worker.join(3.0)
+
+    assert not worker.is_alive()
+    assert source[0] == "127.0.0.2"
+    assert socket.inet_ntoa(frame[10:14]) == "127.0.0.2"
+
+
+def test_call_me_retries_after_a_source_bind_failure(monkeypatch):
+    bridge = TransportBridge(
+        "192.0.2.20", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
+    sockets = []
+    sent = []
+    clock = count(100.0, 3.0)
+
+    class DatagramSocket:
+        closed = False
+
+        def bind(self, address):
+            if self is sockets[0]:
+                raise OSError("address temporarily unavailable")
+            self.source_ip = address[0]
+
+        def sendto(self, frame, destination):
+            sent.append((socket.inet_ntoa(frame[10:14]), self.source_ip))
+            bridge._stop.set()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.closed = True
+
+    def open_socket(*_args):
+        sock = DatagramSocket()
+        sockets.append(sock)
+        return sock
+
+    monkeypatch.setattr(transport_bridge.socket, "socket", open_socket)
+    monkeypatch.setattr(transport_bridge, "_route_local_ip", lambda _: "192.0.2.10")
+    monkeypatch.setattr(transport_bridge.time, "time", lambda: next(clock))
+    monkeypatch.setattr(transport_bridge.time, "sleep", lambda _: None)
+
+    bridge._call_me_loop()
+
+    assert sent == [("192.0.2.10", "192.0.2.10")]
+    assert all(sock.closed for sock in sockets)
+
+
+def test_app_session_binds_to_the_phone_source_before_connecting(monkeypatch):
+    """Select for the phone, which may be on a different subnet from the hub."""
+    bridge = TransportBridge(
+        "203.0.113.20", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
+    events = []
+    routed_peers = []
+    states = []
+    bridge.on_client_state(states.append)
+
+    class StreamSocket:
+        def settimeout(self, timeout):
+            events.append(("timeout", timeout))
+
+        def bind(self, address):
+            events.append(("bind", address))
+
+        def connect(self, address):
+            events.append(("connect", address))
+
+        def setsockopt(self, *_args):
+            pass
+
+        def close(self):
+            pass
+
+    def select_source(peer):
+        routed_peers.append(peer)
+        return "192.0.2.10"
+
+    monkeypatch.setattr(transport_bridge.socket, "socket", lambda *_: StreamSocket())
+    monkeypatch.setattr(transport_bridge, "_route_local_ip", select_source)
+
+    try:
+        bridge._handle_app_session(("192.0.2.20", 8100))
+
+        assert bridge.is_client_connected
+        assert states == [False, True]
+        assert routed_peers == ["192.0.2.20"]
+        assert events == [
+            ("timeout", 5.0),
+            ("bind", ("192.0.2.10", 0)),
+            ("connect", ("192.0.2.20", 8100)),
+            ("timeout", 0.0),
+        ]
+    finally:
+        bridge.stop()
+
+
+def test_app_session_uses_the_selected_source_over_real_tcp(monkeypatch):
+    """Observe the TCP source at the phone-side listener, entirely on loopback."""
+    bridge = TransportBridge(
+        "203.0.113.20", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
+    monkeypatch.setattr(transport_bridge, "_route_local_ip", lambda _: "127.0.0.2")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as phone:
+        phone.bind(("127.0.0.1", 0))
+        phone.listen(1)
+        phone.settimeout(3.0)
+        try:
+            bridge._handle_app_session(phone.getsockname())
+
+            assert bridge.is_client_connected
+            connection, source = phone.accept()
+            with connection:
+                assert source[0] == "127.0.0.2"
+                assert source[1] > 0
+        finally:
+            bridge.stop()
+
+
+def test_app_session_bind_failure_closes_socket_and_restores_discovery(monkeypatch):
+    bridge = TransportBridge(
+        "203.0.113.20", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
+    registrations = {}
+    connections = []
+    states = []
+    bridge.on_client_state(states.append)
+
+    class FakeDemuxer:
+        def register_proxy(self, **kwargs):
+            registrations[kwargs["proxy_id"]] = kwargs["call_me_cb"]
+
+        def unregister_proxy(self, proxy_id):
+            registrations.pop(proxy_id, None)
+
+    class UnavailableSourceSocket:
+        closed = False
+
+        def settimeout(self, _timeout):
+            pass
+
+        def bind(self, _address):
+            raise OSError("address temporarily unavailable")
+
+        def connect(self, address):
+            connections.append(address)
+
+        def setsockopt(self, *_args):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    sock = UnavailableSourceSocket()
+    monkeypatch.setattr(transport_bridge.socket, "socket", lambda *_: sock)
+    monkeypatch.setattr(transport_bridge, "_route_local_ip", lambda _: "192.0.2.10")
+    monkeypatch.setattr(transport_bridge, "get_notify_demuxer", lambda *_: FakeDemuxer())
+    bridge.start_notify_listener()
+    try:
+        bridge._handle_app_session(("192.0.2.20", 8100))
+
+        assert not bridge.is_client_connected
+        assert states == [False]
+        assert connections == []
+        assert sock.closed
+        assert bridge._notify_registered
+        assert registrations == {"proxy": bridge._handle_call_me}
+    finally:
+        bridge.stop()
 
 
 def test_connect_beacon_is_intentionally_disabled(monkeypatch):
@@ -51,6 +284,7 @@ def test_notify_listener_stops_when_connecting(monkeypatch):
         "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
     )
     stopped = False
+    connect_attempted = False
 
     def fake_stop() -> None:
         nonlocal stopped
@@ -74,8 +308,13 @@ def test_notify_listener_stops_when_connecting(monkeypatch):
         def settimeout(self, *_args, **_kwargs):
             pass
 
-        def connect(self, *_args, **_kwargs):
+        def bind(self, *_args, **_kwargs):
             assert stopped
+
+        def connect(self, *_args, **_kwargs):
+            nonlocal connect_attempted
+            assert stopped
+            connect_attempted = True
             raise OSError("connect failed")
 
         def setsockopt(self, *_args, **_kwargs):
@@ -85,10 +324,12 @@ def test_notify_listener_stops_when_connecting(monkeypatch):
             pass
 
     monkeypatch.setattr(transport_bridge.socket, "socket", lambda *a, **k: FailingSocket())
+    monkeypatch.setattr(transport_bridge, "_route_local_ip", lambda _: "192.0.2.10")
 
     bridge._handle_app_session(("192.168.2.20", 1234))
 
     assert stopped
+    assert connect_attempted
 
 
 def test_install_hub_socket_configures_socket_and_notifies_state():
