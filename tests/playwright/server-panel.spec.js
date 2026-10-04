@@ -2016,6 +2016,15 @@ test.describe("control panel, views", () => {
           { button_id: 199, name: "POWER_OFF", steps: [{ device_id: 1, command_id: 199, button_code: 0, duration: 0, delay: 255 }] },
         ],
         favorites_order: [1],
+      }, {
+        // Another activity with a macro of its own: what "Copy from" offers.
+        kind: "activity_backup", complete: true, editable: true, fetched_at: "t",
+        device: { device_id: 102, name: "Music", entity_type: "activity" },
+        referenced_source_device_ids: [4],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 1, name: "Party", steps: [{ device_id: 4, command_id: 1, button_code: 0, duration: 0, delay: 255 }] }, { button_id: 2, name: "Chill", steps: [] }],
+        favorites_order: [1],
       }],
     };
     let stale = false;
@@ -2087,7 +2096,7 @@ test.describe("control panel, views", () => {
     await expect(shortcuts.nth(0).locator(".shortcut-rename")).toHaveCount(0);
     await editor.locator("#add-shortcut").click();
     await expect(editor.locator("#add-shortcut-dialog .dialog-title")).toHaveText("Add to shortcuts");
-    await expect(editor.locator("#sb-add-shortcut-kind option")).toHaveText(["Device command", "Macro"]);
+    await expect(editor.locator("#sb-add-shortcut-kind .kind-seg-btn")).toHaveText(["Device command", "Macro"]);
     await expect(editor.locator("#sb-add-fav-device option")).toHaveText(["TV", "Roku", "Server", "Amp"]);
     await editor.locator("#sb-add-fav-device").selectOption("2");
     await editor.locator("#add-shortcut-save").click();
@@ -2108,14 +2117,23 @@ test.describe("control panel, views", () => {
 
     // A command is a shortcut at most once per activity: the Roku (its only command is now a shortcut) left the
     // device list and Power on the TV is no longer offered. The macro kind only creates (every existing macro is a
-    // shortcut already), so there is no macro picker. A new macro is named, created and opened in the step editor;
+    // shortcut already), so the picker offers no macro of its own, only copies from other activities. A new macro is named, created and opened in the step editor;
     // a step on any device; renamed from the header.
     await editor.locator("#add-shortcut").click();
     await expect(editor.locator("#sb-add-fav-device option")).toHaveText(["TV", "Server", "Amp"]);
     await expect(editor.locator("#sb-add-fav-command option")).toHaveText(["Vol up", "Vol down", "Up", "HDMI 1"]);
-    await editor.locator("#sb-add-shortcut-kind").selectOption("action");
+    await editor.locator('#sb-add-shortcut-kind button[value="action"]').click();
     await expect(editor.locator("#add-shortcut-dialog .quick-access-empty")).toHaveCount(0);
-    await expect(editor.locator("#sb-add-macro-target")).toHaveCount(0);
+    // Its own macros are never offered here; another activity's macro can be copied.
+    await editor.locator("#sb-add-macro-target").click();
+    await expect(editor.locator(".macro-picker-option .macro-picker-name")).toHaveText(["Create new macro", "Party", "Chill"]);
+    await expect(editor.locator(".macro-picker-group")).toHaveText("Copy from another activity");
+    await expect(editor.locator(".macro-picker-option .macro-picker-chip")).toHaveText(["Music", "Music"]);
+    await page.screenshot({ path: shot(testInfo, "activity-macro-picker") });
+    // Escape closes the list only; the dialog stays.
+    await page.keyboard.press("Escape");
+    await expect(editor.locator(".macro-picker-menu")).toHaveCount(0);
+    await expect(editor.locator("#sb-add-macro-target")).toBeFocused();
     await editor.locator("#sb-add-macro-name").fill("Lights");
     await editor.locator("#add-shortcut-save").click();
     await expect(editor.locator("#step-title")).toHaveText("Lights");
@@ -2130,6 +2148,8 @@ test.describe("control panel, views", () => {
     const steps = editor.locator("[data-step-index]");
     await expect(steps).toHaveCount(1);
     await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("TV · Up");
+    // Deep in the macro's step view the dock offers the editor's Sync: no walk back up to the header.
+    await expect(page.locator("#dock-sync")).toHaveText("Sync");
     await expect(steps.nth(0).locator(".quick-access-meta")).toHaveText("Hold 1s");
     await editor.locator("#macro-rename").click();
     await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename macro");
@@ -2172,6 +2192,21 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#member-summary")).toContainText("TV (HDMI 1)");
     await expect(shortcuts).toHaveCount(2);
 
+    // A macro of another activity is copied over as it is: no name to give, no step editor, a shortcut at once.
+    await editor.locator("#add-shortcut").click();
+    await editor.locator('#sb-add-shortcut-kind button[value="action"]').click();
+    await editor.locator("#sb-add-macro-target").click();
+    await editor.locator('.macro-picker-option[data-value="copy:102:1"]').click();
+    await expect(editor.locator("#sb-add-macro-target .macro-picker-chip")).toHaveText("Music");
+    await expect(editor.locator("#sb-add-macro-name")).toHaveCount(0);
+    await expect(editor.locator("#add-shortcut-dialog .decoded-field-helper")).toHaveText("Copied from Music as it is, with 1 step.");
+    await page.screenshot({ path: shot(testInfo, "activity-macro-copy") });
+    await editor.locator("#add-shortcut-save").click();
+    await expect(editor.locator("#step-title")).toHaveCount(0);
+    await expect(shortcuts).toHaveCount(3);
+    await expect(shortcuts.nth(2)).toContainText("Party");
+    await expect(shortcuts.nth(2).locator(".quick-access-meta")).toHaveText("1 step");
+
     // Roles: the menu lists the devices, one without a mapping is disabled; a pick copies the device's own buttons.
     const volume = editor.locator('[data-role="volume"]');
     await expect(volume.locator(".role-trigger")).toHaveText("Not used");
@@ -2192,20 +2227,29 @@ test.describe("control panel, views", () => {
     // One assignment creates at most one new item: a new macro on the short
     // press leaves the long press with existing macros only.
     await editor.locator("#add-binding").click();
-    await editor.locator("#sb-binding-kind").selectOption("action");
-    await editor.locator("#sb-binding-macro-target").selectOption("__new__");
+    await editor.locator('#sb-binding-kind button[value="action"]').click();
+    await editor.locator("#sb-binding-macro-target").click();
+    await editor.locator('.macro-picker-option[data-value="__new__"]').click();
     await editor.locator("#sb-binding-long-press").check();
-    await editor.locator("#sb-binding-lp-kind").selectOption("action");
-    await expect(editor.locator('#sb-binding-lp-macro-target option[value="__new__"]')).toHaveCount(0);
+    await editor.locator('#sb-binding-lp-kind button[value="action"]').click();
+    await editor.locator("#sb-binding-lp-macro-target").click();
+    await expect(editor.locator('.macro-picker-option[data-value="__new__"]')).toHaveCount(0);
+    // A copy is not a new item: the other leg still offers one. Party is here already, so only Chill is left to copy.
+    await expect(editor.locator('.macro-picker-option[data-value="copy:102:2"]')).toHaveCount(1);
+    await expect(editor.locator('.macro-picker-option[data-value="copy:102:1"]')).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await expect(editor.locator("#binding-dialog")).toContainText("Only one new macro or Wifi Event can be created");
-    await expect(editor.locator('#sb-binding-macro-target option[value="__new__"]')).toHaveCount(1);
+    await editor.locator("#sb-binding-macro-target").click();
+    await expect(editor.locator('.macro-picker-option[data-value="__new__"]')).toHaveCount(1);
+    await page.keyboard.press("Escape");
     await editor.locator("#binding-dialog .dialog-btn", { hasText: "Cancel" }).click();
     await editor.locator("#add-binding").click();
     await expect(editor.locator("#binding-dialog .dialog-title")).toHaveText("Add button assignment");
-    await editor.locator("#sb-binding-kind").selectOption("action");
-    await expect(editor.locator("#sb-binding-macro-target")).toHaveValue(/\d+/);
+    await editor.locator('#sb-binding-kind button[value="action"]').click();
+    await expect(editor.locator("#sb-binding-macro-target")).toHaveAttribute("data-value", /^\d+$/);
     await editor.locator("#sb-binding-long-press").check();
     await editor.locator("#sb-binding-lp-command").selectOption("17");
+    await page.screenshot({ path: shot(testInfo, "activity-binding-dialog") });
     await editor.locator("#binding-save").click();
     await expect(bindings).toHaveCount(3);
     await expect(editor.locator("#bindings-view")).toContainText("Macro · Scene");
@@ -2230,13 +2274,14 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#member-summary")).toContainText("TV (HDMI 1)");
 
     // One Sync: the activity element with If-Match, plus the device element the input pick touched.
-    await editor.locator("#editor-sync").click();
+    await page.locator("#dock-sync").click();
     await expect.poll(() => puts.length).toBe(1);
     expect(puts[0].ifMatch).toBe('"snap-1"');
     expect(puts[0].body.device.name).toBe("Movie night");
     expect(puts[0].body.devices.map((d) => d.device.device_id)).toEqual([1]);
     expect(puts[0].body.devices[0].input_record.entries.map((e) => e.command_id)).toEqual([20]);
     expect(puts[0].body.macros.find((m) => m.name === "Scene").steps.filter((s) => s.device_id === 1)).toHaveLength(1);
+    expect(puts[0].body.macros.find((m) => m.name === "Party").steps).toEqual([{ device_id: 4, command_id: 1, button_code: 0, duration: 0, delay: 255 }]);
     await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
 
@@ -3439,7 +3484,8 @@ test.describe("control panel, wifi commands", () => {
     await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
     await expect(dialog.locator("#wifi-slot-button-hint")).toHaveText('Replaces "Down" from Blinds');
     await dialog.locator("#wifi-slot-save").click();
-    await detail.locator("#wifi-sync").click();
+    // The dock's Sync is the header's.
+    await page.locator("#dock-sync").click();
     await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(2);
     const updates = calls.filter((c) => c.key === "update");
     expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d"]);             // this device first, then the one that lost the button
@@ -3536,6 +3582,8 @@ test.describe("control panel, wifi commands", () => {
     await view(page).locator("#wifi-slot-name").fill("Down");
     await view(page).locator("#wifi-slot-name").press("Enter");
     await expect(detail.locator("#wifi-sync")).toBeDisabled();
+    await expect(page.locator("#dock-status")).toContainText("Unsynced changes");
+    await expect(page.locator("#dock-sync")).toHaveCount(0);
     // The leave dialog follows the same rule (CR-F5b-12).
     await detail.locator("#wifi-back").click();
     await expect(view(page).locator("#wifi-leave-sync")).toBeDisabled();

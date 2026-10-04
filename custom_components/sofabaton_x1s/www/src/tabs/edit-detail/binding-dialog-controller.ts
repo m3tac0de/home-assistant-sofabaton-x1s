@@ -11,11 +11,15 @@
 
 import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import { TOOLS_CARD_STRINGS } from "../../strings";
+import { anchoredListPosition, moveListFocus } from "../../shared/utils/overlay-menu";
 import type { BackupBundlePayload } from "../../shared/ha-context";
 import {
   activityButtonBindingItems,
   activityUserMacroSummaries,
   addActivityUserMacro,
+  copyActivityUserMacro,
+  macroCopyValue,
+  macroTargetFromValue,
   type ButtonCatalogEntry,
   bundleDeviceBrand,
   isWifiEventsBrand,
@@ -33,6 +37,7 @@ import type {
   MacroTargetMode,
   WifiEventTargetSel,
 } from "./host-types";
+import { renderKindSegments } from "./kind-segments";
 import { editorErrorMessage, sanitizeBundleName } from "./names";
 import type { SofabatonEditDetailView } from "../edit-detail-view";
 
@@ -43,6 +48,7 @@ export type BindingDialogHost = ReactiveControllerHost &
     "_commitEditBundleEdit"
     | "_editableDeviceOptions"
     | "_events"
+    | "_copyableMacros"
     | "_macroName"
     | "_macroOptions"
     | "_renderBindingSelect"
@@ -153,6 +159,9 @@ export class BindingDialogController implements ReactiveController {
     this._actionName = value;
     this.host.requestUpdate();
   }
+  /** The source activity while a leg copies a macro (macroMode "copy"; macroId is then the source macro). */
+  macroSourceId: number | null = null;
+  lpMacroSourceId: number | null = null;
   private _macroMode: MacroTargetMode = "new";
   get macroMode(): MacroTargetMode {
     return this._macroMode;
@@ -334,6 +343,7 @@ export class BindingDialogController implements ReactiveController {
 
   close = () => {
     this.open = false;
+    this.macroPicker = null;
     this.editButtonId = null;
     this.buttonId = null;
     this.deviceId = null;
@@ -370,6 +380,7 @@ export class BindingDialogController implements ReactiveController {
 
   handleTargetKindChange = (event: Event) => {
     const kind = (event.target as HTMLSelectElement).value as ActivityBindingTargetKind;
+    if (kind === this.targetKind) return;
     this.targetKind = kind;
     this.error = "";
     if (kind === "command") {
@@ -394,20 +405,18 @@ export class BindingDialogController implements ReactiveController {
     this.error = "";
   };
 
-  handleMacroTargetChange = (event: Event) => {
-    const value = (event.target as HTMLSelectElement).value;
-    if (value === "__new__") {
-      this.macroMode = "new";
-      this.macroId = null;
-    } else {
-      this.macroMode = "existing";
-      this.macroId = Number(value);
-    }
+  handleMacroTargetChange = (value: string) => {
+    const target = macroTargetFromValue(value);
+    this.macroMode = target.mode;
+    this.macroId = target.macroId;
+    this.macroSourceId = target.sourceId;
     this.error = "";
+    this.host.requestUpdate();
   };
 
   handleLpTargetKindChange = (event: Event) => {
     const kind = (event.target as HTMLSelectElement).value as ActivityBindingTargetKind;
+    if (kind === this.lpTargetKind) return;
     this.lpTargetKind = kind;
     this.error = "";
     if (kind === "command") {
@@ -432,16 +441,13 @@ export class BindingDialogController implements ReactiveController {
     this.error = "";
   };
 
-  handleLpMacroTargetChange = (event: Event) => {
-    const value = (event.target as HTMLSelectElement).value;
-    if (value === "__new__") {
-      this.lpMacroMode = "new";
-      this.lpMacroId = null;
-    } else {
-      this.lpMacroMode = "existing";
-      this.lpMacroId = Number(value);
-    }
+  handleLpMacroTargetChange = (value: string) => {
+    const target = macroTargetFromValue(value);
+    this.lpMacroMode = target.mode;
+    this.lpMacroId = target.macroId;
+    this.lpMacroSourceId = target.sourceId;
     this.error = "";
+    this.host.requestUpdate();
   };
 
   handleLongPressToggle = (event: Event) => {
@@ -507,7 +513,16 @@ export class BindingDialogController implements ReactiveController {
     mode: MacroTargetMode,
     macroId: number | null,
     rawName: string,
+    sourceId: number | null = null,
   ): { bundle: BackupBundlePayload; macroId: number; name: string; created: boolean } | null {
+    if (mode === "copy") {
+      // Verbatim, so nothing to open afterwards: not "created" in the editor sense.
+      const copiedBundle = copyActivityUserMacro(bundle, activityId, Number(sourceId), Number(macroId));
+      if (copiedBundle === bundle) return null;
+      const copies = activityUserMacroSummaries(copiedBundle, activityId);
+      const copy = copies[copies.length - 1];
+      return copy ? { bundle: copiedBundle, macroId: copy.buttonId, name: copy.name, created: false } : null;
+    }
     if (mode === "existing") {
       const existing = activityUserMacroSummaries(bundle, activityId)
         .find((macro) => macro.buttonId === Number(macroId));
@@ -557,6 +572,7 @@ export class BindingDialogController implements ReactiveController {
       this.lpMacroMode,
       this.lpMacroId,
       this.lpActionName,
+      this.lpMacroSourceId,
     );
     if (!resolved) {
       this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
@@ -657,6 +673,7 @@ export class BindingDialogController implements ReactiveController {
         this.macroMode,
         this.macroId,
         this.actionName,
+        this.macroSourceId,
       );
       if (!resolved) {
         this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
@@ -690,12 +707,147 @@ export class BindingDialogController implements ReactiveController {
     }
   }
 
+  /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
+  macroPicker: { id: string; style: string; root: ParentNode } | null = null;
+
+  private toggleMacroPicker(id: string, event: Event) {
+    const trigger = event.currentTarget as HTMLElement;
+    const root = trigger.getRootNode() as ParentNode;
+    if (this.macroPicker?.id === id) {
+      this.macroPicker = null;
+    } else {
+      this.macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest<HTMLElement>(".modal-backdrop")), root };
+      requestAnimationFrame(() => (
+        root.querySelector<HTMLElement>('.macro-picker-option[aria-selected="true"]')
+        ?? root.querySelector<HTMLElement>(".macro-picker-option")
+      )?.focus());
+    }
+    this.host.requestUpdate();
+  }
+
+  closeMacroPicker = () => {
+    const picker = this.macroPicker;
+    if (!picker) return;
+    this.macroPicker = null;
+    this.host.requestUpdate();
+    picker.root.querySelector<HTMLElement>(`#${picker.id}`)?.focus();
+  };
+
+  /** The macro picker: "Create new macro" on top, the activity's own macros,
+   *  then the other activities' macros to copy, each row with a chip naming
+   *  its activity. A custom list, since a native select cannot show the chip. */
+  renderMacroSelect(params: {
+    id: string;
+    mode: MacroTargetMode;
+    macroId: number | null;
+    sourceId: number | null;
+    own: Array<{ value: number; label: string }>;
+    allowNew: boolean;
+    onPick: (value: string) => void;
+  }) {
+    const S = TOOLS_CARD_STRINGS.backup;
+    const copyable = this.host._copyableMacros();
+    const copied = params.mode === "copy"
+      ? copyable.find((macro) => macro.activityId === params.sourceId && macro.buttonId === params.macroId)
+      : undefined;
+    const open = this.macroPicker?.id === params.id;
+    const value = copied
+      ? macroCopyValue(copied.activityId, copied.buttonId)
+      : params.mode === "new" ? "__new__" : String(params.macroId ?? "");
+    const label = copied
+      ? copied.name
+      : params.mode === "new"
+        ? S.macroTargetCreateNew
+        : params.own.find((macro) => macro.value === params.macroId)?.label ?? "";
+    const option = (optionValue: string, extraClass: string, body: unknown) => html`
+      <button
+        class="macro-picker-option ${extraClass}"
+        type="button"
+        role="option"
+        data-value=${optionValue}
+        aria-selected=${optionValue === value ? "true" : "false"}
+        @click=${() => { this.closeMacroPicker(); params.onPick(optionValue); }}
+      >${body}</button>
+    `;
+    // Keys are handled on the field, so they work from the trigger and from the list.
+    const onKeydown = (event: KeyboardEvent) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeMacroPicker();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option");
+    };
+    return html`
+      <div class="decoded-field" @keydown=${onKeydown}>
+        <span class="decoded-field-label" id=${`${params.id}-label`}>${S.macroTargetLabel}</span>
+        <button
+          id=${params.id}
+          class="decoded-field-input macro-picker-trigger"
+          type="button"
+          data-value=${value}
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          aria-labelledby=${`${params.id}-label ${params.id}`}
+          @click=${(event: Event) => this.toggleMacroPicker(params.id, event)}
+        >
+          ${copied ? html`<ha-icon class="macro-picker-icon" icon="mdi:content-copy"></ha-icon>` : nothing}
+          <span class="macro-picker-name">${label}</span>
+          ${copied ? html`<span class="macro-picker-chip">${copied.activityName}</span>` : nothing}
+          <ha-icon class="macro-picker-icon" icon="mdi:chevron-down"></ha-icon>
+        </button>
+        ${open
+          ? html`
+              <button
+                class="macro-picker-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this.closeMacroPicker}
+                @wheel=${(event: Event) => event.preventDefault()}
+              ></button>
+              <div
+                class="macro-picker-menu"
+                role="listbox"
+                aria-labelledby=${`${params.id}-label`}
+                style=${this.macroPicker?.style ?? ""}
+              >
+                ${params.allowNew
+                  ? html`
+                      ${option("__new__", "macro-picker-option--new", html`
+                        <ha-icon class="macro-picker-icon" icon="mdi:plus"></ha-icon>
+                        <span class="macro-picker-name">${S.macroTargetCreateNew}</span>
+                      `)}
+                      ${params.own.length || copyable.length ? html`<div class="macro-picker-sep"></div>` : nothing}
+                    `
+                  : nothing}
+                ${params.own.length && copyable.length ? html`<div class="macro-picker-group">${S.macroTargetOwnGroup}</div>` : nothing}
+                ${params.own.map((macro) => option(String(macro.value), "", html`<span class="macro-picker-name">${macro.label}</span>`))}
+                ${copyable.length ? html`<div class="macro-picker-group">${S.macroTargetCopyGroup}</div>` : nothing}
+                ${copyable.map((macro) => option(macroCopyValue(macro.activityId, macro.buttonId), "", html`
+                  <ha-icon class="macro-picker-icon" icon="mdi:content-copy"></ha-icon>
+                  <span class="macro-picker-name">${macro.name}</span>
+                  <span class="macro-picker-chip">${macro.activityName}</span>
+                `))}
+              </div>
+            `
+          : nothing}
+        ${copied
+          ? html`<div class="decoded-field-helper">${S.macroTargetCopyNote(copied.commandStepCount, copied.activityName)}</div>`
+          : nothing}
+      </div>
+    `;
+  }
+
   renderMacroTargetFields(params: {
     idPrefix: string;
     mode: MacroTargetMode;
     macroId: number | null;
+    sourceId: number | null;
     name: string;
-    onMacroChange: (event: Event) => void;
+    onMacroChange: (value: string) => void;
     onNameInput: (event: Event) => void;
     /** False when the other leg already creates something new. */
     allowNew: boolean;
@@ -703,23 +855,17 @@ export class BindingDialogController implements ReactiveController {
     const S = TOOLS_CARD_STRINGS.backup;
     const macros = this.host._macroOptions();
     return html`
-      ${macros.length
+      ${macros.length || this.host._copyableMacros().length
         ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S.macroTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-macro-target`}
-                class="decoded-field-input"
-                @change=${params.onMacroChange}
-              >
-                ${macros.map((macro) => html`
-                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
-                `)}
-                ${params.allowNew
-                  ? html`<option value="__new__" ?selected=${params.mode === "new"}>${S.macroTargetCreateNew}</option>`
-                  : nothing}
-              </select>
-            </div>
+            ${this.renderMacroSelect({
+              id: `${params.idPrefix}-macro-target`,
+              mode: params.mode,
+              macroId: params.macroId,
+              sourceId: params.sourceId,
+              own: macros,
+              allowNew: params.allowNew,
+              onPick: params.onMacroChange,
+            })}
             ${params.allowNew ? nothing : html`<div class="decoded-field-helper">${S.bindingOneNewNote}</div>`}
           `
         : html`<div class="quick-access-empty">${S.macroTargetNoExisting}</div>`}
@@ -780,156 +926,139 @@ export class BindingDialogController implements ReactiveController {
       : S.bindingDialogAddTitle;
     const kindLabel = (kind: ActivityBindingTargetKind) =>
       kind === "action" ? S.shortcutKindAction : kind === "wifi_event" ? S.shortcutKindWifiEvent : S.shortcutKindCommand;
+    // Device and command are one thought: side by side (an activity leg only; a device leg has the command alone).
     const commandFields = html`
-      ${scope === "activity"
-        ? this.host._renderBindingSelect({
-            id: "sb-binding-device",
-            label: S.bindingTargetDevice,
-            value: this.deviceId,
-            options: commandDeviceOptions,
-            onChange: this.handleDeviceChange,
-            emptyText: S.bindingNoDevices,
-          })
-        : nothing}
-      ${this.host._renderBindingSelect({
-        id: "sb-binding-command",
-        label: S.bindingCommand,
-        value: this.commandId,
-        options: commandOptions,
-        onChange: this.handleCommandChange,
-        emptyText: S.bindingNoCommands,
-      })}
+      <div class=${scope === "activity" ? "field-pair" : ""}>
+        ${scope === "activity"
+          ? this.host._renderBindingSelect({
+              id: "sb-binding-device",
+              label: S.bindingTargetDevice,
+              value: this.deviceId,
+              options: commandDeviceOptions,
+              onChange: this.handleDeviceChange,
+              emptyText: S.bindingNoDevices,
+            })
+          : nothing}
+        ${this.host._renderBindingSelect({
+          id: "sb-binding-command",
+          label: S.bindingCommand,
+          value: this.commandId,
+          options: commandOptions,
+          onChange: this.handleCommandChange,
+          emptyText: S.bindingNoCommands,
+        })}
+      </div>
     `;
     const actionFields = this.renderMacroTargetFields({
       idPrefix: "sb-binding",
       mode: this.macroMode,
       macroId: this.macroId,
+      sourceId: this.macroSourceId,
       name: this.actionName,
       onMacroChange: this.handleMacroTargetChange,
       onNameInput: this.handleActionNameInput,
       allowNew: !longPressNew,
     });
     const lpCommandFields = html`
-      ${scope === "activity"
-        ? this.host._renderBindingSelect({
-            id: "sb-binding-lp-device",
-            label: S.bindingLongPressDevice,
-            value: this.lpDeviceId,
-            options: commandDeviceOptions,
-            onChange: this.handleLpDeviceChange,
-            emptyText: S.bindingNoDevices,
-          })
-        : nothing}
-      ${this.host._renderBindingSelect({
-        id: "sb-binding-lp-command",
-        label: S.bindingLongPressCommand,
-        value: this.lpCommandId,
-        options: lpCommandOptions,
-        onChange: this.handleLpCommandChange,
-        emptyText: S.bindingNoCommands,
-      })}
+      <div class=${scope === "activity" ? "field-pair" : ""}>
+        ${scope === "activity"
+          ? this.host._renderBindingSelect({
+              id: "sb-binding-lp-device",
+              label: S.bindingTargetDevice,
+              value: this.lpDeviceId,
+              options: commandDeviceOptions,
+              onChange: this.handleLpDeviceChange,
+              emptyText: S.bindingNoDevices,
+            })
+          : nothing}
+        ${this.host._renderBindingSelect({
+          id: "sb-binding-lp-command",
+          label: S.bindingCommand,
+          value: this.lpCommandId,
+          options: lpCommandOptions,
+          onChange: this.handleLpCommandChange,
+          emptyText: S.bindingNoCommands,
+        })}
+      </div>
     `;
     const lpActionFields = this.renderMacroTargetFields({
       idPrefix: "sb-binding-lp",
       mode: this.lpMacroMode,
       macroId: this.lpMacroId,
+      sourceId: this.lpMacroSourceId,
       name: this.lpActionName,
       onMacroChange: this.handleLpMacroTargetChange,
       onNameInput: this.handleLpActionNameInput,
       allowNew: !primaryNew,
     });
+    const kindSegments = (id: string, value: ActivityBindingTargetKind, kinds: ActivityBindingTargetKind[], onChange: (event: Event) => void) =>
+      isActivity
+        ? renderKindSegments({ id, ariaLabel: S.addShortcutKindLabel, value, options: kinds.map((kind) => ({ value: kind, label: kindLabel(kind) })), onChange })
+        : nothing;
     return html`
       <div class="modal-backdrop" @click=${this.close}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
+          <div class="dialog-header ${isEdit ? "" : "dialog-header--extra"}">
             <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
             ${isEdit
-              ? html`
-                  <div class="decoded-field">
-                    <span class="decoded-field-label">${S.bindingButton}</span>
-                    <div class="binding-static-field">${buttonName(Number(this.buttonId))}</div>
-                  </div>
-                `
-              : this.host._renderBindingSelect({
-                  id: "sb-binding-button",
-                  label: S.bindingButton,
-                  value: this.buttonId,
-                  options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
-                  onChange: this.handleButtonChange,
-                  emptyText: S.bindingNoButtons,
-                })}
-            ${isActivity
-              ? html`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-binding-kind">${S.addShortcutKindLabel}</label>
-                    <select
-                      id="sb-binding-kind"
-                      class="decoded-field-input"
-                      @change=${this.handleTargetKindChange}
-                    >
-                      ${this.legKinds(longPressNew).map((kind) => html`
-                        <option value=${kind} ?selected=${targetKind === kind}>${kindLabel(kind)}</option>
+              ? nothing
+              : html`
+                  <div class="dialog-header-extra">
+                    <select id="sb-binding-button" class="decoded-field-input dialog-header-select" aria-label=${S.bindingButton} @change=${this.handleButtonChange}>
+                      ${unbound.map((entry) => html`
+                        <option value=${entry.code} ?selected=${entry.code === this.buttonId}>${entry.name}</option>
                       `)}
                     </select>
                   </div>
-                `
-              : nothing}
-            ${targetKind === "command"
-              ? commandFields
-              : targetKind === "wifi_event"
-                ? this.host._events.renderTargetFields({
-                    idPrefix: "sb-binding",
-                    allowNew: !longPressNew,
-                    sel: this.host._events.primary,
-                    onSelChange: (sel) => {
-                      this.host._events.primary = sel;
-                      this.error = "";
-                    },
-                  })
-                : actionFields}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S.bindingEnableLongPress}</span>
-              <ha-switch
-                .checked=${this.longPressEnabled}
-                @change=${this.handleLongPressToggle}
-              ></ha-switch>
-            </div>
-            ${this.longPressEnabled
-              ? html`
-                  ${isActivity
-                    ? html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-binding-lp-kind">${S.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-binding-lp-kind"
-                            class="decoded-field-input"
-                            @change=${this.handleLpTargetKindChange}
-                          >
-                            ${this.legKinds(primaryNew).map((kind) => html`
-                              <option value=${kind} ?selected=${lpTargetKind === kind}>${kindLabel(kind)}</option>
-                            `)}
-                          </select>
-                        </div>
-                      `
-                    : nothing}
-                  ${lpTargetKind === "command"
-                    ? lpCommandFields
-                    : lpTargetKind === "wifi_event"
-                      ? this.host._events.renderTargetFields({
-                          idPrefix: "sb-binding-lp",
-                          allowNew: !primaryNew,
-                          sel: this.host._events.longPress,
-                          onSelChange: (sel) => {
-                            this.host._events.longPress = sel;
-                            this.error = "";
-                          },
-                        })
-                      : lpActionFields}
-                `
-              : nothing}
+                `}
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <section class="press-card" data-press="short">
+              <div class="press-card-head"><ha-icon icon="mdi:gesture-tap"></ha-icon><span class="press-card-title">${S.bindingShortPress}</span></div>
+              ${kindSegments("sb-binding-kind", targetKind, this.legKinds(longPressNew), this.handleTargetKindChange)}
+              ${targetKind === "command"
+                ? commandFields
+                : targetKind === "wifi_event"
+                  ? this.host._events.renderTargetFields({
+                      idPrefix: "sb-binding",
+                      allowNew: !longPressNew,
+                      sel: this.host._events.primary,
+                      onSelChange: (sel) => {
+                        this.host._events.primary = sel;
+                        this.error = "";
+                      },
+                    })
+                  : actionFields}
+            </section>
+            <section class="press-card" data-press="long">
+              <div class="press-card-head">
+                <ha-icon icon="mdi:gesture-tap-hold"></ha-icon><span class="press-card-title">${S.bindingLongPress}</span>
+                <ha-switch
+                  aria-label=${S.bindingEnableLongPress}
+                  .checked=${this.longPressEnabled}
+                  @change=${this.handleLongPressToggle}
+                ></ha-switch>
+              </div>
+              ${this.longPressEnabled
+                ? html`
+                    ${kindSegments("sb-binding-lp-kind", lpTargetKind, this.legKinds(primaryNew), this.handleLpTargetKindChange)}
+                    ${lpTargetKind === "command"
+                      ? lpCommandFields
+                      : lpTargetKind === "wifi_event"
+                        ? this.host._events.renderTargetFields({
+                            idPrefix: "sb-binding-lp",
+                            allowNew: !primaryNew,
+                            sel: this.host._events.longPress,
+                            onSelChange: (sel) => {
+                              this.host._events.longPress = sel;
+                              this.error = "";
+                            },
+                          })
+                        : lpActionFields}
+                  `
+                : nothing}
+            </section>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this.error}</div>

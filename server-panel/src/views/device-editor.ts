@@ -30,7 +30,9 @@ import {
   mdiDragVerticalVariant,
   mdiFormatListBulleted,
   mdiFormatListNumbered,
+  mdiGestureTap,
   mdiGestureTapButton,
+  mdiGestureTapHold,
   mdiInformationOutline,
   mdiLanConnect,
   mdiLinkVariant,
@@ -176,7 +178,8 @@ const S = {
   bindingButton: B.bindingButton,
   bindingCommand: B.bindingCommand,
   bindingEnableLongPress: B.bindingEnableLongPress,
-  bindingLongPressCommand: B.bindingLongPressCommand,
+  bindingShortPress: B.bindingShortPress,
+  bindingLongPress: B.bindingLongPress,
   bindingIncomplete: B.bindingIncomplete,
   bindingNoButtons: B.bindingNoButtons,
   bindingNoCommands: B.bindingNoCommands,
@@ -1282,19 +1285,31 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     return html`
       <div class="modal-backdrop" @click=${this._closeBinding}>
         <div class="dialog small" id="binding-dialog" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S.bindingCancel} @click=${this._closeBinding}>${icon(mdiClose)}</button></div>
-          <div class="dialog-body">
+          <div class="dialog-header ${isEdit ? "" : "dialog-header--extra"}">
+            <div class="dialog-title">${title}</div>
             ${isEdit
-              ? html`<div class="decoded-field"><span class="decoded-field-label">${S.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>`
-              : select("sb-binding-button", S.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S.bindingNoButtons, (value) => { this._binding = { ...dialog, buttonId: value, error: "" }; })}
-            ${select("sb-binding-command", S.bindingCommand, dialog.commandId, commands.map((c) => ({ value: c.commandId, label: c.label })), S.bindingNoCommands, (value) => { this._binding = { ...dialog, commandId: value, error: "" }; })}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S.bindingEnableLongPress}</span>
-              <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event: Event) => { this._binding = { ...dialog, longPress: (event.currentTarget as HTMLInputElement).checked }; }} />
-            </div>
-            ${dialog.longPress
-              ? select("sb-binding-lp-command", S.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c) => ({ value: c.commandId, label: c.label })), S.bindingNoCommands, (value) => { this._binding = { ...dialog, longPressCommandId: value }; })
-              : nothing}
+              ? nothing
+              : html`<div class="dialog-header-extra">
+                  <select id="sb-binding-button" class="decoded-field-input dialog-header-select" aria-label=${S.bindingButton} @change=${(event: Event) => { this._binding = { ...dialog, buttonId: Number((event.currentTarget as HTMLSelectElement).value), error: "" }; }}>
+                    ${unbound.map((entry) => html`<option value=${entry.code} ?selected=${entry.code === dialog.buttonId}>${entry.name}</option>`)}
+                  </select>
+                </div>`}
+            <button class="dialog-close" type="button" aria-label=${S.bindingCancel} @click=${this._closeBinding}>${icon(mdiClose)}</button>
+          </div>
+          <div class="dialog-body">
+            <section class="press-card" data-press="short">
+              <div class="press-card-head">${icon(mdiGestureTap)}<span class="press-card-title">${S.bindingShortPress}</span></div>
+              ${select("sb-binding-command", S.bindingCommand, dialog.commandId, commands.map((c) => ({ value: c.commandId, label: c.label })), S.bindingNoCommands, (value) => { this._binding = { ...dialog, commandId: value, error: "" }; })}
+            </section>
+            <section class="press-card" data-press="long">
+              <label class="press-card-head">
+                ${icon(mdiGestureTapHold)}<span class="press-card-title">${S.bindingLongPress}</span>
+                <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${S.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event: Event) => { this._binding = { ...dialog, longPress: (event.currentTarget as HTMLInputElement).checked }; }} />
+              </label>
+              ${dialog.longPress
+                ? select("sb-binding-lp-command", S.bindingCommand, dialog.longPressCommandId, commands.map((c) => ({ value: c.commandId, label: c.label })), S.bindingNoCommands, (value) => { this._binding = { ...dialog, longPressCommandId: value }; })
+                : nothing}
+            </section>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>

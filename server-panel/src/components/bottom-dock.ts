@@ -34,6 +34,10 @@ export function renderBottomDock(params: {
   onDiscard: (applyId: string) => void;
   onKeepDraft: () => void;
   onDiscardDraft: () => void;
+  /** Set while the screen behind an "Unsynced changes" banner can sync right
+   *  now: the dock then offers the editor's own Sync, so a change made deep
+   *  in a sub-view does not need the walk back up to the header. */
+  onSync?: () => void;
   /** A Discard that is waiting for its inline Yes/Keep (never a native
    *  confirm(): it answers "cancel" wherever dialogs are suppressed, L-S5). */
   confirming?: "apply" | "draft" | null;
@@ -46,6 +50,9 @@ export function renderBottomDock(params: {
   let actions: TemplateResult | typeof nothing = nothing;
   // The one-line status, with the whole text in its title for when the row cuts it.
   const status = (text: string, id = "dock-status") => html`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const syncAction = params.onSync
+    ? html`<button class="small primary dock-action" id="dock-sync" type="button" @click=${params.onSync}>Sync</button>`
+    : nothing;
   const confirmActions = html`
     <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
     <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
@@ -97,10 +104,11 @@ export function renderBottomDock(params: {
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
     center = status(model.text);
-    actions = html`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+    actions = html`${syncAction}<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
     tone = "dock--dirty";
     center = status(model.text);
+    actions = syncAction;
   } else if (model.kind === "gate") {
     tone = "dock--gate";
     center = status(model.text);

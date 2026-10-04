@@ -48,6 +48,9 @@ import {
   roleMappableButtonCount,
   setActivityRoleDevice,
   addActivityUserMacro,
+  copyActivityUserMacro,
+  copyableActivityMacroSummaries,
+  macroTargetFromValue,
   addBundleActivityFavorite,
   applyBundleDelete,
   activityQuickAccessItems,
@@ -97,6 +100,7 @@ import type {
   MacroTargetMode,
   WifiEventsHost,
 } from "./edit-detail/host-types";
+import { renderKindSegments } from "./edit-detail/kind-segments";
 import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
@@ -140,6 +144,7 @@ export class SofabatonEditDetailView extends LitElement {
     _bindingsView: { state: true },
     _addShortcutKind: { state: true },
     _addShortcutActionName: { state: true },
+    _addShortcutMacro: { state: true },
   };
 
   // The whole backup-tab stylesheet ships to both shadow roots (see
@@ -167,6 +172,8 @@ export class SofabatonEditDetailView extends LitElement {
   _bindingsView = false;
   private _addShortcutKind: ActivityBindingTargetKind = "command";
   private _addShortcutActionName = "";
+  // The macro kind: a new macro, or another activity's macro copied over ("copy").
+  private _addShortcutMacro: { mode: MacroTargetMode; macroId: number | null; sourceId: number | null } = { mode: "new", macroId: null, sourceId: null };
   // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
   // `_events.primary` serves whichever Add dialog is open (shortcut,
   // step, or binding); `_events.longPress` is the binding's long-press leg.
@@ -1466,17 +1473,20 @@ export class SofabatonEditDetailView extends LitElement {
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
     this._addFavoriteError = "";
     this._addShortcutActionName = "";
+    this._addShortcutMacro = { mode: "new", macroId: null, sourceId: null };
     this._events.load(this._shortcutEventTaken);
     this._addFavoriteOpen = true;
   };
 
   private _closeAddFavoriteDialog = () => {
     this._addFavoriteOpen = false;
+    this._binding.macroPicker = null;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
     this._addFavoriteError = "";
     this._addShortcutKind = "command";
     this._addShortcutActionName = "";
+    this._addShortcutMacro = { mode: "new", macroId: null, sourceId: null };
   };
 
   private _handleAddFavoriteDeviceChange = (event: Event) => {
@@ -1642,9 +1652,25 @@ export class SofabatonEditDetailView extends LitElement {
       void this._applyAddShortcutWifiEvent();
       return;
     }
-    // "action": always a new macro. Every existing macro of the activity is
-    // a shortcut already, so there is nothing to reference.
+    // "action": a new macro, or another activity's macro copied over verbatim.
+    // Every existing macro of the activity is a shortcut already, so there is
+    // nothing to reference.
     const activityId = Number(this.entityId);
+    if (this._addShortcutMacro.mode === "copy") {
+      const copied = copyActivityUserMacro(
+        this.bundle,
+        activityId,
+        Number(this._addShortcutMacro.sourceId),
+        Number(this._addShortcutMacro.macroId),
+      );
+      if (copied === this.bundle) {
+        this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+        return;
+      }
+      this._commitEditBundleEdit(copied);
+      this._closeAddFavoriteDialog();
+      return;
+    }
     const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim()
       || TOOLS_CARD_STRINGS.backup.newMacroName;
     const next = addActivityUserMacro(this.bundle, activityId, name);
@@ -1674,42 +1700,62 @@ export class SofabatonEditDetailView extends LitElement {
     const commandFields = devices.length === 0
       ? html`<div class="backup-drawer-sub">${this._editableDeviceOptions().length === 0 ? S.addFavoriteNoDevices : S.addShortcutNoCommandsLeft}</div>`
       : html`
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-device">${S.addFavoriteDevice}</label>
-            <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
-              ${devices.map((device) => html`
-                <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
-              `)}
-            </select>
+          <div class="field-pair">
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-fav-device">${S.addFavoriteDevice}</label>
+              <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
+                ${devices.map((device) => html`
+                  <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
+                `)}
+              </select>
+            </div>
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-fav-command">${S.addFavoriteCommand}</label>
+              ${commands.length === 0
+                ? html`<div class="quick-access-empty">${S.addFavoriteNoCommands}</div>`
+                : html`
+                    <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
+                      ${commands.map((command) => html`
+                        <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
+                      `)}
+                    </select>
+                  `}
+            </div>
           </div>
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-command">${S.addFavoriteCommand}</label>
-            ${commands.length === 0
-              ? html`<div class="quick-access-empty">${S.addFavoriteNoCommands}</div>`
-              : html`
-                  <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
-                    ${commands.map((command) => html`
-                      <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
-                    `)}
-                  </select>
-                `}
-            <div class="decoded-field-helper">${S.addShortcutCommandHelper}</div>
-          </div>
+          <div class="decoded-field-helper">${S.addShortcutCommandHelper}</div>
         `;
     const actionFields = html`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-add-action-name">${S.addShortcutActionName}</label>
-        <input
-          id="sb-add-action-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._addShortcutActionName}
-          @input=${(event: Event) => {
-            this._addShortcutActionName = (event.target as HTMLInputElement).value;
-          }}
-        />
-        <div class="decoded-field-helper">${S.addShortcutActionHelper}</div>
-      </div>
+      ${this._copyableMacros().length
+        ? this._binding.renderMacroSelect({
+            id: "sb-add-macro-target",
+            mode: this._addShortcutMacro.mode,
+            macroId: this._addShortcutMacro.macroId,
+            sourceId: this._addShortcutMacro.sourceId,
+            own: [],
+            allowNew: true,
+            onPick: (value: string) => {
+              this._addShortcutMacro = macroTargetFromValue(value);
+              this._addFavoriteError = "";
+            },
+          })
+        : nothing}
+      ${this._addShortcutMacro.mode === "copy"
+        ? nothing
+        : html`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-action-name">${S.addShortcutActionName}</label>
+              <input
+                id="sb-add-action-name"
+                class="decoded-field-input"
+                maxlength="20"
+                .value=${this._addShortcutActionName}
+                @input=${(event: Event) => {
+                  this._addShortcutActionName = (event.target as HTMLInputElement).value;
+                }}
+              />
+              <div class="decoded-field-helper">${S.addShortcutActionHelper}</div>
+            </div>
+          `}
     `;
     return html`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
@@ -1719,27 +1765,24 @@ export class SofabatonEditDetailView extends LitElement {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-add-shortcut-kind">${S.addShortcutKindLabel}</label>
-              <select
-                id="sb-add-shortcut-kind"
-                class="decoded-field-input"
-                @change=${(event: Event) => {
-                  this._addShortcutKind = (event.target as HTMLSelectElement).value as
-                    ActivityBindingTargetKind;
-                  if (this._addShortcutKind === "wifi_event") {
-                    this._events.primary = this._events.defaultSel(this._shortcutEventTaken);
-                  }
-                  this._addFavoriteError = "";
-                }}
-              >
-                <option value="command" ?selected=${kind === "command"}>${S.shortcutKindCommand}</option>
-                <option value="action" ?selected=${kind === "action"}>${S.shortcutKindAction}</option>
-                ${this._events.available()
-                  ? html`<option value="wifi_event" ?selected=${kind === "wifi_event"}>${S.shortcutKindWifiEvent}</option>`
-                  : nothing}
-              </select>
-            </div>
+            ${renderKindSegments<ActivityBindingTargetKind>({
+              id: "sb-add-shortcut-kind",
+              ariaLabel: S.addShortcutKindLabel,
+              value: kind,
+              options: [
+                { value: "command", label: S.shortcutKindCommand },
+                { value: "action", label: S.shortcutKindAction },
+                ...(this._events.available() ? [{ value: "wifi_event" as const, label: S.shortcutKindWifiEvent }] : []),
+              ],
+              onChange: (event: Event) => {
+                this._addShortcutKind = (event.target as HTMLSelectElement).value as
+                  ActivityBindingTargetKind;
+                if (this._addShortcutKind === "wifi_event") {
+                  this._events.primary = this._events.defaultSel(this._shortcutEventTaken);
+                }
+                this._addFavoriteError = "";
+              },
+            })}
             ${kind === "command"
               ? commandFields
               : kind === "wifi_event"
@@ -1906,6 +1949,12 @@ export class SofabatonEditDetailView extends LitElement {
     const bId = Number(buttonId || 0);
     return activityUserMacroSummaries(this.bundle, Number(this.entityId))
       .find((macro) => macro.buttonId === bId)?.name ?? "";
+  }
+
+  /** The other activities' macros, offered as copies in the macro dropdown. */
+  _copyableMacros() {
+    if (!this.bundle || this.entityId == null) return [];
+    return copyableActivityMacroSummaries(this.bundle, Number(this.entityId));
   }
 
   _macroOptions(): Array<{ value: number; label: string }> {

@@ -459,6 +459,12 @@ export abstract class SbPanelEntityEditor extends LitElement {
     }
   }
 
+  /** The dock's Sync button: the header's sync, or the retry while a failed sync is on screen. */
+  syncFromDock(): void {
+    if (this._stage === "sync_failed") this._retrySync();
+    else if (this._stage === "editing") void this._sync();
+  }
+
   protected _failBeforeSync(stale: boolean, message: string): false {
     return this._failSync(stale, message);
   }

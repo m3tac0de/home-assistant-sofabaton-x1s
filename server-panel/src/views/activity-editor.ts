@@ -25,11 +25,14 @@ import {
   mdiChevronDown,
   mdiChevronRight,
   mdiClose,
+  mdiContentCopy,
   mdiDialpad,
   mdiDragVerticalVariant,
   mdiFormatListNumbered,
   mdiGamepadRoundOutline,
+  mdiGestureTap,
   mdiGestureTapButton,
+  mdiGestureTapHold,
   mdiInformationOutline,
   mdiLinkVariant,
   mdiPencil,
@@ -46,7 +49,7 @@ import {
 
 import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
-import { overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { anchoredListPosition, moveListFocus, overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -59,6 +62,10 @@ import {
   activityShortcutDeviceOptions,
   activityUserMacroSummaries,
   addActivityMacroCommandStep,
+  copyActivityUserMacro,
+  copyableActivityMacroSummaries,
+  macroCopyValue,
+  macroTargetFromValue,
   addActivityMemberDevice,
   addActivityUserMacro,
   addBundleActivityFavorite,
@@ -177,13 +184,16 @@ function roleTriggerLabel(role: ActivityRoleAssignment): string {
   }
 }
 
-type MacroTargetMode = "existing" | "new";
+// "copy" brings another activity's macro over verbatim; it is not a "new" item.
+type MacroTargetMode = "existing" | "new" | "copy";
 
 type RenameTarget = { kind: "activity" } | { kind: "macro"; buttonId: number } | { kind: "favorite"; buttonId: number; label: string };
 
 interface MacroTargetState {
   mode: MacroTargetMode;
   macroId: number | null;
+  /** The source activity while copying (mode "copy"; macroId is then the source macro). */
+  sourceId?: number | null;
   name: string;
 }
 
@@ -229,6 +239,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     _macroEditor: { state: true },
     _bindingsView: { state: true },
     _roleMenu: { state: true },
+    _macroPicker: { state: true },
     _roleConfirm: { state: true },
     _addShortcut: { state: true },
     _addMember: { state: true },
@@ -252,6 +263,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   /** The "Individual buttons" sub-view. */
   private _bindingsView = false;
   private _roleMenu: { group: ActivityRoleGroupId; anchor: DOMRect | null } | null = null;
+  /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
+  private _macroPicker: { id: string; style: string } | null = null;
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   private _addShortcut: AddShortcutState | null = null;
   private _addMember: { deviceId: number | null } | null = null;
@@ -345,6 +358,12 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   private _macroOptions(): Array<{ value: number; label: string }> {
     if (!this._working || this.activityId == null) return [];
     return activityUserMacroSummaries(this._working, this.activityId).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+  }
+
+  /** The other activities' macros, offered as copies in the macro dropdown. */
+  private _copyableMacros(): ReturnType<typeof copyableActivityMacroSummaries> {
+    if (!this._working || this.activityId == null) return [];
+    return copyableActivityMacroSummaries(this._working, this.activityId);
   }
 
   private _macroName(buttonId: number | null | undefined): string {
@@ -543,10 +562,11 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   }
 
   private _openAddShortcut = (): void => {
+    this._macroPicker = null;
     if (!this._working || this.activityId == null) return;
     const deviceId = this._shortcutDeviceOptions()[0]?.id ?? null;
     // The macro kind only creates: every existing macro of the activity is a shortcut already.
-    this._addShortcut = { kind: "command", deviceId, commandId: this._shortcutCommandOptions(deviceId)[0]?.value ?? null, slot: this._shortcutWifiSlots()[0]?.slot ?? null, error: "", mode: "new", macroId: null, name: "" };
+    this._addShortcut = { kind: "command", deviceId, commandId: this._shortcutCommandOptions(deviceId)[0]?.value ?? null, slot: this._shortcutWifiSlots()[0]?.slot ?? null, error: "", mode: "new", macroId: null, sourceId: null, name: "" };
   };
 
   private _closeAddShortcut = (): void => {
@@ -556,6 +576,14 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   /** A macro target resolved to an id, creating the macro when the dialog asked for a new one (the card's `_resolveMacroTarget`). */
   private _resolveMacro(bundle: BackupBundlePayload, target: MacroTargetState): { bundle: BackupBundlePayload; macroId: number; name: string; created: boolean } | null {
     const activityId = Number(this.activityId);
+    if (target.mode === "copy") {
+      // Verbatim, so nothing to open afterwards: not "created" in the editor sense.
+      const copiedBundle = copyActivityUserMacro(bundle, activityId, Number(target.sourceId), Number(target.macroId));
+      if (copiedBundle === bundle) return null;
+      const copies = activityUserMacroSummaries(copiedBundle, activityId);
+      const copy = copies[copies.length - 1];
+      return copy ? { bundle: copiedBundle, macroId: copy.buttonId, name: copy.name, created: false } : null;
+    }
     if (target.mode === "existing") {
       const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(target.macroId));
       return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
@@ -592,15 +620,15 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       this._addShortcut = null;
       return;
     }
-    // "action": a new macro is created, then opens.
+    // "action": a new macro is created, then opens; a copied macro is complete as it is.
     const resolved = this._resolveMacro(this._working, dialog);
     if (!resolved) {
       this._addShortcut = { ...dialog, error: B.bindingIncomplete };
       return;
     }
-    if (resolved.created) this._commit(resolved.bundle);
+    this._commit(resolved.bundle);
     this._addShortcut = null;
-    this._openMacroEditor(resolved.macroId, resolved.name);
+    if (resolved.created) this._openMacroEditor(resolved.macroId, resolved.name);
   };
 
   // -- members ----------------------------------------------------------------------------------------------------
@@ -633,6 +661,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   }
 
   private _openAddBinding = (): void => {
+    this._macroPicker = null;
     const activityId = this.activityId;
     if (!this._working || activityId == null) return;
     const unbound = unboundButtonsForActivity(this._working, activityId);
@@ -646,6 +675,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   };
 
   private _openEditBinding(buttonId: number): void {
+    this._macroPicker = null;
     const activityId = this.activityId;
     if (!this._working || activityId == null) return;
     const item = activityButtonBindingItems(this._working, activityId).find((entry) => entry.buttonId === Number(buttonId));
@@ -794,7 +824,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const editor = this._macroEditor;
     const activityId = this.activityId;
     if (!dialog || !editor || !this._working || activityId == null) return;
-    const hold = secondsToByte(dialog.hold);
+    // A Wifi Event is a press the hub reports, not a key it holds down: no hold.
+    const hold = dialog.kind === "wifi_event" ? 0 : secondsToByte(dialog.hold);
     if (dialog.kind === "input") {
       const deviceId = Number(dialog.deviceId);
       if (deviceId > 0) {
@@ -888,14 +919,13 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       </div>`;
   }
 
-  private _kindSelect(id: string, value: string, kinds: ActivityTargetKind[], onChange: (kind: ActivityTargetKind) => void): TemplateResult {
+  /** The type choice as segments, the card's renderKindSegments rebuilt here (the panel takes no card template). */
+  private _kindSegments(id: string, value: ActivityTargetKind, kinds: ActivityTargetKind[], onChange: (kind: ActivityTargetKind) => void): TemplateResult | typeof nothing {
+    if (kinds.length < 2) return nothing;
     const label = (kind: ActivityTargetKind) => (kind === "command" ? B.shortcutKindCommand : kind === "action" ? B.shortcutKindAction : B.shortcutKindWifiEvent);
     return html`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for=${id}>${B.addShortcutKindLabel}</label>
-        <select id=${id} class="decoded-field-input" @change=${(event: Event) => onChange((event.currentTarget as HTMLSelectElement).value as ActivityTargetKind)}>
-          ${kinds.map((kind) => html`<option value=${kind} ?selected=${kind === value}>${label(kind)}</option>`)}
-        </select>
+      <div class="kind-seg" id=${id} role="group" aria-label=${B.addShortcutKindLabel}>
+        ${kinds.map((kind) => html`<button class="kind-seg-btn" type="button" value=${kind} aria-pressed=${kind === value ? "true" : "false"} @click=${() => { if (kind !== value) onChange(kind); }}>${label(kind)}</button>`)}
       </div>`;
   }
 
@@ -923,27 +953,82 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return otherCreatesNew && this._macroOptions().length === 0 ? kinds.filter((kind) => kind !== "action") : kinds;
   }
 
+  private _toggleMacroPicker(id: string, event: Event): void {
+    const trigger = event.currentTarget as HTMLElement;
+    if (this._macroPicker?.id === id) {
+      this._macroPicker = null;
+      return;
+    }
+    this._macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest<HTMLElement>(".modal-backdrop")) };
+    const root = this.renderRoot;
+    requestAnimationFrame(() => (root.querySelector<HTMLElement>('.macro-picker-option[aria-selected="true"]') ?? root.querySelector<HTMLElement>(".macro-picker-option"))?.focus());
+  }
+
+  private _closeMacroPicker = (): void => {
+    const picker = this._macroPicker;
+    if (!picker) return;
+    this._macroPicker = null;
+    this.renderRoot.querySelector<HTMLElement>(`#${picker.id}`)?.focus();
+  };
+
+  /** The macro picker (the card's renderMacroSelect rebuilt here): "Create new macro" on top, own macros, then the other
+   *  activities' macros to copy, each with a chip naming its activity; under it the new macro's name. */
   private _macroTargetFields(
     idPrefix: string,
     target: MacroTargetState,
     onChange: (target: MacroTargetState) => void,
     allowNew = true,
+    offerOwn = true,
   ): TemplateResult {
-    const macros = this._macroOptions();
+    const id = `${idPrefix}-macro-target`;
+    const macros = offerOwn ? this._macroOptions() : [];
+    const copyable = this._copyableMacros();
+    const copied = target.mode === "copy" ? copyable.find((macro) => macro.activityId === target.sourceId && macro.buttonId === target.macroId) : undefined;
+    const open = this._macroPicker?.id === id;
+    const value = copied ? macroCopyValue(copied.activityId, copied.buttonId) : target.mode === "new" ? "__new__" : String(target.macroId ?? "");
+    const label = copied ? copied.name : target.mode === "new" ? B.macroTargetCreateNew : macros.find((macro) => macro.value === target.macroId)?.label ?? "";
+    const option = (optionValue: string, extraClass: string, body: TemplateResult) => html`
+      <button class="macro-picker-option ${extraClass}" type="button" role="option" data-value=${optionValue} aria-selected=${optionValue === value ? "true" : "false"}
+        @click=${() => { this._closeMacroPicker(); onChange({ ...target, ...macroTargetFromValue(optionValue) }); }}>${body}</button>`;
+    // Keys are handled on the field, so they work from the trigger and from the list.
+    const onKeydown = (event: KeyboardEvent) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeMacroPicker();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option");
+    };
     return html`
-      ${macros.length
-        ? html`<div class="decoded-field">
-            <label class="decoded-field-label" for=${`${idPrefix}-macro-target`}>${B.macroTargetLabel}</label>
-            <select id=${`${idPrefix}-macro-target`} class="decoded-field-input" @change=${(event: Event) => {
-              const value = (event.currentTarget as HTMLSelectElement).value;
-              onChange(value === "__new__" ? { ...target, mode: "new", macroId: null } : { ...target, mode: "existing", macroId: Number(value) });
-            }}>
-              ${macros.map((macro) => html`<option value=${macro.value} ?selected=${target.mode === "existing" && macro.value === target.macroId}>${macro.label}</option>`)}
-              ${allowNew ? html`<option value="__new__" ?selected=${target.mode === "new"}>${B.macroTargetCreateNew}</option>` : nothing}
-            </select>
+      ${macros.length || copyable.length
+        ? html`<div class="decoded-field" @keydown=${onKeydown}>
+            <span class="decoded-field-label" id=${`${id}-label`}>${B.macroTargetLabel}</span>
+            <button id=${id} class="decoded-field-input macro-picker-trigger" type="button" data-value=${value} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"} aria-labelledby=${`${id}-label ${id}`}
+              @click=${(event: Event) => this._toggleMacroPicker(id, event)}>
+              ${copied ? icon(mdiContentCopy, "macro-picker-icon") : nothing}
+              <span class="macro-picker-name">${label}</span>
+              ${copied ? html`<span class="macro-picker-chip">${copied.activityName}</span>` : nothing}
+              ${icon(mdiChevronDown, "macro-picker-icon")}
+            </button>
+            ${open
+              ? html`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeMacroPicker} @wheel=${(event: Event) => event.preventDefault()}></button>
+                  <div class="macro-picker-menu" role="listbox" aria-labelledby=${`${id}-label`} style=${this._macroPicker?.style ?? ""}>
+                    ${allowNew
+                      ? html`${option("__new__", "macro-picker-option--new", html`${icon(mdiPlus, "macro-picker-icon")}<span class="macro-picker-name">${B.macroTargetCreateNew}</span>`)}
+                          ${macros.length || copyable.length ? html`<div class="macro-picker-sep"></div>` : nothing}`
+                      : nothing}
+                    ${macros.length && copyable.length ? html`<div class="macro-picker-group">${B.macroTargetOwnGroup}</div>` : nothing}
+                    ${macros.map((macro) => option(String(macro.value), "", html`<span class="macro-picker-name">${macro.label}</span>`))}
+                    ${copyable.length ? html`<div class="macro-picker-group">${B.macroTargetCopyGroup}</div>` : nothing}
+                    ${copyable.map((macro) => option(macroCopyValue(macro.activityId, macro.buttonId), "", html`${icon(mdiContentCopy, "macro-picker-icon")}<span class="macro-picker-name">${macro.name}</span><span class="macro-picker-chip">${macro.activityName}</span>`))}
+                  </div>`
+              : nothing}
+            ${copied ? html`<div class="decoded-field-helper">${B.macroTargetCopyNote(copied.commandStepCount, copied.activityName)}</div>` : nothing}
           </div>
           ${allowNew ? nothing : html`<div class="decoded-field-helper">${B.bindingOneNewNote}</div>`}`
-        : html`<div class="quick-access-empty">${B.macroTargetNoExisting}</div>`}
+        : offerOwn ? html`<div class="quick-access-empty">${B.macroTargetNoExisting}</div>` : nothing}
       ${target.mode === "new" ? this._macroNameField(idPrefix, target.name, (name) => onChange({ ...target, name })) : nothing}
     `;
   }
@@ -960,11 +1045,11 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return this._select(`${idPrefix}-wifi-event`, B.wifiEventTargetLabel, slot, slots.map((entry) => ({ value: entry.slot, label: entry.label })), P.wifiEventNoSlots, onChange);
   }
 
-  private _dialog(id: string, title: string, close: () => void, body: TemplateResult, footer: TemplateResult, error = ""): TemplateResult {
+  private _dialog(id: string, title: string, close: () => void, body: TemplateResult, footer: TemplateResult, error = "", headerExtra: TemplateResult | typeof nothing = nothing): TemplateResult {
     return html`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id=${id} @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${B.deleteCancel} @click=${close}>${icon(mdiClose)}</button></div>
+          <div class="dialog-header ${headerExtra === nothing ? "" : "dialog-header--extra"}"><div class="dialog-title">${title}</div>${headerExtra === nothing ? nothing : html`<div class="dialog-header-extra">${headerExtra}</div>`}<button class="dialog-close" type="button" aria-label=${B.deleteCancel} @click=${close}>${icon(mdiClose)}</button></div>
           <div class="dialog-body">${body}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id=${`${id}-error`}>${error}</div>
@@ -1342,23 +1427,18 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const commandFields = devices.length === 0
       ? html`<div class="backup-drawer-sub">${this._deviceOptions().length === 0 ? B.addFavoriteNoDevices : B.addShortcutNoCommandsLeft}</div>`
       : html`
-          ${this._select("sb-add-fav-device", B.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._shortcutCommandOptions(value)[0]?.value ?? null }))}
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-command">${B.addFavoriteCommand}</label>
-            ${commands.length === 0
-              ? html`<div class="quick-access-empty">${B.addFavoriteNoCommands}</div>`
-              : html`<select id="sb-add-fav-command" class="decoded-field-input" @change=${(event: Event) => set({ commandId: Number((event.currentTarget as HTMLSelectElement).value) })}>
-                  ${commands.map((command) => html`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
-                </select>`}
-            <div class="decoded-field-helper">${B.addShortcutCommandHelper}</div>
-          </div>`;
+          <div class="field-pair">
+            ${this._select("sb-add-fav-device", B.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._shortcutCommandOptions(value)[0]?.value ?? null }))}
+            ${this._select("sb-add-fav-command", B.addFavoriteCommand, dialog.commandId, commands, B.addFavoriteNoCommands, (value) => set({ commandId: value }))}
+          </div>
+          <div class="decoded-field-helper">${B.addShortcutCommandHelper}</div>`;
     return this._dialog("add-shortcut-dialog", B.addShortcutTitle, this._closeAddShortcut, html`
-      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._shortcutTargetKinds(), (kind) => set(kind === "action" ? { kind, mode: "new", macroId: null, name: "" } : kind === "wifi_event" ? { kind, slot: this._shortcutWifiSlots()[0]?.slot ?? null } : { kind }))}
+      ${this._kindSegments("sb-add-shortcut-kind", dialog.kind, this._shortcutTargetKinds(), (kind) => set(kind === "action" ? { kind, mode: "new", macroId: null, sourceId: null, name: "" } : kind === "wifi_event" ? { kind, slot: this._shortcutWifiSlots()[0]?.slot ?? null } : { kind }))}
       ${dialog.kind === "command"
         ? commandFields
         : dialog.kind === "wifi_event"
           ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot }), this._shortcutWifiSlots())
-          : this._macroNameField("sb-add", dialog.name, (name) => set({ name }))}`, html`
+          : this._macroTargetFields("sb-add", dialog, (macro) => set(macro), true, false)}`, html`
       <button class="dialog-btn" type="button" @click=${this._closeAddShortcut}>${B.addFavoriteCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="add-shortcut-save" type="button" ?disabled=${!canAdd} @click=${this._applyAddShortcut}>${B.addFavoriteAdd}</button>`, dialog.error);
   }
@@ -1394,32 +1474,43 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true)
       && !(createsNew.primary && createsNew.longPress);
     const title = isEdit ? B.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : B.bindingDialogAddTitle;
+    // The button is the dialog's subject, not one of its fields: it sits in the header (the edit title names it).
+    const buttonPicker = isEdit
+      ? nothing
+      : html`<select id="sb-binding-button" class="decoded-field-input dialog-header-select" aria-label=${B.bindingButton} @change=${(event: Event) => set({ buttonId: Number((event.currentTarget as HTMLSelectElement).value) })}>
+          ${unbound.map((entry) => html`<option value=${entry.code} ?selected=${entry.code === dialog.buttonId}>${entry.name}</option>`)}
+        </select>`;
+    const commandPair = (idPrefix: string, deviceId: number | null, commandId: number | null, onDevice: (value: number) => void, onCommand: (value: number) => void) => html`
+      <div class="field-pair">
+        ${this._select(`${idPrefix}-device`, B.bindingTargetDevice, deviceId, devices, B.bindingNoDevices, onDevice)}
+        ${this._select(`${idPrefix}-command`, B.bindingCommand, commandId, this._commandOptions(deviceId), B.bindingNoCommands, onCommand)}
+      </div>`;
     return this._dialog("binding-dialog", title, this._closeBinding, html`
-      ${isEdit
-        ? html`<div class="decoded-field"><span class="decoded-field-label">${B.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>`
-        : this._select("sb-binding-button", B.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), B.bindingNoButtons, (value) => set({ buttonId: value }))}
-      ${this._kindSelect("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
-      ${dialog.kind === "command"
-        ? html`${this._select("sb-binding-device", B.bindingTargetDevice, dialog.deviceId, devices, B.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
-            ${this._select("sb-binding-command", B.bindingCommand, dialog.commandId, this._commandOptions(dialog.deviceId), B.bindingNoCommands, (value) => set({ commandId: value }))}`
-        : primaryIsWifiEvent
-          ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot }))
-          : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
-      <div class="binding-toggle-row">
-        <span class="decoded-field-label">${B.bindingEnableLongPress}</span>
-        <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event: Event) => this._toggleBindingLongPress((event.currentTarget as HTMLInputElement).checked)} />
-      </div>
-      ${dialog.longPress
-        ? primaryIsWifiEvent
-          ? html`<div class="decoded-field-helper">${P.wifiEventLongPressNote}</div>`
-          : html`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds<ActivityTargetKind>(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
-              ${dialog.lpKind === "command"
-                ? html`${this._select("sb-binding-lp-device", B.bindingLongPressDevice, dialog.lpDeviceId, devices, B.bindingNoDevices, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }))}
-                    ${this._select("sb-binding-lp-command", B.bindingLongPressCommand, dialog.lpCommandId, this._commandOptions(dialog.lpDeviceId), B.bindingNoCommands, (value) => set({ lpCommandId: value }))}`
-                : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }), !createsNew.primary)}`
-        : nothing}`, html`
+      <section class="press-card" data-press="short">
+        <div class="press-card-head">${icon(mdiGestureTap)}<span class="press-card-title">${B.bindingShortPress}</span></div>
+        ${this._kindSegments("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
+        ${dialog.kind === "command"
+          ? commandPair("sb-binding", dialog.deviceId, dialog.commandId, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }), (value) => set({ commandId: value }))
+          : primaryIsWifiEvent
+            ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot }))
+            : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
+      </section>
+      <section class="press-card" data-press="long">
+        <label class="press-card-head">
+          ${icon(mdiGestureTapHold)}<span class="press-card-title">${B.bindingLongPress}</span>
+          <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${B.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event: Event) => this._toggleBindingLongPress((event.currentTarget as HTMLInputElement).checked)} />
+        </label>
+        ${dialog.longPress
+          ? primaryIsWifiEvent
+            ? html`<div class="decoded-field-helper">${P.wifiEventLongPressNote}</div>`
+            : html`${this._kindSegments("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds<ActivityTargetKind>(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
+                ${dialog.lpKind === "command"
+                  ? commandPair("sb-binding-lp", dialog.lpDeviceId, dialog.lpCommandId, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }), (value) => set({ lpCommandId: value }))
+                  : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }), !createsNew.primary)}`
+          : nothing}
+      </section>`, html`
       <button class="dialog-btn" type="button" @click=${this._closeBinding}>${B.bindingCancel}</button>
-      <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B.bindingSave : B.bindingAdd}</button>`, dialog.error);
+      <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B.bindingSave : B.bindingAdd}</button>`, dialog.error, buttonPicker);
   }
 
   private _renderStepDialog(): TemplateResult | typeof nothing {
@@ -1442,18 +1533,20 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
         </div>`
       : html`
           ${this._wifiEventsAvailable
-            ? this._kindSelect("sb-step-kind", dialog.kind, ["command", "wifi_event"], (kind) => set(kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind: "command" }))
+            ? this._kindSegments("sb-step-kind", isWifiEvent ? "wifi_event" : "command", ["command", "wifi_event"], (kind) => set(kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind: "command" }))
             : nothing}
           ${isWifiEvent
             ? this._wifiEventFields("sb-step", dialog.slot, (slot) => set({ slot }))
-            : html`${this._select("sb-step-device", B.stepDevice, dialog.deviceId, this._deviceOptions().map((device) => ({ value: device.id, label: device.label })), B.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
-                ${this._select("sb-step-command", B.stepCommand, dialog.commandId, commands, B.stepNoCommands, (value) => set({ commandId: value }))}`}
-          <div class="decoded-field">
+            : html`<div class="field-pair">
+                ${this._select("sb-step-device", B.stepDevice, dialog.deviceId, this._deviceOptions().map((device) => ({ value: device.id, label: device.label })), B.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+                ${this._select("sb-step-command", B.stepCommand, dialog.commandId, commands, B.stepNoCommands, (value) => set({ commandId: value }))}
+              </div>`}
+          ${isWifiEvent ? nothing : html`<div class="decoded-field">
             <label class="decoded-field-label" for="sb-step-hold">${B.stepHoldSeconds}</label>
             <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
               @input=${(event: Event) => { this._stepDialog = { ...dialog, hold: (event.currentTarget as HTMLInputElement).value }; }}
               @change=${(event: Event) => { this._stepDialog = { ...dialog, hold: byteToSeconds(secondsToByte((event.currentTarget as HTMLInputElement).value)) }; }} />
-          </div>`;
+          </div>`}`;
     return this._dialog("step-dialog", title, this._closeStepDialog, body, html`
       <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${B.stepCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? B.stepSave : B.stepAdd}</button>`, dialog.error);
