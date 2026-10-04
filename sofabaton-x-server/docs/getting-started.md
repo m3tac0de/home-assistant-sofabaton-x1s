@@ -40,7 +40,7 @@ two ports to change when Home Assistant's integration runs on the same
 host.
 
 **On a computer (Windows, macOS, Linux).** Install
-[pipx](https://pipx.pypa.io/stable/installation/) once, then:
+[pipx](https://pipx.pypa.io/latest/how-to/install-pipx.html) once, then:
 
 ```sh
 pipx install "sofabaton-x-server>=0.2.4,<0.3"
