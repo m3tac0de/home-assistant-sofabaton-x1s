@@ -329,7 +329,16 @@ class NotifyDemuxer:
                 dest_ip,
             )
             try:
-                sock.sendto(reply, (dest_ip, BROADCAST_LISTEN_PORT))
+                # Linux's IP_PKTINFO ABI is 8; Python <3.12 omits its name.
+                pktinfo = getattr(socket, "IP_PKTINFO", 8)
+                # Select this reply's source without rebinding the shared listener.
+                info = struct.pack(
+                    "=I4s4s", 0, socket.inet_aton(_route_local_ip(src_ip)), b"\x00" * 4
+                )
+                sock.sendmsg(
+                    [reply], [(socket.IPPROTO_IP, pktinfo, info)],
+                    0, (dest_ip, BROADCAST_LISTEN_PORT),
+                )
             except OSError:
                 get_hub_logger(log, reg.proxy_id).exception("[DEMUX] failed to send NOTIFY_ME reply")
 

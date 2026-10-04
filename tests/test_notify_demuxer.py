@@ -1,6 +1,11 @@
 import socket
 import struct
+import sys
+from types import SimpleNamespace
 
+import pytest
+
+from custom_components.sofabaton_x1s.lib import notify_demuxer
 from custom_components.sofabaton_x1s.lib.notify_demuxer import NotifyDemuxer
 from custom_components.sofabaton_x1s.lib.protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
@@ -173,3 +178,105 @@ def test_notify_reply_cuts_a_long_name_on_a_character_boundary():
     assert reply is not None
     name_tail = reply[:-1].split(b"Wohnzimmer", 1)[1]
     ("Wohnzimmer".encode() + name_tail).decode("utf-8")  # no split character
+
+
+_DISCOVERY_REPLY = bytes.fromhex(
+    "a55a17c2aabbccddee456402202211200501005465737420687562f7"
+)
+
+
+@pytest.fixture
+def discovery_proxy(monkeypatch):
+    demux = NotifyDemuxer()
+    monkeypatch.setattr(demux, "_ensure_running_locked", lambda: None)
+    monkeypatch.setattr(notify_demuxer, "_route_local_ip", lambda _: "192.0.2.10")
+    monkeypatch.setattr(notify_demuxer, "_broadcast_ip", lambda _: "192.0.2.127")
+    demux.register_proxy(
+        "proxy", "203.0.113.20",
+        {"MAC": "AA:BB:CC:DD:EE:FF", "NAME": "Test hub", "HVER": "2"},
+        8102, lambda *_: None,
+    )
+    return demux
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="per-packet IPv4 source selection uses Linux IP_PKTINFO",
+)
+@pytest.mark.parametrize(
+    "constant_available", [True, False], ids=["named_constant", "linux_abi_fallback"]
+)
+def test_notify_reply_uses_each_phone_selected_source_over_real_udp(
+    monkeypatch, discovery_proxy, constant_available
+):
+    if constant_available:
+        monkeypatch.setattr(socket, "IP_PKTINFO", 8, raising=False)
+    else:
+        monkeypatch.delattr(socket, "IP_PKTINFO", raising=False)
+    sources = {"127.0.0.3": "127.0.0.2", "127.0.0.5": "127.0.0.4"}
+    monkeypatch.setattr(
+        notify_demuxer, "_route_local_ip", lambda peer: sources.get(peer, "127.0.0.6")
+    )
+    monkeypatch.setattr(notify_demuxer, "_broadcast_ip", lambda _: "127.255.255.255")
+    discovery_proxy.listen_port = 0
+    with discovery_proxy._open_socket() as listener, socket.socket(
+        socket.AF_INET, socket.SOCK_DGRAM
+    ) as receiver:
+        receiver.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        receiver.bind(("0.0.0.0", 0))
+        receiver.settimeout(3.0)
+        monkeypatch.setattr(
+            notify_demuxer, "BROADCAST_LISTEN_PORT", receiver.getsockname()[1]
+        )
+        original_bind = listener.getsockname()
+        for app_ip, selected_source in sources.items():
+            discovery_proxy._handle_notify_me(
+                listener, notify_demuxer.NOTIFY_ME_PAYLOAD, app_ip, 1234
+            )
+            reply, source = receiver.recvfrom(2048)
+            assert source == (selected_source, original_bind[1])
+            assert reply == _DISCOVERY_REPLY
+
+        assert listener.getsockname() == original_bind
+        assert original_bind[0] == "0.0.0.0"
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as peer:
+            peer.bind(("127.0.0.3", 0))
+            peer.sendto(notify_demuxer.NOTIFY_ME_PAYLOAD, ("127.0.0.1", original_bind[1]))
+            request, source = listener.recvfrom(2048)
+            assert request == notify_demuxer.NOTIFY_ME_PAYLOAD
+            assert source == peer.getsockname()
+
+
+def test_notify_reply_retries_after_a_source_send_failure(monkeypatch, discovery_proxy):
+    attempts = []
+    clock = iter((100.0, 103.0))
+
+    class DatagramSocket:
+        closed = False
+
+        def sendmsg(self, buffers, ancillary, flags, destination):
+            attempts.append((buffers, ancillary, flags, destination))
+            if len(attempts) == 1:
+                raise OSError("source temporarily unavailable")
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(socket, "IP_PKTINFO", 8, raising=False)
+    monkeypatch.setattr(notify_demuxer, "time", SimpleNamespace(monotonic=clock.__next__))
+    sock = DatagramSocket()
+    for _ in range(2):
+        discovery_proxy._handle_notify_me(
+            sock, notify_demuxer.NOTIFY_ME_PAYLOAD, "192.0.2.20", 1234
+        )
+
+    assert len(attempts) == 2
+    for buffers, ancillary, flags, destination in attempts:
+        assert buffers == [_DISCOVERY_REPLY]
+        assert ancillary == [
+            (socket.IPPROTO_IP, 8, struct.pack("=I4s4s", 0, socket.inet_aton("192.0.2.10"), b"\x00" * 4))
+        ]
+        assert flags == 0
+        assert destination == ("192.0.2.127", 8100)
+    assert not sock.closed
+    assert "proxy" in discovery_proxy._registrations

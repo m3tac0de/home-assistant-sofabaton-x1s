@@ -143,6 +143,11 @@ Two discovery mechanisms run in parallel:
 
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
+Discovery reply source selection requires Linux: `sendmsg` with `IP_PKTINFO`
+selects the local IPv4 address for the app's IP without rebinding the shared UDP
+listener or changing its source port. On Python 3.11, the documented Linux
+constant is used because Python does not expose its name.
+
 > ⚠️ **iOS discovery and VLANs**
 >
 > The iOS app’s discovery uses **UDP broadcast** on port 8102. By default, routers do **not**
