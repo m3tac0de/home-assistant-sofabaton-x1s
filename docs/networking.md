@@ -91,6 +91,25 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
 2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port (8200 by default). All configured hubs share the same listener; the proxy dispatches each accepted connection to the right hub by peer IP.
 
+### Multi-homed hosts
+
+When the hub belongs to a local IPv4 interface's subnet, the integration uses that
+interface's address for `CALL_ME`, its proxy mDNS advertisement, and new default
+Wifi Command/Event callbacks. If multiple subnets match, the most specific wins.
+For hubs outside all local subnets, it keeps the operating system's route-selected
+source address.
+
+The `CALL_ME` UDP socket is bound to the selected address as well: putting a LAN
+address in the packet alone does not select that interface for outgoing traffic.
+On multi-homed hosts, callbacks and advertisements must use an address reachable
+from the hub. Binding selects the source IP; the operating system's routes still
+determine the outgoing interface. No interface-name setting or routing-table
+changes are required. The hub must still be able to reach the selected address
+on the TCP connect-back port.
+
+Previously deployed or explicitly pinned Wifi Command/Event callback addresses
+are not rewritten automatically.
+
 ### Optional / Wifi Commands and Wifi Events
 
 When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), the hub makes HTTP requests into the integration. Both features share the same listener. The default port is **8060**. It is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
@@ -124,6 +143,11 @@ Two discovery mechanisms run in parallel:
 
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
+Discovery reply source selection requires Linux: `sendmsg` with `IP_PKTINFO`
+selects the local IPv4 address for the app's IP without rebinding the shared UDP
+listener or changing its source port. On Python 3.11, the documented Linux
+constant is used because Python does not expose its name.
+
 > ⚠️ **iOS discovery and VLANs**
 >
 > The iOS app’s discovery uses **UDP broadcast** on port 8102. By default, routers do **not**
@@ -153,6 +177,11 @@ Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Andro
 1. **CALL_ME from app → proxy (UDP):** the app sends a call-me packet to the proxy listener once discovery completes (on the configured UDP listening port, **8102** by default).
 2. **TCP connect-back from proxy → app:** after the call-me, the proxy opens a TCP connection into the app on a port in the **8100–8110** range that the app exposes.
 3. **Relay to the real hub:** once the TCP session is up, the proxy bridges app commands to the already-established hub connection.
+
+On multi-homed hosts, the TCP connect-back socket is bound to the local IPv4
+address selected for the app's IP, independently of the hub's IP. It prefers a
+matching local subnet and otherwise uses the operating system's route-selected
+source. Valid routes and firewall permissions are still required.
 
 When the app is connected, command-sending entities in Home Assistant intentionally become unavailable to avoid conflicting control writers.
 
