@@ -245,6 +245,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     roleOptionNoMapping: (name: string) => `${name} — keine Tastenbelegung`, roleMenuAria: (roleLabel: string) => `Gerät auswählen für: ${roleLabel}`, roleConfirmTitle: "Benutzerdefinierte Tastenbelegung ersetzen?",
     roleConfirmBody: "Diese Gruppe enthält Tastenbelegungen, die nicht aus der Standardbelegung eines einzelnen Geräts stammen. Eine Belegung hier ersetzt sie.", roleConfirmReplace: "Ersetzen", roleConfirmCancel: "Abbrechen",
     customizeButtonsToggle: "Einzelne Tasten anpassen", bindingsViewTitle: "Einzelne Tasten", bindingsConfiguredCount: (count: number) => `${count} konfiguriert`, bindingsNoneConfigured: "Keine einzelnen Tasten angepasst",
+    copyShortcutsButton: "Kopieren", copyShortcutsHeading: "Verknüpfungen kopieren aus", copyShortcutsCount: (count: number) => `${count} neu`, copyShortcutsNone: "Nichts Neues",
     addShortcutButton: "Hinzufügen", addShortcutTitle: "Zu Verknüpfungen hinzufügen", addShortcutKindLabel: "Typ", shortcutKindCommand: "Gerätebefehl", shortcutKindAction: "Makro", macroTargetLabel: "Makro",
     shortcutKindWifiEvent: "Wifi-Event",
     wifiEventTargetLabel: "Wifi-Event",

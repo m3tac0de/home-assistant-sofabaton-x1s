@@ -233,6 +233,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     roleOptionNoMapping: (name: string) => `${name} — sin asignación de botones`, roleMenuAria: (roleLabel: string) => `Elige un dispositivo para: ${roleLabel}`, roleConfirmTitle: "¿Reemplazar la configuración personalizada de botones?",
     roleConfirmBody: "Este grupo tiene asignaciones de botones que no proceden de la asignación estándar de un único dispositivo. Al asignarlo aquí se reemplazarán.", roleConfirmReplace: "Reemplazar", roleConfirmCancel: "Cancelar",
     customizeButtonsToggle: "Personalizar botones individuales", bindingsViewTitle: "Botones individuales", bindingsConfiguredCount: (count: number) => `${count} ${count === 1 ? "configurado" : "configurados"}`, bindingsNoneConfigured: "Ningún botón personalizado",
+    copyShortcutsButton: "Copiar", copyShortcutsHeading: "Copiar accesos directos de", copyShortcutsCount: (count: number) => `${count === 1 ? "1 nuevo" : `${count} nuevos`}`, copyShortcutsNone: "Nada nuevo",
     addShortcutButton: "Añadir", addShortcutTitle: "Añadir a accesos directos", addShortcutKindLabel: "Tipo", shortcutKindCommand: "Comando de dispositivo", shortcutKindAction: "Macro", macroTargetLabel: "Macro",
     shortcutKindWifiEvent: "Evento Wifi",
     wifiEventTargetLabel: "Evento Wifi",

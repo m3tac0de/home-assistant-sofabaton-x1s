@@ -48,7 +48,9 @@ import {
   roleMappableButtonCount,
   setActivityRoleDevice,
   addActivityUserMacro,
+  copyActivityShortcuts,
   copyActivityUserMacro,
+  shortcutCopySources,
   copyableActivityMacroSummaries,
   macroTargetFromValue,
   addBundleActivityFavorite,
@@ -101,6 +103,7 @@ import type {
   WifiEventsHost,
 } from "./edit-detail/host-types";
 import { renderKindSegments } from "./edit-detail/kind-segments";
+import { anchoredListPosition, moveListFocus } from "../shared/utils/overlay-menu";
 import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
@@ -140,6 +143,7 @@ export class SofabatonEditDetailView extends LitElement {
     _haSortableReady: { state: true },
     _powerControlMenuOpen: { state: true },
     _roleMenuOpen: { state: true },
+    _shortcutCopyMenu: { state: true },
     _roleConfirm: { state: true },
     _bindingsView: { state: true },
     _addShortcutKind: { state: true },
@@ -163,6 +167,8 @@ export class SofabatonEditDetailView extends LitElement {
   private _editDetailActiveSection: BackupEditDetailSectionId = "power";
   private _powerControlMenuOpen = false;
   private _roleMenuOpen: ActivityRoleGroupId | null = null;
+  // The open "Copy shortcuts from" menu: its fixed position (anchoredListPosition), null when closed.
+  private _shortcutCopyMenu: string | null = null;
   // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
   // Captured at click time; not reactive — they change only together with
   // the open-state fields above/below.
@@ -538,6 +544,7 @@ export class SofabatonEditDetailView extends LitElement {
       this._roleMenuAnchor = null;
       this._roleMenuOpen = null;
     }
+    if (this._shortcutCopyMenu !== null) this._shortcutCopyMenu = null;
     const sections = Array.from(
       scrollEl.querySelectorAll<HTMLElement>("[data-edit-section]"),
     );
@@ -974,7 +981,7 @@ export class SofabatonEditDetailView extends LitElement {
     const rows = items.map((item, position) => this._renderActivityQuickAccessRow(item, position, items.length));
     return html`
       <div class="quick-access-section" data-edit-section="quick_access">
-        <div class="quick-access-head">
+        <div class="quick-access-head quick-access-head--inline">
           <div class="quick-access-head-main">
             <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.activityShortcutsTitle}</div>
             <div class="quick-access-sub">
@@ -984,6 +991,7 @@ export class SofabatonEditDetailView extends LitElement {
             </div>
           </div>
           <div class="quick-access-head-actions">
+            ${this._renderCopyShortcuts()}
             <button class="quick-access-add-btn" @click=${this._openAddShortcutDialog}>
               <ha-icon icon="mdi:plus"></ha-icon>
               <span>${TOOLS_CARD_STRINGS.backup.addShortcutButton}</span>
@@ -1680,6 +1688,94 @@ export class SofabatonEditDetailView extends LitElement {
     const created = summaries[summaries.length - 1];
     if (created) this._steps.openEditor("activity", activityId, created.buttonId, created.name);
   };
+
+  private _toggleShortcutCopyMenu = (event: Event) => {
+    if (this._shortcutCopyMenu !== null) {
+      this._shortcutCopyMenu = null;
+      return;
+    }
+    const root = this.renderRoot as ParentNode;
+    const trigger = event.currentTarget as HTMLElement;
+    // Kept inside the editor's own scroll area: never over the page beside the card or under the dock.
+    this._shortcutCopyMenu = anchoredListPosition(trigger, null, { minWidth: 260, within: trigger.closest<HTMLElement>(".detail-scroll") });
+    requestAnimationFrame(() => root.querySelector<HTMLElement>(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
+  };
+
+  private _closeShortcutCopyMenu = () => {
+    if (this._shortcutCopyMenu === null) return;
+    this._shortcutCopyMenu = null;
+    (this.renderRoot as ParentNode).querySelector<HTMLElement>("#sb-copy-shortcuts")?.focus();
+  };
+
+  // "Copy" beside "Add": pick another activity and take over every shortcut
+  // of it this activity does not have yet (copyActivityShortcuts).
+  private _renderCopyShortcuts() {
+    if (!this.bundle || this.entityId == null) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const activityId = Number(this.entityId);
+    const sources = shortcutCopySources(this.bundle, activityId);
+    if (sources.length === 0) return nothing;
+    const open = this._shortcutCopyMenu !== null;
+    const onKeydown = (event: KeyboardEvent) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeShortcutCopyMenu();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option:not(:disabled)");
+    };
+    return html`
+      <span class="shortcut-copy" @keydown=${onKeydown}>
+        <button
+          id="sb-copy-shortcuts"
+          class="quick-access-add-btn"
+          type="button"
+          title=${S.copyShortcutsHeading}
+          aria-label=${S.copyShortcutsButton}
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          @click=${this._toggleShortcutCopyMenu}
+        >
+          <ha-icon icon="mdi:content-copy"></ha-icon>
+          <span>${S.copyShortcutsButton}</span>
+        </button>
+        ${open
+          ? html`
+              <button
+                class="macro-picker-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this._closeShortcutCopyMenu}
+                @wheel=${(event: Event) => event.preventDefault()}
+              ></button>
+              <div class="macro-picker-menu" role="listbox" aria-label=${S.copyShortcutsHeading} style=${this._shortcutCopyMenu ?? ""}>
+                <div class="macro-picker-group">${S.copyShortcutsHeading}</div>
+                ${sources.map((source) => html`
+                  <button
+                    class="macro-picker-option"
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    data-activity=${source.activityId}
+                    ?disabled=${source.newCount === 0}
+                    @click=${() => {
+                      this._closeShortcutCopyMenu();
+                      if (this.bundle) this._commitEditBundleEdit(copyActivityShortcuts(this.bundle, activityId, source.activityId));
+                    }}
+                  >
+                    <span class="macro-picker-name">${source.activityName}</span>
+                    <span class="macro-picker-chip">${source.newCount === 0 ? S.copyShortcutsNone : S.copyShortcutsCount(source.newCount)}</span>
+                  </button>
+                `)}
+              </div>
+            `
+          : nothing}
+      </span>
+    `;
+  }
 
   private _renderAddFavoriteDialog() {
     if (!this._addFavoriteOpen || !this.bundle) return nothing;

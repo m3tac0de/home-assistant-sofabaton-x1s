@@ -234,6 +234,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     roleOptionNoMapping: (name: string) => `${name} — aucune correspondance de touches`, roleMenuAria: (roleLabel: string) => `Choisir un appareil pour : ${roleLabel}`, roleConfirmTitle: "Remplacer la configuration personnalisée des touches ?",
     roleConfirmBody: "Ce groupe contient des attributions de touches qui ne proviennent pas de la correspondance standard d’un seul appareil. Une attribution ici les remplacera.", roleConfirmReplace: "Remplacer", roleConfirmCancel: "Annuler",
     customizeButtonsToggle: "Personnaliser les touches individuellement", bindingsViewTitle: "Touches individuelles", bindingsConfiguredCount: (count: number) => `${count} ${count > 1 ? "configurées" : "configurée"}`, bindingsNoneConfigured: "Aucune touche personnalisée",
+    copyShortcutsButton: "Copier", copyShortcutsHeading: "Copier les raccourcis de", copyShortcutsCount: (count: number) => `${count === 1 ? "1 nouveau" : `${count} nouveaux`}`, copyShortcutsNone: "Rien de nouveau",
     addShortcutButton: "Ajouter", addShortcutTitle: "Ajouter aux raccourcis", addShortcutKindLabel: "Type", shortcutKindCommand: "Commande d’appareil", shortcutKindAction: "Macro", macroTargetLabel: "Macro",
     shortcutKindWifiEvent: "Événement Wifi",
     wifiEventTargetLabel: "Événement Wifi",

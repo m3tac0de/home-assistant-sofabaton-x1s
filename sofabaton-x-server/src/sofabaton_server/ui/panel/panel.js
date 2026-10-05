@@ -15561,6 +15561,10 @@ var TOOLS_CARD_STRINGS_EN = {
     bindingsNoneConfigured: "None customized",
     // Unified "add to shortcuts" flow.
     addShortcutButton: "Add",
+    copyShortcutsButton: "Copy",
+    copyShortcutsHeading: "Copy shortcuts from",
+    copyShortcutsCount: (count) => `${count} new`,
+    copyShortcutsNone: "Nothing new",
     addShortcutTitle: "Add to shortcuts",
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",
@@ -17784,6 +17788,48 @@ function copyActivityUserMacro(bundle, activityId, sourceActivityId, sourceButto
     }]
   }));
   return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+function missingActivityShortcuts(bundle, activityId, sourceActivityId) {
+  const source = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId));
+  if (!source || Number(activityId) === Number(sourceActivityId)) return [];
+  const copyableMacros = new Set(
+    copyableActivityMacroSummaries(bundle, activityId).filter((macro) => macro.activityId === Number(sourceActivityId)).map((macro) => macro.buttonId)
+  );
+  const seen = /* @__PURE__ */ new Set();
+  const missing = [];
+  for (const item of activityQuickAccessItems(bundle, sourceActivityId)) {
+    if (item.kind === "macro") {
+      if (copyableMacros.has(item.buttonId)) missing.push({ kind: "macro", buttonId: item.buttonId });
+      continue;
+    }
+    const deviceId = Number(item.deviceId || 0);
+    const commandId = Number(item.commandId || 0);
+    const key = `${deviceId}:${commandId}`;
+    if (deviceId <= 0 || commandId <= 0 || seen.has(key) || activityHasFavorite(bundle, activityId, deviceId, commandId)) continue;
+    seen.add(key);
+    const slot = (source.favorite_slots ?? []).find((row) => Number(row?.button_id || 0) === item.buttonId);
+    missing.push({ kind: "favorite", deviceId, commandId, name: String(slot?.name || "") });
+  }
+  return missing;
+}
+function shortcutCopySources(bundle, activityId) {
+  return (bundle?.activities ?? []).flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
+    return [{
+      activityId: sourceId,
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId),
+      newCount: missingActivityShortcuts(bundle, activityId, sourceId).length
+    }];
+  });
+}
+function copyActivityShortcuts(bundle, activityId, sourceActivityId) {
+  let next = bundle;
+  for (const item of missingActivityShortcuts(bundle, activityId, sourceActivityId)) {
+    next = item.kind === "macro" ? copyActivityUserMacro(next, activityId, sourceActivityId, item.buttonId) : addBundleActivityFavorite(next, activityId, item.deviceId, item.commandId, item.name);
+  }
+  return next;
 }
 var MACRO_TARGET_NEW_VALUE = "__new__";
 function macroCopyValue(activityId, buttonId) {
@@ -20216,17 +20262,24 @@ function menuAnchorRect(event) {
   const target = event.currentTarget;
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
 }
-function anchoredListPosition(trigger, frame) {
+function anchoredListPosition(trigger, frame, menu = null) {
   const anchor = trigger.getBoundingClientRect();
   const bounds = frame?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const inner = menu?.within?.getBoundingClientRect() ?? bounds;
   const gap = 4;
   const margin = 8;
-  const below = bounds.bottom - anchor.bottom - gap - margin;
-  const above = anchor.top - bounds.top - gap - margin;
+  const top = Math.max(bounds.top, inner.top);
+  const bottom = Math.min(bounds.bottom, inner.bottom);
+  const minX = Math.max(bounds.left, inner.left) + margin;
+  const maxX = Math.min(bounds.right, inner.right) - margin;
+  const below = bottom - anchor.bottom - gap - margin;
+  const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
   const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
-  return `position: fixed; ${vertical} left: ${Math.round(anchor.left - bounds.left)}px; width: ${Math.round(anchor.width)}px; max-height: ${Math.round(maxHeight)}px;`;
+  const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
+  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 function moveListFocus(event, optionSelector) {
   const list = event.currentTarget;
@@ -20457,6 +20510,14 @@ var EDITOR_CSS = i`
     .macro-picker-menu { z-index: 5; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 4px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); }
     .macro-picker-option { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid transparent; background: none; text-align: left; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--sbp-text); border-radius: var(--de-radius-sm); cursor: pointer; }
     .macro-picker-option:hover, .macro-picker-option:focus-visible { border-color: transparent; background: color-mix(in srgb, var(--sbp-text) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    @container (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
     .macro-picker-option[aria-selected="true"] { background: rgba(var(--sbp-accent-rgb), 0.16); }
     .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon.mdi { color: var(--sbp-accent); font-weight: 600; }
     .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--sbp-line); }
@@ -21077,6 +21138,8 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     this._roleMenu = null;
     /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
     this._macroPicker = null;
+    /** The open "Copy shortcuts from" menu: its fixed position, null when closed. */
+    this._shortcutCopyMenu = null;
     this._roleConfirm = null;
     this._addShortcut = null;
     this._addMember = null;
@@ -21094,6 +21157,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     /** The role menus are fixed to the viewport, so a scroll closes them (the card's rule). */
     this._onWindowScroll = () => {
       if (this._roleMenu) this._roleMenu = null;
+      if (this._shortcutCopyMenu !== null) this._shortcutCopyMenu = null;
     };
     this._closeMacroEditor = () => {
       this._macroEditor = null;
@@ -21331,6 +21395,11 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       }
       this._commit(dialog.editIndex === null ? addActivityMacroCommandStep(this._working, activityId, editor.buttonId, deviceId, commandId, hold) : updateActivityMacroStep(this._working, activityId, editor.buttonId, dialog.editIndex, { deviceId, commandId, hold }));
       this._stepDialog = null;
+    };
+    this._closeShortcutCopyMenu = () => {
+      if (this._shortcutCopyMenu === null) return;
+      this._shortcutCopyMenu = null;
+      this.renderRoot.querySelector("#copy-shortcuts")?.focus();
     };
     this._closeMacroPicker = () => {
       const picker = this._macroPicker;
@@ -21698,6 +21767,52 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _bindingLegKinds(kinds, otherCreatesNew) {
     return otherCreatesNew && this._macroOptions().length === 0 ? kinds.filter((kind) => kind !== "action") : kinds;
   }
+  /** "Copy" beside "Add" (the card's _renderCopyShortcuts rebuilt here): pick another activity and take over
+   *  every shortcut of it this activity does not have yet. */
+  _renderCopyShortcuts() {
+    const activityId = this.activityId;
+    if (!this._working || activityId == null) return A;
+    const working = this._working;
+    const sources = shortcutCopySources(working, activityId);
+    if (sources.length === 0) return A;
+    const open = this._shortcutCopyMenu !== null;
+    const onKeydown = (event) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeShortcutCopyMenu();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option:not(:disabled)");
+    };
+    return b2`
+      <span class="shortcut-copy" @keydown=${onKeydown}>
+        <button class="quick-access-add-btn" id="copy-shortcuts" type="button" title=${B2.copyShortcutsHeading} aria-label=${B2.copyShortcutsButton} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"}
+          @click=${(event) => {
+      if (open) {
+        this._shortcutCopyMenu = null;
+        return;
+      }
+      const root = this.renderRoot;
+      this._shortcutCopyMenu = anchoredListPosition(event.currentTarget, null, { minWidth: 260, within: this });
+      requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
+    }}>${icon4(mdiContentCopy)}<span>${B2.copyShortcutsButton}</span></button>
+        ${open ? b2`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeShortcutCopyMenu} @wheel=${(event) => event.preventDefault()}></button>
+              <div class="macro-picker-menu" id="copy-shortcuts-menu" role="listbox" aria-label=${B2.copyShortcutsHeading} style=${this._shortcutCopyMenu ?? ""}>
+                <div class="macro-picker-group">${B2.copyShortcutsHeading}</div>
+                ${sources.map((source) => b2`
+                  <button class="macro-picker-option" type="button" role="option" aria-selected="false" data-activity=${source.activityId} ?disabled=${source.newCount === 0}
+                    @click=${() => {
+      this._closeShortcutCopyMenu();
+      this._commit(copyActivityShortcuts(working, activityId, source.activityId));
+    }}>
+                    <span class="macro-picker-name">${source.activityName}</span>
+                    <span class="macro-picker-chip">${source.newCount === 0 ? B2.copyShortcutsNone : B2.copyShortcutsCount(source.newCount)}</span>
+                  </button>`)}
+              </div>` : A}
+      </span>`;
+  }
   _toggleMacroPicker(id, event) {
     const trigger = event.currentTarget;
     if (this._macroPicker?.id === id) {
@@ -21903,9 +22018,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const items = this._shortcutItems();
     return b2`
       <div class="quick-access-section" data-edit-section="quick_access">
-        <div class="quick-access-head">
+        <div class="quick-access-head quick-access-head--inline">
           <div class="quick-access-head-main"><div class="quick-access-title">${B2.activityShortcutsTitle}</div><div class="quick-access-sub">${B2.activityShortcutsSubSortable}</div></div>
-          <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon4(mdiPlus)}<span>${B2.addShortcutButton}</span></button></div>
+          <div class="quick-access-head-actions" style="display: inline-flex; gap: 8px;">
+            ${this._renderCopyShortcuts()}
+            <button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon4(mdiPlus)}<span>${B2.addShortcutButton}</span></button>
+          </div>
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderShortcutRow(item, position))}</div></div>` : b2`<div class="quick-access-empty">${B2.activityShortcutsEmpty}</div>`}
       </div>
@@ -22250,6 +22368,7 @@ SbPanelActivityEditor.properties = {
   _bindingsView: { state: true },
   _roleMenu: { state: true },
   _macroPicker: { state: true },
+  _shortcutCopyMenu: { state: true },
   _roleConfirm: { state: true },
   _addShortcut: { state: true },
   _addMember: { state: true },

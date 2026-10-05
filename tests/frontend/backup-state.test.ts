@@ -14,7 +14,9 @@ import {
   removeActivityMemberDevice,
   addActivityMacroCommandStep,
   addActivityUserMacro,
+  copyActivityShortcuts,
   copyActivityUserMacro,
+  shortcutCopySources,
   copyableActivityMacroSummaries,
   macroCopyValue,
   macroTargetFromValue,
@@ -1139,6 +1141,29 @@ test("copyActivityUserMacro leaves the bundle alone for a missing source, a powe
   assert.equal(copyActivityUserMacro(b, 102, 101, 9), b);
   assert.equal(copyActivityUserMacro(b, 102, 101, 198), b);
   assert.equal(copyActivityUserMacro(b, 101, 101, 1), b);
+});
+
+test("copyActivityShortcuts takes over what the activity lacks, favorites and macros, and never doubles", () => {
+  // Watch TV: macro Combo (TV + AVR steps) and a TV favorite; Music: a favorite on the AVR.
+  let b = twoActivityMacroBundle();
+  b = addBundleActivityFavorite(b, 101, 1, 11, "Vol");
+  b = addBundleActivityFavorite(b, 101, 2, 20, "AVR power");
+  // Music already has the AVR power favorite: only Combo and Vol are new.
+  assert.deepEqual(shortcutCopySources(b, 102), [{ activityId: 101, activityName: "Watch TV", newCount: 2 }]);
+  const next = copyActivityShortcuts(b, 102, 101);
+  const music = next.activities.find((a) => a.device!.device_id === 102)!;
+  assert.deepEqual(
+    music.favorite_slots!.map((slot) => [slot.device_id, slot.command_id]),
+    [[2, 20], [1, 11]],
+  );
+  assert.equal(music.macros!.filter((m) => m.name === "Combo").length, 1);
+  // The copied shortcuts bring the TV into the activity.
+  assert.equal((music.referenced_source_device_ids ?? []).includes(1), true);
+  // A second copy finds nothing new and changes nothing.
+  assert.equal(shortcutCopySources(next, 102)[0].newCount, 0);
+  assert.equal(copyActivityShortcuts(next, 102, 101), next);
+  // The other direction: Watch TV has everything Music has.
+  assert.equal(shortcutCopySources(next, 101)[0].newCount, 0);
 });
 
 test("the macro dropdown values round-trip: an id, a new macro, a copy source", () => {

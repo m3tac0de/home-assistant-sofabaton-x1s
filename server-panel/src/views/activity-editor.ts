@@ -62,7 +62,9 @@ import {
   activityShortcutDeviceOptions,
   activityUserMacroSummaries,
   addActivityMacroCommandStep,
+  copyActivityShortcuts,
   copyActivityUserMacro,
+  shortcutCopySources,
   copyableActivityMacroSummaries,
   macroCopyValue,
   macroTargetFromValue,
@@ -240,6 +242,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     _bindingsView: { state: true },
     _roleMenu: { state: true },
     _macroPicker: { state: true },
+    _shortcutCopyMenu: { state: true },
     _roleConfirm: { state: true },
     _addShortcut: { state: true },
     _addMember: { state: true },
@@ -265,6 +268,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   private _roleMenu: { group: ActivityRoleGroupId; anchor: DOMRect | null } | null = null;
   /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
   private _macroPicker: { id: string; style: string } | null = null;
+  /** The open "Copy shortcuts from" menu: its fixed position, null when closed. */
+  private _shortcutCopyMenu: string | null = null;
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   private _addShortcut: AddShortcutState | null = null;
   private _addMember: { deviceId: number | null } | null = null;
@@ -282,6 +287,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   /** The role menus are fixed to the viewport, so a scroll closes them (the card's rule). */
   private readonly _onWindowScroll = () => {
     if (this._roleMenu) this._roleMenu = null;
+    if (this._shortcutCopyMenu !== null) this._shortcutCopyMenu = null;
   };
 
   connectedCallback(): void {
@@ -953,6 +959,58 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return otherCreatesNew && this._macroOptions().length === 0 ? kinds.filter((kind) => kind !== "action") : kinds;
   }
 
+  private _closeShortcutCopyMenu = (): void => {
+    if (this._shortcutCopyMenu === null) return;
+    this._shortcutCopyMenu = null;
+    this.renderRoot.querySelector<HTMLElement>("#copy-shortcuts")?.focus();
+  };
+
+  /** "Copy" beside "Add" (the card's _renderCopyShortcuts rebuilt here): pick another activity and take over
+   *  every shortcut of it this activity does not have yet. */
+  private _renderCopyShortcuts(): TemplateResult | typeof nothing {
+    const activityId = this.activityId;
+    if (!this._working || activityId == null) return nothing;
+    const working = this._working;
+    const sources = shortcutCopySources(working, activityId);
+    if (sources.length === 0) return nothing;
+    const open = this._shortcutCopyMenu !== null;
+    const onKeydown = (event: KeyboardEvent) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeShortcutCopyMenu();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option:not(:disabled)");
+    };
+    return html`
+      <span class="shortcut-copy" @keydown=${onKeydown}>
+        <button class="quick-access-add-btn" id="copy-shortcuts" type="button" title=${B.copyShortcutsHeading} aria-label=${B.copyShortcutsButton} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"}
+          @click=${(event: Event) => {
+            if (open) {
+              this._shortcutCopyMenu = null;
+              return;
+            }
+            const root = this.renderRoot;
+            this._shortcutCopyMenu = anchoredListPosition(event.currentTarget as HTMLElement, null, { minWidth: 260, within: this });
+            requestAnimationFrame(() => root.querySelector<HTMLElement>(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
+          }}>${icon(mdiContentCopy)}<span>${B.copyShortcutsButton}</span></button>
+        ${open
+          ? html`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeShortcutCopyMenu} @wheel=${(event: Event) => event.preventDefault()}></button>
+              <div class="macro-picker-menu" id="copy-shortcuts-menu" role="listbox" aria-label=${B.copyShortcutsHeading} style=${this._shortcutCopyMenu ?? ""}>
+                <div class="macro-picker-group">${B.copyShortcutsHeading}</div>
+                ${sources.map((source) => html`
+                  <button class="macro-picker-option" type="button" role="option" aria-selected="false" data-activity=${source.activityId} ?disabled=${source.newCount === 0}
+                    @click=${() => { this._closeShortcutCopyMenu(); this._commit(copyActivityShortcuts(working, activityId, source.activityId)); }}>
+                    <span class="macro-picker-name">${source.activityName}</span>
+                    <span class="macro-picker-chip">${source.newCount === 0 ? B.copyShortcutsNone : B.copyShortcutsCount(source.newCount)}</span>
+                  </button>`)}
+              </div>`
+          : nothing}
+      </span>`;
+  }
+
   private _toggleMacroPicker(id: string, event: Event): void {
     const trigger = event.currentTarget as HTMLElement;
     if (this._macroPicker?.id === id) {
@@ -1182,9 +1240,12 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const items = this._shortcutItems();
     return html`
       <div class="quick-access-section" data-edit-section="quick_access">
-        <div class="quick-access-head">
+        <div class="quick-access-head quick-access-head--inline">
           <div class="quick-access-head-main"><div class="quick-access-title">${B.activityShortcutsTitle}</div><div class="quick-access-sub">${B.activityShortcutsSubSortable}</div></div>
-          <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon(mdiPlus)}<span>${B.addShortcutButton}</span></button></div>
+          <div class="quick-access-head-actions" style="display: inline-flex; gap: 8px;">
+            ${this._renderCopyShortcuts()}
+            <button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon(mdiPlus)}<span>${B.addShortcutButton}</span></button>
+          </div>
         </div>
         ${items.length
           ? html`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderShortcutRow(item, position))}</div></div>`

@@ -204,6 +204,14 @@ export const EDITOR_CSS = css`
     .macro-picker-menu { z-index: 5; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 4px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); }
     .macro-picker-option { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid transparent; background: none; text-align: left; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--sbp-text); border-radius: var(--de-radius-sm); cursor: pointer; }
     .macro-picker-option:hover, .macro-picker-option:focus-visible { border-color: transparent; background: color-mix(in srgb, var(--sbp-text) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    @container (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
     .macro-picker-option[aria-selected="true"] { background: rgba(var(--sbp-accent-rgb), 0.16); }
     .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon.mdi { color: var(--sbp-accent); font-weight: 600; }
     .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--sbp-line); }

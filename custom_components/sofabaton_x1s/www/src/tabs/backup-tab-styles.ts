@@ -998,6 +998,15 @@ export const backupTabStyles = css`
       cursor: pointer;
     }
     .macro-picker-option:hover, .macro-picker-option:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    .quick-access-head--inline .quick-access-head-actions { flex-wrap: nowrap; }
+    @container sofabaton-card (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
     .macro-picker-option[aria-selected="true"] { background: color-mix(in srgb, var(--primary-color) 16%, transparent); }
     .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon { color: var(--primary-color); font-weight: 600; }
     .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--divider-color); }

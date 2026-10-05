@@ -691,6 +691,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     bindingsNoneConfigured: "None customized",
     // Unified "add to shortcuts" flow.
     addShortcutButton: "Add",
+    copyShortcutsButton: "Copy",
+    copyShortcutsHeading: "Copy shortcuts from",
+    copyShortcutsCount: (count: number) => `${count} new`,
+    copyShortcutsNone: "Nothing new",
     addShortcutTitle: "Add to shortcuts",
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",

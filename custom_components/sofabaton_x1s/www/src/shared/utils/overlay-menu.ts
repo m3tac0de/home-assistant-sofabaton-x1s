@@ -42,19 +42,34 @@ export function menuAnchorRect(event: Event): DOMRect | null {
  * above the trigger when the space below is tight and caps the height to
  * the side it opens into.
  */
-export function anchoredListPosition(trigger: HTMLElement, frame: HTMLElement | null): string {
+export function anchoredListPosition(
+  trigger: HTMLElement,
+  frame: HTMLElement | null,
+  /** A menu under a small button: at least this wide, right-aligned to the
+   *  trigger where that fits, and kept inside `within` (the card or view the
+   *  button sits in), so it never opens over whatever lies beside it. */
+  menu: { minWidth: number; within?: HTMLElement | null } | null = null,
+): string {
   const anchor = trigger.getBoundingClientRect();
   const bounds = frame?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const inner = menu?.within?.getBoundingClientRect() ?? bounds;
   const gap = 4;
   const margin = 8;
-  const below = bounds.bottom - anchor.bottom - gap - margin;
-  const above = anchor.top - bounds.top - gap - margin;
+  // The room the list may use: the frame, narrowed to `within`.
+  const top = Math.max(bounds.top, inner.top);
+  const bottom = Math.min(bounds.bottom, inner.bottom);
+  const minX = Math.max(bounds.left, inner.left) + margin;
+  const maxX = Math.min(bounds.right, inner.right) - margin;
+  const below = bottom - anchor.bottom - gap - margin;
+  const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
   const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
   const vertical = openUp
     ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;`
     : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
-  return `position: fixed; ${vertical} left: ${Math.round(anchor.left - bounds.left)}px; width: ${Math.round(anchor.width)}px; max-height: ${Math.round(maxHeight)}px;`;
+  const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
+  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 
 /**

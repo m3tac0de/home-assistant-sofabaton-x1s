@@ -2020,8 +2020,8 @@ test.describe("control panel, views", () => {
         // Another activity with a macro of its own: what "Copy from" offers.
         kind: "activity_backup", complete: true, editable: true, fetched_at: "t",
         device: { device_id: 102, name: "Music", entity_type: "activity" },
-        referenced_source_device_ids: [4],
-        favorite_slots: [],
+        referenced_source_device_ids: [1, 4],
+        favorite_slots: [{ button_id: 3, device_id: 1, command_id: 2, name: "Vol up" }, { button_id: 4, device_id: 1, command_id: 1, name: "Power" }],
         button_bindings: [],
         macros: [{ button_id: 1, name: "Party", steps: [{ device_id: 4, command_id: 1, button_code: 0, duration: 0, delay: 255 }] }, { button_id: 2, name: "Chill", steps: [] }],
         favorites_order: [1],
@@ -2268,6 +2268,25 @@ test.describe("control panel, views", () => {
     await editor.locator("#role-confirm").click();
     await expect(volume.locator(".role-trigger")).toHaveText("Not used");
 
+    // Copy shortcuts: Music has Party, Chill, Vol up and Power. Party was copied before and Power is a shortcut
+    // here already, so two are new; copying them leaves nothing new and nothing doubled.
+    const before = await shortcuts.count();
+    await editor.locator("#copy-shortcuts").click();
+    const copyRow = editor.locator('#copy-shortcuts-menu .macro-picker-option[data-activity="102"]');
+    await expect(copyRow.locator(".macro-picker-name")).toHaveText("Music");
+    await expect(copyRow.locator(".macro-picker-chip")).toHaveText("2 new");
+    await page.screenshot({ path: shot(testInfo, "activity-copy-shortcuts") });
+    await copyRow.click();
+    await expect(editor.locator("#copy-shortcuts-menu")).toHaveCount(0);
+    await expect(shortcuts).toHaveCount(before + 2);
+    await expect(editor.locator('[data-edit-section="quick_access"]')).toContainText("Chill");
+    await expect(editor.locator('[data-edit-section="quick_access"]')).toContainText("Vol up");
+    await editor.locator("#copy-shortcuts").click();
+    await expect(copyRow).toBeDisabled();
+    await expect(copyRow.locator(".macro-picker-chip")).toHaveText("Nothing new");
+    await page.keyboard.press("Escape");
+    await expect(editor.locator("#copy-shortcuts-menu")).toHaveCount(0);
+
     // The draft survives a reload, touched device included.
     await page.reload();
     await expect(editor.locator("#editor-title")).toHaveText("Movie night");
@@ -2281,6 +2300,8 @@ test.describe("control panel, views", () => {
     expect(puts[0].body.devices.map((d) => d.device.device_id)).toEqual([1]);
     expect(puts[0].body.devices[0].input_record.entries.map((e) => e.command_id)).toEqual([20]);
     expect(puts[0].body.macros.find((m) => m.name === "Scene").steps.filter((s) => s.device_id === 1)).toHaveLength(1);
+    expect(puts[0].body.favorite_slots.filter((f) => f.device_id === 1 && f.command_id === 2)).toHaveLength(1);
+    expect(puts[0].body.macros.filter((m) => m.name === "Chill")).toHaveLength(1);
     expect(puts[0].body.macros.find((m) => m.name === "Party").steps).toEqual([{ device_id: 4, command_id: 1, button_code: 0, duration: 0, delay: 255 }]);
     await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();

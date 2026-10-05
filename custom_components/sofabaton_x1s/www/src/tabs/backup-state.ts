@@ -2950,6 +2950,84 @@ export function copyActivityUserMacro(
   return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
+export interface BackupShortcutCopySource {
+  activityId: number;
+  activityName: string;
+  /** How many of its shortcuts this activity does not have yet. */
+  newCount: number;
+}
+
+/** The shortcuts of `sourceActivityId` this activity lacks, in the source's
+ *  display order: a favorite it does not reference yet (same device and
+ *  command), a macro it holds no identical copy of. */
+function missingActivityShortcuts(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  sourceActivityId: number,
+): Array<{ kind: "favorite"; deviceId: number; commandId: number; name: string } | { kind: "macro"; buttonId: number }> {
+  const source = (bundle?.activities ?? [])
+    .find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId));
+  if (!source || Number(activityId) === Number(sourceActivityId)) return [];
+  const copyableMacros = new Set(
+    copyableActivityMacroSummaries(bundle, activityId)
+      .filter((macro) => macro.activityId === Number(sourceActivityId))
+      .map((macro) => macro.buttonId),
+  );
+  const seen = new Set<string>();
+  const missing: ReturnType<typeof missingActivityShortcuts> = [];
+  for (const item of activityQuickAccessItems(bundle, sourceActivityId)) {
+    if (item.kind === "macro") {
+      if (copyableMacros.has(item.buttonId)) missing.push({ kind: "macro", buttonId: item.buttonId });
+      continue;
+    }
+    const deviceId = Number(item.deviceId || 0);
+    const commandId = Number(item.commandId || 0);
+    const key = `${deviceId}:${commandId}`;
+    if (deviceId <= 0 || commandId <= 0 || seen.has(key) || activityHasFavorite(bundle, activityId, deviceId, commandId)) continue;
+    seen.add(key);
+    const slot = (source.favorite_slots ?? []).find((row) => Number(row?.button_id || 0) === item.buttonId);
+    missing.push({ kind: "favorite", deviceId, commandId, name: String(slot?.name || "") });
+  }
+  return missing;
+}
+
+/** The other Activities that have shortcuts, with how many of them are new here. */
+export function shortcutCopySources(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupShortcutCopySource[] {
+  return (bundle?.activities ?? []).flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
+    return [{
+      activityId: sourceId,
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId),
+      newCount: missingActivityShortcuts(bundle, activityId, sourceId).length,
+    }];
+  });
+}
+
+/**
+ * Copy every shortcut of another Activity that this one lacks, appended in
+ * the source's order: favorites by reference, macros verbatim
+ * (copyActivityUserMacro). What is here already is skipped, so nothing
+ * doubles and a second copy is a no-op.
+ */
+export function copyActivityShortcuts(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  sourceActivityId: number,
+): BackupBundlePayload {
+  let next = bundle;
+  for (const item of missingActivityShortcuts(bundle, activityId, sourceActivityId)) {
+    next = item.kind === "macro"
+      ? copyActivityUserMacro(next, activityId, sourceActivityId, item.buttonId)
+      : addBundleActivityFavorite(next, activityId, item.deviceId, item.commandId, item.name);
+  }
+  return next;
+}
+
 // The macro dropdown's option values: a macro id, "__new__", or a copy source.
 export const MACRO_TARGET_NEW_VALUE = "__new__";
 
