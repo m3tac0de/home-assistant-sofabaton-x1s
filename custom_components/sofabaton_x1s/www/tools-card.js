@@ -1146,6 +1146,10 @@ var cardStyles = [secondaryTabStyles, i`
     cursor: pointer;
     pointer-events: auto;
   }
+  /* A phone-width card has no room for it: Sync stays in the editor's header there. */
+  @container sofabaton-card (max-width: 480px) {
+    .card-bottom-dock-action { display: none; }
+  }
   .card-bottom-dock-action:hover { background: color-mix(in srgb, var(--warning-color, #f59e0b) 34%, transparent); }
   .card-bottom-dock-action:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .card-bottom-dock-link {
@@ -12656,24 +12660,20 @@ var WifiEventTargets = class {
     const allowNew = params.allowNew !== false;
     return b2`
       ${events.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S5.wifiEventTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-wifi-event`}
-                class="decoded-field-input"
-                @change=${(event) => {
-      const value = event.target.value;
-      params.onSelChange(
+            ${this.host._binding.renderPicker({
+      // The macro target's picker: both can be created on the spot, so both read alike.
+      id: `${params.idPrefix}-wifi-event`,
+      label: S5.wifiEventTargetLabel,
+      value: sel.mode === "new" ? "__new__" : String(sel.slot ?? ""),
+      current: {
+        label: sel.mode === "new" ? S5.wifiEventTargetCreateNew : events.find((item) => item.slot_index === sel.slot)?.name ?? ""
+      },
+      newLabel: allowNew ? S5.wifiEventTargetCreateNew : null,
+      groups: [{ options: events.map((item) => ({ value: String(item.slot_index), label: item.name })) }],
+      onPick: (value) => params.onSelChange(
         value === "__new__" ? { mode: "new", slot: null, name: sel.name } : { mode: "existing", slot: Number(value), name: sel.name }
-      );
-    }}
-              >
-                ${events.map((item) => b2`
-                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
-                `)}
-                ${allowNew ? b2`<option value="__new__" ?selected=${sel.mode === "new"}>${S5.wifiEventTargetCreateNew}</option>` : A}
-              </select>
-            </div>
+      )
+    })}
             ${allowNew ? A : b2`<div class="decoded-field-helper">${S5.bindingOneNewNote}</div>`}
           ` : params.hidden ? A : b2`<div class="quick-access-empty">${S5.wifiEventNoneYet}</div>`}
       ${sel.mode === "new" ? b2`
@@ -12934,7 +12934,7 @@ var BindingDialogController = class {
       }
       if (bundle) this.applyResolved(bundle, resolved.primary ?? null, resolved.longPress ?? null);
     };
-    /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
+    /** The open picker (one at a time, macro or Wifi Event): its trigger id and the list's fixed position. */
     this.macroPicker = null;
     this.closeMacroPicker = () => {
       const picker = this.macroPicker;
@@ -13333,23 +13333,23 @@ var BindingDialogController = class {
     }
     this.host.requestUpdate();
   }
-  /** The macro picker: "Create new macro" on top, the activity's own macros,
-   *  then the other activities' macros to copy, each row with a chip naming
-   *  its activity. A custom list, since a native select cannot show the chip. */
-  renderMacroSelect(params) {
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const copyable = this.host._copyableMacros();
-    const copied = params.mode === "copy" ? copyable.find((macro) => macro.activityId === params.sourceId && macro.buttonId === params.macroId) : void 0;
+  /**
+   * A select-like picker with its own list, for the targets that can also be
+   * created on the spot (a macro, a Wifi Event): the "create new" row on top,
+   * then the choices in groups, a row optionally with an icon and a chip. A
+   * custom list, since a native select cannot show those. One is open at a
+   * time (`macroPicker`).
+   */
+  renderPicker(params) {
     const open = this.macroPicker?.id === params.id;
-    const value = copied ? macroCopyValue(copied.activityId, copied.buttonId) : params.mode === "new" ? "__new__" : String(params.macroId ?? "");
-    const label = copied ? copied.name : params.mode === "new" ? S5.macroTargetCreateNew : params.own.find((macro) => macro.value === params.macroId)?.label ?? "";
+    const groups = params.groups.filter((group) => group.options.length > 0);
     const option = (optionValue, extraClass, body) => b2`
       <button
         class="macro-picker-option ${extraClass}"
         type="button"
         role="option"
         data-value=${optionValue}
-        aria-selected=${optionValue === value ? "true" : "false"}
+        aria-selected=${optionValue === params.value ? "true" : "false"}
         @click=${() => {
       this.closeMacroPicker();
       params.onPick(optionValue);
@@ -13368,20 +13368,20 @@ var BindingDialogController = class {
     };
     return b2`
       <div class="decoded-field" @keydown=${onKeydown}>
-        <span class="decoded-field-label" id=${`${params.id}-label`}>${S5.macroTargetLabel}</span>
+        <span class="decoded-field-label" id=${`${params.id}-label`}>${params.label}</span>
         <button
           id=${params.id}
           class="decoded-field-input macro-picker-trigger"
           type="button"
-          data-value=${value}
+          data-value=${params.value}
           aria-haspopup="listbox"
           aria-expanded=${open ? "true" : "false"}
           aria-labelledby=${`${params.id}-label ${params.id}`}
           @click=${(event) => this.toggleMacroPicker(params.id, event)}
         >
-          ${copied ? b2`<ha-icon class="macro-picker-icon" icon="mdi:content-copy"></ha-icon>` : A}
-          <span class="macro-picker-name">${label}</span>
-          ${copied ? b2`<span class="macro-picker-chip">${copied.activityName}</span>` : A}
+          ${params.current.icon ? b2`<ha-icon class="macro-picker-icon" icon=${params.current.icon}></ha-icon>` : A}
+          <span class="macro-picker-name">${params.current.label}</span>
+          ${params.current.chip ? b2`<span class="macro-picker-chip">${params.current.chip}</span>` : A}
           <ha-icon class="macro-picker-icon" icon="mdi:chevron-down"></ha-icon>
         </button>
         ${open ? b2`
@@ -13399,26 +13399,61 @@ var BindingDialogController = class {
                 aria-labelledby=${`${params.id}-label`}
                 style=${this.macroPicker?.style ?? ""}
               >
-                ${params.allowNew ? b2`
+                ${params.newLabel ? b2`
                       ${option("__new__", "macro-picker-option--new", b2`
                         <ha-icon class="macro-picker-icon" icon="mdi:plus"></ha-icon>
-                        <span class="macro-picker-name">${S5.macroTargetCreateNew}</span>
+                        <span class="macro-picker-name">${params.newLabel}</span>
                       `)}
-                      ${params.own.length || copyable.length ? b2`<div class="macro-picker-sep"></div>` : A}
+                      ${groups.length ? b2`<div class="macro-picker-sep"></div>` : A}
                     ` : A}
-                ${params.own.length && copyable.length ? b2`<div class="macro-picker-group">${S5.macroTargetOwnGroup}</div>` : A}
-                ${params.own.map((macro) => option(String(macro.value), "", b2`<span class="macro-picker-name">${macro.label}</span>`))}
-                ${copyable.length ? b2`<div class="macro-picker-group">${S5.macroTargetCopyGroup}</div>` : A}
-                ${copyable.map((macro) => option(macroCopyValue(macro.activityId, macro.buttonId), "", b2`
-                  <ha-icon class="macro-picker-icon" icon="mdi:content-copy"></ha-icon>
-                  <span class="macro-picker-name">${macro.name}</span>
-                  <span class="macro-picker-chip">${macro.activityName}</span>
-                `))}
+                ${groups.map((group) => b2`
+                  ${group.heading ? b2`<div class="macro-picker-group">${group.heading}</div>` : A}
+                  ${group.options.map((item) => option(item.value, "", b2`
+                    ${item.icon ? b2`<ha-icon class="macro-picker-icon" icon=${item.icon}></ha-icon>` : A}
+                    <span class="macro-picker-name">${item.label}</span>
+                    ${item.chip ? b2`<span class="macro-picker-chip">${item.chip}</span>` : A}
+                  `))}
+                `)}
               </div>
             ` : A}
-        ${copied ? b2`<div class="decoded-field-helper">${S5.macroTargetCopyNote(copied.commandStepCount, copied.activityName)}</div>` : A}
+        ${params.helper ? b2`<div class="decoded-field-helper">${params.helper}</div>` : A}
       </div>
     `;
+  }
+  /** The macro picker: "Create new macro" on top, the activity's own macros,
+   *  then the other activities' macros to copy, each row with a chip naming
+   *  its activity. */
+  renderMacroSelect(params) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const copyable = this.host._copyableMacros();
+    const copied = params.mode === "copy" ? copyable.find((macro) => macro.activityId === params.sourceId && macro.buttonId === params.macroId) : void 0;
+    const copyIcon = "mdi:content-copy";
+    return this.renderPicker({
+      id: params.id,
+      label: S5.macroTargetLabel,
+      value: copied ? macroCopyValue(copied.activityId, copied.buttonId) : params.mode === "new" ? "__new__" : String(params.macroId ?? ""),
+      current: copied ? { label: copied.name, icon: copyIcon, chip: copied.activityName } : {
+        label: params.mode === "new" ? S5.macroTargetCreateNew : params.own.find((macro) => macro.value === params.macroId)?.label ?? ""
+      },
+      newLabel: params.allowNew ? S5.macroTargetCreateNew : null,
+      groups: [
+        {
+          heading: copyable.length ? S5.macroTargetOwnGroup : void 0,
+          options: params.own.map((macro) => ({ value: String(macro.value), label: macro.label }))
+        },
+        {
+          heading: S5.macroTargetCopyGroup,
+          options: copyable.map((macro) => ({
+            value: macroCopyValue(macro.activityId, macro.buttonId),
+            label: macro.name,
+            icon: copyIcon,
+            chip: macro.activityName
+          }))
+        }
+      ],
+      helper: copied ? S5.macroTargetCopyNote(copied.commandStepCount, copied.activityName) : void 0,
+      onPick: params.onPick
+    });
   }
   renderMacroTargetFields(params) {
     const S5 = TOOLS_CARD_STRINGS.backup;
@@ -13647,6 +13682,7 @@ var MacroStepEditorController = class {
     };
     this.closeDialog = () => {
       this.dialogOpen = false;
+      this.host._binding.macroPicker = null;
       this.editIndex = null;
       this.kind = "command";
       this.deviceId = null;
@@ -14182,6 +14218,7 @@ var SofabatonEditDetailView = class extends i4 {
     this.irLearn = null;
     this._learn = new IrLearnController(this);
     this._payload = new PayloadDialogController(this);
+    // Annotated: the controllers' host types name each other (the pickers), which an inferred type cannot resolve.
     this._events = new WifiEventTargets(this);
     this._binding = new BindingDialogController(this);
     this._steps = new MacroStepEditorController(this);

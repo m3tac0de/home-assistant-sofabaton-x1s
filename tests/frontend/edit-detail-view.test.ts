@@ -1569,8 +1569,11 @@ test("the Add shortcut dialog shows no empty Wifi Event row once every event is 
   assert.ok(text.includes("sb-add-fav-wifi-event-name"));
 
   // A second event that is not a shortcut yet brings the picker back with only that one.
+  // (The picker lists its rows while it is open.)
   element._events.list = [wifiEvent(2, "Lights off"), wifiEvent(5, "Doorbell")];
+  element._binding.macroPicker = { id: "sb-add-fav-wifi-event", style: "", root: {} as never };
   const picker = templateText(element._renderAddFavoriteDialog());
+  element._binding.macroPicker = null;
   assert.ok(picker.includes("Doorbell"));
   assert.ok(!picker.includes("Lights off"));
 

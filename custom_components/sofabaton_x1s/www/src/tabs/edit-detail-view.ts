@@ -211,9 +211,10 @@ export class SofabatonEditDetailView extends LitElement {
   irLearn: IrLearnHost | null = null;
   readonly _learn = new IrLearnController(this);
   readonly _payload = new PayloadDialogController(this);
-  readonly _events = new WifiEventTargets(this);
-  readonly _binding = new BindingDialogController(this);
-  readonly _steps = new MacroStepEditorController(this);
+  // Annotated: the controllers' host types name each other (the pickers), which an inferred type cannot resolve.
+  readonly _events: WifiEventTargets = new WifiEventTargets(this);
+  readonly _binding: BindingDialogController = new BindingDialogController(this);
+  readonly _steps: MacroStepEditorController = new MacroStepEditorController(this);
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;

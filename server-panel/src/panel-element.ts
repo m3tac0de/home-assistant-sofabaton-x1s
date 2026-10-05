@@ -236,6 +236,8 @@ export class SofabatonServerPanel extends LitElement {
 
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
+        /* A phone's dock has no room for it: Sync stays in the editor's header there. */
+        #dock-sync { display: none; }
         .brand-caption { display: none; }
         .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }

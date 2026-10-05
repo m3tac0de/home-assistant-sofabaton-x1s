@@ -237,6 +237,10 @@ export const cardStyles = [secondaryTabStyles, css`
     cursor: pointer;
     pointer-events: auto;
   }
+  /* A phone-width card has no room for it: Sync stays in the editor's header there. */
+  @container sofabaton-card (max-width: 480px) {
+    .card-bottom-dock-action { display: none; }
+  }
   .card-bottom-dock-action:hover { background: color-mix(in srgb, var(--warning-color, #f59e0b) 34%, transparent); }
   .card-bottom-dock-action:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .card-bottom-dock-link {

@@ -44,7 +44,8 @@ const POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
 export type MacroStepEditorHost = ReactiveControllerHost &
   Pick<
     SofabatonEditDetailView,
-    "_bindingsView"
+    "_binding"
+    | "_bindingsView"
     | "_captureCurrentScrollPosition"
     | "_commitEditBundleEdit"
     | "_editRenameDialogDraft"
@@ -249,6 +250,7 @@ export class MacroStepEditorController implements ReactiveController {
 
   closeDialog = () => {
     this.dialogOpen = false;
+    this.host._binding.macroPicker = null;
     this.editIndex = null;
     this.kind = "command";
     this.deviceId = null;

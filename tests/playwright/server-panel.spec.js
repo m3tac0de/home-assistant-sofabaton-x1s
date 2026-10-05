@@ -2149,7 +2149,10 @@ test.describe("control panel, views", () => {
     await expect(steps).toHaveCount(1);
     await expect(steps.nth(0).locator(".quick-access-label")).toHaveText("TV · Up");
     // Deep in the macro's step view the dock offers the editor's Sync: no walk back up to the header.
-    await expect(page.locator("#dock-sync")).toHaveText("Sync");
+    // (Hidden on a phone: the dock has no room there.)
+    const phone = testInfo.project.name.includes("phone");
+    if (phone) await expect(page.locator("#dock-sync")).toBeHidden();
+    else await expect(page.locator("#dock-sync")).toHaveText("Sync");
     await expect(steps.nth(0).locator(".quick-access-meta")).toHaveText("Hold 1s");
     await editor.locator("#macro-rename").click();
     await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename macro");
@@ -2293,7 +2296,7 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#member-summary")).toContainText("TV (HDMI 1)");
 
     // One Sync: the activity element with If-Match, plus the device element the input pick touched.
-    await page.locator("#dock-sync").click();
+    await (phone ? editor.locator("#editor-sync") : page.locator("#dock-sync")).click();
     await expect.poll(() => puts.length).toBe(1);
     expect(puts[0].ifMatch).toBe('"snap-1"');
     expect(puts[0].body.device.name).toBe("Movie night");
@@ -3494,7 +3497,7 @@ test.describe("control panel, wifi commands", () => {
     await expect(view(page).locator(".device-card-name")).toHaveText("Lamps");
   });
 
-  test("a button taken from another Wifi Device: the dialog names it, the sync clears it there too", async ({ page }) => {
+  test("a button taken from another Wifi Device: the dialog names it, the sync clears it there too", async ({ page }, testInfo) => {
     const blinds = wifiDevice({ key: "0badf00d", device_id: 8, spec: { name: "Blinds", slots: slots({ 1: "Down" }, { 1: { favorite: true, button: 185, long_press: true, activities: [102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
     const { calls } = await wifiServer(page, [wifiDevice(), blinds]);
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
@@ -3505,8 +3508,8 @@ test.describe("control panel, wifi commands", () => {
     await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
     await expect(dialog.locator("#wifi-slot-button-hint")).toHaveText('Replaces "Down" from Blinds');
     await dialog.locator("#wifi-slot-save").click();
-    // The dock's Sync is the header's.
-    await page.locator("#dock-sync").click();
+    // The dock's Sync is the header's (a phone shows the header's only).
+    await (testInfo.project.name.includes("phone") ? detail.locator("#wifi-sync") : page.locator("#dock-sync")).click();
     await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(2);
     const updates = calls.filter((c) => c.key === "update");
     expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d"]);             // this device first, then the one that lost the button

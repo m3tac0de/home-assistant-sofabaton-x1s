@@ -17,7 +17,8 @@ import type { SofabatonEditDetailView } from "../edit-detail-view";
 export type WifiEventTargetsHost = ReactiveControllerHost &
   Pick<
     SofabatonEditDetailView,
-    "bundle"
+    "_binding"
+    | "bundle"
     | "mode"
     | "wifiEvents"
   >;
@@ -128,28 +129,24 @@ export class WifiEventTargets implements ReactiveController {
     return html`
       ${events.length
         ? html`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S.wifiEventTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-wifi-event`}
-                class="decoded-field-input"
-                @change=${(event: Event) => {
-                  const value = (event.target as HTMLSelectElement).value;
-                  params.onSelChange(
-                    value === "__new__"
-                      ? { mode: "new", slot: null, name: sel.name }
-                      : { mode: "existing", slot: Number(value), name: sel.name },
-                  );
-                }}
-              >
-                ${events.map((item) => html`
-                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
-                `)}
-                ${allowNew
-                  ? html`<option value="__new__" ?selected=${sel.mode === "new"}>${S.wifiEventTargetCreateNew}</option>`
-                  : nothing}
-              </select>
-            </div>
+            ${this.host._binding.renderPicker({
+              // The macro target's picker: both can be created on the spot, so both read alike.
+              id: `${params.idPrefix}-wifi-event`,
+              label: S.wifiEventTargetLabel,
+              value: sel.mode === "new" ? "__new__" : String(sel.slot ?? ""),
+              current: {
+                label: sel.mode === "new"
+                  ? S.wifiEventTargetCreateNew
+                  : events.find((item) => item.slot_index === sel.slot)?.name ?? "",
+              },
+              newLabel: allowNew ? S.wifiEventTargetCreateNew : null,
+              groups: [{ options: events.map((item) => ({ value: String(item.slot_index), label: item.name })) }],
+              onPick: (value: string) => params.onSelChange(
+                value === "__new__"
+                  ? { mode: "new", slot: null, name: sel.name }
+                  : { mode: "existing", slot: Number(value), name: sel.name },
+              ),
+            })}
             ${allowNew ? nothing : html`<div class="decoded-field-helper">${S.bindingOneNewNote}</div>`}
           `
         : params.hidden
