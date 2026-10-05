@@ -273,14 +273,15 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, v
 }
 
 export interface Connectivity {
-  hub: boolean;
-  app: boolean;
+  /** null means the server cannot currently confirm the connection. */
+  hub: boolean | null;
+  app: boolean | null;
 }
 
 /** The dock's Hub/App pill. Both halves go dark while the server is unreachable:
  *  the last status is not a link anyone can use. */
 export function connectivityFor(runtime: HubRuntime | null, reachable = true): Connectivity {
-  if (!reachable) return { hub: false, app: false };
+  if (!reachable) return { hub: null, app: null };
   const status = runtime?.hub.status ?? null;
   return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }

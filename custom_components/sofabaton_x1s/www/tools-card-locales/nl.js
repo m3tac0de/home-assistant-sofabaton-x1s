@@ -578,7 +578,7 @@ var TOOLS_CARD_STRINGS_NL = {
     addShortcutButton: "Toevoegen",
     addShortcutTitle: "Aan snelkoppelingen toevoegen",
     addShortcutKindLabel: "Type",
-    shortcutKindCommand: "Apparaatcommando",
+    shortcutKindCommand: "Commando",
     shortcutKindAction: "Macro",
     macroTargetLabel: "Macro",
     macroTargetOwnGroup: "In deze activiteit",

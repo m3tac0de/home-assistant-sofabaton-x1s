@@ -10023,7 +10023,7 @@ function copyableActivityMacroSummaries(bundle, activityId) {
   return activities.flatMap((entry) => {
     const sourceId = Number(entry?.device?.device_id || 0);
     if (sourceId <= 0 || sourceId === Number(activityId)) return [];
-    const activityName = String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId);
+    const activityName = String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId);
     return activityUserMacroSummaries(bundle, sourceId).filter((macro) => !own.has(signature(
       (entry.macros ?? []).find((row) => Number(row?.button_id || 0) === macro.buttonId)
     ))).map((macro) => ({ ...macro, activityId: sourceId, activityName }));
@@ -10073,7 +10073,7 @@ function shortcutCopySources(bundle, activityId) {
     if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
     return [{
       activityId: sourceId,
-      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId),
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId),
       newCount: missingActivityShortcuts(bundle, activityId, sourceId).length
     }];
   });
@@ -13585,8 +13585,8 @@ var BindingDialogController = class {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            <section class="press-card" data-press="short">
-              <div class="press-card-head"><ha-icon icon="mdi:gesture-tap"></ha-icon><span class="press-card-title">${S5.bindingShortPress}</span></div>
+            <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+              <div class="press-card-head"><ha-icon icon="mdi:gesture-tap"></ha-icon><span class="press-card-title" id="sb-binding-short-press-label">${S5.bindingShortPress}</span></div>
               ${kindSegments("sb-binding-kind", targetKind, this.legKinds(longPressNew), this.handleTargetKindChange)}
               ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this.host._events.renderTargetFields({
       idPrefix: "sb-binding",
@@ -13598,9 +13598,9 @@ var BindingDialogController = class {
       }
     }) : actionFields}
             </section>
-            <section class="press-card" data-press="long">
+            <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
               <div class="press-card-head">
-                <ha-icon icon="mdi:gesture-tap-hold"></ha-icon><span class="press-card-title">${S5.bindingLongPress}</span>
+                <ha-icon icon="mdi:gesture-tap-hold"></ha-icon><span class="press-card-title" id="sb-binding-long-press-label">${S5.bindingLongPress}</span>
                 <ha-switch
                   aria-label=${S5.bindingEnableLongPress}
                   .checked=${this.longPressEnabled}

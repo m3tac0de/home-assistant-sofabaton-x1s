@@ -11734,96 +11734,6 @@ var i7 = e4(class extends i5 {
   }
 });
 
-// server-panel/src/components/bottom-dock.ts
-function renderBottomDock(params) {
-  const { model, message } = params;
-  let tone = "";
-  let center;
-  let actions = A;
-  const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
-  const syncAction = params.onSync ? b2`<button class="small primary dock-action" id="dock-sync" type="button" @click=${params.onSync}>Sync</button>` : A;
-  const confirmActions = b2`
-    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
-    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
-  if (model.kind === "running") {
-    tone = "dock--running";
-    center = status(model.text);
-  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
-    tone = message.ok ? "dock--message" : "dock--error";
-    center = status(message.text, "hubs-msg");
-  } else if (model.kind === "notice") {
-    const notice = model.notice;
-    tone = `dock--${notice.tone}`;
-    const full = notice.label;
-    const body = b2`${notice.label}`;
-    if (notice.detail && params.onShowDetails) {
-      actions = b2`<button class="small dock-action" id="dock-details" type="button"
-        @click=${() => params.onShowDetails?.(notice.label, notice.detail)}>Details</button>`;
-    }
-    center = notice.sticky ? b2`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
-          @click=${params.onDismiss}
-          @keydown=${(event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        params.onDismiss();
-      }
-    }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
-  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
-    tone = "dock--warn";
-    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
-    actions = confirmActions;
-  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
-    tone = "dock--warn";
-    center = status("Discard your unsaved changes? The hub is not changed.");
-    actions = confirmActions;
-  } else if (model.kind === "apply_stopped") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = b2`
-      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
-      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
-  } else if (model.kind === "draft_stale") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = b2`
-      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "dirty") {
-    tone = "dock--dirty";
-    center = status(model.text);
-    actions = b2`${syncAction}<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
-    tone = "dock--dirty";
-    center = status(model.text);
-    actions = syncAction;
-  } else if (model.kind === "gate") {
-    tone = "dock--gate";
-    center = status(model.text);
-  } else if (params.docLink) {
-    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
-  } else {
-    center = b2``;
-  }
-  const progress = model.kind === "running" ? model.progress : null;
-  const press = params.press;
-  return b2`
-    <footer class="dock ${tone}" id="bottom-dock">
-      <div class="dock-inner">
-        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
-        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
-        <div class="dock-center" role="status" aria-live="polite">${center}</div>
-        <div class="dock-right">
-          ${actions !== A ? b2`<div class="dock-actions">${actions}</div>` : A}
-          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
-                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
-                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
-              </div>` : A}
-        </div>
-      </div>
-    </footer>
-  `;
-}
-
 // server-panel/src/panel-route.ts
 var HUB_TABS = ["hub", "wifi", "backup", "remote"];
 var SUBTABS = {
@@ -12032,6 +11942,98 @@ function parseHeaderLines(text) {
     if (name) out[name] = line.slice(i8 + 1).trim();
   }
   return out;
+}
+
+// server-panel/src/components/bottom-dock.ts
+function renderBottomDock(params) {
+  const { model, message } = params;
+  let tone = "";
+  let center;
+  let actions = A;
+  const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const syncAction = params.onSync ? b2`<button class="small primary dock-action" id="dock-sync" type="button" @click=${params.onSync}>Sync</button>` : A;
+  const confirmActions = b2`
+    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
+    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
+  if (model.kind === "running") {
+    tone = "dock--running";
+    center = status(model.text);
+  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
+    tone = message.ok ? "dock--message" : "dock--error";
+    center = status(message.text, "hubs-msg");
+  } else if (model.kind === "notice") {
+    const notice = model.notice;
+    tone = `dock--${notice.tone}`;
+    const full = notice.label;
+    const body = b2`${notice.label}`;
+    if (notice.detail && params.onShowDetails) {
+      actions = b2`<button class="small dock-action" id="dock-details" type="button"
+        @click=${() => params.onShowDetails?.(notice.label, notice.detail)}>Details</button>`;
+    }
+    center = notice.sticky ? b2`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
+          @click=${params.onDismiss}
+          @keydown=${(event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        params.onDismiss();
+      }
+    }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
+  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
+    tone = "dock--warn";
+    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
+    actions = confirmActions;
+  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+    tone = "dock--warn";
+    center = status("Discard your unsaved changes? The hub is not changed.");
+    actions = confirmActions;
+  } else if (model.kind === "apply_stopped") {
+    tone = "dock--warn";
+    center = status(model.text);
+    actions = b2`
+      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
+      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
+  } else if (model.kind === "draft_stale") {
+    tone = "dock--warn";
+    center = status(model.text);
+    actions = b2`
+      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
+      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "dirty") {
+    tone = "dock--dirty";
+    center = status(model.text);
+    actions = b2`${syncAction}<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
+    tone = "dock--dirty";
+    center = status(model.text);
+    actions = syncAction;
+  } else if (model.kind === "gate") {
+    tone = "dock--gate";
+    center = status(model.text);
+  } else if (params.docLink) {
+    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
+  } else {
+    center = b2``;
+  }
+  const progress = model.kind === "running" ? model.progress : null;
+  const press = params.press;
+  const hubStatus = params.connectivity.hub === null ? LINK_DOWN_STATE.text : params.connectivity.hub ? "hub connected" : "hub not connected";
+  const appStatus = params.connectivity.app === null ? LINK_DOWN_STATE.text : params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected";
+  return b2`
+    <footer class="dock ${tone}" id="bottom-dock">
+      <div class="dock-inner">
+        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
+        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
+        <div class="dock-center" role="status" aria-live="polite">${center}</div>
+        <div class="dock-right">
+          ${actions !== A ? b2`<div class="dock-actions">${actions}</div>` : A}
+          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label=${`Connectivity. Hub: ${hubStatus}. App: ${appStatus}.`}>
+                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${hubStatus}>Hub</span>
+                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${appStatus}>App</span>
+              </div>` : A}
+        </div>
+      </div>
+    </footer>
+  `;
 }
 
 // server-panel/src/components/hub-picker.ts
@@ -12390,7 +12392,7 @@ function dockModel(snapshot, runtime, view = {}) {
   return { kind: "idle" };
 }
 function connectivityFor(runtime, reachable = true) {
-  if (!reachable) return { hub: false, app: false };
+  if (!reachable) return { hub: null, app: null };
   const status = runtime?.hub.status ?? null;
   return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }
@@ -17771,7 +17773,7 @@ function copyableActivityMacroSummaries(bundle, activityId) {
   return activities.flatMap((entry) => {
     const sourceId = Number(entry?.device?.device_id || 0);
     if (sourceId <= 0 || sourceId === Number(activityId)) return [];
-    const activityName = String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId);
+    const activityName = String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId);
     return activityUserMacroSummaries(bundle, sourceId).filter((macro) => !own.has(signature(
       (entry.macros ?? []).find((row) => Number(row?.button_id || 0) === macro.buttonId)
     ))).map((macro) => ({ ...macro, activityId: sourceId, activityName }));
@@ -17821,7 +17823,7 @@ function shortcutCopySources(bundle, activityId) {
     if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
     return [{
       activityId: sourceId,
-      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId),
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId),
       newCount: missingActivityShortcuts(bundle, activityId, sourceId).length
     }];
   });
@@ -22334,14 +22336,14 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         ${this._select(`${idPrefix}-command`, B2.bindingCommand, commandId, this._commandOptions(deviceId), B2.bindingNoCommands, onCommand)}
       </div>`;
     return this._dialog("binding-dialog", title, this._closeBinding, b2`
-      <section class="press-card" data-press="short">
-        <div class="press-card-head">${icon4(mdiGestureTap)}<span class="press-card-title">${B2.bindingShortPress}</span></div>
+      <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+        <div class="press-card-head">${icon4(mdiGestureTap)}<span class="press-card-title" id="sb-binding-short-press-label">${B2.bindingShortPress}</span></div>
         ${this._kindSegments("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
         ${dialog.kind === "command" ? commandPair("sb-binding", dialog.deviceId, dialog.commandId, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }), (value) => set({ commandId: value })) : primaryIsWifiEvent ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
       </section>
-      <section class="press-card" data-press="long">
+      <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
         <label class="press-card-head">
-          ${icon4(mdiGestureTapHold)}<span class="press-card-title">${B2.bindingLongPress}</span>
+          ${icon4(mdiGestureTapHold)}<span class="press-card-title" id="sb-binding-long-press-label">${B2.bindingLongPress}</span>
           <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${B2.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event) => this._toggleBindingLongPress(event.currentTarget.checked)} />
         </label>
         ${dialog.longPress ? primaryIsWifiEvent ? b2`<div class="decoded-field-helper">${P3.wifiEventLongPressNote}</div>` : b2`${this._kindSegments("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
@@ -23478,15 +23480,15 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
             <button class="dialog-close" type="button" aria-label=${S5.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button>
           </div>
           <div class="dialog-body">
-            <section class="press-card" data-press="short">
-              <div class="press-card-head">${icon4(mdiGestureTap)}<span class="press-card-title">${S5.bindingShortPress}</span></div>
+            <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+              <div class="press-card-head">${icon4(mdiGestureTap)}<span class="press-card-title" id="sb-binding-short-press-label">${S5.bindingShortPress}</span></div>
               ${select("sb-binding-command", S5.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, commandId: value, error: "" };
     })}
             </section>
-            <section class="press-card" data-press="long">
+            <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
               <label class="press-card-head">
-                ${icon4(mdiGestureTapHold)}<span class="press-card-title">${S5.bindingLongPress}</span>
+                ${icon4(mdiGestureTapHold)}<span class="press-card-title" id="sb-binding-long-press-label">${S5.bindingLongPress}</span>
                 <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${S5.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event) => {
       this._binding = { ...dialog, longPress: event.currentTarget.checked };
     }} />

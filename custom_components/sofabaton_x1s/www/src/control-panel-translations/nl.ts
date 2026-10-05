@@ -285,7 +285,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     roleConfirmReplace: "Vervangen", roleConfirmCancel: "Annuleren", customizeButtonsToggle: "Afzonderlijke knoppen aanpassen", bindingsViewTitle: "Afzonderlijke knoppen",
     bindingsConfiguredCount: (count: number) => `${count} geconfigureerd`, bindingsNoneConfigured: "Geen afzonderlijke knoppen aangepast", copyShortcutsButton: "Kopiëren", copyShortcutsHeading: "Snelkoppelingen kopiëren uit", copyShortcutsCount: (count: number) => `${count} nieuw`, copyShortcutsNone: "Niets nieuws",
     addShortcutButton: "Toevoegen", addShortcutTitle: "Aan snelkoppelingen toevoegen",
-    addShortcutKindLabel: "Type", shortcutKindCommand: "Apparaatcommando", shortcutKindAction: "Macro", macroTargetLabel: "Macro", macroTargetOwnGroup: "In deze activiteit", macroTargetCopyGroup: "Kopiëren uit een andere activiteit",
+    addShortcutKindLabel: "Type", shortcutKindCommand: "Commando", shortcutKindAction: "Macro", macroTargetLabel: "Macro", macroTargetOwnGroup: "In deze activiteit", macroTargetCopyGroup: "Kopiëren uit een andere activiteit",
     macroTargetCopyNote: (steps: number, activity: string) => `Wordt ongewijzigd gekopieerd uit ${activity}, met ${steps === 1 ? "1 stap" : `${steps} stappen`}.`,
     macroTargetCreateNew: "Nieuwe macro maken",
     bindingOneNewNote: "Voor de knoptoewijzingen voor kort en lang indrukken samen kun je maar één nieuwe macro of één nieuw Wifi-event aanmaken. Kies hier een bestaande macro of een bestaand Wifi-event.",

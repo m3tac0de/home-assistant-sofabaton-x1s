@@ -1058,8 +1058,8 @@ export class BindingDialogController implements ReactiveController {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            <section class="press-card" data-press="short">
-              <div class="press-card-head"><ha-icon icon="mdi:gesture-tap"></ha-icon><span class="press-card-title">${S.bindingShortPress}</span></div>
+            <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+              <div class="press-card-head"><ha-icon icon="mdi:gesture-tap"></ha-icon><span class="press-card-title" id="sb-binding-short-press-label">${S.bindingShortPress}</span></div>
               ${kindSegments("sb-binding-kind", targetKind, this.legKinds(longPressNew), this.handleTargetKindChange)}
               ${targetKind === "command"
                 ? commandFields
@@ -1075,9 +1075,9 @@ export class BindingDialogController implements ReactiveController {
                     })
                   : actionFields}
             </section>
-            <section class="press-card" data-press="long">
+            <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
               <div class="press-card-head">
-                <ha-icon icon="mdi:gesture-tap-hold"></ha-icon><span class="press-card-title">${S.bindingLongPress}</span>
+                <ha-icon icon="mdi:gesture-tap-hold"></ha-icon><span class="press-card-title" id="sb-binding-long-press-label">${S.bindingLongPress}</span>
                 <ha-switch
                   aria-label=${S.bindingEnableLongPress}
                   .checked=${this.longPressEnabled}

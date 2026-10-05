@@ -1114,6 +1114,10 @@ test("copyableActivityMacroSummaries lists the other activities' user macros, ne
     { buttonId: 1, name: "Combo", commandStepCount: 2, activityId: 101, activityName: "Watch TV" },
   ]);
   assert.deepEqual(copyableActivityMacroSummaries(b, 101), []);
+  // Imported backups can lack source names; both pickers still identify the source as an activity.
+  b.activities[0].device!.name = " ";
+  assert.equal(copyableActivityMacroSummaries(b, 102)[0].activityName, "Activity 101");
+  assert.equal(shortcutCopySources(b, 102)[0].activityName, "Activity 101");
 });
 
 test("copyActivityUserMacro copies name and steps verbatim to the next slot and brings the new devices in", () => {

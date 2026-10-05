@@ -1297,13 +1297,13 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             <button class="dialog-close" type="button" aria-label=${S.bindingCancel} @click=${this._closeBinding}>${icon(mdiClose)}</button>
           </div>
           <div class="dialog-body">
-            <section class="press-card" data-press="short">
-              <div class="press-card-head">${icon(mdiGestureTap)}<span class="press-card-title">${S.bindingShortPress}</span></div>
+            <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+              <div class="press-card-head">${icon(mdiGestureTap)}<span class="press-card-title" id="sb-binding-short-press-label">${S.bindingShortPress}</span></div>
               ${select("sb-binding-command", S.bindingCommand, dialog.commandId, commands.map((c) => ({ value: c.commandId, label: c.label })), S.bindingNoCommands, (value) => { this._binding = { ...dialog, commandId: value, error: "" }; })}
             </section>
-            <section class="press-card" data-press="long">
+            <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
               <label class="press-card-head">
-                ${icon(mdiGestureTapHold)}<span class="press-card-title">${S.bindingLongPress}</span>
+                ${icon(mdiGestureTapHold)}<span class="press-card-title" id="sb-binding-long-press-label">${S.bindingLongPress}</span>
                 <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${S.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event: Event) => { this._binding = { ...dialog, longPress: (event.currentTarget as HTMLInputElement).checked }; }} />
               </label>
               ${dialog.longPress

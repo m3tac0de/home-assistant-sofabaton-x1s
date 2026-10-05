@@ -2912,7 +2912,7 @@ export function copyableActivityMacroSummaries(
     const sourceId = Number(entry?.device?.device_id || 0);
     if (sourceId <= 0 || sourceId === Number(activityId)) return [];
     const activityName = String(entry?.device?.name || "").trim()
-      || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId);
+      || TOOLS_CARD_STRINGS.common.activityFallback(sourceId);
     return activityUserMacroSummaries(bundle, sourceId)
       .filter((macro) => !own.has(signature(
         (entry.macros ?? []).find((row) => Number(row?.button_id || 0) === macro.buttonId),
@@ -3002,7 +3002,7 @@ export function shortcutCopySources(
     if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
     return [{
       activityId: sourceId,
-      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.deviceFallback(sourceId),
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId),
       newCount: missingActivityShortcuts(bundle, activityId, sourceId).length,
     }];
   });

@@ -15,6 +15,7 @@ import { keyed } from "lit/directives/keyed.js";
 
 import type { Connectivity, DockModel } from "../panel-selectors";
 import type { PressEvent } from "../panel-store";
+import { LINK_DOWN_STATE } from "../panel-state";
 
 export interface DockLink {
   href: string;
@@ -119,6 +120,8 @@ export function renderBottomDock(params: {
   }
   const progress = model.kind === "running" ? model.progress : null;
   const press = params.press;
+  const hubStatus = params.connectivity.hub === null ? LINK_DOWN_STATE.text : params.connectivity.hub ? "hub connected" : "hub not connected";
+  const appStatus = params.connectivity.app === null ? LINK_DOWN_STATE.text : params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected";
   return html`
     <footer class="dock ${tone}" id="bottom-dock">
       <div class="dock-inner">
@@ -132,9 +135,9 @@ export function renderBottomDock(params: {
         <div class="dock-right">
           ${actions !== nothing ? html`<div class="dock-actions">${actions}</div>` : nothing}
           ${params.hasHub
-            ? html`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
-                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
-                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
+            ? html`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label=${`Connectivity. Hub: ${hubStatus}. App: ${appStatus}.`}>
+                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${hubStatus}>Hub</span>
+                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${appStatus}>App</span>
               </div>`
             : nothing}
         </div>

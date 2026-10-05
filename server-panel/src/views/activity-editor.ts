@@ -1589,8 +1589,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
         ${this._select(`${idPrefix}-command`, B.bindingCommand, commandId, this._commandOptions(deviceId), B.bindingNoCommands, onCommand)}
       </div>`;
     return this._dialog("binding-dialog", title, this._closeBinding, html`
-      <section class="press-card" data-press="short">
-        <div class="press-card-head">${icon(mdiGestureTap)}<span class="press-card-title">${B.bindingShortPress}</span></div>
+      <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+        <div class="press-card-head">${icon(mdiGestureTap)}<span class="press-card-title" id="sb-binding-short-press-label">${B.bindingShortPress}</span></div>
         ${this._kindSegments("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
         ${dialog.kind === "command"
           ? commandPair("sb-binding", dialog.deviceId, dialog.commandId, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }), (value) => set({ commandId: value }))
@@ -1598,9 +1598,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot }))
             : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
       </section>
-      <section class="press-card" data-press="long">
+      <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
         <label class="press-card-head">
-          ${icon(mdiGestureTapHold)}<span class="press-card-title">${B.bindingLongPress}</span>
+          ${icon(mdiGestureTapHold)}<span class="press-card-title" id="sb-binding-long-press-label">${B.bindingLongPress}</span>
           <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${B.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event: Event) => this._toggleBindingLongPress((event.currentTarget as HTMLInputElement).checked)} />
         </label>
         ${dialog.longPress

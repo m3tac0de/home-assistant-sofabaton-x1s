@@ -953,9 +953,13 @@ test.describe("control panel, shell", () => {
     await page.route(`**${API}/hubs`, (route) => route.abort("connectionrefused"));
     await expect(page.locator("#blocked-scrim")).toContainText("The server is not answering", { timeout: 15_000 });
     await expect(page.locator("#dock-status")).toHaveText("The server is not answering");
-    // The picker and the dock pill stop claiming the hubs are connected: nothing can reach them.
+    // The picker and dock agree that connection status is unknown while the server is unreachable.
     await expect(chip(page).locator(".dot")).toHaveClass(/off/);
     await expect(page.locator("#dock-pill .dock-pill-half").nth(0)).toHaveClass(/off/);
+    for (const half of await page.locator("#dock-pill .dock-pill-half").all()) {
+      await expect(half).toHaveAttribute("title", "status unknown: the server is not answering");
+    }
+    await expect(page.locator("#dock-pill")).toHaveAccessibleName(/Hub: status unknown.*App: status unknown/);
     await chip(page).click();
     await expect(options(page).nth(0)).toContainText("192.168.1.50 · status unknown: the server is not answering");
     await expect(options(page).nth(0).locator(".dot")).toHaveClass(/off/);
@@ -963,6 +967,8 @@ test.describe("control panel, shell", () => {
     await page.unroute(`**${API}/hubs`);
     await expect(page.locator("#blocked-scrim")).toHaveCount(0, { timeout: 15_000 });
     await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
+    await expect(page.locator("#dock-pill .dock-pill-half").nth(0)).toHaveAttribute("title", "hub connected");
+    await expect(page.locator("#dock-pill .dock-pill-half").nth(1)).toHaveAttribute("title", "the app is not connected");
   });
 
   test("on a phone nothing scrolls sideways and both docks stay in view", async ({ page }, testInfo) => {
@@ -1826,6 +1832,8 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#binding-dialog .dialog-title")).toHaveText("Add button assignment");
     await editor.locator("#sb-binding-long-press").check();
     await expect(editor.locator("#sb-binding-lp-command")).toBeVisible();
+    await expect(editor.getByRole("group", { name: "Short press", exact: true }).getByRole("combobox", { name: "Command", exact: true })).toBeVisible();
+    await expect(editor.getByRole("group", { name: "Long press", exact: true }).getByRole("combobox", { name: "Command", exact: true })).toBeVisible();
     await editor.locator("#binding-save").click();
     await expect(editor.locator('[data-kind="binding"]')).toHaveCount(2);
     await expect(editor.locator('[data-kind="binding"]').nth(1)).toContainText("Long press · Power");
@@ -2252,6 +2260,8 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#sb-binding-macro-target")).toHaveAttribute("data-value", /^\d+$/);
     await editor.locator("#sb-binding-long-press").check();
     await editor.locator("#sb-binding-lp-command").selectOption("17");
+    await expect(editor.getByRole("group", { name: "Short press", exact: true }).getByRole("button", { name: /^Macro / })).toBeVisible();
+    await expect(editor.getByRole("group", { name: "Long press", exact: true }).getByRole("combobox", { name: "Command", exact: true })).toBeVisible();
     await page.screenshot({ path: shot(testInfo, "activity-binding-dialog") });
     await editor.locator("#binding-save").click();
     await expect(bindings).toHaveCount(3);
