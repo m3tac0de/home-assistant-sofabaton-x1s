@@ -210,7 +210,7 @@ export const REMOTE_CARD_STRINGS_FR = {
     guide: "Guide",
     dvr: "DVR",
     play: "Lecture",
-    exit: "Quitter",
+    exit: "EXIT",
     rew: "Retour rapide",
     pause: "Pause",
     fwd: "Avance rapide",

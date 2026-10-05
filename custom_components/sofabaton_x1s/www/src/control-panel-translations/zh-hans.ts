@@ -377,7 +377,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     buttonCatalog: {
       up: "上", down: "下", left: "左", right: "右", ok: "确定", home: "主页", back: "返回", menu: "菜单", volumeUp: "音量 +", volumeDown: "音量 -",
       mute: "静音", channelUp: "频道 +", channelDown: "频道 -", rewind: "快退", pause: "暂停", forward: "快进", red: "红", green: "绿", yellow: "黄", blue: "蓝",
-      exit: "退出", dvr: "DVR", play: "播放", guide: "节目指南", navigation: "导航", volumeChannel: "音量和频道", transport: "播放", colour: "彩色按键", extra: "其他", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "横线 (-)", numEnter: "确认 (E)", numpad: "数字键盘",
+      exit: "EXIT", dvr: "DVR", play: "播放", guide: "节目指南", navigation: "导航", volumeChannel: "音量和频道", transport: "播放", colour: "彩色按键", extra: "其他", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "横线 (-)", numEnter: "确认 (E)", numpad: "数字键盘",
       unknown: (code: string) => `按键 0x${code}`,
     },
     powerOn: "开机", powerOff: "关机", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`,
@@ -470,7 +470,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     shortPress: "短按", longPress: "长按", selectLongPressAction: "选择长按动作", selectTriggeredAction: "选择触发的动作", action: "动作", save: "保存",
     keyLabels: {
       up: "上", down: "下", left: "左", right: "右", ok: "确定", back: "返回", home: "主页", menu: "菜单", volup: "音量 +", voldn: "音量 -", mute: "静音",
-      chup: "频道 +", chdn: "频道 -", guide: "节目指南", dvr: "DVR", play: "播放", exit: "退出", rew: "快退", pause: "暂停", fwd: "快进",
+      chup: "频道 +", chdn: "频道 -", guide: "节目指南", dvr: "DVR", play: "播放", exit: "EXIT", rew: "快退", pause: "暂停", fwd: "快进",
       red: "红", green: "绿", yellow: "黄", blue: "蓝", a: "A", b: "B", c: "C",
     },
   },

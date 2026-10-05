@@ -203,7 +203,7 @@ const REMOTE_CARD_STRINGS_NL = {
     guide: "Gids",
     dvr: "DVR",
     play: "Afspelen",
-    exit: "Afsluiten",
+    exit: "EXIT",
     rew: "Terugspoelen",
     pause: "Pauze",
     fwd: "Vooruitspoelen",

@@ -384,7 +384,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     buttonCatalog: {
       up: "Omhoog", down: "Omlaag", left: "Links", right: "Rechts", ok: "OK", home: "Home", back: "Terug", menu: "Menu", volumeUp: "Volume omhoog", volumeDown: "Volume omlaag",
       mute: "Dempen", channelUp: "Kanaal omhoog", channelDown: "Kanaal omlaag", rewind: "Terugspoelen", pause: "Pauze", forward: "Vooruitspoelen", red: "Rood", green: "Groen", yellow: "Geel", blue: "Blauw",
-      exit: "Afsluiten", dvr: "DVR", play: "Afspelen", guide: "Gids", navigation: "Navigatie", volumeChannel: "Volume en kanaal", transport: "Afspelen", colour: "Kleur", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Streepje (-)", numEnter: "Enter (E)", numpad: "Cijfertoetsen",
+      exit: "EXIT", dvr: "DVR", play: "Afspelen", guide: "Gids", navigation: "Navigatie", volumeChannel: "Volume en kanaal", transport: "Afspelen", colour: "Kleur", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Streepje (-)", numEnter: "Enter (E)", numpad: "Cijfertoetsen",
       unknown: (code: string) => `Knop 0x${code}`,
     },
     powerOn: "Inschakelen", powerOff: "Uitschakelen", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`,
@@ -478,7 +478,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     shortPress: "Kort indrukken", longPress: "Lang indrukken", selectLongPressAction: "Actie voor lang indrukken selecteren", selectTriggeredAction: "Geactiveerde actie selecteren", action: "Actie", save: "Opslaan",
     keyLabels: {
       up: "Omhoog", down: "Omlaag", left: "Links", right: "Rechts", ok: "OK", back: "Terug", home: "Home", menu: "Menu", volup: "Vol +", voldn: "Vol -", mute: "Dempen",
-      chup: "CH +", chdn: "CH -", guide: "Gids", dvr: "DVR", play: "Afspelen", exit: "Afsluiten", rew: "Terugspoelen", pause: "Pauze", fwd: "Vooruitspoelen",
+      chup: "CH +", chdn: "CH -", guide: "Gids", dvr: "DVR", play: "Afspelen", exit: "EXIT", rew: "Terugspoelen", pause: "Pauze", fwd: "Vooruitspoelen",
       red: "Rood", green: "Groen", yellow: "Geel", blue: "Blauw", a: "A", b: "B", c: "C",
     },
   },

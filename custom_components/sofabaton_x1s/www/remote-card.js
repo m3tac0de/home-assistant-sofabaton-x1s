@@ -1098,7 +1098,7 @@ var REMOTE_CARD_STRINGS_EN = {
     guide: "Guide",
     dvr: "DVR",
     play: "Play",
-    exit: "Exit",
+    exit: "EXIT",
     rew: "Rewind",
     pause: "Pause",
     fwd: "Fast forward",
@@ -8055,10 +8055,10 @@ if (!customElements.get("sb-key-button")) {
 
 // remote-card/src/sections/key-groups.ts
 function keyFaceLabel(spec) {
-  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+  return spec.label;
 }
 function keyAccessibleLabel(spec) {
-  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  if (spec.glyphFace) return str().keys[spec.key] ?? spec.label;
   return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
 }
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
@@ -8117,7 +8117,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "EXIT", icon: "", extraClass: "area-exit" }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -9886,7 +9886,7 @@ var REMOTE_CARD_STRINGS_AR = {
     guide: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0628\u0631\u0627\u0645\u062C",
     dvr: DVR,
     play: "\u062A\u0634\u063A\u064A\u0644",
-    exit: "\u062E\u0631\u0648\u062C",
+    exit: "EXIT",
     rew: "\u062A\u0631\u062C\u064A\u0639",
     pause: "\u0625\u064A\u0642\u0627\u0641 \u0645\u0624\u0642\u062A",
     fwd: "\u062A\u0642\u062F\u064A\u0645 \u0633\u0631\u064A\u0639",
@@ -10111,7 +10111,7 @@ var REMOTE_CARD_STRINGS_DE = {
     guide: "Guide",
     dvr: "DVR",
     play: "Wiedergabe",
-    exit: "Beenden",
+    exit: "EXIT",
     rew: "Zur\xFCckspulen",
     pause: "Pause",
     fwd: "Vorspulen",
@@ -10316,7 +10316,7 @@ var REMOTE_CARD_STRINGS_ES = {
     guide: "Gu\xEDa",
     dvr: "DVR",
     play: "Reproducir",
-    exit: "Salir",
+    exit: "EXIT",
     rew: "Retroceder",
     pause: "Pausa",
     fwd: "Avance r\xE1pido",
@@ -10521,7 +10521,7 @@ var REMOTE_CARD_STRINGS_FR = {
     guide: "Guide",
     dvr: "DVR",
     play: "Lecture",
-    exit: "Quitter",
+    exit: "EXIT",
     rew: "Retour rapide",
     pause: "Pause",
     fwd: "Avance rapide",
@@ -10725,7 +10725,7 @@ var REMOTE_CARD_STRINGS_NL = {
     guide: "Gids",
     dvr: "DVR",
     play: "Afspelen",
-    exit: "Afsluiten",
+    exit: "EXIT",
     rew: "Terugspoelen",
     pause: "Pauze",
     fwd: "Vooruitspoelen",
@@ -10929,7 +10929,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     guide: "\u8282\u76EE\u6307\u5357",
     dvr: "DVR",
     play: "\u64AD\u653E",
-    exit: "\u9000\u51FA",
+    exit: "EXIT",
     rew: "\u5FEB\u9000",
     pause: "\u6682\u505C",
     fwd: "\u5FEB\u8FDB",

@@ -124,12 +124,14 @@ test("Key capture labels: digits stay themselves, E resolves to Enter (as render
   assert.equal(keyFaceLabel(spec("numenter")), "E");
 });
 
-test("the Exit key's face and name follow the language (CR-F4b-3)", () => {
-  const exit = { key: "exit", id: 1, cmd: 1, label: "Exit", icon: "", localizedFace: true };
-  setRemoteCardLanguage("de");
-  assert.equal(keyFaceLabel(exit), str().keys.exit);
-  assert.notEqual(keyFaceLabel(exit), "Exit");
-  assert.equal(keyAccessibleLabel(exit), str().keys.exit);
+test("printed EXIT legend stays unchanged for the face and Key capture in every locale", () => {
+  const exit = { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "EXIT", icon: "" };
+  for (const locale of ["en", "en-GB", "de", "es", "fr", "nl", "zh-Hans", "ar-SA"]) {
+    setRemoteCardLanguage(locale);
+    assert.equal(keyFaceLabel(exit), "EXIT", locale);
+    assert.equal(keyAccessibleLabel(exit), "EXIT", locale);
+    assert.equal(str().keys.exit, "EXIT", locale);
+  }
   setRemoteCardLanguage("en");
 });
 

@@ -208,7 +208,7 @@ const REMOTE_CARD_STRINGS_DE = {
     guide: "Guide",
     dvr: "DVR",
     play: "Wiedergabe",
-    exit: "Beenden",
+    exit: "EXIT",
     rew: "Zurückspulen",
     pause: "Pause",
     fwd: "Vorspulen",

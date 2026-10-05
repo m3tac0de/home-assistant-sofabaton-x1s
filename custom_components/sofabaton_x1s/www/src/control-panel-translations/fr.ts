@@ -330,7 +330,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     buttonCatalog: {
       up: "Haut", down: "Bas", left: "Gauche", right: "Droite", ok: "OK", home: "Accueil", back: "Retour", menu: "Menu", volumeUp: "Volume +", volumeDown: "Volume -", mute: "Muet",
       channelUp: "Chaîne +", channelDown: "Chaîne -", rewind: "Retour rapide", pause: "Pause", forward: "Avance rapide", red: "Rouge", green: "Vert", yellow: "Jaune", blue: "Bleu",
-      exit: "Quitter", dvr: "DVR", play: "Lecture", guide: "Guide", navigation: "Navigation", volumeChannel: "Volume et chaînes", transport: "Lecture", colour: "Couleur", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Tiret (-)", numEnter: "Entrée (E)", numpad: "Pavé numérique",
+      exit: "EXIT", dvr: "DVR", play: "Lecture", guide: "Guide", navigation: "Navigation", volumeChannel: "Volume et chaînes", transport: "Lecture", colour: "Couleur", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Tiret (-)", numEnter: "Entrée (E)", numpad: "Pavé numérique",
       unknown: (code: string) => `Touche 0x${code}`,
     },
     powerOn: "Allumer", powerOff: "Éteindre", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`, inputStepLabel: (device: string, input: string) => `Entrée · ${device} : ${input}`,
@@ -417,7 +417,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     shortPress: "Appui court", longPress: "Appui long", selectLongPressAction: "Sélectionner l’action d’appui long", selectTriggeredAction: "Sélectionner l’action déclenchée", action: "Action", save: "Enregistrer",
     keyLabels: {
       up: "Haut", down: "Bas", left: "Gauche", right: "Droite", ok: "OK", back: "Retour", home: "Accueil", menu: "Menu", volup: "Volume +", voldn: "Volume -", mute: "Muet",
-      chup: "Chaîne +", chdn: "Chaîne -", guide: "Guide", dvr: "DVR", play: "Lecture", exit: "Quitter", rew: "Retour rapide", pause: "Pause", fwd: "Avance rapide",
+      chup: "Chaîne +", chdn: "Chaîne -", guide: "Guide", dvr: "DVR", play: "Lecture", exit: "EXIT", rew: "Retour rapide", pause: "Pause", fwd: "Avance rapide",
       red: "Rouge", green: "Vert", yellow: "Jaune", blue: "Bleu", a: "A", b: "B", c: "C",
     },
   },

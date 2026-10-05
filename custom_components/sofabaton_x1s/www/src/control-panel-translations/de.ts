@@ -341,7 +341,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     buttonCatalog: {
       up: "Nach oben", down: "Nach unten", left: "Nach links", right: "Nach rechts", ok: "OK", home: "Home", back: "Zurück", menu: "Menü", volumeUp: "Lautstärke +", volumeDown: "Lautstärke -",
       mute: "Stumm", channelUp: "Kanal +", channelDown: "Kanal -", rewind: "Zurückspulen", pause: "Pause", forward: "Vorspulen", red: "Rot", green: "Grün", yellow: "Gelb", blue: "Blau",
-      exit: "Beenden", dvr: "DVR", play: "Wiedergabe", guide: "Guide", navigation: "Navigation", volumeChannel: "Lautstärke & Kanal", transport: "Wiedergabe", colour: "Farbe", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Strich (-)", numEnter: "Eingabe (E)", numpad: "Ziffernblock",
+      exit: "EXIT", dvr: "DVR", play: "Wiedergabe", guide: "Guide", navigation: "Navigation", volumeChannel: "Lautstärke & Kanal", transport: "Wiedergabe", colour: "Farbe", extra: "Extra", num0: "0", num1: "1", num2: "2", num3: "3", num4: "4", num5: "5", num6: "6", num7: "7", num8: "8", num9: "9", numDash: "Strich (-)", numEnter: "Eingabe (E)", numpad: "Ziffernblock",
       unknown: (code: string) => `Taste 0x${code}`,
     },
     powerOn: "Einschalten", powerOff: "Ausschalten", powerStepLabel: (verb: string, device: string) => `${verb} · ${device}`, inputStepLabel: (device: string, input: string) => `Eingang · ${device}: ${input}`,
@@ -428,7 +428,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     shortPress: "Kurz drücken", longPress: "Lang drücken", selectLongPressAction: "Aktion für langes Drücken auswählen", selectTriggeredAction: "Ausgelöste Aktion auswählen", action: "Aktion", save: "Speichern",
     keyLabels: {
       up: "Nach oben", down: "Nach unten", left: "Nach links", right: "Nach rechts", ok: "OK", back: "Zurück", home: "Home", menu: "Menü", volup: "Lautstärke +", voldn: "Lautstärke -", mute: "Stumm",
-      chup: "Kanal +", chdn: "Kanal -", guide: "Guide", dvr: "DVR", play: "Wiedergabe", exit: "Beenden", rew: "Zurückspulen", pause: "Pause", fwd: "Vorspulen",
+      chup: "Kanal +", chdn: "Kanal -", guide: "Guide", dvr: "DVR", play: "Wiedergabe", exit: "EXIT", rew: "Zurückspulen", pause: "Pause", fwd: "Vorspulen",
       red: "Rot", green: "Grün", yellow: "Gelb", blue: "Blau", a: "A", b: "B", c: "C",
     },
   },
