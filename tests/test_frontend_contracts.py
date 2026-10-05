@@ -54,6 +54,7 @@ def test_card_picker_translation_keys_match_the_hub_control_entities() -> None:
     # translation_key. Every other entity is listed here on purpose.
     not_hub_controls = {
         "remote", "activity", "index", "recorded_keypress", "ir_intercept", "ir_emitter", "hub_ip_address",
+        "local_ip_address",
     }
     match = re.search(r"const TOOLS_CONTROL_TRANSLATION_KEYS = new Set\(\[(.*?)\]\)", _ts("tools-card.ts"), re.S)
     assert match, "TOOLS_CONTROL_TRANSLATION_KEYS literal not found"

@@ -11,6 +11,22 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Added
+
+- A manual local address per hub: `local_address=` on `AsyncXProxy` and
+  `X1Proxy`, `HubConfig.local_address`, and `set_local_address()` to change
+  or clear it while running. `local_address_is_manual()` tells the two
+  apart. It is what the hub is told to connect back to.
+
+### Fixed
+
+- Multi-homed hosts: when OS routing picks a source address that is not on
+  the hub's subnet while another local address is (source-based policy
+  routing, for example), that address is advertised in `CALL_ME`, mDNS and
+  Wifi callbacks, and outgoing packets are sent from it. Hosts where OS
+  routing already picks the right address behave as before. Contributed by
+  @jkoelker.
+
 ## 0.2.3 (2026-10-02)
 
 Changes since `sofabaton-x-v0.2.2`. This release is mostly fixes from a

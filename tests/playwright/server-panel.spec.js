@@ -160,6 +160,16 @@ function makeRoutes(state) {
       if (hub.status) hub.status = { ...hub.status, proxy_enabled: false };
       return { status: 200, body: hub };
     },
+    "PUT /hubs/{id}/local-address": (body, id) => {
+      const hub = find(id); if (!hub) return problem(404, "hub_not_found", null, { hub_id: id });
+      const address = (body?.address || "").trim();
+      if (address && !/^\d+\.\d+\.\d+\.\d+$/.test(address)) {
+        return problem(422, "invalid_local_address", `local address must be a dotted-decimal IPv4 address, got '${address}'`, { hub_id: id });
+      }
+      hub.config = { ...hub.config, local_address: address || null };
+      hub.local_address = address || "192.168.1.10";
+      return { status: 200, body: hub };
+    },
     "DELETE /hubs/{id}": (_body, id) => {
       if (!find(id)) return problem(404, "hub_not_found", null, { hub_id: id });
       state.hubs = state.hubs.filter((h) => h.hub_id !== id);
@@ -259,7 +269,7 @@ async function mockServer(page, state) {
       if (t) { id = t[2]; handler = routes[`${method} /auth/${t[1]}/{id}`]; }
     }
     if (!handler) {
-      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/proxy\/enable|\/proxy\/disable|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
+      const m = rel.match(/^\/hubs\/([^/]+)(\/enable|\/disable|\/proxy\/enable|\/proxy\/disable|\/local-address|\/resync-remote|\/ui\/remote-card|\/applies|\/jobs)?$/);
       if (m) { id = m[1]; handler = routes[`${method} /hubs/{id}${m[2] || ""}`]; }
     }
     calls.push({ key: `${method} ${rel}`, body });
@@ -607,6 +617,37 @@ test.describe("control panel, hubs", () => {
     await actions(page).getByRole("button", { name: "Turn app proxy on" }).click();
     await expect.poll(() => calls.some((c) => c.key === "POST /hubs/e26a44861b45/proxy/enable")).toBe(true);
     await expect(actions(page).getByRole("button", { name: "Turn app proxy off" })).toBeVisible();
+  });
+
+  test("the server IP address shows the one in use, takes a manual one and clears back to automatic", async ({ page }) => {
+    const hub = { ...LIVING, local_address: "192.168.1.10" };
+    const { calls } = await mockServer(page, { hubs: [hub], seen: [] });
+    await page.goto(`${PAGE}#/setup`);
+    const field = detail(page).locator("#local-address");
+    const mode = detail(page).locator("#local-address-mode");
+    const save = detail(page).locator("#local-address-save");
+    await expect(field).toHaveValue("192.168.1.10");
+    await expect(mode).toHaveText("automatic");
+    await expect(save).toHaveCount(0);
+
+    await field.fill("not-an-address");
+    await save.click();
+    await expect(msg(page)).toContainText("dotted-decimal IPv4 address");
+    await expect(field).toHaveValue("not-an-address");
+
+    await field.fill("192.168.1.77");
+    await field.press("Enter");
+    await expect(msg(page)).toHaveText("e26a44861b45: server IP address set to 192.168.1.77");
+    await expect(field).toHaveValue("192.168.1.77");
+    await expect(mode).toHaveText("manual");
+    expect(calls.filter((c) => c.key === "PUT /hubs/e26a44861b45/local-address").at(-1).body).toEqual({ address: "192.168.1.77" });
+
+    await field.fill("");
+    await save.click();
+    await expect(msg(page)).toHaveText("e26a44861b45: server IP address is chosen automatically");
+    await expect(field).toHaveValue("192.168.1.10");
+    await expect(mode).toHaveText("automatic");
+    expect(calls.filter((c) => c.key === "PUT /hubs/e26a44861b45/local-address").at(-1).body).toEqual({ address: null });
   });
 
   test("a discovered hub is added with its advertised configuration", async ({ page }) => {

@@ -6,6 +6,14 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+### Added
+
+- **Server IP address** per hub in the control panel's Hub settings: shows
+  the address of the server the hub is told to connect back to, and lets
+  you set one by hand or return to automatic. API:
+  `PUT /hubs/{hub_id}/local-address`, `config.local_address`, the hub
+  view's `local_address`, and the `hub_local_address_changed` event.
+
 ## 0.2.4 (2026-10-02)
 
 Changes since `sofabaton-x-server-v0.2.3`. Requires

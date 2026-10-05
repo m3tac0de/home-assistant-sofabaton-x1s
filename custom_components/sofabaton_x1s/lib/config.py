@@ -17,6 +17,7 @@ from typing import Any, Literal, Mapping, Optional
 
 from .discovery import DiscoveredHub, normalize_advertisement
 from .hub_versions import DEFAULT_HUB_LISTEN_BASE, DEFAULT_PROXY_UDP_PORT
+from .network import normalize_local_address
 
 __all__ = ["ConfigSource", "HubConfig"]
 
@@ -51,6 +52,9 @@ class HubConfig:
     proxy_enabled: bool = True
     is_proxy: bool = False
     source: Optional[ConfigSource] = None
+    # Manual local IPv4 address of this host toward the hub; None selects
+    # it automatically (see AsyncXProxy.local_address).
+    local_address: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.host, str) or not self.host.strip():
@@ -61,6 +65,11 @@ class HubConfig:
             if isinstance(value, bool) or not isinstance(value, int) or not (0 < value < 65536):
                 raise ValueError(f"HubConfig.{name} must be a port number, got {value!r}")
         object.__setattr__(self, "txt", {str(k): str(v) for k, v in dict(self.txt or {}).items()})
+        try:
+            local_address = normalize_local_address(self.local_address)
+        except ValueError as err:
+            raise ValueError(f"HubConfig.local_address: {err}") from err
+        object.__setattr__(self, "local_address", local_address)
 
     # -- constructors ------------------------------------------------------
 
@@ -140,7 +149,12 @@ class HubConfig:
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        if data["local_address"] is None:
+            # Absent, not null: a record that never set it stays readable
+            # by a release that predates the field.
+            del data["local_address"]
+        return data
 
     # -- facade bridge -----------------------------------------------------
 
@@ -160,4 +174,6 @@ class HubConfig:
             kwargs["mdns_txt"] = dict(self.txt)
         if self.hub_version:
             kwargs["hub_version"] = self.hub_version
+        if self.local_address:
+            kwargs["local_address"] = self.local_address
         return kwargs

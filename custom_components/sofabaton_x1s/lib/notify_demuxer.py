@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import ipaddress
 import socket
+import sys
 import struct
 import threading
 import time
@@ -12,7 +13,7 @@ from typing import Callable, Dict, Optional
 from . import network
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version
 from .hub_logging import get_hub_logger
-from .network import route_local_ip as _route_local_ip
+from .network import select_local_address as _select_local_address
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -140,9 +141,8 @@ class NotifyDemuxer:
         with self._lock:
             self._registrations[proxy_id] = reg
             get_hub_logger(log, proxy_id).info(
-                "[DEMUX] registered proxy for hub %s (CALL_ME -> %s:%d)",
+                "[DEMUX] registered proxy for hub %s (app CALL_ME on port %d)",
                 real_hub_ip,
-                _route_local_ip(real_hub_ip),
                 reg.call_me_port,
             )
             self._ensure_running_locked()
@@ -329,18 +329,35 @@ class NotifyDemuxer:
                 dest_ip,
             )
             try:
-                # Linux's IP_PKTINFO ABI is 8; Python <3.12 omits its name.
-                pktinfo = getattr(socket, "IP_PKTINFO", 8)
-                # Select this reply's source without rebinding the shared listener.
-                info = struct.pack(
-                    "=I4s4s", 0, socket.inet_aton(_route_local_ip(src_ip)), b"\x00" * 4
-                )
-                sock.sendmsg(
-                    [reply], [(socket.IPPROTO_IP, pktinfo, info)],
-                    0, (dest_ip, BROADCAST_LISTEN_PORT),
-                )
+                self._send_notify_reply(sock, reply, src_ip, dest_ip)
             except OSError:
                 get_hub_logger(log, reg.proxy_id).exception("[DEMUX] failed to send NOTIFY_ME reply")
+
+    @staticmethod
+    def _send_notify_reply(
+        sock: socket.socket, reply: bytes, app_ip: str, dest_ip: str
+    ) -> None:
+        """Broadcast one reply, from the address selected for the app.
+
+        The app takes the proxy address from this packet's source. The
+        shared listener is bound to all addresses, so OS routing normally
+        picks that source; only when the address selected for the app
+        differs is it set per packet, which needs Linux ``IP_PKTINFO``.
+        Anywhere else, or when that send fails, the plain send stands.
+        """
+
+        dest = (dest_ip, BROADCAST_LISTEN_PORT)
+        selected = _select_local_address(app_ip)
+        if selected.bind and sys.platform == "linux" and hasattr(sock, "sendmsg"):
+            # Linux's IP_PKTINFO ABI is 8; Python <3.12 omits its name.
+            pktinfo = getattr(socket, "IP_PKTINFO", 8)
+            info = struct.pack("=I4s4s", 0, socket.inet_aton(selected.ip), b"\x00" * 4)
+            try:
+                sock.sendmsg([reply], [(socket.IPPROTO_IP, pktinfo, info)], 0, dest)
+                return
+            except OSError:
+                log.debug("[DEMUX] source-selected reply failed; sending unbound", exc_info=True)
+        sock.sendto(reply, dest)
 
     def _handle_call_me(self, pkt: bytes, src_ip: str, src_port: int) -> None:
         try:

@@ -187,6 +187,16 @@ already connected stays until it disconnects. With the proxy off for
 every hub, the server stops listening for the app altogether (its UDP
 discovery port, 8102 by default, is closed).
 
+**Server IP address** in **Hub settings** is the address of the server the
+hub is told to connect back to. The server chooses it: normally the address
+the operating system routes to the hub with, or, when that address is not on
+the hub's subnet while another address of the server is, that other one. On
+a server with one network interface there is nothing to set. To override the
+choice, type an IPv4 address and save; the field then reads **manual**.
+Clear the field and save to return to **automatic**. The change applies to
+the next connection attempt, so a connected hub stays connected. Callback
+devices use this address too, unless `--callback-host` is set.
+
 **Server settings** in the cog menu shows server status and listener
 settings. Port changes apply after restarting the server. Values supplied
 through environment variables or command-line flags are pinned and must

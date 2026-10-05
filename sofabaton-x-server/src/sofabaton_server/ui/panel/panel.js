@@ -11260,6 +11260,10 @@ var PanelApi = class {
   setHubProxy(hubId, enabled) {
     return this.request("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
   }
+  /** The server's IPv4 address toward the hub; null returns to automatic. */
+  setHubLocalAddress(hubId, address) {
+    return this.request("PUT", `hubs/${encodeURIComponent(hubId)}/local-address`, { body: { address } });
+  }
   removeHub(hubId) {
     return this.request("DELETE", `hubs/${encodeURIComponent(hubId)}`);
   }
@@ -24414,6 +24418,10 @@ var SbPanelHubs = class extends i4 {
     this._busy = /* @__PURE__ */ new Set();
     this._confirmRemove = null;
     this._firmware = "Not yet known";
+    // What is typed into "server IP address" and not saved yet; null shows
+    // the address in use.
+    this._addressDraft = null;
+    this._addressHub = "";
     this._infoKey = "";
     this._infoSeq = 0;
   }
@@ -24421,6 +24429,10 @@ var SbPanelHubs = class extends i4 {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
     if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
     const h7 = this.hub;
+    if ((h7?.hub_id ?? "") !== this._addressHub) {
+      this._addressHub = h7?.hub_id ?? "";
+      this._addressDraft = null;
+    }
     const key = h7 ? `${h7.hub_id}:${h7.enabled}:${Boolean(h7.status)}:${Boolean(h7.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
       this._infoKey = key;
@@ -24486,6 +24498,48 @@ var SbPanelHubs = class extends i4 {
     }
     this._emit("sb-hubs-changed");
   }
+  // The server's own address toward this hub: what the hub is told to
+  // connect back to. The server picks it; a typed address overrides that
+  // and an empty field returns to automatic.
+  async _saveLocalAddress(hubId) {
+    if (this._addressDraft === null || this._busy.has(hubId)) return;
+    const address = this._addressDraft.trim();
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.setHubLocalAddress(hubId, address || null);
+      if (response.ok) {
+        this._addressDraft = null;
+        this._message(`${hubId}: server IP address ${address ? `set to ${address}` : "is chosen automatically"}`);
+      } else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+    }
+    this._emit("sb-hubs-changed");
+  }
+  _renderLocalAddress(h7, busy) {
+    const manual = h7.config.local_address ?? null;
+    const shown = h7.local_address ?? manual ?? "";
+    const draft = this._addressDraft;
+    const dirty = draft !== null && draft.trim() !== shown;
+    return b2`<span class="address">
+      <input id="local-address" class="mono" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+        aria-label="Server IP address" placeholder="automatic" ?disabled=${busy}
+        title="The address of this server that the hub is told to connect back to. Clear the field to have it chosen automatically."
+        .value=${draft ?? shown}
+        @input=${(event) => {
+      this._addressDraft = event.target.value;
+    }}
+        @keydown=${(event) => {
+      if (event.key === "Enter" && dirty) void this._saveLocalAddress(h7.hub_id);
+      if (event.key === "Escape") this._addressDraft = null;
+    }} />
+      ${dirty ? b2`<button class="small" id="local-address-save" ?disabled=${busy} @click=${() => this._saveLocalAddress(h7.hub_id)}>Save</button>` : b2`<span class="mode" id="local-address-mode">${manual ? "manual" : "automatic"}</span>`}
+    </span>`;
+  }
   // The hub pushes writes to its remotes on its own; this is the manual
   // trigger for a remote that missed them (the HA card's "Sync Remote").
   async _resyncRemote(hubId) {
@@ -24520,6 +24574,7 @@ var SbPanelHubs = class extends i4 {
     const facts = [
       ["state", b2`<span class="tone-${tone}">${text}</span>`],
       ["host", b2`<span class="mono">${h7.config.host}</span>`],
+      ["server IP address", this._renderLocalAddress(h7, busy)],
       ["model", model],
       ["firmware version", this._firmware],
       ["hub id", b2`<span class="mono">${h7.hub_id}</span>`],
@@ -24565,7 +24620,8 @@ SbPanelHubs.properties = {
   hub: { attribute: false },
   _busy: { state: true },
   _confirmRemove: { state: true },
-  _firmware: { state: true }
+  _firmware: { state: true },
+  _addressDraft: { state: true }
 };
 SbPanelHubs.styles = [
   PANEL_BASE_CSS,
@@ -24579,6 +24635,9 @@ SbPanelHubs.styles = [
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .confirm { flex: 1 0 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
+      .address { display: flex; align-items: center; gap: 6px; }
+      .address input { min-width: 0; padding: 3px 6px; font-size: 13px; }
+      .address .mode { color: var(--sbp-muted); font-size: 12px; }
     `
 ];
 function defineHubsView() {

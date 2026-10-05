@@ -200,6 +200,9 @@
     "text": {
       "hub_ip_address": {
         "name": "Hub IP address"
+      },
+      "local_ip_address": {
+        "name": "Home Assistant IP address"
       }
     }
   },

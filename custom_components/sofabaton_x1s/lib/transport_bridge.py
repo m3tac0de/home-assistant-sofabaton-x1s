@@ -12,7 +12,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
-from .network import route_local_ip as _route_local_ip
+from .network import select_local_address as _select_local_address
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 from .deframer import Deframer
 from .notify_demuxer import (
@@ -132,8 +132,11 @@ class TransportBridge:
         ka_idle: int = 30,
         ka_interval: int = 10,
         ka_count: int = 3,
+        local_address: Optional[str] = None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
+        # Manual local IPv4 address for this hub; None selects automatically.
+        self.local_address = local_address
         self.real_hub_udp_port = int(real_hub_udp_port)
         self.proxy_udp_port = int(proxy_udp_port)
         self.hub_listen_base = int(hub_listen_base)
@@ -479,38 +482,51 @@ class TransportBridge:
         TCP accept lives in the shared :class:`HubListener`.
         """
 
-        last = 0.0
-        while not self._stop.is_set():
-            if self.is_hub_connected:
-                time.sleep(0.3)
-                continue
-            if self._ota_pause_active():
-                time.sleep(0.5)
-                continue
-            now = time.time()
-            if now - last >= 2.0 + random.uniform(-0.25, 0.25):
-                try:
-                    my_ip = _route_local_ip(self.real_hub_ip)
-                    payload = (
-                        b"\x00" * 6
-                        + socket.inet_aton(my_ip)
-                        + struct.pack(">H", self.hub_listen_base)
-                    )
-                    frame = (
-                        bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF])
-                        + payload
-                    )
-                    frame += bytes([_sum8(frame)])
-                    # Keep the packet source and callback address consistent.
-                    # Reopen per attempt to recover from address changes or
-                    # bind errors.
-                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
-                        udp.bind((my_ip, 0))
-                        udp.sendto(frame, (self.real_hub_ip, self.real_hub_udp_port))
-                except OSError:
-                    self._log.debug("%s CALL_ME send failed", LogTag.TRANSPORT, exc_info=True)
-                last = now
-            time.sleep(0.2)
+        # Unbound, so OS routing picks the source; replaced by a bound
+        # socket only for attempts whose selected address differs from it.
+        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            last = 0.0
+            while not self._stop.is_set():
+                if self.is_hub_connected:
+                    time.sleep(0.3)
+                    continue
+                if self._ota_pause_active():
+                    time.sleep(0.5)
+                    continue
+                now = time.time()
+                if now - last >= 2.0 + random.uniform(-0.25, 0.25):
+                    try:
+                        selected = _select_local_address(self.real_hub_ip, self.local_address)
+                        payload = (
+                            b"\x00" * 6
+                            + socket.inet_aton(selected.ip)
+                            + struct.pack(">H", self.hub_listen_base)
+                        )
+                        frame = (
+                            bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF])
+                            + payload
+                        )
+                        frame += bytes([_sum8(frame)])
+                        hub_addr = (self.real_hub_ip, self.real_hub_udp_port)
+                        if selected.bind:
+                            # Keep the packet source and callback address
+                            # consistent. Reopened per attempt to recover
+                            # from address changes or bind errors.
+                            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as bound:
+                                bound.bind((selected.ip, 0))
+                                bound.sendto(frame, hub_addr)
+                        else:
+                            udp.sendto(frame, hub_addr)
+                    except OSError:
+                        self._log.debug("%s CALL_ME send failed", LogTag.TRANSPORT, exc_info=True)
+                    last = now
+                time.sleep(0.2)
+        finally:
+            try:
+                udp.close()
+            except Exception:
+                pass
 
     def _install_hub_socket(
         self, hub_sock: socket.socket, hub_addr: Tuple[str, int]
@@ -614,7 +630,11 @@ class TransportBridge:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             s.settimeout(5.0)
-            s.bind((_route_local_ip(app_addr[0]), 0))
+            # The app may sit on another subnet than the hub: select for
+            # its address, and bind only when that differs from OS routing.
+            selected = _select_local_address(app_addr[0])
+            if selected.bind:
+                s.bind((selected.ip, 0))
             s.connect(app_addr)
             s.settimeout(0.0)
             _disable_nagle(s)

@@ -20,6 +20,7 @@ export class SbPanelHubs extends LitElement {
     _busy: { state: true },
     _confirmRemove: { state: true },
     _firmware: { state: true },
+    _addressDraft: { state: true },
   };
 
   static styles = [
@@ -34,6 +35,9 @@ export class SbPanelHubs extends LitElement {
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .confirm { flex: 1 0 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
+      .address { display: flex; align-items: center; gap: 6px; }
+      .address input { min-width: 0; padding: 3px 6px; font-size: 13px; }
+      .address .mode { color: var(--sbp-muted); font-size: 12px; }
     `,
   ];
 
@@ -44,6 +48,10 @@ export class SbPanelHubs extends LitElement {
   private _busy = new Set<string>();
   private _confirmRemove: string | null = null;
   private _firmware = "Not yet known";
+  // What is typed into "server IP address" and not saved yet; null shows
+  // the address in use.
+  private _addressDraft: string | null = null;
+  private _addressHub = "";
   private _infoKey = "";
   private _infoSeq = 0;
 
@@ -51,6 +59,10 @@ export class SbPanelHubs extends LitElement {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
     if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
     const h = this.hub;
+    if ((h?.hub_id ?? "") !== this._addressHub) {
+      this._addressHub = h?.hub_id ?? "";
+      this._addressDraft = null;
+    }
     const key = h ? `${h.hub_id}:${h.enabled}:${Boolean(h.status)}:${Boolean(h.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
       this._infoKey = key;
@@ -127,6 +139,50 @@ export class SbPanelHubs extends LitElement {
     this._emit("sb-hubs-changed");
   }
 
+  // The server's own address toward this hub: what the hub is told to
+  // connect back to. The server picks it; a typed address overrides that
+  // and an empty field returns to automatic.
+  private async _saveLocalAddress(hubId: string): Promise<void> {
+    if (this._addressDraft === null || this._busy.has(hubId)) return;
+    const address = this._addressDraft.trim();
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.setHubLocalAddress(hubId, address || null);
+      if (response.ok) {
+        this._addressDraft = null;
+        this._message(`${hubId}: server IP address ${address ? `set to ${address}` : "is chosen automatically"}`);
+      } else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+    }
+    this._emit("sb-hubs-changed");
+  }
+
+  private _renderLocalAddress(h: HubView, busy: boolean): TemplateResult {
+    const manual = h.config.local_address ?? null;
+    const shown = h.local_address ?? manual ?? "";
+    const draft = this._addressDraft;
+    const dirty = draft !== null && draft.trim() !== shown;
+    return html`<span class="address">
+      <input id="local-address" class="mono" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+        aria-label="Server IP address" placeholder="automatic" ?disabled=${busy}
+        title="The address of this server that the hub is told to connect back to. Clear the field to have it chosen automatically."
+        .value=${draft ?? shown}
+        @input=${(event: Event) => { this._addressDraft = (event.target as HTMLInputElement).value; }}
+        @keydown=${(event: KeyboardEvent) => {
+          if (event.key === "Enter" && dirty) void this._saveLocalAddress(h.hub_id);
+          if (event.key === "Escape") this._addressDraft = null;
+        }} />
+      ${dirty
+        ? html`<button class="small" id="local-address-save" ?disabled=${busy} @click=${() => this._saveLocalAddress(h.hub_id)}>Save</button>`
+        : html`<span class="mode" id="local-address-mode">${manual ? "manual" : "automatic"}</span>`}
+    </span>`;
+  }
+
   // The hub pushes writes to its remotes on its own; this is the manual
   // trigger for a remote that missed them (the HA card's "Sync Remote").
   private async _resyncRemote(hubId: string): Promise<void> {
@@ -160,6 +216,7 @@ export class SbPanelHubs extends LitElement {
     const facts: [string, TemplateResult | string][] = [
       ["state", html`<span class="tone-${tone}">${text}</span>`],
       ["host", html`<span class="mono">${h.config.host}</span>`],
+      ["server IP address", this._renderLocalAddress(h, busy)],
       ["model", model],
       ["firmware version", this._firmware],
       ["hub id", html`<span class="mono">${h.hub_id}</span>`],

@@ -91,22 +91,38 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
 2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port (8200 by default). All configured hubs share the same listener; the proxy dispatches each accepted connection to the right hub by peer IP.
 
-### Multi-homed hosts
+### Multi-homed hosts and the Home Assistant IP address
 
-When the hub belongs to a local IPv4 interface's subnet, the integration uses that
-interface's address for `CALL_ME`, its proxy mDNS advertisement, and new default
-Wifi Command/Event callbacks. If multiple subnets match, the most specific wins.
-For hubs outside all local subnets, it keeps the operating system's route-selected
-source address.
+The hub has to be told one address of Home Assistant to connect back to. It
+goes into `CALL_ME`, the proxy mDNS advertisement, and the default Wifi
+Command/Event callbacks. The integration chooses it per hub:
 
-The `CALL_ME` UDP socket is bound to the selected address as well: putting a LAN
-address in the packet alone does not select that interface for outgoing traffic.
-On multi-homed hosts, callbacks and advertisements must use an address reachable
-from the hub. Binding selects the source IP; the operating system's routes still
-determine the outgoing interface. No interface-name setting or routing-table
-changes are required. The hub must still be able to reach the selected address
-on the TCP connect-back port.
+1. Normally the operating system decides: the address its routing uses to
+   reach the hub. On a host with one network interface that is the only
+   candidate, and nothing changed from earlier releases.
+2. If that address is not on the hub's subnet while another address of the host
+   is, that other address is used (the most specific subnet wins). This is the
+   multi-homed host whose main routing table has no route for the hub's LAN,
+   for example with source-based policy routing. The integration then also
+   sends from that address, so the packet source matches what it advertises.
+   The operating system's routes still decide the outgoing interface.
+3. A manual address overrides both.
 
+To see or set the address, enable the **Home Assistant IP address** entity on
+the hub's device (it is disabled by default, next to **Hub IP address**). It
+shows the address in use; its `mode` attribute says `automatic` or `manual`.
+Enter an IPv4 address to set it manually, or clear the field to return to
+automatic. Only an address of the Home Assistant host itself is accepted. A change applies to the next connection attempt; a hub that is
+connected stays connected. Disabling the entity again does not remove a manual
+address.
+
+A manual address is needed when neither rule fits. One example is a hub reached
+through a static route while a VPN interface with a broad prefix also covers
+the hub's IP: rule 2 would pick the VPN address. When rule 2 or a manual address
+is in effect, the log says so once per hub, with the address the operating
+system would have used.
+
+The hub must be able to reach the address on the TCP connect-back port.
 Previously deployed or explicitly pinned Wifi Command/Event callback addresses
 are not rewritten automatically.
 
@@ -143,10 +159,10 @@ Two discovery mechanisms run in parallel:
 
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
-Discovery reply source selection requires Linux: `sendmsg` with `IP_PKTINFO`
-selects the local IPv4 address for the app's IP without rebinding the shared UDP
-listener or changing its source port. On Python 3.11, the documented Linux
-constant is used because Python does not expose its name.
+The discovery reply carries no address: the iOS app takes the proxy address
+from the reply's source. That source is the operating system's choice, except
+on a multi-homed Linux host where rule 2 above selects another address for the
+app's IP; the reply is then sent from that address.
 
 > ⚠️ **iOS discovery and VLANs**
 >
@@ -178,10 +194,10 @@ constant is used because Python does not expose its name.
 2. **TCP connect-back from proxy → app:** after the call-me, the proxy opens a TCP connection into the app on a port in the **8100–8110** range that the app exposes.
 3. **Relay to the real hub:** once the TCP session is up, the proxy bridges app commands to the already-established hub connection.
 
-On multi-homed hosts, the TCP connect-back socket is bound to the local IPv4
-address selected for the app's IP, independently of the hub's IP. It prefers a
-matching local subnet and otherwise uses the operating system's route-selected
-source. Valid routes and firewall permissions are still required.
+The address for this connection is chosen for the app's IP, independently of
+the hub's, by rules 1 and 2 under
+[Multi-homed hosts](#multi-homed-hosts-and-the-home-assistant-ip-address).
+Valid routes and firewall permissions are still required.
 
 When the app is connected, command-sending entities in Home Assistant intentionally become unavailable to avoid conflicting control writers.
 

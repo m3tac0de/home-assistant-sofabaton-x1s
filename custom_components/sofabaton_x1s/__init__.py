@@ -23,6 +23,7 @@ from .const import (
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
     CONF_MAC,
+    CONF_LOCAL_ADDRESS,
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
@@ -41,6 +42,7 @@ from .diagnostics import (
 )
 from .hub import SofabatonHub
 from .lib.hub_listener import bounce_hub_listener
+from .lib.network import normalize_local_address
 from .roku_listener import async_get_roku_listener
 
 from . import operations
@@ -402,6 +404,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     proxy_udp_port = opts.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
+    try:
+        local_address = normalize_local_address(opts.get(CONF_LOCAL_ADDRESS))
+    except ValueError:
+        _LOGGER.warning(
+            "[%s] Ignoring invalid stored Home Assistant IP address %r",
+            entry.entry_id,
+            opts.get(CONF_LOCAL_ADDRESS),
+        )
+        local_address = None
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
     roku_server_enabled = opts.get(CONF_ROKU_SERVER_ENABLED, False)
     roku_listen_port = opts.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT)
@@ -423,6 +434,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hex_logging_enabled=hex_logging_enabled,
         roku_server_enabled=roku_server_enabled,
         version=version,
+        local_address=local_address,
     )
 
     cache_store = await runtime._async_get_persistent_cache_store(hass)

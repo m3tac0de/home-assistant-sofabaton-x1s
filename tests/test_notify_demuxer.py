@@ -1,11 +1,11 @@
 import socket
 import struct
 import sys
-from types import SimpleNamespace
 
 import pytest
 
 from custom_components.sofabaton_x1s.lib import notify_demuxer
+from custom_components.sofabaton_x1s.lib.network import LocalAddress
 from custom_components.sofabaton_x1s.lib.notify_demuxer import NotifyDemuxer
 from custom_components.sofabaton_x1s.lib.protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
@@ -185,11 +185,18 @@ _DISCOVERY_REPLY = bytes.fromhex(
 )
 
 
+def _bound(ip: str) -> LocalAddress:
+    """A selection that differs from OS routing, so the source is set."""
+    return LocalAddress(ip, "198.51.100.10", "subnet", True)
+
+
 @pytest.fixture
 def discovery_proxy(monkeypatch):
     demux = NotifyDemuxer()
     monkeypatch.setattr(demux, "_ensure_running_locked", lambda: None)
-    monkeypatch.setattr(notify_demuxer, "_route_local_ip", lambda _: "192.0.2.10")
+    monkeypatch.setattr(
+        notify_demuxer, "_select_local_address", lambda _: _bound("192.0.2.10")
+    )
     monkeypatch.setattr(notify_demuxer, "_broadcast_ip", lambda _: "192.0.2.127")
     demux.register_proxy(
         "proxy", "203.0.113.20",
@@ -215,7 +222,9 @@ def test_notify_reply_uses_each_phone_selected_source_over_real_udp(
         monkeypatch.delattr(socket, "IP_PKTINFO", raising=False)
     sources = {"127.0.0.3": "127.0.0.2", "127.0.0.5": "127.0.0.4"}
     monkeypatch.setattr(
-        notify_demuxer, "_route_local_ip", lambda peer: sources.get(peer, "127.0.0.6")
+        notify_demuxer,
+        "_select_local_address",
+        lambda peer: _bound(sources.get(peer, "127.0.0.6")),
     )
     monkeypatch.setattr(notify_demuxer, "_broadcast_ip", lambda _: "127.255.255.255")
     discovery_proxy.listen_port = 0
@@ -247,36 +256,89 @@ def test_notify_reply_uses_each_phone_selected_source_over_real_udp(
             assert source == peer.getsockname()
 
 
-def test_notify_reply_retries_after_a_source_send_failure(monkeypatch, discovery_proxy):
-    attempts = []
-    clock = iter((100.0, 103.0))
+class _ReplySocket:
+    """Records how each discovery reply left; optionally fails sendmsg."""
 
-    class DatagramSocket:
-        closed = False
+    def __init__(self, sendmsg_error=None):
+        self.sent = []
+        self._sendmsg_error = sendmsg_error
 
-        def sendmsg(self, buffers, ancillary, flags, destination):
-            attempts.append((buffers, ancillary, flags, destination))
-            if len(attempts) == 1:
-                raise OSError("source temporarily unavailable")
+    def sendmsg(self, buffers, ancillary, flags, destination):
+        if self._sendmsg_error is not None:
+            raise self._sendmsg_error
+        self.sent.append(("sendmsg", buffers, ancillary, flags, destination))
 
-        def close(self):
-            self.closed = True
+    def sendto(self, data, destination):
+        self.sent.append(("sendto", data, destination))
 
+
+_PLAIN_REPLY = ("sendto", _DISCOVERY_REPLY, ("192.0.2.127", 8100))
+
+
+def _notify(discovery_proxy, sock):
+    discovery_proxy._handle_notify_me(
+        sock, notify_demuxer.NOTIFY_ME_PAYLOAD, "192.0.2.20", 1234
+    )
+
+
+def test_notify_reply_sets_the_selected_source_on_linux(monkeypatch, discovery_proxy):
+    monkeypatch.setattr(notify_demuxer.sys, "platform", "linux")
     monkeypatch.setattr(socket, "IP_PKTINFO", 8, raising=False)
-    monkeypatch.setattr(notify_demuxer, "time", SimpleNamespace(monotonic=clock.__next__))
-    sock = DatagramSocket()
-    for _ in range(2):
-        discovery_proxy._handle_notify_me(
-            sock, notify_demuxer.NOTIFY_ME_PAYLOAD, "192.0.2.20", 1234
-        )
+    sock = _ReplySocket()
 
-    assert len(attempts) == 2
-    for buffers, ancillary, flags, destination in attempts:
-        assert buffers == [_DISCOVERY_REPLY]
-        assert ancillary == [
-            (socket.IPPROTO_IP, 8, struct.pack("=I4s4s", 0, socket.inet_aton("192.0.2.10"), b"\x00" * 4))
-        ]
-        assert flags == 0
-        assert destination == ("192.0.2.127", 8100)
-    assert not sock.closed
+    _notify(discovery_proxy, sock)
+
+    info = struct.pack("=I4s4s", 0, socket.inet_aton("192.0.2.10"), b"\x00" * 4)
+    assert sock.sent == [
+        ("sendmsg", [_DISCOVERY_REPLY], [(socket.IPPROTO_IP, 8, info)], 0, ("192.0.2.127", 8100))
+    ]
+
+
+def test_notify_reply_falls_back_to_a_plain_send_when_source_selection_fails(
+    monkeypatch, discovery_proxy
+):
+    monkeypatch.setattr(notify_demuxer.sys, "platform", "linux")
+    sock = _ReplySocket(sendmsg_error=OSError("source temporarily unavailable"))
+
+    _notify(discovery_proxy, sock)
+
+    assert sock.sent == [_PLAIN_REPLY]
     assert "proxy" in discovery_proxy._registrations
+
+
+@pytest.mark.parametrize("platform", ["win32", "darwin"])
+def test_notify_reply_is_a_plain_send_off_linux(monkeypatch, discovery_proxy, platform):
+    monkeypatch.setattr(notify_demuxer.sys, "platform", platform)
+    sock = _ReplySocket()
+
+    _notify(discovery_proxy, sock)
+
+    assert sock.sent == [_PLAIN_REPLY]
+
+
+def test_notify_reply_survives_a_socket_without_sendmsg(monkeypatch, discovery_proxy):
+    """Windows sockets have no sendmsg; the listener thread must not die."""
+    monkeypatch.setattr(notify_demuxer.sys, "platform", "linux")
+    sent = []
+
+    class NoSendmsgSocket:
+        def sendto(self, data, destination):
+            sent.append(("sendto", data, destination))
+
+    _notify(discovery_proxy, NoSendmsgSocket())
+
+    assert sent == [_PLAIN_REPLY]
+
+
+def test_notify_reply_is_a_plain_send_when_os_routing_is_kept(monkeypatch, discovery_proxy):
+    monkeypatch.setattr(notify_demuxer.sys, "platform", "linux")
+    monkeypatch.setattr(
+        notify_demuxer,
+        "_select_local_address",
+        lambda _: LocalAddress("192.0.2.10", "192.0.2.10", "os", False),
+    )
+    sock = _ReplySocket()
+
+    _notify(discovery_proxy, sock)
+
+    assert sock.sent == [_PLAIN_REPLY]

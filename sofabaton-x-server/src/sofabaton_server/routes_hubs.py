@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Response, status
 
 from . import API_PREFIX
 from .manager import HubBusy, HubConflict, HubManager, HubNotFound, HubStartFailed
-from .models import HubCreate, HubView, Problem
+from .models import HubCreate, HubLocalAddress, HubView, Problem
 from .problems import ApiProblem, hub_not_found, hub_start_failed
 
 router = APIRouter(prefix=f"{API_PREFIX}/hubs", tags=["hubs"])
@@ -115,6 +115,21 @@ async def _set_proxy(request: Request, hub_id: str, enabled: bool) -> HubView:
         return await manager.view(hub_id)
     except HubNotFound:
         raise hub_not_found(hub_id) from None
+
+
+@router.put("/{hub_id}/local-address", operation_id="setHubLocalAddress", response_model=HubView,
+            summary="Set the server's IP address toward a hub, or return it to automatic",
+            responses={404: {"model": Problem}, 422: {"model": Problem}})
+async def set_hub_local_address(request: Request, hub_id: str, body: HubLocalAddress) -> HubView:
+    manager = manager_of(request)
+    try:
+        await manager.set_local_address(hub_id, body.address)
+        return await manager.view(hub_id)
+    except HubNotFound:
+        raise hub_not_found(hub_id) from None
+    except ValueError as err:
+        raise ApiProblem(422, "invalid_local_address", "Not an IPv4 address",
+                         detail=str(err), hub_id=hub_id) from err
 
 
 @router.post("/{hub_id}/disable", operation_id="disableHub", response_model=HubView,

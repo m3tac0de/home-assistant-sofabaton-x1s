@@ -247,7 +247,9 @@ class _FakeHub:
         hex_logging_enabled,
         roku_server_enabled=False,
         version="X1S",
+        local_address=None,
     ) -> None:
+        self.local_address = local_address
         self.hass = hass
         self.entry_id = entry_id
         self.name = name
