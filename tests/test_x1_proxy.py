@@ -2258,7 +2258,8 @@ def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
         lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    inputs_requested: list[int] = []
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: (inputs_requested.append(device_id), {"device_id": device_id, "entries": []})[1])
     monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     sent: list[tuple[int, bytes]] = []
@@ -2271,7 +2272,8 @@ def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
 
     assert result == {"device_id": 0x04, "status": "success"}
 
-    assert any(opcode == 0x0148 and payload == bytes([0x04]) for opcode, payload in sent)
+    # The inputs request is made for the new device (through the record fetch).
+    assert inputs_requested == [0x04]
 
     input_payload = next(payload for opcode, payload in sent if opcode == 0xC846)
     assert len(input_payload) == 200
@@ -2310,7 +2312,7 @@ def test_create_wifi_device_x1_six_inputs_uses_fa46_plus_2246_commit(monkeypatch
         lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     sent: list[tuple[int, bytes]] = []
@@ -2372,7 +2374,8 @@ def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    inputs_requested: list[int] = []
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: (inputs_requested.append(device_id), {"device_id": device_id, "entries": []})[1])
     monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     result = proxy.create_wifi_device(
@@ -2384,8 +2387,8 @@ def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
 
     assert result == {"device_id": 0x09, "status": "success"}
 
-    req_activity_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x0148]
-    assert req_activity_frames == [(0x0148, bytes([0x09]))]
+    # The inputs request is made exactly once for the new device.
+    assert inputs_requested == [0x09]
 
     # X1S uses FA46 (sub=02, fixed 250B) + 1046 commit for N≥3 inputs.
     family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
@@ -2451,7 +2454,7 @@ def test_create_wifi_device_x1s_five_inputs_uses_fa46_plus_7046_commit(monkeypat
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     result = proxy.create_wifi_device(
@@ -2505,7 +2508,7 @@ def test_create_wifi_device_x1s_six_inputs_uses_fa46_plus_a046(monkeypatch) -> N
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     result = proxy.create_wifi_device(
@@ -2577,6 +2580,36 @@ def test_x1s_input_refresh_frame_updates_command_cache() -> None:
     )
 
     assert proxy.state.commands[0x0A][0x03] == "TEST 1"
+
+
+def test_x2_mqtt_input_refresh_frame_updates_command_cache() -> None:
+    """The X2's refresh reply for a wifi_mqtt record (format byte 0x20) carries
+    the same wide label as the wifi_ip reply and no HTTP template; the
+    frame below is the one captured on the X2 (bench_310, 2026-10-06). It
+    used to be read as the X1's ASCII layout, which left the label empty
+    and the create's refresh wait timing out."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 04 03 20 00 00 00 00 00 00 00 "
+        "42 00 53 00 20 00 54 00 68 00 72 00 65 00 65 00 "
+        + "00 " * 44 +
+        "01 03 ed"
+    )
+    raw = bytes.fromhex("a5 5a 4e 0d") + payload + bytes.fromhex("23")
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0x4E0D,
+            direction="H→A",
+            payload=payload,
+            raw=raw,
+            name="OP_4E0D",
+        )
+    )
+
+    assert proxy.state.commands[0x04][0x03] == "BS Three"
 
 
 def test_ir_dump_family_frames_collect_structured_pages() -> None:
@@ -3531,7 +3564,7 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
 
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -3584,7 +3617,7 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -3632,7 +3665,7 @@ def test_add_device_to_activity_builds_power_macros_from_scratch_on_empty_reply(
 
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: None)
     monkeypatch.setattr(
         proxy,
@@ -3682,7 +3715,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_record",
@@ -3756,7 +3789,7 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
 
 
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: MacroRecord(activity_id=_act & 0xFF, key_id=_button & 0xFF, label='', key_sequence=()))
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
@@ -3822,7 +3855,7 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
 
 
     monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: MacroRecord(activity_id=_act & 0xFF, key_id=_button & 0xFF, label='', key_sequence=()))
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "fetch_device_input_record", lambda device_id, *, timeout=5.0, absent_as_empty=False: {"device_id": device_id, "entries": []})
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",

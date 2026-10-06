@@ -53,7 +53,12 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .activity_sync import (
     DEVICE_INPUT_REF_COMMAND,
+    DEVICE_POWER_OFF_REF_COMMAND,
+    DEVICE_POWER_ON_REF_COMMAND,
     POWER_ON_MACRO_BUTTON_ID,
+    _editable_macro_rows,
+    _quick_access_rank,
+    _quick_access_sort_key,
     POWER_OFF_MACRO_BUTTON_ID,
     SyncStep,
     build_activity_sync_plan,
@@ -1018,6 +1023,281 @@ def wifi_events_retarget_steps(
             activity_id,
         )
         steps.extend(step for step in plan if step.kind != "remote_sync")
+    return tuple(steps)
+
+
+# ── Moving references onto a replacement device ─────────────────────────
+#
+# docs/internal/wifi-events-transport-plan.md §4. A transport switch (and
+# any other replace of a managed Wifi Device) creates the new device and
+# deletes the old one; the hub cascades every reference to the deleted
+# device away. The command ids are fixed by the layout, so moving each
+# reference from the old device id to the new one, before the delete,
+# keeps favorites, bindings and macro steps that the slot config never
+# knew about (the activity editor made them).
+
+
+def _retarget_device(
+    row: dict[str, Any],
+    dev_key: str,
+    cmd_key: str,
+    *,
+    old_device_id: int,
+    new_device_id: int,
+    fold_long_ids_at: int | None,
+) -> bool:
+    try:
+        dev = int(row[dev_key])
+        cmd = int(row[cmd_key])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if dev != old_device_id:
+        return False
+    row[dev_key] = new_device_id
+    if fold_long_ids_at is not None and fold_long_ids_at < cmd <= 2 * fold_long_ids_at:
+        # Wifi Events: a long record of the pre-single-record layout has no
+        # counterpart on the new device; its event's record does.
+        row[cmd_key] = cmd - fold_long_ids_at
+    return True
+
+
+#: The rows that make a device a member of an activity: its power-on,
+#: power-off and input reference steps in the power macros. The hub
+#: cascades a device's favorites and bindings away the moment it loses
+#: its last power reference (activity-sync bench 2026-07-11, and bench_311
+#: 2026-10-06 where that cascade ran ahead of the favorite deletes).
+_MEMBERSHIP_REF_COMMANDS = frozenset(
+    {DEVICE_INPUT_REF_COMMAND, DEVICE_POWER_ON_REF_COMMAND, DEVICE_POWER_OFF_REF_COMMAND}
+)
+
+
+def _step_key(step: Mapping[str, Any]) -> tuple[int, int]:
+    return (int(step.get("device_id") or 0), int(step.get("command_id") or 0))
+
+
+def retarget_device_refs(
+    activity: Mapping[str, Any],
+    *,
+    old_device_id: int,
+    new_device_id: int,
+    fold_long_ids_at: int | None = None,
+    membership: str = "move",
+) -> tuple[dict[str, Any], bool]:
+    """Copy of one activity entry with every reference to *old_device_id*
+    moved onto *new_device_id* at the same command id. Returns
+    ``(edited, changed)``.
+
+    Same four reference sites as :func:`retarget_long_record_refs`
+    (favorites, both binding legs, macro steps). ``fold_long_ids_at`` is
+    the Wifi Events slot count: a reference to a long record of the old
+    layout (``N < id <= 2N``) lands on the event's record (``id - N``).
+
+    ``membership`` decides what happens to the old device's membership
+    rows in the power macros (:data:`_MEMBERSHIP_REF_COMMANDS`):
+
+    * ``"keep"``: they stay as they are. This is the form to WRITE while
+      the old device still exists: moving its last power reference makes
+      the hub drop the device from the activity, favorites and bindings
+      included, before the favorite writes reach it.
+    * ``"move"``: they move like every other row, and the copies that
+      add_device_to_activity appended for the new device are dropped, so
+      the new device takes the old one's position in the sequences. This
+      is the DESIRED shape, written once the old device is gone.
+    """
+
+    edited = deepcopy(dict(activity))
+    changed = False
+    old_id = int(old_device_id)
+    kwargs = {
+        "old_device_id": old_id,
+        "new_device_id": int(new_device_id),
+        "fold_long_ids_at": fold_long_ids_at,
+    }
+    for fav in edited.get("favorite_slots") or []:
+        if isinstance(fav, dict):
+            changed |= _retarget_device(fav, "device_id", "command_id", **kwargs)
+    for binding in edited.get("button_bindings") or []:
+        if isinstance(binding, dict):
+            changed |= _retarget_device(binding, "device_id", "command_id", **kwargs)
+            changed |= _retarget_device(
+                binding, "long_press_device_id", "long_press_command_id", **kwargs
+            )
+    for macro in edited.get("macros") or []:
+        if not isinstance(macro, dict):
+            continue
+        steps = [step for step in macro.get("steps") or [] if isinstance(step, dict)]
+        moved: set[int] = set()
+        for step in steps:
+            key = _step_key(step)
+            if membership == "keep" and key[0] == old_id and key[1] in _MEMBERSHIP_REF_COMMANDS:
+                continue
+            if _retarget_device(step, "device_id", "command_id", **kwargs):
+                moved.add(id(step))
+        if not moved or membership != "move":
+            continue
+        moved_keys = {_step_key(step) for step in steps if id(step) in moved}
+        kept: list[dict[str, Any]] = []
+        for step in steps:
+            key = _step_key(step)
+            if id(step) not in moved and key in moved_keys and key[1] in _MEMBERSHIP_REF_COMMANDS:
+                changed = True
+                continue
+            kept.append(step)
+        macro["steps"] = kept
+    return edited, changed
+
+
+def _quick_access_order_step(activity_id: int, edited: Mapping[str, Any]) -> SyncStep:
+    """A ``favorite_order`` step writing the WHOLE quick-access table of
+    *edited* (favorites by content, macro shortcuts by key id) in its
+    ``favorites_order`` rank, as the activity planner would."""
+
+    rank = _quick_access_rank(edited)
+    entries: list[tuple[int, dict[str, Any]]] = []
+    for row in edited.get("favorite_slots") or []:
+        if not isinstance(row, Mapping):
+            continue
+        entries.append((
+            int(row.get("button_id") or 0),
+            {"kind": "favorite", "device_id": int(row.get("device_id") or 0), "command_id": int(row.get("command_id") or 0)},
+        ))
+    for row in _editable_macro_rows(edited):
+        bid = int(row.get("button_id") or 0)
+        entries.append((bid, {"kind": "macro", "button_id": bid}))
+    entries.sort(key=lambda item: _quick_access_sort_key(item[0], rank))
+    return SyncStep(
+        kind="favorite_order",
+        label="Reordering shortcuts…",
+        payload={"activity_id": activity_id, "order": [token for _bid, token in entries]},
+    )
+
+
+def _activity_plan_steps(entry: Mapping[str, Any], edited: Mapping[str, Any]) -> list[SyncStep]:
+    activity_id = int((entry.get("device") or {}).get("device_id") or 0)
+    plan = build_activity_sync_plan(
+        {"activities": [dict(entry)], "devices": []},
+        {"activities": [dict(edited)], "devices": []},
+        activity_id,
+    )
+    # Membership is the caller's: the replacement joined the activity
+    # before this read, and the planner derives members from references,
+    # so a device it sees referenced for the first time would get a
+    # redundant add_device_to_activity replay here.
+    steps = [step for step in plan if step.kind not in ("remote_sync", "member_replay")]
+    # A moved favorite is a delete plus an add, and each add stages a sort
+    # page that names only the favorites added so far: entries of other
+    # devices drop out of the order table (bench_312, X2, 2026-10-06). The
+    # planner writes the order only when the natural order differs, so a
+    # retarget always closes its favorite moves with the whole table.
+    kinds = {step.kind for step in steps}
+    if ("favorite_add" in kinds or "favorite_delete" in kinds) and "favorite_order" not in kinds:
+        steps.append(_quick_access_order_step(activity_id, edited))
+    return steps
+
+
+def wifi_device_retarget_steps(
+    activity_entries: Sequence[Mapping[str, Any]],
+    *,
+    old_device_id: int,
+    new_device_id: int,
+    fold_long_ids_at: int | None = None,
+    membership: str = "keep",
+) -> tuple[SyncStep, ...]:
+    """The activity writes that move every reference to *old_device_id*
+    onto *new_device_id*, for every activity in *activity_entries* (live
+    ``backup_activity`` reads taken AFTER the new device joined them).
+    Empty when nothing references the old device.
+
+    Each activity is diffed by the activity sync planner against its own
+    retargeted copy, so the writes are exactly the ones the live activity
+    editor would issue. The per-activity remote sync is dropped: the caller
+    resyncs the remote once at the end of its batch. Raises ``ValueError``
+    when an activity cannot be planned; the caller must then write nothing.
+    The default keeps the old device's membership rows (see
+    :func:`retarget_device_refs`); the sequence positions are restored by
+    :func:`wifi_membership_order_steps` after the delete.
+    """
+
+    steps: list[SyncStep] = []
+    for entry in activity_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        edited, changed = retarget_device_refs(
+            entry,
+            old_device_id=old_device_id,
+            new_device_id=new_device_id,
+            fold_long_ids_at=fold_long_ids_at,
+            membership=membership,
+        )
+        if not changed:
+            continue
+        steps.extend(_activity_plan_steps(entry, edited))
+    return tuple(steps)
+
+
+def wifi_membership_order_steps(
+    pre_entries: Sequence[Mapping[str, Any]],
+    post_entries: Sequence[Mapping[str, Any]],
+    *,
+    old_device_id: int,
+    new_device_id: int,
+    fold_long_ids_at: int | None = None,
+) -> tuple[SyncStep, ...]:
+    """The power-macro rewrites that put the new device where the old one
+    stood in each activity's power sequences, planned against the reads
+    taken AFTER the old device was deleted (*post_entries*).
+
+    *pre_entries* are the reads from before the move (old device present);
+    their macros, retargeted with ``membership="move"``, are the desired
+    sequences. The hub's delete already removed the old device's rows, and
+    add_device_to_activity appended the new device's rows at the end; this
+    diff moves them up. Activities that are not in both reads are skipped,
+    and so is a macro whose live step set differs from the desired one (a
+    row the hub added or dropped since the pre-read is never written back
+    from a stale copy).
+    """
+
+    desired_by_act: dict[int, dict[int, list[dict[str, Any]]]] = {}
+    for entry in pre_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        edited, changed = retarget_device_refs(
+            entry,
+            old_device_id=old_device_id,
+            new_device_id=new_device_id,
+            fold_long_ids_at=fold_long_ids_at,
+            membership="move",
+        )
+        if not changed:
+            continue
+        act_id = int((entry.get("device") or {}).get("device_id") or 0)
+        desired_by_act[act_id] = {
+            int(m.get("button_id") or 0): [dict(s) for s in m.get("steps") or [] if isinstance(s, dict)]
+            for m in edited.get("macros") or []
+            if isinstance(m, dict)
+        }
+    steps: list[SyncStep] = []
+    for entry in post_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        act_id = int((entry.get("device") or {}).get("device_id") or 0)
+        desired = desired_by_act.get(act_id)
+        if desired is None:
+            continue
+        edited = deepcopy(dict(entry))
+        new_macros: list[Any] = []
+        for macro in edited.get("macros") or []:
+            want = desired.get(int(macro.get("button_id") or 0)) if isinstance(macro, dict) else None
+            if want is None:
+                new_macros.append(macro)
+                continue
+            live_keys = sorted(_step_key(s) for s in macro.get("steps") or [] if isinstance(s, dict))
+            if live_keys != sorted(_step_key(s) for s in want):
+                new_macros.append(macro)
+                continue
+            new_macros.append({**macro, "steps": want})
+        edited["macros"] = new_macros
+        steps.extend(_activity_plan_steps(entry, edited))
     return tuple(steps)
 
 

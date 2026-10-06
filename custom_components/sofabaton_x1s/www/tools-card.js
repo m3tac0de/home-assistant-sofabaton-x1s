@@ -2115,6 +2115,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiCreatingDevice: "Creating the Wifi Device on the hub\u2026",
     wifiDeletingDevice: "Removing the previous Wifi Device\u2026",
     wifiAddingToActivities: "Adding the Wifi Device to activities\u2026",
+    wifiMovingReferences: "Moving activity references to the new Wifi Device\u2026",
     wifiApplyingFavorites: "Applying activity shortcuts\u2026",
     wifiApplyingBindings: "Applying activity button assignments\u2026",
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
@@ -2689,6 +2690,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedCreate: "The hub did not create the Wifi Device.",
     syncFailedReadback: "The hub did not store the commands as sent; the previous Wifi Device was kept.",
     syncFailedAttach: "The Wifi Device could not be added to every activity.",
+    syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
     syncFailedGeneric: "The sync stopped. Sync again.",
@@ -2714,9 +2716,12 @@ var TOOLS_CARD_STRINGS_EN = {
     transportLabel: "Delivery method",
     transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    // The standalone server panel's create flow (no switch there yet).
     transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportChangeNote: "You can change the delivery method later in the device's editor on the Hub tab.",
     transportPillDeployedTitle: "Current delivery method",
     transportPillPreviewTitle: "Selected delivery method",
+    transportSwitching: (transport) => `Switching delivery to ${transport}\u2026`,
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",
@@ -3192,6 +3197,19 @@ var ControlPanelApi = class {
       power_off_command_id: powerOffCommandId ?? void 0
     });
   }
+  /** Set the desired delivery method of a Wifi Device record (the reserved
+   *  Wifi Events record included). A store write: on a deployed record a
+   *  value other than the deployed one makes the next sync a transport
+   *  switch, the deployed value cancels a pending one. Answers with the
+   *  events state for the events record, the device's row otherwise. */
+  setWifiTransport(hubEntryId, deviceKey, transport) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/command_config/set_transport",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+      transport
+    });
+  }
   getWifiCommandSyncProgress(hubEntryId, deviceKey) {
     return this.hass.callWS({
       type: "sofabaton_x1s/command_sync/progress",
@@ -3382,6 +3400,8 @@ function localizeWifiSyncFailure(value) {
       return S5.syncFailedReadback;
     case "attach_failed":
       return S5.syncFailedAttach;
+    case "retarget_failed":
+      return S5.syncFailedRetarget;
     case "writes_refused":
       return S5.syncFailedWritesRefused;
     case "inplace_failed":
@@ -3511,6 +3531,7 @@ var WIFI_INPLACE_STEP_KINDS = {
   wifi_head_commit: "wifiStepHeadCommit",
   favorite_add: "entityStepFavoriteAdd",
   favorite_delete: "entityStepFavoriteDelete",
+  favorite_order: "entityStepFavoriteOrder",
   binding_delete: "entityStepBindingDelete",
   binding_write: "wifiStepBindingWrite"
 };
@@ -3523,6 +3544,7 @@ var WIFI_DEPLOY_PHASES = {
   creating_device: "wifiCreatingDevice",
   deleting_device: "wifiDeletingDevice",
   adding_to_activities: "wifiAddingToActivities",
+  moving_references: "wifiMovingReferences",
   applying_favorites: "wifiApplyingFavorites",
   applying_bindings: "wifiApplyingBindings",
   refreshing_maps: "wifiRefreshingMaps",
@@ -8864,6 +8886,17 @@ function isManagedWifiBrand(brand) {
   }
   return false;
 }
+function managedWifiDeviceKey(brand) {
+  const text = String(brand ?? "").trim();
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (!text.startsWith(prefix)) continue;
+    const suffix = text.slice(prefix.length);
+    const key = suffix.includes("-") ? suffix.slice(0, suffix.indexOf("-")) : "";
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return normalized || null;
+  }
+  return null;
+}
 function isWifiEventsBrand(brand) {
   const text = String(brand ?? "").trim();
   return text.startsWith("m3-haevents-") && Boolean(text.slice("m3-haevents-".length).trim());
@@ -10539,6 +10572,40 @@ function retireWifiEventLongRecords(bundle, deviceId, slotCount) {
     }))
   };
 }
+function rewriteDeviceIdRefs(value, oldId, newId) {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteDeviceIdRefs(item, oldId, newId));
+  }
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      if ((key === "device_id" || key.endsWith("_device_id")) && Number(item) === Number(oldId)) {
+        out[key] = newId;
+      } else {
+        out[key] = rewriteDeviceIdRefs(item, oldId, newId);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+function replayDeviceEntryEdits(fresh, baselineEntry, workingEntry, oldId, newId) {
+  if (!workingEntry) return fresh;
+  const same = (a3, b3) => JSON.stringify(a3 ?? null) === JSON.stringify(b3 ?? null);
+  const base = baselineEntry ?? {};
+  const work = workingEntry;
+  const result = { ...fresh, device: { ...fresh.device } };
+  for (const key of Object.keys(work)) {
+    if (key === "device" || same(work[key], base[key])) continue;
+    result[key] = rewriteDeviceIdRefs(structuredClone(work[key]), oldId, newId);
+  }
+  const baseName = base.device?.name;
+  const workName = workingEntry.device?.name;
+  if (typeof workName === "string" && !same(baseName, workName)) {
+    result.device.name = workName;
+  }
+  return result;
+}
 function removeBundleDevice(bundle, deviceId) {
   if (!bundle) return bundle;
   const devices = (bundle.devices ?? []).filter(
@@ -10600,6 +10667,14 @@ var editDetailViewStyles = i`
     :host {
       flex-direction: column;
     }
+    /* Read-only delivery badge of the Wifi Events device; the same pill the
+       Wifi Commands tab shows. */
+    .transport-pill { display: inline-flex; align-items: center; align-self: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
+    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-pill.pending { border-style: dashed; }
+    /* The same pill as a two-option select (the delivery switch). */
+    select.transport-select { appearance: none; -webkit-appearance: none; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: normal; padding-right: 20px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 11px) 55%, calc(100% - 7px) 55%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+    select.transport-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
     /* Glanceable member roster under the Activity power-sequence rows. */
     .power-members-summary {
       padding: 8px 4px 0;
@@ -14195,6 +14270,10 @@ var SofabatonEditDetailView = class extends i4 {
     // A Wifi Event is one record: long press is a property of the binding
     // (docs/internal/wifi-events-single-record-plan.md).
     this.wifiEvents = null;
+    /** MQTT delivery can be offered for this hub (control-panel state). */
+    this.mqttAvailable = false;
+    /** The delivery method picked but not yet synced (host-owned). */
+    this.pendingTransport = null;
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
@@ -14701,6 +14780,7 @@ var SofabatonEditDetailView = class extends i4 {
     ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
+                ${this._renderTransportControl(params.kind)}
                 ${this._renderDirtyChip()}
                 <div class="detail-title-actions">
                   ${this._renderDetailRenameDeleteButtons(params.kind)}
@@ -14741,6 +14821,41 @@ var SofabatonEditDetailView = class extends i4 {
    * the device name (renaming is coordinated with the Wifi Commands store).
    * The offline Backup editor is unaffected (mode !== "live").
    */
+  /** The delivery control of a managed Wifi device (a user Wifi Device or
+   *  the Wifi Events device) in the LIVE editor: a two-option select on the
+   *  class pill, the only place a delivery switch starts
+   *  (docs/internal/wifi-events-transport-plan.md). The pick is a pending
+   *  edit the host owns (`pendingTransport`) and the next Sync applies, so
+   *  other edits (events, bindings) can go in first. Read-only when MQTT
+   *  cannot be offered for this hub. */
+  _renderTransportControl(kind) {
+    if (kind !== "device" || this.entityId == null || this.mode !== "live") return A;
+    const brand = bundleDeviceBrand(this.bundle, Number(this.entityId));
+    if (!isManagedWifiBrand(brand)) return A;
+    const current = bundleDeviceClass(this.bundle, Number(this.entityId)) === "wifi_mqtt" ? "mqtt" : "http";
+    if (!this.mqttAvailable && current !== "mqtt") return A;
+    const S5 = TOOLS_CARD_STRINGS.wifiCommands;
+    if (!this.mqttAvailable) {
+      return b2`<span class="transport-pill ${current}" title=${S5.transportPillDeployedTitle}>${current === "mqtt" ? "MQTT" : "HTTP"}</span>`;
+    }
+    const shown = this.pendingTransport ?? current;
+    const pending = shown !== current;
+    return b2`
+      <select
+        class="transport-pill transport-select ${shown}${pending ? " pending" : ""}"
+        aria-label=${S5.transportLabel}
+        title=${pending ? S5.transportPillPreviewTitle : S5.transportPillDeployedTitle}
+        .value=${shown}
+        @change=${(event) => {
+      const next = String(event.target.value) === "mqtt" ? "mqtt" : "http";
+      this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport: next }, bubbles: true, composed: true }));
+    }}
+      >
+        <option value="http" ?selected=${shown === "http"}>HTTP</option>
+        <option value="mqtt" ?selected=${shown === "mqtt"}>MQTT</option>
+      </select>
+    `;
+  }
   _isManagedWifiLiveDevice() {
     const brand = this.entityId != null ? bundleDeviceBrand(this.bundle, Number(this.entityId)) : "";
     return this.mode === "live" && this.kind === "device" && this.entityId != null && isManagedWifiBrand(brand) && !isWifiEventsBrand(brand);
@@ -16043,6 +16158,8 @@ SofabatonEditDetailView.properties = {
   entityId: { attribute: false },
   dirty: { type: Boolean },
   mode: { type: String },
+  mqttAvailable: { type: Boolean },
+  pendingTransport: { attribute: false },
   wifiEvents: { attribute: false },
   _editDetailActiveSection: { state: true },
   _editRenameDialogOpen: { state: true },
@@ -17504,6 +17621,11 @@ var HARD_BUTTON_ID_MAP = {
 var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 var DEFAULT_ACTION = { action: "perform-action" };
 var defaultCommandSlotName = (idx) => `Command ${idx + 1}`;
+function normalizeTransport(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (text === "mqtt" || text === "http") return text;
+  return null;
+}
 function wifiSectionRows() {
   return [
     { id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.wifiCommandsTabLabel, icon: "mdi:wifi" },
@@ -17950,21 +18072,20 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
-  _deviceTransport(device) {
-    const deployed = String(device.deployed_transport || "").toLowerCase();
-    if (deployed === "mqtt" || deployed === "http") return deployed;
-    return String(device.requested_transport || "").toLowerCase() === "mqtt" ? "mqtt" : "http";
-  }
+  /** The read-only pill of a device row and of the selected device's
+   *  header. X2-with-MQTT entries only — everywhere else every Wifi Device
+   *  is HTTP and the pill is noise. A device already deployed over MQTT
+   *  keeps its pill even if the MQTT integration goes away. */
   _renderTransportPill(device) {
-    const transport = this._deviceTransport(device);
-    if (!this._mqttAvailable && transport !== "mqtt") return A;
-    const deployed = Boolean(device.deployed_transport);
-    return b2`
-      <span
-        class="transport-pill ${transport}"
-        title=${deployed ? TOOLS_CARD_STRINGS.wifiCommands.transportPillDeployedTitle : TOOLS_CARD_STRINGS.wifiCommands.transportPillPreviewTitle}
-      >${transport === "mqtt" ? "MQTT" : "HTTP"}</span>
-    `;
+    const deployed = normalizeTransport(device.deployed_transport);
+    const requested = normalizeTransport(device.requested_transport);
+    const pending = Boolean(device.transport_switch_pending);
+    return this._renderTransportPillFor({
+      transport: this._pillTransport(deployed, requested, pending),
+      deployed: deployed !== null,
+      pending,
+      mqttAvailable: this._mqttAvailable
+    });
   }
   _renderDeviceListView() {
     const canAdd = this._wifiDevices.length < this._maxWifiDevices;
@@ -18227,6 +18348,22 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const deviceId = state?.device_id;
     this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
     this._wifiEventsRecordNeedsSync = Boolean(state?.record_needs_sync);
+  }
+  // ── Delivery method pill (read-only) ───────────────────────────────────
+  //
+  // The switch itself lives in the device editor (Hub → Devices → Edit);
+  // this tab only shows what is deployed, and previews a pending wish.
+  /** The transport a pill shows: the pending wish wins over the deployed
+   *  one, as an undeployed device shows its selection. */
+  _pillTransport(deployed, requested, pending) {
+    if (pending && requested) return requested;
+    return deployed ?? requested ?? "http";
+  }
+  _renderTransportPillFor(opts) {
+    if (!opts.mqttAvailable && opts.transport !== "mqtt") return A;
+    const S5 = TOOLS_CARD_STRINGS.wifiCommands;
+    const title = opts.deployed && !opts.pending ? S5.transportPillDeployedTitle : S5.transportPillPreviewTitle;
+    return b2`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? "MQTT" : "HTTP"}</span>`;
   }
   async _loadWifiEventsRows() {
     const hubEntryId = String(this.hub?.entry_id || "").trim();
@@ -18736,7 +18873,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                         </label>
                       `
     )}
-                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportLockedNote}</div>
+                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportChangeNote}</div>
                   </div>
                 ` : A}
           </div>
@@ -20259,6 +20396,7 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .device-status-pill-label { min-width: 0; }
     .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
     .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-pill.pending { border-style: dashed; }
     .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
     .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
     .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
@@ -20786,6 +20924,7 @@ if (!customElements.get("sofabaton-refresh-cache-button")) {
 
 // custom_components/sofabaton_x1s/www/src/tabs/activities-tab.ts
 var S4 = TOOLS_CARD_STRINGS.activities;
+var WIFI_EVENTS_DEVICE_KEY = "haevents";
 var SofabatonActivitiesTab = class extends i4 {
   constructor() {
     super(...arguments);
@@ -20799,6 +20938,8 @@ var SofabatonActivitiesTab = class extends i4 {
     this.blockedTitle = null;
     this.blockedMessage = null;
     this.selectedHubProxyConnected = false;
+    /** MQTT delivery can be offered for this hub (control-panel state). */
+    this.mqttAvailable = false;
     this._stage = "list";
     this._entityId = null;
     this._baseline = null;
@@ -20813,6 +20954,12 @@ var SofabatonActivitiesTab = class extends i4 {
     this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
+    /** A ready-localized busy line that replaces the entity-sync progress
+     *  (the delivery switch runs a Wifi deploy, not an entity sync). */
+    this._syncMessage = null;
+    /** The device editor's delivery pick, applied by the next Sync (a
+     *  replace of the device on the hub; wifi-events-transport-plan). */
+    this._pendingTransport = null;
     this._syncError = null;
     this._syncFailedAt = null;
     this._progressUnsub = null;
@@ -20921,6 +21068,7 @@ var SofabatonActivitiesTab = class extends i4 {
         this._working = structuredClone(bundle);
         this._dirty = false;
         this._eventsRecordNeedsSync = false;
+        this._pendingTransport = null;
         if (this.kind === "device" && this._isWifiEventsDevice(bundle, entityId)) {
           try {
             const state = await this.api().listWifiEvents(this.hub.entry_id);
@@ -20942,7 +21090,7 @@ var SofabatonActivitiesTab = class extends i4 {
     // Start the real sync engine (§4.5): diff baseline vs working on the
     // backend and issue targeted in-place writes, streaming progress.
     this._requestSync = async () => {
-      if (!(this._dirty || this._eventsRecordNeedsSync)) return;
+      if (!this._hasUnsynced()) return;
       if (this._entityId == null || !this.hub || !this._baseline || !this._working) return;
       this._exitConfirmOpen = false;
       this._syncError = null;
@@ -20953,6 +21101,16 @@ var SofabatonActivitiesTab = class extends i4 {
         if (this.kind === "activity" && !await this._syncWifiEventsPhase()) {
           this._exitAfterSync = false;
           return;
+        }
+        if (this.kind === "device" && this._pendingTransport) {
+          if (!await this._switchTransportPhase()) {
+            this._exitAfterSync = false;
+            return;
+          }
+          if (!this._dirty) {
+            await this._onSyncSuccess(null);
+            return;
+          }
         }
         if (this.kind === "device" && this._eventsRecordNeedsSync) {
           if (!await this._syncWifiEventsDevice()) {
@@ -20974,6 +21132,16 @@ var SofabatonActivitiesTab = class extends i4 {
         this._exitAfterSync = false;
         this._stage = "sync_failed";
       }
+    };
+    /** The editor's delivery select (edit-detail-view `transport-change`):
+     *  a pending edit, applied by the next Sync. Picking the deployed method
+     *  again clears it. */
+    this._handleTransportChange = (event) => {
+      if (this._entityId == null || !this._working) return;
+      const next = event.detail?.transport === "mqtt" ? "mqtt" : "http";
+      const current = bundleDeviceClass(this._working, this._entityId) === "wifi_mqtt" ? "mqtt" : "http";
+      this._pendingTransport = next === current ? null : next;
+      this._notifyDirtyDock();
     };
     this._retrySync = () => {
       void this._requestSync();
@@ -21003,7 +21171,7 @@ var SofabatonActivitiesTab = class extends i4 {
       }
     };
     this._closeEditor = () => {
-      if (this._dirty) {
+      if (this._dirty || this._pendingTransport != null) {
         this._exitConfirmOpen = true;
         return;
       }
@@ -21046,7 +21214,7 @@ var SofabatonActivitiesTab = class extends i4 {
     if (this._stage === "editing") void this._requestSync();
   }
   _notifyDirtyDock() {
-    const dirty = this._dirty && (this._stage === "editing" || this._stage === "sync_failed");
+    const dirty = this._hasUnsynced() && (this._stage === "editing" || this._stage === "sync_failed");
     const canSync = dirty && this._stage === "editing";
     if (dirty === this._dirtyDockNotified && canSync === this._dockSyncNotified) return;
     this._dirtyDockNotified = dirty;
@@ -21278,6 +21446,103 @@ var SofabatonActivitiesTab = class extends i4 {
   _recomputeDirty() {
     this._dirty = !!this._baseline && !!this._working && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
   }
+  /** Changes that only a sync will persist: the user's edits, the events
+   *  record waiting for a deploy, the pending delivery switch. */
+  _hasUnsynced() {
+    return this._dirty || this._eventsRecordNeedsSync || this._pendingTransport != null;
+  }
+  /** Sync phase 0 for a pending delivery switch
+   *  (docs/internal/wifi-events-transport-plan.md): record the wish, run the
+   *  deploy that replaces the device on the hub (favorites, bindings and
+   *  macro steps move along; the Wifi Events deploy also lands the staged
+   *  events), then re-key the editor on the replacement and carry the user's
+   *  other edits over to it. The line under the busy screen follows the
+   *  deploy's own progress feed. Returns false with the failure staged. */
+  async _switchTransportPhase() {
+    const transport = this._pendingTransport;
+    if (!transport || this._entityId == null || !this.hub || !this.hass || !this._working) return true;
+    const oldId = this._entityId;
+    const brand = bundleDeviceBrand(this._working, oldId);
+    const isEvents = isWifiEventsBrand(brand);
+    const deviceKey = isEvents ? WIFI_EVENTS_DEVICE_KEY : managedWifiDeviceKey(brand);
+    if (!deviceKey) return true;
+    const hubId = this.hub.entry_id;
+    this._syncMessage = TOOLS_CARD_STRINGS.wifiCommands.transportSwitching(transport === "mqtt" ? "MQTT" : "HTTP");
+    const poll = setInterval(() => {
+      void (async () => {
+        try {
+          const progress = await this.api().getWifiCommandSyncProgress(hubId, deviceKey);
+          if (this._stage !== "syncing" || !progress?.phase) return;
+          this._syncMessage = localizeBackendProgress(progress, "wifi_deploy");
+        } catch {
+        }
+      })();
+    }, 1e3);
+    let newId = null;
+    let recordNeedsSync = false;
+    try {
+      await this.api().setWifiTransport(hubId, deviceKey, transport);
+      if (isEvents) {
+        const state = await this.api().syncWifiEvents(hubId);
+        recordNeedsSync = Boolean(state.record_needs_sync);
+        newId = typeof state.device_id === "number" ? state.device_id : null;
+      } else {
+        const result = await this.api().syncWifiCommandConfig(hubId, deviceKey);
+        const id = Number(result?.wifi_device_id);
+        newId = Number.isInteger(id) && id >= 0 ? id : null;
+      }
+    } catch (error) {
+      clearInterval(poll);
+      this._syncMessage = null;
+      this._syncError = localizeWifiSyncFailure(error);
+      this._syncFailedAt = null;
+      this._syncProgress = null;
+      this._stage = "sync_failed";
+      return false;
+    }
+    clearInterval(poll);
+    this._syncMessage = null;
+    this._pendingTransport = null;
+    if (isEvents) this._eventsRecordNeedsSync = recordNeedsSync;
+    try {
+      await this.refreshControlPanelState?.();
+    } catch {
+    }
+    let fresh = null;
+    try {
+      const res = await this.api().getStructuralBundle(hubId);
+      fresh = res?.bundle ?? null;
+    } catch {
+      fresh = null;
+    }
+    const freshEntry = newId == null ? null : (fresh?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === newId
+    );
+    if (newId == null || !fresh || !freshEntry) {
+      this._syncProgress = null;
+      this._stage = "needs_refresh";
+      return false;
+    }
+    const baselineEntry = (this._baseline?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === oldId
+    );
+    const workingEntry = (this._working?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === oldId
+    );
+    const working = structuredClone(fresh);
+    working.devices = (working.devices ?? []).map((entry) => Number(entry?.device?.device_id ?? -1) === newId ? replayDeviceEntryEdits(entry, baselineEntry, workingEntry, oldId, newId) : entry);
+    this._baseline = fresh;
+    this._working = working;
+    this._entityId = newId;
+    this._recomputeDirty();
+    this._autoOpenedEntityId = newId;
+    this.dispatchEvent(new CustomEvent("editor-entity-changed", {
+      detail: { kind: this.kind, id: newId },
+      bubbles: true,
+      composed: true
+    }));
+    return true;
+  }
   async _subscribeSync(operationId) {
     this._teardownProgressSubscription();
     const unsub = await this.api().subscribeBackupProgress(operationId, async (payload) => {
@@ -21346,6 +21611,7 @@ var SofabatonActivitiesTab = class extends i4 {
     this._captureError = null;
     this._dirty = false;
     this._eventsRecordNeedsSync = false;
+    this._pendingTransport = null;
     this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
@@ -21485,15 +21751,18 @@ var SofabatonActivitiesTab = class extends i4 {
           .bundle=${this._working}
           .kind=${this.kind}
           .entityId=${this._entityId}
-          .dirty=${this._dirty || this._eventsRecordNeedsSync}
+          .dirty=${this._hasUnsynced()}
           mode="live"
           .fetchCommandPayload=${this._fetchCommandPayload}
           .testCommandPayload=${this._testCommandPayload}
           .convertForeignPayload=${this._convertForeignPayload}
           .irLearn=${this._irLearnFacade}
           .wifiEvents=${this._wifiEventsFacade}
+          .mqttAvailable=${Boolean(this.mqttAvailable)}
+          .pendingTransport=${this._pendingTransport}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
+          @transport-change=${this._handleTransportChange}
           @delete-request=${this._handleDeleteRequest}
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
@@ -21504,7 +21773,7 @@ var SofabatonActivitiesTab = class extends i4 {
   _renderSyncing() {
     const S5 = TOOLS_CARD_STRINGS.activities;
     const progress = this._syncProgress;
-    const message = localizeBackendProgress(progress, "entity_sync");
+    const message = this._syncMessage ?? localizeBackendProgress(progress, "entity_sync");
     return b2`
       <div class="tab-panel">
         ${renderOperationProgress({ mode: "restore", title: S5.syncingTitle, message })}
@@ -21594,6 +21863,7 @@ SofabatonActivitiesTab.properties = {
   blockedTitle: { type: String },
   blockedMessage: { type: String },
   selectedHubProxyConnected: { type: Boolean },
+  mqttAvailable: { type: Boolean },
   _stage: { state: true },
   _entityId: { state: true },
   _baseline: { state: true },
@@ -21604,6 +21874,8 @@ SofabatonActivitiesTab.properties = {
   _deleteError: { state: true },
   _exitConfirmOpen: { state: true },
   _syncProgress: { state: true },
+  _syncMessage: { state: true },
+  _pendingTransport: { state: true },
   _syncError: { state: true },
   _syncFailedAt: { state: true }
 };
@@ -22788,9 +23060,16 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             .kind=${this._editingEntity.kind}
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
+            .mqttAvailable=${Boolean(hub?.mqtt_available)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-dirty-changed=${this._handleEditorDirtyChanged}
+            @editor-entity-changed=${(event) => {
+          const detail = event.detail;
+          if (this._editingEntity && detail && Number.isInteger(detail.id)) {
+            this._editingEntity = { kind: detail.kind ?? this._editingEntity.kind, id: Number(detail.id) };
+          }
+        }}
             @editor-exit=${() => {
           this._editingEntity = null;
           this._editorSyncPending = false;

@@ -2110,6 +2110,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         if not self.can_issue_commands():
             return {"status": "failed", "failed_at": "unavailable",
                     "message": "The hub is not reachable (the Sofabaton app may be connected)."}
+        # The same per-run state sync_activity resets: the live favorite map
+        # a delete resolves against must not come from an earlier run.
+        self._activity_sync_reset_run_state()
 
         # Every in-place step is an idempotent rewrite, so a transient ack
         # miss (observed live: a macro-save ack lost under background hub

@@ -1158,9 +1158,18 @@ class SofabatonControlPanelCard extends LitElement {
             .kind=${this._editingEntity.kind}
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
+            .mqttAvailable=${Boolean(hub?.mqtt_available)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-dirty-changed=${this._handleEditorDirtyChanged}
+            @editor-entity-changed=${(event: Event) => {
+              // A delivery switch replaced the device on the hub: the editor
+              // now holds the replacement, so key the mount on its id.
+              const detail = (event as CustomEvent<{ kind?: "activity" | "device"; id?: number }>).detail;
+              if (this._editingEntity && detail && Number.isInteger(detail.id)) {
+                this._editingEntity = { kind: detail.kind ?? this._editingEntity.kind, id: Number(detail.id) };
+              }
+            }}
             @editor-exit=${() => {
               this._editingEntity = null;
               this._editorSyncPending = false;

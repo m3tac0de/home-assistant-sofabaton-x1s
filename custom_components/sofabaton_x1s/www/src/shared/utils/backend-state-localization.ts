@@ -73,6 +73,7 @@ export function localizeWifiSyncFailure(value: unknown): string {
     case "create_failed": return S.syncFailedCreate;
     case "readback_failed": return S.syncFailedReadback;
     case "attach_failed": return S.syncFailedAttach;
+    case "retarget_failed": return S.syncFailedRetarget;
     case "writes_refused": return S.syncFailedWritesRefused;
     case "inplace_failed": return S.syncFailedRejected;
     case "not_found": return S.syncFailedNotFound;
@@ -189,7 +190,7 @@ function progressStep(progress: ProgressLike): string | null {
 type WifiPhaseKey =
   | "wifiStarting" | "wifiReadingDevice" | "wifiEnablingDevice" | "wifiDisablingDevice"
   | "wifiValidatingActivities" | "wifiCreatingDevice" | "wifiDeletingDevice"
-  | "wifiAddingToActivities" | "wifiApplyingFavorites" | "wifiApplyingBindings"
+  | "wifiAddingToActivities" | "wifiMovingReferences" | "wifiApplyingFavorites" | "wifiApplyingBindings"
   | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiUpdatedInPlace"
   | "wifiAlreadyCurrent" | "wifiDeviceRemoved" | "wifiComplete";
 
@@ -247,7 +248,8 @@ type WifiStepKey =
   | "wifiStepCommandDelete" | "wifiStepPowerConfig" | "wifiStepInputConfig"
   | "wifiStepInputSelect" | "wifiStepActivityJoin" | "wifiStepActivityLeave"
   | "wifiStepHeadCommit" | "wifiStepBindingWrite"
-  | "entityStepFavoriteAdd" | "entityStepFavoriteDelete" | "entityStepBindingDelete";
+  | "entityStepFavoriteAdd" | "entityStepFavoriteDelete" | "entityStepFavoriteOrder"
+  | "entityStepBindingDelete";
 
 export const WIFI_INPLACE_STEP_KINDS: Record<string, WifiStepKey> = {
   command_add: "wifiStepCommandAdd",
@@ -262,6 +264,7 @@ export const WIFI_INPLACE_STEP_KINDS: Record<string, WifiStepKey> = {
   wifi_head_commit: "wifiStepHeadCommit",
   favorite_add: "entityStepFavoriteAdd",
   favorite_delete: "entityStepFavoriteDelete",
+  favorite_order: "entityStepFavoriteOrder",
   binding_delete: "entityStepBindingDelete",
   binding_write: "wifiStepBindingWrite",
 };
@@ -275,6 +278,7 @@ export const WIFI_DEPLOY_PHASES: Record<string, WifiPhaseKey> = {
   creating_device: "wifiCreatingDevice",
   deleting_device: "wifiDeletingDevice",
   adding_to_activities: "wifiAddingToActivities",
+  moving_references: "wifiMovingReferences",
   applying_favorites: "wifiApplyingFavorites",
   applying_bindings: "wifiApplyingBindings",
   refreshing_maps: "wifiRefreshingMaps",

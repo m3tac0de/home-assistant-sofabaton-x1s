@@ -123,6 +123,8 @@ export class SofabatonEditDetailView extends LitElement {
     entityId: { attribute: false },
     dirty: { type: Boolean },
     mode: { type: String },
+    mqttAvailable: { type: Boolean },
+    pendingTransport: { attribute: false },
     wifiEvents: { attribute: false },
     _editDetailActiveSection: { state: true },
     _editRenameDialogOpen: { state: true },
@@ -186,6 +188,10 @@ export class SofabatonEditDetailView extends LitElement {
   // A Wifi Event is one record: long press is a property of the binding
   // (docs/internal/wifi-events-single-record-plan.md).
   wifiEvents: WifiEventsHost | null = null;
+  /** MQTT delivery can be offered for this hub (control-panel state). */
+  mqttAvailable = false;
+  /** The delivery method picked but not yet synced (host-owned). */
+  pendingTransport: "mqtt" | "http" | null = null;
   _editRenameDialogOpen = false;
   _editRenameDialogDraft = "";
   _editRenameDialogError = "";
@@ -398,6 +404,7 @@ export class SofabatonEditDetailView extends LitElement {
                   ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
+                ${this._renderTransportControl(params.kind)}
                 ${this._renderDirtyChip()}
                 <div class="detail-title-actions">
                   ${this._renderDetailRenameDeleteButtons(params.kind)}
@@ -443,6 +450,42 @@ export class SofabatonEditDetailView extends LitElement {
    * the device name (renaming is coordinated with the Wifi Commands store).
    * The offline Backup editor is unaffected (mode !== "live").
    */
+  /** The delivery control of a managed Wifi device (a user Wifi Device or
+   *  the Wifi Events device) in the LIVE editor: a two-option select on the
+   *  class pill, the only place a delivery switch starts
+   *  (docs/internal/wifi-events-transport-plan.md). The pick is a pending
+   *  edit the host owns (`pendingTransport`) and the next Sync applies, so
+   *  other edits (events, bindings) can go in first. Read-only when MQTT
+   *  cannot be offered for this hub. */
+  private _renderTransportControl(kind: BackupEditTargetKind) {
+    if (kind !== "device" || this.entityId == null || this.mode !== "live") return nothing;
+    const brand = bundleDeviceBrand(this.bundle, Number(this.entityId));
+    if (!isManagedWifiBrand(brand)) return nothing;
+    const current = bundleDeviceClass(this.bundle, Number(this.entityId)) === "wifi_mqtt" ? "mqtt" : "http";
+    if (!this.mqttAvailable && current !== "mqtt") return nothing;
+    const S = TOOLS_CARD_STRINGS.wifiCommands;
+    if (!this.mqttAvailable) {
+      return html`<span class="transport-pill ${current}" title=${S.transportPillDeployedTitle}>${current === "mqtt" ? "MQTT" : "HTTP"}</span>`;
+    }
+    const shown = this.pendingTransport ?? current;
+    const pending = shown !== current;
+    return html`
+      <select
+        class="transport-pill transport-select ${shown}${pending ? " pending" : ""}"
+        aria-label=${S.transportLabel}
+        title=${pending ? S.transportPillPreviewTitle : S.transportPillDeployedTitle}
+        .value=${shown}
+        @change=${(event: Event) => {
+          const next = String((event.target as HTMLSelectElement).value) === "mqtt" ? "mqtt" : "http";
+          this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport: next }, bubbles: true, composed: true }));
+        }}
+      >
+        <option value="http" ?selected=${shown === "http"}>HTTP</option>
+        <option value="mqtt" ?selected=${shown === "mqtt"}>MQTT</option>
+      </select>
+    `;
+  }
+
   private _isManagedWifiLiveDevice(): boolean {
     // The reserved Wifi Events device is carved out: this editor is its
     // ONLY hub-side editing UI (it never appears in the Wifi Commands
