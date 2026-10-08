@@ -33,8 +33,10 @@ from .command_config import (
     normalize_activity_event_actions,
     normalize_hub_event_actions,
     normalize_wifi_transport,
+    WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
+    wifi_transport_switch_pending,
 )
 from . import runtime
 from .wifi_deploy import wifi_sync_failure
@@ -109,6 +111,14 @@ def _build_wifi_device_sync_payload(
         and (has_deployed_device or bool(deployed_commands_hash))
     ):
         sync_needed = False
+    # A pending delivery switch is a sync reason of its own: the hashes
+    # agree (neither transport field enters them) until the switch deploys
+    # (wifi-events-transport-plan §2).
+    transport_switch_pending = wifi_transport_switch_pending(
+        config_payload, mqtt_available=_hub_mqtt_available(None, hub)
+    )
+    if transport_switch_pending and configured_slots > 0:
+        sync_needed = True
     return {
         **progress,
         "device_key": device_key,
@@ -118,6 +128,7 @@ def _build_wifi_device_sync_payload(
         "configured_slot_count": configured_slots,
         "has_managed_device": has_deployed_device or bool(deployed_commands_hash),
         "sync_needed": sync_needed,
+        "transport_switch_pending": transport_switch_pending,
     }
 
 
@@ -155,6 +166,64 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
         connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
         return
     payload["mqtt_available"] = _hub_mqtt_available(hass, hub)
+    payload["transport_switch_pending"] = wifi_transport_switch_pending(
+        payload, mqtt_available=payload["mqtt_available"]
+    )
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/set_transport",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+        vol.Required("transport"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_command_transport(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Set the desired delivery method of a Wifi Device record, the reserved
+    Wifi Events record included (wifi-events-transport-plan §5).
+
+    A pure store write: on a deployed record a value that differs from the
+    deployed transport makes the next sync a transport switch; the deployed
+    value cancels a pending one. Answers with the Wifi Events state payload
+    for the events record and with the device's config payload otherwise.
+    """
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    transport = normalize_wifi_transport(msg.get("transport"))
+    mqtt_available = _hub_mqtt_available(hass, hub)
+    if transport == WIFI_TRANSPORT_MQTT and not mqtt_available:
+        connection.send_error(
+            msg["id"],
+            "mqtt_unavailable",
+            "MQTT transport needs an X2 hub and the MQTT integration",
+        )
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    device_key = str(msg.get("device_key") or "")
+    try:
+        await store.async_set_requested_transport(hub.entry_id, device_key, transport)
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+    if is_wifi_events_device_key(device_key):
+        connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
+        return
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(
+        hub.entry_id, device_key=device_key, roku_listen_port=roku_listen_port
+    )
+    payload["mqtt_available"] = mqtt_available
+    payload["transport_switch_pending"] = wifi_transport_switch_pending(
+        payload, mqtt_available=mqtt_available
+    )
+    payload.update(_build_wifi_device_sync_payload(hub, payload, device_key=device_key))
     connection.send_result(msg["id"], payload)
 
 
@@ -586,7 +655,7 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
 
 
 def _wifi_events_state_payload(
-    hass: HomeAssistant, store: CommandConfigStore, entry_id: str
+    hass: HomeAssistant, store: CommandConfigStore, hub: Any
 ) -> dict[str, Any]:
     """Events plus record-level sync state (W7: the frontend defers all
     deploys to the Sync press and needs to know whether phase 1 — the
@@ -597,18 +666,59 @@ def _wifi_events_state_payload(
     (``compute_commands_hash``), it MUST be computed against the entry's
     resolved port — the default would flag every non-default-port hub as
     permanently needing a sync and trip a spurious phase-1 deploy on every
-    activity Sync.
+    activity Sync. A pending delivery switch (wifi-events-transport-plan
+    §2) is a sync reason of its own and is folded in here, where MQTT
+    availability is known.
     """
 
+    entry_id = hub.entry_id
     record_state = store.wifi_events_record_state(
         entry_id, roku_listen_port=runtime._resolve_roku_listen_port(hass, entry_id)
     )
+    mqtt_available = _hub_mqtt_available(hass, hub)
+    transport_switch_pending = bool(record_state.get("exists")) and wifi_transport_switch_pending(
+        {
+            "deployed_device_id": record_state.get("device_id"),
+            "requested_transport": record_state.get("requested_transport"),
+            "deployed_transport": record_state.get("deployed_transport"),
+        },
+        mqtt_available=mqtt_available,
+    )
     return {
         "events": store.list_wifi_events(entry_id),
-        "record_needs_sync": bool(record_state.get("record_needs_sync")),
+        "record_needs_sync": bool(record_state.get("record_needs_sync")) or transport_switch_pending,
         "device_id": record_state.get("device_id"),
         "slot_count": record_state.get("slot_count"),
+        "requested_transport": record_state.get("requested_transport"),
+        "deployed_transport": record_state.get("deployed_transport"),
+        "transport_switch_pending": transport_switch_pending,
+        "mqtt_available": mqtt_available,
     }
+
+
+async def _default_wifi_events_transport(
+    hass: HomeAssistant, store: CommandConfigStore, hub: Any
+) -> str:
+    """The desired transport for a Wifi Events record created now (D1).
+
+    HTTP, unless this hub already has a user Wifi Device deployed over
+    MQTT: the user went through the create flow's broker hint and chose
+    MQTT for this hub knowingly, so the events device follows. The MQTT
+    integration being loaded alone proves nothing about the hub being
+    pointed at the broker, so it never decides this on its own.
+    """
+
+    if not _hub_mqtt_available(hass, hub):
+        return WIFI_TRANSPORT_HTTP
+    for device in await store.async_list_hub_devices(hub.entry_id):
+        if is_wifi_events_device_key(device.get("device_key")):
+            continue
+        if normalize_wifi_transport(device.get("deployed_transport")) == WIFI_TRANSPORT_MQTT and (
+            isinstance(device.get("deployed_device_id"), int)
+            or str(device.get("deployed_commands_hash") or "").strip()
+        ):
+            return WIFI_TRANSPORT_MQTT
+    return WIFI_TRANSPORT_HTTP
 
 
 @websocket_api.websocket_command(
@@ -625,7 +735,7 @@ async def _ws_list_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
     store = await runtime._async_get_command_config_store(hass)
-    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
 
 
 @websocket_api.websocket_command(
@@ -649,7 +759,13 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
         return
     store = await runtime._async_get_command_config_store(hass)
     try:
-        allocated = await store.async_allocate_wifi_event(hub.entry_id, name)
+        allocated = await store.async_allocate_wifi_event(
+            hub.entry_id,
+            name,
+            # Seeds the record's desired transport only when this is the
+            # hub's first event (the record is created here).
+            requested_transport=await _default_wifi_events_transport(hass, store, hub),
+        )
     except ValueError as err:
         code = str(err)
         messages = {
@@ -670,7 +786,7 @@ async def _ws_create_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
     # the activity writes. command_id is already law-derived (slot + 1);
     # device_id is the deployed id when the device exists, else None (the
     # frontend inserts a placeholder ref and rewrites it after phase 1).
-    state = _wifi_events_state_payload(hass, store, hub.entry_id)
+    state = _wifi_events_state_payload(hass, store, hub)
     connection.send_result(
         msg["id"],
         {
@@ -753,7 +869,7 @@ async def _ws_delete_wifi_event(hass: HomeAssistant, connection, msg: dict[str, 
             )
         except Exception:  # pragma: no cover - cascade is best-effort
             _LOGGER.exception("[wifi_events] freed-slot record delete failed")
-    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
 
 
 @websocket_api.websocket_command(
@@ -794,7 +910,7 @@ async def _ws_sync_wifi_events(hass: HomeAssistant, connection, msg: dict[str, A
     except HomeAssistantError as err:
         _send_sync_failure(connection, msg["id"], err)
         return
-    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
 
 
 @websocket_api.websocket_command(
@@ -834,7 +950,7 @@ async def _ws_clear_all_wifi_events(hass: HomeAssistant, connection, msg: dict[s
     # Whole-record delete mirrors the last-event branch of wifi_event/delete
     # (plan §10): the next event create re-creates a fresh record.
     await store.async_delete_hub_device(hub.entry_id, WIFI_EVENTS_DEVICE_KEY)
-    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
 
 
 @websocket_api.websocket_command(
@@ -860,7 +976,7 @@ async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[s
     if msg.get("press_type") == "long":
         # A cached card's long-press action has no home any more; never
         # let it overwrite the event's one action.
-        connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+        connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
         return
     # No re-deploy: the callback runtime reads the staged slot.
     updated = await store.async_set_wifi_event_action(
@@ -869,7 +985,7 @@ async def _ws_set_wifi_event_action(hass: HomeAssistant, connection, msg: dict[s
     if not updated:
         connection.send_error(msg["id"], "not_found", "No Wifi Event at this slot")
         return
-    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub.entry_id))
+    connection.send_result(msg["id"], _wifi_events_state_payload(hass, store, hub))
 
 
 def _build_wifi_press_event(record: dict[str, Any] | None) -> dict[str, Any] | None:

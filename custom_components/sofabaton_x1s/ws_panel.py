@@ -30,6 +30,7 @@ from .ui_settings_store import HUB_CLICK_ACTIONS, SIDEBAR_PANEL_MODES
 from . import operations
 from . import runtime
 from .ws_wifi import (
+    _hub_mqtt_available,
     _build_wifi_device_sync_payload,
 )
 from . import frontend_resources
@@ -203,6 +204,9 @@ async def _async_build_control_panel_hub_payload(
         "hub_connected": bool(getattr(hub, "hub_connected", False)),
         "proxy_client_connected": bool(getattr(hub, "client_connected", False)),
         "persistent_cache_enabled": persistent_cache_enabled,
+        # Whether MQTT delivery can be offered for this hub (X2, MQTT
+        # integration loaded, MAC known): the device editor's delivery control.
+        "mqtt_available": _hub_mqtt_available(hass, hub),
         "settings": {
             "proxy_enabled": bool(getattr(hub, "proxy_enabled", False)),
             "hex_logging_enabled": bool(getattr(hub, "hex_logging_enabled", False)),

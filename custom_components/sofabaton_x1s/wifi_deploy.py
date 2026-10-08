@@ -31,13 +31,18 @@ from .lib.wifi_inplace_plan import (
     clone_wifi_record_for_add,
     derive_device_level_bindings,
     desired_snapshot_from_config,
+    retarget_device_refs,
+    WifiInplacePlan,
+    wifi_device_retarget_steps,
     wifi_events_retarget_steps,
+    wifi_membership_order_steps,
 )
 from .lib.protocol_const import ButtonName
 from .command_config import (
     COMMAND_BRAND_PREFIX,
     LEGACY_COMMAND_BRAND_PREFIX,
     async_get_command_config_store,
+    compute_commands_hash,
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
     is_wifi_events_device_key,
@@ -75,6 +80,9 @@ WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {
     "create_failed": "The hub did not create the Wifi Device.",
     "readback_failed": "The hub did not store the commands as sent; the previous Wifi Device was kept.",
     "attach_failed": "The Wifi Device could not be added to every activity.",
+    "retarget_failed": (
+        "The activity references could not be moved to the new Wifi Device; the previous one was kept."
+    ),
     "writes_refused": "The hub refused some changes. Sync again to repair the Wifi Device.",
     "inplace_failed": "The hub refused a change. Sync again.",
     "sync_failed": "The sync stopped. Sync again.",
@@ -141,6 +149,20 @@ class _DeployRun:
     delete_confirmed_acts: set[int] = field(default_factory=set)
     activities_with_favorites: set[int] = field(default_factory=set)
     failed_writes: list[str] = field(default_factory=list)
+    # A transport switch (wifi-events-transport-plan §4): the transport the
+    # managed device is deployed with now, when it differs from
+    # selected_transport. None for every other deploy.
+    transport_switch_from: str | None = None
+    # Replace path: the live activity reads taken before the new device
+    # joined (old device present), the activities that referenced the old
+    # device, and the references the move carried over, so the config-driven
+    # favorite and binding writes below do not add them a second time.
+    pre_add_entries: list[dict[str, Any]] = field(default_factory=list)
+    old_device_ids: list[int] = field(default_factory=list)
+    referencing_act_ids: list[int] = field(default_factory=list)
+    fold_long_ids_at: int | None = None
+    moved_favorites: set[tuple[int, int]] = field(default_factory=set)
+    moved_bindings: set[tuple[int, int]] = field(default_factory=set)
 
 
 class WifiDeployMixin:
@@ -329,25 +351,34 @@ class WifiDeployMixin:
         return sorted(hashes)
 
     def _select_wifi_command_transport(self, command_payload: dict[str, Any]) -> str:
-        """Pick the transport for the first deployment.
+        """Pick the transport this deploy writes.
 
-        A record that has already deployed keeps its transport forever
-        (changing it is an explicit re-deploy, never a side effect of a
-        re-sync). Fresh deploys honor the create-flow choice only when
-        the hub is an X2 and the MQTT integration is loaded; everything
-        else is HTTP.
+        ``requested_transport`` is the desired transport
+        (wifi-events-transport-plan §2). A deployed record keeps its
+        ``deployed_transport`` unless the desired one differs AND can be
+        deployed (MQTT needs an X2 with the MQTT integration loaded); then
+        this deploy is a transport switch and the caller forces the replace
+        path. A wish for MQTT on a hub where it is unavailable is kept in
+        the store and ignored here, so the record keeps working over HTTP.
+        Fresh deploys honour the desired transport under the same
+        availability rule; everything else is HTTP.
         """
 
+        requested = normalize_wifi_transport(command_payload.get("requested_transport"))
+        mqtt_ok = requested != WIFI_TRANSPORT_MQTT or self.wifi_mqtt_available()
         already_deployed = isinstance(
             command_payload.get("deployed_device_id"), int
         ) or bool(str(command_payload.get("deployed_commands_hash") or "").strip())
         if already_deployed:
             # Absent ⇒ HTTP: every record that predates the MQTT work
-            # deployed over HTTP, and a replace must never migrate it.
-            return normalize_wifi_transport(command_payload.get("deployed_transport"))
-        if not self.wifi_mqtt_available():
+            # deployed over HTTP.
+            deployed = normalize_wifi_transport(command_payload.get("deployed_transport"))
+            if requested != deployed and mqtt_ok:
+                return requested
+            return deployed
+        if not mqtt_ok:
             return WIFI_TRANSPORT_HTTP
-        return normalize_wifi_transport(command_payload.get("requested_transport"))
+        return requested
 
     async def async_delete_wifi_event_records(
         self,
@@ -870,8 +901,43 @@ class WifiDeployMixin:
             commands_hash = str(command_payload.get("commands_hash") or "")
             deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
             deployed_device_id = command_payload.get("deployed_device_id")
-            brand_name = f"{COMMAND_BRAND_PREFIX}-{normalized_device_key}-{commands_hash}"
             selected_transport = self._select_wifi_command_transport(command_payload)
+            # A transport switch: the record is deployed over the other
+            # transport. The store's commands_hash was computed with the
+            # deployed transport's listener-port rule (MQTT hashes with
+            # port 0), so it is recomputed for the target transport here;
+            # the brand and the deployed hash written below then match what
+            # the store computes once deployed_transport has moved
+            # (wifi-events-transport-plan §4, §5).
+            transport_switch_from: str | None = None
+            already_deployed = isinstance(deployed_device_id, int) or bool(
+                deployed_commands_hash.strip()
+            )
+            if already_deployed:
+                deployed_transport_now = normalize_wifi_transport(
+                    command_payload.get("deployed_transport")
+                )
+                if deployed_transport_now != selected_transport:
+                    transport_switch_from = deployed_transport_now
+                    commands_hash = compute_commands_hash(
+                        commands,
+                        device_name=device_name,
+                        roku_listen_port=(
+                            0 if selected_transport == WIFI_TRANSPORT_MQTT else int(request_port)
+                        ),
+                        power_on_command_id=command_payload.get("power_on_command_id"),
+                        power_off_command_id=command_payload.get("power_off_command_id"),
+                        slot_count=slot_count,
+                        single_record=is_wifi_events_device_key(normalized_device_key),
+                    )
+                    self._log.info(
+                        "[%s] Wifi Device %s switches delivery from %s to %s",
+                        self.entry_id,
+                        normalized_device_key,
+                        deployed_transport_now,
+                        selected_transport,
+                    )
+            brand_name = f"{COMMAND_BRAND_PREFIX}-{normalized_device_key}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
             store = await async_get_command_config_store(self.hass)
             self._set_command_sync_progress(
@@ -882,6 +948,12 @@ class WifiDeployMixin:
                 phase="starting",
                 message="Starting sync",
                 error_code=None,
+                # Carried across every later step so the control panel can
+                # label the whole run as a delivery switch; cleared on
+                # every other deploy.
+                transport_switch=(
+                    selected_transport if transport_switch_from is not None else None
+                ),
             )
             run = _DeployRun(
                 commands=commands,
@@ -898,6 +970,7 @@ class WifiDeployMixin:
                 store=store,
                 request_port=request_port,
                 device_name=device_name,
+                transport_switch_from=transport_switch_from,
             )
 
             try:
@@ -912,7 +985,11 @@ class WifiDeployMixin:
                 # through to the replace path below. A failure AFTER writes
                 # started raises instead (never replace on top of a
                 # half-applied edit). docs/internal/wifi-inplace-deploy-plan.md
-                if len(run.managed) == 1:
+                # A transport switch never runs in place: the device class
+                # is fixed at create (wifi-events-transport-plan §4), so it
+                # takes the replace path, whose retarget step keeps the
+                # references.
+                if len(run.managed) == 1 and run.transport_switch_from is None:
                     inplace_result = await self._async_try_inplace_command_sync(
                         managed_device_id=run.managed[0][0],
                         commands=commands,
@@ -1376,6 +1453,54 @@ class WifiDeployMixin:
                 )
                 activity_ids &= known_activity_ids
 
+        # The device being replaced: which activities it is a member of
+        # and which of them reference its commands, from live reads. The
+        # slot config only knows the memberships and references it made
+        # itself; the activity editor (every Wifi Event reference, macro
+        # steps, favorites and bindings added there) and the Sofabaton app
+        # make the rest, and the delete below would cascade them away. The
+        # new device joins every activity the old one was in, and the
+        # references move onto it before the delete
+        # (wifi-events-transport-plan §4).
+        old_device_ids = [int(row[0]) for row in managed]
+        pre_add_entries: list[dict[str, Any]] = []
+        fold_long_ids_at = slot_count if is_wifi_events_device_key(normalized_device_key) else None
+        if old_device_ids and self.activities:
+            baseline = await self._async_read_replace_baseline(old_device_ids)
+            if baseline is None:
+                if run.transport_switch_from is not None:
+                    # A switch must not lose a single reference; without the
+                    # reads there is nothing to move them with.
+                    await self.async_delete_device(wifi_device_id)
+                    raise WifiSyncError(
+                        "hub_no_answer",
+                        "Failed reading the activities that reference the Wifi Device; "
+                        "the delivery method was not changed",
+                    )
+                _LOGGER.info(
+                    "[%s] sync_command_config: activity reads unavailable; references "
+                    "to the replaced Wifi Device are not carried over",
+                    self.entry_id,
+                )
+            else:
+                device_entries, pre_add_entries = baseline
+                for device_entry in device_entries:
+                    if not isinstance(device_entry, dict):
+                        continue
+                    snapshot = baseline_snapshot_from_bundle(device_entry, pre_add_entries)
+                    for act_id, refs in snapshot.activities.items():
+                        if act_id not in known_activity_ids and known_activity_ids:
+                            continue
+                        activity_ids.add(act_id)
+                        ordinal = int(refs.input_ordinal or 0)
+                        if 0 < ordinal <= len(snapshot.input_command_ids):
+                            # The old membership's input: same command id on
+                            # the new device (the layout is fixed). The slot
+                            # config's own input assignment wins.
+                            activity_input_command_ids.setdefault(
+                                act_id, snapshot.input_command_ids[ordinal - 1]
+                            )
+
         add_results: dict[int, bool] = {}
         self._set_command_sync_progress(
             device_key=normalized_device_key,
@@ -1394,6 +1519,47 @@ class WifiDeployMixin:
         if activity_ids and not all(add_results.values()):
             await self.async_delete_device(wifi_device_id)
             raise WifiSyncError("attach_failed", "Failed adding Wifi Device to all activities")
+
+        # Move every reference from the old device onto the new one, planned
+        # against a FRESH read of the referencing activities: the adds above
+        # changed them (membership, the input step in the power macro), and
+        # a plan built on the pre-add read would write that back out.
+        referencing_act_ids = sorted(
+            {
+                int((entry.get("device") or {}).get("device_id") or 0)
+                for entry in pre_add_entries
+                for old_id in old_device_ids
+                if retarget_device_refs(
+                    entry,
+                    old_device_id=old_id,
+                    new_device_id=wifi_device_id,
+                    fold_long_ids_at=fold_long_ids_at,
+                )[1]
+            }
+            - {0}
+        )
+        run.pre_add_entries = pre_add_entries
+        run.old_device_ids = old_device_ids
+        run.referencing_act_ids = referencing_act_ids
+        run.fold_long_ids_at = fold_long_ids_at
+        for entry in pre_add_entries:
+            act_id = int((entry.get("device") or {}).get("device_id") or 0)
+            for fav in entry.get("favorite_slots") or []:
+                if int(fav.get("device_id") or 0) in old_device_ids:
+                    run.moved_favorites.add((act_id, int(fav.get("command_id") or 0)))
+            for row in entry.get("button_bindings") or []:
+                if (
+                    int(row.get("device_id") or 0) in old_device_ids
+                    or int(row.get("long_press_device_id") or 0) in old_device_ids
+                ):
+                    run.moved_bindings.add((act_id, int(row.get("button_id") or 0)))
+        if referencing_act_ids:
+            await self._async_move_references_to_replacement(
+                run,
+                old_device_ids=old_device_ids,
+                referencing_act_ids=referencing_act_ids,
+                fold_long_ids_at=fold_long_ids_at,
+            )
 
         # Delete the previous managed device only now, after the
         # replacement has joined its activities. The hub's delete
@@ -1433,6 +1599,19 @@ class WifiDeployMixin:
                 )
             )
 
+        # Binding and favorite-order writes the hub refused. The
+        # deploy still finishes (the device exists and owns its
+        # activities), but it reads as out of date and fails, so the
+        # next sync repairs it in place (CR-H1-4). A refused
+        # favorite add stays tolerated (L-H1).
+        failed_writes: list[str] = []
+
+        # The old device's membership rows left the power sequences with its
+        # delete; the new device's rows sit at the end. Put them where the
+        # old ones stood (wifi-events-transport-plan §4).
+        if run.referencing_act_ids:
+            await self._async_restore_membership_order(run, failed_writes)
+
         self._set_command_sync_progress(
             device_key=normalized_device_key,
             current_step=5,
@@ -1446,12 +1625,6 @@ class WifiDeployMixin:
         # snapshot so that fav_id recycling (the hub reusing freed ids) cannot
         # cause old scrambled orders to be mistaken for "existing to preserve".
         activities_new_fav_ids: dict[int, list[int]] = {}
-        # Binding and favorite-order writes the hub refused. The
-        # deploy still finishes (the device exists and owns its
-        # activities), but it reads as out of date and fails, so the
-        # next sync repairs it in place (CR-H1-4). A refused
-        # favorite add stays tolerated (L-H1).
-        failed_writes: list[str] = []
 
         activities_with_favorites: set[int] = set()
         for slot_idx, slot in enumerate(commands[:slot_count]):
@@ -1464,6 +1637,10 @@ class WifiDeployMixin:
                 except (TypeError, ValueError):
                     continue
                 if not add_results.get(act_id, False):
+                    continue
+                if (act_id, command_id) in run.moved_favorites:
+                    # Carried over from the old device with its position;
+                    # adding it again would double it and append the copy.
                     continue
                 result = await self.async_command_to_favorite(
                     act_id,
@@ -1543,6 +1720,9 @@ class WifiDeployMixin:
                     continue
                 if not add_results.get(act_id, False):
                     continue
+                if (act_id, button_id) in run.moved_bindings:
+                    # Carried over from the old device (both legs).
+                    continue
                 if not await self.async_command_to_button(
                     act_id,
                     button_id,
@@ -1583,6 +1763,244 @@ class WifiDeployMixin:
         run.activities_with_favorites = activities_with_favorites
         run.failed_writes = failed_writes
 
+
+    async def _async_read_replace_baseline(
+        self, old_device_ids: list[int]
+    ) -> tuple[list[dict[str, Any] | None], list[dict[str, Any]]] | None:
+        """Live structural reads for a replace: the old device(s) and every
+        activity on the hub (membership and references are only
+        discoverable by reading them). ``None`` when the reads fail."""
+
+        activity_ids = sorted(int(a) for a in self.activities)
+
+        def _read():
+            device_entries = [
+                self._proxy.backup_device(dev_id, include_blobs=False)
+                for dev_id in old_device_ids
+            ]
+            try:
+                self._proxy._refresh_catalog("activities", timeout=5.0)
+            except Exception:  # noqa: BLE001 - best effort, as the in-place path
+                pass
+            activity_entries: list[dict[str, Any]] = []
+            for act_id in activity_ids:
+                payload = self._proxy.backup_activity(act_id, refresh_catalog=False)
+                if isinstance(payload, dict):
+                    activity_entries.append(payload)
+            return device_entries, activity_entries
+
+        try:
+            device_entries, activity_entries = await self.hass.async_add_executor_job(_read)
+        except Exception:  # noqa: BLE001 - the caller decides what a failed read means
+            self._log.debug("[%s] replace baseline read failed", self.entry_id, exc_info=True)
+            return None
+        if not any(isinstance(entry, dict) for entry in device_entries):
+            return None
+        if len(activity_entries) < len(activity_ids):
+            return None
+        return device_entries, activity_entries
+
+    async def _async_run_retarget_steps(
+        self,
+        run: _DeployRun,
+        *,
+        act_ids: list[int],
+        old_device_id: int,
+        new_device_id: int,
+        fold_long_ids_at: int | None,
+    ) -> dict[str, Any]:
+        """Re-read *act_ids*, plan the moves old → new and run them. Returns
+        the walker's result dict; raises ``ValueError`` from the planner."""
+
+        def _read():
+            entries: list[dict[str, Any]] = []
+            for act_id in act_ids:
+                payload = self._proxy.backup_activity(act_id, refresh_catalog=False)
+                if isinstance(payload, dict):
+                    entries.append(payload)
+            return entries
+
+        entries = await self.hass.async_add_executor_job(_read)
+        if len(entries) < len(act_ids):
+            return {"status": "failed", "message": "activity read incomplete"}
+        steps = wifi_device_retarget_steps(
+            entries,
+            old_device_id=old_device_id,
+            new_device_id=new_device_id,
+            fold_long_ids_at=fold_long_ids_at,
+        )
+        if not steps:
+            return {"status": "success", "completed_steps": 0, "total_steps": 0}
+        plan = WifiInplacePlan(steps=steps)
+        loop = self.hass.loop
+        normalized_device_key = run.normalized_device_key
+
+        def _progress(**data: Any) -> None:
+            message = str(data.get("message") or "")
+            step_kind = data.get("step_kind")
+            step_name = data.get("step_name")
+
+            def _inner() -> None:
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    step_kind=step_kind,
+                    step_name=step_name,
+                    message=message,
+                )
+
+            loop.call_soon_threadsafe(_inner)
+
+        result = await self.hass.async_add_executor_job(
+            partial(self._proxy.run_wifi_inplace_plan, plan, progress_callback=_progress)
+        )
+        return result if isinstance(result, dict) else {"status": "failed", "message": "no result"}
+
+    async def _async_move_references_to_replacement(
+        self,
+        run: _DeployRun,
+        *,
+        old_device_ids: list[int],
+        referencing_act_ids: list[int],
+        fold_long_ids_at: int | None,
+    ) -> None:
+        """Step 3b (replace path): move every activity reference from the
+        old device(s) onto the replacement, before the delete cascades them
+        away. On a rejected write the moves already made are reversed and
+        the replacement is deleted, so the hub is back where it started."""
+
+        normalized_device_key = run.normalized_device_key
+        wifi_device_id = run.wifi_device_id
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            phase="moving_references",
+            message="Moving activity references to the new Wifi Device",
+        )
+        failure: str | None = None
+        for old_id in old_device_ids:
+            try:
+                result = await self._async_run_retarget_steps(
+                    run,
+                    act_ids=referencing_act_ids,
+                    old_device_id=old_id,
+                    new_device_id=wifi_device_id,
+                    fold_long_ids_at=fold_long_ids_at,
+                )
+            except ValueError as err:
+                failure = str(err)
+                break
+            if result.get("status") != "success":
+                failure = str(result.get("message") or "the hub rejected a write")
+                break
+        self._set_command_sync_progress(
+            device_key=normalized_device_key, step_kind=None, step_name=None
+        )
+        if failure is None:
+            _LOGGER.info(
+                "[%s] sync_command_config: moved references in activities %s onto Wifi Device %d",
+                self.entry_id,
+                referencing_act_ids,
+                wifi_device_id,
+            )
+            return
+        _LOGGER.warning(
+            "[%s] sync_command_config: moving references onto Wifi Device %d failed (%s); "
+            "reversing and keeping the previous device",
+            self.entry_id,
+            wifi_device_id,
+            failure,
+        )
+        # Best-effort reversal of whatever landed: the same move, ids swapped,
+        # planned against a fresh read so only moved rows are touched.
+        for old_id in old_device_ids:
+            try:
+                await self._async_run_retarget_steps(
+                    run,
+                    act_ids=referencing_act_ids,
+                    old_device_id=wifi_device_id,
+                    new_device_id=old_id,
+                    fold_long_ids_at=None,
+                )
+            except Exception:  # noqa: BLE001 - reversal is best effort
+                self._log.warning(
+                    "[%s] reversing the reference move onto device %d failed",
+                    self.entry_id,
+                    old_id,
+                    exc_info=True,
+                )
+        await self.async_delete_device(wifi_device_id)
+        raise WifiSyncError(
+            "retarget_failed",
+            f"Failed moving activity references onto the new Wifi Device: {failure}",
+        )
+
+    async def _async_restore_membership_order(
+        self, run: _DeployRun, failed_writes: list[str]
+    ) -> None:
+        """Step 4b (replace path): after the old device is gone, rewrite the
+        power sequences so the new device's membership rows take the old
+        device's positions. Order only; a failure is reported through
+        ``failed_writes`` (the device still works, the sequence order is
+        the hub's default until the user edits it)."""
+
+        act_ids = list(run.referencing_act_ids)
+
+        def _read():
+            entries: list[dict[str, Any]] = []
+            for act_id in act_ids:
+                payload = self._proxy.backup_activity(act_id, refresh_catalog=False)
+                if isinstance(payload, dict):
+                    entries.append(payload)
+            return entries
+
+        try:
+            post_entries = await self.hass.async_add_executor_job(_read)
+        except Exception:  # noqa: BLE001 - order only
+            self._log.warning(
+                "[%s] could not re-read activities %s to restore the power sequence order",
+                self.entry_id,
+                act_ids,
+                exc_info=True,
+            )
+            failed_writes.append("power sequence order")
+            return
+        steps: list[Any] = []
+        for old_id in run.old_device_ids:
+            try:
+                steps.extend(
+                    wifi_membership_order_steps(
+                        run.pre_add_entries,
+                        post_entries,
+                        old_device_id=old_id,
+                        new_device_id=run.wifi_device_id,
+                        fold_long_ids_at=run.fold_long_ids_at,
+                    )
+                )
+            except ValueError as err:
+                self._log.warning(
+                    "[%s] power sequence order could not be planned: %s", self.entry_id, err
+                )
+                failed_writes.append("power sequence order")
+                return
+        if not steps:
+            return
+        self._set_command_sync_progress(
+            device_key=run.normalized_device_key,
+            phase="moving_references",
+            message="Restoring the power sequence order",
+        )
+        result = await self.hass.async_add_executor_job(
+            partial(self._proxy.run_wifi_inplace_plan, WifiInplacePlan(steps=tuple(steps)))
+        )
+        self._set_command_sync_progress(
+            device_key=run.normalized_device_key, step_kind=None, step_name=None
+        )
+        if not isinstance(result, dict) or result.get("status") != "success":
+            self._log.warning(
+                "[%s] restoring the power sequence order failed: %s",
+                self.entry_id,
+                (result or {}).get("message") if isinstance(result, dict) else result,
+            )
+            failed_writes.append("power sequence order")
 
     async def _deploy_epilogue(self, run: _DeployRun) -> dict[str, Any]:
         """Steps 7-8: re-warm, persist, resync the remote, save the deploy."""
@@ -1718,6 +2136,17 @@ class WifiDeployMixin:
             )
 
         await self.async_update_wifi_mqtt_ingress()
+        # The HTTP listener follows the store the same way the zero-slot
+        # teardown already does: a deploy that moved the last HTTP record to
+        # MQTT leaves nothing for it to serve (bench_311: it stayed on after
+        # the Wifi Events device switched). The reverse is handled by the
+        # preflight, which enables it before an HTTP deploy.
+        if (
+            selected_transport == WIFI_TRANSPORT_MQTT
+            and self.roku_server_enabled
+            and not await self._async_wifi_listener_needed()
+        ):
+            await self.async_set_roku_server_enabled(False)
 
         if failed_writes:
             _LOGGER.warning(

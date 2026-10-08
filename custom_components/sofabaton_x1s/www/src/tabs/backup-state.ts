@@ -902,6 +902,20 @@ export function isManagedWifiBrand(brand: string): boolean {
   return false;
 }
 
+/** The store key of a managed Wifi Commands device from its brand
+ *  (`m3-<key>-<hash>`), or null for an unmanaged device. */
+export function managedWifiDeviceKey(brand: string): string | null {
+  const text = String(brand ?? "").trim();
+  for (const prefix of ["m3-", "m3tac0de-"]) {
+    if (!text.startsWith(prefix)) continue;
+    const suffix = text.slice(prefix.length);
+    const key = suffix.includes("-") ? suffix.slice(0, suffix.indexOf("-")) : "";
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return normalized || null;
+  }
+  return null;
+}
+
 /**
  * True when a brand string identifies the reserved, system-owned
  * "Wifi Events" device (`m3-haevents-<hash>`). Unlike other managed
@@ -3775,6 +3789,59 @@ export function retireWifiEventLongRecords(
 /** Drop one device entry (by id) from a bundle: the Sync flow uses this
  *  to retire the placeholder Wifi Events block (a free positive id) before
  *  grafting the real deployed block. */
+/** Rewrite every `device_id` / `*_device_id` field equal to `oldId` inside
+ *  `value` (deep) to `newId`. */
+function rewriteDeviceIdRefs<T>(value: T, oldId: number, newId: number): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteDeviceIdRefs(item, oldId, newId)) as unknown as T;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if ((key === "device_id" || key.endsWith("_device_id")) && Number(item) === Number(oldId)) {
+        out[key] = newId;
+      } else {
+        out[key] = rewriteDeviceIdRefs(item, oldId, newId);
+      }
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
+ * After the hub replaced a device under a new id (the delivery switch,
+ * docs/internal/wifi-events-transport-plan.md), carry the user's unsynced
+ * edits on the OLD entry over to the fresh capture of the replacement:
+ * every top-level field the user changed (name, bindings, macros, …)
+ * replaces the fresh one, with the old id rewritten inside; fields left
+ * alone take the hub's current state, so the next sync's diff holds the
+ * user's edits only.
+ */
+export function replayDeviceEntryEdits(
+  fresh: BackupBundleDevicePayload,
+  baselineEntry: BackupBundleDevicePayload | null | undefined,
+  workingEntry: BackupBundleDevicePayload | null | undefined,
+  oldId: number,
+  newId: number,
+): BackupBundleDevicePayload {
+  if (!workingEntry) return fresh;
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const base = (baselineEntry ?? {}) as Record<string, unknown>;
+  const work = workingEntry as unknown as Record<string, unknown>;
+  const result: Record<string, unknown> = { ...fresh, device: { ...fresh.device } };
+  for (const key of Object.keys(work)) {
+    if (key === "device" || same(work[key], base[key])) continue;
+    result[key] = rewriteDeviceIdRefs(structuredClone(work[key]), oldId, newId);
+  }
+  const baseName = (base.device as { name?: unknown } | undefined)?.name;
+  const workName = workingEntry.device?.name;
+  if (typeof workName === "string" && !same(baseName, workName)) {
+    (result.device as { name?: string }).name = workName;
+  }
+  return result as unknown as BackupBundleDevicePayload;
+}
+
 export function removeBundleDevice(
   bundle: BackupBundlePayload | null,
   deviceId: number,

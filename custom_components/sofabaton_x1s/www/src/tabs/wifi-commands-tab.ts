@@ -10,6 +10,7 @@ import type {
   WifiCommandSyncState,
   WifiDeviceSummary,
   WifiEvent,
+  WifiEventsListResponse,
   WifiPressEvent,
   WifiSectionId,
 } from "../shared/ha-context";
@@ -132,6 +133,12 @@ const defaultCommandSlotName = (idx: number) => `Command ${idx + 1}`;
 
 type PressType = "short" | "long";
 type ActiveModal = "details" | "action" | null;
+
+function normalizeTransport(value: unknown): "mqtt" | "http" | null {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (text === "mqtt" || text === "http") return text;
+  return null;
+}
 type HubEventKey = "power_off" | "redundant_off" | "activity_start" | "activity_stop";
 type ActivityEventPhase = "start" | "stop";
 type HubEventEditorTarget =
@@ -374,6 +381,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .device-status-pill-label { min-width: 0; }
     .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
     .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-pill.pending { border-style: dashed; }
     .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
     .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
     .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
@@ -1109,27 +1117,20 @@ class SofabatonWifiCommandsTab extends LitElement {
     `;
   }
 
-  private _deviceTransport(device: WifiDeviceSummary): "mqtt" | "http" {
-    const deployed = String(device.deployed_transport || "").toLowerCase();
-    if (deployed === "mqtt" || deployed === "http") return deployed as "mqtt" | "http";
-    return String(device.requested_transport || "").toLowerCase() === "mqtt" ? "mqtt" : "http";
-  }
-
+  /** The read-only pill of a device row and of the selected device's
+   *  header. X2-with-MQTT entries only — everywhere else every Wifi Device
+   *  is HTTP and the pill is noise. A device already deployed over MQTT
+   *  keeps its pill even if the MQTT integration goes away. */
   private _renderTransportPill(device: WifiDeviceSummary) {
-    // X2-with-MQTT entries only — everywhere else every Wifi Device is
-    // HTTP and the pill is noise. A device already deployed over MQTT
-    // keeps its pill even if the MQTT integration goes away.
-    const transport = this._deviceTransport(device);
-    if (!this._mqttAvailable && transport !== "mqtt") return nothing;
-    const deployed = Boolean(device.deployed_transport);
-    return html`
-      <span
-        class="transport-pill ${transport}"
-        title=${deployed
-          ? TOOLS_CARD_STRINGS.wifiCommands.transportPillDeployedTitle
-          : TOOLS_CARD_STRINGS.wifiCommands.transportPillPreviewTitle}
-      >${transport === "mqtt" ? "MQTT" : "HTTP"}</span>
-    `;
+    const deployed = normalizeTransport(device.deployed_transport);
+    const requested = normalizeTransport(device.requested_transport);
+    const pending = Boolean(device.transport_switch_pending);
+    return this._renderTransportPillFor({
+      transport: this._pillTransport(deployed, requested, pending),
+      deployed: deployed !== null,
+      pending,
+      mqttAvailable: this._mqttAvailable,
+    });
   }
 
   private _renderDeviceListView() {
@@ -1412,12 +1413,40 @@ class SofabatonWifiCommandsTab extends LitElement {
   /** Apply a `wifi_event/*` state payload: rows plus the record-level
    *  deployed device id (null = orphaned or never deployed). */
   private _applyWifiEventsState(
-    state: { events?: WifiEvent[]; device_id?: number | null; record_needs_sync?: boolean } | null | undefined,
+    state: WifiEventsListResponse | null | undefined,
   ): void {
     this._wifiEventsRows = state?.events ?? [];
     const deviceId = state?.device_id;
     this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
     this._wifiEventsRecordNeedsSync = Boolean(state?.record_needs_sync);
+  }
+
+  // ── Delivery method pill (read-only) ───────────────────────────────────
+  //
+  // The switch itself lives in the device editor (Hub → Devices → Edit);
+  // this tab only shows what is deployed, and previews a pending wish.
+
+  /** The transport a pill shows: the pending wish wins over the deployed
+   *  one, as an undeployed device shows its selection. */
+  private _pillTransport(
+    deployed: "mqtt" | "http" | null,
+    requested: "mqtt" | "http" | null,
+    pending: boolean,
+  ): "mqtt" | "http" {
+    if (pending && requested) return requested;
+    return deployed ?? requested ?? "http";
+  }
+
+  private _renderTransportPillFor(opts: {
+    transport: "mqtt" | "http";
+    deployed: boolean;
+    pending: boolean;
+    mqttAvailable: boolean;
+  }) {
+    if (!opts.mqttAvailable && opts.transport !== "mqtt") return nothing;
+    const S = TOOLS_CARD_STRINGS.wifiCommands;
+    const title = opts.deployed && !opts.pending ? S.transportPillDeployedTitle : S.transportPillPreviewTitle;
+    return html`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? "MQTT" : "HTTP"}</span>`;
   }
 
   private async _loadWifiEventsRows(): Promise<void> {
@@ -1971,7 +2000,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                         </label>
                       `,
                     )}
-                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportLockedNote}</div>
+                    <div class="transport-choice-note">${TOOLS_CARD_STRINGS.wifiCommands.transportChangeNote}</div>
                   </div>
                 `
               : nothing}

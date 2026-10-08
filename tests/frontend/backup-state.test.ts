@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  replayDeviceEntryEdits,
   activityAddableDevices,
   activityButtonBindingItems,
   activityQuickAccessItems,
@@ -1911,4 +1912,38 @@ test("retiring the Wifi Events long records follows the hub in a bundle", () => 
   assert.equal(act.macros[0].steps[1].command_id, 0);
   // no slot count -> untouched
   assert.equal(retireWifiEventLongRecords(bundle, 9, 0), bundle);
+});
+
+test("replayDeviceEntryEdits carries the user's edits onto the replacement device only", () => {
+  const baseline = {
+    device: { device_id: 9, name: "Wifi Events", device_class: "wifi_ip" },
+    commands: [{ command_id: 1, name: "R1" }],
+    button_bindings: [{ button_id: 0xB0, device_id: 9, command_id: 1 }],
+    macros: [],
+  } as any;
+  const working = {
+    ...baseline,
+    device: { ...baseline.device, name: "Events MQTT" },
+    button_bindings: [{ button_id: 0xB0, device_id: 9, command_id: 1 }, { button_id: 0xB1, device_id: 9, command_id: 1, long_press_device_id: 9, long_press_command_id: 1 }],
+  };
+  const fresh = {
+    device: { device_id: 12, name: "Wifi Events", device_class: "wifi_mqtt", brand: "m3-haevents-x" },
+    commands: [{ command_id: 1, name: "R1 (hub)" }],
+    button_bindings: [{ button_id: 0xB0, device_id: 12, command_id: 1 }],
+    macros: [{ button_id: 198, name: "POWER_ON", steps: [] }],
+  } as any;
+  const result = replayDeviceEntryEdits(fresh, baseline, working, 9, 12) as any;
+  assert.equal(result.device.device_id, 12);
+  assert.equal(result.device.device_class, "wifi_mqtt");
+  assert.equal(result.device.name, "Events MQTT");
+  // untouched fields take the hub's state
+  assert.deepEqual(result.commands, fresh.commands);
+  assert.deepEqual(result.macros, fresh.macros);
+  // edited fields replay with the id rewritten
+  assert.deepEqual(result.button_bindings, [
+    { button_id: 0xB0, device_id: 12, command_id: 1 },
+    { button_id: 0xB1, device_id: 12, command_id: 1, long_press_device_id: 12, long_press_command_id: 1 },
+  ]);
+  assert.deepEqual(fresh.button_bindings, [{ button_id: 0xB0, device_id: 12, command_id: 1 }], "fresh entry is not mutated");
+  assert.equal(replayDeviceEntryEdits(fresh, baseline, null, 9, 12), fresh);
 });

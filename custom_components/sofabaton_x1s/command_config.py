@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import secrets
 from copy import deepcopy
@@ -12,6 +13,8 @@ from homeassistant.helpers.storage import Store
 
 from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
 from .shared_stores import async_shared_store
+
+_LOGGER = logging.getLogger(__name__)
 
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 3
@@ -346,6 +349,33 @@ def wifi_device_requires_listener(config_payload: dict[str, Any]) -> bool:
     return normalize_wifi_transport(config_payload.get("deployed_transport")) != WIFI_TRANSPORT_MQTT
 
 
+def wifi_transport_switch_pending(
+    config_payload: dict[str, Any], *, mqtt_available: bool
+) -> bool:
+    """True when a deployed record's desired transport differs from the one
+    on the hub and the desired one can be deployed right now.
+
+    A wish for MQTT on a hub where MQTT is unavailable (integration
+    unloaded, not an X2) is NOT pending: the record keeps working over
+    HTTP, the deploy keeps writing HTTP, and the wish resumes when MQTT
+    is available again (docs/internal/wifi-events-transport-plan.md §2).
+    Undeployed records never switch; their first deploy simply honours
+    ``requested_transport``.
+    """
+
+    deployed_device_id = config_payload.get("deployed_device_id")
+    deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "").strip()
+    if not (isinstance(deployed_device_id, int) or bool(deployed_commands_hash)):
+        return False
+    deployed = normalize_wifi_transport(config_payload.get("deployed_transport"))
+    requested = normalize_wifi_transport(config_payload.get("requested_transport"))
+    if requested == deployed:
+        return False
+    if requested == WIFI_TRANSPORT_MQTT and not mqtt_available:
+        return False
+    return True
+
+
 def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for slot in commands:
@@ -474,9 +504,12 @@ def _default_device_payload(
         # re-sync path may only run while it is unchanged; None (pre-upgrade
         # deploys) forces one replace-path sync that backfills it.
         "deployed_request_port": None,
-        # The create-flow transport choice, consulted only at first deploy.
-        # Neither transport field may enter the
-        # commands hash: a transport change is not in-place applicable.
+        # The DESIRED transport: the create-flow choice at first, writable
+        # afterwards (docs/internal/wifi-events-transport-plan.md §2). When
+        # it differs from ``deployed_transport`` on a deployed record the
+        # next sync is a transport switch (replace path with the activity
+        # references moved). Neither transport field enters the commands
+        # hash: the switch is detected by comparing the two fields.
         "requested_transport": WIFI_TRANSPORT_HTTP,
         # What the deploy actually wrote; None until first deploy (absent
         # and legacy records both read back as HTTP via
@@ -538,6 +571,47 @@ class CommandConfigStore:
         loaded = await self._store.async_load()
         if isinstance(loaded, dict) and isinstance(loaded.get("hubs"), dict):
             self._data = loaded
+            if self._normalize_requested_transports():
+                await self._store.async_save(self._data)
+
+    def _normalize_requested_transports(self) -> bool:
+        """One-time alignment of ``requested_transport`` with the deployed one.
+
+        Before requested_transport became the desired state
+        (wifi-events-transport-plan §2) nothing read it after the first
+        deploy, so a deployed record whose two fields disagree is noise
+        from the create flow (the field defaults to HTTP), never a user's
+        wish. Aligning them here means that from now on "requested differs
+        from deployed" has exactly one meaning: the user asked for a
+        switch. Returns True when anything changed.
+        """
+
+        changed = False
+        hubs = self._data.get("hubs")
+        if not isinstance(hubs, dict):
+            return False
+        for entry_id, hub in hubs.items():
+            devices = hub.get("devices") if isinstance(hub, dict) else None
+            if not isinstance(devices, list):
+                continue
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                deployed_raw = device.get("deployed_transport")
+                if deployed_raw is None:
+                    continue
+                deployed = normalize_wifi_transport(deployed_raw)
+                if normalize_wifi_transport(device.get("requested_transport")) == deployed:
+                    continue
+                _LOGGER.debug(
+                    "[%s] aligning requested_transport of %s with deployed %s",
+                    entry_id,
+                    device.get("device_key"),
+                    deployed,
+                )
+                device["requested_transport"] = deployed
+                changed = True
+        return changed
 
     def _hub_record(self, entry_id: str) -> dict[str, Any]:
         hubs = self._data.setdefault("hubs", {})
@@ -844,11 +918,15 @@ class CommandConfigStore:
         device_key: str,
         transport: Any,
     ) -> bool:
-        """Persist the create-flow transport choice for a Wifi Device record.
+        """Persist the desired transport for a Wifi Device record (the
+        reserved Wifi Events record included).
 
-        Pure store edit, no hub I/O; consulted only at first deploy. The
-        caller is responsible for rejecting edits on already-deployed
-        records (the UI locks the field once ``deployed_transport`` is set).
+        Pure store edit, no hub I/O. On an undeployed record it is the
+        create-flow choice the first deploy honours; on a deployed record a
+        value that differs from ``deployed_transport`` makes the next sync
+        a transport switch (wifi-events-transport-plan §2), and setting it
+        back to the deployed value cancels that. The caller checks MQTT
+        availability.
         """
 
         hub_device = self._find_hub_device_record(entry_id, device_key)
@@ -1159,10 +1237,17 @@ class CommandConfigStore:
         self,
         entry_id: str,
         name: str,
+        *,
+        requested_transport: str | None = None,
     ) -> dict[str, Any]:
         """Configure the first free slot of the Wifi Events record as a new
         event named *name* (a pure-callback slot: no favorite, no hard
         button, no activities).
+
+        ``requested_transport`` seeds the record's desired transport when
+        this call CREATES the record (the first event on a hub); an
+        existing record keeps whatever it has. The caller decides the
+        default (wifi-events-transport-plan §3, D1).
 
         Raises ``ValueError('wifi_events_full')`` when every slot is
         configured, ``ValueError('duplicate_name')`` when *name* collides
@@ -1183,6 +1268,8 @@ class CommandConfigStore:
                 device_key=WIFI_EVENTS_DEVICE_KEY,
                 device_name=WIFI_EVENTS_DEVICE_NAME,
             )
+            if requested_transport is not None:
+                record["requested_transport"] = normalize_wifi_transport(requested_transport)
             self._hub_device_records(entry_id).append(record)
 
         commands, _slot_count = self._wifi_events_slots(record)
@@ -1309,6 +1396,8 @@ class CommandConfigStore:
                 "record_needs_sync": False,
                 "device_id": None,
                 "slot_count": WIFI_EVENTS_SLOT_COUNT,
+                "requested_transport": None,
+                "deployed_transport": None,
             }
         payload = self._payload_for_device(record, roku_listen_port=roku_listen_port)
         deployed_hash = str(payload.get("deployed_commands_hash") or "").strip()
@@ -1317,6 +1406,11 @@ class CommandConfigStore:
             "exists": True,
             "record_needs_sync": payload.get("commands_hash") != deployed_hash,
             "device_id": raw_device_id if isinstance(raw_device_id, int) else None,
+            # The desired and the hub-side transport. The caller (who knows
+            # whether MQTT is available) derives transport_switch_pending
+            # with wifi_transport_switch_pending().
+            "requested_transport": payload.get("requested_transport"),
+            "deployed_transport": payload.get("deployed_transport"),
             # The id offset of a long record from before the single-record
             # model: the card retargets references to one after the Sync
             # that retires them (wifi-events-single-record-plan §3.3).

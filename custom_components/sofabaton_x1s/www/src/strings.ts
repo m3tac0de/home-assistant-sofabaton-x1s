@@ -391,6 +391,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiCreatingDevice: "Creating the Wifi Device on the hub…",
     wifiDeletingDevice: "Removing the previous Wifi Device…",
     wifiAddingToActivities: "Adding the Wifi Device to activities…",
+    wifiMovingReferences: "Moving activity references to the new Wifi Device…",
     wifiApplyingFavorites: "Applying activity shortcuts…",
     wifiApplyingBindings: "Applying activity button assignments…",
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts…",
@@ -1030,6 +1031,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     syncFailedCreate: "The hub did not create the Wifi Device.",
     syncFailedReadback: "The hub did not store the commands as sent; the previous Wifi Device was kept.",
     syncFailedAttach: "The Wifi Device could not be added to every activity.",
+    syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
     syncFailedGeneric: "The sync stopped. Sync again.",
@@ -1056,9 +1058,12 @@ export const TOOLS_CARD_STRINGS_EN = {
     transportMqttHint:
       "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    // The standalone server panel's create flow (no switch there yet).
     transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportChangeNote: "You can change the delivery method later in the device's editor on the Hub tab.",
     transportPillDeployedTitle: "Current delivery method",
     transportPillPreviewTitle: "Selected delivery method",
+    transportSwitching: (transport: string) => `Switching delivery to ${transport}…`,
     deleteModalTitle: "Delete Wifi Device?",
     deleteModalBody: (deviceName: string) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
     deleteModalDelete: "Delete",

@@ -831,3 +831,110 @@ test("Wifi Events device edits sync after the events deploy, on rebased bundles"
   assert.equal(sent!.edited.devices[0].commands.length, 25);
   assert.equal(sent!.edited.devices[0].commands[0].name, "Movie Night");
 });
+
+// ── Delivery switch from the device editor (docs/internal/wifi-events-transport-plan.md) ──
+
+function switchHass(extra: Record<string, (message: Record<string, unknown>) => unknown> = {}) {
+  const replaced = legacyEventsBundle();
+  (replaced as any).devices[0].device.device_id = 12;
+  (replaced as any).devices[0].device.device_class = "wifi_mqtt";
+  let switched = false;
+  return phaseHass({
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: switched ? replaced : legacyEventsBundle(), generation: switched ? 2 : 1 }),
+    "sofabaton_x1s/wifi_event/list": () => ({ device_id: switched ? 12 : 9, record_needs_sync: false, slot_count: 50, events: [] }),
+    "sofabaton_x1s/command_config/set_transport": (message) => ({
+      device_key: message.device_key, requested_transport: message.transport, deployed_transport: "http", transport_switch_pending: true,
+    }),
+    "sofabaton_x1s/wifi_event/sync": () => { switched = true; return { device_id: 12, record_needs_sync: false, slot_count: 50, events: [] }; },
+    "sofabaton_x1s/command_sync/progress": () => ({ status: "idle" }),
+    ...extra,
+  });
+}
+
+test("the editor's delivery pick is a pending edit the next Sync applies, reopening on the replacement", async () => {
+  const { hass, calls } = switchHass();
+  let refreshed = 0;
+  const element = eventsDeviceEditor(hass);
+  element.refreshControlPanelState = () => { refreshed += 1; };
+  const changed: unknown[] = [];
+  element.addEventListener("editor-entity-changed", (event) => changed.push((event as CustomEvent).detail));
+
+  await element._startCapture(9);
+  assert.equal(element._stage, "editing");
+
+  // The pick alone makes the editor "unsynced"; picking the deployed method again clears it.
+  element._handleTransportChange(new CustomEvent("transport-change", { detail: { transport: "mqtt" } }));
+  assert.equal(element._pendingTransport, "mqtt");
+  assert.equal(element._hasUnsynced(), true);
+  element._handleTransportChange(new CustomEvent("transport-change", { detail: { transport: "http" } }));
+  assert.equal(element._pendingTransport, null);
+  assert.equal(element._hasUnsynced(), false);
+  element._handleTransportChange(new CustomEvent("transport-change", { detail: { transport: "mqtt" } }));
+
+  const run = element._requestSync();
+  assert.equal(element._stage, "syncing");
+  assert.equal(element._syncMessage, TOOLS_CARD_STRINGS.wifiCommands.transportSwitching("MQTT"));
+  await run;
+
+  const sent = calls.find((call) => String(call.type).endsWith("set_transport"))!;
+  assert.equal(sent.device_key, "haevents");
+  assert.equal(sent.transport, "mqtt");
+  assert.deepEqual(types(calls).filter((type) => type !== "command_sync/progress"), [
+    "cache/structural_bundle", "wifi_event/list",
+    "command_config/set_transport", "wifi_event/sync",
+    "cache/structural_bundle",
+    "cache/structural_bundle",
+  ]);
+  assert.equal(refreshed, 2);
+  assert.equal(element._stage, "editing");
+  assert.equal(element._entityId, 12);
+  assert.equal(element._pendingTransport, null);
+  assert.equal(element._dirty, false);
+  assert.equal(element._syncMessage, null);
+  assert.deepEqual(changed, [{ kind: "device", id: 12 }]);
+});
+
+test("edits made before the switch sync against the replacement device", async () => {
+  let sent: { baseline: any; edited: any } | null = null;
+  const { hass, calls } = switchHass({
+    "sofabaton_x1s/device/sync": (message) => {
+      sent = { baseline: message.baseline, edited: message.edited };
+      throw new Error("stop here");
+    },
+  });
+  const element = eventsDeviceEditor(hass);
+  await element._startCapture(9);
+  element._working.devices[0].device.name = "Events MQTT";
+  element._working.devices[0].button_bindings = [{ button_id: 0xB0, device_id: 9, command_id: 3 }];
+  element._recomputeDirty();
+  element._handleTransportChange(new CustomEvent("transport-change", { detail: { transport: "mqtt" } }));
+
+  await element._requestSync();
+
+  assert.deepEqual(types(calls).filter((type) => type !== "command_sync/progress").slice(2), [
+    "command_config/set_transport", "wifi_event/sync", "cache/structural_bundle", "device/sync",
+  ]);
+  assert.equal(sent!.baseline.devices[0].device.device_id, 12);
+  assert.equal(sent!.edited.devices[0].device.device_id, 12);
+  assert.equal(sent!.edited.devices[0].device.name, "Events MQTT");
+  assert.deepEqual(sent!.edited.devices[0].button_bindings, [{ button_id: 0xB0, device_id: 12, command_id: 3 }]);
+  assert.equal(element._pendingTransport, null);
+  assert.equal(element._stage, "sync_failed");
+});
+
+test("a failed delivery switch lands in sync_failed with the localized reason", async () => {
+  const { hass } = switchHass({
+    "sofabaton_x1s/wifi_event/sync": () => { throw { code: "retarget_failed", message: "retarget_failed" }; },
+  });
+  const element = eventsDeviceEditor(hass);
+  await element._startCapture(9);
+  element._handleTransportChange(new CustomEvent("transport-change", { detail: { transport: "mqtt" } }));
+
+  await element._requestSync();
+
+  assert.equal(element._stage, "sync_failed");
+  assert.equal(element._syncMessage, null);
+  assert.equal(element._syncError, TOOLS_CARD_STRINGS.wifiCommands.syncFailedRetarget);
+  // The pick survives the failure: Retry runs the switch again.
+  assert.equal(element._pendingTransport, "mqtt");
+});

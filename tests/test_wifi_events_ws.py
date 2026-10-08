@@ -111,6 +111,8 @@ def test_ws_wifi_event_list_empty(monkeypatch):
     assert conn.error is None
     assert conn.result[1] == {
         "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
+        "requested_transport": None, "deployed_transport": None,
+        "transport_switch_pending": False, "mqtt_available": False,
     }
 
 
@@ -547,6 +549,8 @@ def test_ws_wifi_event_clear_all_removes_orphaned_config(monkeypatch):
     assert conn.error is None
     assert conn.result[1] == {
         "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
+        "requested_transport": None, "deployed_transport": None,
+        "transport_switch_pending": False, "mqtt_available": False,
     }
     assert hub.sync_calls == []
     assert store.wifi_events_record_state("entry-1", roku_listen_port=8060)["exists"] is False
@@ -593,4 +597,6 @@ def test_ws_wifi_event_clear_all_without_record_is_idempotent(monkeypatch):
     assert conn.error is None
     assert conn.result[1] == {
         "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
+        "requested_transport": None, "deployed_transport": None,
+        "transport_switch_pending": False, "mqtt_available": False,
     }
