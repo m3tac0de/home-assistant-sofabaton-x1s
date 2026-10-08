@@ -4,10 +4,10 @@ The Control Panel card's global "Sidebar Panel" setting (off by default)
 adds a panel to Home Assistant's sidebar that hosts the card full-page,
 for every user or for administrators only (HA's ``require_admin``: the
 sidebar entry and the URL are both withheld from non-admins).
-The panel is a plain custom panel: the frontend loads ``tools-card.js``
-(the same module the Lovelace card ships in, at the same versioned URL, so
-the browser fetches it once) and mounts the ``sofabaton-x-panel`` element
-that module defines. Registration follows the stored setting: at every
+The panel is a plain custom panel: the frontend loads ``sidebar-panel.js``
+(the sidebar remote plus the panel shell; it pulls ``tools-card.js`` in
+only when an admin opens the control panel) and mounts the
+``sofabaton-x-panel`` element that module defines. Registration follows the stored setting: at every
 hub setup, when the setting flips, and the panel goes when the last hub
 unloads, together with the Lovelace resources.
 """
@@ -29,7 +29,7 @@ _LOGGER = logging.getLogger(__package__)
 SIDEBAR_PANEL_URL_PATH = "sofabaton-x"
 SIDEBAR_PANEL_TITLE = "Sofabaton X"
 SIDEBAR_PANEL_ICON = "mdi:remote-tv"
-# The full-page host element tools-card.js defines next to the card.
+# The full-page host element sidebar-panel.js defines.
 SIDEBAR_PANEL_ELEMENT = "sofabaton-x-panel"
 
 _REGISTERED_KEY = "sidebar_panel_registered"
@@ -64,7 +64,7 @@ async def async_register_sidebar_panel(hass: HomeAssistant, *, require_admin: bo
     domain_data = hass.data.setdefault(DOMAIN, {})
     version = await frontend_resources._async_get_integration_version(hass)
     module_url = frontend_resources._frontend_resource_url(
-        frontend_resources._TOOLS_CARD_FILENAME, version
+        frontend_resources._SIDEBAR_PANEL_FILENAME, version
     )
     frontend.async_register_built_in_panel(
         hass,

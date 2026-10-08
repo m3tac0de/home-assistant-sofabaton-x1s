@@ -165,7 +165,7 @@ var TOOLS_CARD_STRINGS_ES = {
     hubClickActionOptionSend: "Enviar el comando",
     hubClickActionOptionCopy: "Copiar el comando",
     sidebarPanelTitle: "Panel lateral",
-    sidebarPanelDescription: "A\xF1ade Sofabaton X a la barra lateral de Home Assistant, con este panel de control a p\xE1gina completa, para todos o solo para administradores.",
+    sidebarPanelDescription: "A\xF1ade Sofabaton X a la barra lateral de Home Assistant: un mando a p\xE1gina completa para todos o solo para administradores, con un cambio a este panel de control para administradores.",
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Desactivado",
     sidebarPanelOptionAll: "Todos los usuarios",

@@ -50,6 +50,38 @@ export const REMOTE_CARD_STRINGS_EN = {
     pickerDescription:
       "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
   },
+  // The sidebar remote (docs/internal/sidebar-remote-plan.md): the panel
+  // chrome and the sheet titles. Key names reuse `keys`, drawer names and
+  // the powered-off label reuse `card`.
+  sidebar: {
+    title: "Virtual Remote",
+    controlPanel: "Control Panel",
+    hubMenu: "Choose a hub",
+    back: "Back",
+    hubReachable: "Reachable",
+    hubUnreachable: "Unreachable",
+    noHubs: "No Sofabaton hub is set up yet.",
+    activities: "Activities",
+    devices: "Devices",
+    allOff: "All off",
+    off: "Off",
+    modeToggle: "Switch between activities and devices",
+    numberPad: "Number pad",
+    pullHandle: "Open favorites and macros",
+    pullHandleCommands: "Open commands",
+    close: "Close",
+    starting: "Starting",
+    poweringOff: "Powering off",
+    working: "Working",
+    appConnected: "The Sofabaton app is connected",
+    operations: {
+      backup_restore: "Restoring backup",
+      cache_refresh: "Refreshing hub cache",
+      entity_sync: "Syncing to hub",
+      backup_export: "Creating backup",
+      wifi_deploy: "Deploying Wifi commands",
+    } as Record<string, string>,
+  },
   assist: {
     label: "Key capture",
     waiting: "Waiting for keypress",

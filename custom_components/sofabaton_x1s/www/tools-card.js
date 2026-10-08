@@ -1929,7 +1929,7 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar, opening this control panel full-page, for everyone or for administrators only.",
+    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
@@ -21999,127 +21999,6 @@ if (!customElements.get("sofabaton-activities-tab")) {
   customElements.define("sofabaton-activities-tab", SofabatonActivitiesTab);
 }
 
-// custom_components/sofabaton_x1s/www/src/sidebar-panel.ts
-var PANEL_TYPE = "sofabaton-x-panel";
-var CARD_TYPE = "sofabaton-control-panel";
-var SofabatonXPanel = class extends i4 {
-  constructor() {
-    super(...arguments);
-    this._hass = null;
-    this._narrow = false;
-    this._card = null;
-  }
-  set hass(value) {
-    this._hass = value;
-    if (this._card) this._card.hass = value;
-    this.requestUpdate();
-  }
-  get hass() {
-    return this._hass;
-  }
-  set narrow(value) {
-    const next = Boolean(value);
-    if (next === this._narrow) return;
-    this._narrow = next;
-    this.toggleAttribute("narrow", next);
-    this.requestUpdate();
-  }
-  get narrow() {
-    return this._narrow;
-  }
-  // HA hands every custom panel its route and panel config; neither is used.
-  set route(_value) {
-  }
-  set panel(_value) {
-  }
-  /** The one card instance: created on first render (after the whole
-   *  module, card definition included, has run), sized to the page. */
-  card() {
-    if (!this._card) {
-      const card = document.createElement(CARD_TYPE);
-      card.setConfig({ fill_height: true });
-      if (this._hass) card.hass = this._hass;
-      this._card = card;
-    }
-    return this._card;
-  }
-  render() {
-    return b2`
-      <div class="header">
-        <ha-menu-button .hass=${this._hass} .narrow=${this._narrow}></ha-menu-button>
-        <div class="header-title">${TOOLS_CARD_STRINGS.sidebarPanel.title}</div>
-      </div>
-      <div class="content">
-        <div class="page">${this.card()}</div>
-      </div>
-    `;
-  }
-};
-SofabatonXPanel.styles = i`
-    :host {
-      display: flex;
-      flex-direction: column;
-      box-sizing: border-box;
-      height: 100vh;
-      height: 100dvh;
-      background: var(--primary-background-color);
-      color: var(--primary-text-color);
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    /* HA's own page header (hass-subpage): same height, colours and border. */
-    .header {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      height: var(--header-height, 56px);
-      padding: 0 12px 0 4px;
-      padding-top: env(safe-area-inset-top);
-      background-color: var(--app-header-background-color, var(--primary-color));
-      color: var(--app-header-text-color, var(--text-primary-color));
-      border-bottom: var(--app-header-border-bottom, none);
-      font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, inherit));
-    }
-    .header-title {
-      flex: 1 1 auto;
-      min-width: 0;
-      margin: var(--margin-title, 0 0 0 20px);
-      font-size: var(--ha-font-size-xl, 20px);
-      font-weight: var(--ha-font-weight-normal, 400);
-      line-height: 20px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .content {
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-    .page {
-      height: 100%;
-      max-width: 1040px;
-      margin: 0 auto;
-      padding: 16px;
-      padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    }
-    sofabaton-control-panel {
-      display: block;
-      height: 100%;
-    }
-    /* Narrow (phone): the card is the page. */
-    :host([narrow]) .page {
-      padding: 0;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    /* Only the card shell goes square; --ha-card-border-radius is left
-       alone so the tabs, blocks, menus and dialogs inside the card keep
-       the theme's corner radius. */
-    :host([narrow]) sofabaton-control-panel {
-      --tools-card-outer-radius: 0;
-      --ha-card-border-width: 0;
-    }
-  `;
-if (!customElements.get(PANEL_TYPE)) customElements.define(PANEL_TYPE, SofabatonXPanel);
-
 // custom_components/sofabaton_x1s/www/src/tools-card.ts
 var TOOLS_TYPE = "sofabaton-control-panel";
 var LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -22316,6 +22195,12 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       { loadedFrontendVersion: LOADED_TOOLS_FRONTEND_VERSION }
     );
     this._snapshot = this._store.snapshot;
+  }
+  /** Mounted by the sidebar panel (`host: "panel"`): the panel owns the hub
+   *  choice and shows its own picker, so the card hides this one. */
+  /** The sidebar panel supplies its own chrome (hub picker, tabs): the card drops its top bar there. */
+  hostedInPanel() {
+    return this._config.host === "panel";
   }
   setConfig(config) {
     this._config = config || {};
@@ -23144,7 +23029,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       <ha-card>
         ${this.renderHubRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
-          <div class="card-topbar">
+          ${this.hostedInPanel() ? null : b2`<div class="card-topbar">
             ${this.renderBrandLabel()}
             ${hubs.length > 1 ? renderHubPicker({
       interactive: true,
@@ -23166,7 +23051,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
         this._store.selectHub(entryId);
       }
     }) : null}
-          </div>
+          </div>`}
           ${renderTabBar({
       selectedTab: this._snapshot.selectedTab,
       toolsMenuOpen: this._toolsMenuOpen,

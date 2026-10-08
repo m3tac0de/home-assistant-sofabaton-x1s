@@ -93,7 +93,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     hubClickActionTitle: "Hub 列表点击操作",
     hubClickActionDescription: "选择在 Hub 选项卡的列表中点击命令、收藏、宏或按键时执行的操作。",
     hubClickActionFooter: "全局", hubClickActionOptionNone: "不执行操作", hubClickActionOptionSend: "发送命令", hubClickActionOptionCopy: "复制命令",
-    sidebarPanelTitle: "侧边栏面板", sidebarPanelDescription: "将 Sofabaton X 添加到 Home Assistant 侧边栏并全页打开此控制面板，面向所有用户或仅限管理员。", sidebarPanelFooter: "全局",
+    sidebarPanelTitle: "侧边栏面板", sidebarPanelDescription: "将 Sofabaton X 添加到 Home Assistant 侧边栏：面向所有人或仅面向管理员的整页遥控器，管理员可切换到此控制面板。", sidebarPanelFooter: "全局",
     sidebarPanelOptionOff: "关闭", sidebarPanelOptionAll: "所有用户", sidebarPanelOptionAdmin: "仅限管理员",
     renameHub: "重命名 Hub", hubNameLabel: "Hub 名称",
     hubNameHelper: "请输入 1–30 个字符：A–Z、a–z、0–9、空格或基本英文标点（反斜杠 \\ 除外）。其他字符会被移除。", renamingHub: "正在重命名 Hub…",

@@ -564,3 +564,45 @@ def test_ws_control_panel_run_action_triggers_hub_action(monkeypatch):
     assert conn.error is None
     assert conn.result == (43, {"ok": True})
     assert hub.find_remote_called is True
+
+
+def test_ws_get_sidebar_state_returns_light_hub_list(monkeypatch):
+    """The sidebar panel's poll: name, model, reachability and the runtime
+    summary per hub, nothing of the control panel's heavier payload."""
+    conn = _Conn()
+    hub = _Hub()
+    hass = SimpleNamespace(
+        data={},
+        config_entries=SimpleNamespace(async_get_entry=lambda _entry_id: SimpleNamespace(options={})),
+    )
+    monkeypatch.setattr(runtime_module, "_get_hubs", lambda _data: [hub])
+    monkeypatch.setattr(ws_panel_module, "get_hub_model", lambda _entry: "X1S")
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(integration._ws_get_sidebar_state(hass, conn, {"id": 41}))
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (
+        41,
+        {
+            "hubs": [
+                {
+                    "entry_id": "entry-1",
+                    "name": "Living Room",
+                    "version": "X1S",
+                    "hub_connected": True,
+                    "proxy_client_connected": False,
+                    "runtime_state": {
+                        "kind": "idle",
+                        "operation": None,
+                        "label": None,
+                        "current_step": None,
+                        "total_steps": None,
+                    },
+                }
+            ]
+        },
+    )

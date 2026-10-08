@@ -66,7 +66,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     persistentCacheTitle: "Cache persistant", persistentCacheDescription: "Stocker localement les données des activités et des appareils pour un accès plus rapide.", persistentCacheFooter: "GLOBAL",
     hubClickActionTitle: "Clics dans l’onglet Hub", hubClickActionDescription: "Choisissez ce qui se passe lorsque vous cliquez sur une commande, un favori, une macro ou une touche dans les listes de l’onglet Hub.",
     hubClickActionFooter: "GLOBAL", hubClickActionOptionNone: "Ne rien faire", hubClickActionOptionSend: "Envoyer la commande", hubClickActionOptionCopy: "Copier la commande",
-    sidebarPanelTitle: "Panneau latéral", sidebarPanelDescription: "Ajouter Sofabaton X à la barre latérale de Home Assistant, avec ce panneau de contrôle en pleine page, pour tous ou pour les administrateurs seulement.", sidebarPanelFooter: "GLOBAL",
+    sidebarPanelTitle: "Panneau latéral", sidebarPanelDescription: "Ajouter Sofabaton X à la barre latérale de Home Assistant : une télécommande pleine page pour tous ou pour les administrateurs seulement, avec un basculement vers ce panneau de contrôle pour les administrateurs.", sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Désactivé", sidebarPanelOptionAll: "Tous les utilisateurs", sidebarPanelOptionAdmin: "Administrateurs seulement",
     renameHub: "Renommer le hub", hubNameLabel: "Nom du hub",
     hubNameHelper: "Utilisez de 1 à 30 caractères : A–Z, a–z, 0–9, espaces ou signes de ponctuation simples, sauf la barre oblique inversée (\\). Les autres caractères sont supprimés.", renamingHub: "Renommage du hub…",

@@ -202,7 +202,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
     sidebarPanelDescription:
-      "Add Sofabaton X to the Home Assistant sidebar, opening this control panel full-page, for everyone or for administrators only.",
+      "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
