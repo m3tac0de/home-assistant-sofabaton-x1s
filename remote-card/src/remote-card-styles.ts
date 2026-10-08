@@ -171,7 +171,7 @@ export const REMOTE_CARD_CSS = `
         border-right-color: var(--sb-panel-border);
       }
       .wrap--panels .mf-overlay {
-        background: var(--sb-panel-surface);
+        --sb-drawer-layer: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
       /* drawer-up re-declares border-top with the divider colour at higher
@@ -593,8 +593,16 @@ export const REMOTE_CARD_CSS = `
         left: 0;
         right: 0;
         z-index: 1; /* Lowered: Sits behind the buttons, above the remote body */
-        
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+
+        /* The drawer floats over the keys. Glass / iOS themes make the card
+           background translucent (alpha 0.3-0.4), which is fine for the card
+           over a wallpaper but lets the keys underneath show through the
+           drawer. Stack the same surface four times (0.3 becomes ~0.76,
+           an opaque colour stays pixel-identical) and blur what remains. */
+        --sb-drawer-layer: linear-gradient(
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))),
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        background: var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer);
         border: 1px solid var(--divider-color);
         border-top: none; 
         border-bottom-left-radius: var(--sb-group-radius);
@@ -605,8 +613,12 @@ export const REMOTE_CARD_CSS = `
         transform: scaleY(0);
         opacity: 0;
         pointer-events: none;
-        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
-        
+        /* The blur lives on .open only (a closed drawer with a backdrop
+           filter changes how the card's text rasterises); the delay keeps
+           it through the closing fade. */
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease,
+          -webkit-backdrop-filter 0s 0.25s, backdrop-filter 0s 0.25s;
+
         max-height: 350px;
         overflow-y: auto;
         padding: 12px;
@@ -636,6 +648,9 @@ export const REMOTE_CARD_CSS = `
         transform: scaleY(1);
         opacity: 1;
         pointer-events: auto;
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
       }
 
       /* Device mode: power key sharing the commands strip row. The

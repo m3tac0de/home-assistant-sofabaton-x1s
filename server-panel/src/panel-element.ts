@@ -64,6 +64,7 @@ export class SofabatonServerPanel extends LitElement {
     _cogOpen: { state: true },
     _backupDirty: { state: true },
     _wifiDirty: { state: true },
+    _wifiCanSync: { state: true },
     _layoutDirty: { state: true },
     _dockConfirm: { state: true },
     _dockDetails: { state: true },
@@ -235,6 +236,8 @@ export class SofabatonServerPanel extends LitElement {
 
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
+        /* A phone's dock has no room for it: Sync stays in the editor's header there. */
+        #dock-sync { display: none; }
         .brand-caption { display: none; }
         .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }
@@ -274,6 +277,8 @@ export class SofabatonServerPanel extends LitElement {
   private _dockDetails: { label: string; detail: string } | null = null;
   /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
   private _wifiDirty = false;
+  /** The Wifi Device on screen can sync right now (the dock's Sync button). */
+  private _wifiCanSync = false;
   /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
   private _layoutDirty = false;
   private _pickerManual = false;
@@ -812,7 +817,7 @@ export class SofabatonServerPanel extends LitElement {
       case "backup":
         return html`<sb-panel-backup .ctx=${ctx} .store=${this.store} .section=${route.sub} @sb-backup-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._backupDirty = Boolean(event.detail?.dirty); }}></sb-panel-backup>`;
       case "wifi":
-        return html`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .stream=${this.stream} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._wifiDirty = Boolean(event.detail?.dirty); }}></sb-panel-wifi-devices>`;
+        return html`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .stream=${this.stream} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean; canSync?: boolean }>) => { this._wifiDirty = Boolean(event.detail?.dirty); this._wifiCanSync = Boolean(event.detail?.canSync); }}></sb-panel-wifi-devices>`;
       case "remote":
         return html`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub} @sb-view-dirty=${(event: CustomEvent<{ dirty: boolean }>) => { this._layoutDirty = Boolean(event.detail?.dirty); }}></sb-panel-remote>`;
       default:
@@ -853,6 +858,17 @@ export class SofabatonServerPanel extends LitElement {
     const streamOn = s.stream.connected;
     // The stream down while REST answers: a hint, nothing blocked (decision 13).
     const streamLost = !streamOn && s.server.reachable && s.listLoaded;
+    const dock = dockModel(s, runtime, {
+      unsavedBackup: this._backupDirty,
+      unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
+      unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote",
+    });
+    // The dock's Sync button: only while the screen that owns the unsynced changes is the one shown.
+    const dockSync = dock.kind === "dirty" && route.kind === "hub" && route.entity !== undefined && dock.scope.endsWith(`/${route.entity}`)
+      ? () => this.renderRoot.querySelector<SbPanelEntityEditor>("sb-panel-device-editor, sb-panel-activity-editor")?.syncFromDock()
+      : dock.kind === "unsynced_view" && this._wifiDirty && this._wifiCanSync && route.kind === "hub" && route.tab === "wifi"
+        ? () => this.renderRoot.querySelector<SbPanelWifiDevices>("sb-panel-wifi-devices")?.syncFromDock()
+        : undefined;
     return html`
       <div class="well"><div class="page">
         <header class="top-dock" id="top-dock">
@@ -922,11 +938,8 @@ export class SofabatonServerPanel extends LitElement {
             : nothing}
         </main>
         ${renderBottomDock({
-          model: dockModel(s, runtime, {
-            unsavedBackup: this._backupDirty,
-            unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
-            unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote",
-          }),
+          model: dock,
+          onSync: dockSync,
           message: s.message,
           onShowDetails: (label, detail) => void this._showDockDetails(label, detail),
           connectivity: connectivityFor(runtime, s.server.reachable),

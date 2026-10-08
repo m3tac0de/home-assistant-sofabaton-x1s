@@ -1002,7 +1002,14 @@ var cardStyles = [secondaryTabStyles, i`
      container; .card-inner gets height:100% inline from the card. */
   :host([fill-height]) { height: 100%; }
   :host([fill-height]) ha-card { height: 100%; }
-  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
+  /* The card shell's corners (ha-card and the clipping .card-inner) follow
+     --tools-card-outer-radius; it defaults to the theme's card radius. A
+     host that wants a squared shell (the sidebar panel on a phone, where
+     the card is the page) sets only this variable: everything inside the
+     card keeps deriving its corners from --ha-card-border-radius, so the
+     theme's radius still shows on tabs, blocks, menus and dialogs. */
+  ha-card { border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
+  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
   .card-topbar {
     position: relative;
     flex-shrink: 0;
@@ -1124,6 +1131,27 @@ var cardStyles = [secondaryTabStyles, i`
     color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
     font-weight: 600;
   }
+  /* The dirty dock's Sync button, beside the banner text. */
+  .card-bottom-dock-action {
+    flex: 0 0 auto;
+    margin-left: 10px;
+    border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 60%, var(--divider-color));
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: color-mix(in srgb, var(--warning-color, #f59e0b) 20%, transparent);
+    color: var(--primary-text-color);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  /* A phone-width card has no room for it: Sync stays in the editor's header there. */
+  @container sofabaton-card (max-width: 480px) {
+    .card-bottom-dock-action { display: none; }
+  }
+  .card-bottom-dock-action:hover { background: color-mix(in srgb, var(--warning-color, #f59e0b) 34%, transparent); }
+  .card-bottom-dock-action:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .card-bottom-dock-link {
     color: var(--sb-accent-text);
     text-decoration: underline;
@@ -1768,7 +1796,8 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   dock: {
     unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them",
-    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup"
+    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup",
+    syncNow: "Sync"
   },
   backend: {
     unavailableTitle: "Backend not available",
@@ -2251,8 +2280,8 @@ var TOOLS_CARD_STRINGS_EN = {
     bindingTargetDevice: "Device",
     bindingCommand: "Command",
     bindingEnableLongPress: "Enable long-press assignment",
-    bindingLongPressDevice: "Long-press device",
-    bindingLongPressCommand: "Long-press command",
+    bindingShortPress: "Short press",
+    bindingLongPress: "Long press",
     bindingIncomplete: "Choose a button and target first.",
     bindingNoButtons: "Every button on this hub model is already assigned.",
     bindingNoCommands: "This device has no commands to assign.",
@@ -2362,6 +2391,10 @@ var TOOLS_CARD_STRINGS_EN = {
     bindingsNoneConfigured: "None customized",
     // Unified "add to shortcuts" flow.
     addShortcutButton: "Add",
+    copyShortcutsButton: "Copy",
+    copyShortcutsHeading: "Copy shortcuts from",
+    copyShortcutsCount: (count) => `${count} new`,
+    copyShortcutsNone: "Nothing new",
     addShortcutTitle: "Add to shortcuts",
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",
@@ -2369,6 +2402,9 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
+    macroTargetOwnGroup: "In this activity",
+    macroTargetCopyGroup: "Copy from another activity",
+    macroTargetCopyNote: (steps, activity) => `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
@@ -2516,7 +2552,7 @@ var TOOLS_CARD_STRINGS_EN = {
       green: "Green",
       yellow: "Yellow",
       blue: "Blue",
-      exit: "Exit",
+      exit: "EXIT",
       dvr: "DVR",
       play: "Play",
       guide: "Guide",
@@ -2772,7 +2808,7 @@ var TOOLS_CARD_STRINGS_EN = {
       guide: "Guide",
       dvr: "DVR",
       play: "Play",
-      exit: "Exit",
+      exit: "EXIT",
       rew: "Rewind",
       pause: "Pause",
       fwd: "Fast forward",
@@ -7406,20 +7442,111 @@ var backupTabStyles = i`
       background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
       color: var(--primary-text-color);
     }
-    .binding-toggle-row {
+    /* The button assignment dialog: the button in the header, one card per press, the type as segments. */
+    .dialog-header--extra .dialog-title { flex: 0 1 auto; min-width: 0; }
+    .dialog-header-extra { flex: 0 1 auto; min-width: 0; margin-right: auto; }
+    .dialog-header-select { width: auto; max-width: 100%; padding: 6px 10px; font-weight: 600; }
+    .press-card {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 40%, transparent);
     }
-    .binding-static-field {
+    .press-card-head { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13.5px; font-weight: 700; color: var(--primary-text-color); }
+    .press-card-head ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); flex: 0 0 auto; }
+    .press-card-title { flex: 1; min-width: 0; }
+    .kind-seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--backup-radius-sm); background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); }
+    .kind-seg-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      border: 1px solid transparent;
+      border-radius: calc(var(--backup-radius-sm) - 3px);
+      background: none;
+      color: var(--secondary-text-color);
+      font: inherit;
       font-size: 13px;
       font-weight: 600;
+      padding: 6px 8px;
+      cursor: pointer;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+    .kind-seg-btn:hover { color: var(--primary-text-color); }
+    .kind-seg-btn[aria-pressed="true"] {
+      background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+      border-color: var(--divider-color);
       color: var(--primary-text-color);
-      padding: 8px 10px;
+    }
+    .kind-seg-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+    /* The macro picker: a select-like trigger and a fixed list (positioned inline, see anchoredListPosition). */
+    .macro-picker-trigger { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+    .macro-picker-trigger[aria-expanded="true"] { border-color: var(--primary-color); }
+    .macro-picker-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .macro-picker-icon { --mdc-icon-size: 16px; flex: 0 0 auto; color: var(--secondary-text-color); }
+    .macro-picker-chip {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 45%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: var(--backup-radius-pill);
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
       border: 1px solid var(--divider-color);
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 74%, transparent);
+    }
+    .macro-picker-backdrop { position: fixed; inset: 0; z-index: 4; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }
+    .macro-picker-menu {
+      z-index: 5;
+      box-sizing: border-box;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      background: var(--sb-popup-surface, var(--card-background-color, #fff));
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    }
+    .macro-picker-option {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      border: none;
+      background: none;
+      text-align: left;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px;
+      color: var(--primary-text-color);
       border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+      cursor: pointer;
+    }
+    .macro-picker-option:hover, .macro-picker-option:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    .quick-access-head--inline .quick-access-head-actions { flex-wrap: nowrap; }
+    @container sofabaton-card (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
+    .macro-picker-option[aria-selected="true"] { background: color-mix(in srgb, var(--primary-color) 16%, transparent); }
+    .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon { color: var(--primary-color); font-weight: 600; }
+    .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--divider-color); }
+    .macro-picker-group { flex: 0 0 auto; padding: 8px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+    .field-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+    @container sofabaton-card (max-width: 360px) {
+      .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
@@ -7883,6 +8010,37 @@ function overlayMenuPosition(anchor, align) {
 function menuAnchorRect(event) {
   const target = event.currentTarget;
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+}
+function anchoredListPosition(trigger, frame, menu = null) {
+  const anchor = trigger.getBoundingClientRect();
+  const bounds = frame?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const inner = menu?.within?.getBoundingClientRect() ?? bounds;
+  const gap = 4;
+  const margin = 8;
+  const top = Math.max(bounds.top, inner.top);
+  const bottom = Math.min(bounds.bottom, inner.bottom);
+  const minX = Math.max(bounds.left, inner.left) + margin;
+  const maxX = Math.min(bounds.right, inner.right) - margin;
+  const below = bottom - anchor.bottom - gap - margin;
+  const above = anchor.top - top - gap - margin;
+  const openUp = below < 200 && above > below;
+  const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
+  const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
+  const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
+  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
+}
+function moveListFocus(event, optionSelector) {
+  const list = event.currentTarget;
+  if (!(list instanceof HTMLElement)) return false;
+  const options = [...list.querySelectorAll(optionSelector)];
+  if (!options.length) return false;
+  const current = options.findIndex((option) => option === list.getRootNode().activeElement);
+  const next = event.key === "ArrowDown" ? Math.min(options.length - 1, current + 1) : event.key === "ArrowUp" ? Math.max(0, current - 1) : event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : -1;
+  if (next < 0) return false;
+  event.preventDefault();
+  options[next].focus();
+  return true;
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
@@ -9856,6 +10014,87 @@ function addActivityUserMacro(bundle, activityId, name) {
     }]
   }));
 }
+function copyableActivityMacroSummaries(bundle, activityId) {
+  const activities = bundle?.activities ?? [];
+  const signature = (macro) => JSON.stringify([String(macro?.name || ""), macro?.steps ?? []]);
+  const own = new Set(
+    (activities.find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId))?.macros ?? []).map(signature)
+  );
+  return activities.flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    const activityName = String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId);
+    return activityUserMacroSummaries(bundle, sourceId).filter((macro) => !own.has(signature(
+      (entry.macros ?? []).find((row) => Number(row?.button_id || 0) === macro.buttonId)
+    ))).map((macro) => ({ ...macro, activityId: sourceId, activityName }));
+  });
+}
+function copyActivityUserMacro(bundle, activityId, sourceActivityId, sourceButtonId) {
+  if (Number(activityId) === Number(sourceActivityId)) return bundle;
+  const source = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId))?.macros?.find((macro) => Number(macro?.button_id || 0) === Number(sourceButtonId));
+  if (!source || INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(sourceButtonId))) return bundle;
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...activity.macros ?? [], {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(source.name || "").trim() || TOOLS_CARD_STRINGS.backup.newMacroName,
+      steps: (source.steps ?? []).map((step) => ({ ...step }))
+    }]
+  }));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+function missingActivityShortcuts(bundle, activityId, sourceActivityId) {
+  const source = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId));
+  if (!source || Number(activityId) === Number(sourceActivityId)) return [];
+  const copyableMacros = new Set(
+    copyableActivityMacroSummaries(bundle, activityId).filter((macro) => macro.activityId === Number(sourceActivityId)).map((macro) => macro.buttonId)
+  );
+  const seen = /* @__PURE__ */ new Set();
+  const missing = [];
+  for (const item of activityQuickAccessItems(bundle, sourceActivityId)) {
+    if (item.kind === "macro") {
+      if (copyableMacros.has(item.buttonId)) missing.push({ kind: "macro", buttonId: item.buttonId });
+      continue;
+    }
+    const deviceId = Number(item.deviceId || 0);
+    const commandId = Number(item.commandId || 0);
+    const key = `${deviceId}:${commandId}`;
+    if (deviceId <= 0 || commandId <= 0 || seen.has(key) || activityHasFavorite(bundle, activityId, deviceId, commandId)) continue;
+    seen.add(key);
+    const slot = (source.favorite_slots ?? []).find((row) => Number(row?.button_id || 0) === item.buttonId);
+    missing.push({ kind: "favorite", deviceId, commandId, name: String(slot?.name || "") });
+  }
+  return missing;
+}
+function shortcutCopySources(bundle, activityId) {
+  return (bundle?.activities ?? []).flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
+    return [{
+      activityId: sourceId,
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId),
+      newCount: missingActivityShortcuts(bundle, activityId, sourceId).length
+    }];
+  });
+}
+function copyActivityShortcuts(bundle, activityId, sourceActivityId) {
+  let next = bundle;
+  for (const item of missingActivityShortcuts(bundle, activityId, sourceActivityId)) {
+    next = item.kind === "macro" ? copyActivityUserMacro(next, activityId, sourceActivityId, item.buttonId) : addBundleActivityFavorite(next, activityId, item.deviceId, item.commandId, item.name);
+  }
+  return next;
+}
+var MACRO_TARGET_NEW_VALUE = "__new__";
+function macroCopyValue(activityId, buttonId) {
+  return `copy:${Number(activityId)}:${Number(buttonId)}`;
+}
+function macroTargetFromValue(value) {
+  if (value === MACRO_TARGET_NEW_VALUE) return { mode: "new", macroId: null, sourceId: null };
+  const copy = /^copy:(\d+):(\d+)$/.exec(value);
+  if (copy) return { mode: "copy", macroId: Number(copy[2]), sourceId: Number(copy[1]) };
+  return { mode: "existing", macroId: Number(value), sourceId: null };
+}
 function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, commandId, hold = 0) {
   if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
   return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, {
@@ -10334,6 +10573,26 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
       TOOLS_CARD_STRINGS.decodedPayload.incompatibleModels(sourceVersion, destinationVersion)
     );
   }
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail/kind-segments.ts
+function renderKindSegments(params) {
+  if (params.options.length < 2) return A;
+  return b2`
+    <div class="kind-seg" id=${params.id} role="group" aria-label=${params.ariaLabel}>
+      ${params.options.map((option) => b2`
+        <button
+          class="kind-seg-btn"
+          type="button"
+          value=${option.value}
+          aria-pressed=${option.value === params.value ? "true" : "false"}
+          @click=${(event) => {
+    if (option.value !== params.value) params.onChange(event);
+  }}
+        >${option.label}</button>
+      `)}
+    </div>
+  `;
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail/styles.ts
@@ -12401,24 +12660,20 @@ var WifiEventTargets = class {
     const allowNew = params.allowNew !== false;
     return b2`
       ${events.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-wifi-event`}>${S5.wifiEventTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-wifi-event`}
-                class="decoded-field-input"
-                @change=${(event) => {
-      const value = event.target.value;
-      params.onSelChange(
+            ${this.host._binding.renderPicker({
+      // The macro target's picker: both can be created on the spot, so both read alike.
+      id: `${params.idPrefix}-wifi-event`,
+      label: S5.wifiEventTargetLabel,
+      value: sel.mode === "new" ? "__new__" : String(sel.slot ?? ""),
+      current: {
+        label: sel.mode === "new" ? S5.wifiEventTargetCreateNew : events.find((item) => item.slot_index === sel.slot)?.name ?? ""
+      },
+      newLabel: allowNew ? S5.wifiEventTargetCreateNew : null,
+      groups: [{ options: events.map((item) => ({ value: String(item.slot_index), label: item.name })) }],
+      onPick: (value) => params.onSelChange(
         value === "__new__" ? { mode: "new", slot: null, name: sel.name } : { mode: "existing", slot: Number(value), name: sel.name }
-      );
-    }}
-              >
-                ${events.map((item) => b2`
-                  <option value=${item.slot_index} ?selected=${sel.mode === "existing" && item.slot_index === sel.slot}>${item.name}</option>
-                `)}
-                ${allowNew ? b2`<option value="__new__" ?selected=${sel.mode === "new"}>${S5.wifiEventTargetCreateNew}</option>` : A}
-              </select>
-            </div>
+      )
+    })}
             ${allowNew ? A : b2`<div class="decoded-field-helper">${S5.bindingOneNewNote}</div>`}
           ` : params.hidden ? A : b2`<div class="quick-access-empty">${S5.wifiEventNoneYet}</div>`}
       ${sel.mode === "new" ? b2`
@@ -12503,6 +12758,9 @@ var BindingDialogController = class {
     this._lpCommandId = null;
     this._targetKind = "command";
     this._actionName = "";
+    /** The source activity while a leg copies a macro (macroMode "copy"; macroId is then the source macro). */
+    this.macroSourceId = null;
+    this.lpMacroSourceId = null;
     this._macroMode = "new";
     this._macroId = null;
     this._lpTargetKind = "command";
@@ -12512,6 +12770,7 @@ var BindingDialogController = class {
     this._error = "";
     this.close = () => {
       this.open = false;
+      this.macroPicker = null;
       this.editButtonId = null;
       this.buttonId = null;
       this.deviceId = null;
@@ -12544,6 +12803,7 @@ var BindingDialogController = class {
     };
     this.handleTargetKindChange = (event) => {
       const kind = event.target.value;
+      if (kind === this.targetKind) return;
       this.targetKind = kind;
       this.error = "";
       if (kind === "command") {
@@ -12565,19 +12825,17 @@ var BindingDialogController = class {
       this.actionName = event.target.value;
       this.error = "";
     };
-    this.handleMacroTargetChange = (event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this.macroMode = "new";
-        this.macroId = null;
-      } else {
-        this.macroMode = "existing";
-        this.macroId = Number(value);
-      }
+    this.handleMacroTargetChange = (value) => {
+      const target = macroTargetFromValue(value);
+      this.macroMode = target.mode;
+      this.macroId = target.macroId;
+      this.macroSourceId = target.sourceId;
       this.error = "";
+      this.host.requestUpdate();
     };
     this.handleLpTargetKindChange = (event) => {
       const kind = event.target.value;
+      if (kind === this.lpTargetKind) return;
       this.lpTargetKind = kind;
       this.error = "";
       if (kind === "command") {
@@ -12599,16 +12857,13 @@ var BindingDialogController = class {
       this.lpActionName = event.target.value;
       this.error = "";
     };
-    this.handleLpMacroTargetChange = (event) => {
-      const value = event.target.value;
-      if (value === "__new__") {
-        this.lpMacroMode = "new";
-        this.lpMacroId = null;
-      } else {
-        this.lpMacroMode = "existing";
-        this.lpMacroId = Number(value);
-      }
+    this.handleLpMacroTargetChange = (value) => {
+      const target = macroTargetFromValue(value);
+      this.lpMacroMode = target.mode;
+      this.lpMacroId = target.macroId;
+      this.lpMacroSourceId = target.sourceId;
       this.error = "";
+      this.host.requestUpdate();
     };
     this.handleLongPressToggle = (event) => {
       const enabled = Boolean(event.target.checked);
@@ -12678,6 +12933,15 @@ var BindingDialogController = class {
         return;
       }
       if (bundle) this.applyResolved(bundle, resolved.primary ?? null, resolved.longPress ?? null);
+    };
+    /** The open picker (one at a time, macro or Wifi Event): its trigger id and the list's fixed position. */
+    this.macroPicker = null;
+    this.closeMacroPicker = () => {
+      const picker = this.macroPicker;
+      if (!picker) return;
+      this.macroPicker = null;
+      this.host.requestUpdate();
+      picker.root.querySelector(`#${picker.id}`)?.focus();
     };
     host.addController(this);
   }
@@ -12936,7 +13200,14 @@ var BindingDialogController = class {
     }
     return kinds;
   }
-  resolveMacroTarget(bundle, activityId, mode, macroId, rawName) {
+  resolveMacroTarget(bundle, activityId, mode, macroId, rawName, sourceId = null) {
+    if (mode === "copy") {
+      const copiedBundle = copyActivityUserMacro(bundle, activityId, Number(sourceId), Number(macroId));
+      if (copiedBundle === bundle) return null;
+      const copies = activityUserMacroSummaries(copiedBundle, activityId);
+      const copy = copies[copies.length - 1];
+      return copy ? { bundle: copiedBundle, macroId: copy.buttonId, name: copy.name, created: false } : null;
+    }
     if (mode === "existing") {
       const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(macroId));
       return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
@@ -12970,7 +13241,8 @@ var BindingDialogController = class {
       activityId,
       this.lpMacroMode,
       this.lpMacroId,
-      this.lpActionName
+      this.lpActionName,
+      this.lpMacroSourceId
     );
     if (!resolved) {
       this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
@@ -13018,7 +13290,8 @@ var BindingDialogController = class {
         activityId,
         this.macroMode,
         this.macroId,
-        this.actionName
+        this.actionName,
+        this.macroSourceId
       );
       if (!resolved) {
         this.error = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
@@ -13049,24 +13322,153 @@ var BindingDialogController = class {
       this.close();
     }
   }
+  toggleMacroPicker(id, event) {
+    const trigger = event.currentTarget;
+    const root = trigger.getRootNode();
+    if (this.macroPicker?.id === id) {
+      this.macroPicker = null;
+    } else {
+      this.macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest(".modal-backdrop")), root };
+      requestAnimationFrame(() => (root.querySelector('.macro-picker-option[aria-selected="true"]') ?? root.querySelector(".macro-picker-option"))?.focus());
+    }
+    this.host.requestUpdate();
+  }
+  /**
+   * A select-like picker with its own list, for the targets that can also be
+   * created on the spot (a macro, a Wifi Event): the "create new" row on top,
+   * then the choices in groups, a row optionally with an icon and a chip. A
+   * custom list, since a native select cannot show those. One is open at a
+   * time (`macroPicker`).
+   */
+  renderPicker(params) {
+    const open = this.macroPicker?.id === params.id;
+    const groups = params.groups.filter((group) => group.options.length > 0);
+    const option = (optionValue, extraClass, body) => b2`
+      <button
+        class="macro-picker-option ${extraClass}"
+        type="button"
+        role="option"
+        data-value=${optionValue}
+        aria-selected=${optionValue === params.value ? "true" : "false"}
+        @click=${() => {
+      this.closeMacroPicker();
+      params.onPick(optionValue);
+    }}
+      >${body}</button>
+    `;
+    const onKeydown = (event) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeMacroPicker();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option");
+    };
+    return b2`
+      <div class="decoded-field" @keydown=${onKeydown}>
+        <span class="decoded-field-label" id=${`${params.id}-label`}>${params.label}</span>
+        <button
+          id=${params.id}
+          class="decoded-field-input macro-picker-trigger"
+          type="button"
+          data-value=${params.value}
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          aria-labelledby=${`${params.id}-label ${params.id}`}
+          @click=${(event) => this.toggleMacroPicker(params.id, event)}
+        >
+          ${params.current.icon ? b2`<ha-icon class="macro-picker-icon" icon=${params.current.icon}></ha-icon>` : A}
+          <span class="macro-picker-name">${params.current.label}</span>
+          ${params.current.chip ? b2`<span class="macro-picker-chip">${params.current.chip}</span>` : A}
+          <ha-icon class="macro-picker-icon" icon="mdi:chevron-down"></ha-icon>
+        </button>
+        ${open ? b2`
+              <button
+                class="macro-picker-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this.closeMacroPicker}
+                @wheel=${(event) => event.preventDefault()}
+              ></button>
+              <div
+                class="macro-picker-menu"
+                role="listbox"
+                aria-labelledby=${`${params.id}-label`}
+                style=${this.macroPicker?.style ?? ""}
+              >
+                ${params.newLabel ? b2`
+                      ${option("__new__", "macro-picker-option--new", b2`
+                        <ha-icon class="macro-picker-icon" icon="mdi:plus"></ha-icon>
+                        <span class="macro-picker-name">${params.newLabel}</span>
+                      `)}
+                      ${groups.length ? b2`<div class="macro-picker-sep"></div>` : A}
+                    ` : A}
+                ${groups.map((group) => b2`
+                  ${group.heading ? b2`<div class="macro-picker-group">${group.heading}</div>` : A}
+                  ${group.options.map((item) => option(item.value, "", b2`
+                    ${item.icon ? b2`<ha-icon class="macro-picker-icon" icon=${item.icon}></ha-icon>` : A}
+                    <span class="macro-picker-name">${item.label}</span>
+                    ${item.chip ? b2`<span class="macro-picker-chip">${item.chip}</span>` : A}
+                  `))}
+                `)}
+              </div>
+            ` : A}
+        ${params.helper ? b2`<div class="decoded-field-helper">${params.helper}</div>` : A}
+      </div>
+    `;
+  }
+  /** The macro picker: "Create new macro" on top, the activity's own macros,
+   *  then the other activities' macros to copy, each row with a chip naming
+   *  its activity. */
+  renderMacroSelect(params) {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const copyable = this.host._copyableMacros();
+    const copied = params.mode === "copy" ? copyable.find((macro) => macro.activityId === params.sourceId && macro.buttonId === params.macroId) : void 0;
+    const copyIcon = "mdi:content-copy";
+    return this.renderPicker({
+      id: params.id,
+      label: S5.macroTargetLabel,
+      value: copied ? macroCopyValue(copied.activityId, copied.buttonId) : params.mode === "new" ? "__new__" : String(params.macroId ?? ""),
+      current: copied ? { label: copied.name, icon: copyIcon, chip: copied.activityName } : {
+        label: params.mode === "new" ? S5.macroTargetCreateNew : params.own.find((macro) => macro.value === params.macroId)?.label ?? ""
+      },
+      newLabel: params.allowNew ? S5.macroTargetCreateNew : null,
+      groups: [
+        {
+          heading: copyable.length ? S5.macroTargetOwnGroup : void 0,
+          options: params.own.map((macro) => ({ value: String(macro.value), label: macro.label }))
+        },
+        {
+          heading: S5.macroTargetCopyGroup,
+          options: copyable.map((macro) => ({
+            value: macroCopyValue(macro.activityId, macro.buttonId),
+            label: macro.name,
+            icon: copyIcon,
+            chip: macro.activityName
+          }))
+        }
+      ],
+      helper: copied ? S5.macroTargetCopyNote(copied.commandStepCount, copied.activityName) : void 0,
+      onPick: params.onPick
+    });
+  }
   renderMacroTargetFields(params) {
     const S5 = TOOLS_CARD_STRINGS.backup;
     const macros = this.host._macroOptions();
     return b2`
-      ${macros.length ? b2`
-            <div class="decoded-field">
-              <label class="decoded-field-label" for=${`${params.idPrefix}-macro-target`}>${S5.macroTargetLabel}</label>
-              <select
-                id=${`${params.idPrefix}-macro-target`}
-                class="decoded-field-input"
-                @change=${params.onMacroChange}
-              >
-                ${macros.map((macro) => b2`
-                  <option value=${macro.value} ?selected=${params.mode === "existing" && macro.value === params.macroId}>${macro.label}</option>
-                `)}
-                ${params.allowNew ? b2`<option value="__new__" ?selected=${params.mode === "new"}>${S5.macroTargetCreateNew}</option>` : A}
-              </select>
-            </div>
+      ${macros.length || this.host._copyableMacros().length ? b2`
+            ${this.renderMacroSelect({
+      id: `${params.idPrefix}-macro-target`,
+      mode: params.mode,
+      macroId: params.macroId,
+      sourceId: params.sourceId,
+      own: macros,
+      allowNew: params.allowNew,
+      onPick: params.onMacroChange
+    })}
             ${params.allowNew ? A : b2`<div class="decoded-field-helper">${S5.bindingOneNewNote}</div>`}
           ` : b2`<div class="quick-access-empty">${S5.macroTargetNoExisting}</div>`}
       ${params.mode === "new" ? b2`
@@ -13106,7 +13508,8 @@ var BindingDialogController = class {
     const title = isEdit ? S5.bindingDialogEditTitle(buttonName2(Number(this.buttonId))) : S5.bindingDialogAddTitle;
     const kindLabel = (kind) => kind === "action" ? S5.shortcutKindAction : kind === "wifi_event" ? S5.shortcutKindWifiEvent : S5.shortcutKindCommand;
     const commandFields = b2`
-      ${scope === "activity" ? this.host._renderBindingSelect({
+      <div class=${scope === "activity" ? "field-pair" : ""}>
+        ${scope === "activity" ? this.host._renderBindingSelect({
       id: "sb-binding-device",
       label: S5.bindingTargetDevice,
       value: this.deviceId,
@@ -13114,7 +13517,7 @@ var BindingDialogController = class {
       onChange: this.handleDeviceChange,
       emptyText: S5.bindingNoDevices
     }) : A}
-      ${this.host._renderBindingSelect({
+        ${this.host._renderBindingSelect({
       id: "sb-binding-command",
       label: S5.bindingCommand,
       value: this.commandId,
@@ -13122,79 +13525,70 @@ var BindingDialogController = class {
       onChange: this.handleCommandChange,
       emptyText: S5.bindingNoCommands
     })}
+      </div>
     `;
     const actionFields = this.renderMacroTargetFields({
       idPrefix: "sb-binding",
       mode: this.macroMode,
       macroId: this.macroId,
+      sourceId: this.macroSourceId,
       name: this.actionName,
       onMacroChange: this.handleMacroTargetChange,
       onNameInput: this.handleActionNameInput,
       allowNew: !longPressNew
     });
     const lpCommandFields = b2`
-      ${scope === "activity" ? this.host._renderBindingSelect({
+      <div class=${scope === "activity" ? "field-pair" : ""}>
+        ${scope === "activity" ? this.host._renderBindingSelect({
       id: "sb-binding-lp-device",
-      label: S5.bindingLongPressDevice,
+      label: S5.bindingTargetDevice,
       value: this.lpDeviceId,
       options: commandDeviceOptions,
       onChange: this.handleLpDeviceChange,
       emptyText: S5.bindingNoDevices
     }) : A}
-      ${this.host._renderBindingSelect({
+        ${this.host._renderBindingSelect({
       id: "sb-binding-lp-command",
-      label: S5.bindingLongPressCommand,
+      label: S5.bindingCommand,
       value: this.lpCommandId,
       options: lpCommandOptions,
       onChange: this.handleLpCommandChange,
       emptyText: S5.bindingNoCommands
     })}
+      </div>
     `;
     const lpActionFields = this.renderMacroTargetFields({
       idPrefix: "sb-binding-lp",
       mode: this.lpMacroMode,
       macroId: this.lpMacroId,
+      sourceId: this.lpMacroSourceId,
       name: this.lpActionName,
       onMacroChange: this.handleLpMacroTargetChange,
       onNameInput: this.handleLpActionNameInput,
       allowNew: !primaryNew
     });
+    const kindSegments = (id, value, kinds, onChange) => isActivity ? renderKindSegments({ id, ariaLabel: S5.addShortcutKindLabel, value, options: kinds.map((kind) => ({ value: kind, label: kindLabel(kind) })), onChange }) : A;
     return b2`
       <div class="modal-backdrop" @click=${this.close}>
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
+          <div class="dialog-header ${isEdit ? "" : "dialog-header--extra"}">
             <div class="dialog-title">${title}</div>
-            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${isEdit ? b2`
-                  <div class="decoded-field">
-                    <span class="decoded-field-label">${S5.bindingButton}</span>
-                    <div class="binding-static-field">${buttonName2(Number(this.buttonId))}</div>
-                  </div>
-                ` : this.host._renderBindingSelect({
-      id: "sb-binding-button",
-      label: S5.bindingButton,
-      value: this.buttonId,
-      options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
-      onChange: this.handleButtonChange,
-      emptyText: S5.bindingNoButtons
-    })}
-            ${isActivity ? b2`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-binding-kind">${S5.addShortcutKindLabel}</label>
-                    <select
-                      id="sb-binding-kind"
-                      class="decoded-field-input"
-                      @change=${this.handleTargetKindChange}
-                    >
-                      ${this.legKinds(longPressNew).map((kind) => b2`
-                        <option value=${kind} ?selected=${targetKind === kind}>${kindLabel(kind)}</option>
+            ${isEdit ? A : b2`
+                  <div class="dialog-header-extra">
+                    <select id="sb-binding-button" class="decoded-field-input dialog-header-select" aria-label=${S5.bindingButton} @change=${this.handleButtonChange}>
+                      ${unbound.map((entry) => b2`
+                        <option value=${entry.code} ?selected=${entry.code === this.buttonId}>${entry.name}</option>
                       `)}
                     </select>
                   </div>
-                ` : A}
-            ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this.host._events.renderTargetFields({
+                `}
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+              <div class="press-card-head"><ha-icon icon="mdi:gesture-tap"></ha-icon><span class="press-card-title" id="sb-binding-short-press-label">${S5.bindingShortPress}</span></div>
+              ${kindSegments("sb-binding-kind", targetKind, this.legKinds(longPressNew), this.handleTargetKindChange)}
+              ${targetKind === "command" ? commandFields : targetKind === "wifi_event" ? this.host._events.renderTargetFields({
       idPrefix: "sb-binding",
       allowNew: !longPressNew,
       sel: this.host._events.primary,
@@ -13203,29 +13597,19 @@ var BindingDialogController = class {
         this.error = "";
       }
     }) : actionFields}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
-              <ha-switch
-                .checked=${this.longPressEnabled}
-                @change=${this.handleLongPressToggle}
-              ></ha-switch>
-            </div>
-            ${this.longPressEnabled ? b2`
-                  ${isActivity ? b2`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-binding-lp-kind">${S5.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-binding-lp-kind"
-                            class="decoded-field-input"
-                            @change=${this.handleLpTargetKindChange}
-                          >
-                            ${this.legKinds(primaryNew).map((kind) => b2`
-                              <option value=${kind} ?selected=${lpTargetKind === kind}>${kindLabel(kind)}</option>
-                            `)}
-                          </select>
-                        </div>
-                      ` : A}
-                  ${lpTargetKind === "command" ? lpCommandFields : lpTargetKind === "wifi_event" ? this.host._events.renderTargetFields({
+            </section>
+            <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
+              <div class="press-card-head">
+                <ha-icon icon="mdi:gesture-tap-hold"></ha-icon><span class="press-card-title" id="sb-binding-long-press-label">${S5.bindingLongPress}</span>
+                <ha-switch
+                  aria-label=${S5.bindingEnableLongPress}
+                  .checked=${this.longPressEnabled}
+                  @change=${this.handleLongPressToggle}
+                ></ha-switch>
+              </div>
+              ${this.longPressEnabled ? b2`
+                    ${kindSegments("sb-binding-lp-kind", lpTargetKind, this.legKinds(primaryNew), this.handleLpTargetKindChange)}
+                    ${lpTargetKind === "command" ? lpCommandFields : lpTargetKind === "wifi_event" ? this.host._events.renderTargetFields({
       idPrefix: "sb-binding-lp",
       allowNew: !primaryNew,
       sel: this.host._events.longPress,
@@ -13234,7 +13618,8 @@ var BindingDialogController = class {
         this.error = "";
       }
     }) : lpActionFields}
-                ` : A}
+                  ` : A}
+            </section>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this.error}</div>
@@ -13297,6 +13682,7 @@ var MacroStepEditorController = class {
     };
     this.closeDialog = () => {
       this.dialogOpen = false;
+      this.host._binding.macroPicker = null;
       this.editIndex = null;
       this.kind = "command";
       this.deviceId = null;
@@ -13335,7 +13721,7 @@ var MacroStepEditorController = class {
     this.applyWifiEvent = async () => {
       const editor = this.editor;
       if (!editor || !this.host.bundle) return;
-      const timeByte = secondsToByte(this.holdSeconds);
+      const timeByte = 0;
       const editIndex = this.editIndex;
       try {
         const ref = await this.host._events.resolveRef(this.host._events.primary);
@@ -13701,24 +14087,21 @@ var MacroStepEditorController = class {
                     </select>
                   </div>
                 ` : b2`
-                  ${isActivity && this.host._events.available() ? b2`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-step-kind"
-                            class="decoded-field-input"
-                            @change=${(event) => {
-      const value = event.target.value;
-      this.kind = value;
-      if (value === "wifi_event") this.host._events.primary = this.host._events.defaultSel();
-      this.error = "";
-    }}
-                          >
-                            <option value="command" ?selected=${this.kind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
-                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
-                          </select>
-                        </div>
-                      ` : A}
+                  ${isActivity && this.host._events.available() ? renderKindSegments({
+      id: "sb-step-kind",
+      ariaLabel: TOOLS_CARD_STRINGS.backup.addShortcutKindLabel,
+      value: this.kind,
+      options: [
+        { value: "command", label: TOOLS_CARD_STRINGS.backup.shortcutKindCommand },
+        { value: "wifi_event", label: TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent }
+      ],
+      onChange: (event) => {
+        const value = event.target.value;
+        this.kind = value;
+        if (value === "wifi_event") this.host._events.primary = this.host._events.defaultSel();
+        this.error = "";
+      }
+    }) : A}
                   ${isWifiEvent ? this.host._events.renderTargetFields({
       idPrefix: "sb-step",
       sel: this.host._events.primary,
@@ -13727,7 +14110,8 @@ var MacroStepEditorController = class {
         this.error = "";
       }
     }) : b2`
-                        ${isActivity ? this.host._renderBindingSelect({
+                        <div class=${isActivity ? "field-pair" : ""}>
+                          ${isActivity ? this.host._renderBindingSelect({
       id: "sb-step-device",
       label: TOOLS_CARD_STRINGS.backup.stepDevice,
       value: this.deviceId,
@@ -13735,7 +14119,7 @@ var MacroStepEditorController = class {
       onChange: this.handleDeviceChange,
       emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
     }) : A}
-                        ${this.host._renderBindingSelect({
+                          ${this.host._renderBindingSelect({
       id: "sb-step-command",
       label: TOOLS_CARD_STRINGS.backup.stepCommand,
       value: this.commandId,
@@ -13743,21 +14127,24 @@ var MacroStepEditorController = class {
       onChange: this.handleCommandChange,
       emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands
     })}
+                        </div>
                       `}
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
-                    <input
-                      id="sb-step-hold"
-                      class="decoded-field-input"
-                      type="number"
-                      min="0"
-                      max="120"
-                      step="0.5"
-                      .value=${this.holdSeconds}
-                      @input=${this.handleHoldInput}
-                      @change=${this.handleHoldChange}
-                    />
-                  </div>
+                  ${isWifiEvent ? A : b2`
+                        <div class="decoded-field">
+                          <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
+                          <input
+                            id="sb-step-hold"
+                            class="decoded-field-input"
+                            type="number"
+                            min="0"
+                            max="120"
+                            step="0.5"
+                            .value=${this.holdSeconds}
+                            @input=${this.handleHoldInput}
+                            @change=${this.handleHoldChange}
+                          />
+                        </div>
+                      `}
                 `}
           </div>
           <div class="dialog-footer">
@@ -13789,6 +14176,8 @@ var SofabatonEditDetailView = class extends i4 {
     this._editDetailActiveSection = "power";
     this._powerControlMenuOpen = false;
     this._roleMenuOpen = null;
+    // The open "Copy shortcuts from" menu: its fixed position (anchoredListPosition), null when closed.
+    this._shortcutCopyMenu = null;
     // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
     // Captured at click time; not reactive — they change only together with
     // the open-state fields above/below.
@@ -13798,6 +14187,8 @@ var SofabatonEditDetailView = class extends i4 {
     this._bindingsView = false;
     this._addShortcutKind = "command";
     this._addShortcutActionName = "";
+    // The macro kind: a new macro, or another activity's macro copied over ("copy").
+    this._addShortcutMacro = { mode: "new", macroId: null, sourceId: null };
     // ── Wifi Event kind (live mode; host facade + shared dialog state) ──
     // `_events.primary` serves whichever Add dialog is open (shortcut,
     // step, or binding); `_events.longPress` is the binding's long-press leg.
@@ -13827,6 +14218,7 @@ var SofabatonEditDetailView = class extends i4 {
     this.irLearn = null;
     this._learn = new IrLearnController(this);
     this._payload = new PayloadDialogController(this);
+    // Annotated: the controllers' host types name each other (the pickers), which an inferred type cannot resolve.
     this._events = new WifiEventTargets(this);
     this._binding = new BindingDialogController(this);
     this._steps = new MacroStepEditorController(this);
@@ -13859,6 +14251,7 @@ var SofabatonEditDetailView = class extends i4 {
         this._roleMenuAnchor = null;
         this._roleMenuOpen = null;
       }
+      if (this._shortcutCopyMenu !== null) this._shortcutCopyMenu = null;
       const sections = Array.from(
         scrollEl.querySelectorAll("[data-edit-section]")
       );
@@ -13979,16 +14372,19 @@ var SofabatonEditDetailView = class extends i4 {
       this._addFavoriteCommandId = commands[0]?.commandId ?? null;
       this._addFavoriteError = "";
       this._addShortcutActionName = "";
+      this._addShortcutMacro = { mode: "new", macroId: null, sourceId: null };
       this._events.load(this._shortcutEventTaken);
       this._addFavoriteOpen = true;
     };
     this._closeAddFavoriteDialog = () => {
       this._addFavoriteOpen = false;
+      this._binding.macroPicker = null;
       this._addFavoriteDeviceId = null;
       this._addFavoriteCommandId = null;
       this._addFavoriteError = "";
       this._addShortcutKind = "command";
       this._addShortcutActionName = "";
+      this._addShortcutMacro = { mode: "new", macroId: null, sourceId: null };
     };
     this._handleAddFavoriteDeviceChange = (event) => {
       const value = Number(event.target.value);
@@ -14065,6 +14461,21 @@ var SofabatonEditDetailView = class extends i4 {
         return;
       }
       const activityId = Number(this.entityId);
+      if (this._addShortcutMacro.mode === "copy") {
+        const copied = copyActivityUserMacro(
+          this.bundle,
+          activityId,
+          Number(this._addShortcutMacro.sourceId),
+          Number(this._addShortcutMacro.macroId)
+        );
+        if (copied === this.bundle) {
+          this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+          return;
+        }
+        this._commitEditBundleEdit(copied);
+        this._closeAddFavoriteDialog();
+        return;
+      }
       const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
       const next = addActivityUserMacro(this.bundle, activityId, name);
       this._commitEditBundleEdit(next);
@@ -14072,6 +14483,21 @@ var SofabatonEditDetailView = class extends i4 {
       const summaries = activityUserMacroSummaries(next, activityId);
       const created = summaries[summaries.length - 1];
       if (created) this._steps.openEditor("activity", activityId, created.buttonId, created.name);
+    };
+    this._toggleShortcutCopyMenu = (event) => {
+      if (this._shortcutCopyMenu !== null) {
+        this._shortcutCopyMenu = null;
+        return;
+      }
+      const root = this.renderRoot;
+      const trigger = event.currentTarget;
+      this._shortcutCopyMenu = anchoredListPosition(trigger, null, { minWidth: 260, within: trigger.closest(".detail-scroll") });
+      requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
+    };
+    this._closeShortcutCopyMenu = () => {
+      if (this._shortcutCopyMenu === null) return;
+      this._shortcutCopyMenu = null;
+      this.renderRoot.querySelector("#sb-copy-shortcuts")?.focus();
     };
     this._applyEditRenameDialog = () => {
       const target = this._editRenameDialogTarget;
@@ -14719,7 +15145,7 @@ var SofabatonEditDetailView = class extends i4 {
     const rows = items.map((item, position) => this._renderActivityQuickAccessRow(item, position, items.length));
     return b2`
       <div class="quick-access-section" data-edit-section="quick_access">
-        <div class="quick-access-head">
+        <div class="quick-access-head quick-access-head--inline">
           <div class="quick-access-head-main">
             <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.activityShortcutsTitle}</div>
             <div class="quick-access-sub">
@@ -14727,6 +15153,7 @@ var SofabatonEditDetailView = class extends i4 {
             </div>
           </div>
           <div class="quick-access-head-actions">
+            ${this._renderCopyShortcuts()}
             <button class="quick-access-add-btn" @click=${this._openAddShortcutDialog}>
               <ha-icon icon="mdi:plus"></ha-icon>
               <span>${TOOLS_CARD_STRINGS.backup.addShortcutButton}</span>
@@ -15129,6 +15556,73 @@ var SofabatonEditDetailView = class extends i4 {
       </div>
     `;
   }
+  // "Copy" beside "Add": pick another activity and take over every shortcut
+  // of it this activity does not have yet (copyActivityShortcuts).
+  _renderCopyShortcuts() {
+    if (!this.bundle || this.entityId == null) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const activityId = Number(this.entityId);
+    const sources = shortcutCopySources(this.bundle, activityId);
+    if (sources.length === 0) return A;
+    const open = this._shortcutCopyMenu !== null;
+    const onKeydown = (event) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeShortcutCopyMenu();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option:not(:disabled)");
+    };
+    return b2`
+      <span class="shortcut-copy" @keydown=${onKeydown}>
+        <button
+          id="sb-copy-shortcuts"
+          class="quick-access-add-btn"
+          type="button"
+          title=${S5.copyShortcutsHeading}
+          aria-label=${S5.copyShortcutsButton}
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          @click=${this._toggleShortcutCopyMenu}
+        >
+          <ha-icon icon="mdi:content-copy"></ha-icon>
+          <span>${S5.copyShortcutsButton}</span>
+        </button>
+        ${open ? b2`
+              <button
+                class="macro-picker-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this._closeShortcutCopyMenu}
+                @wheel=${(event) => event.preventDefault()}
+              ></button>
+              <div class="macro-picker-menu" role="listbox" aria-label=${S5.copyShortcutsHeading} style=${this._shortcutCopyMenu ?? ""}>
+                <div class="macro-picker-group">${S5.copyShortcutsHeading}</div>
+                ${sources.map((source) => b2`
+                  <button
+                    class="macro-picker-option"
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    data-activity=${source.activityId}
+                    ?disabled=${source.newCount === 0}
+                    @click=${() => {
+      this._closeShortcutCopyMenu();
+      if (this.bundle) this._commitEditBundleEdit(copyActivityShortcuts(this.bundle, activityId, source.activityId));
+    }}
+                  >
+                    <span class="macro-picker-name">${source.activityName}</span>
+                    <span class="macro-picker-chip">${source.newCount === 0 ? S5.copyShortcutsNone : S5.copyShortcutsCount(source.newCount)}</span>
+                  </button>
+                `)}
+              </div>
+            ` : A}
+      </span>
+    `;
+  }
   _renderAddFavoriteDialog() {
     if (!this._addFavoriteOpen || !this.bundle) return A;
     const S5 = TOOLS_CARD_STRINGS.backup;
@@ -15137,40 +15631,56 @@ var SofabatonEditDetailView = class extends i4 {
     const commands = this._shortcutCommandItems(this._addFavoriteDeviceId);
     const canAdd = kind === "command" ? this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null : kind === "wifi_event" ? !this._events.busy && (this._events.primary.mode === "existing" ? this._events.primary.slot != null : this._events.primary.name.trim().length > 0) : true;
     const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${this._editableDeviceOptions().length === 0 ? S5.addFavoriteNoDevices : S5.addShortcutNoCommandsLeft}</div>` : b2`
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-device">${S5.addFavoriteDevice}</label>
-            <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
-              ${devices.map((device) => b2`
-                <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
-              `)}
-            </select>
+          <div class="field-pair">
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-fav-device">${S5.addFavoriteDevice}</label>
+              <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
+                ${devices.map((device) => b2`
+                  <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
+                `)}
+              </select>
+            </div>
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-fav-command">${S5.addFavoriteCommand}</label>
+              ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.addFavoriteNoCommands}</div>` : b2`
+                    <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
+                      ${commands.map((command) => b2`
+                        <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
+                      `)}
+                    </select>
+                  `}
+            </div>
           </div>
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-command">${S5.addFavoriteCommand}</label>
-            ${commands.length === 0 ? b2`<div class="quick-access-empty">${S5.addFavoriteNoCommands}</div>` : b2`
-                  <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
-                    ${commands.map((command) => b2`
-                      <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
-                    `)}
-                  </select>
-                `}
-            <div class="decoded-field-helper">${S5.addShortcutCommandHelper}</div>
-          </div>
+          <div class="decoded-field-helper">${S5.addShortcutCommandHelper}</div>
         `;
     const actionFields = b2`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-add-action-name">${S5.addShortcutActionName}</label>
-        <input
-          id="sb-add-action-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._addShortcutActionName}
-          @input=${(event) => {
+      ${this._copyableMacros().length ? this._binding.renderMacroSelect({
+      id: "sb-add-macro-target",
+      mode: this._addShortcutMacro.mode,
+      macroId: this._addShortcutMacro.macroId,
+      sourceId: this._addShortcutMacro.sourceId,
+      own: [],
+      allowNew: true,
+      onPick: (value) => {
+        this._addShortcutMacro = macroTargetFromValue(value);
+        this._addFavoriteError = "";
+      }
+    }) : A}
+      ${this._addShortcutMacro.mode === "copy" ? A : b2`
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-action-name">${S5.addShortcutActionName}</label>
+              <input
+                id="sb-add-action-name"
+                class="decoded-field-input"
+                maxlength="20"
+                .value=${this._addShortcutActionName}
+                @input=${(event) => {
       this._addShortcutActionName = event.target.value;
     }}
-        />
-        <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
-      </div>
+              />
+              <div class="decoded-field-helper">${S5.addShortcutActionHelper}</div>
+            </div>
+          `}
     `;
     return b2`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
@@ -15180,24 +15690,23 @@ var SofabatonEditDetailView = class extends i4 {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            <div class="decoded-field">
-              <label class="decoded-field-label" for="sb-add-shortcut-kind">${S5.addShortcutKindLabel}</label>
-              <select
-                id="sb-add-shortcut-kind"
-                class="decoded-field-input"
-                @change=${(event) => {
-      this._addShortcutKind = event.target.value;
-      if (this._addShortcutKind === "wifi_event") {
-        this._events.primary = this._events.defaultSel(this._shortcutEventTaken);
+            ${renderKindSegments({
+      id: "sb-add-shortcut-kind",
+      ariaLabel: S5.addShortcutKindLabel,
+      value: kind,
+      options: [
+        { value: "command", label: S5.shortcutKindCommand },
+        { value: "action", label: S5.shortcutKindAction },
+        ...this._events.available() ? [{ value: "wifi_event", label: S5.shortcutKindWifiEvent }] : []
+      ],
+      onChange: (event) => {
+        this._addShortcutKind = event.target.value;
+        if (this._addShortcutKind === "wifi_event") {
+          this._events.primary = this._events.defaultSel(this._shortcutEventTaken);
+        }
+        this._addFavoriteError = "";
       }
-      this._addFavoriteError = "";
-    }}
-              >
-                <option value="command" ?selected=${kind === "command"}>${S5.shortcutKindCommand}</option>
-                <option value="action" ?selected=${kind === "action"}>${S5.shortcutKindAction}</option>
-                ${this._events.available() ? b2`<option value="wifi_event" ?selected=${kind === "wifi_event"}>${S5.shortcutKindWifiEvent}</option>` : A}
-              </select>
-            </div>
+    })}
             ${kind === "command" ? commandFields : kind === "wifi_event" ? this._events.renderTargetFields({
       idPrefix: "sb-add-fav",
       sel: this._events.primary,
@@ -15270,6 +15779,11 @@ var SofabatonEditDetailView = class extends i4 {
     if (!this.bundle || this.entityId == null) return "";
     const bId = Number(buttonId || 0);
     return activityUserMacroSummaries(this.bundle, Number(this.entityId)).find((macro) => macro.buttonId === bId)?.name ?? "";
+  }
+  /** The other activities' macros, offered as copies in the macro dropdown. */
+  _copyableMacros() {
+    if (!this.bundle || this.entityId == null) return [];
+    return copyableActivityMacroSummaries(this.bundle, Number(this.entityId));
   }
   _macroOptions() {
     if (!this.bundle || this.entityId == null) return [];
@@ -15549,10 +16063,12 @@ SofabatonEditDetailView.properties = {
   _haSortableReady: { state: true },
   _powerControlMenuOpen: { state: true },
   _roleMenuOpen: { state: true },
+  _shortcutCopyMenu: { state: true },
   _roleConfirm: { state: true },
   _bindingsView: { state: true },
   _addShortcutKind: { state: true },
-  _addShortcutActionName: { state: true }
+  _addShortcutActionName: { state: true },
+  _addShortcutMacro: { state: true }
 };
 // The whole backup-tab stylesheet ships to both shadow roots (see
 // backup-tab-styles.ts); the :host rule it carries gives this element
@@ -17100,6 +17616,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this.lastHubEvent = null;
     this._hubEventFlashClearTimer = null;
     this._hubEventFlashClearForReceivedAt = null;
+    // Tell the host card whether the user is inside a device editor (detail
+    // view) whose stored config still needs a deploy to the hub, so its
+    // bottom dock can show the dirty banner. Mirrors the render() gating:
+    // list view, Events section, and guard states never count as "in the
+    // editor", and a running deploy is narrated by the dock itself.
+    this._dockSyncNotified = false;
     this._closeDevicePowerPicker = () => {
       this._devicePowerPickerKind = null;
     };
@@ -17283,18 +17805,23 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._notifyDirtyDock();
     this.renderRoot.querySelectorAll("ha-selector[data-hide-action-type='1']").forEach((element) => this._hideUiActionTypeSelector(element));
   }
-  // Tell the host card whether the user is inside a device editor (detail
-  // view) whose stored config still needs a deploy to the hub, so its
-  // bottom dock can show the dirty banner. Mirrors the render() gating:
-  // list view, Events section, and guard states never count as "in the
-  // editor", and a running deploy is narrated by the dock itself.
+  /** The header Sync button's own conditions (see _renderSyncActionButton). */
+  _dockSyncAllowed() {
+    return this._syncState.sync_needed && this._syncState.status !== "running" && !this._remoteUnavailable() && !(this._hubCommandLocked() && !this._selectedDeviceOwnsPendingSync());
+  }
+  /** The host dock's Sync button: the same sync the editor's header starts. */
+  syncFromDock() {
+    if (this._selectedWifiDevice() && this._dockSyncAllowed()) void this._runCommandConfigSync();
+  }
   _notifyDirtyDock() {
     const inEditor = this.selectedSection === "wifi" && !this.loading && !this.error && !!this.hub && !(this.blockedTitle && this.blockedMessage) && !!this._selectedWifiDevice();
     const dirty = inEditor && this._syncState.sync_needed && this._syncState.status !== "running";
-    if (dirty === this._dirtyDockNotified) return;
+    const canSync = dirty && this._dockSyncAllowed();
+    if (dirty === this._dirtyDockNotified && canSync === this._dockSyncNotified) return;
     this._dirtyDockNotified = dirty;
+    this._dockSyncNotified = canSync;
     this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
-      detail: { dirty },
+      detail: { dirty, canSync },
       bubbles: true,
       composed: true
     }));
@@ -20301,6 +20828,11 @@ var SofabatonActivitiesTab = class extends i4 {
     // Last dirty value announced to the host via `editor-dirty-changed`, so
     // the event only fires on transitions.
     this._dirtyDockNotified = false;
+    // Tell the host card whether this editor holds changes that only a sync
+    // will persist, so its bottom dock can show the dirty banner. "editing"
+    // and "sync_failed" are the stages where unsynced changes sit idle;
+    // during "syncing" the dock already narrates the running operation.
+    this._dockSyncNotified = false;
     // ── Live command-payload editing (host-provided I/O) ────────────────
     // The detail view is hass-free, so it delegates the on-demand blob fetch
     // and the Test playback to these callbacks. The fetch is per-command (not
@@ -20509,16 +21041,18 @@ var SofabatonActivitiesTab = class extends i4 {
     this._maybeAutoOpen();
     this._notifyDirtyDock();
   }
-  // Tell the host card whether this editor holds changes that only a sync
-  // will persist, so its bottom dock can show the dirty banner. "editing"
-  // and "sync_failed" are the stages where unsynced changes sit idle;
-  // during "syncing" the dock already narrates the running operation.
+  /** The host dock's Sync button: the same sync the editor's header starts. */
+  syncFromDock() {
+    if (this._stage === "editing") void this._requestSync();
+  }
   _notifyDirtyDock() {
     const dirty = this._dirty && (this._stage === "editing" || this._stage === "sync_failed");
-    if (dirty === this._dirtyDockNotified) return;
+    const canSync = dirty && this._stage === "editing";
+    if (dirty === this._dirtyDockNotified && canSync === this._dockSyncNotified) return;
     this._dirtyDockNotified = dirty;
+    this._dockSyncNotified = canSync;
     this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
-      detail: { dirty },
+      detail: { dirty, canSync },
       bubbles: true,
       composed: true
     }));
@@ -21304,8 +21838,11 @@ SofabatonXPanel.styles = i`
       padding: 0;
       padding-bottom: env(safe-area-inset-bottom);
     }
+    /* Only the card shell goes square; --ha-card-border-radius is left
+       alone so the tabs, blocks, menus and dialogs inside the card keep
+       the theme's corner radius. */
     :host([narrow]) sofabaton-control-panel {
-      --ha-card-border-radius: 0;
+      --tools-card-outer-radius: 0;
       --ha-card-border-width: 0;
     }
   `;
@@ -21447,6 +21984,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     // download.
     this._editorSyncPending = false;
     this._editorSyncPendingKind = "sync";
+    // Whether the editor behind the dirty flag can start its sync right now:
+    // the dock then offers the Sync button, so a change made deep in a
+    // sub-view does not need the walk back up to the editor's header.
+    this._editorSyncAvailable = false;
     // Re-order mode ("Change order" under the Activities / Devices list).
     this._reorderMode = false;
     this._reorderKind = "activity";
@@ -21484,10 +22025,16 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._handleEditorDirtyChanged = (event) => {
       const dirty = Boolean(event.detail?.dirty);
       const kind = event.detail?.kind === "download" ? "download" : "sync";
-      if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind) return;
+      const canSync = dirty && kind === "sync" && Boolean(event.detail?.canSync);
+      if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind && canSync === this._editorSyncAvailable) return;
       this._editorSyncPending = dirty;
       this._editorSyncPendingKind = kind;
+      this._editorSyncAvailable = canSync;
       this.requestUpdate();
+    };
+    // The dock's Sync button: the open editor runs its own sync, exactly as its header button does.
+    this._syncFromDock = () => {
+      this.renderRoot.querySelector("sofabaton-activities-tab, sofabaton-wifi-commands-tab")?.syncFromDock?.();
     };
     this._store = new ControlPanelStore(
       (snapshot) => {
@@ -21967,7 +22514,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
               `
     ) : A}
         <div class="card-bottom-dock-center">
-          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : editorSyncPending ? b2`<span class="card-bottom-dock-status">${this._editorSyncPendingKind === "download" ? TOOLS_CARD_STRINGS.dock.unsavedBackupChanges : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
+          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : editorSyncPending ? b2`<span class="card-bottom-dock-status">${this._editorSyncPendingKind === "download" ? TOOLS_CARD_STRINGS.dock.unsavedBackupChanges : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>${this._editorSyncPendingKind === "sync" && this._editorSyncAvailable ? b2`<button class="card-bottom-dock-action" type="button" @click=${this._syncFromDock}>${TOOLS_CARD_STRINGS.dock.syncNow}</button>` : A}` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}

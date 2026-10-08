@@ -137,6 +137,7 @@ def test_every_platform_publishes_the_same_device_info(monkeypatch):
             sensor_platform.SofabatonActivitySensor(hub, ENTRY),
             switch_platform.SofabatonProxySwitch(hub, ENTRY),
             text_platform.SofabatonHubIpText(hub, ENTRY),
+            text_platform.SofabatonLocalAddressText(hub, ENTRY),
         ]
         for entity in entities:
             assert entity.device_info == expected
@@ -174,3 +175,111 @@ def test_the_ip_text_entity_leaves_the_host_change_to_the_update_listener(monkey
 def test_the_index_sensor_keeps_its_catalog_out_of_the_recorder():
     """CR-H3-13."""
     assert {"activities", "devices"} <= set(sensor_platform.SofabatonIndexSensor._unrecorded_attributes)
+
+
+def _local_address_entity(monkeypatch, loop, *, os_ip="192.0.2.10", options=None):
+    import ipaddress
+
+    from custom_components.sofabaton_x1s.lib import network
+
+    monkeypatch.setattr(network, "_os_route_ip", lambda _peer: os_ip)
+    # The host's addresses: its routed one and a second one on another subnet.
+    monkeypatch.setattr(
+        network,
+        "_local_ipv4_interfaces",
+        lambda: [ipaddress.IPv4Interface(f"{os_ip}/32"), ipaddress.IPv4Interface("192.0.2.99/32")],
+    )
+    signals: list[str] = []
+    monkeypatch.setattr(hub_module, "async_dispatcher_send", lambda _hass, sig: signals.append(sig))
+    hub = _hub(loop)
+    entry = SimpleNamespace(
+        entry_id="entry-id", data={CONF_MAC: "aa:bb:cc:dd:ee:ff"}, options=dict(options or {})
+    )
+    hub.hass._entries["entry-id"] = entry
+    entity = text_platform.SofabatonLocalAddressText(hub, entry)
+    entity.hass = hub.hass
+    entity.async_write_ha_state = lambda: None
+    return hub, entry, entity, signals
+
+
+def test_the_local_address_entity_shows_the_address_in_use(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub, _entry, entity, _signals = _local_address_entity(monkeypatch, loop)
+        assert entity._attr_entity_registry_enabled_default is False
+        assert entity._attr_unique_id == "aa:bb:cc:dd:ee:ff_local_ip_address"
+
+        loop.run_until_complete(entity._async_refresh())
+
+        assert entity.native_value == "192.0.2.10"
+        assert entity.extra_state_attributes == {"mode": "automatic"}
+    finally:
+        loop.close()
+
+
+def test_the_local_address_entity_sets_and_clears_the_manual_address(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub, entry, entity, signals = _local_address_entity(monkeypatch, loop)
+
+        loop.run_until_complete(entity.async_set_value(" 192.0.2.99 "))
+        assert entry.options == {"local_address": "192.0.2.99"}
+        assert hub.local_address == "192.0.2.99"
+        assert hub._proxy.transport.local_address == "192.0.2.99"
+        assert entity.native_value == "192.0.2.99"
+        assert entity.extra_state_attributes == {"mode": "manual"}
+        assert signals == ["sofabaton_x1s_entry-id_hub"]
+
+        # Clearing the field returns to automatic and drops the option.
+        loop.run_until_complete(entity.async_set_value(""))
+        assert entry.options == {}
+        assert hub.local_address is None
+        assert entity.native_value == "192.0.2.10"
+        assert entity.extra_state_attributes == {"mode": "automatic"}
+    finally:
+        loop.close()
+
+
+def test_the_local_address_entity_rejects_anything_but_ipv4(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub, entry, entity, _signals = _local_address_entity(monkeypatch, loop)
+
+        for bad in ("homeassistant.local", "2001:db8::1", "192.0.2"):
+            with pytest.raises(HomeAssistantError):
+                loop.run_until_complete(entity.async_set_value(bad))
+        assert entry.options == {}
+        assert hub.local_address is None
+    finally:
+        loop.close()
+
+
+def test_a_stored_manual_address_reaches_the_engine(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hass = FakeHass(loop)
+        hub = SofabatonHub(
+            hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False,
+            local_address="192.0.2.99",
+        )
+        assert hub._proxy.local_address == "192.0.2.99"
+        # A host change builds a new engine; the manual address carries over.
+        assert hub._create_proxy().local_address == "192.0.2.99"
+    finally:
+        loop.close()
+
+
+def test_the_local_address_entity_refuses_an_address_that_is_not_this_hosts(monkeypatch):
+    """A typo would take the hub offline: it would be told to call nobody."""
+    loop = asyncio.new_event_loop()
+    try:
+        hub, entry, entity, signals = _local_address_entity(monkeypatch, loop)
+
+        with pytest.raises(HomeAssistantError, match="192.0.2.50 is not an address of this"):
+            loop.run_until_complete(entity.async_set_value("192.0.2.50"))
+        assert entry.options == {}
+        assert hub.local_address is None
+        assert hub._proxy.transport.local_address is None
+        assert signals == []
+    finally:
+        loop.close()

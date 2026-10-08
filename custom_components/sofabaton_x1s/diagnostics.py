@@ -390,6 +390,7 @@ async def async_get_config_entry_diagnostics(
                 "port": getattr(hub, "port", None),
                 "mac": getattr(hub, "mac", None),
                 "proxy_enabled": getattr(hub, "proxy_enabled", None),
+                "local_address_is_manual": getattr(hub, "local_address", None) is not None,
                 "hex_logging_enabled": getattr(hub, "hex_logging_enabled", None),
                 "activities": getattr(hub, "activities", None),
                 "devices": getattr(hub, "devices", None),

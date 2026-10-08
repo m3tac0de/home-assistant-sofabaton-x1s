@@ -169,6 +169,16 @@ return the hub view, are kept across restarts, and are announced as
 `hub_proxy_disabled` / `hub_proxy_enabled`. An app session already attached
 stays until the app disconnects.
 
+`config.local_address` is the server's IPv4 address the hub is told to
+connect back to, when it was set by hand; it is null while the server
+chooses the address itself, which is right on a host with one network
+interface. `PUT /hubs/{hub_id}/local-address` with `{"address": "..."}`
+sets it, and with `{"address": null}` returns it to automatic; anything but
+an IPv4 address is a 422 `invalid_local_address`. The hub view's
+`local_address` is the address in use either way (null while the hub is
+disabled). A change applies to the next connection attempt and is announced
+by `hub_local_address_changed`; a connected hub stays connected.
+
 ## 4. Read and control
 
 Everything is keyed on `(entity_id, command_id)`: activities have ids

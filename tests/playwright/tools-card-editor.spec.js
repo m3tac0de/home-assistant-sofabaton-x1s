@@ -163,6 +163,11 @@ test.describe("tools-card activity editor harness", () => {
 
     await page.getByRole("button", { name: "Customize individual buttons", exact: false }).click();
     await page.locator(".quick-access-head .quick-access-add-btn").click();
+    await expect(page.getByRole("group", { name: "Short press", exact: true }).getByRole("combobox", { name: "Command", exact: true })).toBeVisible();
+    const longPress = page.getByRole("group", { name: "Long press", exact: true });
+    await longPress.locator("ha-switch").click();
+    await expect(longPress.getByRole("combobox", { name: "Command", exact: true })).toBeVisible();
+    await longPress.locator("ha-switch").click();
     await page.locator("#sb-binding-device").selectOption("3");
     await page.locator("#sb-binding-command").selectOption("30");
     await page.locator(".dialog-footer .dialog-btn-primary").click();

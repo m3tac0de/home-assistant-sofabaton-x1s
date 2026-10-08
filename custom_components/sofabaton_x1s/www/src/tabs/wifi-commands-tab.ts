@@ -933,6 +933,21 @@ class SofabatonWifiCommandsTab extends LitElement {
   // bottom dock can show the dirty banner. Mirrors the render() gating:
   // list view, Events section, and guard states never count as "in the
   // editor", and a running deploy is narrated by the dock itself.
+  private _dockSyncNotified = false;
+
+  /** The header Sync button's own conditions (see _renderSyncActionButton). */
+  private _dockSyncAllowed(): boolean {
+    return this._syncState.sync_needed
+      && this._syncState.status !== "running"
+      && !this._remoteUnavailable()
+      && !(this._hubCommandLocked() && !this._selectedDeviceOwnsPendingSync());
+  }
+
+  /** The host dock's Sync button: the same sync the editor's header starts. */
+  syncFromDock() {
+    if (this._selectedWifiDevice() && this._dockSyncAllowed()) void this._runCommandConfigSync();
+  }
+
   private _notifyDirtyDock() {
     const inEditor = this.selectedSection === "wifi"
       && !this.loading
@@ -943,10 +958,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     const dirty = inEditor
       && this._syncState.sync_needed
       && this._syncState.status !== "running";
-    if (dirty === this._dirtyDockNotified) return;
+    const canSync = dirty && this._dockSyncAllowed();
+    if (dirty === this._dirtyDockNotified && canSync === this._dockSyncNotified) return;
     this._dirtyDockNotified = dirty;
+    this._dockSyncNotified = canSync;
     this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
-      detail: { dirty },
+      detail: { dirty, canSync },
       bubbles: true,
       composed: true,
     }));

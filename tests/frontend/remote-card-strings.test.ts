@@ -13,7 +13,8 @@ import {
 } from "../../remote-card/src/remote-card-strings";
 import { isPoweredOffLabel } from "../../remote-card/src/remote-card-state";
 import { drawerTabChevronIcon } from "../../remote-card/src/sections/macro-favorites";
-import { TOOLS_CARD_LOCALE_ALIASES, TOOLS_CARD_STRINGS } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import { TOOLS_CARD_LOCALE_ALIASES, TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 import TOOLS_CARD_STRINGS_DE from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
 import TOOLS_CARD_STRINGS_ES from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
 import TOOLS_CARD_STRINGS_FR from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
@@ -72,6 +73,23 @@ test("regional codes fall back to the base language", () => {
   setRemoteCardLanguage("yy-CH");
   assert.equal(str().card.poweredOff, "Ausgeschaltet");
   setRemoteCardLanguage("en");
+});
+
+test("printed hardware legends stay unchanged in both cards across all locales", () => {
+  // Arabic may wrap a Latin legend in bidi isolates without translating it.
+  const legend = (value: string) => value.replace(/[\u2068\u2069]/g, "");
+  for (const locale of ["en", "en-GB", "de-DE", "es-ES", "fr-FR", "nl-NL", "zh-Hans", "ar-SA"]) {
+    setRemoteCardLanguage(locale);
+    setToolsCardLanguage(locale);
+    for (const [key, expected] of Object.entries({ exit: "EXIT", dvr: "DVR", a: "A", b: "B", c: "C" })) {
+      assert.equal(legend(str().keys[key]), expected, `${locale}: remote ${key}`);
+      assert.equal(legend(TOOLS_CARD_STRINGS.wifiCommands.keyLabels[key]), expected, `${locale}: assignment ${key}`);
+    }
+    assert.equal(TOOLS_CARD_STRINGS.backup.buttonCatalog.exit, "EXIT", `${locale}: catalog EXIT`);
+    assert.equal(TOOLS_CARD_STRINGS.backup.buttonCatalog.dvr, "DVR", `${locale}: catalog DVR`);
+  }
+  setRemoteCardLanguage("en");
+  setToolsCardLanguage("en");
 });
 
 test("physical remote terminology stays aligned with the Control Panel", () => {
@@ -449,10 +467,9 @@ test("remote-card UI source does not introduce literal user-facing strings", () 
       || relative === "remote-card-assist-yaml.ts"
       || relative.endsWith("-styles.ts"),
     allowedValues: new Set([
-      // Key faces: DVR is the printed button name; Exit is localized at
-      // render time (localizedFace, keyFaceLabel).
+      // Printed hardware legends stay identical in every language.
       "DVR",
-      "Exit",
+      "EXIT",
       // Host setup notices stay English by decision (L-T7).
       "No such hub.",
       "No hub id given: set hub to the hub's MAC (any spelling).",

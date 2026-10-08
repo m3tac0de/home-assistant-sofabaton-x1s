@@ -91,6 +91,41 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
 2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port (8200 by default). All configured hubs share the same listener; the proxy dispatches each accepted connection to the right hub by peer IP.
 
+### Multi-homed hosts and the Home Assistant IP address
+
+The hub has to be told one address of Home Assistant to connect back to. It
+goes into `CALL_ME`, the proxy mDNS advertisement, and the default Wifi
+Command/Event callbacks. The integration chooses it per hub:
+
+1. Normally the operating system decides: the address its routing uses to
+   reach the hub. On a host with one network interface that is the only
+   candidate, and nothing changed from earlier releases.
+2. If that address is not on the hub's subnet while another address of the host
+   is, that other address is used (the most specific subnet wins). This is the
+   multi-homed host whose main routing table has no route for the hub's LAN,
+   for example with source-based policy routing. The integration then also
+   sends from that address, so the packet source matches what it advertises.
+   The operating system's routes still decide the outgoing interface.
+3. A manual address overrides both.
+
+To see or set the address, enable the **Home Assistant IP address** entity on
+the hub's device (it is disabled by default, next to **Hub IP address**). It
+shows the address in use; its `mode` attribute says `automatic` or `manual`.
+Enter an IPv4 address to set it manually, or clear the field to return to
+automatic. Only an address of the Home Assistant host itself is accepted. A change applies to the next connection attempt; a hub that is
+connected stays connected. Disabling the entity again does not remove a manual
+address.
+
+A manual address is needed when neither rule fits. One example is a hub reached
+through a static route while a VPN interface with a broad prefix also covers
+the hub's IP: rule 2 would pick the VPN address. When rule 2 or a manual address
+is in effect, the log says so once per hub, with the address the operating
+system would have used.
+
+The hub must be able to reach the address on the TCP connect-back port.
+Previously deployed or explicitly pinned Wifi Command/Event callback addresses
+are not rewritten automatically.
+
 ### Optional / Wifi Commands and Wifi Events
 
 When using this integration's [Wifi Commands or Wifi Events](wifi_commands.md), the hub makes HTTP requests into the integration. Both features share the same listener. The default port is **8060**. It is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
@@ -124,6 +159,11 @@ Two discovery mechanisms run in parallel:
 
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
+The discovery reply carries no address: the iOS app takes the proxy address
+from the reply's source. That source is the operating system's choice, except
+on a multi-homed Linux host where rule 2 above selects another address for the
+app's IP; the reply is then sent from that address.
+
 > ⚠️ **iOS discovery and VLANs**
 >
 > The iOS app’s discovery uses **UDP broadcast** on port 8102. By default, routers do **not**
@@ -153,6 +193,11 @@ Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Andro
 1. **CALL_ME from app → proxy (UDP):** the app sends a call-me packet to the proxy listener once discovery completes (on the configured UDP listening port, **8102** by default).
 2. **TCP connect-back from proxy → app:** after the call-me, the proxy opens a TCP connection into the app on a port in the **8100–8110** range that the app exposes.
 3. **Relay to the real hub:** once the TCP session is up, the proxy bridges app commands to the already-established hub connection.
+
+The address for this connection is chosen for the app's IP, independently of
+the hub's, by rules 1 and 2 under
+[Multi-homed hosts](#multi-homed-hosts-and-the-home-assistant-ip-address).
+Valid routes and firewall permissions are still required.
 
 When the app is connected, command-sending entities in Home Assistant intentionally become unavailable to avoid conflicting control writers.
 

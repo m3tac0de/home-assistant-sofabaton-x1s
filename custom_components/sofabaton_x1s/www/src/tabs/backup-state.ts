@@ -2887,6 +2887,165 @@ export function addActivityUserMacro(
   }));
 }
 
+export interface BackupCopyableMacroSummary extends BackupActivityMacroSummary {
+  activityId: number;
+  activityName: string;
+}
+
+/**
+ * The user macros of every other Activity: what "Copy from another
+ * activity" offers. A macro this activity already holds an identical copy
+ * of (same name, same steps) is left out, so a copy is not offered twice.
+ */
+export function copyableActivityMacroSummaries(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupCopyableMacroSummary[] {
+  const activities = bundle?.activities ?? [];
+  const signature = (macro: BackupBundleMacroRow | null | undefined) =>
+    JSON.stringify([String(macro?.name || ""), macro?.steps ?? []]);
+  const own = new Set(
+    (activities.find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId))?.macros ?? [])
+      .map(signature),
+  );
+  return activities.flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    const activityName = String(entry?.device?.name || "").trim()
+      || TOOLS_CARD_STRINGS.common.activityFallback(sourceId);
+    return activityUserMacroSummaries(bundle, sourceId)
+      .filter((macro) => !own.has(signature(
+        (entry.macros ?? []).find((row) => Number(row?.button_id || 0) === macro.buttonId),
+      )))
+      .map((macro) => ({ ...macro, activityId: sourceId, activityName }));
+  });
+}
+
+/**
+ * Copy another Activity's user macro onto this one at the next
+ * quick-access slot: name and steps verbatim, nothing to fill in
+ * afterwards. The steps can bring devices the activity did not use yet,
+ * so membership is reconciled like after a step edit. Returns the bundle
+ * unchanged when the source macro does not exist.
+ */
+export function copyActivityUserMacro(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  sourceActivityId: number,
+  sourceButtonId: number,
+): BackupBundlePayload {
+  if (Number(activityId) === Number(sourceActivityId)) return bundle;
+  const source = (bundle.activities ?? [])
+    .find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId))
+    ?.macros?.find((macro) => Number(macro?.button_id || 0) === Number(sourceButtonId));
+  if (!source || INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(sourceButtonId))) return bundle;
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...(activity.macros ?? []), {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(source.name || "").trim() || TOOLS_CARD_STRINGS.backup.newMacroName,
+      steps: (source.steps ?? []).map((step) => ({ ...step })),
+    }],
+  }));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+
+export interface BackupShortcutCopySource {
+  activityId: number;
+  activityName: string;
+  /** How many of its shortcuts this activity does not have yet. */
+  newCount: number;
+}
+
+/** The shortcuts of `sourceActivityId` this activity lacks, in the source's
+ *  display order: a favorite it does not reference yet (same device and
+ *  command), a macro it holds no identical copy of. */
+function missingActivityShortcuts(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  sourceActivityId: number,
+): Array<{ kind: "favorite"; deviceId: number; commandId: number; name: string } | { kind: "macro"; buttonId: number }> {
+  const source = (bundle?.activities ?? [])
+    .find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId));
+  if (!source || Number(activityId) === Number(sourceActivityId)) return [];
+  const copyableMacros = new Set(
+    copyableActivityMacroSummaries(bundle, activityId)
+      .filter((macro) => macro.activityId === Number(sourceActivityId))
+      .map((macro) => macro.buttonId),
+  );
+  const seen = new Set<string>();
+  const missing: ReturnType<typeof missingActivityShortcuts> = [];
+  for (const item of activityQuickAccessItems(bundle, sourceActivityId)) {
+    if (item.kind === "macro") {
+      if (copyableMacros.has(item.buttonId)) missing.push({ kind: "macro", buttonId: item.buttonId });
+      continue;
+    }
+    const deviceId = Number(item.deviceId || 0);
+    const commandId = Number(item.commandId || 0);
+    const key = `${deviceId}:${commandId}`;
+    if (deviceId <= 0 || commandId <= 0 || seen.has(key) || activityHasFavorite(bundle, activityId, deviceId, commandId)) continue;
+    seen.add(key);
+    const slot = (source.favorite_slots ?? []).find((row) => Number(row?.button_id || 0) === item.buttonId);
+    missing.push({ kind: "favorite", deviceId, commandId, name: String(slot?.name || "") });
+  }
+  return missing;
+}
+
+/** The other Activities that have shortcuts, with how many of them are new here. */
+export function shortcutCopySources(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupShortcutCopySource[] {
+  return (bundle?.activities ?? []).flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
+    return [{
+      activityId: sourceId,
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId),
+      newCount: missingActivityShortcuts(bundle, activityId, sourceId).length,
+    }];
+  });
+}
+
+/**
+ * Copy every shortcut of another Activity that this one lacks, appended in
+ * the source's order: favorites by reference, macros verbatim
+ * (copyActivityUserMacro). What is here already is skipped, so nothing
+ * doubles and a second copy is a no-op.
+ */
+export function copyActivityShortcuts(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  sourceActivityId: number,
+): BackupBundlePayload {
+  let next = bundle;
+  for (const item of missingActivityShortcuts(bundle, activityId, sourceActivityId)) {
+    next = item.kind === "macro"
+      ? copyActivityUserMacro(next, activityId, sourceActivityId, item.buttonId)
+      : addBundleActivityFavorite(next, activityId, item.deviceId, item.commandId, item.name);
+  }
+  return next;
+}
+
+// The macro dropdown's option values: a macro id, "__new__", or a copy source.
+export const MACRO_TARGET_NEW_VALUE = "__new__";
+
+export function macroCopyValue(activityId: number, buttonId: number): string {
+  return `copy:${Number(activityId)}:${Number(buttonId)}`;
+}
+
+export function macroTargetFromValue(value: string): {
+  mode: "existing" | "new" | "copy";
+  macroId: number | null;
+  sourceId: number | null;
+} {
+  if (value === MACRO_TARGET_NEW_VALUE) return { mode: "new", macroId: null, sourceId: null };
+  const copy = /^copy:(\d+):(\d+)$/.exec(value);
+  if (copy) return { mode: "copy", macroId: Number(copy[2]), sourceId: Number(copy[1]) };
+  return { mode: "existing", macroId: Number(value), sourceId: null };
+}
+
 export function addActivityMacroCommandStep(
   bundle: BackupBundlePayload,
   activityId: number,

@@ -83,6 +83,11 @@ setup notice that stays English) goes on the test's allowlist with a reason.
 
 - Keep product and feature names unchanged: `Sofabaton`, `Home Assistant`,
   `Wifi Commands`, `Wifi Events`, and `MQTT Discovery`.
+- Preserve printed remote-button legends, including capitalization. `EXIT`
+  identifies the physical key; it is not the generic UI action “Exit”. Keep
+  that name in the Virtual Remote, Key capture, accessible labels, and Control
+  Panel button-assignment lists. See the inventory below before translating
+  a key label.
 - Use **button assignment** for user-facing English copy. Choose one equivalent
   assignment term per locale and use it throughout both cards; internal keys
   such as `binding*` are implementation details, not translation guidance.
@@ -182,9 +187,31 @@ placeholder, keep the parameter.
 
 ## ◇ What is deliberately NOT translated
 
+- Printed button legends and key-face glyphs, as recorded below.
 - Names coming from your hub (activities, devices, commands, favorites, macros).
 - Generated YAML (keys/values consumed by Home Assistant) and MQTT discovery
   payloads — only the explanatory text around them is translatable.
 - Protocol/state values such as `powered_off` (`POWERED_OFF_LABELS`); the
   *display* label "Powered Off" is translatable and the card recognizes both.
 - Documentation URLs and stored config defaults.
+
+### Remote-button translation inventory
+
+| Kind | Current examples | Rule |
+| --- | --- | --- |
+| Printed text legends | `EXIT`, `DVR`, `A`, `B`, `C` | Keep the exact legend in every locale, including button lists and Key capture. |
+| Number-pad faces | `0`–`9`, `-`, `E` | Keep the face unchanged. An accessible explanation such as “Enter” or “Dash” can be translated. |
+| Icons and colors | Direction arrows, Home, Menu, Guide, playback, volume/channel, colored keys | Keep the icon/color; translate its descriptive accessible name and explanatory copy. |
+| Generic interface actions | Exit Edit mode, Close, Back in a dialog | Translate normally; these do not identify a printed hardware key. |
+
+This inventory applies to both cards and the shared web/embedded remote.
+The frontend tests check the preserved legends across all shipped locales;
+the browser test checks the actual remote faces and accessible names.
+When adding a button, check the hardware legend before deciding whether its
+name is translatable. Do not infer that every English key name is printed text.
+
+The existing internal Simplified Chinese glossary records terminology research
+against SofaBaton app 3.4.6. That research is not
+a complete inventory of intentionally untranslated strings across all of
+SofaBaton's languages. Keep evidence for product terms in the relevant glossary
+and record hardware-label decisions here.

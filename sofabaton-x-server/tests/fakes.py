@@ -97,6 +97,7 @@ class FakeProxy:
         # asked for, injected errors, and the extra device rows the
         # snapshot shows for them (block fields, command labels).
         self.local_ip = "192.168.1.10"
+        self.manual_local_address = config.local_address
         self.wifi_deploys: list[dict] = []
         self.wifi_updates: list[dict] = []
         self.wifi_deploy_error: Optional[BaseException] = None
@@ -238,6 +239,9 @@ class FakeProxy:
 
     async def disable_proxy(self) -> None:
         self.proxy_enabled = False
+
+    async def set_local_address(self, address) -> None:
+        self.manual_local_address = address or None
 
     # -- snapshot / state document (phase 3) -----------------------------------
 
@@ -452,7 +456,7 @@ class FakeProxy:
     # -- managed wifi devices (callbacks plan) -----------------------------------
 
     def local_address(self) -> str:
-        return self.local_ip
+        return self.manual_local_address or self.local_ip
 
     def _action_id(self) -> str:
         from sofabaton_server.models import mac_key

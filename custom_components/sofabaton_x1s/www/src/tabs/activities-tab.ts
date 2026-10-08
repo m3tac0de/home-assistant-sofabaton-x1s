@@ -262,12 +262,22 @@ class SofabatonActivitiesTab extends LitElement {
   // will persist, so its bottom dock can show the dirty banner. "editing"
   // and "sync_failed" are the stages where unsynced changes sit idle;
   // during "syncing" the dock already narrates the running operation.
+  private _dockSyncNotified = false;
+
+  /** The host dock's Sync button: the same sync the editor's header starts. */
+  syncFromDock() {
+    if (this._stage === "editing") void this._requestSync();
+  }
+
   private _notifyDirtyDock() {
     const dirty = this._dirty && (this._stage === "editing" || this._stage === "sync_failed");
-    if (dirty === this._dirtyDockNotified) return;
+    // The dock's Sync button is the header's: offered while the editor itself is on screen.
+    const canSync = dirty && this._stage === "editing";
+    if (dirty === this._dirtyDockNotified && canSync === this._dockSyncNotified) return;
     this._dirtyDockNotified = dirty;
+    this._dockSyncNotified = canSync;
     this.dispatchEvent(new CustomEvent("editor-dirty-changed", {
-      detail: { dirty },
+      detail: { dirty, canSync },
       bubbles: true,
       composed: true,
     }));

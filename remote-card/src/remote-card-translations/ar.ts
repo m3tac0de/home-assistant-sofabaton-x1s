@@ -218,7 +218,7 @@ export const REMOTE_CARD_STRINGS_AR = {
     guide: "دليل البرامج",
     dvr: DVR,
     play: "تشغيل",
-    exit: "خروج",
+    exit: "EXIT",
     rew: "ترجيع",
     pause: "إيقاف مؤقت",
     fwd: "تقديم سريع",

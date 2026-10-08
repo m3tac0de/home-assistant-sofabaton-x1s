@@ -441,9 +441,19 @@ export class SbPanelWifiDevices extends LitElement {
   }
 
   private _reportDirty(dirty: boolean): void {
-    if (dirty === this._reportedDirty) return;
+    // canSync rides along for the dock's Sync button: the header button's own rule.
+    const canSync = dirty && !this._working && this._canSync(this._device);
+    if (dirty === this._reportedDirty && canSync === this._reportedCanSync) return;
     this._reportedDirty = dirty;
-    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty } }));
+    this._reportedCanSync = canSync;
+    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty, canSync } }));
+  }
+
+  private _reportedCanSync = false;
+
+  /** The dock's Sync button: the same sync the header starts. */
+  syncFromDock(): void {
+    if (!this._working && this._canSync(this._device)) void this._sync();
   }
 
   private _say(text: string, ok: boolean): void {

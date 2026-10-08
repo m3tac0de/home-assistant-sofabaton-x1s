@@ -15,6 +15,7 @@ import { keyed } from "lit/directives/keyed.js";
 
 import type { Connectivity, DockModel } from "../panel-selectors";
 import type { PressEvent } from "../panel-store";
+import { LINK_DOWN_STATE } from "../panel-state";
 
 export interface DockLink {
   href: string;
@@ -34,6 +35,10 @@ export function renderBottomDock(params: {
   onDiscard: (applyId: string) => void;
   onKeepDraft: () => void;
   onDiscardDraft: () => void;
+  /** Set while the screen behind an "Unsynced changes" banner can sync right
+   *  now: the dock then offers the editor's own Sync, so a change made deep
+   *  in a sub-view does not need the walk back up to the header. */
+  onSync?: () => void;
   /** A Discard that is waiting for its inline Yes/Keep (never a native
    *  confirm(): it answers "cancel" wherever dialogs are suppressed, L-S5). */
   confirming?: "apply" | "draft" | null;
@@ -46,6 +51,9 @@ export function renderBottomDock(params: {
   let actions: TemplateResult | typeof nothing = nothing;
   // The one-line status, with the whole text in its title for when the row cuts it.
   const status = (text: string, id = "dock-status") => html`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const syncAction = params.onSync
+    ? html`<button class="small primary dock-action" id="dock-sync" type="button" @click=${params.onSync}>Sync</button>`
+    : nothing;
   const confirmActions = html`
     <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
     <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
@@ -97,10 +105,11 @@ export function renderBottomDock(params: {
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
     center = status(model.text);
-    actions = html`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+    actions = html`${syncAction}<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
     tone = "dock--dirty";
     center = status(model.text);
+    actions = syncAction;
   } else if (model.kind === "gate") {
     tone = "dock--gate";
     center = status(model.text);
@@ -111,6 +120,8 @@ export function renderBottomDock(params: {
   }
   const progress = model.kind === "running" ? model.progress : null;
   const press = params.press;
+  const hubStatus = params.connectivity.hub === null ? LINK_DOWN_STATE.text : params.connectivity.hub ? "hub connected" : "hub not connected";
+  const appStatus = params.connectivity.app === null ? LINK_DOWN_STATE.text : params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected";
   return html`
     <footer class="dock ${tone}" id="bottom-dock">
       <div class="dock-inner">
@@ -124,9 +135,9 @@ export function renderBottomDock(params: {
         <div class="dock-right">
           ${actions !== nothing ? html`<div class="dock-actions">${actions}</div>` : nothing}
           ${params.hasHub
-            ? html`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
-                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
-                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
+            ? html`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label=${`Connectivity. Hub: ${hubStatus}. App: ${appStatus}.`}>
+                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${hubStatus}>Hub</span>
+                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${appStatus}>App</span>
               </div>`
             : nothing}
         </div>

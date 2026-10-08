@@ -93,7 +93,14 @@ export const cardStyles = [secondaryTabStyles, css`
      container; .card-inner gets height:100% inline from the card. */
   :host([fill-height]) { height: 100%; }
   :host([fill-height]) ha-card { height: 100%; }
-  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
+  /* The card shell's corners (ha-card and the clipping .card-inner) follow
+     --tools-card-outer-radius; it defaults to the theme's card radius. A
+     host that wants a squared shell (the sidebar panel on a phone, where
+     the card is the page) sets only this variable: everything inside the
+     card keeps deriving its corners from --ha-card-border-radius, so the
+     theme's radius still shows on tabs, blocks, menus and dialogs. */
+  ha-card { border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
+  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
   .card-topbar {
     position: relative;
     flex-shrink: 0;
@@ -215,6 +222,27 @@ export const cardStyles = [secondaryTabStyles, css`
     color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
     font-weight: 600;
   }
+  /* The dirty dock's Sync button, beside the banner text. */
+  .card-bottom-dock-action {
+    flex: 0 0 auto;
+    margin-left: 10px;
+    border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 60%, var(--divider-color));
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: color-mix(in srgb, var(--warning-color, #f59e0b) 20%, transparent);
+    color: var(--primary-text-color);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  /* A phone-width card has no room for it: Sync stays in the editor's header there. */
+  @container sofabaton-card (max-width: 480px) {
+    .card-bottom-dock-action { display: none; }
+  }
+  .card-bottom-dock-action:hover { background: color-mix(in srgb, var(--warning-color, #f59e0b) 34%, transparent); }
+  .card-bottom-dock-action:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .card-bottom-dock-link {
     color: var(--sb-accent-text);
     text-decoration: underline;

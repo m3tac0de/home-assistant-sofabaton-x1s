@@ -151,6 +151,10 @@ class HubView:
     active_job: Optional[JobView] = None
     last_job: Optional[JobView] = None
     hub_name: Optional[str] = None
+    # The server's IPv4 address in use toward this hub: what the hub is
+    # told to call back. ``config.local_address`` is set when it is manual.
+    # None while no proxy runs.
+    local_address: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -185,6 +189,7 @@ class HubCreate(BaseModel):
     proxy_enabled: bool = True
     is_proxy: bool = False
     source: Optional[str] = None
+    local_address: Optional[str] = None
     enabled: bool = True
 
     def to_config(self) -> HubConfig:
@@ -195,3 +200,13 @@ class HubCreate(BaseModel):
         data = self.model_dump()
         data.pop("enabled")
         return HubConfig.from_dict(data)
+
+
+class HubLocalAddress(BaseModel):
+    """Body of ``PUT /hubs/{hub_id}/local-address``.
+
+    ``address`` is the server's IPv4 address the hub is told to call back;
+    null or blank returns to automatic selection.
+    """
+
+    address: Optional[str] = None

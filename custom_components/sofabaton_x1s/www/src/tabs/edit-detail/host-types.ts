@@ -68,7 +68,8 @@ export interface IrLearnHost {
   consumers(): Promise<IrEmitterConsumersResponse>;
 }
 
-export type MacroTargetMode = "existing" | "new";
+// "copy" brings another activity's macro over verbatim; it is not a "new" item (nothing to fill in).
+export type MacroTargetMode = "existing" | "new" | "copy";
 
 // longer a dialog mode — they're edited inline on each command row.
 export type MacroStepKind = "command" | "input" | "wifi_event";

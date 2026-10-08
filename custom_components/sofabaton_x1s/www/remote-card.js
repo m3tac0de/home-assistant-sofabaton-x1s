@@ -1098,7 +1098,7 @@ var REMOTE_CARD_STRINGS_EN = {
     guide: "Guide",
     dvr: "DVR",
     play: "Play",
-    exit: "Exit",
+    exit: "EXIT",
     rew: "Rewind",
     pause: "Pause",
     fwd: "Fast forward",
@@ -1707,7 +1707,7 @@ var REMOTE_CARD_CSS = `
         border-right-color: var(--sb-panel-border);
       }
       .wrap--panels .mf-overlay {
-        background: var(--sb-panel-surface);
+        --sb-drawer-layer: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
       /* drawer-up re-declares border-top with the divider colour at higher
@@ -2129,8 +2129,16 @@ var REMOTE_CARD_CSS = `
         left: 0;
         right: 0;
         z-index: 1; /* Lowered: Sits behind the buttons, above the remote body */
-        
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+
+        /* The drawer floats over the keys. Glass / iOS themes make the card
+           background translucent (alpha 0.3-0.4), which is fine for the card
+           over a wallpaper but lets the keys underneath show through the
+           drawer. Stack the same surface four times (0.3 becomes ~0.76,
+           an opaque colour stays pixel-identical) and blur what remains. */
+        --sb-drawer-layer: linear-gradient(
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))),
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        background: var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer);
         border: 1px solid var(--divider-color);
         border-top: none; 
         border-bottom-left-radius: var(--sb-group-radius);
@@ -2141,8 +2149,12 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(0);
         opacity: 0;
         pointer-events: none;
-        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
-        
+        /* The blur lives on .open only (a closed drawer with a backdrop
+           filter changes how the card's text rasterises); the delay keeps
+           it through the closing fade. */
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease,
+          -webkit-backdrop-filter 0s 0.25s, backdrop-filter 0s 0.25s;
+
         max-height: 350px;
         overflow-y: auto;
         padding: 12px;
@@ -2172,6 +2184,9 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(1);
         opacity: 1;
         pointer-events: auto;
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
       }
 
       /* Device mode: power key sharing the commands strip row. The
@@ -8040,10 +8055,10 @@ if (!customElements.get("sb-key-button")) {
 
 // remote-card/src/sections/key-groups.ts
 function keyFaceLabel(spec) {
-  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+  return spec.label;
 }
 function keyAccessibleLabel(spec) {
-  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  if (spec.glyphFace) return str().keys[spec.key] ?? spec.label;
   return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
 }
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
@@ -8102,7 +8117,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "EXIT", icon: "", extraClass: "area-exit" }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -9871,7 +9886,7 @@ var REMOTE_CARD_STRINGS_AR = {
     guide: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0628\u0631\u0627\u0645\u062C",
     dvr: DVR,
     play: "\u062A\u0634\u063A\u064A\u0644",
-    exit: "\u062E\u0631\u0648\u062C",
+    exit: "EXIT",
     rew: "\u062A\u0631\u062C\u064A\u0639",
     pause: "\u0625\u064A\u0642\u0627\u0641 \u0645\u0624\u0642\u062A",
     fwd: "\u062A\u0642\u062F\u064A\u0645 \u0633\u0631\u064A\u0639",
@@ -10096,7 +10111,7 @@ var REMOTE_CARD_STRINGS_DE = {
     guide: "Guide",
     dvr: "DVR",
     play: "Wiedergabe",
-    exit: "Beenden",
+    exit: "EXIT",
     rew: "Zur\xFCckspulen",
     pause: "Pause",
     fwd: "Vorspulen",
@@ -10301,7 +10316,7 @@ var REMOTE_CARD_STRINGS_ES = {
     guide: "Gu\xEDa",
     dvr: "DVR",
     play: "Reproducir",
-    exit: "Salir",
+    exit: "EXIT",
     rew: "Retroceder",
     pause: "Pausa",
     fwd: "Avance r\xE1pido",
@@ -10506,7 +10521,7 @@ var REMOTE_CARD_STRINGS_FR = {
     guide: "Guide",
     dvr: "DVR",
     play: "Lecture",
-    exit: "Quitter",
+    exit: "EXIT",
     rew: "Retour rapide",
     pause: "Pause",
     fwd: "Avance rapide",
@@ -10710,7 +10725,7 @@ var REMOTE_CARD_STRINGS_NL = {
     guide: "Gids",
     dvr: "DVR",
     play: "Afspelen",
-    exit: "Afsluiten",
+    exit: "EXIT",
     rew: "Terugspoelen",
     pause: "Pauze",
     fwd: "Vooruitspoelen",
@@ -10914,7 +10929,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     guide: "\u8282\u76EE\u6307\u5357",
     dvr: "DVR",
     play: "\u64AD\u653E",
-    exit: "\u9000\u51FA",
+    exit: "EXIT",
     rew: "\u5FEB\u9000",
     pause: "\u6682\u505C",
     fwd: "\u5FEB\u8FDB",

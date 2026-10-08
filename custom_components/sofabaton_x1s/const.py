@@ -43,6 +43,8 @@ CONF_BANNER_MAC = "banner_mac"
 CONF_MDNS_TXT = "mdns_txt"
 CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"
+# Manual local IPv4 address for this hub; absent selects automatically.
+CONF_LOCAL_ADDRESS = "local_address"
 CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
 CONF_ROKU_SERVER_ENABLED = "roku_server_enabled"
 CONF_ROKU_LISTEN_PORT = "roku_listen_port"

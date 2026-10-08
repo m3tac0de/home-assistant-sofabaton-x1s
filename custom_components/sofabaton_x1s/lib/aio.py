@@ -409,6 +409,7 @@ class AsyncXProxy:
             "update_discovery_identity",
             "enable_proxy",
             "disable_proxy",
+            "set_local_address",
             # per-entity backup (the whole-hub form is the explicit
             # backup() coroutine; per-entity restore is engine-only)
             "backup_device",
@@ -2099,16 +2100,24 @@ class AsyncXProxy:
     # -- managed wifi devices (callbacks plan, C0b / C0c) ---------------------
 
     def local_address(self) -> str:
-        """The local IPv4 address OS routing picks toward the hub.
+        """The local IPv4 address in use toward the hub.
 
         What the proxy advertises to the hub and the default callback
-        target for :meth:`deploy_wifi_device`. Inside a container on a
-        bridge network this is the container's own address, which the
-        hub cannot reach; a consumer there passes its host's address
-        instead. A pure routing-table lookup, no hub traffic.
+        target for :meth:`deploy_wifi_device`. OS routing picks it unless
+        that answer is off the hub's subnet while another local address is
+        on it, or a manual address is set with ``local_address=`` /
+        :meth:`set_local_address` (blank returns to automatic). Inside a
+        container on a bridge network the automatic choice is the
+        container's own address, which the hub cannot reach; a consumer
+        there sets its host's address. A pure lookup, no hub traffic.
         """
 
         return str(self._proxy.get_routed_local_ip())
+
+    def local_address_is_manual(self) -> bool:
+        """Whether :meth:`local_address` is a manually set address."""
+
+        return self._proxy.local_address is not None
 
     async def deploy_wifi_device(
         self,
@@ -3319,6 +3328,7 @@ ENGINE_ONLY: dict[str, str] = {
             "set_assigned_device_id",
             "update_x2_remote_sync_id",
             "get_routed_local_ip",
+            "select_local_address",
             "enqueue_cmd",
         ),
     ),

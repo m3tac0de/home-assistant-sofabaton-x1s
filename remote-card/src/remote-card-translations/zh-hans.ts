@@ -199,7 +199,7 @@ export const REMOTE_CARD_STRINGS_ZH_HANS = {
     guide: "节目指南",
     dvr: "DVR",
     play: "播放",
-    exit: "退出",
+    exit: "EXIT",
     rew: "快退",
     pause: "暂停",
     fwd: "快进",

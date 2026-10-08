@@ -1338,7 +1338,7 @@ var REMOTE_CARD_STRINGS_EN = {
     guide: "Guide",
     dvr: "DVR",
     play: "Play",
-    exit: "Exit",
+    exit: "EXIT",
     rew: "Rewind",
     pause: "Pause",
     fwd: "Fast forward",
@@ -1602,7 +1602,7 @@ var REMOTE_CARD_CSS = `
         border-right-color: var(--sb-panel-border);
       }
       .wrap--panels .mf-overlay {
-        background: var(--sb-panel-surface);
+        --sb-drawer-layer: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
       /* drawer-up re-declares border-top with the divider colour at higher
@@ -2024,8 +2024,16 @@ var REMOTE_CARD_CSS = `
         left: 0;
         right: 0;
         z-index: 1; /* Lowered: Sits behind the buttons, above the remote body */
-        
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+
+        /* The drawer floats over the keys. Glass / iOS themes make the card
+           background translucent (alpha 0.3-0.4), which is fine for the card
+           over a wallpaper but lets the keys underneath show through the
+           drawer. Stack the same surface four times (0.3 becomes ~0.76,
+           an opaque colour stays pixel-identical) and blur what remains. */
+        --sb-drawer-layer: linear-gradient(
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))),
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        background: var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer);
         border: 1px solid var(--divider-color);
         border-top: none; 
         border-bottom-left-radius: var(--sb-group-radius);
@@ -2036,8 +2044,12 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(0);
         opacity: 0;
         pointer-events: none;
-        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
-        
+        /* The blur lives on .open only (a closed drawer with a backdrop
+           filter changes how the card's text rasterises); the delay keeps
+           it through the closing fade. */
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease,
+          -webkit-backdrop-filter 0s 0.25s, backdrop-filter 0s 0.25s;
+
         max-height: 350px;
         overflow-y: auto;
         padding: 12px;
@@ -2067,6 +2079,9 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(1);
         opacity: 1;
         pointer-events: auto;
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
       }
 
       /* Device mode: power key sharing the commands strip row. The
@@ -6152,10 +6167,10 @@ if (!customElements.get("sb-key-button")) {
 
 // remote-card/src/sections/key-groups.ts
 function keyFaceLabel(spec) {
-  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+  return spec.label;
 }
 function keyAccessibleLabel(spec) {
-  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  if (spec.glyphFace) return str().keys[spec.key] ?? spec.label;
   return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
 }
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
@@ -6214,7 +6229,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "EXIT", icon: "", extraClass: "area-exit" }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -7922,6 +7937,7 @@ var mdiCoffeeOutline = "M2,21V19H20V21H2M20,8V5H18V8H20M20,3A2,2 0 0,1 22,5V8A2,
 var mdiCog = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
 var mdiCogOutline = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10M10,22C9.75,22 9.54,21.82 9.5,21.58L9.13,18.93C8.5,18.68 7.96,18.34 7.44,17.94L4.95,18.95C4.73,19.03 4.46,18.95 4.34,18.73L2.34,15.27C2.21,15.05 2.27,14.78 2.46,14.63L4.57,12.97L4.5,12L4.57,11L2.46,9.37C2.27,9.22 2.21,8.95 2.34,8.73L4.34,5.27C4.46,5.05 4.73,4.96 4.95,5.05L7.44,6.05C7.96,5.66 8.5,5.32 9.13,5.07L9.5,2.42C9.54,2.18 9.75,2 10,2H14C14.25,2 14.46,2.18 14.5,2.42L14.87,5.07C15.5,5.32 16.04,5.66 16.56,6.05L19.05,5.05C19.27,4.96 19.54,5.05 19.66,5.27L21.66,8.73C21.79,8.95 21.73,9.22 21.54,9.37L19.43,11L19.5,12L19.43,13L21.54,14.63C21.73,14.78 21.79,15.05 21.66,15.27L19.66,18.73C19.54,18.95 19.27,19.04 19.05,18.95L16.56,17.95C16.04,18.34 15.5,18.68 14.87,18.93L14.5,21.58C14.46,21.82 14.25,22 14,22H10M11.25,4L10.88,6.61C9.68,6.86 8.62,7.5 7.85,8.39L5.44,7.35L4.69,8.65L6.8,10.2C6.4,11.37 6.4,12.64 6.8,13.8L4.68,15.36L5.43,16.66L7.86,15.62C8.63,16.5 9.68,17.14 10.87,17.38L11.24,20H12.76L13.13,17.39C14.32,17.14 15.37,16.5 16.14,15.62L18.57,16.66L19.32,15.36L17.2,13.81C17.6,12.64 17.6,11.37 17.2,10.2L19.31,8.65L18.56,7.35L16.15,8.39C15.38,7.5 14.32,6.86 13.12,6.62L12.75,4H11.25Z";
 var mdiCogs = "M15.9,18.45C17.25,18.45 18.35,17.35 18.35,16C18.35,14.65 17.25,13.55 15.9,13.55C14.54,13.55 13.45,14.65 13.45,16C13.45,17.35 14.54,18.45 15.9,18.45M21.1,16.68L22.58,17.84C22.71,17.95 22.75,18.13 22.66,18.29L21.26,20.71C21.17,20.86 21,20.92 20.83,20.86L19.09,20.16C18.73,20.44 18.33,20.67 17.91,20.85L17.64,22.7C17.62,22.87 17.47,23 17.3,23H14.5C14.32,23 14.18,22.87 14.15,22.7L13.89,20.85C13.46,20.67 13.07,20.44 12.71,20.16L10.96,20.86C10.81,20.92 10.62,20.86 10.54,20.71L9.14,18.29C9.05,18.13 9.09,17.95 9.22,17.84L10.7,16.68L10.65,16L10.7,15.31L9.22,14.16C9.09,14.05 9.05,13.86 9.14,13.71L10.54,11.29C10.62,11.13 10.81,11.07 10.96,11.13L12.71,11.84C13.07,11.56 13.46,11.32 13.89,11.15L14.15,9.29C14.18,9.13 14.32,9 14.5,9H17.3C17.47,9 17.62,9.13 17.64,9.29L17.91,11.15C18.33,11.32 18.73,11.56 19.09,11.84L20.83,11.13C21,11.07 21.17,11.13 21.26,11.29L22.66,13.71C22.75,13.86 22.71,14.05 22.58,14.16L21.1,15.31L21.15,16L21.1,16.68M6.69,8.07C7.56,8.07 8.26,7.37 8.26,6.5C8.26,5.63 7.56,4.92 6.69,4.92A1.58,1.58 0 0,0 5.11,6.5C5.11,7.37 5.82,8.07 6.69,8.07M10.03,6.94L11,7.68C11.07,7.75 11.09,7.87 11.03,7.97L10.13,9.53C10.08,9.63 9.96,9.67 9.86,9.63L8.74,9.18L8,9.62L7.81,10.81C7.79,10.92 7.7,11 7.59,11H5.79C5.67,11 5.58,10.92 5.56,10.81L5.4,9.62L4.64,9.18L3.5,9.63C3.41,9.67 3.3,9.63 3.24,9.53L2.34,7.97C2.28,7.87 2.31,7.75 2.39,7.68L3.34,6.94L3.31,6.5L3.34,6.06L2.39,5.32C2.31,5.25 2.28,5.13 2.34,5.03L3.24,3.47C3.3,3.37 3.41,3.33 3.5,3.37L4.63,3.82L5.4,3.38L5.56,2.19C5.58,2.08 5.67,2 5.79,2H7.59C7.7,2 7.79,2.08 7.81,2.19L8,3.38L8.74,3.82L9.86,3.37C9.96,3.33 10.08,3.37 10.13,3.47L11.03,5.03C11.09,5.13 11.07,5.25 11,5.32L10.03,6.06L10.06,6.5L10.03,6.94Z";
+var mdiContentCopy = "M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z";
 var mdiContentSaveMoveOutline = "M13 17H17V14L22 18.5L17 23V20H13V17M14 12.8C13.5 12.31 12.78 12 12 12C10.34 12 9 13.34 9 15C9 16.31 9.84 17.41 11 17.82C11.07 15.67 12.27 13.8 14 12.8M11.09 19H5V5H16.17L19 7.83V12.35C19.75 12.61 20.42 13 21 13.54V7L17 3H5C3.89 3 3 3.9 3 5V19C3 20.1 3.89 21 5 21H11.81C11.46 20.39 11.21 19.72 11.09 19M6 10H15V6H6V10Z";
 var mdiControllerClassic = "M6,7H18A5,5 0 0,1 23,12A5,5 0 0,1 18,17C16.36,17 14.91,16.21 14,15H10C9.09,16.21 7.64,17 6,17A5,5 0 0,1 1,12A5,5 0 0,1 6,7M19.75,9.5A1.25,1.25 0 0,0 18.5,10.75A1.25,1.25 0 0,0 19.75,12A1.25,1.25 0 0,0 21,10.75A1.25,1.25 0 0,0 19.75,9.5M17.25,12A1.25,1.25 0 0,0 16,13.25A1.25,1.25 0 0,0 17.25,14.5A1.25,1.25 0 0,0 18.5,13.25A1.25,1.25 0 0,0 17.25,12M5,9V11H3V13H5V15H7V13H9V11H7V9H5Z";
 var mdiControllerClassicOutline = "M17.5,7A5.5,5.5 0 0,1 23,12.5A5.5,5.5 0 0,1 17.5,18C15.79,18 14.27,17.22 13.26,16H10.74C9.73,17.22 8.21,18 6.5,18A5.5,5.5 0 0,1 1,12.5A5.5,5.5 0 0,1 6.5,7H17.5M6.5,9A3.5,3.5 0 0,0 3,12.5A3.5,3.5 0 0,0 6.5,16C7.9,16 9.1,15.18 9.66,14H14.34C14.9,15.18 16.1,16 17.5,16A3.5,3.5 0 0,0 21,12.5A3.5,3.5 0 0,0 17.5,9H6.5M5.75,10.25H7.25V11.75H8.75V13.25H7.25V14.75H5.75V13.25H4.25V11.75H5.75V10.25M16.75,12.5A1,1 0 0,1 17.75,13.5A1,1 0 0,1 16.75,14.5A1,1 0 0,1 15.75,13.5A1,1 0 0,1 16.75,12.5M18.75,10.5A1,1 0 0,1 19.75,11.5A1,1 0 0,1 18.75,12.5A1,1 0 0,1 17.75,11.5A1,1 0 0,1 18.75,10.5Z";
@@ -7968,6 +7984,7 @@ var mdiGestureDoubleTap = "M10,9A1,1 0 0,1 11,8A1,1 0 0,1 12,9V13.47L13.21,13.6L
 var mdiGestureSwipe = "M20.11,3.89L22,2V7H17L19.08,4.92C18.55,4.23 17.64,3.66 16.36,3.19C15.08,2.72 13.63,2.5 12,2.5C10.38,2.5 8.92,2.72 7.64,3.19C6.36,3.66 5.45,4.23 4.92,4.92L7,7H2V2L3.89,3.89C4.64,3 5.74,2.31 7.2,1.78C8.65,1.25 10.25,1 12,1C13.75,1 15.35,1.25 16.8,1.78C18.26,2.31 19.36,3 20.11,3.89M19.73,16.27V16.45L19,21.7C18.92,22.08 18.76,22.39 18.5,22.64C18.23,22.89 17.91,23 17.53,23H10.73C10.36,23 10,22.86 9.7,22.55L4.73,17.63L5.53,16.83C5.75,16.61 6,16.5 6.33,16.5H6.56L10,17.25V6.5C10,6.11 10.13,5.76 10.43,5.46C10.73,5.16 11.08,5 11.5,5C11.89,5 12.24,5.16 12.54,5.46C12.84,5.76 13,6.11 13,6.5V12.5H13.78C13.88,12.5 14.05,12.55 14.3,12.61L18.84,14.86C19.44,15.14 19.73,15.61 19.73,16.27Z";
 var mdiGestureTap = "M10,9A1,1 0 0,1 11,8A1,1 0 0,1 12,9V13.47L13.21,13.6L18.15,15.79C18.68,16.03 19,16.56 19,17.14V21.5C18.97,22.32 18.32,22.97 17.5,23H11C10.62,23 10.26,22.85 10,22.57L5.1,18.37L5.84,17.6C6.03,17.39 6.3,17.28 6.58,17.28H6.8L10,19V9M11,5A4,4 0 0,1 15,9C15,10.5 14.2,11.77 13,12.46V11.24C13.61,10.69 14,9.89 14,9A3,3 0 0,0 11,6A3,3 0 0,0 8,9C8,9.89 8.39,10.69 9,11.24V12.46C7.8,11.77 7,10.5 7,9A4,4 0 0,1 11,5Z";
 var mdiGestureTapButton = "M13 5C15.21 5 17 6.79 17 9C17 10.5 16.2 11.77 15 12.46V11.24C15.61 10.69 16 9.89 16 9C16 7.34 14.66 6 13 6S10 7.34 10 9C10 9.89 10.39 10.69 11 11.24V12.46C9.8 11.77 9 10.5 9 9C9 6.79 10.79 5 13 5M20 20.5C19.97 21.32 19.32 21.97 18.5 22H13C12.62 22 12.26 21.85 12 21.57L8 17.37L8.74 16.6C8.93 16.39 9.2 16.28 9.5 16.28H9.7L12 18V9C12 8.45 12.45 8 13 8S14 8.45 14 9V13.47L15.21 13.6L19.15 15.79C19.68 16.03 20 16.56 20 17.14V20.5M20 2H4C2.9 2 2 2.9 2 4V12C2 13.11 2.9 14 4 14H8V12L4 12L4 4H20L20 12H18V14H20V13.96L20.04 14C21.13 14 22 13.09 22 12V4C22 2.9 21.11 2 20 2Z";
+var mdiGestureTapHold = "M10,9A1,1 0 0,1 11,8A1,1 0 0,1 12,9V13.47L13.21,13.6L18.15,15.79C18.68,16.03 19,16.56 19,17.14V21.5C18.97,22.32 18.32,22.97 17.5,23H11C10.62,23 10.26,22.85 10,22.57L5.1,18.37L5.84,17.6C6.03,17.39 6.3,17.28 6.58,17.28H6.8L10,19V9M9,12.44V9A2,2 0 0,1 11,7A2,2 0 0,1 13,9V12.44C14.19,11.75 15,10.47 15,9A4,4 0 0,0 11,5A4,4 0 0,0 7,9C7,10.47 7.81,11.75 9,12.44Z";
 var mdiGlassCocktail = "M7.5,7L5.5,5H18.5L16.5,7M11,13V19H6V21H18V19H13V13L21,5V3H3V5L11,13Z";
 var mdiHeadphones = "M12,1C7,1 3,5 3,10V17A3,3 0 0,0 6,20H9V12H5V10A7,7 0 0,1 12,3A7,7 0 0,1 19,10V12H15V20H18A3,3 0 0,0 21,17V10C21,5 16.97,1 12,1Z";
 var mdiHeart = "M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z";
@@ -9216,7 +9233,7 @@ var REMOTE_CARD_STRINGS_AR = {
     guide: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0628\u0631\u0627\u0645\u062C",
     dvr: DVR,
     play: "\u062A\u0634\u063A\u064A\u0644",
-    exit: "\u062E\u0631\u0648\u062C",
+    exit: "EXIT",
     rew: "\u062A\u0631\u062C\u064A\u0639",
     pause: "\u0625\u064A\u0642\u0627\u0641 \u0645\u0624\u0642\u062A",
     fwd: "\u062A\u0642\u062F\u064A\u0645 \u0633\u0631\u064A\u0639",
@@ -9441,7 +9458,7 @@ var REMOTE_CARD_STRINGS_DE = {
     guide: "Guide",
     dvr: "DVR",
     play: "Wiedergabe",
-    exit: "Beenden",
+    exit: "EXIT",
     rew: "Zur\xFCckspulen",
     pause: "Pause",
     fwd: "Vorspulen",
@@ -9646,7 +9663,7 @@ var REMOTE_CARD_STRINGS_ES = {
     guide: "Gu\xEDa",
     dvr: "DVR",
     play: "Reproducir",
-    exit: "Salir",
+    exit: "EXIT",
     rew: "Retroceder",
     pause: "Pausa",
     fwd: "Avance r\xE1pido",
@@ -9851,7 +9868,7 @@ var REMOTE_CARD_STRINGS_FR = {
     guide: "Guide",
     dvr: "DVR",
     play: "Lecture",
-    exit: "Quitter",
+    exit: "EXIT",
     rew: "Retour rapide",
     pause: "Pause",
     fwd: "Avance rapide",
@@ -10055,7 +10072,7 @@ var REMOTE_CARD_STRINGS_NL = {
     guide: "Gids",
     dvr: "DVR",
     play: "Afspelen",
-    exit: "Afsluiten",
+    exit: "EXIT",
     rew: "Terugspoelen",
     pause: "Pauze",
     fwd: "Vooruitspoelen",
@@ -10259,7 +10276,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     guide: "\u8282\u76EE\u6307\u5357",
     dvr: "DVR",
     play: "\u64AD\u653E",
-    exit: "\u9000\u51FA",
+    exit: "EXIT",
     rew: "\u5FEB\u9000",
     pause: "\u6682\u505C",
     fwd: "\u5FEB\u8FDB",
@@ -11243,6 +11260,10 @@ var PanelApi = class {
   setHubProxy(hubId, enabled) {
     return this.request("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
   }
+  /** The server's IPv4 address toward the hub; null returns to automatic. */
+  setHubLocalAddress(hubId, address) {
+    return this.request("PUT", `hubs/${encodeURIComponent(hubId)}/local-address`, { body: { address } });
+  }
   removeHub(hubId) {
     return this.request("DELETE", `hubs/${encodeURIComponent(hubId)}`);
   }
@@ -11717,94 +11738,6 @@ var i7 = e4(class extends i5 {
   }
 });
 
-// server-panel/src/components/bottom-dock.ts
-function renderBottomDock(params) {
-  const { model, message } = params;
-  let tone = "";
-  let center;
-  let actions = A;
-  const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
-  const confirmActions = b2`
-    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
-    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
-  if (model.kind === "running") {
-    tone = "dock--running";
-    center = status(model.text);
-  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
-    tone = message.ok ? "dock--message" : "dock--error";
-    center = status(message.text, "hubs-msg");
-  } else if (model.kind === "notice") {
-    const notice = model.notice;
-    tone = `dock--${notice.tone}`;
-    const full = notice.label;
-    const body = b2`${notice.label}`;
-    if (notice.detail && params.onShowDetails) {
-      actions = b2`<button class="small dock-action" id="dock-details" type="button"
-        @click=${() => params.onShowDetails?.(notice.label, notice.detail)}>Details</button>`;
-    }
-    center = notice.sticky ? b2`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
-          @click=${params.onDismiss}
-          @keydown=${(event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        params.onDismiss();
-      }
-    }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
-  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
-    tone = "dock--warn";
-    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
-    actions = confirmActions;
-  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
-    tone = "dock--warn";
-    center = status("Discard your unsaved changes? The hub is not changed.");
-    actions = confirmActions;
-  } else if (model.kind === "apply_stopped") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = b2`
-      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
-      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
-  } else if (model.kind === "draft_stale") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = b2`
-      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "dirty") {
-    tone = "dock--dirty";
-    center = status(model.text);
-    actions = b2`<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
-  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
-    tone = "dock--dirty";
-    center = status(model.text);
-  } else if (model.kind === "gate") {
-    tone = "dock--gate";
-    center = status(model.text);
-  } else if (params.docLink) {
-    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
-  } else {
-    center = b2``;
-  }
-  const progress = model.kind === "running" ? model.progress : null;
-  const press = params.press;
-  return b2`
-    <footer class="dock ${tone}" id="bottom-dock">
-      <div class="dock-inner">
-        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
-        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
-        <div class="dock-center" role="status" aria-live="polite">${center}</div>
-        <div class="dock-right">
-          ${actions !== A ? b2`<div class="dock-actions">${actions}</div>` : A}
-          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label="connectivity">
-                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${params.connectivity.hub ? "hub connected" : "hub not connected"}>Hub</span>
-                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected"}>App</span>
-              </div>` : A}
-        </div>
-      </div>
-    </footer>
-  `;
-}
-
 // server-panel/src/panel-route.ts
 var HUB_TABS = ["hub", "wifi", "backup", "remote"];
 var SUBTABS = {
@@ -12013,6 +11946,98 @@ function parseHeaderLines(text) {
     if (name) out[name] = line.slice(i8 + 1).trim();
   }
   return out;
+}
+
+// server-panel/src/components/bottom-dock.ts
+function renderBottomDock(params) {
+  const { model, message } = params;
+  let tone = "";
+  let center;
+  let actions = A;
+  const status = (text, id = "dock-status") => b2`<span class="dock-status" id=${id} title=${text}>${text}</span>`;
+  const syncAction = params.onSync ? b2`<button class="small primary dock-action" id="dock-sync" type="button" @click=${params.onSync}>Sync</button>` : A;
+  const confirmActions = b2`
+    <button class="small danger dock-action" id="dock-discard-confirm" type="button" @click=${() => params.onConfirmDiscard?.()}>Discard</button>
+    <button class="small dock-action" id="dock-discard-cancel" type="button" @click=${() => params.onCancelDiscard?.()}>Keep</button>`;
+  if (model.kind === "running") {
+    tone = "dock--running";
+    center = status(model.text);
+  } else if (message && !(model.kind === "notice" && model.notice.tone === "error" && !message.ok)) {
+    tone = message.ok ? "dock--message" : "dock--error";
+    center = status(message.text, "hubs-msg");
+  } else if (model.kind === "notice") {
+    const notice = model.notice;
+    tone = `dock--${notice.tone}`;
+    const full = notice.label;
+    const body = b2`${notice.label}`;
+    if (notice.detail && params.onShowDetails) {
+      actions = b2`<button class="small dock-action" id="dock-details" type="button"
+        @click=${() => params.onShowDetails?.(notice.label, notice.detail)}>Details</button>`;
+    }
+    center = notice.sticky ? b2`<span class="dock-status is-dismissable" id="dock-status" role="button" tabindex="0" title=${`${full} (click to dismiss)`}
+          @click=${params.onDismiss}
+          @keydown=${(event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        params.onDismiss();
+      }
+    }}>${body}</span>` : b2`<span class="dock-status" id="dock-status" title=${full}>${body}</span>`;
+  } else if (model.kind === "apply_stopped" && params.confirming === "apply") {
+    tone = "dock--warn";
+    center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
+    actions = confirmActions;
+  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+    tone = "dock--warn";
+    center = status("Discard your unsaved changes? The hub is not changed.");
+    actions = confirmActions;
+  } else if (model.kind === "apply_stopped") {
+    tone = "dock--warn";
+    center = status(model.text);
+    actions = b2`
+      ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
+      <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
+  } else if (model.kind === "draft_stale") {
+    tone = "dock--warn";
+    center = status(model.text);
+    actions = b2`
+      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
+      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "dirty") {
+    tone = "dock--dirty";
+    center = status(model.text);
+    actions = b2`${syncAction}<button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
+  } else if (model.kind === "unsaved_backup" || model.kind === "unsynced_view") {
+    tone = "dock--dirty";
+    center = status(model.text);
+    actions = syncAction;
+  } else if (model.kind === "gate") {
+    tone = "dock--gate";
+    center = status(model.text);
+  } else if (params.docLink) {
+    center = b2`<a class="dock-link" id="dock-link" href=${params.docLink.href} target="_blank" rel="noreferrer noopener">${params.docLink.label}</a>`;
+  } else {
+    center = b2``;
+  }
+  const progress = model.kind === "running" ? model.progress : null;
+  const press = params.press;
+  const hubStatus = params.connectivity.hub === null ? LINK_DOWN_STATE.text : params.connectivity.hub ? "hub connected" : "hub not connected";
+  const appStatus = params.connectivity.app === null ? LINK_DOWN_STATE.text : params.connectivity.app ? "the Sofabaton app is connected" : "the app is not connected";
+  return b2`
+    <footer class="dock ${tone}" id="bottom-dock">
+      <div class="dock-inner">
+        ${progress ? b2`<div class="dock-progress" id="dock-progress" data-indeterminate=${progress.indeterminate ? "true" : "false"} style=${progress.indeterminate || progress.percent == null ? "width: 35%" : `width: ${progress.percent}%`}></div>` : A}
+        ${press ? i7(press.at, b2`<div class="dock-flash" id="dock-flash" data-seq=${press.seq} title=${`${press.pressType} press${press.label ? `: ${press.label}` : ""}`} aria-hidden="true"></div>`) : A}
+        <div class="dock-center" role="status" aria-live="polite">${center}</div>
+        <div class="dock-right">
+          ${actions !== A ? b2`<div class="dock-actions">${actions}</div>` : A}
+          ${params.hasHub ? b2`<div class="dock-pill-pair" id="dock-pill" role="group" aria-label=${`Connectivity. Hub: ${hubStatus}. App: ${appStatus}.`}>
+                <span class="dock-pill-half ${params.connectivity.hub ? "on" : "off"}" title=${hubStatus}>Hub</span>
+                <span class="dock-pill-half ${params.connectivity.app ? "on" : "off"}" title=${appStatus}>App</span>
+              </div>` : A}
+        </div>
+      </div>
+    </footer>
+  `;
 }
 
 // server-panel/src/components/hub-picker.ts
@@ -12371,7 +12396,7 @@ function dockModel(snapshot, runtime, view = {}) {
   return { kind: "idle" };
 }
 function connectivityFor(runtime, reachable = true) {
-  if (!reachable) return { hub: false, app: false };
+  if (!reachable) return { hub: null, app: null };
   const status = runtime?.hub.status ?? null;
   return { hub: Boolean(status?.hub_connected), app: Boolean(status?.app_connected) };
 }
@@ -13130,6 +13155,8 @@ var SofabatonServerPanel = class extends i4 {
     this._dockDetails = null;
     /** The Wifi Devices view holds unsynced edits (its sb-view-dirty); leaving it asks first. */
     this._wifiDirty = false;
+    /** The Wifi Device on screen can sync right now (the dock's Sync button). */
+    this._wifiCanSync = false;
     /** The Remote > Layout document differs from the saved one (its sb-view-dirty, CR-F5a-4). */
     this._layoutDirty = false;
     this._pickerManual = false;
@@ -13617,6 +13644,7 @@ var SofabatonServerPanel = class extends i4 {
       case "wifi":
         return b2`<sb-panel-wifi-devices .api=${this.api} .ctx=${ctx} .stream=${this.stream} .deviceKey=${route.item ?? null} @sb-view-dirty=${(event) => {
           this._wifiDirty = Boolean(event.detail?.dirty);
+          this._wifiCanSync = Boolean(event.detail?.canSync);
         }}></sb-panel-wifi-devices>`;
       case "remote":
         return b2`<sb-panel-remote .api=${this.api} .ctx=${ctx} .section=${route.sub} @sb-view-dirty=${(event) => {
@@ -13653,6 +13681,12 @@ var SofabatonServerPanel = class extends i4 {
     const blocked = route.kind === "hub" && ctx.hub !== null && unavailable && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
     const streamOn = s7.stream.connected;
     const streamLost = !streamOn && s7.server.reachable && s7.listLoaded;
+    const dock = dockModel(s7, runtime, {
+      unsavedBackup: this._backupDirty,
+      unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
+      unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote"
+    });
+    const dockSync = dock.kind === "dirty" && route.kind === "hub" && route.entity !== void 0 && dock.scope.endsWith(`/${route.entity}`) ? () => this.renderRoot.querySelector("sb-panel-device-editor, sb-panel-activity-editor")?.syncFromDock() : dock.kind === "unsynced_view" && this._wifiDirty && this._wifiCanSync && route.kind === "hub" && route.tab === "wifi" ? () => this.renderRoot.querySelector("sb-panel-wifi-devices")?.syncFromDock() : void 0;
     return b2`
       <div class="well"><div class="page">
         <header class="top-dock" id="top-dock">
@@ -13719,11 +13753,8 @@ var SofabatonServerPanel = class extends i4 {
           ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
         </main>
         ${renderBottomDock({
-      model: dockModel(s7, runtime, {
-        unsavedBackup: this._backupDirty,
-        unsyncedWifi: this._wifiDirty && route.kind === "hub" && route.tab === "wifi",
-        unsavedLayout: this._layoutDirty && route.kind === "hub" && route.tab === "remote"
-      }),
+      model: dock,
+      onSync: dockSync,
       message: s7.message,
       onShowDetails: (label, detail) => void this._showDockDetails(label, detail),
       connectivity: connectivityFor(runtime, s7.server.reachable),
@@ -13771,6 +13802,7 @@ SofabatonServerPanel.properties = {
   _cogOpen: { state: true },
   _backupDirty: { state: true },
   _wifiDirty: { state: true },
+  _wifiCanSync: { state: true },
   _layoutDirty: { state: true },
   _dockConfirm: { state: true },
   _dockDetails: { state: true },
@@ -13941,6 +13973,8 @@ SofabatonServerPanel.styles = [
 
       /* -- narrow ------------------------------------------------------------- */
       @container (max-width: 600px) {
+        /* A phone's dock has no room for it: Sync stays in the editor's header there. */
+        #dock-sync { display: none; }
         .brand-caption { display: none; }
         .page { --page-gutter: 12px; --view-gap: 7px; }
         .top-row { gap: 8px; }
@@ -14940,7 +14974,8 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   dock: {
     unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them",
-    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup"
+    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup",
+    syncNow: "Sync"
   },
   backend: {
     unavailableTitle: "Backend not available",
@@ -15423,8 +15458,8 @@ var TOOLS_CARD_STRINGS_EN = {
     bindingTargetDevice: "Device",
     bindingCommand: "Command",
     bindingEnableLongPress: "Enable long-press assignment",
-    bindingLongPressDevice: "Long-press device",
-    bindingLongPressCommand: "Long-press command",
+    bindingShortPress: "Short press",
+    bindingLongPress: "Long press",
     bindingIncomplete: "Choose a button and target first.",
     bindingNoButtons: "Every button on this hub model is already assigned.",
     bindingNoCommands: "This device has no commands to assign.",
@@ -15534,6 +15569,10 @@ var TOOLS_CARD_STRINGS_EN = {
     bindingsNoneConfigured: "None customized",
     // Unified "add to shortcuts" flow.
     addShortcutButton: "Add",
+    copyShortcutsButton: "Copy",
+    copyShortcutsHeading: "Copy shortcuts from",
+    copyShortcutsCount: (count) => `${count} new`,
+    copyShortcutsNone: "Nothing new",
     addShortcutTitle: "Add to shortcuts",
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",
@@ -15541,6 +15580,9 @@ var TOOLS_CARD_STRINGS_EN = {
     shortcutKindWifiEvent: "Wifi Event",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
+    macroTargetOwnGroup: "In this activity",
+    macroTargetCopyGroup: "Copy from another activity",
+    macroTargetCopyNote: (steps, activity) => `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
@@ -15688,7 +15730,7 @@ var TOOLS_CARD_STRINGS_EN = {
       green: "Green",
       yellow: "Yellow",
       blue: "Blue",
-      exit: "Exit",
+      exit: "EXIT",
       dvr: "DVR",
       play: "Play",
       guide: "Guide",
@@ -15944,7 +15986,7 @@ var TOOLS_CARD_STRINGS_EN = {
       guide: "Guide",
       dvr: "DVR",
       play: "Play",
-      exit: "Exit",
+      exit: "EXIT",
       rew: "Rewind",
       pause: "Pause",
       fwd: "Fast forward",
@@ -17725,6 +17767,87 @@ function addActivityUserMacro(bundle, activityId, name) {
       steps: []
     }]
   }));
+}
+function copyableActivityMacroSummaries(bundle, activityId) {
+  const activities = bundle?.activities ?? [];
+  const signature = (macro) => JSON.stringify([String(macro?.name || ""), macro?.steps ?? []]);
+  const own = new Set(
+    (activities.find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId))?.macros ?? []).map(signature)
+  );
+  return activities.flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    const activityName = String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId);
+    return activityUserMacroSummaries(bundle, sourceId).filter((macro) => !own.has(signature(
+      (entry.macros ?? []).find((row) => Number(row?.button_id || 0) === macro.buttonId)
+    ))).map((macro) => ({ ...macro, activityId: sourceId, activityName }));
+  });
+}
+function copyActivityUserMacro(bundle, activityId, sourceActivityId, sourceButtonId) {
+  if (Number(activityId) === Number(sourceActivityId)) return bundle;
+  const source = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId))?.macros?.find((macro) => Number(macro?.button_id || 0) === Number(sourceButtonId));
+  if (!source || INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(sourceButtonId))) return bundle;
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...activity.macros ?? [], {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(source.name || "").trim() || TOOLS_CARD_STRINGS.backup.newMacroName,
+      steps: (source.steps ?? []).map((step) => ({ ...step }))
+    }]
+  }));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
+}
+function missingActivityShortcuts(bundle, activityId, sourceActivityId) {
+  const source = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(sourceActivityId));
+  if (!source || Number(activityId) === Number(sourceActivityId)) return [];
+  const copyableMacros = new Set(
+    copyableActivityMacroSummaries(bundle, activityId).filter((macro) => macro.activityId === Number(sourceActivityId)).map((macro) => macro.buttonId)
+  );
+  const seen = /* @__PURE__ */ new Set();
+  const missing = [];
+  for (const item of activityQuickAccessItems(bundle, sourceActivityId)) {
+    if (item.kind === "macro") {
+      if (copyableMacros.has(item.buttonId)) missing.push({ kind: "macro", buttonId: item.buttonId });
+      continue;
+    }
+    const deviceId = Number(item.deviceId || 0);
+    const commandId = Number(item.commandId || 0);
+    const key = `${deviceId}:${commandId}`;
+    if (deviceId <= 0 || commandId <= 0 || seen.has(key) || activityHasFavorite(bundle, activityId, deviceId, commandId)) continue;
+    seen.add(key);
+    const slot = (source.favorite_slots ?? []).find((row) => Number(row?.button_id || 0) === item.buttonId);
+    missing.push({ kind: "favorite", deviceId, commandId, name: String(slot?.name || "") });
+  }
+  return missing;
+}
+function shortcutCopySources(bundle, activityId) {
+  return (bundle?.activities ?? []).flatMap((entry) => {
+    const sourceId = Number(entry?.device?.device_id || 0);
+    if (sourceId <= 0 || sourceId === Number(activityId)) return [];
+    if (activityQuickAccessItems(bundle, sourceId).length === 0) return [];
+    return [{
+      activityId: sourceId,
+      activityName: String(entry?.device?.name || "").trim() || TOOLS_CARD_STRINGS.common.activityFallback(sourceId),
+      newCount: missingActivityShortcuts(bundle, activityId, sourceId).length
+    }];
+  });
+}
+function copyActivityShortcuts(bundle, activityId, sourceActivityId) {
+  let next = bundle;
+  for (const item of missingActivityShortcuts(bundle, activityId, sourceActivityId)) {
+    next = item.kind === "macro" ? copyActivityUserMacro(next, activityId, sourceActivityId, item.buttonId) : addBundleActivityFavorite(next, activityId, item.deviceId, item.commandId, item.name);
+  }
+  return next;
+}
+var MACRO_TARGET_NEW_VALUE = "__new__";
+function macroCopyValue(activityId, buttonId) {
+  return `copy:${Number(activityId)}:${Number(buttonId)}`;
+}
+function macroTargetFromValue(value) {
+  if (value === MACRO_TARGET_NEW_VALUE) return { mode: "new", macroId: null, sourceId: null };
+  const copy = /^copy:(\d+):(\d+)$/.exec(value);
+  if (copy) return { mode: "copy", macroId: Number(copy[2]), sourceId: Number(copy[1]) };
+  return { mode: "existing", macroId: Number(value), sourceId: null };
 }
 function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, commandId, hold = 0) {
   if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
@@ -20147,6 +20270,37 @@ function menuAnchorRect(event) {
   const target = event.currentTarget;
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
 }
+function anchoredListPosition(trigger, frame, menu = null) {
+  const anchor = trigger.getBoundingClientRect();
+  const bounds = frame?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const inner = menu?.within?.getBoundingClientRect() ?? bounds;
+  const gap = 4;
+  const margin = 8;
+  const top = Math.max(bounds.top, inner.top);
+  const bottom = Math.min(bounds.bottom, inner.bottom);
+  const minX = Math.max(bounds.left, inner.left) + margin;
+  const maxX = Math.min(bounds.right, inner.right) - margin;
+  const below = bottom - anchor.bottom - gap - margin;
+  const above = anchor.top - top - gap - margin;
+  const openUp = below < 200 && above > below;
+  const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
+  const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
+  const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
+  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
+}
+function moveListFocus(event, optionSelector) {
+  const list = event.currentTarget;
+  if (!(list instanceof HTMLElement)) return false;
+  const options = [...list.querySelectorAll(optionSelector)];
+  if (!options.length) return false;
+  const current = options.findIndex((option) => option === list.getRootNode().activeElement);
+  const next = event.key === "ArrowDown" ? Math.min(options.length - 1, current + 1) : event.key === "ArrowUp" ? Math.max(0, current - 1) : event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : -1;
+  if (next < 0) return false;
+  event.preventDefault();
+  options[next].focus();
+  return true;
+}
 
 // server-panel/src/views/activity-editor-state.ts
 var WIFI_EVENTS_ENABLED = false;
@@ -20340,8 +20494,43 @@ var EDITOR_CSS = i`
     .decoded-field-input { width: 100%; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 10px; }
     .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
     select.decoded-field-input { cursor: pointer; }
-    .binding-static-field { font-size: 13px; font-weight: 600; color: var(--sbp-text); padding: 8px 10px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
-    .binding-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    /* -- the button assignment dialog: the button in the header, one card per press, the type as segments -- */
+    .dialog-header--extra .dialog-title { flex: 0 1 auto; min-width: 0; }
+    .dialog-header-extra { flex: 0 1 auto; min-width: 0; margin-right: auto; }
+    .dialog-header-select { width: auto; max-width: 100%; padding: 6px 10px; font-weight: 600; }
+    .press-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 40%, transparent); }
+    .press-card-head, label.press-card-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--sbp-text); }
+    label.press-card-head { cursor: pointer; }
+    .press-card-head .mdi { width: 18px; height: 18px; color: var(--sbp-muted); }
+    .press-card-title { flex: 1; min-width: 0; }
+    .kind-seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-text) 8%, transparent); }
+    .kind-seg-btn { flex: 1 1 0; min-width: 0; border: 1px solid transparent; border-radius: calc(var(--de-radius-sm) - 3px); background: none; color: var(--sbp-muted); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 8px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+    .kind-seg-btn:hover { color: var(--sbp-text); border-color: transparent; }
+    .kind-seg-btn[aria-pressed="true"] { background: var(--sbp-panel); border-color: var(--sbp-line); color: var(--sbp-text); }
+    .kind-seg-btn:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
+    /* The macro picker: a select-like trigger and a fixed list (positioned inline, see anchoredListPosition). */
+    .macro-picker-trigger { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; white-space: normal; }
+    .macro-picker-trigger[aria-expanded="true"] { border-color: var(--sbp-accent); }
+    .macro-picker-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .macro-picker-icon.mdi { width: 16px; height: 16px; flex: 0 0 auto; color: var(--sbp-muted); }
+    .macro-picker-chip { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 74%, transparent); }
+    .macro-picker-backdrop { position: fixed; inset: 0; z-index: 4; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }
+    .macro-picker-menu { z-index: 5; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 4px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); }
+    .macro-picker-option { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid transparent; background: none; text-align: left; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--sbp-text); border-radius: var(--de-radius-sm); cursor: pointer; }
+    .macro-picker-option:hover, .macro-picker-option:focus-visible { border-color: transparent; background: color-mix(in srgb, var(--sbp-text) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    @container (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
+    .macro-picker-option[aria-selected="true"] { background: rgba(var(--sbp-accent-rgb), 0.16); }
+    .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon.mdi { color: var(--sbp-accent); font-weight: 600; }
+    .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--sbp-line); }
+    .macro-picker-group { flex: 0 0 auto; padding: 8px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); }
+    .field-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: start; }
     /* A switch in place of ha-switch. */
     .sb-switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; appearance: none; margin: 0; border-radius: 999px; background: var(--sbp-line); cursor: pointer; transition: background 120ms ease; }
     .sb-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--sbp-panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 120ms ease; }
@@ -20394,6 +20583,7 @@ var EDITOR_CSS = i`
       /* The footer is a column here, so the note's 140px basis would be a height. */
       .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
       .dialog-footer-note:empty { display: none; }
+      .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
 `;
 
@@ -20711,6 +20901,11 @@ var SbPanelEntityEditor = class extends i4 {
       if (this._stillOn(key)) this._syncing = false;
     }
   }
+  /** The dock's Sync button: the header's sync, or the retry while a failed sync is on screen. */
+  syncFromDock() {
+    if (this._stage === "sync_failed") this._retrySync();
+    else if (this._stage === "editing") void this._sync();
+  }
   _failBeforeSync(stale, message) {
     return this._failSync(stale, message);
   }
@@ -20949,6 +21144,10 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     /** The "Individual buttons" sub-view. */
     this._bindingsView = false;
     this._roleMenu = null;
+    /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
+    this._macroPicker = null;
+    /** The open "Copy shortcuts from" menu: its fixed position, null when closed. */
+    this._shortcutCopyMenu = null;
     this._roleConfirm = null;
     this._addShortcut = null;
     this._addMember = null;
@@ -20966,6 +21165,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     /** The role menus are fixed to the viewport, so a scroll closes them (the card's rule). */
     this._onWindowScroll = () => {
       if (this._roleMenu) this._roleMenu = null;
+      if (this._shortcutCopyMenu !== null) this._shortcutCopyMenu = null;
     };
     this._closeMacroEditor = () => {
       this._macroEditor = null;
@@ -21034,9 +21234,10 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       this._commit(setActivityRoleDevice(this._working, this.activityId, pending.group, pending.deviceId));
     };
     this._openAddShortcut = () => {
+      this._macroPicker = null;
       if (!this._working || this.activityId == null) return;
       const deviceId = this._shortcutDeviceOptions()[0]?.id ?? null;
-      this._addShortcut = { kind: "command", deviceId, commandId: this._shortcutCommandOptions(deviceId)[0]?.value ?? null, slot: this._shortcutWifiSlots()[0]?.slot ?? null, error: "", mode: "new", macroId: null, name: "" };
+      this._addShortcut = { kind: "command", deviceId, commandId: this._shortcutCommandOptions(deviceId)[0]?.value ?? null, slot: this._shortcutWifiSlots()[0]?.slot ?? null, error: "", mode: "new", macroId: null, sourceId: null, name: "" };
     };
     this._closeAddShortcut = () => {
       this._addShortcut = null;
@@ -21070,9 +21271,9 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         this._addShortcut = { ...dialog, error: B2.bindingIncomplete };
         return;
       }
-      if (resolved.created) this._commit(resolved.bundle);
+      this._commit(resolved.bundle);
       this._addShortcut = null;
-      this._openMacroEditor(resolved.macroId, resolved.name);
+      if (resolved.created) this._openMacroEditor(resolved.macroId, resolved.name);
     };
     // -- members ----------------------------------------------------------------------------------------------------
     this._openAddMember = () => {
@@ -21088,6 +21289,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       this._addMember = null;
     };
     this._openAddBinding = () => {
+      this._macroPicker = null;
       const activityId = this.activityId;
       if (!this._working || activityId == null) return;
       const unbound = unboundButtonsForActivity(this._working, activityId);
@@ -21164,6 +21366,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       if (macroToOpen) this._openMacroEditor(macroToOpen.buttonId, macroToOpen.name);
     };
     this._openAddStep = () => {
+      this._macroPicker = null;
       const deviceId = this._deviceOptions()[0]?.id ?? null;
       this._stepDialog = { editIndex: null, kind: "command", deviceId, commandId: this._firstCommandId(deviceId), slot: this._wifiSlots[0]?.slot ?? null, hold: "0", error: "" };
     };
@@ -21175,7 +21378,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       const editor = this._macroEditor;
       const activityId = this.activityId;
       if (!dialog || !editor || !this._working || activityId == null) return;
-      const hold = secondsToByte(dialog.hold);
+      const hold = dialog.kind === "wifi_event" ? 0 : secondsToByte(dialog.hold);
       if (dialog.kind === "input") {
         const deviceId2 = Number(dialog.deviceId);
         if (deviceId2 > 0) {
@@ -21201,6 +21404,17 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       }
       this._commit(dialog.editIndex === null ? addActivityMacroCommandStep(this._working, activityId, editor.buttonId, deviceId, commandId, hold) : updateActivityMacroStep(this._working, activityId, editor.buttonId, dialog.editIndex, { deviceId, commandId, hold }));
       this._stepDialog = null;
+    };
+    this._closeShortcutCopyMenu = () => {
+      if (this._shortcutCopyMenu === null) return;
+      this._shortcutCopyMenu = null;
+      this.renderRoot.querySelector("#copy-shortcuts")?.focus();
+    };
+    this._closeMacroPicker = () => {
+      const picker = this._macroPicker;
+      if (!picker) return;
+      this._macroPicker = null;
+      this.renderRoot.querySelector(`#${picker.id}`)?.focus();
     };
   }
   get entityId() {
@@ -21266,6 +21480,11 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _macroOptions() {
     if (!this._working || this.activityId == null) return [];
     return activityUserMacroSummaries(this._working, this.activityId).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+  }
+  /** The other activities' macros, offered as copies in the macro dropdown. */
+  _copyableMacros() {
+    if (!this._working || this.activityId == null) return [];
+    return copyableActivityMacroSummaries(this._working, this.activityId);
   }
   _macroName(buttonId) {
     return this._macroOptions().find((macro) => macro.value === Number(buttonId || 0))?.label ?? "";
@@ -21366,6 +21585,13 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   /** A macro target resolved to an id, creating the macro when the dialog asked for a new one (the card's `_resolveMacroTarget`). */
   _resolveMacro(bundle, target) {
     const activityId = Number(this.activityId);
+    if (target.mode === "copy") {
+      const copiedBundle = copyActivityUserMacro(bundle, activityId, Number(target.sourceId), Number(target.macroId));
+      if (copiedBundle === bundle) return null;
+      const copies = activityUserMacroSummaries(copiedBundle, activityId);
+      const copy = copies[copies.length - 1];
+      return copy ? { bundle: copiedBundle, macroId: copy.buttonId, name: copy.name, created: false } : null;
+    }
     if (target.mode === "existing") {
       const existing = activityUserMacroSummaries(bundle, activityId).find((macro) => macro.buttonId === Number(target.macroId));
       return existing ? { bundle, macroId: existing.buttonId, name: existing.name, created: false } : null;
@@ -21386,6 +21612,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     return deviceCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
   }
   _openEditBinding(buttonId) {
+    this._macroPicker = null;
     const activityId = this.activityId;
     if (!this._working || activityId == null) return;
     const item = activityButtonBindingItems(this._working, activityId).find((entry) => entry.buttonId === Number(buttonId));
@@ -21454,6 +21681,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     return activityMacroStepItems(this._working, this.activityId, editor.buttonId);
   }
   _openEditStep(item) {
+    this._macroPicker = null;
     const base = { editIndex: item.index, deviceId: item.deviceId ?? null, commandId: item.commandId ?? null, slot: this._wifiSlots[0]?.slot ?? null, hold: byteToSeconds(item.hold), error: "" };
     if (item.kind === "input") {
       this._stepDialog = { ...base, kind: "input" };
@@ -21518,14 +21746,15 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             </select>`}
       </div>`;
   }
-  _kindSelect(id, value, kinds, onChange) {
+  /** The type choice as segments, the card's renderKindSegments rebuilt here (the panel takes no card template). */
+  _kindSegments(id, value, kinds, onChange) {
+    if (kinds.length < 2) return A;
     const label = (kind) => kind === "command" ? B2.shortcutKindCommand : kind === "action" ? B2.shortcutKindAction : B2.shortcutKindWifiEvent;
     return b2`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for=${id}>${B2.addShortcutKindLabel}</label>
-        <select id=${id} class="decoded-field-input" @change=${(event) => onChange(event.currentTarget.value)}>
-          ${kinds.map((kind) => b2`<option value=${kind} ?selected=${kind === value}>${label(kind)}</option>`)}
-        </select>
+      <div class="kind-seg" id=${id} role="group" aria-label=${B2.addShortcutKindLabel}>
+        ${kinds.map((kind) => b2`<button class="kind-seg-btn" type="button" value=${kind} aria-pressed=${kind === value ? "true" : "false"} @click=${() => {
+      if (kind !== value) onChange(kind);
+    }}>${label(kind)}</button>`)}
       </div>`;
   }
   _targetKinds() {
@@ -21548,20 +21777,126 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _bindingLegKinds(kinds, otherCreatesNew) {
     return otherCreatesNew && this._macroOptions().length === 0 ? kinds.filter((kind) => kind !== "action") : kinds;
   }
-  _macroTargetFields(idPrefix, target, onChange, allowNew = true) {
-    const macros = this._macroOptions();
+  /** "Copy" beside "Add" (the card's _renderCopyShortcuts rebuilt here): pick another activity and take over
+   *  every shortcut of it this activity does not have yet. */
+  _renderCopyShortcuts() {
+    const activityId = this.activityId;
+    if (!this._working || activityId == null) return A;
+    const working = this._working;
+    const sources = shortcutCopySources(working, activityId);
+    if (sources.length === 0) return A;
+    const open = this._shortcutCopyMenu !== null;
+    const onKeydown = (event) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeShortcutCopyMenu();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option:not(:disabled)");
+    };
     return b2`
-      ${macros.length ? b2`<div class="decoded-field">
-            <label class="decoded-field-label" for=${`${idPrefix}-macro-target`}>${B2.macroTargetLabel}</label>
-            <select id=${`${idPrefix}-macro-target`} class="decoded-field-input" @change=${(event) => {
-      const value = event.currentTarget.value;
-      onChange(value === "__new__" ? { ...target, mode: "new", macroId: null } : { ...target, mode: "existing", macroId: Number(value) });
+      <span class="shortcut-copy" @keydown=${onKeydown}>
+        <button class="quick-access-add-btn" id="copy-shortcuts" type="button" title=${B2.copyShortcutsHeading} aria-label=${B2.copyShortcutsButton} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"}
+          @click=${(event) => {
+      if (open) {
+        this._shortcutCopyMenu = null;
+        return;
+      }
+      const root = this.renderRoot;
+      this._shortcutCopyMenu = anchoredListPosition(event.currentTarget, null, { minWidth: 260, within: this });
+      requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
+    }}>${icon4(mdiContentCopy)}<span>${B2.copyShortcutsButton}</span></button>
+        ${open ? b2`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeShortcutCopyMenu} @wheel=${(event) => event.preventDefault()}></button>
+              <div class="macro-picker-menu" id="copy-shortcuts-menu" role="listbox" aria-label=${B2.copyShortcutsHeading} style=${this._shortcutCopyMenu ?? ""}>
+                <div class="macro-picker-group">${B2.copyShortcutsHeading}</div>
+                ${sources.map((source) => b2`
+                  <button class="macro-picker-option" type="button" role="option" aria-selected="false" data-activity=${source.activityId} ?disabled=${source.newCount === 0}
+                    @click=${() => {
+      this._closeShortcutCopyMenu();
+      this._commit(copyActivityShortcuts(working, activityId, source.activityId));
     }}>
-              ${macros.map((macro) => b2`<option value=${macro.value} ?selected=${target.mode === "existing" && macro.value === target.macroId}>${macro.label}</option>`)}
-              ${allowNew ? b2`<option value="__new__" ?selected=${target.mode === "new"}>${B2.macroTargetCreateNew}</option>` : A}
-            </select>
-          </div>
-          ${allowNew ? A : b2`<div class="decoded-field-helper">${B2.bindingOneNewNote}</div>`}` : b2`<div class="quick-access-empty">${B2.macroTargetNoExisting}</div>`}
+                    <span class="macro-picker-name">${source.activityName}</span>
+                    <span class="macro-picker-chip">${source.newCount === 0 ? B2.copyShortcutsNone : B2.copyShortcutsCount(source.newCount)}</span>
+                  </button>`)}
+              </div>` : A}
+      </span>`;
+  }
+  _toggleMacroPicker(id, event) {
+    const trigger = event.currentTarget;
+    if (this._macroPicker?.id === id) {
+      this._macroPicker = null;
+      return;
+    }
+    this._macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest(".modal-backdrop")) };
+    const root = this.renderRoot;
+    requestAnimationFrame(() => (root.querySelector('.macro-picker-option[aria-selected="true"]') ?? root.querySelector(".macro-picker-option"))?.focus());
+  }
+  /** The card's renderPicker rebuilt here: a select-like picker with its own list for the targets that can also be
+   *  created on the spot (a macro, a Wifi Event). "Create new" on top, then the choices in groups, a row optionally
+   *  with an icon and a chip. One is open at a time (`_macroPicker`). */
+  _picker(params) {
+    const { id } = params;
+    const open = this._macroPicker?.id === id;
+    const groups = params.groups.filter((group) => group.options.length > 0);
+    const option = (optionValue, extraClass, body) => b2`
+      <button class="macro-picker-option ${extraClass}" type="button" role="option" data-value=${optionValue} aria-selected=${optionValue === params.value ? "true" : "false"}
+        @click=${() => {
+      this._closeMacroPicker();
+      params.onPick(optionValue);
+    }}>${body}</button>`;
+    const onKeydown = (event) => {
+      if (!open) return;
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeMacroPicker();
+        return;
+      }
+      moveListFocus(event, ".macro-picker-option");
+    };
+    return b2`<div class="decoded-field" @keydown=${onKeydown}>
+      <span class="decoded-field-label" id=${`${id}-label`}>${params.label}</span>
+      <button id=${id} class="decoded-field-input macro-picker-trigger" type="button" data-value=${params.value} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"} aria-labelledby=${`${id}-label ${id}`}
+        @click=${(event) => this._toggleMacroPicker(id, event)}>
+        ${params.current.icon ? icon4(params.current.icon, "macro-picker-icon") : A}
+        <span class="macro-picker-name">${params.current.label}</span>
+        ${params.current.chip ? b2`<span class="macro-picker-chip">${params.current.chip}</span>` : A}
+        ${icon4(mdiChevronDown, "macro-picker-icon")}
+      </button>
+      ${open ? b2`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeMacroPicker} @wheel=${(event) => event.preventDefault()}></button>
+            <div class="macro-picker-menu" role="listbox" aria-labelledby=${`${id}-label`} style=${this._macroPicker?.style ?? ""}>
+              ${params.newLabel ? b2`${option("__new__", "macro-picker-option--new", b2`${icon4(mdiPlus, "macro-picker-icon")}<span class="macro-picker-name">${params.newLabel}</span>`)}
+                    ${groups.length ? b2`<div class="macro-picker-sep"></div>` : A}` : A}
+              ${groups.map((group) => b2`
+                ${group.heading ? b2`<div class="macro-picker-group">${group.heading}</div>` : A}
+                ${group.options.map((item) => option(item.value, "", b2`${item.icon ? icon4(item.icon, "macro-picker-icon") : A}<span class="macro-picker-name">${item.label}</span>${item.chip ? b2`<span class="macro-picker-chip">${item.chip}</span>` : A}`))}`)}
+            </div>` : A}
+      ${params.helper ? b2`<div class="decoded-field-helper">${params.helper}</div>` : A}
+    </div>`;
+  }
+  /** The macro picker: "Create new macro" on top, own macros, then the other activities' macros to copy, each with a
+   *  chip naming its activity; under it the new macro's name. */
+  _macroTargetFields(idPrefix, target, onChange, allowNew = true, offerOwn = true) {
+    const macros = offerOwn ? this._macroOptions() : [];
+    const copyable = this._copyableMacros();
+    const copied = target.mode === "copy" ? copyable.find((macro) => macro.activityId === target.sourceId && macro.buttonId === target.macroId) : void 0;
+    return b2`
+      ${macros.length || copyable.length ? b2`${this._picker({
+      id: `${idPrefix}-macro-target`,
+      label: B2.macroTargetLabel,
+      value: copied ? macroCopyValue(copied.activityId, copied.buttonId) : target.mode === "new" ? "__new__" : String(target.macroId ?? ""),
+      current: copied ? { label: copied.name, icon: mdiContentCopy, chip: copied.activityName } : { label: target.mode === "new" ? B2.macroTargetCreateNew : macros.find((macro) => macro.value === target.macroId)?.label ?? "" },
+      newLabel: allowNew ? B2.macroTargetCreateNew : null,
+      groups: [
+        { heading: copyable.length ? B2.macroTargetOwnGroup : void 0, options: macros.map((macro) => ({ value: String(macro.value), label: macro.label })) },
+        { heading: B2.macroTargetCopyGroup, options: copyable.map((macro) => ({ value: macroCopyValue(macro.activityId, macro.buttonId), label: macro.name, icon: mdiContentCopy, chip: macro.activityName })) }
+      ],
+      helper: copied ? B2.macroTargetCopyNote(copied.commandStepCount, copied.activityName) : void 0,
+      onPick: (value) => onChange({ ...target, ...macroTargetFromValue(value) })
+    })}
+          ${allowNew ? A : b2`<div class="decoded-field-helper">${B2.bindingOneNewNote}</div>`}` : offerOwn ? b2`<div class="quick-access-empty">${B2.macroTargetNoExisting}</div>` : A}
       ${target.mode === "new" ? this._macroNameField(idPrefix, target.name, (name) => onChange({ ...target, name })) : A}
     `;
   }
@@ -21572,14 +21907,26 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       <div class="decoded-field-helper">${B2.addShortcutActionHelper}</div>
     </div>`;
   }
+  /** A Wifi Event target in the macro target's picker (the panel only picks deployed slots: no "create new"). */
   _wifiEventFields(idPrefix, slot, onChange, slots = this._wifiSlots) {
-    return this._select(`${idPrefix}-wifi-event`, B2.wifiEventTargetLabel, slot, slots.map((entry) => ({ value: entry.slot, label: entry.label })), P3.wifiEventNoSlots, onChange);
+    if (slots.length === 0) {
+      return b2`<div class="decoded-field"><span class="decoded-field-label">${B2.wifiEventTargetLabel}</span><div class="quick-access-empty">${P3.wifiEventNoSlots}</div></div>`;
+    }
+    return this._picker({
+      id: `${idPrefix}-wifi-event`,
+      label: B2.wifiEventTargetLabel,
+      value: String(slot ?? ""),
+      current: { label: slots.find((entry) => entry.slot === slot)?.label ?? "" },
+      newLabel: null,
+      groups: [{ options: slots.map((entry) => ({ value: String(entry.slot), label: entry.label })) }],
+      onPick: (value) => onChange(Number(value))
+    });
   }
-  _dialog(id, title, close, body, footer, error = "") {
+  _dialog(id, title, close, body, footer, error = "", headerExtra = A) {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id=${id} @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${B2.deleteCancel} @click=${close}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header ${headerExtra === A ? "" : "dialog-header--extra"}"><div class="dialog-title">${title}</div>${headerExtra === A ? A : b2`<div class="dialog-header-extra">${headerExtra}</div>`}<button class="dialog-close" type="button" aria-label=${B2.deleteCancel} @click=${close}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">${body}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id=${`${id}-error`}>${error}</div>
@@ -21709,9 +22056,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const items = this._shortcutItems();
     return b2`
       <div class="quick-access-section" data-edit-section="quick_access">
-        <div class="quick-access-head">
+        <div class="quick-access-head quick-access-head--inline">
           <div class="quick-access-head-main"><div class="quick-access-title">${B2.activityShortcutsTitle}</div><div class="quick-access-sub">${B2.activityShortcutsSubSortable}</div></div>
-          <div class="quick-access-head-actions"><button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon4(mdiPlus)}<span>${B2.addShortcutButton}</span></button></div>
+          <div class="quick-access-head-actions" style="display: inline-flex; gap: 8px;">
+            ${this._renderCopyShortcuts()}
+            <button class="quick-access-add-btn" id="add-shortcut" type="button" @click=${this._openAddShortcut}>${icon4(mdiPlus)}<span>${B2.addShortcutButton}</span></button>
+          </div>
         </div>
         ${items.length ? b2`<div class="quick-access-list"><div class="quick-access-sortable-container">${items.map((item, position) => this._renderShortcutRow(item, position))}</div></div>` : b2`<div class="quick-access-empty">${B2.activityShortcutsEmpty}</div>`}
       </div>
@@ -21940,17 +22290,14 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const commands = this._shortcutCommandOptions(dialog.deviceId);
     const canAdd = dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : dialog.kind === "wifi_event" ? dialog.slot != null : true;
     const commandFields = devices.length === 0 ? b2`<div class="backup-drawer-sub">${this._deviceOptions().length === 0 ? B2.addFavoriteNoDevices : B2.addShortcutNoCommandsLeft}</div>` : b2`
-          ${this._select("sb-add-fav-device", B2.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B2.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._shortcutCommandOptions(value)[0]?.value ?? null }))}
-          <div class="decoded-field">
-            <label class="decoded-field-label" for="sb-add-fav-command">${B2.addFavoriteCommand}</label>
-            ${commands.length === 0 ? b2`<div class="quick-access-empty">${B2.addFavoriteNoCommands}</div>` : b2`<select id="sb-add-fav-command" class="decoded-field-input" @change=${(event) => set({ commandId: Number(event.currentTarget.value) })}>
-                  ${commands.map((command) => b2`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
-                </select>`}
-            <div class="decoded-field-helper">${B2.addShortcutCommandHelper}</div>
-          </div>`;
+          <div class="field-pair">
+            ${this._select("sb-add-fav-device", B2.addFavoriteDevice, dialog.deviceId, devices.map((device) => ({ value: device.id, label: device.label })), B2.addFavoriteNoDevices, (value) => set({ deviceId: value, commandId: this._shortcutCommandOptions(value)[0]?.value ?? null }))}
+            ${this._select("sb-add-fav-command", B2.addFavoriteCommand, dialog.commandId, commands, B2.addFavoriteNoCommands, (value) => set({ commandId: value }))}
+          </div>
+          <div class="decoded-field-helper">${B2.addShortcutCommandHelper}</div>`;
     return this._dialog("add-shortcut-dialog", B2.addShortcutTitle, this._closeAddShortcut, b2`
-      ${this._kindSelect("sb-add-shortcut-kind", dialog.kind, this._shortcutTargetKinds(), (kind) => set(kind === "action" ? { kind, mode: "new", macroId: null, name: "" } : kind === "wifi_event" ? { kind, slot: this._shortcutWifiSlots()[0]?.slot ?? null } : { kind }))}
-      ${dialog.kind === "command" ? commandFields : dialog.kind === "wifi_event" ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot }), this._shortcutWifiSlots()) : this._macroNameField("sb-add", dialog.name, (name) => set({ name }))}`, b2`
+      ${this._kindSegments("sb-add-shortcut-kind", dialog.kind, this._shortcutTargetKinds(), (kind) => set(kind === "action" ? { kind, mode: "new", macroId: null, sourceId: null, name: "" } : kind === "wifi_event" ? { kind, slot: this._shortcutWifiSlots()[0]?.slot ?? null } : { kind }))}
+      ${dialog.kind === "command" ? commandFields : dialog.kind === "wifi_event" ? this._wifiEventFields("sb-add-fav", dialog.slot, (slot) => set({ slot }), this._shortcutWifiSlots()) : this._macroTargetFields("sb-add", dialog, (macro) => set(macro), true, false)}`, b2`
       <button class="dialog-btn" type="button" @click=${this._closeAddShortcut}>${B2.addFavoriteCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="add-shortcut-save" type="button" ?disabled=${!canAdd} @click=${this._applyAddShortcut}>${B2.addFavoriteAdd}</button>`, dialog.error);
   }
@@ -21984,20 +22331,30 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const createsNew = this._bindingCreatesNew(dialog);
     const canSave = dialog.buttonId != null && (dialog.kind === "command" ? dialog.deviceId != null && dialog.commandId != null : primaryIsWifiEvent ? dialog.slot != null : true) && !(createsNew.primary && createsNew.longPress);
     const title = isEdit ? B2.bindingDialogEditTitle(buttonName(Number(dialog.buttonId))) : B2.bindingDialogAddTitle;
+    const buttonPicker = isEdit ? A : b2`<select id="sb-binding-button" class="decoded-field-input dialog-header-select" aria-label=${B2.bindingButton} @change=${(event) => set({ buttonId: Number(event.currentTarget.value) })}>
+          ${unbound.map((entry) => b2`<option value=${entry.code} ?selected=${entry.code === dialog.buttonId}>${entry.name}</option>`)}
+        </select>`;
+    const commandPair = (idPrefix, deviceId, commandId, onDevice, onCommand) => b2`
+      <div class="field-pair">
+        ${this._select(`${idPrefix}-device`, B2.bindingTargetDevice, deviceId, devices, B2.bindingNoDevices, onDevice)}
+        ${this._select(`${idPrefix}-command`, B2.bindingCommand, commandId, this._commandOptions(deviceId), B2.bindingNoCommands, onCommand)}
+      </div>`;
     return this._dialog("binding-dialog", title, this._closeBinding, b2`
-      ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${B2.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : this._select("sb-binding-button", B2.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), B2.bindingNoButtons, (value) => set({ buttonId: value }))}
-      ${this._kindSelect("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
-      ${dialog.kind === "command" ? b2`${this._select("sb-binding-device", B2.bindingTargetDevice, dialog.deviceId, devices, B2.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
-            ${this._select("sb-binding-command", B2.bindingCommand, dialog.commandId, this._commandOptions(dialog.deviceId), B2.bindingNoCommands, (value) => set({ commandId: value }))}` : primaryIsWifiEvent ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
-      <div class="binding-toggle-row">
-        <span class="decoded-field-label">${B2.bindingEnableLongPress}</span>
-        <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => this._toggleBindingLongPress(event.currentTarget.checked)} />
-      </div>
-      ${dialog.longPress ? primaryIsWifiEvent ? b2`<div class="decoded-field-helper">${P3.wifiEventLongPressNote}</div>` : b2`${this._kindSelect("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
-              ${dialog.lpKind === "command" ? b2`${this._select("sb-binding-lp-device", B2.bindingLongPressDevice, dialog.lpDeviceId, devices, B2.bindingNoDevices, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }))}
-                    ${this._select("sb-binding-lp-command", B2.bindingLongPressCommand, dialog.lpCommandId, this._commandOptions(dialog.lpDeviceId), B2.bindingNoCommands, (value) => set({ lpCommandId: value }))}` : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }), !createsNew.primary)}` : A}`, b2`
+      <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+        <div class="press-card-head">${icon4(mdiGestureTap)}<span class="press-card-title" id="sb-binding-short-press-label">${B2.bindingShortPress}</span></div>
+        ${this._kindSegments("sb-binding-kind", dialog.kind, this._bindingLegKinds(this._targetKinds(), createsNew.longPress), (kind) => this._setBindingKind(kind))}
+        ${dialog.kind === "command" ? commandPair("sb-binding", dialog.deviceId, dialog.commandId, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }), (value) => set({ commandId: value })) : primaryIsWifiEvent ? this._wifiEventFields("sb-binding", dialog.slot, (slot) => set({ slot })) : this._macroTargetFields("sb-binding", dialog.macro, (macro) => set({ macro }), !createsNew.longPress)}
+      </section>
+      <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
+        <label class="press-card-head">
+          ${icon4(mdiGestureTapHold)}<span class="press-card-title" id="sb-binding-long-press-label">${B2.bindingLongPress}</span>
+          <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${B2.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event) => this._toggleBindingLongPress(event.currentTarget.checked)} />
+        </label>
+        ${dialog.longPress ? primaryIsWifiEvent ? b2`<div class="decoded-field-helper">${P3.wifiEventLongPressNote}</div>` : b2`${this._kindSegments("sb-binding-lp-kind", dialog.lpKind, this._bindingLegKinds(["command", "action"], createsNew.primary), (kind) => this._setBindingLpKind(kind === "action" ? "action" : "command"))}
+                ${dialog.lpKind === "command" ? commandPair("sb-binding-lp", dialog.lpDeviceId, dialog.lpCommandId, (value) => set({ lpDeviceId: value, lpCommandId: this._firstCommandId(value) }), (value) => set({ lpCommandId: value })) : this._macroTargetFields("sb-binding-lp", dialog.lpMacro, (lpMacro) => set({ lpMacro }), !createsNew.primary)}` : A}
+      </section>`, b2`
       <button class="dialog-btn" type="button" @click=${this._closeBinding}>${B2.bindingCancel}</button>
-      <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B2.bindingSave : B2.bindingAdd}</button>`, dialog.error);
+      <button class="dialog-btn dialog-btn-primary" id="binding-save" type="button" ?disabled=${!canSave} @click=${this._applyBinding}>${isEdit ? B2.bindingSave : B2.bindingAdd}</button>`, dialog.error, buttonPicker);
   }
   _renderStepDialog() {
     const dialog = this._stepDialog;
@@ -22021,10 +22378,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             ${commands.map((command) => b2`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
           </select>
         </div>` : b2`
-          ${this._wifiEventsAvailable ? this._kindSelect("sb-step-kind", dialog.kind, ["command", "wifi_event"], (kind) => set(kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind: "command" })) : A}
-          ${isWifiEvent ? this._wifiEventFields("sb-step", dialog.slot, (slot) => set({ slot })) : b2`${this._select("sb-step-device", B2.stepDevice, dialog.deviceId, this._deviceOptions().map((device) => ({ value: device.id, label: device.label })), B2.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
-                ${this._select("sb-step-command", B2.stepCommand, dialog.commandId, commands, B2.stepNoCommands, (value) => set({ commandId: value }))}`}
-          <div class="decoded-field">
+          ${this._wifiEventsAvailable ? this._kindSegments("sb-step-kind", isWifiEvent ? "wifi_event" : "command", ["command", "wifi_event"], (kind) => set(kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind: "command" })) : A}
+          ${isWifiEvent ? this._wifiEventFields("sb-step", dialog.slot, (slot) => set({ slot })) : b2`<div class="field-pair">
+                ${this._select("sb-step-device", B2.stepDevice, dialog.deviceId, this._deviceOptions().map((device) => ({ value: device.id, label: device.label })), B2.bindingNoDevices, (value) => set({ deviceId: value, commandId: this._firstCommandId(value) }))}
+                ${this._select("sb-step-command", B2.stepCommand, dialog.commandId, commands, B2.stepNoCommands, (value) => set({ commandId: value }))}
+              </div>`}
+          ${isWifiEvent ? A : b2`<div class="decoded-field">
             <label class="decoded-field-label" for="sb-step-hold">${B2.stepHoldSeconds}</label>
             <input id="sb-step-hold" class="decoded-field-input" type="number" min="0" max="120" step="0.5" .value=${dialog.hold}
               @input=${(event) => {
@@ -22033,7 +22392,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
               @change=${(event) => {
       this._stepDialog = { ...dialog, hold: byteToSeconds(secondsToByte(event.currentTarget.value)) };
     }} />
-          </div>`;
+          </div>`}`;
     return this._dialog("step-dialog", title, this._closeStepDialog, body, b2`
       <button class="dialog-btn" type="button" @click=${this._closeStepDialog}>${B2.stepCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="step-save" type="button" ?disabled=${!canSave} @click=${this._applyStep}>${isEdit ? B2.stepSave : B2.stepAdd}</button>`, dialog.error);
@@ -22046,6 +22405,8 @@ SbPanelActivityEditor.properties = {
   _macroEditor: { state: true },
   _bindingsView: { state: true },
   _roleMenu: { state: true },
+  _macroPicker: { state: true },
+  _shortcutCopyMenu: { state: true },
   _roleConfirm: { state: true },
   _addShortcut: { state: true },
   _addMember: { state: true },
@@ -22124,7 +22485,8 @@ var S5 = {
   bindingButton: B3.bindingButton,
   bindingCommand: B3.bindingCommand,
   bindingEnableLongPress: B3.bindingEnableLongPress,
-  bindingLongPressCommand: B3.bindingLongPressCommand,
+  bindingShortPress: B3.bindingShortPress,
+  bindingLongPress: B3.bindingLongPress,
   bindingIncomplete: B3.bindingIncomplete,
   bindingNoButtons: B3.bindingNoButtons,
   bindingNoCommands: B3.bindingNoCommands,
@@ -23110,23 +23472,35 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return b2`
       <div class="modal-backdrop" @click=${this._closeBinding}>
         <div class="dialog small" id="binding-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-header ${isEdit ? "" : "dialog-header--extra"}">
+            <div class="dialog-title">${title}</div>
+            ${isEdit ? A : b2`<div class="dialog-header-extra">
+                  <select id="sb-binding-button" class="decoded-field-input dialog-header-select" aria-label=${S5.bindingButton} @change=${(event) => {
+      this._binding = { ...dialog, buttonId: Number(event.currentTarget.value), error: "" };
+    }}>
+                    ${unbound.map((entry) => b2`<option value=${entry.code} ?selected=${entry.code === dialog.buttonId}>${entry.name}</option>`)}
+                  </select>
+                </div>`}
+            <button class="dialog-close" type="button" aria-label=${S5.bindingCancel} @click=${this._closeBinding}>${icon4(mdiClose)}</button>
+          </div>
           <div class="dialog-body">
-            ${isEdit ? b2`<div class="decoded-field"><span class="decoded-field-label">${S5.bindingButton}</span><div class="binding-static-field">${buttonName(Number(dialog.buttonId))}</div></div>` : select("sb-binding-button", S5.bindingButton, dialog.buttonId, unbound.map((entry) => ({ value: entry.code, label: entry.name })), S5.bindingNoButtons, (value) => {
-      this._binding = { ...dialog, buttonId: value, error: "" };
-    })}
-            ${select("sb-binding-command", S5.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
+            <section class="press-card" data-press="short" role="group" aria-labelledby="sb-binding-short-press-label">
+              <div class="press-card-head">${icon4(mdiGestureTap)}<span class="press-card-title" id="sb-binding-short-press-label">${S5.bindingShortPress}</span></div>
+              ${select("sb-binding-command", S5.bindingCommand, dialog.commandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, commandId: value, error: "" };
     })}
-            <div class="binding-toggle-row">
-              <span class="decoded-field-label">${S5.bindingEnableLongPress}</span>
-              <input class="sb-switch" id="sb-binding-long-press" type="checkbox" .checked=${dialog.longPress} @change=${(event) => {
+            </section>
+            <section class="press-card" data-press="long" role="group" aria-labelledby="sb-binding-long-press-label">
+              <label class="press-card-head">
+                ${icon4(mdiGestureTapHold)}<span class="press-card-title" id="sb-binding-long-press-label">${S5.bindingLongPress}</span>
+                <input class="sb-switch" id="sb-binding-long-press" type="checkbox" aria-label=${S5.bindingEnableLongPress} .checked=${dialog.longPress} @change=${(event) => {
       this._binding = { ...dialog, longPress: event.currentTarget.checked };
     }} />
-            </div>
-            ${dialog.longPress ? select("sb-binding-lp-command", S5.bindingLongPressCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
+              </label>
+              ${dialog.longPress ? select("sb-binding-lp-command", S5.bindingCommand, dialog.longPressCommandId, commands.map((c7) => ({ value: c7.commandId, label: c7.label })), S5.bindingNoCommands, (value) => {
       this._binding = { ...dialog, longPressCommandId: value };
     }) : A}
+            </section>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${dialog.error}</div>
@@ -24044,6 +24418,10 @@ var SbPanelHubs = class extends i4 {
     this._busy = /* @__PURE__ */ new Set();
     this._confirmRemove = null;
     this._firmware = "Not yet known";
+    // What is typed into "server IP address" and not saved yet; null shows
+    // the address in use.
+    this._addressDraft = null;
+    this._addressHub = "";
     this._infoKey = "";
     this._infoSeq = 0;
   }
@@ -24051,6 +24429,10 @@ var SbPanelHubs = class extends i4 {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
     if (this._confirmRemove !== null && this._confirmRemove !== this.hub?.hub_id) this._confirmRemove = null;
     const h7 = this.hub;
+    if ((h7?.hub_id ?? "") !== this._addressHub) {
+      this._addressHub = h7?.hub_id ?? "";
+      this._addressDraft = null;
+    }
     const key = h7 ? `${h7.hub_id}:${h7.enabled}:${Boolean(h7.status)}:${Boolean(h7.status?.hub_connected)}` : "";
     if (key !== this._infoKey || changed.has("api")) {
       this._infoKey = key;
@@ -24116,6 +24498,48 @@ var SbPanelHubs = class extends i4 {
     }
     this._emit("sb-hubs-changed");
   }
+  // The server's own address toward this hub: what the hub is told to
+  // connect back to. The server picks it; a typed address overrides that
+  // and an empty field returns to automatic.
+  async _saveLocalAddress(hubId) {
+    if (this._addressDraft === null || this._busy.has(hubId)) return;
+    const address = this._addressDraft.trim();
+    this._busy = new Set(this._busy).add(hubId);
+    try {
+      const response = await this.api.setHubLocalAddress(hubId, address || null);
+      if (response.ok) {
+        this._addressDraft = null;
+        this._message(`${hubId}: server IP address ${address ? `set to ${address}` : "is chosen automatically"}`);
+      } else this._message(`${hubId}: ${problemText(response)}`, false);
+    } catch (err) {
+      this._message(String(err), false);
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(hubId);
+      this._busy = busy;
+    }
+    this._emit("sb-hubs-changed");
+  }
+  _renderLocalAddress(h7, busy) {
+    const manual = h7.config.local_address ?? null;
+    const shown = h7.local_address ?? manual ?? "";
+    const draft = this._addressDraft;
+    const dirty = draft !== null && draft.trim() !== shown;
+    return b2`<span class="address">
+      <input id="local-address" class="mono" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+        aria-label="Server IP address" placeholder="automatic" ?disabled=${busy}
+        title="The address of this server that the hub is told to connect back to. Clear the field to have it chosen automatically."
+        .value=${draft ?? shown}
+        @input=${(event) => {
+      this._addressDraft = event.target.value;
+    }}
+        @keydown=${(event) => {
+      if (event.key === "Enter" && dirty) void this._saveLocalAddress(h7.hub_id);
+      if (event.key === "Escape") this._addressDraft = null;
+    }} />
+      ${dirty ? b2`<button class="small" id="local-address-save" ?disabled=${busy} @click=${() => this._saveLocalAddress(h7.hub_id)}>Save</button>` : b2`<span class="mode" id="local-address-mode">${manual ? "manual" : "automatic"}</span>`}
+    </span>`;
+  }
   // The hub pushes writes to its remotes on its own; this is the manual
   // trigger for a remote that missed them (the HA card's "Sync Remote").
   async _resyncRemote(hubId) {
@@ -24150,6 +24574,7 @@ var SbPanelHubs = class extends i4 {
     const facts = [
       ["state", b2`<span class="tone-${tone}">${text}</span>`],
       ["host", b2`<span class="mono">${h7.config.host}</span>`],
+      ["server IP address", this._renderLocalAddress(h7, busy)],
       ["model", model],
       ["firmware version", this._firmware],
       ["hub id", b2`<span class="mono">${h7.hub_id}</span>`],
@@ -24195,7 +24620,8 @@ SbPanelHubs.properties = {
   hub: { attribute: false },
   _busy: { state: true },
   _confirmRemove: { state: true },
-  _firmware: { state: true }
+  _firmware: { state: true },
+  _addressDraft: { state: true }
 };
 SbPanelHubs.styles = [
   PANEL_BASE_CSS,
@@ -24209,6 +24635,9 @@ SbPanelHubs.styles = [
       .facts dt { color: var(--sbp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .facts dd { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .confirm { flex: 1 0 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
+      .address { display: flex; align-items: center; gap: 6px; }
+      .address input { min-width: 0; padding: 3px 6px; font-size: 13px; }
+      .address .mode { color: var(--sbp-muted); font-size: 12px; }
     `
 ];
 function defineHubsView() {
@@ -26309,6 +26738,7 @@ var SbPanelWifiDevices = class extends i4 {
     /** The shell's stream; set by the shell, read for the server's device events. */
     this.stream = null;
     this._offStream = null;
+    this._reportedCanSync = false;
     // -- create ------------------------------------------------------------------------------------------
     this._openCreate = () => {
       if (this._locked) return;
@@ -26523,9 +26953,15 @@ var SbPanelWifiDevices = class extends i4 {
     this._leave = then;
   }
   _reportDirty(dirty) {
-    if (dirty === this._reportedDirty) return;
+    const canSync = dirty && !this._working && this._canSync(this._device);
+    if (dirty === this._reportedDirty && canSync === this._reportedCanSync) return;
     this._reportedDirty = dirty;
-    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty } }));
+    this._reportedCanSync = canSync;
+    this.dispatchEvent(new CustomEvent("sb-view-dirty", { bubbles: true, composed: true, detail: { dirty, canSync } }));
+  }
+  /** The dock's Sync button: the same sync the header starts. */
+  syncFromDock() {
+    if (!this._working && this._canSync(this._device)) void this._sync();
   }
   _say(text, ok) {
     this.dispatchEvent(new CustomEvent("sb-message", { bubbles: true, composed: true, detail: { text, ok } }));

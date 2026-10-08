@@ -31,6 +31,7 @@ import {
   updateDeviceMacroStep,
 } from "../backup-state";
 import type { BackupEditTargetKind, MacroStepKind } from "./host-types";
+import { renderKindSegments } from "./kind-segments";
 import { editorErrorMessage } from "./names";
 import type { SofabatonEditDetailView } from "../edit-detail-view";
 
@@ -43,7 +44,8 @@ const POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
 export type MacroStepEditorHost = ReactiveControllerHost &
   Pick<
     SofabatonEditDetailView,
-    "_bindingsView"
+    "_binding"
+    | "_bindingsView"
     | "_captureCurrentScrollPosition"
     | "_commitEditBundleEdit"
     | "_editRenameDialogDraft"
@@ -248,6 +250,7 @@ export class MacroStepEditorController implements ReactiveController {
 
   closeDialog = () => {
     this.dialogOpen = false;
+    this.host._binding.macroPicker = null;
     this.editIndex = null;
     this.kind = "command";
     this.deviceId = null;
@@ -299,7 +302,8 @@ export class MacroStepEditorController implements ReactiveController {
   applyWifiEvent = async () => {
     const editor = this.editor;
     if (!editor || !this.host.bundle) return;
-    const timeByte = secondsToByte(this.holdSeconds);
+    // A Wifi Event is a press the hub reports, not a key it holds down: no hold.
+    const timeByte = 0;
     const editIndex = this.editIndex;
     try {
       const ref = await this.host._events.resolveRef(this.host._events.primary);
@@ -626,24 +630,21 @@ export class MacroStepEditorController implements ReactiveController {
                 `
               : html`
                   ${isActivity && this.host._events.available()
-                    ? html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.addShortcutKindLabel}</label>
-                          <select
-                            id="sb-step-kind"
-                            class="decoded-field-input"
-                            @change=${(event: Event) => {
-                              const value = (event.target as HTMLSelectElement).value as MacroStepKind;
-                              this.kind = value;
-                              if (value === "wifi_event") this.host._events.primary = this.host._events.defaultSel();
-                              this.error = "";
-                            }}
-                          >
-                            <option value="command" ?selected=${this.kind === "command"}>${TOOLS_CARD_STRINGS.backup.shortcutKindCommand}</option>
-                            <option value="wifi_event" ?selected=${isWifiEvent}>${TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent}</option>
-                          </select>
-                        </div>
-                      `
+                    ? renderKindSegments<MacroStepKind>({
+                        id: "sb-step-kind",
+                        ariaLabel: TOOLS_CARD_STRINGS.backup.addShortcutKindLabel,
+                        value: this.kind,
+                        options: [
+                          { value: "command", label: TOOLS_CARD_STRINGS.backup.shortcutKindCommand },
+                          { value: "wifi_event", label: TOOLS_CARD_STRINGS.backup.shortcutKindWifiEvent },
+                        ],
+                        onChange: (event: Event) => {
+                          const value = (event.target as HTMLSelectElement).value as MacroStepKind;
+                          this.kind = value;
+                          if (value === "wifi_event") this.host._events.primary = this.host._events.defaultSel();
+                          this.error = "";
+                        },
+                      })
                     : nothing}
                   ${isWifiEvent
                     ? this.host._events.renderTargetFields({
@@ -655,39 +656,45 @@ export class MacroStepEditorController implements ReactiveController {
                         },
                       })
                     : html`
-                        ${isActivity
-                          ? this.host._renderBindingSelect({
-                              id: "sb-step-device",
-                              label: TOOLS_CARD_STRINGS.backup.stepDevice,
-                              value: this.deviceId,
-                              options: devices.map((device) => ({ value: device.id, label: device.label })),
-                              onChange: this.handleDeviceChange,
-                              emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
-                            })
-                          : nothing}
-                        ${this.host._renderBindingSelect({
-                          id: "sb-step-command",
-                          label: TOOLS_CARD_STRINGS.backup.stepCommand,
-                          value: this.commandId,
-                          options: commands.map((command) => ({ value: command.commandId, label: command.label })),
-                          onChange: this.handleCommandChange,
-                          emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
-                        })}
+                        <div class=${isActivity ? "field-pair" : ""}>
+                          ${isActivity
+                            ? this.host._renderBindingSelect({
+                                id: "sb-step-device",
+                                label: TOOLS_CARD_STRINGS.backup.stepDevice,
+                                value: this.deviceId,
+                                options: devices.map((device) => ({ value: device.id, label: device.label })),
+                                onChange: this.handleDeviceChange,
+                                emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
+                              })
+                            : nothing}
+                          ${this.host._renderBindingSelect({
+                            id: "sb-step-command",
+                            label: TOOLS_CARD_STRINGS.backup.stepCommand,
+                            value: this.commandId,
+                            options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+                            onChange: this.handleCommandChange,
+                            emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
+                          })}
+                        </div>
                       `}
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
-                    <input
-                      id="sb-step-hold"
-                      class="decoded-field-input"
-                      type="number"
-                      min="0"
-                      max="120"
-                      step="0.5"
-                      .value=${this.holdSeconds}
-                      @input=${this.handleHoldInput}
-                      @change=${this.handleHoldChange}
-                    />
-                  </div>
+                  ${isWifiEvent
+                    ? nothing
+                    : html`
+                        <div class="decoded-field">
+                          <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
+                          <input
+                            id="sb-step-hold"
+                            class="decoded-field-input"
+                            type="number"
+                            min="0"
+                            max="120"
+                            step="0.5"
+                            .value=${this.holdSeconds}
+                            @input=${this.handleHoldInput}
+                            @change=${this.handleHoldChange}
+                          />
+                        </div>
+                      `}
                 `}
           </div>
           <div class="dialog-footer">

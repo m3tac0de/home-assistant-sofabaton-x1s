@@ -9,6 +9,7 @@
 // mirrors the shape of REMOTE_CARD_STRINGS_EN.
 //
 // Deliberately NOT translated (do not add keys for these):
+// - printed key legends (EXIT, DVR, A/B/C); key-name entries retain them
 // - hub-supplied names (activities, devices, commands, favorites, macros)
 // - generated YAML keys and MQTT discovery payloads/identifiers
 // - documentation URLs
@@ -206,7 +207,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     guide: "Guide",
     dvr: "DVR",
     play: "Play",
-    exit: "Exit",
+    exit: "EXIT",
     rew: "Rewind",
     pause: "Pause",
     fwd: "Fast forward",

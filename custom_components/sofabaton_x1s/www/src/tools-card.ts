@@ -213,6 +213,10 @@ class SofabatonControlPanelCard extends LitElement {
   // download.
   private _editorSyncPending = false;
   private _editorSyncPendingKind: "sync" | "download" = "sync";
+  // Whether the editor behind the dirty flag can start its sync right now:
+  // the dock then offers the Sync button, so a change made deep in a
+  // sub-view does not need the walk back up to the editor's header.
+  private _editorSyncAvailable = false;
   // Re-order mode ("Change order" under the Activities / Devices list).
   private _reorderMode = false;
   private _reorderKind: "activity" | "device" = "activity";
@@ -475,14 +479,23 @@ class SofabatonControlPanelCard extends LitElement {
   }
 
   private _handleEditorDirtyChanged = (
-    event: CustomEvent<{ dirty: boolean; kind?: "sync" | "download" }>,
+    event: CustomEvent<{ dirty: boolean; kind?: "sync" | "download"; canSync?: boolean }>,
   ) => {
     const dirty = Boolean(event.detail?.dirty);
     const kind = event.detail?.kind === "download" ? "download" : "sync";
-    if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind) return;
+    const canSync = dirty && kind === "sync" && Boolean(event.detail?.canSync);
+    if (dirty === this._editorSyncPending && kind === this._editorSyncPendingKind && canSync === this._editorSyncAvailable) return;
     this._editorSyncPending = dirty;
     this._editorSyncPendingKind = kind;
+    this._editorSyncAvailable = canSync;
     this.requestUpdate();
+  };
+
+  // The dock's Sync button: the open editor runs its own sync, exactly as its header button does.
+  private _syncFromDock = () => {
+    this.renderRoot
+      .querySelector<HTMLElement & { syncFromDock?: () => void }>("sofabaton-activities-tab, sofabaton-wifi-commands-tab")
+      ?.syncFromDock?.();
   };
 
   // Drops re-order mode and the Add Activity dialog (tab switch, hub switch).
@@ -850,7 +863,9 @@ class SofabatonControlPanelCard extends LitElement {
             : editorSyncPending
               ? html`<span class="card-bottom-dock-status">${this._editorSyncPendingKind === "download"
                   ? TOOLS_CARD_STRINGS.dock.unsavedBackupChanges
-                  : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>`
+                  : TOOLS_CARD_STRINGS.dock.unsyncedChanges}</span>${this._editorSyncPendingKind === "sync" && this._editorSyncAvailable
+                  ? html`<button class="card-bottom-dock-action" type="button" @click=${this._syncFromDock}>${TOOLS_CARD_STRINGS.dock.syncNow}</button>`
+                  : nothing}`
               : docLink
                 ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
                 : nothing}

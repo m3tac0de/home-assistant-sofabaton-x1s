@@ -718,7 +718,7 @@ def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
     zc_module.Zeroconf = DummyZeroconf
     monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
     x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
-    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+    monkeypatch.setattr(X1Proxy, "get_routed_local_ip", lambda _self: "127.0.0.1")
     monkeypatch.setattr(x1_proxy_module, "mdns_service_type_for_props", lambda _props: "badtype")
 
     proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
@@ -763,8 +763,7 @@ def test_start_mdns_stops_on_non_unique_name(monkeypatch) -> None:
     zc_module.ServiceInfo = DummyServiceInfo
     zc_module.Zeroconf = DummyZeroconf
     monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
-    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
-    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+    monkeypatch.setattr(X1Proxy, "get_routed_local_ip", lambda _self: "127.0.0.1")
 
     proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
     proxy._start_mdns()
@@ -805,8 +804,7 @@ def test_start_mdns_advertises_x1_service_for_x2_hub(monkeypatch) -> None:
     zc_module.ServiceInfo = DummyServiceInfo
     zc_module.Zeroconf = DummyZeroconf
     monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
-    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
-    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+    monkeypatch.setattr(X1Proxy, "get_routed_local_ip", lambda _self: "127.0.0.1")
 
     proxy = X1Proxy(
         "127.0.0.1",

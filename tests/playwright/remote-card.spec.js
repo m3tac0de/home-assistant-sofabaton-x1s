@@ -20,6 +20,21 @@ function cardLocator(page) {
 }
 
 test.describe("remote card playwright harness", () => {
+  test("preserves printed hardware legends across languages", async ({ page }) => {
+    await mountCard(page, "hub_x2");
+    for (const locale of ["en", "en-GB", "de-DE", "es-ES", "fr-FR", "nl-NL", "zh-Hans", "ar-SA"]) {
+      await page.evaluate((language) => {
+        const card = document.querySelector("sofabaton-virtual-remote");
+        card.hass = { ...card.hass, locale: { language } };
+      }, locale);
+      for (const [selector, legend] of [[".area-exit", "EXIT"], [".area-dvr", "DVR"]]) {
+        const button = page.locator(`${selector} button`);
+        await expect(button).toHaveText(legend);
+        await expect(button).toHaveAccessibleName(legend);
+      }
+    }
+  });
+
   test("uses RTL Arabic UI without swapping the physical left and right keys", async ({ page }) => {
     await mountCard(page, "active", { show_automation_assist: true });
     await page.evaluate(() => {
