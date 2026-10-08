@@ -1869,6 +1869,7 @@ var REMOTE_CARD_STRINGS_EN = {
     title: "Virtual Remote",
     controlPanel: "Control Panel",
     hubMenu: "Choose a hub",
+    back: "Back",
     hubReachable: "Reachable",
     hubUnreachable: "Unreachable",
     noHubs: "No Sofabaton hub is set up yet.",
@@ -2182,6 +2183,12 @@ var REMOTE_CARD_CSS = `
            a drawer button from it is not a self-reference. */
         --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Dialog surface: HA's own ha-dialog chain, not the card surface.
+           Glass themes make --ha-card-background see-through and keep
+           the dialog surface readable (opaque, or translucent with a
+           --ha-dialog-surface-backdrop-filter blur). */
+        --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+        --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
         /* Glossy: a vertical curve of the same tint (bright top, dark
            bottom) plus specular inset highlights. A gradient is legal here
            because every consumer puts the token in a background shorthand. */
@@ -3372,7 +3379,9 @@ var REMOTE_CARD_CSS = `
 
       .sb-modal__dialog {
         width: min(420px, 90vw);
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+        -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+        backdrop-filter: var(--sb-dialog-backdrop-filter, none);
         color: var(--primary-text-color);
         border-radius: 16px;
         border: 1px solid var(--divider-color);
@@ -9894,6 +9903,7 @@ var REMOTE_CARD_STRINGS_AR = {
     title: "\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0627\u0641\u062A\u0631\u0627\u0636\u064A",
     controlPanel: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
     hubMenu: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0645\u062D\u0648\u0631",
+    back: "\u0631\u062C\u0648\u0639",
     hubReachable: "\u0645\u062A\u0635\u0644",
     hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
     noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
@@ -10147,6 +10157,7 @@ var REMOTE_CARD_STRINGS_DE = {
     title: "Virtuelle Fernbedienung",
     controlPanel: "Control Panel",
     hubMenu: "Hub w\xE4hlen",
+    back: "Zur\xFCck",
     hubReachable: "Erreichbar",
     hubUnreachable: "Nicht erreichbar",
     noHubs: "Es ist noch kein Sofabaton-Hub eingerichtet.",
@@ -10380,6 +10391,7 @@ var REMOTE_CARD_STRINGS_ES = {
     title: "Mando virtual",
     controlPanel: "Panel de control",
     hubMenu: "Elegir un hub",
+    back: "Atr\xE1s",
     hubReachable: "Accesible",
     hubUnreachable: "Inaccesible",
     noHubs: "Todav\xEDa no hay ning\xFAn hub Sofabaton configurado.",
@@ -10613,6 +10625,7 @@ var REMOTE_CARD_STRINGS_FR = {
     title: "T\xE9l\xE9commande virtuelle",
     controlPanel: "Panneau de contr\xF4le",
     hubMenu: "Choisir un hub",
+    back: "Retour",
     hubReachable: "Joignable",
     hubUnreachable: "Injoignable",
     noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
@@ -10845,6 +10858,7 @@ var REMOTE_CARD_STRINGS_NL = {
     title: "Virtuele afstandsbediening",
     controlPanel: "Control Panel",
     hubMenu: "Kies een hub",
+    back: "Terug",
     hubReachable: "Bereikbaar",
     hubUnreachable: "Niet bereikbaar",
     noHubs: "Er is nog geen Sofabaton-hub ingesteld.",
@@ -11077,6 +11091,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     title: "\u865A\u62DF\u9065\u63A7\u5668",
     controlPanel: "\u63A7\u5236\u9762\u677F",
     hubMenu: "\u9009\u62E9\u4E2D\u67A2",
+    back: "\u8FD4\u56DE",
     hubReachable: "\u53EF\u8FDE\u63A5",
     hubUnreachable: "\u65E0\u6CD5\u8FDE\u63A5",
     noHubs: "\u5C1A\u672A\u8BBE\u7F6E\u4EFB\u4F55 Sofabaton \u4E2D\u67A2\u3002",
