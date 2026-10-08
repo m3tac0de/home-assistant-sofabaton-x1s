@@ -169,7 +169,9 @@ class SofabatonActivitiesTab extends LitElement {
       flex-direction: column;
       border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
       border: 1px solid var(--divider-color);
-      background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+      background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+      -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+      backdrop-filter: var(--sb-dialog-backdrop-filter, none);
       box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
       overflow: hidden;
     }

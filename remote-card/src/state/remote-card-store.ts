@@ -135,7 +135,8 @@ export const POWER_OFF_KEY_ID = 199;
  */
 export const POWER_ASSUMPTION_TTL_MS = 15000;
 
-const LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
+/** Per entity, the last device opened in device mode (shared by the card and the sidebar remote). */
+export const LAST_DEVICE_STORAGE_PREFIX = "sofabaton-remote:last-device:";
 
 export function normalizeRemoteCardConfig(
   config: RemoteCardConfig,

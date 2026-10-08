@@ -46,8 +46,6 @@ import { toolsCardLocaleLoader } from "./control-panel-language-loader";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
-// The full-page host behind the "Sidebar Panel" setting; it mounts this card.
-import "./sidebar-panel";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -266,6 +264,12 @@ class SofabatonControlPanelCard extends LitElement {
       { loadedFrontendVersion: LOADED_TOOLS_FRONTEND_VERSION },
     );
     this._snapshot = this._store.snapshot;
+  }
+
+  /** Mounted by the sidebar panel (`host: "panel"`): the panel owns the hub
+   *  choice and has its own chrome, so the card drops its top bar (brand + hub picker). */
+  private hostedInPanel(): boolean {
+    return this._config.host === "panel";
   }
 
   setConfig(config: Record<string, unknown>) {
@@ -1248,7 +1252,9 @@ class SofabatonControlPanelCard extends LitElement {
       <ha-card>
         ${this.renderHubRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
-          <div class="card-topbar">
+          ${this.hostedInPanel()
+            ? null
+            : html`<div class="card-topbar">
             ${this.renderBrandLabel()}
             ${hubs.length > 1
               ? renderHubPicker({
@@ -1279,7 +1285,7 @@ class SofabatonControlPanelCard extends LitElement {
                   },
                 })
               : null}
-          </div>
+          </div>`}
           ${renderTabBar({
             selectedTab: this._snapshot.selectedTab,
             toolsMenuOpen: this._toolsMenuOpen,

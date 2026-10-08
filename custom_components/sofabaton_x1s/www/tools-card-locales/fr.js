@@ -166,7 +166,7 @@ var TOOLS_CARD_STRINGS_FR = {
     hubClickActionOptionSend: "Envoyer la commande",
     hubClickActionOptionCopy: "Copier la commande",
     sidebarPanelTitle: "Panneau lat\xE9ral",
-    sidebarPanelDescription: "Ajouter Sofabaton X \xE0 la barre lat\xE9rale de Home Assistant, avec ce panneau de contr\xF4le en pleine page, pour tous ou pour les administrateurs seulement.",
+    sidebarPanelDescription: "Ajouter Sofabaton X \xE0 la barre lat\xE9rale de Home Assistant\u202F: une t\xE9l\xE9commande pleine page pour tous ou pour les administrateurs seulement, avec un basculement vers ce panneau de contr\xF4le pour les administrateurs.",
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "D\xE9sactiv\xE9",
     sidebarPanelOptionAll: "Tous les utilisateurs",

@@ -166,7 +166,7 @@ var TOOLS_CARD_STRINGS_DE = {
     hubClickActionOptionSend: "Befehl senden",
     hubClickActionOptionCopy: "Befehl kopieren",
     sidebarPanelTitle: "Seitenleisten-Panel",
-    sidebarPanelDescription: "Sofabaton X zur Home-Assistant-Seitenleiste hinzuf\xFCgen, mit dieser Steuerzentrale ganzseitig, f\xFCr alle oder nur f\xFCr Administratoren.",
+    sidebarPanelDescription: "Sofabaton X zur Home-Assistant-Seitenleiste hinzuf\xFCgen: eine seitenf\xFCllende Fernbedienung f\xFCr alle oder nur f\xFCr Administratoren, mit einem Wechsel zu diesem Control Panel f\xFCr Administratoren.",
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Aus",
     sidebarPanelOptionAll: "Alle Benutzer",

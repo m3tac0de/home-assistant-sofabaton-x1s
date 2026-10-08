@@ -470,6 +470,8 @@ test("remote-card UI source does not introduce literal user-facing strings", () 
       // Printed hardware legends stay identical in every language.
       "DVR",
       "EXIT",
+      "VOL",
+      "CH",
       // Host setup notices stay English by decision (L-T7).
       "No such hub.",
       "No hub id given: set hub to the hub's MAC (any spelling).",

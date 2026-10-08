@@ -126,6 +126,7 @@ from .ws_panel import (  # noqa: F401
     _control_panel_last_operation,
     _async_build_control_panel_hub_payload,
     _ws_get_control_panel_state,
+    _ws_get_sidebar_state,
     _ws_control_panel_set_setting,
     _ws_control_panel_run_action,
     _ws_get_hub_logs,
@@ -213,6 +214,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_set_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)
+    websocket_api.async_register_command(hass, _ws_get_sidebar_state)
     websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_fetch_blob)

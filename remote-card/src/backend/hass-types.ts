@@ -26,6 +26,8 @@ export interface HassLike {
   locale?: { language?: string };
   language?: string;
   themes?: HassThemesLike;
+  /** The signed-in user; the sidebar panel shows its admin toggle on `is_admin`. */
+  user?: { is_admin?: boolean } | null;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,

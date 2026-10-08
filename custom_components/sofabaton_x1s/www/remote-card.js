@@ -953,6 +953,38 @@ var REMOTE_CARD_STRINGS_EN = {
     pickerName: "Sofabaton Virtual Remote",
     pickerDescription: "A configurable remote for the Sofabaton X1, X1S and X2 integration."
   },
+  // The sidebar remote (docs/internal/sidebar-remote-plan.md): the panel
+  // chrome and the sheet titles. Key names reuse `keys`, drawer names and
+  // the powered-off label reuse `card`.
+  sidebar: {
+    title: "Virtual Remote",
+    controlPanel: "Control Panel",
+    hubMenu: "Choose a hub",
+    back: "Back",
+    hubReachable: "Reachable",
+    hubUnreachable: "Unreachable",
+    noHubs: "No Sofabaton hub is set up yet.",
+    activities: "Activities",
+    devices: "Devices",
+    allOff: "All off",
+    off: "Off",
+    modeToggle: "Switch between activities and devices",
+    numberPad: "Number pad",
+    pullHandle: "Open favorites and macros",
+    pullHandleCommands: "Open commands",
+    close: "Close",
+    starting: "Starting",
+    poweringOff: "Powering off",
+    working: "Working",
+    appConnected: "The Sofabaton app is connected",
+    operations: {
+      backup_restore: "Restoring backup",
+      cache_refresh: "Refreshing hub cache",
+      entity_sync: "Syncing to hub",
+      backup_export: "Creating backup",
+      wifi_deploy: "Deploying Wifi commands"
+    }
+  },
   assist: {
     label: "Key capture",
     waiting: "Waiting for keypress",
@@ -1587,6 +1619,12 @@ var REMOTE_CARD_CSS = `
            a drawer button from it is not a self-reference. */
         --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Dialog surface: HA's own ha-dialog chain, not the card surface.
+           Glass themes make --ha-card-background see-through and keep
+           the dialog surface readable (opaque, or translucent with a
+           --ha-dialog-surface-backdrop-filter blur). */
+        --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+        --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
         /* Glossy: a vertical curve of the same tint (bright top, dark
            bottom) plus specular inset highlights. A gradient is legal here
            because every consumer puts the token in a background shorthand. */
@@ -2133,12 +2171,14 @@ var REMOTE_CARD_CSS = `
         /* The drawer floats over the keys. Glass / iOS themes make the card
            background translucent (alpha 0.3-0.4), which is fine for the card
            over a wallpaper but lets the keys underneath show through the
-           drawer. Stack the same surface four times (0.3 becomes ~0.76,
-           an opaque colour stays pixel-identical) and blur what remains. */
+           drawer. Stack the same surface twice (0.3 becomes ~0.51, 0.4
+           ~0.64, an opaque colour stays pixel-identical) and blur what
+           remains: more layers made the dark glass themes' drawer read as
+           a black slab against their translucent card. */
         --sb-drawer-layer: linear-gradient(
           var(--ha-card-background, var(--card-background-color, var(--primary-background-color))),
           var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
-        background: var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer);
+        background: var(--sb-drawer-layer), var(--sb-drawer-layer);
         border: 1px solid var(--divider-color);
         border-top: none; 
         border-bottom-left-radius: var(--sb-group-radius);
@@ -2184,8 +2224,8 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(1);
         opacity: 1;
         pointer-events: auto;
-        -webkit-backdrop-filter: blur(16px);
-        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
         transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
       }
 
@@ -2286,8 +2326,17 @@ var REMOTE_CARD_CSS = `
         padding: 8px 0;
       }
 
-      /* Drawer buttons (Macros/Favorites) */
+      /* Drawer buttons (Macros/Favorites). They sit on the drawer panel,
+         which is the card surface, so with flat keys an ha-card at the card
+         colour would only be separated by its border, and iOS / Material
+         You / glass themes set --ha-card-border-width to 0: the buttons
+         vanished into the panel. Raise them unconditionally with the
+         key-style tint and floored border (the key_style rules above
+         re-point the same tokens for tinted / elevated / glossy). */
       .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-border-width: 1px;
         height: 50px !important;
         font-size: 13px !important;
         border-radius: var(--sb-group-radius) !important;
@@ -2301,6 +2350,11 @@ var REMOTE_CARD_CSS = `
       .drawer-btn .name,
       .drawer-btn__icon {
         color: var(--sb-key-label-color, var(--primary-color));
+      }
+      /* A name that wraps to a second line inherited the page's ~1.5
+         line-height; tighten it so two lines still sit as one label. */
+      .drawer-btn .name {
+        line-height: 1.15;
       }
 
       /* Hover/press overlay  */
@@ -2761,7 +2815,9 @@ var REMOTE_CARD_CSS = `
 
       .sb-modal__dialog {
         width: min(420px, 90vw);
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+        -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+        backdrop-filter: var(--sb-dialog-backdrop-filter, none);
         color: var(--primary-text-color);
         border-radius: 16px;
         border: 1px solid var(--divider-color);
@@ -9741,6 +9797,35 @@ var REMOTE_CARD_STRINGS_AR = {
     pickerName: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0645\u0646 ${SOFABATON}`,
     pickerDescription: `\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0642\u0627\u0628\u0644 \u0644\u0644\u062A\u062E\u0635\u064A\u0635 \u0644\u062A\u0643\u0627\u0645\u0644 ${isolate("Sofabaton X1 / X1S / X2")}.`
   },
+  sidebar: {
+    title: "\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0627\u0641\u062A\u0631\u0627\u0636\u064A",
+    controlPanel: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
+    hubMenu: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0645\u062D\u0648\u0631",
+    back: "\u0631\u062C\u0648\u0639",
+    hubReachable: "\u0645\u062A\u0635\u0644",
+    hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
+    noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
+    activities: "\u0627\u0644\u0623\u0646\u0634\u0637\u0629",
+    devices: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    allOff: "\u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0643\u0644",
+    off: "\u0645\u0637\u0641\u0623",
+    modeToggle: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0628\u064A\u0646 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    numberPad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
+    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    close: "\u0625\u063A\u0644\u0627\u0642",
+    starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
+    poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
+    working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
+    appConnected: "\u062A\u0637\u0628\u064A\u0642 \u2068Sofabaton\u2069 \u0645\u062A\u0635\u0644",
+    operations: {
+      backup_restore: "\u062C\u0627\u0631\u064D \u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
+      cache_refresh: "\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 \u0627\u0644\u0645\u062D\u0648\u0631 \u0627\u0644\u0645\u0624\u0642\u062A\u0629",
+      entity_sync: "\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 \u0627\u0644\u0645\u062D\u0648\u0631",
+      backup_export: "\u062C\u0627\u0631\u064D \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
+      wifi_deploy: "\u062C\u0627\u0631\u064D \u0646\u0634\u0631 \u2068Wifi Commands\u2069"
+    }
+  },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
@@ -9966,6 +10051,35 @@ var REMOTE_CARD_STRINGS_DE = {
     pickerName: "Virtuelle Sofabaton-Fernbedienung",
     pickerDescription: "Eine konfigurierbare Fernbedienung f\xFCr die Sofabaton-X1-, X1S- und X2-Integration."
   },
+  sidebar: {
+    title: "Virtuelle Fernbedienung",
+    controlPanel: "Control Panel",
+    hubMenu: "Hub w\xE4hlen",
+    back: "Zur\xFCck",
+    hubReachable: "Erreichbar",
+    hubUnreachable: "Nicht erreichbar",
+    noHubs: "Es ist noch kein Sofabaton-Hub eingerichtet.",
+    activities: "Aktivit\xE4ten",
+    devices: "Ger\xE4te",
+    allOff: "Alles aus",
+    off: "Aus",
+    modeToggle: "Zwischen Aktivit\xE4ten und Ger\xE4ten wechseln",
+    numberPad: "Zifferntasten",
+    pullHandle: "Favoriten und Makros \xF6ffnen",
+    pullHandleCommands: "Befehle \xF6ffnen",
+    close: "Schlie\xDFen",
+    starting: "Wird gestartet",
+    poweringOff: "Wird ausgeschaltet",
+    working: "Wird ausgef\xFChrt",
+    appConnected: "Die Sofabaton-App ist verbunden",
+    operations: {
+      backup_restore: "Backup wird wiederhergestellt",
+      cache_refresh: "Hub-Cache wird aktualisiert",
+      entity_sync: "Wird mit dem Hub synchronisiert",
+      backup_export: "Backup wird erstellt",
+      wifi_deploy: "Wifi Commands werden \xFCbertragen"
+    }
+  },
   assist: {
     label: "Tastendr\xFCcke erfassen",
     waiting: "Warten auf Tastendruck",
@@ -10170,6 +10284,35 @@ var REMOTE_CARD_STRINGS_ES = {
     deviceFallback: (id) => `Dispositivo ${id}`,
     pickerName: "Mando a distancia virtual Sofabaton",
     pickerDescription: "Un mando a distancia configurable para la integraci\xF3n Sofabaton X1, X1S y X2."
+  },
+  sidebar: {
+    title: "Mando virtual",
+    controlPanel: "Panel de control",
+    hubMenu: "Elegir un hub",
+    back: "Atr\xE1s",
+    hubReachable: "Accesible",
+    hubUnreachable: "Inaccesible",
+    noHubs: "Todav\xEDa no hay ning\xFAn hub Sofabaton configurado.",
+    activities: "Actividades",
+    devices: "Dispositivos",
+    allOff: "Apagar todo",
+    off: "Apagado",
+    modeToggle: "Cambiar entre actividades y dispositivos",
+    numberPad: "Teclado num\xE9rico",
+    pullHandle: "Abrir favoritos y macros",
+    pullHandleCommands: "Abrir comandos",
+    close: "Cerrar",
+    starting: "Iniciando",
+    poweringOff: "Apagando",
+    working: "Trabajando",
+    appConnected: "La app de Sofabaton est\xE1 conectada",
+    operations: {
+      backup_restore: "Restaurando la copia de seguridad",
+      cache_refresh: "Actualizando la cach\xE9 del hub",
+      entity_sync: "Sincronizando con el hub",
+      backup_export: "Creando la copia de seguridad",
+      wifi_deploy: "Desplegando Wifi Commands"
+    }
   },
   assist: {
     label: "Captura de botones",
@@ -10376,6 +10519,35 @@ var REMOTE_CARD_STRINGS_FR = {
     pickerName: "T\xE9l\xE9commande virtuelle Sofabaton",
     pickerDescription: "Une t\xE9l\xE9commande configurable pour l\u2019int\xE9gration Sofabaton X1, X1S et X2."
   },
+  sidebar: {
+    title: "T\xE9l\xE9commande virtuelle",
+    controlPanel: "Panneau de contr\xF4le",
+    hubMenu: "Choisir un hub",
+    back: "Retour",
+    hubReachable: "Joignable",
+    hubUnreachable: "Injoignable",
+    noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
+    activities: "Activit\xE9s",
+    devices: "Appareils",
+    allOff: "Tout \xE9teindre",
+    off: "\xC9teint",
+    modeToggle: "Basculer entre activit\xE9s et appareils",
+    numberPad: "Pav\xE9 num\xE9rique",
+    pullHandle: "Ouvrir les favoris et les macros",
+    pullHandleCommands: "Ouvrir les commandes",
+    close: "Fermer",
+    starting: "D\xE9marrage",
+    poweringOff: "Extinction",
+    working: "En cours",
+    appConnected: "L'application Sofabaton est connect\xE9e",
+    operations: {
+      backup_restore: "Restauration de la sauvegarde",
+      cache_refresh: "Actualisation du cache du hub",
+      entity_sync: "Synchronisation avec le hub",
+      backup_export: "Cr\xE9ation de la sauvegarde",
+      wifi_deploy: "D\xE9ploiement des Wifi Commands"
+    }
+  },
   assist: {
     label: "Capture de touches",
     waiting: "En attente d\u2019une pression sur une touche",
@@ -10580,6 +10752,35 @@ var REMOTE_CARD_STRINGS_NL = {
     pickerName: "Sofabaton virtuele afstandsbediening",
     pickerDescription: "Een configureerbare afstandsbediening voor de Sofabaton X1-, X1S- en X2-integratie."
   },
+  sidebar: {
+    title: "Virtuele afstandsbediening",
+    controlPanel: "Control Panel",
+    hubMenu: "Kies een hub",
+    back: "Terug",
+    hubReachable: "Bereikbaar",
+    hubUnreachable: "Niet bereikbaar",
+    noHubs: "Er is nog geen Sofabaton-hub ingesteld.",
+    activities: "Activiteiten",
+    devices: "Apparaten",
+    allOff: "Alles uit",
+    off: "Uit",
+    modeToggle: "Wisselen tussen activiteiten en apparaten",
+    numberPad: "Cijfertoetsen",
+    pullHandle: "Favorieten en macro's openen",
+    pullHandleCommands: "Commando's openen",
+    close: "Sluiten",
+    starting: "Wordt gestart",
+    poweringOff: "Wordt uitgeschakeld",
+    working: "Bezig",
+    appConnected: "De Sofabaton-app is verbonden",
+    operations: {
+      backup_restore: "Back-up wordt teruggezet",
+      cache_refresh: "Hub-cache wordt vernieuwd",
+      entity_sync: "Wordt gesynchroniseerd met de hub",
+      backup_export: "Back-up wordt gemaakt",
+      wifi_deploy: "Wifi Commands worden uitgerold"
+    }
+  },
   assist: {
     label: "Knopdrukken registreren",
     waiting: "Wachten op een knopdruk",
@@ -10783,6 +10984,35 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     deviceFallback: (id) => `\u8BBE\u5907 ${id}`,
     pickerName: "Sofabaton \u865A\u62DF\u9065\u63A7\u5668",
     pickerDescription: "\u9002\u7528\u4E8E Sofabaton X1\u3001X1S \u548C X2 \u96C6\u6210\u7684\u53EF\u914D\u7F6E\u9065\u63A7\u5668\u3002"
+  },
+  sidebar: {
+    title: "\u865A\u62DF\u9065\u63A7\u5668",
+    controlPanel: "\u63A7\u5236\u9762\u677F",
+    hubMenu: "\u9009\u62E9\u4E2D\u67A2",
+    back: "\u8FD4\u56DE",
+    hubReachable: "\u53EF\u8FDE\u63A5",
+    hubUnreachable: "\u65E0\u6CD5\u8FDE\u63A5",
+    noHubs: "\u5C1A\u672A\u8BBE\u7F6E\u4EFB\u4F55 Sofabaton \u4E2D\u67A2\u3002",
+    activities: "\u6D3B\u52A8",
+    devices: "\u8BBE\u5907",
+    allOff: "\u5168\u90E8\u5173\u95ED",
+    off: "\u5173\u95ED",
+    modeToggle: "\u5728\u6D3B\u52A8\u548C\u8BBE\u5907\u4E4B\u95F4\u5207\u6362",
+    numberPad: "\u6570\u5B57\u952E\u76D8",
+    pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
+    pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
+    close: "\u5173\u95ED",
+    starting: "\u6B63\u5728\u542F\u52A8",
+    poweringOff: "\u6B63\u5728\u5173\u95ED",
+    working: "\u5904\u7406\u4E2D",
+    appConnected: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
+    operations: {
+      backup_restore: "\u6B63\u5728\u6062\u590D\u5907\u4EFD",
+      cache_refresh: "\u6B63\u5728\u5237\u65B0\u4E2D\u67A2\u7F13\u5B58",
+      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230\u4E2D\u67A2",
+      backup_export: "\u6B63\u5728\u521B\u5EFA\u5907\u4EFD",
+      wifi_deploy: "\u6B63\u5728\u90E8\u7F72 Wifi Commands"
+    }
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",

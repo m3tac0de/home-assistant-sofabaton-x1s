@@ -51,6 +51,12 @@ export const REMOTE_CARD_CSS = `
            a drawer button from it is not a self-reference. */
         --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Dialog surface: HA's own ha-dialog chain, not the card surface.
+           Glass themes make --ha-card-background see-through and keep
+           the dialog surface readable (opaque, or translucent with a
+           --ha-dialog-surface-backdrop-filter blur). */
+        --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+        --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
         /* Glossy: a vertical curve of the same tint (bright top, dark
            bottom) plus specular inset highlights. A gradient is legal here
            because every consumer puts the token in a background shorthand. */
@@ -597,12 +603,14 @@ export const REMOTE_CARD_CSS = `
         /* The drawer floats over the keys. Glass / iOS themes make the card
            background translucent (alpha 0.3-0.4), which is fine for the card
            over a wallpaper but lets the keys underneath show through the
-           drawer. Stack the same surface four times (0.3 becomes ~0.76,
-           an opaque colour stays pixel-identical) and blur what remains. */
+           drawer. Stack the same surface twice (0.3 becomes ~0.51, 0.4
+           ~0.64, an opaque colour stays pixel-identical) and blur what
+           remains: more layers made the dark glass themes' drawer read as
+           a black slab against their translucent card. */
         --sb-drawer-layer: linear-gradient(
           var(--ha-card-background, var(--card-background-color, var(--primary-background-color))),
           var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
-        background: var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer), var(--sb-drawer-layer);
+        background: var(--sb-drawer-layer), var(--sb-drawer-layer);
         border: 1px solid var(--divider-color);
         border-top: none; 
         border-bottom-left-radius: var(--sb-group-radius);
@@ -648,8 +656,8 @@ export const REMOTE_CARD_CSS = `
         transform: scaleY(1);
         opacity: 1;
         pointer-events: auto;
-        -webkit-backdrop-filter: blur(16px);
-        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
         transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
       }
 
@@ -750,8 +758,17 @@ export const REMOTE_CARD_CSS = `
         padding: 8px 0;
       }
 
-      /* Drawer buttons (Macros/Favorites) */
+      /* Drawer buttons (Macros/Favorites). They sit on the drawer panel,
+         which is the card surface, so with flat keys an ha-card at the card
+         colour would only be separated by its border, and iOS / Material
+         You / glass themes set --ha-card-border-width to 0: the buttons
+         vanished into the panel. Raise them unconditionally with the
+         key-style tint and floored border (the key_style rules above
+         re-point the same tokens for tinted / elevated / glossy). */
       .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-border-width: 1px;
         height: 50px !important;
         font-size: 13px !important;
         border-radius: var(--sb-group-radius) !important;
@@ -765,6 +782,11 @@ export const REMOTE_CARD_CSS = `
       .drawer-btn .name,
       .drawer-btn__icon {
         color: var(--sb-key-label-color, var(--primary-color));
+      }
+      /* A name that wraps to a second line inherited the page's ~1.5
+         line-height; tighten it so two lines still sit as one label. */
+      .drawer-btn .name {
+        line-height: 1.15;
       }
 
       /* Hover/press overlay  */
@@ -1225,7 +1247,9 @@ export const REMOTE_CARD_CSS = `
 
       .sb-modal__dialog {
         width: min(420px, 90vw);
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+        -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+        backdrop-filter: var(--sb-dialog-backdrop-filter, none);
         color: var(--primary-text-color);
         border-radius: 16px;
         border: 1px solid var(--divider-color);

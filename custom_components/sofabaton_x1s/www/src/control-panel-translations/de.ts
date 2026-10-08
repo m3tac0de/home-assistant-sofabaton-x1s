@@ -68,7 +68,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     persistentCacheTitle: "Dauerhafter Cache", persistentCacheDescription: "Aktivitäts- und Gerätedaten für schnelleren Zugriff lokal speichern.", persistentCacheFooter: "GLOBAL",
     hubClickActionTitle: "Klicks im Hub-Tab", hubClickActionDescription: "Wähle aus, was beim Anklicken eines Befehls, Favoriten, Makros oder einer Taste in den Listen des Hub-Tabs geschieht.",
     hubClickActionFooter: "GLOBAL", hubClickActionOptionNone: "Nichts tun", hubClickActionOptionSend: "Befehl senden", hubClickActionOptionCopy: "Befehl kopieren",
-    sidebarPanelTitle: "Seitenleisten-Panel", sidebarPanelDescription: "Sofabaton X zur Home-Assistant-Seitenleiste hinzufügen, mit dieser Steuerzentrale ganzseitig, für alle oder nur für Administratoren.", sidebarPanelFooter: "GLOBAL",
+    sidebarPanelTitle: "Seitenleisten-Panel", sidebarPanelDescription: "Sofabaton X zur Home-Assistant-Seitenleiste hinzufügen: eine seitenfüllende Fernbedienung für alle oder nur für Administratoren, mit einem Wechsel zu diesem Control Panel für Administratoren.", sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Aus", sidebarPanelOptionAll: "Alle Benutzer", sidebarPanelOptionAdmin: "Nur Administratoren",
     renameHub: "Hub umbenennen", hubNameLabel: "Hub-Name",
     hubNameHelper: "Verwende 1–30 Zeichen: A–Z, a–z, 0–9, Leerzeichen oder einfache Satzzeichen außer dem Rückstrich (\\). Andere Zeichen werden entfernt.", renamingHub: "Hub wird umbenannt…",

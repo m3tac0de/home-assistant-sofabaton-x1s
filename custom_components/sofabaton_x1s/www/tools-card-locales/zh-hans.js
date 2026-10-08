@@ -166,7 +166,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     hubClickActionOptionSend: "\u53D1\u9001\u547D\u4EE4",
     hubClickActionOptionCopy: "\u590D\u5236\u547D\u4EE4",
     sidebarPanelTitle: "\u4FA7\u8FB9\u680F\u9762\u677F",
-    sidebarPanelDescription: "\u5C06 Sofabaton X \u6DFB\u52A0\u5230 Home Assistant \u4FA7\u8FB9\u680F\u5E76\u5168\u9875\u6253\u5F00\u6B64\u63A7\u5236\u9762\u677F\uFF0C\u9762\u5411\u6240\u6709\u7528\u6237\u6216\u4EC5\u9650\u7BA1\u7406\u5458\u3002",
+    sidebarPanelDescription: "\u5C06 Sofabaton X \u6DFB\u52A0\u5230 Home Assistant \u4FA7\u8FB9\u680F\uFF1A\u9762\u5411\u6240\u6709\u4EBA\u6216\u4EC5\u9762\u5411\u7BA1\u7406\u5458\u7684\u6574\u9875\u9065\u63A7\u5668\uFF0C\u7BA1\u7406\u5458\u53EF\u5207\u6362\u5230\u6B64\u63A7\u5236\u9762\u677F\u3002",
     sidebarPanelFooter: "\u5168\u5C40",
     sidebarPanelOptionOff: "\u5173\u95ED",
     sidebarPanelOptionAll: "\u6240\u6709\u7528\u6237",

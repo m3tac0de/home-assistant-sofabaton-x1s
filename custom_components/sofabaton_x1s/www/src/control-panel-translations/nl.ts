@@ -95,7 +95,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     hubClickActionTitle: "Klikken op het tabblad Hub",
     hubClickActionDescription: "Kies wat er gebeurt wanneer je in de lijsten op het tabblad Hub op een commando, favoriet, macro of knop klikt.",
     hubClickActionFooter: "ALGEMEEN", hubClickActionOptionNone: "Niets doen", hubClickActionOptionSend: "Commando verzenden", hubClickActionOptionCopy: "Commando kopiëren",
-    sidebarPanelTitle: "Zijbalkpaneel", sidebarPanelDescription: "Voeg Sofabaton X toe aan de zijbalk van Home Assistant, met dit bedieningspaneel op een volledige pagina, voor iedereen of alleen voor beheerders.", sidebarPanelFooter: "ALGEMEEN",
+    sidebarPanelTitle: "Zijbalkpaneel", sidebarPanelDescription: "Voeg Sofabaton X toe aan de zijbalk van Home Assistant: een paginavullende afstandsbediening voor iedereen of alleen voor beheerders, met een schakelaar naar dit Control Panel voor beheerders.", sidebarPanelFooter: "ALGEMEEN",
     sidebarPanelOptionOff: "Uit", sidebarPanelOptionAll: "Alle gebruikers", sidebarPanelOptionAdmin: "Alleen beheerders",
     renameHub: "Hub hernoemen", hubNameLabel: "Hubnaam",
     hubNameHelper: "Gebruik 1–30 tekens: A–Z, a–z, 0–9, spaties of eenvoudige leestekens, behalve de backslash (\\). Andere tekens worden verwijderd.", renamingHub: "Hub wordt hernoemd…",

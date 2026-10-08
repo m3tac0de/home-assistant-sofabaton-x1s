@@ -35,6 +35,11 @@ _TOOLS_CARD_FILENAME = "tools-card.js"
 _REMOTE_CARD_FILENAME = "remote-card.js"
 
 
+# The sidebar panel module (the remote view + the admin toggle to the
+# control panel); never a Lovelace resource.
+_SIDEBAR_PANEL_FILENAME = "sidebar-panel.js"
+
+
 _CARD_LOADER_FILENAME = "card-loader.js"
 
 
