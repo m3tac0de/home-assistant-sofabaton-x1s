@@ -40,6 +40,16 @@ test.describe("sidebar panel", () => {
     await expect(remote(page)).toHaveJSProperty("entityId", "remote.living_room");
   });
 
+  test("the hub menu stays on top of the remote when the theme blurs the header", async ({ page }) => {
+    await open(page, "header_blur=1");
+    await panel(page).locator(".hub").click();
+    const item = panel(page).locator(".menu .mi").nth(1);
+    await expect(item).toBeVisible();
+    // A real pointer click on the item (not a programmatic one) must reach it.
+    await item.click();
+    await expect(panel(page).locator(".hub .name")).toHaveText("Living room");
+  });
+
   test("a non-admin gets a plain icon + label, no tabs", async ({ page }) => {
     await open(page, "admin=0");
     await expect(panel(page).locator(".tab")).toHaveCount(0);

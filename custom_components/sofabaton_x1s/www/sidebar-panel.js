@@ -4842,6 +4842,10 @@ SofabatonXPanel.styles = i`
     .header {
       position: relative;
       flex: 0 0 auto;
+      /* Above the content, as hui-root's header is: a theme's backdrop filter
+         makes the header its own stacking layer, and without this the remote,
+         painted later, would sit on top of the open hub menu. */
+      z-index: 4;
       background-color: var(--app-header-background-color, var(--primary-color));
       color: var(--app-header-text-color, white);
       backdrop-filter: var(--app-header-backdrop-filter, none);

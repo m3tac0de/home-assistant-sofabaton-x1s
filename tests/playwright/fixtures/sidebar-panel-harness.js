@@ -257,6 +257,8 @@ panel.hass = hass;
 // `path=/control-panel` opens the panel on a tab's own path, as HA routes it.
 if (params.get("path")) panel.route = { prefix: "/sofabaton-x", path: params.get("path") };
 if (params.get("theme")) setTheme(params.get("theme"));
+// `header_blur=1` gives the header a backdrop filter, as glass themes do.
+if (params.get("header_blur")) document.documentElement.style.setProperty("--app-header-backdrop-filter", "blur(10px)");
 
 // Audit scenarios (scripts/audit-contrast.mjs `--target sidebar`): "<hub>"
 // or "<hub>+<sheet>" with hub = x1s | x2 and sheet = favorites | macros |
