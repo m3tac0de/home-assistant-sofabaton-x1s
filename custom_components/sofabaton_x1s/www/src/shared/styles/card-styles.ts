@@ -57,6 +57,16 @@ export const cardStyles = [secondaryTabStyles, css`
        host, which wins over these no-JS fallbacks. */
     --sb-scheme-ground: #fff;
     --sb-popup-surface: var(--sb-field-surface);
+    /* Dialog surface. Glass themes put their transparency on
+       --ha-card-background and keep the dialog surface readable, so a
+       dialog painted with the card surface showed the page through it.
+       Mirror HA's own ha-dialog: its surface is
+       --ha-dialog-surface-background, then --mdc-theme-surface (HA sets
+       it to the opaque --card-background-color), with the theme's
+       --ha-dialog-surface-backdrop-filter (blur) when the theme makes
+       the dialog surface translucent too. */
+    --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+    --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
   }
   ha-card {
     --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
@@ -584,7 +594,9 @@ export const cardStyles = [secondaryTabStyles, css`
     padding: 16px;
     border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
     border: 1px solid var(--divider-color);
-    background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+    background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+    -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+    backdrop-filter: var(--sb-dialog-backdrop-filter, none);
     box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
   }
   .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
@@ -684,7 +696,7 @@ export const cardStyles = [secondaryTabStyles, css`
      (backup-tab-styles.ts): hosts that render inside the card's own shadow
      root (the Settings tab's hub rename) get the same rules here. */
   .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
   .dialog.small { width: min(500px, calc(100vw - 36px)); }
   .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
   .dialog-header { border-bottom: 1px solid var(--divider-color); }

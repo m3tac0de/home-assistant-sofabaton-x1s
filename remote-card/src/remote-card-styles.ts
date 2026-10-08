@@ -51,6 +51,12 @@ export const REMOTE_CARD_CSS = `
            a drawer button from it is not a self-reference. */
         --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Dialog surface: HA's own ha-dialog chain, not the card surface.
+           Glass themes make --ha-card-background see-through and keep
+           the dialog surface readable (opaque, or translucent with a
+           --ha-dialog-surface-backdrop-filter blur). */
+        --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+        --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
         /* Glossy: a vertical curve of the same tint (bright top, dark
            bottom) plus specular inset highlights. A gradient is legal here
            because every consumer puts the token in a background shorthand. */
@@ -1241,7 +1247,9 @@ export const REMOTE_CARD_CSS = `
 
       .sb-modal__dialog {
         width: min(420px, 90vw);
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+        -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+        backdrop-filter: var(--sb-dialog-backdrop-filter, none);
         color: var(--primary-text-color);
         border-radius: 16px;
         border: 1px solid var(--divider-color);

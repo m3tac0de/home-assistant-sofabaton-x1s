@@ -70,6 +70,36 @@ test.describe("sidebar panel", () => {
     await expect(remote(page)).toHaveJSProperty("entityId", "remote.souterrain");
   });
 
+  for (const [name, query] of [["menu button", ""], ["back arrow", "path=/control-panel"], ["single hub", "hubs=1"]]) {
+    test(`the tab labels settle at every width (${name}), no flicker in the band where they drop`, async ({ page }) => {
+      // The strip's share of the row and the labelled probe must both be the same width in
+      // either mode; when one of them was not, the labels flickered endlessly in a 16px band.
+      await page.setViewportSize({ width: 640, height: 800 });
+      await page.goto(`${HARNESS}${query ? `?${query}` : ""}`);
+      // `.toolbar .tabs`: the control panel subview has a tab strip of its own inside.
+      await expect(panel(page).locator(".toolbar .tabs")).not.toHaveClass(/compact/);
+      await page.evaluate(() => {
+        const tabs = document.querySelector("sofabaton-x-panel").shadowRoot.querySelector(".toolbar .tabs");
+        window.__compactFlips = 0;
+        let last = tabs.classList.contains("compact");
+        new MutationObserver(() => {
+          const now = tabs.classList.contains("compact");
+          if (now !== last) { window.__compactFlips += 1; last = now; }
+        }).observe(tabs, { attributes: true, attributeFilter: ["class"] });
+      });
+      let dropped = false;
+      for (let width = 640; width >= 340; width -= 6) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.waitForTimeout(100);
+        const flips = await page.evaluate(() => { const n = window.__compactFlips; window.__compactFlips = 0; return n; });
+        expect(flips, `compact flips at ${width}px`).toBeLessThanOrEqual(1);
+        if (flips === 1) dropped = true;
+      }
+      expect(dropped).toBe(true);
+      await expect(panel(page).locator(".toolbar .tabs")).toHaveClass(/compact/);
+    });
+  }
+
   test("X1S: unbound keys are ghosts, the rocker with every segment unbound fades as one", async ({ page }) => {
     await open(page);
     const r = remote(page);

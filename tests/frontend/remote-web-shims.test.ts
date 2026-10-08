@@ -66,13 +66,17 @@ test("the palette defines the variables the card's styles read, in light and dar
   for (const source of styleSources) {
     for (const match of source.matchAll(/var\(--([a-z0-9-]+)/g)) used.add(match[1]);
   }
-  // HA never defines these; the ha-card shim carries their fallbacks.
+  // HA never defines these; the ha-card shim carries their fallbacks. The
+  // dialog-surface pair is theme-only too (ha-dialog falls back to
+  // --mdc-theme-surface / none), spelled in the --sb-dialog-* tokens.
   const shimFallbacks = new Set([
     "ha-card-background",
     "ha-card-border-color",
     "ha-card-border-radius",
     "ha-card-border-width",
     "ha-card-box-shadow",
+    "ha-dialog-surface-background",
+    "ha-dialog-surface-backdrop-filter",
   ]);
   const haVars = [...used].filter(
     (name) => !/^(sb|remote|inline|mf|c|op|backup|tools|secondary-connected)-/.test(name) && !shimFallbacks.has(name),

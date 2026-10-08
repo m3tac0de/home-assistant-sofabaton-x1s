@@ -4888,7 +4888,10 @@ SofabatonXPanel.styles = i`
     }
     :host([narrow]) .toolbar { padding: 0 4px; }
     .tabs {
-      flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; align-items: stretch; position: relative; overflow: hidden;
+      /* Basis 0, never auto: the strip's share of the row must not depend on what
+         it currently shows (labels or icons), or the fit test below feeds back
+         into itself. It gets whatever the buttons and the hub chip leave over. */
+      flex: 1 1 0; min-width: 0; align-self: stretch; display: flex; align-items: stretch; position: relative; overflow: hidden;
       margin-inline-start: 4px;
       --tab-indicator: var(--ha-tab-indicator-color, var(--app-header-selection-bar-color, var(--app-header-text-color, white)));
       --tab-active: var(--ha-tab-active-text-color, var(--app-header-text-color, white));
@@ -4906,9 +4909,12 @@ SofabatonXPanel.styles = i`
     .title { padding: 0 8px; min-width: 0; }
     .title .label { overflow: hidden; text-overflow: ellipsis; }
     :host(:not([narrow])) .title { margin-inline-start: var(--ha-space-4, 16px); }
-    /* The labels drop as soon as they stop fitting; the probe is the labelled strip, measured off-screen. */
-    .tabs.compact .label { display: none; }
-    .tabs.compact .tab { padding: 0 12px; }
+    /* The labels drop as soon as they stop fitting; the probe is the labelled strip, measured off-screen.
+       Both compact rules hit the strip's own children only (child combinator): the probe's tabs keep
+       their labelled padding, so the yardstick is the same width in both modes. Letting the probe
+       shrink in compact mode made the labels flicker in the 16px band between the two widths. */
+    .tabs.compact > .tab .label, .tabs.compact > .title .label { display: none; }
+    .tabs.compact > .tab { padding: 0 12px; }
     .probe { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; display: inline-flex; white-space: nowrap; }
     button {
       font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
