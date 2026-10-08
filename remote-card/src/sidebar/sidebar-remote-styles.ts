@@ -320,8 +320,9 @@ export const sidebarRemoteStyles = css`
   }
 
   /* ---------- feedback ---------- */
+  /* z-index above the sheet (7): the sheet's tiles and rows ring too */
   .ring {
-    position: absolute; border-radius: 50%; border: 2px solid var(--primary-color); pointer-events: none; z-index: 5;
+    position: absolute; border-radius: 50%; border: 2px solid var(--primary-color); pointer-events: none; z-index: 8;
     opacity: 0.55; animation: ring 520ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards; will-change: transform, opacity; isolation: isolate;
   }
   .ring.err { border-color: var(--sb-err); animation-name: ring-err; }

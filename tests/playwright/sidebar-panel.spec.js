@@ -133,6 +133,58 @@ test.describe("sidebar panel", () => {
     expect((await calls()).filter((c) => c.command === 182)).toEqual([]);
   });
 
+  test("drawer items sink on press and ring above the sheet from the tap point; a drifted release sends nothing", async ({ page }) => {
+    await open(page);
+    const r = remote(page);
+    const calls = () => page.evaluate(() => window.__sidebarHarness.serviceCalls.length);
+    await r.locator(".pull").click();
+    await expect(r.locator(".app")).toHaveClass(/open/);
+    const tile = r.locator(".tile").first();
+    // hover() waits for the sheet's slide-in to settle before the raw mouse.down below.
+    await tile.hover();
+    const box = await tile.boundingBox();
+    // Press near the tile's right end: the ring must start there, a key's size, not from the whole tile.
+    const x = box.x + box.width - 20;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await expect(tile).toHaveClass(/pressed/);
+    await page.mouse.up();
+    await expect(tile).not.toHaveClass(/pressed/);
+    const ring = await r.locator(".ring").first().evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      const sheet = el.parentElement.querySelector(".sheet");
+      return { z: Number(getComputedStyle(el).zIndex), sheetZ: Number(getComputedStyle(sheet).zIndex), w: el.offsetWidth, cx: b.x + b.width / 2, cy: b.y + b.height / 2 };
+    });
+    expect(ring.z).toBeGreaterThan(ring.sheetZ);
+    expect(ring.w).toBe(92);
+    expect(Math.abs(ring.cx - x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(ring.cy - y)).toBeLessThanOrEqual(2);
+    await expect.poll(calls).toBe(1);
+    // A press that leaves the tile before release sinks and un-sinks without sending.
+    await page.mouse.move(box.x + 10, y);
+    await page.mouse.down();
+    await expect(tile).toHaveClass(/pressed/);
+    await page.mouse.move(box.x + 10, box.y + box.height + 60);
+    await expect(tile).not.toHaveClass(/pressed/);
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    expect(await calls()).toBe(1);
+    // The activity rows sink too.
+    await r.locator(".close").click();
+    await r.locator(".activity .text").click();
+    const row = r.locator(".row", { hasText: "Watch TV" });
+    await row.hover();
+    const rb = await row.boundingBox();
+    await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
+    await page.mouse.down();
+    await expect(row).toHaveClass(/pressed/);
+    // The release is the pick: the sheet closes and the rows go with it.
+    await page.mouse.up();
+    await expect(r.locator(".app")).not.toHaveClass(/open/);
+    await expect(r.locator(".activity .eyebrow")).toContainText("Starting");
+  });
+
   test("the activity picker starts an activity and the remote veils until the hub reports it", async ({ page }) => {
     await open(page, "switch_ms=700");
     const r = remote(page);

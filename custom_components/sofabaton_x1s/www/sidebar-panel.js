@@ -3102,11 +3102,17 @@ var SidebarPressController = class {
       if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
       const el = this.keyElement(ev);
       if (!el) return;
+      const at = { x: ev.clientX, y: ev.clientY };
+      if (!el.hasAttribute("data-key")) {
+        if (el.disabled) return;
+        this.holds.set(ev.pointerId, { el, id: -1, kind: "visual", repeat: null, long: null, at });
+        this.handlers.onPressed(el, true);
+        return;
+      }
       const key = this.handlers.resolve(el);
       if (!key || !this.handlers.isEnabled(key.id)) return;
       ev.preventDefault();
       const kind = sidebarHoldKind(key.key, this.handlers.hasLongPress(key.id));
-      const at = { x: ev.clientX, y: ev.clientY };
       const hold = { el, id: key.id, kind, repeat: null, long: null, at };
       if (kind === "repeat") {
         hold.repeat = new HoldRepeatTimer((index) => {
@@ -3135,6 +3141,7 @@ var SidebarPressController = class {
       this.holds.delete(ev.pointerId);
       this.handlers.onPressed(hold.el, false);
       const fired = this.stopTimers(hold);
+      if (hold.kind === "visual") return;
       if (ev.type !== "pointerup") return;
       if (fired) return;
       if (!this.pointerOver(hold.el, ev)) return;
@@ -3148,6 +3155,12 @@ var SidebarPressController = class {
       this.holds.delete(ev.pointerId);
       this.handlers.onPressed(hold.el, false);
       this.stopTimers(hold);
+    };
+    this.onMove = (ev) => {
+      const hold = this.holds.get(ev.pointerId);
+      if (!hold || hold.kind !== "visual" || this.pointerOver(hold.el, ev)) return;
+      this.holds.delete(ev.pointerId);
+      this.handlers.onPressed(hold.el, false);
     };
     this.onKey = (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") return;
@@ -3167,6 +3180,7 @@ var SidebarPressController = class {
       root.addEventListener(type, this.onEnd, { capture: true });
     }
     root.addEventListener("pointerleave", this.onLeave, { capture: true });
+    root.addEventListener("pointermove", this.onMove, { capture: true });
     root.addEventListener("keydown", this.onKey);
     root.addEventListener("contextmenu", this.onContextMenu);
   }
@@ -3174,11 +3188,11 @@ var SidebarPressController = class {
     for (const hold of this.holds.values()) this.stopTimers(hold);
     this.holds.clear();
   }
-  /** The element under a pointer event that is a key, or null. */
+  /** The element under a pointer event that is a key or a `[data-press]` item, or null. */
   keyElement(ev) {
     const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
     for (const node of path) {
-      if (node instanceof Element && node.hasAttribute("data-key")) return node;
+      if (node instanceof Element && (node.hasAttribute("data-key") || node.hasAttribute("data-press"))) return node;
       if (node === this.root) break;
     }
     return null;
@@ -3528,8 +3542,9 @@ var sidebarRemoteStyles = i`
   }
 
   /* ---------- feedback ---------- */
+  /* z-index above the sheet (7): the sheet's tiles and rows ring too */
   .ring {
-    position: absolute; border-radius: 50%; border: 2px solid var(--primary-color); pointer-events: none; z-index: 5;
+    position: absolute; border-radius: 50%; border: 2px solid var(--primary-color); pointer-events: none; z-index: 8;
     opacity: 0.55; animation: ring 520ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards; will-change: transform, opacity; isolation: isolate;
   }
   .ring.err { border-color: var(--sb-err); animation-name: ring-err; }
@@ -3877,6 +3892,10 @@ var NUMPAD_ORDER = [
   { id: ID.NUM_0, label: "0" },
   { id: ID.NUM_ENTER, label: "E" }
 ];
+function clickPoint(ev) {
+  if (!(ev instanceof MouseEvent) || !ev.detail) return void 0;
+  return { x: ev.clientX, y: ev.clientY };
+}
 function deviceClassIcon(deviceClass) {
   const cls = String(deviceClass ?? "").toLowerCase();
   if (cls.includes("wifi") || cls.includes("wi-fi") || cls.includes("network")) return "mdi:wifi";
@@ -4033,7 +4052,7 @@ var SofabatonSidebarRemote = class extends i4 {
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
       onLongPress: (id, el, at) => this._sendLongPress(id, el, at),
       onPressed: (el, pressed) => this._setPressed(el, pressed),
-      haptic: () => this.dispatchEvent(new CustomEvent("haptic", { detail: "light", bubbles: true, composed: true }))
+      haptic: () => this._haptic()
     });
     this._applyTheme();
     if (typeof ResizeObserver !== "undefined") {
@@ -4100,17 +4119,18 @@ var SofabatonSidebarRemote = class extends i4 {
     this._control(this._store.sendLongPress(id, this._scopeFor(id)), el);
   }
   /** The transmit ring: a thin accent circle expanding out of the key. On
-   *  the wheel's quadrants (a quarter of the disc each) it starts where the
-   *  finger was, at a key's size, not from the whole quadrant. */
+   *  the wheel's quadrants (a quarter of the disc each) and on the sheet's
+   *  wide tiles and rows it starts where the finger was, at a key's size,
+   *  not from the whole quadrant or row. */
   _ring(el, failed = false, at) {
     const app = this.renderRoot.querySelector(".app");
     if (!app || !el) return;
     const base = app.getBoundingClientRect();
     const r4 = el.getBoundingClientRect();
-    const quadrant = el.classList.contains("dir");
-    const d3 = quadrant ? 92 : Math.max(r4.width, r4.height) * 1.1;
-    const cx = quadrant && at ? at.x : r4.left + r4.width / 2;
-    const cy = quadrant && at ? at.y : r4.top + r4.height / 2;
+    const fromPoint = el.classList.contains("dir") || el.closest(".sheet") != null;
+    const d3 = fromPoint ? 92 : Math.max(r4.width, r4.height) * 1.1;
+    const cx = fromPoint && at ? at.x : r4.left + r4.width / 2;
+    const cy = fromPoint && at ? at.y : r4.top + r4.height / 2;
     const ring = document.createElement("div");
     ring.className = failed ? "ring err" : "ring";
     ring.style.cssText = `left:${cx - base.left - d3 / 2}px;top:${cy - base.top - d3 / 2}px;width:${d3}px;height:${d3}px`;
@@ -4123,6 +4143,9 @@ var SofabatonSidebarRemote = class extends i4 {
     this._ring(el, true);
     this.dispatchEvent(new CustomEvent("sidebar-remote-failed", { bubbles: true, composed: true }));
     this.requestUpdate();
+  }
+  _haptic() {
+    this.dispatchEvent(new CustomEvent("haptic", { detail: "light", bubbles: true, composed: true }));
   }
   _setPressed(el, pressed) {
     el.classList.toggle("pressed", pressed);
@@ -4190,7 +4213,7 @@ var SofabatonSidebarRemote = class extends i4 {
   }
   _pickActivity(label) {
     this._openSheet(null);
-    this.dispatchEvent(new CustomEvent("haptic", { detail: "light", bubbles: true, composed: true }));
+    this._haptic();
     this._control(this._store.setActivity(label));
   }
   _pickDevice(id) {
@@ -4376,12 +4399,12 @@ var SofabatonSidebarRemote = class extends i4 {
       if (!favorites.length && !custom.length) return b2`<div class="empty">${s4.card.noFavorites}</div>`;
       return b2`<div class="grid">
         ${favorites.map(({ raw, model }) => b2`
-          <button class="tile" type="button" @click=${(ev) => this._drawerItem("favorites", model, raw, ev.currentTarget)}>
+          <button class="tile" type="button" data-press @click=${(ev) => this._drawerItem("favorites", model, raw, ev.currentTarget, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
           </button>`)}
         ${custom.map(({ model }) => b2`
-          <button class="tile" type="button" @click=${(ev) => this._customFavorite(model, ev.currentTarget)}>
+          <button class="tile" type="button" data-press @click=${(ev) => this._customFavorite(model, ev.currentTarget, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
           </button>`)}
@@ -4392,7 +4415,7 @@ var SofabatonSidebarRemote = class extends i4 {
       if (!macros.length) return b2`<div class="empty">${s4.card.noMacros}</div>`;
       return b2`<div class="list">
         ${macros.map(({ raw, model }) => b2`
-          <button class="lrow" type="button" @click=${(ev) => this._drawerItem("macros", model, raw, ev.currentTarget)}>
+          <button class="lrow" type="button" data-press @click=${(ev) => this._drawerItem("macros", model, raw, ev.currentTarget, clickPoint(ev))}>
             <ha-icon class="li" .icon=${model.icon ?? "mdi:playlist-play"}></ha-icon>
             <span class="t"><b>${model.label}</b></span>
             <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
@@ -4405,7 +4428,7 @@ var SofabatonSidebarRemote = class extends i4 {
       if (!commands.length) return b2`<div class="empty">${derived.keymapLoading ? s4.sidebar.working : s4.card.noCommands}</div>`;
       return b2`<div class="list">
         ${commands.map((command) => b2`
-          <button class="lrow" type="button" @click=${(ev) => this._command(command.command_id, ev.currentTarget)}>
+          <button class="lrow" type="button" data-press @click=${(ev) => this._command(command.command_id, ev.currentTarget, clickPoint(ev))}>
             <ha-icon class="li" .icon=${deviceIcon}></ha-icon>
             <span class="t"><b>${command.name}</b></span>
             <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
@@ -4415,7 +4438,7 @@ var SofabatonSidebarRemote = class extends i4 {
     if (pane === "devices") {
       return b2`<div class="rows">
         ${devices.map((device) => b2`
-          <button class=${e5({ row: true, current: device.id === derived.deviceId })} type="button" @click=${() => this._pickDevice(device.id)}>
+          <button class=${e5({ row: true, current: device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             <span class="ic">${icon(deviceClassIcon(device.device_class))}</span>
             <span class="name">${device.name}</span>
             <span class="st"></span>
@@ -4425,26 +4448,29 @@ var SofabatonSidebarRemote = class extends i4 {
     const currentId = store.currentActivityId();
     return b2`<div class="rows">
       ${derived.activities.map((activity) => b2`
-        <button class=${e5({ row: true, current: activity.id === currentId })} type="button" @click=${() => this._pickActivity(activity.name)}>
+        <button class=${e5({ row: true, current: activity.id === currentId })} type="button" data-press @click=${() => this._pickActivity(activity.name)}>
           <span class="ic">${icon("mdi:movie-open-outline")}</span>
           <span class="name">${activity.name}</span>
           <span class="st"></span>
         </button>`)}
     </div>`;
   }
-  _drawerItem(itemType, model, raw, el) {
+  _drawerItem(itemType, model, raw, el, at) {
+    this._haptic();
     this._store.triggerCommandPulse();
-    this._ring(el);
+    this._ring(el, false, at);
     this._control(this._store.sendDrawerItem(itemType, model.commandId, model.deviceId, raw), el);
   }
-  _customFavorite(model, el) {
+  _customFavorite(model, el, at) {
+    this._haptic();
     this._store.triggerCommandPulse();
-    this._ring(el);
+    this._ring(el, false, at);
     this._control(this._store.sendCustomFavoriteCommand(model.commandId, model.deviceId), el);
   }
-  _command(commandId, el) {
+  _command(commandId, el, at) {
+    this._haptic();
     this._store.triggerCommandPulse();
-    this._ring(el);
+    this._ring(el, false, at);
     this._control(this._store.sendCommand(commandId, this._store.currentDeviceId()), el);
   }
 };

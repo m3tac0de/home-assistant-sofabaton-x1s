@@ -44,6 +44,12 @@ const NUMPAD_ORDER: Array<{ id: number; label: string }> = [
   { id: ID.NUM_DASH, label: "−" }, { id: ID.NUM_0, label: "0" }, { id: ID.NUM_ENTER, label: "E" },
 ];
 
+/** Where a click landed, or undefined for a keyboard activation (detail 0). */
+function clickPoint(ev: Event): { x: number; y: number } | undefined {
+  if (!(ev instanceof MouseEvent) || !ev.detail) return undefined;
+  return { x: ev.clientX, y: ev.clientY };
+}
+
 /** Device-class icon for the drawers (the hub's class names are free text). */
 function deviceClassIcon(deviceClass: unknown): string {
   const cls = String(deviceClass ?? "").toLowerCase();
@@ -229,7 +235,7 @@ export class SofabatonSidebarRemote extends LitElement {
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
       onLongPress: (id, el, at) => this._sendLongPress(id, el, at),
       onPressed: (el, pressed) => this._setPressed(el, pressed),
-      haptic: () => this.dispatchEvent(new CustomEvent("haptic", { detail: "light", bubbles: true, composed: true })),
+      haptic: () => this._haptic(),
     });
     this._applyTheme();
     if (typeof ResizeObserver !== "undefined") {
@@ -312,18 +318,19 @@ export class SofabatonSidebarRemote extends LitElement {
   }
 
   /** The transmit ring: a thin accent circle expanding out of the key. On
-   *  the wheel's quadrants (a quarter of the disc each) it starts where the
-   *  finger was, at a key's size, not from the whole quadrant. */
+   *  the wheel's quadrants (a quarter of the disc each) and on the sheet's
+   *  wide tiles and rows it starts where the finger was, at a key's size,
+   *  not from the whole quadrant or row. */
   private _ring(el: Element | null, failed = false, at?: { x: number; y: number }): void {
     const app = this.renderRoot.querySelector(".app") as HTMLElement | null;
     if (!app || !el) return;
     const base = app.getBoundingClientRect();
     const r = el.getBoundingClientRect();
-    const quadrant = el.classList.contains("dir");
+    const fromPoint = el.classList.contains("dir") || el.closest(".sheet") != null;
     // 92px: the bare keys' press pill, so the wheel's ring matches theirs
-    const d = quadrant ? 92 : Math.max(r.width, r.height) * 1.1;
-    const cx = quadrant && at ? at.x : r.left + r.width / 2;
-    const cy = quadrant && at ? at.y : r.top + r.height / 2;
+    const d = fromPoint ? 92 : Math.max(r.width, r.height) * 1.1;
+    const cx = fromPoint && at ? at.x : r.left + r.width / 2;
+    const cy = fromPoint && at ? at.y : r.top + r.height / 2;
     const ring = document.createElement("div");
     ring.className = failed ? "ring err" : "ring";
     ring.style.cssText = `left:${cx - base.left - d / 2}px;top:${cy - base.top - d / 2}px;width:${d}px;height:${d}px`;
@@ -337,6 +344,10 @@ export class SofabatonSidebarRemote extends LitElement {
     this._ring(el, true);
     this.dispatchEvent(new CustomEvent("sidebar-remote-failed", { bubbles: true, composed: true }));
     this.requestUpdate();
+  }
+
+  private _haptic(): void {
+    this.dispatchEvent(new CustomEvent("haptic", { detail: "light", bubbles: true, composed: true }));
   }
 
   private _setPressed(el: Element, pressed: boolean): void {
@@ -414,7 +425,7 @@ export class SofabatonSidebarRemote extends LitElement {
 
   private _pickActivity(label: string): void {
     this._openSheet(null);
-    this.dispatchEvent(new CustomEvent("haptic", { detail: "light", bubbles: true, composed: true }));
+    this._haptic();
     this._control(this._store.setActivity(label));
   }
 
@@ -639,12 +650,12 @@ export class SofabatonSidebarRemote extends LitElement {
       if (!favorites.length && !custom.length) return html`<div class="empty">${s.card.noFavorites}</div>`;
       return html`<div class="grid">
         ${favorites.map(({ raw, model }) => html`
-          <button class="tile" type="button" @click=${(ev: Event) => this._drawerItem("favorites", model, raw, ev.currentTarget as Element)}>
+          <button class="tile" type="button" data-press @click=${(ev: Event) => this._drawerItem("favorites", model, raw, ev.currentTarget as Element, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
           </button>`)}
         ${custom.map(({ model }) => html`
-          <button class="tile" type="button" @click=${(ev: Event) => this._customFavorite(model, ev.currentTarget as Element)}>
+          <button class="tile" type="button" data-press @click=${(ev: Event) => this._customFavorite(model, ev.currentTarget as Element, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
           </button>`)}
@@ -655,7 +666,7 @@ export class SofabatonSidebarRemote extends LitElement {
       if (!macros.length) return html`<div class="empty">${s.card.noMacros}</div>`;
       return html`<div class="list">
         ${macros.map(({ raw, model }) => html`
-          <button class="lrow" type="button" @click=${(ev: Event) => this._drawerItem("macros", model, raw, ev.currentTarget as Element)}>
+          <button class="lrow" type="button" data-press @click=${(ev: Event) => this._drawerItem("macros", model, raw, ev.currentTarget as Element, clickPoint(ev))}>
             <ha-icon class="li" .icon=${model.icon ?? "mdi:playlist-play"}></ha-icon>
             <span class="t"><b>${model.label}</b></span>
             <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
@@ -668,7 +679,7 @@ export class SofabatonSidebarRemote extends LitElement {
       if (!commands.length) return html`<div class="empty">${derived.keymapLoading ? s.sidebar.working : s.card.noCommands}</div>`;
       return html`<div class="list">
         ${commands.map((command) => html`
-          <button class="lrow" type="button" @click=${(ev: Event) => this._command(command.command_id, ev.currentTarget as Element)}>
+          <button class="lrow" type="button" data-press @click=${(ev: Event) => this._command(command.command_id, ev.currentTarget as Element, clickPoint(ev))}>
             <ha-icon class="li" .icon=${deviceIcon}></ha-icon>
             <span class="t"><b>${command.name}</b></span>
             <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
@@ -678,7 +689,7 @@ export class SofabatonSidebarRemote extends LitElement {
     if (pane === "devices") {
       return html`<div class="rows">
         ${devices.map((device) => html`
-          <button class=${classMap({ row: true, current: device.id === derived.deviceId })} type="button" @click=${() => this._pickDevice(device.id)}>
+          <button class=${classMap({ row: true, current: device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             <span class="ic">${icon(deviceClassIcon(device.device_class))}</span>
             <span class="name">${device.name}</span>
             <span class="st"></span>
@@ -689,7 +700,7 @@ export class SofabatonSidebarRemote extends LitElement {
     const currentId = store.currentActivityId();
     return html`<div class="rows">
       ${derived.activities.map((activity) => html`
-        <button class=${classMap({ row: true, current: activity.id === currentId })} type="button" @click=${() => this._pickActivity(activity.name)}>
+        <button class=${classMap({ row: true, current: activity.id === currentId })} type="button" data-press @click=${() => this._pickActivity(activity.name)}>
           <span class="ic">${icon("mdi:movie-open-outline")}</span>
           <span class="name">${activity.name}</span>
           <span class="st"></span>
@@ -697,21 +708,24 @@ export class SofabatonSidebarRemote extends LitElement {
     </div>`;
   }
 
-  private _drawerItem(itemType: "favorites" | "macros", model: ReturnType<typeof drawerButtonModel>, raw: Record<string, unknown>, el: Element): void {
+  private _drawerItem(itemType: "favorites" | "macros", model: ReturnType<typeof drawerButtonModel>, raw: Record<string, unknown>, el: Element, at?: { x: number; y: number }): void {
+    this._haptic();
     this._store.triggerCommandPulse();
-    this._ring(el);
+    this._ring(el, false, at);
     this._control(this._store.sendDrawerItem(itemType, model.commandId, model.deviceId, raw), el);
   }
 
-  private _customFavorite(model: ReturnType<typeof customFavoriteButtonModel>, el: Element): void {
+  private _customFavorite(model: ReturnType<typeof customFavoriteButtonModel>, el: Element, at?: { x: number; y: number }): void {
+    this._haptic();
     this._store.triggerCommandPulse();
-    this._ring(el);
+    this._ring(el, false, at);
     this._control(this._store.sendCustomFavoriteCommand(model.commandId, model.deviceId), el);
   }
 
-  private _command(commandId: number, el: Element): void {
+  private _command(commandId: number, el: Element, at?: { x: number; y: number }): void {
+    this._haptic();
     this._store.triggerCommandPulse();
-    this._ring(el);
+    this._ring(el, false, at);
     this._control(this._store.sendCommand(commandId, this._store.currentDeviceId()), el);
   }
 }
