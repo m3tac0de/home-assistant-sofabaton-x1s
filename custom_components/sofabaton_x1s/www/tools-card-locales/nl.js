@@ -169,7 +169,7 @@ var TOOLS_CARD_STRINGS_NL = {
     hubClickActionOptionSend: "Commando verzenden",
     hubClickActionOptionCopy: "Commando kopi\xEBren",
     sidebarPanelTitle: "Zijbalkpaneel",
-    sidebarPanelDescription: "Voeg Sofabaton X toe aan de zijbalk van Home Assistant: een paginavullende afstandsbediening voor iedereen of alleen voor beheerders, met een schakelaar naar dit Control Panel voor beheerders.",
+    sidebarPanelDescription: "Voeg Sofabaton X toe aan de zijbalk van Home Assistant: een paginavullende afstandsbediening voor iedereen of alleen voor beheerders, met een schakelaar naar dit bedieningspaneel voor beheerders.",
     sidebarPanelFooter: "ALGEMEEN",
     sidebarPanelOptionOff: "Uit",
     sidebarPanelOptionAll: "Alle gebruikers",

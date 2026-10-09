@@ -60,7 +60,7 @@ export function sidebarBusyState(input: SidebarBusyInput): SidebarBusyState {
       inert: true,
       busy: true,
       reason: "operation",
-      label: strings.operations[operation] ?? runtime.label ?? strings.working,
+      label: strings.operations[operation] ?? strings.working,
     };
   }
   if (runtime?.kind === "app_connected") {

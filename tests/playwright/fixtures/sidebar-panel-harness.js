@@ -126,7 +126,7 @@ const KEYMAPS = {
 
 const params = new URL(window.location.href).searchParams;
 // `hubs=1` leaves only the X1S so the single-hub header can be exercised.
-const VISIBLE_HUBS = params.get("hubs") === "1" ? HUBS.filter((hub) => hub.entry_id === "x1s-entry") : HUBS;
+const VISIBLE_HUBS = params.get("hubs") === "0" ? [] : params.get("hubs") === "1" ? HUBS.filter((hub) => hub.entry_id === "x1s-entry") : HUBS;
 const state = {
   admin: params.get("admin") !== "0",
   runtime: params.get("runtime") || "idle",

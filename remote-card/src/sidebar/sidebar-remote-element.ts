@@ -107,6 +107,7 @@ export class SofabatonSidebarRemote extends LitElement {
   private readonly _store: RemoteCardStore;
   private _hass: HassLike | null = null;
   private _entityId = "";
+  private _hubConnected = true;
   private _runtime: SidebarRuntimeState = null;
   private _lastThemesRef: unknown = undefined;
   private _press: SidebarPressController | null = null;
@@ -132,6 +133,14 @@ export class SofabatonSidebarRemote extends LitElement {
   }
 
   // ---------- host API ----------
+
+  set hubConnected(value: boolean) {
+    if (value === this._hubConnected) return;
+    this._hubConnected = value;
+    this.requestUpdate();
+  }
+
+  get hubConnected(): boolean { return this._hubConnected; }
 
   set hass(value: HassLike) {
     this._hass = value;
@@ -387,7 +396,7 @@ export class SofabatonSidebarRemote extends LitElement {
     const s = str();
     return sidebarBusyState({
       mode: derived.mode,
-      isUnavailable: derived.isUnavailable,
+      isUnavailable: derived.isUnavailable || !this._hubConnected,
       activityLoading: this._store.activityLoadingActive(),
       loadPending: derived.loadPending,
       isPoweredOff: derived.isPoweredOff,
@@ -468,7 +477,7 @@ export class SofabatonSidebarRemote extends LitElement {
 
   protected render(): TemplateResult {
     if (!this._entityId) {
-      return html`<div class="app"><div class="remote"><div class="sp"></div><div class="notice">${str().sidebar.noHubs}</div><div class="sp"></div></div></div>`;
+      return html`<div class="app"><div class="remote"><div class="sp"></div><div class="notice">${str().sidebar.remoteUnavailable}</div><div class="sp"></div></div></div>`;
     }
     const store = this._store;
     const derived = store.deriveRuntimeState();
@@ -497,7 +506,9 @@ export class SofabatonSidebarRemote extends LitElement {
       : store.currentActivityId() != null;
     const powerLabel = deviceMode ? s.card.powerButton : s.sidebar.allOff;
     const modeAvailable = store.deviceModeAvailable();
-    const currentName = deviceMode
+    const currentName = derived.isUnavailable || !this._hubConnected
+      ? s.sidebar.hubUnavailable
+      : deviceMode
       ? (store.deviceNameForId(derived.deviceId) ?? s.card.selectDevice)
       : derived.selectState?.resolvedValue || derived.currentLabel || s.card.poweredOff;
     const eyebrow = busy.label ?? (deviceMode ? s.card.deviceSelectLabel : s.card.activitySelectLabel);
@@ -627,7 +638,8 @@ export class SofabatonSidebarRemote extends LitElement {
     const headed = pane === "activities" || pane === "devices" || pane === "commands";
     const icon = (name: string) => html`<ha-icon .icon=${name}></ha-icon>`;
     const close = html`<button class="close" type="button" aria-label=${s.sidebar.close} @click=${() => this._openSheet(null)}>${icon("mdi:close")}</button>`;
-    const title = pane === "devices" ? s.sidebar.devices : pane === "commands" ? s.card.commandsTab : s.sidebar.activities;
+    const title = pane === "devices" ? s.sidebar.devices : pane === "commands" ? s.card.commandsTab
+      : pane === "favorites" ? s.card.favoritesTab : pane === "macros" ? s.card.macrosTab : s.sidebar.activities;
     const eyebrow = pane === "commands" ? (this._store.deviceNameForId(derived.deviceId) ?? "") : "";
     return html`
       <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>

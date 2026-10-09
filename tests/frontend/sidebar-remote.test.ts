@@ -66,7 +66,7 @@ test("busy: a long-running operation beats everything and names itself", () => {
   const state = sidebarBusyState({ ...base, runtime: { kind: "operation_running", operation: "cache_refresh", label: "x" } });
   assert.deepEqual(state, { inert: true, busy: true, reason: "operation", label: "Refreshing hub cache" });
   const unknown = sidebarBusyState({ ...base, runtime: { kind: "operation_running", operation: "other", label: "Backend label" } });
-  assert.equal(unknown.label, "Backend label");
+  assert.equal(unknown.label, "Working");
   const app = sidebarBusyState({ ...base, runtime: { kind: "app_connected" } });
   assert.deepEqual(app, { inert: true, busy: false, reason: "app", label: "App connected" });
 });

@@ -22,6 +22,50 @@ const remote = (page) => page.locator("sofabaton-x-panel sofabaton-sidebar-remot
 test.use({ viewport: PHONE, hasTouch: true });
 
 test.describe("sidebar panel", () => {
+  test("unavailable hubs and missing remote entities never claim powered off or no configured hubs", async ({ page }) => {
+    await open(page);
+    await panel(page).locator(".hub").click();
+    await panel(page).locator(".menu .mi").nth(2).click();
+    await expect(remote(page).locator(".activity .name")).toHaveText("Hub unavailable");
+    await expect(remote(page).locator(".app")).toHaveClass(/inert/);
+    await panel(page).locator(".hub").click();
+    await panel(page).locator(".menu .mi").nth(0).click();
+    await expect(remote(page).locator(".activity .name")).toHaveText("Watch a movie");
+    await page.evaluate(() => {
+      const harness = window.__sidebarHarness;
+      delete harness.hass.states[harness.remote().entityId];
+      harness.push();
+    });
+    await expect(remote(page).locator(".notice")).toHaveText("The remote for this hub is unavailable.");
+    await expect(panel(page).locator(".hub .name")).toHaveText("Souterrain");
+    await page.goto(`${HARNESS}?hubs=0`);
+    await expect(panel(page).locator(".content > .empty")).toHaveText("No Sofabaton hub is set up yet.");
+  });
+
+  test("Dutch drawer names and unknown-operation progress remain localized", async ({ page }) => {
+    await open(page, "lang=nl");
+    await expect(panel(page).locator(".tab.panel")).toHaveAccessibleName("Bedieningspaneel");
+    await remote(page).locator(".pull").click();
+    await expect(remote(page).getByRole("dialog")).toHaveAccessibleName("Favorieten");
+    await remote(page).getByRole("tab", { name: "Macro's" }).click();
+    await expect(remote(page).getByRole("dialog")).toHaveAccessibleName("Macro's");
+    await remote(page).getByRole("button", { name: "Sluiten", exact: true }).click();
+    await page.evaluate(() => {
+      window.__sidebarHarness.remote().runtime = {
+        kind: "operation_running", operation: "future_operation", label: "Backend label in English",
+      };
+    });
+    await expect(remote(page).locator(".activity .eyebrow")).toHaveText("Bezig…");
+  });
+
+  test("a panel bundle failure explains that the Control Panel could not load", async ({ page }) => {
+    await open(page, "lang=nl");
+    await page.route("**/tools-card.js*", (route) => route.abort());
+    await panel(page).locator(".tab.panel").click();
+    await expect(panel(page).locator(".content > .empty")).toHaveText("Het bedieningspaneel kon niet worden geladen. Laad de pagina opnieuw om het nogmaals te proberen.");
+    await expect(remote(page)).toBeVisible();
+  });
+
   test("opens on the remote tab, shows the admin tabs, lists hubs in the header menu", async ({ page }) => {
     await open(page);
     await expect(panel(page).locator(".tab.remote")).toHaveClass(/active/);

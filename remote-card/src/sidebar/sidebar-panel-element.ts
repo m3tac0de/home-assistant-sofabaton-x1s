@@ -523,8 +523,10 @@ export class SofabatonXPanel extends LitElement {
       <div class="content">
         ${this._view === "panel" && this._controlPanel
           ? html`<div class="page">${this._controlPanel}</div>`
-          : html`<sofabaton-sidebar-remote .hass=${this._hass} .entityId=${entityId ?? ""} .runtime=${runtime} ?narrow=${this._narrow}></sofabaton-sidebar-remote>`}
-        ${this._controlPanelFailed ? html`<div class="empty">${s.card.serverReadFailed}</div>` : nothing}
+          : hub
+            ? html`<sofabaton-sidebar-remote .hass=${this._hass} .entityId=${entityId ?? ""} .hubConnected=${hub.hub_connected !== false} .runtime=${runtime} ?narrow=${this._narrow}></sofabaton-sidebar-remote>`
+            : html`<div class="empty">${s.sidebar.noHubs}</div>`}
+        ${this._controlPanelFailed ? html`<div class="empty">${s.sidebar.controlPanelLoadFailed}</div>` : nothing}
       </div>
     `;
   }

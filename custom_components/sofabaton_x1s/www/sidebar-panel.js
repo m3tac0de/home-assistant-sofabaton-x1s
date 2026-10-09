@@ -636,6 +636,9 @@ var REMOTE_CARD_STRINGS_EN = {
     hubReachable: "Reachable",
     hubUnreachable: "Unreachable",
     noHubs: "No Sofabaton hub is set up yet.",
+    hubUnavailable: "Hub unavailable",
+    remoteUnavailable: "The remote for this hub is unavailable.",
+    controlPanelLoadFailed: "Could not load the Control Panel. Reload the page to try again.",
     activities: "Activities",
     devices: "Devices",
     allOff: "All off",
@@ -2920,7 +2923,7 @@ function sidebarBusyState(input) {
       inert: true,
       busy: true,
       reason: "operation",
-      label: strings.operations[operation] ?? runtime.label ?? strings.working
+      label: strings.operations[operation] ?? strings.working
     };
   }
   if (runtime?.kind === "app_connected") {
@@ -3943,6 +3946,7 @@ var SofabatonSidebarRemote = class extends i4 {
     super();
     this._hass = null;
     this._entityId = "";
+    this._hubConnected = true;
     this._runtime = null;
     this._lastThemesRef = void 0;
     this._press = null;
@@ -3974,6 +3978,14 @@ var SofabatonSidebarRemote = class extends i4 {
     });
   }
   // ---------- host API ----------
+  set hubConnected(value) {
+    if (value === this._hubConnected) return;
+    this._hubConnected = value;
+    this.requestUpdate();
+  }
+  get hubConnected() {
+    return this._hubConnected;
+  }
   set hass(value) {
     this._hass = value;
     const language = value?.locale?.language ?? value?.language;
@@ -4182,7 +4194,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const s4 = str();
     return sidebarBusyState({
       mode: derived.mode,
-      isUnavailable: derived.isUnavailable,
+      isUnavailable: derived.isUnavailable || !this._hubConnected,
       activityLoading: this._store.activityLoadingActive(),
       loadPending: derived.loadPending,
       isPoweredOff: derived.isPoweredOff,
@@ -4249,7 +4261,7 @@ var SofabatonSidebarRemote = class extends i4 {
   // ---------- render ----------
   render() {
     if (!this._entityId) {
-      return b2`<div class="app"><div class="remote"><div class="sp"></div><div class="notice">${str().sidebar.noHubs}</div><div class="sp"></div></div></div>`;
+      return b2`<div class="app"><div class="remote"><div class="sp"></div><div class="notice">${str().sidebar.remoteUnavailable}</div><div class="sp"></div></div></div>`;
     }
     const store = this._store;
     const derived = store.deriveRuntimeState();
@@ -4271,7 +4283,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const showPower = deviceMode ? powerButtonEnabled(null) && store.devicePowerConfigured() : store.currentActivityId() != null;
     const powerLabel = deviceMode ? s4.card.powerButton : s4.sidebar.allOff;
     const modeAvailable = store.deviceModeAvailable();
-    const currentName = deviceMode ? store.deviceNameForId(derived.deviceId) ?? s4.card.selectDevice : derived.selectState?.resolvedValue || derived.currentLabel || s4.card.poweredOff;
+    const currentName = derived.isUnavailable || !this._hubConnected ? s4.sidebar.hubUnavailable : deviceMode ? store.deviceNameForId(derived.deviceId) ?? s4.card.selectDevice : derived.selectState?.resolvedValue || derived.currentLabel || s4.card.poweredOff;
     const eyebrow = busy.label ?? (deviceMode ? s4.card.deviceSelectLabel : s4.card.activitySelectLabel);
     const off = (id) => !store.isEnabled(id);
     const key = (id, cls, body, extra = {}) => b2`
@@ -4382,7 +4394,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const headed = pane === "activities" || pane === "devices" || pane === "commands";
     const icon = (name) => b2`<ha-icon .icon=${name}></ha-icon>`;
     const close = b2`<button class="close" type="button" aria-label=${s4.sidebar.close} @click=${() => this._openSheet(null)}>${icon("mdi:close")}</button>`;
-    const title = pane === "devices" ? s4.sidebar.devices : pane === "commands" ? s4.card.commandsTab : s4.sidebar.activities;
+    const title = pane === "devices" ? s4.sidebar.devices : pane === "commands" ? s4.card.commandsTab : pane === "favorites" ? s4.card.favoritesTab : pane === "macros" ? s4.card.macrosTab : s4.sidebar.activities;
     const eyebrow = pane === "commands" ? this._store.deviceNameForId(derived.deviceId) ?? "" : "";
     return b2`
       <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>
@@ -4825,8 +4837,8 @@ var SofabatonXPanel = class extends i4 {
         </div>
       </div>
       <div class="content">
-        ${this._view === "panel" && this._controlPanel ? b2`<div class="page">${this._controlPanel}</div>` : b2`<sofabaton-sidebar-remote .hass=${this._hass} .entityId=${entityId ?? ""} .runtime=${runtime} ?narrow=${this._narrow}></sofabaton-sidebar-remote>`}
-        ${this._controlPanelFailed ? b2`<div class="empty">${s4.card.serverReadFailed}</div>` : A}
+        ${this._view === "panel" && this._controlPanel ? b2`<div class="page">${this._controlPanel}</div>` : hub ? b2`<sofabaton-sidebar-remote .hass=${this._hass} .entityId=${entityId ?? ""} .hubConnected=${hub.hub_connected !== false} .runtime=${runtime} ?narrow=${this._narrow}></sofabaton-sidebar-remote>` : b2`<div class="empty">${s4.sidebar.noHubs}</div>`}
+        ${this._controlPanelFailed ? b2`<div class="empty">${s4.sidebar.controlPanelLoadFailed}</div>` : A}
       </div>
     `;
   }
@@ -5018,6 +5030,9 @@ var REMOTE_CARD_STRINGS_AR = {
     hubReachable: "\u0645\u062A\u0635\u0644",
     hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
     noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
+    hubUnavailable: "\u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D",
+    remoteUnavailable: "\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 \u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.",
+    controlPanelLoadFailed: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645. \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0635\u0641\u062D\u0629 \u0644\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u064B\u0627.",
     activities: "\u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     devices: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     allOff: "\u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0643\u0644",
@@ -5266,12 +5281,15 @@ var REMOTE_CARD_STRINGS_DE = {
   },
   sidebar: {
     title: "Virtuelle Fernbedienung",
-    controlPanel: "Control Panel",
+    controlPanel: "Steuerzentrale",
     hubMenu: "Hub w\xE4hlen",
     back: "Zur\xFCck",
     hubReachable: "Erreichbar",
     hubUnreachable: "Nicht erreichbar",
     noHubs: "Es ist noch kein Sofabaton-Hub eingerichtet.",
+    hubUnavailable: "Hub nicht verf\xFCgbar",
+    remoteUnavailable: "Die Fernsteuerung f\xFCr diesen Hub ist nicht verf\xFCgbar.",
+    controlPanelLoadFailed: "Die Steuerzentrale konnte nicht geladen werden. Lade die Seite neu, um es erneut zu versuchen.",
     activities: "Aktivit\xE4ten",
     devices: "Ger\xE4te",
     allOff: "Alles aus",
@@ -5506,6 +5524,9 @@ var REMOTE_CARD_STRINGS_ES = {
     hubReachable: "Accesible",
     hubUnreachable: "Inaccesible",
     noHubs: "Todav\xEDa no hay ning\xFAn hub Sofabaton configurado.",
+    hubUnavailable: "Hub no disponible",
+    remoteUnavailable: "El mando a distancia de este hub no est\xE1 disponible.",
+    controlPanelLoadFailed: "No se pudo cargar el panel de control. Recarga la p\xE1gina para volver a intentarlo.",
     activities: "Actividades",
     devices: "Dispositivos",
     allOff: "Apagar todo",
@@ -5740,6 +5761,9 @@ var REMOTE_CARD_STRINGS_FR = {
     hubReachable: "Joignable",
     hubUnreachable: "Injoignable",
     noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
+    hubUnavailable: "Hub indisponible",
+    remoteUnavailable: "La t\xE9l\xE9commande de ce hub est indisponible.",
+    controlPanelLoadFailed: "Impossible de charger le panneau de contr\xF4le. Rechargez la page pour r\xE9essayer.",
     activities: "Activit\xE9s",
     devices: "Appareils",
     allOff: "Tout \xE9teindre",
@@ -5967,12 +5991,15 @@ var REMOTE_CARD_STRINGS_NL = {
   },
   sidebar: {
     title: "Virtuele afstandsbediening",
-    controlPanel: "Control Panel",
+    controlPanel: "Bedieningspaneel",
     hubMenu: "Kies een hub",
     back: "Terug",
     hubReachable: "Bereikbaar",
     hubUnreachable: "Niet bereikbaar",
     noHubs: "Er is nog geen Sofabaton-hub ingesteld.",
+    hubUnavailable: "Hub niet beschikbaar",
+    remoteUnavailable: "De afstandsbediening voor deze hub is niet beschikbaar.",
+    controlPanelLoadFailed: "Het bedieningspaneel kon niet worden geladen. Laad de pagina opnieuw om het nogmaals te proberen.",
     activities: "Activiteiten",
     devices: "Apparaten",
     allOff: "Alles uit",
@@ -6201,11 +6228,14 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
   sidebar: {
     title: "\u865A\u62DF\u9065\u63A7\u5668",
     controlPanel: "\u63A7\u5236\u9762\u677F",
-    hubMenu: "\u9009\u62E9\u4E2D\u67A2",
+    hubMenu: "\u9009\u62E9 Hub",
     back: "\u8FD4\u56DE",
     hubReachable: "\u53EF\u8FDE\u63A5",
     hubUnreachable: "\u65E0\u6CD5\u8FDE\u63A5",
-    noHubs: "\u5C1A\u672A\u8BBE\u7F6E\u4EFB\u4F55 Sofabaton \u4E2D\u67A2\u3002",
+    noHubs: "\u5C1A\u672A\u8BBE\u7F6E\u4EFB\u4F55 Sofabaton Hub\u3002",
+    hubUnavailable: "Hub \u4E0D\u53EF\u7528",
+    remoteUnavailable: "\u6B64 Hub \u7684\u9065\u63A7\u5B9E\u4F53\u4E0D\u53EF\u7528\u3002",
+    controlPanelLoadFailed: "\u65E0\u6CD5\u52A0\u8F7D\u63A7\u5236\u9762\u677F\u3002\u8BF7\u91CD\u65B0\u52A0\u8F7D\u9875\u9762\u540E\u91CD\u8BD5\u3002",
     activities: "\u6D3B\u52A8",
     devices: "\u8BBE\u5907",
     allOff: "\u5168\u90E8\u5173\u95ED",
@@ -6221,8 +6251,8 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     appConnected: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
     operations: {
       backup_restore: "\u6B63\u5728\u6062\u590D\u5907\u4EFD",
-      cache_refresh: "\u6B63\u5728\u5237\u65B0\u4E2D\u67A2\u7F13\u5B58",
-      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230\u4E2D\u67A2",
+      cache_refresh: "\u6B63\u5728\u5237\u65B0 Hub \u7F13\u5B58",
+      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230 Hub",
       backup_export: "\u6B63\u5728\u521B\u5EFA\u5907\u4EFD",
       wifi_deploy: "\u6B63\u5728\u90E8\u7F72 Wifi Commands"
     }
