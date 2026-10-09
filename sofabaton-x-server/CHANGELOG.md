@@ -6,6 +6,22 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+## 0.2.5 (2026-10-09)
+
+Changes since `sofabaton-x-server-v0.2.4`. Requires
+**sofabaton-x >=0.2.4,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+### Upgrade notes
+
+- Existing registrations, access settings, Wifi Devices and remote layouts
+  carry forward. Reload browser pages after updating.
+- Regenerate clients from `openapi.json` for the local-address route,
+  fields and event described below. The library now supplies the per-hub
+  address override and multi-interface routing fixes.
+- Changing an existing Wifi Device between HTTP and MQTT is a Home
+  Assistant feature in this release; the server retains its deployed transport.
+
 ### Added
 
 - **Server IP address** per hub in the control panel's Hub settings: shows
@@ -13,6 +29,20 @@ Protocol-library changes are recorded in the
   you set one by hand or return to automatic. API:
   `PUT /hubs/{hub_id}/local-address`, `config.local_address`, the hub
   view's `local_address`, and the `hub_local_address_changed` event.
+- Copy missing favorites and macros from another activity in the activity
+  editor, then review and sync the draft.
+
+### Changed
+
+- Clearer add/edit dialogs and a physical remote sync shortcut in the
+  control panel's bottom dock.
+- Updated shared Virtual Remote to 0.2.7 and the embedded package build
+  to 0.1.2, including theme contrast, dropdown and EXIT-button fixes.
+
+### Fixed
+
+- Panel and remote readability with glass themes, plus translated labels
+  and editor layout details.
 
 ## 0.2.4 (2026-10-02)
 

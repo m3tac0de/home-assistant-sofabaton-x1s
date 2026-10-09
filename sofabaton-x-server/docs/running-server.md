@@ -43,7 +43,7 @@ recommended way: it gives the server its own Python environment and
 upgrades it with one command.
 
 ```
-pipx install "sofabaton-x-server>=0.2.4,<0.3"
+pipx install "sofabaton-x-server>=0.2.5,<0.3"
 sofabaton-x-server --data-dir /path/for/its/data
 ```
 
@@ -51,7 +51,7 @@ Upgrade later with `pipx upgrade sofabaton-x-server`. With plain pip, in
 the Python environment of your choice:
 
 ```
-python -m pip install "sofabaton-x-server>=0.2.4,<0.3"
+python -m pip install "sofabaton-x-server>=0.2.5,<0.3"
 sofabaton-x-server --data-dir /path/for/its/data
 ```
 
@@ -69,7 +69,7 @@ does not supply unit files.
 Every release is published as a container image for `linux/amd64` and
 `linux/arm64`, on Docker Hub as `m3tac0de/sofabaton-x-server` and on
 GitHub as `ghcr.io/m3tac0de/sofabaton-x-server`. Tags: the release
-(`0.2.4`), its minor line (`0.2`) and `latest`. The image runs the same
+(`0.2.5`), its minor line (`0.2`) and `latest`. The image runs the same
 wheel the release put on PyPI.
 
 ```
@@ -572,7 +572,7 @@ the server, install the selected release in the same Python environment
 then restart with the same data directory and settings. Confirm your
 hubs reconnect and test the web remote.
 
-For the 0.2.4 release, after stopping the server, with pipx:
+For the 0.2.5 release, after stopping the server, with pipx:
 
 ```sh
 pipx upgrade sofabaton-x-server
@@ -581,19 +581,19 @@ pipx upgrade sofabaton-x-server
 or with pip, in the same Python environment:
 
 ```sh
-python -m pip install --upgrade "sofabaton-x-server>=0.2.4,<0.3"
+python -m pip install --upgrade "sofabaton-x-server>=0.2.5,<0.3"
 ```
 
 A container is replaced by pulling the new image (see [Docker](#docker)).
 
-The library requirement becomes `sofabaton-x>=0.2.3,<0.3`; pip installs
+The library requirement becomes `sofabaton-x>=0.2.4,<0.3`; pip installs
 it with the server. Existing registrations, callback devices and saved
 layouts require no manual conversion. Reload open browser pages after
-restarting. The 0.2.4 REST and WebSocket operations are unchanged from
-0.2.3 and the API prefix remains `/api/v1`, but device and activity names
-are now limited to 30 characters and the OpenAPI response lists changed
-(see the [changelog](../CHANGELOG.md#024-2026-10-02)). Integrations
-should regenerate clients from the release's OpenAPI document.
+restarting. The API prefix remains `/api/v1`; 0.2.5 adds a per-hub
+local-address route, fields and event (see the
+[changelog](../CHANGELOG.md#025-2026-10-09)). Integrations should
+regenerate clients from the release's OpenAPI document. If upgrading
+from before 0.2.4, also review its name-validation and response changes.
 
 The [embeddable remote](web-remote.md#embed-the-remote-in-your-own-dashboard)
 is served from 0.2.3 onward at `/ui/embed/sofabaton-remote.js`. Existing iframe

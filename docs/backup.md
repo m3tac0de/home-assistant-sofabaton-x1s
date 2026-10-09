@@ -55,6 +55,9 @@ You can also remove Activities, Devices, commands, shortcuts, and macros. The
 editor shows affected references and clears them from the loaded backup where
 needed.
 
+In an Activity’s **Shortcuts** editor, **Copy** adds missing favorites and
+macros from another Activity in the loaded backup. Existing shortcuts are kept.
+
 Choose **Download edited backup** to save your changes to a new JSON file.
 Editing does not modify the original backup file or the hub.
 

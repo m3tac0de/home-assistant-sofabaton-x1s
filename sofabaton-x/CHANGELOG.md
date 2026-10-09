@@ -11,12 +11,22 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+## 0.2.4 (2026-10-09)
+
+Changes since `sofabaton-x-v0.2.3`. Backward-compatible additions and
+fixes; applications can use `sofabaton-x>=0.2.4,<0.3`. Applications
+upgrading from older releases should also read their migration notes below.
+
 ### Added
 
 - A manual local address per hub: `local_address=` on `AsyncXProxy` and
   `X1Proxy`, `HubConfig.local_address`, and `set_local_address()` to change
   or clear it while running. `local_address_is_manual()` tells the two
   apart. It is what the hub is told to connect back to.
+- Internal planning and record handling for X2 HTTP/MQTT Wifi Device
+  replacement, including moving activity references between device classes.
+  The Home Assistant integration provides the delivery-switch workflow;
+  this does not add a transport-switch method to the public async facade.
 
 ### Fixed
 

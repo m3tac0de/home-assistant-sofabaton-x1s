@@ -13,6 +13,7 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 
 ## ◇ Start here
 
+- [What changed in 0.7.0](docs/releases/0.7.0.md)
 - [Install and add your hub](#-installation)
 - [Understand the local proxy](#-how-the-local-proxy-works)
 - [Add the dashboard cards](#-dashboard-cards)
@@ -141,6 +142,8 @@ Its main areas are:
 - **Automation**: configure Home Assistant Actions triggered by Wifi Commands, Wifi Events, Hub Events, and Activity Events.
 - **Backup**: create and restore whole-hub or selected device backups.
 - **Settings and Logs**: manage caching, network listeners, diagnostic logging, Find Remote, physical remote synchronization, and live hub logs.
+
+In an Activity’s **Shortcuts** editor, use **Copy** to add missing favorites and macros from another Activity, then review and sync the draft.
 
 Edits are reviewed before synchronization. The card also prevents conflicting writes while the Sofabaton app or another hub operation is active.
 

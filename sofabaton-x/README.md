@@ -1,10 +1,10 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.3.** This release is mostly fixes to hub
-> writes, backup and restore, and the cache, and limits new device and
-> activity names to the hub's 30 characters.
-> The async facade's per-entity restore delegates were removed; use
-> `restore(bundle)`. Read the [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-02).
+> **This README describes 0.2.4.** This release adds per-hub local address
+> overrides and fixes routing on hosts with multiple network interfaces.
+> See the [0.2.4 release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#024-2026-10-09).
+> Consumers upgrading from before 0.2.3 must also read the
+> [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-02).
 > Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
 > consumers on 0.2.0 also need the [0.2.1 payload migration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#021-2026-09-22);
 > consumers on 0.1.x also need the
@@ -77,7 +77,7 @@ Home Assistant integration provide their own listeners on top.
 ## Install
 
 ```
-python -m pip install "sofabaton-x>=0.2.3,<0.3"
+python -m pip install "sofabaton-x>=0.2.4,<0.3"
 ```
 
 From a checkout, run `python -m pip install .` from the repository root
@@ -157,6 +157,19 @@ proxy = AsyncXProxy(
 ```
 
 ### Configuration as data
+
+On a host with multiple network interfaces, the proxy normally uses the
+OS route to the hub. If that selects an off-subnet address while another
+local interface shares the hub's subnet, it uses the matching interface.
+To override the advertised connect-back address for one hub, pass
+`local_address="192.168.1.10"` to `AsyncXProxy` or `HubConfig`. The hub
+must be able to reach that address and the configured listener ports.
+
+`proxy.local_address()` returns the effective address and
+`proxy.local_address_is_manual()` reports whether it is overridden.
+Use `proxy.set_local_address("192.168.1.10")` to change it while running,
+or `proxy.set_local_address(None)` to return to automatic selection.
+Your application owns persistence of the override.
 
 Every way a hub can reach your application produces the same record, a
 `HubConfig` dataclass that round-trips through a plain dict (a REST body,

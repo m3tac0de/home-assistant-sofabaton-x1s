@@ -674,7 +674,6 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "chevron-up",
   "circle",
   "close",
-  "cog-outline",
   "cogs",
   "dialpad",
   "dots-horizontal",

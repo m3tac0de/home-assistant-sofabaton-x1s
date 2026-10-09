@@ -24,6 +24,11 @@ devices, favorites, buttons, macros, power sequences and inputs.
 4. Wait for the operation to finish. Allow the physical remote to
    synchronize before testing its updated configuration.
 
+In an activity’s **Shortcuts** editor, use **Copy** to add missing favorites
+and macros from another activity. Existing shortcuts are kept; review the
+draft and sync it to apply the additions. The same operation is available
+when editing a backup, where it changes only the loaded document.
+
 Deleting a command also removes its references on the hub. Assigning a
 command to an occupied button can replace that button's existing assignment.
 

@@ -4248,7 +4248,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.6";
+var CARD_VERSION = "0.2.7";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";

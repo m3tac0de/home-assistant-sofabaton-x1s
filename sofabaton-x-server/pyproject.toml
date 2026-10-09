@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 dependencies = [
-    "sofabaton-x>=0.2.3,<0.3",
+    "sofabaton-x>=0.2.4,<0.3",
     "fastapi>=0.115",
     # 0.47 added ssl_context_factory, which the certificate reload (tls.py) needs.
     "uvicorn[standard]>=0.47",

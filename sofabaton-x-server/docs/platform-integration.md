@@ -1,6 +1,6 @@
 # Integrating an automation platform with sofabaton-x-server
 
-> Written for sofabaton-x-server 0.2.4 (`api 1`).
+> Written for sofabaton-x-server 0.2.5 (`api 1`).
 > Read the [upgrade notes](../CHANGELOG.md#022-2026-09-25), particularly
 > the catalog ordering and firmware status changes, and regenerate
 > clients from this release's OpenAPI document.
