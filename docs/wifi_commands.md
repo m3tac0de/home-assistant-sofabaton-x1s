@@ -200,13 +200,13 @@ Delivery over MQTT delivers one activation per press, even when a button is held
 
 ## ◇ Wifi Commands: synchronization, recovery, and limitations
 
-| Change                                   | Result                                                                                  |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- |
-| Home Assistant Action only               | Applies immediately; no sync.                                                           |
-| Normal command, name, or assignment edit | Updates changed records in place and preserves device identity and external references. |
-| No command slots remain                  | Removes the hub device but keeps the empty Home Assistant configuration for reuse.      |
-| Delete in **Automation → Wifi Commands** | Removes both the hub device and saved configuration.                                    |
-| Delete through the Sofabaton app         | Keeps the saved configuration; sync it back to the hub or delete it in Wifi Commands.   |
+| Change                                   | Result                                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Home Assistant Action only               | Applies immediately; no sync.                                                                |
+| Normal command, name, or assignment edit | Updates changed records in place and preserves device identity and external references.      |
+| No command slots remain                  | Removes the hub device but keeps the empty Home Assistant configuration for reuse.           |
+| Delete in **Automation → Wifi Commands** | Removes both the hub device and saved configuration.                                         |
+| Delete through the Sofabaton app         | Keeps the saved configuration; sync it back to the hub or delete it in Wifi Commands.        |
 | Delivery method changed (X2)             | Replaces the hub device over the other method; references are moved to the new device first. |
 
 A full replacement is required for the first deployment, the first sync of a legacy deployment, a changed HTTP listener port, a changed delivery method, a managed device edited in the Sofabaton app since its last sync, or a command removed from an Activity where the managed Wifi Device was the only remaining device.

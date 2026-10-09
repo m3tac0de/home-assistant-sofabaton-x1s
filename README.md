@@ -13,7 +13,6 @@ Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from 
 
 ## ◇ Start here
 
-- [What changed in 0.7.0](docs/releases/0.7.0.md)
 - [Install and add your hub](#-installation)
 - [Understand the local proxy](#-how-the-local-proxy-works)
 - [Add the dashboard cards](#-dashboard-cards)
@@ -105,9 +104,9 @@ The integration includes two dashboard cards and deploys them automatically.
 
 ### Sofabaton Virtual Remote
 
-The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **General Options → Key capture**. Enable **hold-to-repeat** to repeat commands while holding the Volume, Channel, or Direction Pad buttons, as on the physical remote. On an X2, the remote's on-screen **number pad** hides behind the Direction Pad: tap the small dialpad button in the pad's corner to flip it over, tap anywhere outside it to flip back. It appears only where number keys are bound, can be switched off per layout, and stands on its own when the Direction Pad is switched off.
+The **Sofabaton Virtual Remote** is the everyday control surface. It can start Activities, send commands, expose favorites and macros, and generate ready-to-use automation YAML through **General Options → Key capture**. Enable **hold-to-repeat** to repeat commands while holding the Volume, Channel, or Direction Pad buttons, as on the physical remote.
 
-In the card's **Device mode** the remote controls one device configured on the hub, using that device's button bindings and complete, searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)). Device mode requires the integration's **Persistent Cache** (switch it on in the Control Panel card). Device mode can also show a **Shortcuts** row: up to three extra buttons with an icon and command of your choice, configured per device under **Layout Options**.
+In the card's **Device mode** the remote controls any device configured on the hub, using that device's button bindings and complete, searchable command list, independent of Activities ([documentation](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/device_mode.md)). Device mode requires the integration's **Persistent Cache** (switch it on in the Control Panel card).
 
 Add the card from the dashboard card picker or use YAML, replacing the entity with the `remote` entity created for your hub:
 
@@ -129,12 +128,12 @@ The **Sofabaton Control Panel** is the management interface for hub configuratio
 ```yaml
 type: custom:sofabaton-control-panel
 card_height: 700
-admin_only: true   # optional: other users see a notice instead of the panel
+admin_only: true # optional: other users see a notice instead of the panel
 ```
 
 `admin_only` hides the panel from users who are not Home Assistant administrators. It is a dashboard setting only: the integration's actions stay available to every user.
 
-The integration can also live in the Home Assistant sidebar: set **Sidebar Panel** in the control panel's Settings tab to *All users* or *Admins only* and a **Sofabaton X** entry appears in the sidebar. It opens the **sidebar remote**: a full-page, no-scroll remote built for phones (navigation wheel, volume and channel rockers, bottom sheets for favorites, macros and a device's commands, an activity and device picker, a hub picker in the header when more than one hub is set up; hold the directional, volume and channel keys to repeat, unless the key carries a long-press binding). Administrators get two header tabs, **Virtual Remote** and **Control Panel**, styled like a dashboard's view tabs (icons only when the header is tight); other users only see the remote, and never download the control panel's code. *Admins only* hides the entry from non-administrators. The setting is global and takes effect immediately; set it back to *Off* to remove the entry. The panel lives at `/sofabaton-x`, and a dashboard can link straight to one tab: `/sofabaton-x/virtual-remote` or `/sofabaton-x/control-panel` open as a subview with a back arrow that returns to where the user came from.
+The integration can also live in the Home Assistant sidebar: set **Sidebar Panel** in the control panel's Settings tab to _All users_ or _Admins only_ and a **Sofabaton X** entry appears in the sidebar. It opens the **sidebar remote**: a full-page, no-scroll remote built for phones (navigation wheel, volume and channel rockers, bottom sheets for favorites, macros and a device's commands, an activity and device picker, a hub picker in the header when more than one hub is set up; hold the directional, volume and channel keys to repeat, unless the key carries a long-press binding). Administrators get two header tabs, **Virtual Remote** and **Control Panel**, styled like a dashboard's view tabs (icons only when the header is tight); other users only see the remote, and never download the control panel's code. _Admins only_ hides the entry from non-administrators. The setting is global and takes effect immediately; set it back to _Off_ to remove the entry. The panel lives at `/sofabaton-x`, and a dashboard can link straight to one tab: `/sofabaton-x/virtual-remote` or `/sofabaton-x/control-panel` open as a subview with a back arrow that returns to where the user came from.
 
 Its main areas are:
 
@@ -224,6 +223,27 @@ See the [entity reference](docs/entities.md) for default entity IDs, purposes, a
 No. The hub does not provide a general stream of every physical button press.
 
 Use Wifi Commands for selected physical buttons, or place a Wifi Event in an Activity shortcut, button assignment, or macro. You can also respond to hub power and Activity transitions through Automation Events.
+
+</details>
+
+<details>
+<summary><strong>What is "persistent cache" and how does it work?</strong></summary>   
+ 
+Your hub’s configuration can be extensive: device commands, activities,
+favorites, macros and button bindings. Features such as the Control Panel
+and Virtual Remote need quick access to this information.
+
+Reading it from the hub every time would be too slow. Instead, the
+integration keeps a local copy, called a cache. Enabling **Persistent
+Cache** saves that copy so it survives Home Assistant restarts.
+
+When you sync configuration changes through the integration’s Control
+Panel, the cache is updated automatically. After making changes through
+the Sofabaton app, use **Refresh all** in the Control Panel to bring the
+cache up to date. You can also refresh an individual device or activity.
+
+The cache supports the integration’s features; it is not a substitute
+for a downloaded hub backup.
 
 </details>
 
