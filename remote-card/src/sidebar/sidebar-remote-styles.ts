@@ -215,7 +215,8 @@ export const sidebarRemoteStyles = css`
   .wheel.flipped .face-pad button.off { opacity: 0.28; }
   .wheel.flipped .face-pad button.pressed { transform: scale(0.94); transition-delay: 0s; }
   .numtoggle {
-    position: absolute; right: -2px; bottom: -2px; width: 36px; height: 36px; border-radius: 50%;
+    position: absolute; width: 36px; height: 36px; border-radius: 50%;
+    left: calc(50% + var(--sb-orbit-r) * 0.819 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.574 - 18px);
     background: var(--sb-pill); color: var(--primary-color); display: grid; place-items: center;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     transition: transform 90ms ease, filter 90ms ease, box-shadow 90ms ease, opacity 220ms ease 140ms, visibility 0s linear 0s;
@@ -229,22 +230,23 @@ export const sidebarRemoteStyles = css`
     opacity: 0; pointer-events: none; visibility: hidden;
     transition: transform 90ms ease, opacity 160ms ease, visibility 0s linear 160ms;
   }
-  /* DVR, EXIT and A/B/C (X2): small round keys on the same circle as the pad toggle (its centre is
-     (50% - 16px) * sqrt2 from the wheel's centre, at 45 deg). DVR and EXIT step counter-clockwise
-     from the toggle on the right (45, 20, -5 deg); A, B, C mirror EXIT, DVR and the toggle
-     across the vertical axis (185, 160, 135 deg), so the two sides are exact reflections */
+  /* The pad toggle, DVR, EXIT and A/B/C (X2): small round keys on one circle around the wheel,
+     radius (50% - 16px) * sqrt2 (the toggle's old corner seat, kept so the outermost keys still
+     clear the wrap by the same margin). EXIT sits 5 deg above the horizontal on the right, DVR
+     and the toggle step 20 deg down from it (-5, 15, 35 deg); A, B, C mirror EXIT, DVR and the
+     toggle across the vertical axis (185, 165, 145 deg), so the two sides are exact reflections */
+  .wheel-wrap { --sb-orbit-r: calc((50% - 16px) * 1.4142); }
   .orbit {
     position: absolute; width: 36px; height: 36px; border-radius: 50%; background: var(--sb-pill);
     color: var(--primary-text-color); display: grid; place-items: center; font-size: 9px; font-weight: 600; letter-spacing: 0.04em;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     transition: transform 90ms ease, background 90ms ease, opacity 220ms ease 140ms, visibility 0s linear 0s;
-    --sb-orbit-r: calc((50% - 16px) * 1.4142);
   }
-  .orbit.dvr { left: calc(50% + var(--sb-orbit-r) * 0.94 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.342 - 18px); }
+  .orbit.dvr { left: calc(50% + var(--sb-orbit-r) * 0.966 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.259 - 18px); }
   .orbit.exit { left: calc(50% + var(--sb-orbit-r) * 0.996 - 18px); top: calc(50% - var(--sb-orbit-r) * 0.087 - 18px); }
   .orbit.a { left: calc(50% - var(--sb-orbit-r) * 0.996 - 18px); top: calc(50% - var(--sb-orbit-r) * 0.087 - 18px); }
-  .orbit.b { left: calc(50% - var(--sb-orbit-r) * 0.94 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.342 - 18px); }
-  .orbit.c { left: calc(50% - var(--sb-orbit-r) * 0.7071 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.7071 - 18px); }
+  .orbit.b { left: calc(50% - var(--sb-orbit-r) * 0.966 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.259 - 18px); }
+  .orbit.c { left: calc(50% - var(--sb-orbit-r) * 0.819 - 18px); top: calc(50% + var(--sb-orbit-r) * 0.574 - 18px); }
   .orbit.abc { font-size: 12px; }
   .orbit.pressed { transform: scale(0.9); background: color-mix(in srgb, var(--primary-text-color) 18%, var(--sb-pill)); }
   .orbit.off { opacity: 0.35; }
