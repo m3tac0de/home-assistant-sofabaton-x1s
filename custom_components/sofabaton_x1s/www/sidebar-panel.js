@@ -4236,10 +4236,15 @@ var SofabatonSidebarRemote = class extends i4 {
   _pickActivity(label) {
     this._openSheet(null);
     this._haptic();
+    if (this._store.mode() !== "activity") {
+      this._store.setMode("activity");
+      this._rememberView();
+    }
     this._control(this._store.setActivity(label));
   }
   _pickDevice(id) {
     this._openSheet(null);
+    if (this._store.mode() !== "device") this._store.setMode("device");
     this._store.setDevice(id);
     this._rememberView();
   }
@@ -4391,7 +4396,9 @@ var SofabatonSidebarRemote = class extends i4 {
   _renderSheet(derived, deviceMode) {
     const s4 = str();
     const pane = this._sheet;
-    const headed = pane === "activities" || pane === "devices" || pane === "commands";
+    const picker = pane === "activities" || pane === "devices";
+    const headed = pane === "commands" || picker && !this._store.deviceModeAvailable();
+    const tabs = picker ? [{ pane: "activities", icon: "mdi:movie-open-outline", label: s4.sidebar.activities }, { pane: "devices", icon: "mdi:audio-video", label: s4.sidebar.devices }] : [{ pane: "favorites", icon: "mdi:star-outline", label: s4.card.favoritesTab }, { pane: "macros", icon: "mdi:playlist-play", label: s4.card.macrosTab }];
     const icon = (name) => b2`<ha-icon .icon=${name}></ha-icon>`;
     const close = b2`<button class="close" type="button" aria-label=${s4.sidebar.close} @click=${() => this._openSheet(null)}>${icon("mdi:close")}</button>`;
     const title = pane === "devices" ? s4.sidebar.devices : pane === "commands" ? s4.card.commandsTab : pane === "favorites" ? s4.card.favoritesTab : pane === "macros" ? s4.card.macrosTab : s4.sidebar.activities;
@@ -4400,15 +4407,14 @@ var SofabatonSidebarRemote = class extends i4 {
       <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>
         <div class="grip"></div>
         ${headed ? b2`<div class="phead"><div class="titles">${eyebrow ? b2`<span class="eyebrow">${eyebrow}</span>` : A}<span>${title}</span></div>${close}</div>` : b2`<div class="segs"><div class="ctl" role="tablist">
-              <button class=${e5({ s: true, active: pane === "favorites" })} role="tab" type="button" @click=${() => this._openSheet("favorites")}>${icon("mdi:star-outline")}${s4.card.favoritesTab}</button>
-              <button class=${e5({ s: true, active: pane === "macros" })} role="tab" type="button" @click=${() => this._openSheet("macros")}>${icon("mdi:playlist-play")}${s4.card.macrosTab}</button>
+              ${tabs.map((tab) => b2`<button class=${e5({ s: true, active: pane === tab.pane })} role="tab" aria-selected=${pane === tab.pane ? "true" : "false"} type="button" @click=${() => this._openSheet(tab.pane)}>${icon(tab.icon)}${tab.label}</button>`)}
             </div>${close}</div>`}
         ${pane === "commands" ? b2`<label class="filter">${icon("mdi:magnify")}<input type="search" .value=${derived.commandFilter} placeholder=${s4.card.filterCommands} @input=${(ev) => this._store.setCommandFilter(ev.target.value)} /></label>` : A}
         <div class="body">${pane ? this._renderPane(pane, derived, deviceMode) : A}</div>
       </div>
     `;
   }
-  _renderPane(pane, derived, _deviceMode) {
+  _renderPane(pane, derived, deviceMode) {
     const s4 = str();
     const store = this._store;
     const icon = (name) => b2`<ha-icon .icon=${name}></ha-icon>`;
@@ -4460,7 +4466,7 @@ var SofabatonSidebarRemote = class extends i4 {
     if (pane === "devices") {
       return b2`<div class="rows">
         ${devices.map((device) => b2`
-          <button class=${e5({ row: true, current: device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
+          <button class=${e5({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             <span class="ic">${icon(deviceClassIcon(device.device_class))}</span>
             <span class="name">${device.name}</span>
             <span class="st"></span>

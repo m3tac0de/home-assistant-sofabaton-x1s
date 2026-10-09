@@ -1495,6 +1495,14 @@ var cardStyles = [secondaryTabStyles, i`
   .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
   .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
   .cache-footer-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  /* The theme's dialog blur (--sb-dialog-backdrop-filter) sits on a
+     pseudo-element, never on the dialog itself: a backdrop-filter makes the
+     dialog the containing block of its position: fixed descendants (the
+     dropdown lists and their click-away backdrops), which then measure from
+     the dialog's corner and are clipped by its overflow — under the glass
+     themes the lists sat adrift and the dialog body went blank. isolation
+     keeps the pseudo-element under the dialog's own content. Same pattern in
+     the tab stylesheets that declare their own .dialog. */
   /* Add Activity dialog. */
   .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
   .cache-dialog {
@@ -1504,10 +1512,10 @@ var cardStyles = [secondaryTabStyles, i`
     border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
     border: 1px solid var(--divider-color);
     background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
-    -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
-    backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+    position: relative; isolation: isolate;
     box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
   }
+  .cache-dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
   .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--secondary-text-color); }
   .cache-dialog-input {
@@ -1605,7 +1613,8 @@ var cardStyles = [secondaryTabStyles, i`
      (backup-tab-styles.ts): hosts that render inside the card's own shadow
      root (the Settings tab's hub rename) get the same rules here. */
   .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); position: relative; isolation: isolate; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
   .dialog.small { width: min(500px, calc(100vw - 36px)); }
   .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
   .dialog-header { border-bottom: 1px solid var(--divider-color); }
@@ -7583,7 +7592,8 @@ var backupTabStyles = i`
       .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); position: relative; isolation: isolate; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
     /* Reminder banner inside the Edit Payload dialog nudging the user
@@ -8032,29 +8042,68 @@ function hubSupportsPowerInput(hubVersion) {
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
+var viewportBox = () => ({
+  left: 0,
+  top: 0,
+  right: window.innerWidth,
+  bottom: window.innerHeight,
+  width: window.innerWidth,
+  height: window.innerHeight
+});
+function parentOf(el) {
+  if (el.parentElement) return el.parentElement;
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
+}
+function isFixedContainingBlock(el) {
+  const style = getComputedStyle(el);
+  const set = (value) => Boolean(value) && value !== "none";
+  if (set(style.transform) || set(style.perspective) || set(style.filter)) return true;
+  if (set(style.backdropFilter) || set(style.webkitBackdropFilter)) return true;
+  if (set(style.translate) || set(style.rotate) || set(style.scale)) return true;
+  if (/\b(paint|layout|strict|content)\b/.test(style.contain)) return true;
+  if (/\b(transform|filter|backdrop-filter|perspective|contain)\b/.test(style.willChange)) return true;
+  return false;
+}
+function fixedFrameBox(el) {
+  let node = el ? parentOf(el) : null;
+  while (node && node !== document.documentElement) {
+    if (isFixedContainingBlock(node)) return node.getBoundingClientRect();
+    node = parentOf(node);
+  }
+  return viewportBox();
+}
 function overlayMenuPosition(anchor, align) {
   if (!anchor) return "";
+  const { rect, frame } = anchor;
   const gap = 4;
-  const spaceBelow = window.innerHeight - anchor.bottom;
-  const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow;
-  const vertical = openUp ? `bottom: ${Math.round(window.innerHeight - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom + gap)}px; bottom: auto;`;
-  const horizontal = align === "right" ? `right: ${Math.round(window.innerWidth - anchor.right)}px; left: auto;` : `left: ${Math.round(anchor.left)}px; right: auto;`;
+  const spaceBelow = frame.bottom - rect.bottom;
+  const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && rect.top - frame.top > spaceBelow;
+  const vertical = openUp ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;` : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
+  const horizontal = align === "right" ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 function menuAnchorRect(event) {
   const target = event.currentTarget;
-  return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+  if (!(target instanceof HTMLElement)) return null;
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
 }
-function anchoredListPosition(trigger, frame, menu = null) {
-  const anchor = trigger.getBoundingClientRect();
-  const bounds = frame?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-  const inner = menu?.within?.getBoundingClientRect() ?? bounds;
+function anchoredListPosition(trigger, menu = null) {
+  return anchoredListStyle(
+    trigger.getBoundingClientRect(),
+    fixedFrameBox(trigger),
+    menu?.within?.getBoundingClientRect() ?? null,
+    menu ? { minWidth: menu.minWidth } : null
+  );
+}
+function anchoredListStyle(anchor, bounds, inner, menu) {
+  const room = inner ?? bounds;
   const gap = 4;
   const margin = 8;
-  const top = Math.max(bounds.top, inner.top);
-  const bottom = Math.min(bounds.bottom, inner.bottom);
-  const minX = Math.max(bounds.left, inner.left) + margin;
-  const maxX = Math.min(bounds.right, inner.right) - margin;
+  const top = Math.max(bounds.top, room.top);
+  const bottom = Math.min(bounds.bottom, room.bottom);
+  const minX = Math.max(bounds.left, room.left) + margin;
+  const maxX = Math.min(bounds.right, room.right) - margin;
   const below = bottom - anchor.bottom - gap - margin;
   const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
@@ -13415,7 +13464,7 @@ var BindingDialogController = class {
     if (this.macroPicker?.id === id) {
       this.macroPicker = null;
     } else {
-      this.macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest(".modal-backdrop")), root };
+      this.macroPicker = { id, style: anchoredListPosition(trigger), root };
       requestAnimationFrame(() => (root.querySelector('.macro-picker-option[aria-selected="true"]') ?? root.querySelector(".macro-picker-option"))?.focus());
     }
     this.host.requestUpdate();
@@ -14582,7 +14631,7 @@ var SofabatonEditDetailView = class extends i4 {
       }
       const root = this.renderRoot;
       const trigger = event.currentTarget;
-      this._shortcutCopyMenu = anchoredListPosition(trigger, null, { minWidth: 260, within: trigger.closest(".detail-scroll") });
+      this._shortcutCopyMenu = anchoredListPosition(trigger, { minWidth: 260, within: trigger.closest(".detail-scroll") });
       requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
     };
     this._closeShortcutCopyMenu = () => {
@@ -20668,7 +20717,8 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       font-size: 13px;
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--tools-radius-lg); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--tools-radius-lg); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); position: relative; isolation: isolate; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }
@@ -21982,11 +22032,11 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
       border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
       border: 1px solid var(--divider-color);
       background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
-      -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
-      backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+      position: relative; isolation: isolate;
       box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
       overflow: hidden;
     }
+    .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
     .dialog--small { width: min(460px, calc(100vw - 36px)); }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }

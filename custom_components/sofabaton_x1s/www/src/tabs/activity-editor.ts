@@ -8,7 +8,7 @@
  */
 import { css, html, nothing, type TemplateResult } from "lit";
 import { TOOLS_CARD_STRINGS } from "../strings";
-import { menuAnchorRect, overlayMenuPosition } from "../shared/utils/overlay-menu";
+import { menuAnchorRect, overlayMenuPosition, type MenuAnchor } from "../shared/utils/overlay-menu";
 import type {
   ActivityRoleAssignment,
   ActivityRoleGroupId,
@@ -80,8 +80,8 @@ export interface ActivityRolesBlockParams {
   /** Candidate devices per group: all editable source devices in the bundle. */
   optionsFor(group: ActivityRoleGroupId): ActivityRoleOption[];
   openGroup: ActivityRoleGroupId | null;
-  menuAnchor: DOMRect | null;
-  onToggleMenu(group: ActivityRoleGroupId | null, anchor?: DOMRect | null): void;
+  menuAnchor: MenuAnchor | null;
+  onToggleMenu(group: ActivityRoleGroupId | null, anchor?: MenuAnchor | null): void;
   onAssign(group: ActivityRoleGroupId, deviceId: number | null): void;
   /** Per-button customization — the advanced mode for the role rows above. */
   customize: {

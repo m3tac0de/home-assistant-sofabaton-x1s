@@ -103,7 +103,7 @@ import type {
   WifiEventsHost,
 } from "./edit-detail/host-types";
 import { renderKindSegments } from "./edit-detail/kind-segments";
-import { anchoredListPosition, moveListFocus } from "../shared/utils/overlay-menu";
+import { anchoredListPosition, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
 import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
@@ -174,7 +174,7 @@ export class SofabatonEditDetailView extends LitElement {
   // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
   // Captured at click time; not reactive — they change only together with
   // the open-state fields above/below.
-  private _roleMenuAnchor: DOMRect | null = null;
+  private _roleMenuAnchor: MenuAnchor | null = null;
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
   _bindingsView = false;
@@ -1741,7 +1741,7 @@ export class SofabatonEditDetailView extends LitElement {
     const root = this.renderRoot as ParentNode;
     const trigger = event.currentTarget as HTMLElement;
     // Kept inside the editor's own scroll area: never over the page beside the card or under the dock.
-    this._shortcutCopyMenu = anchoredListPosition(trigger, null, { minWidth: 260, within: trigger.closest<HTMLElement>(".detail-scroll") });
+    this._shortcutCopyMenu = anchoredListPosition(trigger, { minWidth: 260, within: trigger.closest<HTMLElement>(".detail-scroll") });
     requestAnimationFrame(() => root.querySelector<HTMLElement>(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
   };
 

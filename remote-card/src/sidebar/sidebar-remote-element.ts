@@ -445,11 +445,18 @@ export class SofabatonSidebarRemote extends LitElement {
   private _pickActivity(label: string): void {
     this._openSheet(null);
     this._haptic();
+    // Picked from the Activities tab while in device mode: the remote follows.
+    if (this._store.mode() !== "activity") {
+      this._store.setMode("activity");
+      this._rememberView();
+    }
     this._control(this._store.setActivity(label));
   }
 
   private _pickDevice(id: number): void {
     this._openSheet(null);
+    // Picked from the Devices tab while in activity mode: the remote follows.
+    if (this._store.mode() !== "device") this._store.setMode("device");
     this._store.setDevice(id);
     this._rememberView();
   }
@@ -635,7 +642,14 @@ export class SofabatonSidebarRemote extends LitElement {
   private _renderSheet(derived: ReturnType<RemoteCardStore["deriveRuntimeState"]>, deviceMode: boolean): TemplateResult {
     const s = str();
     const pane = this._sheet;
-    const headed = pane === "activities" || pane === "devices" || pane === "commands";
+    // The selector sheet is an Activities | Devices picker (Activities alone
+    // when device mode is unavailable); the pull handle's sheet is Favorites |
+    // Macros in activity mode and the headed Commands list in device mode.
+    const picker = pane === "activities" || pane === "devices";
+    const headed = pane === "commands" || (picker && !this._store.deviceModeAvailable());
+    const tabs: Array<{ pane: SheetPane; icon: string; label: string }> = picker
+      ? [{ pane: "activities", icon: "mdi:movie-open-outline", label: s.sidebar.activities }, { pane: "devices", icon: "mdi:audio-video", label: s.sidebar.devices }]
+      : [{ pane: "favorites", icon: "mdi:star-outline", label: s.card.favoritesTab }, { pane: "macros", icon: "mdi:playlist-play", label: s.card.macrosTab }];
     const icon = (name: string) => html`<ha-icon .icon=${name}></ha-icon>`;
     const close = html`<button class="close" type="button" aria-label=${s.sidebar.close} @click=${() => this._openSheet(null)}>${icon("mdi:close")}</button>`;
     const title = pane === "devices" ? s.sidebar.devices : pane === "commands" ? s.card.commandsTab
@@ -647,8 +661,7 @@ export class SofabatonSidebarRemote extends LitElement {
         ${headed
           ? html`<div class="phead"><div class="titles">${eyebrow ? html`<span class="eyebrow">${eyebrow}</span>` : nothing}<span>${title}</span></div>${close}</div>`
           : html`<div class="segs"><div class="ctl" role="tablist">
-              <button class=${classMap({ s: true, active: pane === "favorites" })} role="tab" type="button" @click=${() => this._openSheet("favorites")}>${icon("mdi:star-outline")}${s.card.favoritesTab}</button>
-              <button class=${classMap({ s: true, active: pane === "macros" })} role="tab" type="button" @click=${() => this._openSheet("macros")}>${icon("mdi:playlist-play")}${s.card.macrosTab}</button>
+              ${tabs.map((tab) => html`<button class=${classMap({ s: true, active: pane === tab.pane })} role="tab" aria-selected=${pane === tab.pane ? "true" : "false"} type="button" @click=${() => this._openSheet(tab.pane)}>${icon(tab.icon)}${tab.label}</button>`)}
             </div>${close}</div>`}
         ${pane === "commands"
           ? html`<label class="filter">${icon("mdi:magnify")}<input type="search" .value=${derived.commandFilter} placeholder=${s.card.filterCommands} @input=${(ev: Event) => this._store.setCommandFilter((ev.target as HTMLInputElement).value)} /></label>`
@@ -658,7 +671,7 @@ export class SofabatonSidebarRemote extends LitElement {
     `;
   }
 
-  private _renderPane(pane: SheetPane, derived: ReturnType<RemoteCardStore["deriveRuntimeState"]>, _deviceMode: boolean): TemplateResult {
+  private _renderPane(pane: SheetPane, derived: ReturnType<RemoteCardStore["deriveRuntimeState"]>, deviceMode: boolean): TemplateResult {
     const s = str();
     const store = this._store;
     const icon = (name: string) => html`<ha-icon .icon=${name}></ha-icon>`;
@@ -711,7 +724,7 @@ export class SofabatonSidebarRemote extends LitElement {
     if (pane === "devices") {
       return html`<div class="rows">
         ${devices.map((device) => html`
-          <button class=${classMap({ row: true, current: device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
+          <button class=${classMap({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             <span class="ic">${icon(deviceClassIcon(device.device_class))}</span>
             <span class="name">${device.name}</span>
             <span class="st"></span>

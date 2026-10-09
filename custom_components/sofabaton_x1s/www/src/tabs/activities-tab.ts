@@ -170,11 +170,11 @@ class SofabatonActivitiesTab extends LitElement {
       border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
       border: 1px solid var(--divider-color);
       background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
-      -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
-      backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+      position: relative; isolation: isolate;
       box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
       overflow: hidden;
     }
+    .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
     .dialog--small { width: min(460px, calc(100vw - 36px)); }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }

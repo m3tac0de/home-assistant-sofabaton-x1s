@@ -49,7 +49,7 @@ import {
 
 import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
-import { anchoredListPosition, moveListFocus, overlayMenuPosition, menuAnchorRect } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { anchoredListPosition, moveListFocus, overlayMenuPosition, menuAnchorRect, type MenuAnchor } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -265,7 +265,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   private _macroEditor: { buttonId: number; name: string } | null = null;
   /** The "Individual buttons" sub-view. */
   private _bindingsView = false;
-  private _roleMenu: { group: ActivityRoleGroupId; anchor: DOMRect | null } | null = null;
+  private _roleMenu: { group: ActivityRoleGroupId; anchor: MenuAnchor | null } | null = null;
   /** The open macro picker (one at a time): its trigger id and the list's fixed position. */
   private _macroPicker: { id: string; style: string } | null = null;
   /** The open "Copy shortcuts from" menu: its fixed position, null when closed. */
@@ -995,7 +995,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
               return;
             }
             const root = this.renderRoot;
-            this._shortcutCopyMenu = anchoredListPosition(event.currentTarget as HTMLElement, null, { minWidth: 260, within: this });
+            this._shortcutCopyMenu = anchoredListPosition(event.currentTarget as HTMLElement, { minWidth: 260, within: this });
             requestAnimationFrame(() => root.querySelector<HTMLElement>(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
           }}>${icon(mdiContentCopy)}<span>${B.copyShortcutsButton}</span></button>
         ${open
@@ -1019,7 +1019,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       this._macroPicker = null;
       return;
     }
-    this._macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest<HTMLElement>(".modal-backdrop")) };
+    this._macroPicker = { id, style: anchoredListPosition(trigger) };
     const root = this.renderRoot;
     requestAnimationFrame(() => (root.querySelector<HTMLElement>('.macro-picker-option[aria-selected="true"]') ?? root.querySelector<HTMLElement>(".macro-picker-option"))?.focus());
   }

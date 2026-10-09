@@ -20523,29 +20523,68 @@ function defineCatalogView() {
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
+var viewportBox = () => ({
+  left: 0,
+  top: 0,
+  right: window.innerWidth,
+  bottom: window.innerHeight,
+  width: window.innerWidth,
+  height: window.innerHeight
+});
+function parentOf(el) {
+  if (el.parentElement) return el.parentElement;
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
+}
+function isFixedContainingBlock(el) {
+  const style = getComputedStyle(el);
+  const set = (value) => Boolean(value) && value !== "none";
+  if (set(style.transform) || set(style.perspective) || set(style.filter)) return true;
+  if (set(style.backdropFilter) || set(style.webkitBackdropFilter)) return true;
+  if (set(style.translate) || set(style.rotate) || set(style.scale)) return true;
+  if (/\b(paint|layout|strict|content)\b/.test(style.contain)) return true;
+  if (/\b(transform|filter|backdrop-filter|perspective|contain)\b/.test(style.willChange)) return true;
+  return false;
+}
+function fixedFrameBox(el) {
+  let node = el ? parentOf(el) : null;
+  while (node && node !== document.documentElement) {
+    if (isFixedContainingBlock(node)) return node.getBoundingClientRect();
+    node = parentOf(node);
+  }
+  return viewportBox();
+}
 function overlayMenuPosition(anchor, align) {
   if (!anchor) return "";
+  const { rect, frame } = anchor;
   const gap = 4;
-  const spaceBelow2 = window.innerHeight - anchor.bottom;
-  const openUp = spaceBelow2 < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow2;
-  const vertical = openUp ? `bottom: ${Math.round(window.innerHeight - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom + gap)}px; bottom: auto;`;
-  const horizontal = align === "right" ? `right: ${Math.round(window.innerWidth - anchor.right)}px; left: auto;` : `left: ${Math.round(anchor.left)}px; right: auto;`;
+  const spaceBelow2 = frame.bottom - rect.bottom;
+  const openUp = spaceBelow2 < OVERLAY_MENU_MAX_HEIGHT + gap && rect.top - frame.top > spaceBelow2;
+  const vertical = openUp ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;` : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
+  const horizontal = align === "right" ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 function menuAnchorRect(event) {
   const target = event.currentTarget;
-  return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+  if (!(target instanceof HTMLElement)) return null;
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
 }
-function anchoredListPosition(trigger, frame, menu = null) {
-  const anchor = trigger.getBoundingClientRect();
-  const bounds = frame?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-  const inner = menu?.within?.getBoundingClientRect() ?? bounds;
+function anchoredListPosition(trigger, menu = null) {
+  return anchoredListStyle(
+    trigger.getBoundingClientRect(),
+    fixedFrameBox(trigger),
+    menu?.within?.getBoundingClientRect() ?? null,
+    menu ? { minWidth: menu.minWidth } : null
+  );
+}
+function anchoredListStyle(anchor, bounds, inner, menu) {
+  const room = inner ?? bounds;
   const gap = 4;
   const margin = 8;
-  const top = Math.max(bounds.top, inner.top);
-  const bottom = Math.min(bounds.bottom, inner.bottom);
-  const minX = Math.max(bounds.left, inner.left) + margin;
-  const maxX = Math.min(bounds.right, inner.right) - margin;
+  const top = Math.max(bounds.top, room.top);
+  const bottom = Math.min(bounds.bottom, room.bottom);
+  const minX = Math.max(bounds.left, room.left) + margin;
+  const maxX = Math.min(bounds.right, room.right) - margin;
   const below = bottom - anchor.bottom - gap - margin;
   const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
@@ -22071,7 +22110,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         return;
       }
       const root = this.renderRoot;
-      this._shortcutCopyMenu = anchoredListPosition(event.currentTarget, null, { minWidth: 260, within: this });
+      this._shortcutCopyMenu = anchoredListPosition(event.currentTarget, { minWidth: 260, within: this });
       requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
     }}>${icon4(mdiContentCopy)}<span>${B2.copyShortcutsButton}</span></button>
         ${open ? b2`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeShortcutCopyMenu} @wheel=${(event) => event.preventDefault()}></button>
@@ -22095,7 +22134,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       this._macroPicker = null;
       return;
     }
-    this._macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest(".modal-backdrop")) };
+    this._macroPicker = { id, style: anchoredListPosition(trigger) };
     const root = this.renderRoot;
     requestAnimationFrame(() => (root.querySelector('.macro-picker-option[aria-selected="true"]') ?? root.querySelector(".macro-picker-option"))?.focus());
   }

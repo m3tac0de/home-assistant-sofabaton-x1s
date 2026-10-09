@@ -317,7 +317,7 @@ test.describe("sidebar panel", () => {
     await open(page, "switch_ms=700");
     const r = remote(page);
     await r.locator(".activity .text").click();
-    await expect(r.locator(".phead")).toContainText("Activities");
+    await expect(r.locator(".segs .s.active")).toHaveText("Activities");
     await r.locator(".row", { hasText: "Watch TV" }).click();
     await expect(r.locator(".app")).toHaveClass(/busy/);
     await expect(r.locator(".activity .eyebrow")).toContainText("Starting");
@@ -339,7 +339,7 @@ test.describe("sidebar panel", () => {
     const r = remote(page);
     await r.locator(".mode").click();
     await r.locator(".pull").click();
-    await expect(r.locator(".phead")).toContainText("Devices");
+    await expect(r.locator(".segs .s.active")).toHaveText("Devices");
     await r.locator(".row", { hasText: "Television" }).click();
     await expect(r.locator(".activity .name span").first()).toHaveText("Television");
     await expect(r.locator(".power")).toBeVisible();
@@ -360,6 +360,38 @@ test.describe("sidebar panel", () => {
     await open(page);
     await expect(remote(page).locator(".activity .eyebrow")).toContainText("Activity");
     await expect(remote(page).locator(".activity .name span").first()).toHaveText("Watch a movie");
+  });
+
+  test("the selector sheet is an Activities | Devices picker; a pick from the other tab switches the mode", async ({ page }) => {
+    await open(page);
+    const r = remote(page);
+    // Activity mode: both tabs, Activities selected, the running activity marked.
+    await r.locator(".activity .text").click();
+    const tabs = r.locator(".segs [role='tab']");
+    await expect(tabs).toHaveText(["Activities", "Devices"]);
+    await expect(tabs.nth(0)).toHaveClass(/active/);
+    await expect(r.locator(".row.current")).toHaveText(/Watch a movie/);
+    // The Devices tab lists the devices (none marked yet); picking one puts the remote in device mode.
+    await tabs.nth(1).click();
+    await expect(tabs.nth(1)).toHaveClass(/active/);
+    await expect(r.locator(".row.current")).toHaveCount(0);
+    await r.locator(".row", { hasText: "Television" }).click();
+    await expect(r.locator(".app")).not.toHaveClass(/open/);
+    await expect(r.locator(".app")).toHaveAttribute("data-mode", "device");
+    await expect(r.locator(".activity .name span").first()).toHaveText("Television");
+    // Device mode: the selector opens on the Devices tab with that device marked.
+    await r.locator(".activity .text").click();
+    await expect(r.locator(".segs [role='tab']").nth(1)).toHaveClass(/active/);
+    await expect(r.locator(".row.current")).toHaveText(/Television/);
+    // Picking an activity from the first tab brings the remote back to activity mode.
+    await r.locator(".segs [role='tab']").nth(0).click();
+    await r.locator(".row", { hasText: "Watch TV" }).click();
+    await expect(r.locator(".app")).toHaveAttribute("data-mode", "activity");
+    await expect(r.locator(".activity .eyebrow")).toContainText("Starting");
+    // The pull handle still opens Favorites | Macros in activity mode.
+    await expect(r.locator(".app")).not.toHaveClass(/busy/, { timeout: 3000 });
+    await r.locator(".pull").click();
+    await expect(r.locator(".segs [role='tab']")).toHaveText(["Favorites", "Macros"]);
   });
 
   test("a long-running integration operation veils the remote with its label", async ({ page }) => {

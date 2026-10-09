@@ -716,7 +716,7 @@ export class BindingDialogController implements ReactiveController {
     if (this.macroPicker?.id === id) {
       this.macroPicker = null;
     } else {
-      this.macroPicker = { id, style: anchoredListPosition(trigger, trigger.closest<HTMLElement>(".modal-backdrop")), root };
+      this.macroPicker = { id, style: anchoredListPosition(trigger), root };
       requestAnimationFrame(() => (
         root.querySelector<HTMLElement>('.macro-picker-option[aria-selected="true"]')
         ?? root.querySelector<HTMLElement>(".macro-picker-option")
