@@ -163,6 +163,60 @@ test.describe("sidebar panel", () => {
     expect((await calls()).filter((c) => c.command === 182)).toEqual([]);
   });
 
+  // The tilt lighting (a gradient on the wheel disc / the rocker pill) fades out after
+  // release. Its angle must stay on the pressed edge for the whole fade: clearing it with
+  // the tilt attribute snapped the light to the default edge mid-fade and read as a flash.
+  const LIGHT_CASES = [
+    { name: "wheel", press: ".dir.up ha-icon", host: ".wheel", layer: ".disc" },
+    { name: "wheel", press: ".dir.left ha-icon", host: ".wheel", layer: ".disc" },
+    { name: "wheel", press: ".dir.right ha-icon", host: ".wheel", layer: ".disc" },
+    { name: "wheel", press: ".dir.down ha-icon", host: ".wheel", layer: ".disc" },
+    { name: "volume rocker", press: ".pill.vol .seg:first-child", host: ".pill.vol", layer: null },
+    { name: "volume rocker", press: ".pill.vol .seg:last-child", host: ".pill.vol", layer: null },
+  ];
+  for (const c of LIGHT_CASES) {
+    test(`${c.name} lighting keeps its direction while it fades after release (${c.press})`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await open(page, "hub=x2");
+      const r = remote(page);
+      const host = r.locator(c.host);
+      await r.locator(c.press).hover();
+      await page.mouse.down();
+      await expect(host).toHaveAttribute("data-tilt", /left|right|up|down/);
+      const heldState = await host.evaluate((el, layer) => {
+        for (const a of el.getAnimations({ subtree: true })) a.finish();
+        const target = layer ? el.querySelector(layer) : el;
+        const style = getComputedStyle(target, "::before");
+        return { paint: style.backgroundImage, opacity: Number(style.opacity) };
+      }, c.layer);
+      expect(heldState.paint).not.toBe("none");
+      expect(heldState.opacity).toBe(1);
+      await page.mouse.up();
+      await expect(host).not.toHaveAttribute("data-tilt");
+      const fading = await host.evaluate((el, layer) => {
+        for (const a of el.getAnimations({ subtree: true })) {
+          a.pause();
+          a.currentTime = Number(a.effect.getTiming().duration) / 2;
+        }
+        const target = layer ? el.querySelector(layer) : el;
+        const style = getComputedStyle(target, "::before");
+        return { paint: style.backgroundImage, opacity: Number(style.opacity) };
+      }, c.layer);
+      expect(fading.opacity).toBeGreaterThan(0);
+      expect(fading.opacity).toBeLessThan(1);
+      expect(fading.paint, "the fading light must not swing to another edge").toBe(heldState.paint);
+      await host.evaluate((el) => {
+        for (const a of el.getAnimations({ subtree: true })) a.finish();
+      });
+      await expect(host).toHaveCSS("transform", "none");
+      const rested = await host.evaluate((el, layer) => {
+        const target = layer ? el.querySelector(layer) : el;
+        return getComputedStyle(target, "::before").opacity;
+      }, c.layer);
+      expect(rested).toBe("0");
+    });
+  }
+
   test("drawer items sink on press and ring above the sheet from the tap point; a drifted release sends nothing", async ({ page }) => {
     await open(page);
     const r = remote(page);

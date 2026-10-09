@@ -354,16 +354,26 @@ export class SofabatonSidebarRemote extends LitElement {
     el.classList.toggle("pressed", pressed);
     const dir = (el as HTMLElement).dataset.dir;
     const wheel = this.renderRoot.querySelector(".wheel") as HTMLElement | null;
+    // data-tilt drives the 3D rotation and the lighting layer's opacity; it goes on press
+    // and off on release. data-light only carries the lighting angle and is never cleared:
+    // the layer fades out after release, and clearing the angle with the tilt would snap
+    // the light to another edge mid-fade. The next press overwrites it.
     if (dir && wheel) {
-      if (pressed) wheel.dataset.tilt = dir;
-      else delete wheel.dataset.tilt;
+      if (pressed) {
+        wheel.dataset.tilt = dir;
+        wheel.dataset.light = dir;
+      } else {
+        delete wheel.dataset.tilt;
+      }
     }
     const pill = el.closest(".pill") as HTMLElement | null;
     if (pill) {
       if (pressed) {
         const segs = [...pill.children].filter((c) => (c as HTMLElement).offsetParent !== null || getComputedStyle(c).display !== "none");
         const i = segs.indexOf(el);
-        pill.dataset.tilt = segs.length === 1 ? "center" : segs.length === 2 ? ["left", "right"][i] : ["left", "center", "right"][i];
+        const tilt = segs.length === 1 ? "center" : segs.length === 2 ? ["left", "right"][i] : ["left", "center", "right"][i];
+        pill.dataset.tilt = tilt;
+        if (tilt !== "center") pill.dataset.light = tilt;
       } else {
         delete pill.dataset.tilt;
       }

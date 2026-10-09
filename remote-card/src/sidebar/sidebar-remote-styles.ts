@@ -177,10 +177,11 @@ export const sidebarRemoteStyles = css`
   .wheel[data-tilt="down"] { transform: rotateX(-13deg); }
   .wheel[data-tilt="left"] { transform: rotateY(-13deg); }
   .wheel[data-tilt="right"] { transform: rotateY(13deg); }
-  .wheel[data-tilt="up"] .disc::before { --tilt-angle: 180deg; }
-  .wheel[data-tilt="down"] .disc::before { --tilt-angle: 0deg; }
-  .wheel[data-tilt="left"] .disc::before { --tilt-angle: 90deg; }
-  .wheel[data-tilt="right"] .disc::before { --tilt-angle: 270deg; }
+  /* The angle is keyed on data-light, which outlives data-tilt, so the fade after release keeps the pressed direction. */
+  .wheel[data-light="up"] .disc::before { --tilt-angle: 180deg; }
+  .wheel[data-light="down"] .disc::before { --tilt-angle: 0deg; }
+  .wheel[data-light="left"] .disc::before { --tilt-angle: 90deg; }
+  .wheel[data-light="right"] .disc::before { --tilt-angle: 270deg; }
   .dirs { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
   .dir { position: absolute; inset: 0; display: block; color: var(--primary-text-color); border-radius: 0; }
   .dir.up { clip-path: polygon(0 0, 100% 0, 50% 50%); }
@@ -275,14 +276,17 @@ export const sidebarRemoteStyles = css`
     content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity 110ms ease; pointer-events: none;
     background: linear-gradient(var(--tilt-angle, 90deg), rgba(0, 0, 0, 0.07), transparent 45%);
   }
-  .pill[data-tilt="left"] { transform: rotateY(-14deg); }
-  .pill[data-tilt="right"] { transform: rotateY(14deg); }
-  .pill[data-tilt="left"]::before { opacity: 1; --tilt-angle: 90deg; }
-  .pill[data-tilt="right"]::before { opacity: 1; --tilt-angle: 270deg; }
+  /* Each pill carries its own perspective so the vanishing point is its centre; a shared
+     one on the row made the outer ends (VOL-, CH+) dip deeper than their inner neighbours. */
+  .pill[data-tilt="left"] { transform: perspective(700px) rotateY(-14deg); }
+  .pill[data-tilt="right"] { transform: perspective(700px) rotateY(14deg); }
+  .pill[data-tilt="left"]::before, .pill[data-tilt="right"]::before { opacity: 1; }
+  .pill[data-light="left"]::before { --tilt-angle: 90deg; }
+  .pill[data-light="right"]::before { --tilt-angle: 270deg; }
   .pill[data-tilt="center"] { transform: scale(0.96); }
   .pill .seg.pressed, .dir.pressed { transform: none; filter: none; }
   .pill .seg.pressed { background: none; }
-  .rockers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sb-gap); perspective: 700px; }
+  .rockers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sb-gap); }
   .rockers .pill { grid-template-columns: 1fr 1fr 1fr; }
   .colors { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sb-gap); }
   .colors button { height: calc(var(--sb-row-h) * 0.45); border-radius: 999px; transition: transform 90ms ease, filter 90ms ease; }
