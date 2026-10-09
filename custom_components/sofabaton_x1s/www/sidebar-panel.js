@@ -4507,6 +4507,11 @@ var SofabatonSidebarRemote = class extends i4 {
 SofabatonSidebarRemote.styles = sidebarRemoteStyles;
 
 // remote-card/src/sidebar/sidebar-panel-element.ts
+var HUB_ICON = w`<svg class="hubicon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 421.04 173.01" aria-hidden="true" fill="currentColor">
+  <path d="M87.39,45.33c0,21.03,50.51,44.46,123,44.46s123-23.43,123-44.46S282.87.87,210.39.87s-123,23.43-123,44.46Z"></path>
+  <path d="M25.79,116h367c11.44,0,18.11-2.01,23.05-6.95,6.19-6.19,6.93-17.18,1.79-26.73l-28.97-54.94C375.65,4.75,344.58,0,320.79,0h-22.52c2.26.78,4.48,1.59,6.62,2.43,27.41,10.85,42.5,26.08,42.5,42.9s-15.09,32.05-42.5,42.9c-25.35,10.04-58.92,15.56-94.5,15.56s-69.15-5.53-94.5-15.56c-27.41-10.85-42.5-26.08-42.5-42.9S88.48,13.28,115.89,2.43c2.14-.85,4.36-1.65,6.62-2.43h-19.72c-23.82,0-54.95,4.77-67.92,27.47L1.18,85.93c-2.61,7.76-.85,15.91,4.88,22.46,5.4,6.3,13.71,7.61,19.73,7.61Z"></path>
+  <path d="M25.79,130c-7.42,0-14.04-1.44-19.67-4.22,5.85,12.19,14.63,22.79,26.26,31.66,9.25,7.11,24.67,15.57,45.76,15.57h264c14.9,0,28.65-4.5,42.02-13.76,12.95-9.01,22.84-19.89,29.61-32.48-6.92,2.72-14.25,3.23-20.98,3.23H25.79Z"></path>
+</svg>`;
 var SIDEBAR_PANEL_TAG = "sofabaton-x-panel";
 var CONTROL_PANEL_TAG = "sofabaton-control-panel";
 var CONTROL_PANEL_BUNDLE = "tools-card.js";
@@ -4816,11 +4821,11 @@ var SofabatonXPanel = class extends i4 {
       err: Date.now() < this._errUntil
     };
     const tabs = this.isAdmin ? b2`<div class=${e5({ tabs: true, compact: this._compact })} role="tablist">
-          ${this._renderTab("remote", "mdi:remote-tv", s4.sidebar.title)}
-          ${this._renderTab("panel", "mdi:cog-outline", s4.sidebar.controlPanel)}
+          ${this._renderTab("remote", b2`<ha-icon .icon=${"mdi:remote-tv"}></ha-icon>`, s4.sidebar.title)}
+          ${this._renderTab("panel", HUB_ICON, s4.sidebar.controlPanel)}
           <div class="probe" aria-hidden="true">
             <span class="tab"><ha-icon .icon=${"mdi:remote-tv"}></ha-icon><span>${s4.sidebar.title}</span></span>
-            <span class="tab"><ha-icon .icon=${"mdi:cog-outline"}></ha-icon><span>${s4.sidebar.controlPanel}</span></span>
+            <span class="tab">${HUB_ICON}<span>${s4.sidebar.controlPanel}</span></span>
           </div>
         </div>` : b2`<div class=${e5({ tabs: true, single: true, compact: this._compact })}>
           <div class="title"><ha-icon .icon=${"mdi:remote-tv"}></ha-icon><span class="label">${s4.sidebar.title}</span></div>
@@ -4850,7 +4855,7 @@ var SofabatonXPanel = class extends i4 {
       </div>
     `;
   }
-  _renderTab(view, iconName, label) {
+  _renderTab(view, icon, label) {
     const active = this._view === view;
     return b2`<button
       class=${e5({ tab: true, [view]: true, active })}
@@ -4861,7 +4866,7 @@ var SofabatonXPanel = class extends i4 {
       aria-label=${label}
       ?disabled=${view === "panel" && this._controlPanelLoading}
       @click=${() => this._setView(view)}
-    ><ha-icon .icon=${iconName}></ha-icon><span class="label">${label}</span></button>`;
+    >${icon}<span class="label">${label}</span></button>`;
   }
   _renderMenu() {
     const s4 = str();
@@ -4935,6 +4940,8 @@ SofabatonXPanel.styles = i`
     .tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--tab-indicator); }
     .tab:disabled { opacity: 0.5; cursor: default; }
     .tab ha-icon, .title ha-icon { --mdc-icon-size: 24px; flex: 0 0 auto; }
+    /* the hub silhouette: as tall a box as the mdi icons, a little wider for its aspect */
+    .tab .hubicon { width: 28px; height: 24px; flex: 0 0 auto; display: block; }
     /* One tab only (not an admin): a plain icon + label in the page-title style, nothing selected. */
     .title { padding: 0 8px; min-width: 0; }
     .title .label { overflow: hidden; text-overflow: ellipsis; }
