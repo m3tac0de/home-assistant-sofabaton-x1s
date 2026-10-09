@@ -574,7 +574,7 @@ data:
 
 Returns the cached structural `hub_bundle` used by the Control Panel's live Activity and Device editors. This is a cache-only read: it does not contact the hub and does not download command payload blobs.
 
-Persistent cache must be enabled and populated. On a fresh installation, open the Control Panel's Hub or Activities tab once, or run a whole-hub cache refresh, before calling this action.
+Persistent cache must be enabled and populated. Switching the cache on in the Control Panel fetches the full hub catalog right away; if the cache was emptied since, run a whole-hub cache refresh (Hub tab, Refresh all) before calling this action.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |

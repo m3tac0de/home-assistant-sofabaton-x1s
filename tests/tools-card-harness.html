@@ -1627,8 +1627,6 @@
             case "sofabaton_x1s/persistent_cache/refresh":
             case "sofabaton_x1s/cache/refresh_all":
               return respond(type, { operation_id: operationId("cache-refresh") });
-            case "sofabaton_x1s/catalog/refresh":
-              return respond(type, { ok: true });
             case "sofabaton_x1s/cache/structural_bundle":
               return respond(type, {
                 bundle: mock.structuralBundle,

@@ -458,6 +458,57 @@ test("setSetting applies optimistic state and rolls back on failure", async () =
   assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
 });
 
+test("enabling persistent cache follows up with a whole-hub refresh", async () => {
+  const { store } = createStore();
+  const calls: string[] = [];
+  let progressCallback: ((payload: unknown) => void) | undefined;
+  let cacheEnabled = false;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, persistent_cache_enabled: cacheEnabled }),
+        "sofabaton_x1s/control_panel/set_setting": (message) => {
+          calls.push(`set:${String(message.setting)}=${String(message.enabled)}`);
+          cacheEnabled = Boolean(message.enabled);
+          return { ok: true, enabled: cacheEnabled };
+        },
+        "sofabaton_x1s/cache/refresh_all": () => {
+          calls.push("refresh_all");
+          return { operation_id: "op-1" };
+        },
+      },
+      subscribe: async (callback, message) => {
+        if (String(message.type) === "sofabaton_x1s/backup/progress_subscribe") {
+          progressCallback = callback;
+        }
+        return () => {};
+      },
+    }),
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
+
+  const pending = store.setSetting("persistent_cache", true);
+  await flush();
+  await flush();
+
+  // The switch itself settles first; the follow-up refresh then runs as a
+  // regular whole-hub refresh (busy state, dock progress).
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.persistent_cache_enabled, true);
+  assert.ok("hub-1" in store.snapshot.refreshBusyByHub);
+  assert.deepEqual(calls, ["set:persistent_cache=true", "refresh_all"]);
+
+  progressCallback?.({ status: "success" });
+  await pending;
+  assert.deepEqual(store.snapshot.refreshBusyByHub, {});
+
+  // Switching it off clears the cache on the backend; nothing to refresh.
+  await store.setSetting("persistent_cache", false);
+  assert.deepEqual(calls, ["set:persistent_cache=true", "refresh_all", "set:persistent_cache=false"]);
+});
+
 test("renameHub writes the name through hub/rename and reloads the hub state", async () => {
   const { store } = createStore();
   const messages: Record<string, unknown>[] = [];

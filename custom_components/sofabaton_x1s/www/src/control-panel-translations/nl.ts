@@ -114,7 +114,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} fav. / ${macros} ${macros === 1 ? "macro" : "macro's"} / ${buttons} ${buttons === 1 ? "knop" : "knoppen"}`,
     deviceCommandCount: (count: number) => `${count} cmd`, favorites: "Favorieten", macros: "Macro's", buttons: "Knoppen",
     noCachedData: "Nog geen gecachte gegevens.", noCachedCommands: "Geen gecachte commando's.", staleBanner: "De cache is extern bijgewerkt. Vernieuw om de nieuwste gegevens te zien.",
-    refresh: "Vernieuwen", activities: "Activiteiten", devices: "Apparaten", refreshList: "Lijst", refreshAll: "Alles", refreshAllAria: "De hele hubcache vernieuwen", refreshListAria: "Deze lijst vernieuwen", refreshEntryAria: (name: string) => `${name} vernieuwen`,
+    refresh: "Vernieuwen", activities: "Activiteiten", devices: "Apparaten", refreshAll: "Alles", refreshAllAria: "De hele hubcache vernieuwen", refreshEntryAria: (name: string) => `${name} vernieuwen`,
     editActivity: "Activiteit bewerken", editDevice: "Apparaat bewerken", changeOrder: "Ordenen", addActivity: "Toevoegen", addDevice: "Toevoegen",
     reorderSync: "Synchroniseren", reorderCancel: "Annuleren", reorderHint: "Sleep activiteiten naar de gewenste volgorde en synchroniseer daarna met de hub.",
     reorderDevicesHint: "Sleep apparaten naar de gewenste volgorde en synchroniseer daarna met de hub.", reorderSyncing: "Nieuwe volgorde naar de hub schrijven…",

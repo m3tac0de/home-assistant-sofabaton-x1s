@@ -1206,7 +1206,6 @@ class SofabatonControlPanelCard extends LitElement {
           onToggleEntity: (key) => this._store.toggleEntity(key),
           clickAction: hubClickAction(this._snapshot),
           onItemClick: (item) => this.handleHubItemClick(item),
-          onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
           refreshAllSpinning:
             hubActiveRefreshLabel(this._snapshot, hubEntryId) === REFRESH_ALL_KEY,

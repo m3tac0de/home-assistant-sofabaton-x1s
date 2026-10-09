@@ -86,7 +86,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     macroFallback: (commandId: number) => `Makro ${commandId}`, activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} Fav. / ${macros} ${macros === 1 ? "Makro" : "Makros"} / ${buttons} ${buttons === 1 ? "Taste" : "Tasten"}`,
     deviceCommandCount: (count: number) => `${count} Bef.`, favorites: "Favoriten", macros: "Makros", buttons: "Tasten", noCachedData: "Noch keine Daten im Cache.",
     noCachedCommands: "Keine Befehle im Cache.", staleBanner: "Der Cache wurde extern aktualisiert. Aktualisiere die Ansicht, um die neuesten Daten zu sehen.",
-    refresh: "Aktualisieren", activities: "Aktivitäten", devices: "Geräte", refreshList: "Liste", refreshAll: "Alle", refreshAllAria: "Gesamten Hub-Cache aktualisieren", refreshListAria: "Diese Liste aktualisieren", refreshEntryAria: (name: string) => `${name} aktualisieren`,
+    refresh: "Aktualisieren", activities: "Aktivitäten", devices: "Geräte", refreshAll: "Alle", refreshAllAria: "Gesamten Hub-Cache aktualisieren", refreshEntryAria: (name: string) => `${name} aktualisieren`,
     editActivity: "Aktivität bearbeiten", editDevice: "Gerät bearbeiten", changeOrder: "Sortieren", addActivity: "Hinzufügen", addDevice: "Hinzufügen",
     reorderSync: "Synchronisieren", reorderCancel: "Abbrechen", reorderHint: "Ziehe die Aktivitäten in die gewünschte Reihenfolge und synchronisiere sie anschließend mit dem Hub.",
     reorderDevicesHint: "Ziehe die Geräte in die gewünschte Reihenfolge und synchronisiere sie anschließend mit dem Hub.", reorderSyncing: "Neue Reihenfolge wird auf den Hub geschrieben…",

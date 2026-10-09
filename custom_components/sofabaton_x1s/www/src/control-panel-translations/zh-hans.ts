@@ -112,7 +112,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     activityCounts: (favorites: number, macros: number, buttons: number) => `${favorites} 个收藏 / ${macros} 个宏 / ${buttons} 个按键`,
     deviceCommandCount: (count: number) => `${count} 个命令`, favorites: "收藏", macros: "宏", buttons: "按键",
     noCachedData: "暂无缓存数据。", noCachedCommands: "暂无缓存命令。", staleBanner: "缓存已在其他位置更新。请刷新以查看最新数据。",
-    refresh: "刷新", activities: "活动", devices: "设备", refreshList: "刷新列表", refreshAll: "全部刷新", refreshAllAria: "刷新整个 Hub 缓存", refreshListAria: "刷新此列表", refreshEntryAria: (name: string) => `刷新 ${name}`,
+    refresh: "刷新", activities: "活动", devices: "设备", refreshAll: "全部刷新", refreshAllAria: "刷新整个 Hub 缓存", refreshEntryAria: (name: string) => `刷新 ${name}`,
     editActivity: "编辑活动", editDevice: "编辑设备", changeOrder: "调整顺序", addActivity: "添加", addDevice: "添加",
     reorderSync: "同步", reorderCancel: "取消", reorderHint: "将活动拖到所需位置，然后同步到 Hub。",
     reorderDevicesHint: "将设备拖到所需位置，然后同步到 Hub。", reorderSyncing: "正在将新顺序写入 Hub…",

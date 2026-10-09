@@ -47,7 +47,6 @@ export function renderCacheTab(params: {
   // ("none" keeps the rows inert; "send"/"copy" route through onItemClick).
   clickAction: HubClickAction;
   onItemClick: (item: HubClickItem) => void;
-  onRefreshSection: (sectionId: SectionId) => void;
   onRefreshEntry: (kind: "activity" | "device", targetId: number, key: string) => void;
   // Whole-hub structural cache refresh ("Refresh all" in the panel header).
   refreshAllSpinning: boolean;
@@ -543,19 +542,6 @@ export function renderCacheTab(params: {
                 @keydown=${locked ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); params.onRefreshAll(); } }}
               >${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
               <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" aria-label=${TOOLS_CARD_STRINGS.cache.refreshAllAria} ?disabled=${locked} @click=${params.onRefreshAll}>
-                <ha-icon icon="mdi:refresh"></ha-icon>
-              </button>
-            </span>
-            <span class="refresh-action">
-              <span
-                class="refresh-list-label refresh-list-label--clickable"
-                role="button"
-                tabindex=${locked ? -1 : 0}
-                aria-disabled=${String(locked)}
-                @click=${locked ? null : () => params.onRefreshSection(selectedSection)}
-                @keydown=${locked ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); params.onRefreshSection(selectedSection); } }}
-              >${TOOLS_CARD_STRINGS.cache.refreshList}</span>
-              <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" aria-label=${TOOLS_CARD_STRINGS.cache.refreshListAria} ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
                 <ha-icon icon="mdi:refresh"></ha-icon>
               </button>
             </span>

@@ -1992,10 +1992,8 @@ var TOOLS_CARD_STRINGS_EN = {
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
-    refreshList: "Refresh list",
     refreshAll: "Refresh all",
     refreshAllAria: "Refresh the whole hub cache",
-    refreshListAria: "Refresh this list",
     refreshEntryAria: (name) => `Refresh ${name}`,
     editActivity: "Edit activity",
     editDevice: "Edit device",
@@ -3318,13 +3316,6 @@ var ControlPanelApi = class {
       operation_id: operationId
     });
   }
-  refreshCatalog(entryId, kind) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/catalog/refresh",
-      entry_id: entryId,
-      kind
-    });
-  }
   refreshCacheEntry(payload) {
     const message = {
       type: "sofabaton_x1s/persistent_cache/refresh",
@@ -4586,11 +4577,16 @@ var ControlPanelStore = class {
     const previousPersistentCacheEnabled = persistentCacheEnabled(this._snapshot);
     this._snapshot = { ...this._snapshot, pendingSettingKey: setting };
     this.applyOptimisticSetting(setting, enabled);
+    let cacheJustEnabled = false;
     try {
       await this.api().setSetting(hub.entry_id, setting, enabled);
       if (setting === "persistent_cache") {
-        if (enabled) await this.loadCacheContents();
-        else await this.loadControlPanelState();
+        if (enabled) {
+          await this.loadCacheContents();
+          cacheJustEnabled = !previousPersistentCacheEnabled;
+        } else {
+          await this.loadControlPanelState();
+        }
       } else {
         await this.loadControlPanelState();
       }
@@ -4604,6 +4600,7 @@ var ControlPanelStore = class {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
     }
+    if (cacheJustEnabled) await this.refreshAllForHub();
   }
   /** Persist the global Hub-tab click behavior ("do nothing" / "send" /
    *  "copy"), with the same optimistic-update + rollback flow as the
@@ -4764,20 +4761,6 @@ var ControlPanelStore = class {
     delete byHub[entryId];
     this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
     this.emit();
-  }
-  async refreshSection(sectionId) {
-    if (this._isHubCommandBusy()) return;
-    const hub = selectedHub(this._snapshot);
-    if (!hub) return;
-    this._setRefreshBusy(hub.entry_id, null);
-    try {
-      await this.api().refreshCatalog(hub.entry_id, sectionId);
-      await this.loadState({ silent: true });
-    } catch (error) {
-      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
-    } finally {
-      this._clearRefreshBusy(hub.entry_id);
-    }
   }
   /**
    * Whole-hub structural cache refresh ("Refresh all" in the Hub tab).
@@ -6296,24 +6279,6 @@ function renderCacheTab(params) {
       }}
               >${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
               <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" aria-label=${TOOLS_CARD_STRINGS.cache.refreshAllAria} ?disabled=${locked} @click=${params.onRefreshAll}>
-                <ha-icon icon="mdi:refresh"></ha-icon>
-              </button>
-            </span>
-            <span class="refresh-action">
-              <span
-                class="refresh-list-label refresh-list-label--clickable"
-                role="button"
-                tabindex=${locked ? -1 : 0}
-                aria-disabled=${String(locked)}
-                @click=${locked ? null : () => params.onRefreshSection(selectedSection)}
-                @keydown=${locked ? null : (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          params.onRefreshSection(selectedSection);
-        }
-      }}
-              >${TOOLS_CARD_STRINGS.cache.refreshList}</span>
-              <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" aria-label=${TOOLS_CARD_STRINGS.cache.refreshListAria} ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
                 <ha-icon icon="mdi:refresh"></ha-icon>
               </button>
             </span>
@@ -23048,7 +23013,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           onToggleEntity: (key) => this._store.toggleEntity(key),
           clickAction: hubClickAction(this._snapshot),
           onItemClick: (item) => this.handleHubItemClick(item),
-          onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
           refreshAllSpinning: hubActiveRefreshLabel(this._snapshot, hubEntryId) === REFRESH_ALL_KEY,
           onRefreshAll: () => void this._store.refreshAllForHub(),

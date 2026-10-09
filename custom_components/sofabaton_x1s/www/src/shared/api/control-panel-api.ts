@@ -474,14 +474,6 @@ export class ControlPanelApi {
     });
   }
 
-  refreshCatalog(entryId: string, kind: "activities" | "devices") {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/catalog/refresh",
-      entry_id: entryId,
-      kind,
-    });
-  }
-
   refreshCacheEntry(payload: {
     hubEntryId: string;
     entityId?: string | null;
