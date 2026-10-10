@@ -538,7 +538,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             self.mdns_host = next_host
             changed = True
 
-        self.transport.update_discovery_metadata(mdns_txt=self.mdns_txt)
+        self._push_discovery_metadata()
 
         if changed and self._adv_started:
             self._stop_discovery()
@@ -1922,8 +1922,16 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self.proxy_udp_port = self.transport.proxy_udp_port
         if not self._start_mdns():
             return
+        self._push_discovery_metadata()
         self.transport.start_notify_listener()
         self._adv_started = True
+
+    def _push_discovery_metadata(self) -> None:
+        """Hand the transport what the app may name this hub by: the TXT
+        record it advertises and the MAC the hub reported in its banner."""
+
+        banner_mac = str(self.get_banner_info().get("mac") or "").strip() or None
+        self.transport.update_discovery_metadata(mdns_txt=self.mdns_txt, banner_mac=banner_mac)
 
     def _stop_discovery(self) -> None:
         self.transport.stop_notify_listener()

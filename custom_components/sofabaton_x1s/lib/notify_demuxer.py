@@ -70,6 +70,10 @@ class NotifyRegistration:
     mac_bytes: bytes
     device_id: bytes
     call_me_hint: bytes
+    #: The MAC the hub reported in its banner (6 bytes, all zero when not
+    #: known yet). A manually added hub advertises a synthetic MAC, so an
+    #: app that names the hub by its real MAC is matched through this one.
+    banner_mac_bytes: bytes = b"\x00" * 6
 
 
 def _classify_or_x1(mdns_txt: Dict[str, str]) -> str:
@@ -121,6 +125,7 @@ class NotifyDemuxer:
         mdns_txt: Dict[str, str],
         call_me_port: int,
         call_me_cb: Callable[[str, int, str, int], None],
+        banner_mac: Optional[str] = None,
     ) -> None:
         mac_bytes = self._extract_mac_bytes(mdns_txt)
         hub_version = _classify_or_x1(mdns_txt)
@@ -137,6 +142,7 @@ class NotifyDemuxer:
             mac_bytes,
             device_id,
             call_me_hint,
+            self._mac_bytes_from_text(banner_mac),
         )
         with self._lock:
             self._registrations[proxy_id] = reg
@@ -381,11 +387,12 @@ class NotifyDemuxer:
             return
 
         get_hub_logger(log, reg.proxy_id).info(
-            "[DEMUX] CALL_ME from %s:%d -> app tcp %s:%d",
+            "[DEMUX] CALL_ME from %s:%d -> app tcp %s:%d (hint %s)",
             src_ip,
             src_port,
             app_ip,
             app_port,
+            mac_hint.hex(":"),
         )
         try:
             reg.call_me_cb(src_ip, src_port, app_ip, app_port)
@@ -412,10 +419,25 @@ class NotifyDemuxer:
             for reg in registrations:
                 if any(reg.mac_bytes[:5]) and reg.mac_bytes[:5] == mac_hint[:5]:
                     return reg
-            # A hint that matches nobody names another hub (one whose proxy
-            # was disabled, say); connecting the only registered proxy would
-            # show that hub under the wrong identity.
-            return None
+            # The app may name the hub by the MAC the hub itself reports,
+            # which differs from the advertised one for a manually added
+            # hub (its TXT record carries a synthetic MAC).
+            for reg in registrations:
+                if any(reg.banner_mac_bytes[:5]) and reg.banner_mac_bytes[:5] == mac_hint[:5]:
+                    return reg
+            if len(registrations) > 1:
+                # A hint that matches nobody names another hub; with several
+                # proxies registered, guessing would connect the app to a hub
+                # under the wrong identity.
+                return None
+            # One proxy: the hint cannot be telling the hubs apart, and an
+            # app that learned its MAC elsewhere must still get through.
+            get_hub_logger(log, registrations[0].proxy_id).info(
+                "[DEMUX] CALL_ME hint %s matches no advertised or reported MAC; "
+                "routing to the only registered proxy",
+                mac_hint.hex(":"),
+            )
+            return registrations[0]
 
         if len(registrations) == 1:
             return registrations[0]
@@ -424,12 +446,16 @@ class NotifyDemuxer:
 
     @staticmethod
     def _extract_mac_bytes(mdns_txt: Dict[str, str]) -> bytes:
+        return NotifyDemuxer._mac_bytes_from_text(
+            mdns_txt.get("MAC") or mdns_txt.get("mac") or mdns_txt.get("macaddress")
+        )
+
+    @staticmethod
+    def _mac_bytes_from_text(mac_raw: object) -> bytes:
+        """A MAC in any spelling as exactly 6 bytes; all zero when absent
+        or malformed."""
+
         try:
-            mac_raw = (
-                mdns_txt.get("MAC")
-                or mdns_txt.get("mac")
-                or mdns_txt.get("macaddress")
-            )
             mac_bytes = (
                 bytes.fromhex(str(mac_raw).replace(":", "").replace("-", ""))
                 if mac_raw

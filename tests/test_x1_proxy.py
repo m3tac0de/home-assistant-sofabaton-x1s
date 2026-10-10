@@ -838,6 +838,54 @@ def test_update_discovery_identity_uses_model_hub_mac_suffix_instance() -> None:
     assert proxy.mdns_host == "X1-HUB-112233.local"
 
 
+def test_discovery_metadata_carries_the_banner_mac(monkeypatch) -> None:
+    """The demuxer must answer to the MAC the hub reports, not only the
+    advertised one: a manually added hub advertises a synthetic MAC."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
+    pushed: list[dict] = []
+    monkeypatch.setattr(
+        proxy.transport,
+        "update_discovery_metadata",
+        lambda **kwargs: pushed.append(kwargs),
+    )
+
+    proxy.update_discovery_identity(
+        mdns_txt={"MAC": "02:9F:1C:33:44:55", "NAME": "X2 HUB", "HVER": "3", "AVER": "8"},
+        hub_version="X2",
+    )
+    assert pushed[-1]["banner_mac"] is None  # no banner seen yet
+
+    with proxy._banner_info_lock:
+        proxy._banner_info = {"model": "X2", "name": "X2 HUB", "firmware_version": 8, "mac": "FC012C39D390"}
+    proxy.update_discovery_identity(
+        mdns_txt={"MAC": "02:9F:1C:33:44:55", "NAME": "X2 HUB", "HVER": "3", "AVER": "8"},
+        hub_version="X2",
+    )
+    assert pushed[-1] == {
+        "mdns_txt": {"MAC": "02:9F:1C:33:44:55", "NAME": "X2 HUB", "HVER": "3", "AVER": "8"},
+        "banner_mac": "FC012C39D390",
+    }
+
+
+def test_transport_registers_the_banner_mac_with_the_demuxer(monkeypatch) -> None:
+    from custom_components.sofabaton_x1s.lib import transport_bridge
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
+    registered: list[dict] = []
+
+    class _Demux:
+        def register_proxy(self, **kwargs):
+            registered.append(kwargs)
+
+    monkeypatch.setattr(transport_bridge, "get_notify_demuxer", lambda *_a, **_k: _Demux())
+    proxy.transport.update_discovery_metadata(mdns_txt={"MAC": "02:9F:1C:33:44:55", "HVER": "3"}, banner_mac="FC012C39D390")
+    proxy.transport._register_demuxer()
+
+    assert registered[0]["banner_mac"] == "FC012C39D390"
+    assert registered[0]["mdns_txt"] == {"MAC": "02:9F:1C:33:44:55", "HVER": "3"}
+
+
 def test_start_discovery_waits_for_banner_identity(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
     calls: list[str] = []

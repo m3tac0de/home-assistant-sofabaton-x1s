@@ -126,7 +126,11 @@ def test_notify_reply_x2_matches_hub_format():
     )
 
 
-def test_call_me_for_another_hub_is_not_routed_to_the_only_proxy():
+def test_call_me_with_unknown_hint_reaches_the_only_proxy():
+    """One registered proxy: a hint naming no advertised MAC still routes
+    (an app may name the hub by a MAC it learned elsewhere), and a hint
+    of all zeros does too."""
+
     demux = NotifyDemuxer()
     demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
     called = []
@@ -135,13 +139,73 @@ def test_call_me_for_another_hub_is_not_routed_to_the_only_proxy():
         lambda *args: called.append(args),
     )
 
-    # Hub B's hint: its proxy is disabled, so only A is registered.
     demux._handle_call_me(_build_call_me(bytes.fromhex("112233445566"), "10.0.0.5", 1234), "10.0.0.5", 5678)
+    assert len(called) == 1
+
+    demux._handle_call_me(_build_call_me(b"\x00" * 6, "10.0.0.5", 1234), "10.0.0.5", 5678)
+    assert len(called) == 2
+
+
+def test_call_me_for_another_hub_is_not_routed_when_several_proxies_are_registered():
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
+    called = []
+    demux.register_proxy(
+        "proxy1", "192.168.1.10", {"MAC": "AA:BB:CC:DD:EE:FF"}, 8102,
+        lambda *args: called.append(("a",) + args),
+    )
+    demux.register_proxy(
+        "proxy2", "192.168.1.11", {"MAC": "11:22:33:44:55:66"}, 8102,
+        lambda *args: called.append(("b",) + args),
+    )
+
+    # Hub C's hint (its proxy is disabled): guessing would show the wrong hub.
+    demux._handle_call_me(_build_call_me(bytes.fromhex("778899aabbcc"), "10.0.0.5", 1234), "10.0.0.5", 5678)
     assert not called
 
-    # No hint at all: the only proxy is still the answer.
+    # No hint at all cannot pick between two either.
     demux._handle_call_me(_build_call_me(b"\x00" * 6, "10.0.0.5", 1234), "10.0.0.5", 5678)
-    assert len(called) == 1
+    assert not called
+
+    demux._handle_call_me(_build_call_me(bytes.fromhex("112233445566"), "10.0.0.5", 1234), "10.0.0.5", 5678)
+    assert [c[0] for c in called] == ["b"]
+
+
+def test_call_me_routes_by_the_banner_mac_of_a_manually_added_hub():
+    """A manually added hub advertises a synthetic MAC; the app names it by
+    the MAC the hub reported in its banner (X2 full MAC, X1S five bytes
+    plus the model suffix)."""
+
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
+    called = []
+    demux.register_proxy(
+        "x2", "192.168.10.20", {"MAC": "02:9f:1c:33:44:55", "HVER": "3"}, 8102,
+        lambda *args: called.append(("x2",) + args), banner_mac="FC012C39D390",
+    )
+    demux.register_proxy(
+        "x1s", "192.168.10.21", {"MAC": "02:11:22:33:44:55", "HVER": "2"}, 8102,
+        lambda *args: called.append(("x1s",) + args), banner_mac="E2:6A:44:86:1B:A0",
+    )
+
+    demux._handle_call_me(_build_call_me(bytes.fromhex("fc012c39d390"), "10.0.0.5", 1234), "10.0.0.5", 5678)
+    demux._handle_call_me(_build_call_me(bytes.fromhex("e26a44861b45"), "10.0.0.5", 1235), "10.0.0.5", 5679)
+    assert [(c[0], c[4]) for c in called] == [("x2", 1234), ("x1s", 1235)]
+
+    # The synthetic advertised MAC keeps working for an app that echoes it.
+    demux._handle_call_me(_build_call_me(bytes.fromhex("029f1c334455"), "10.0.0.5", 1236), "10.0.0.5", 5680)
+    assert called[-1][0] == "x2"
+
+
+def test_registration_without_banner_mac_matches_nothing_by_zero_bytes():
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
+    demux.register_proxy("a", "192.168.1.10", {"MAC": "AA:BB:CC:DD:EE:FF"}, 8102, lambda *_: None)
+    demux.register_proxy("b", "192.168.1.11", {"MAC": "11:22:33:44:55:66"}, 8102, lambda *_: None)
+    regs = list(demux._registrations.values())
+    assert all(reg.banner_mac_bytes == b"\x00" * 6 for reg in regs)
+    # A zero-prefixed hint must not land on a registration through its empty banner MAC.
+    assert demux._select_registration(bytes.fromhex("000000000001"), regs) is None
 
 
 def test_notify_reply_goes_to_the_real_subnet_broadcast(monkeypatch):

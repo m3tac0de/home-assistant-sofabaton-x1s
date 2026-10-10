@@ -147,6 +147,8 @@ class TransportBridge:
         self.ka_count = int(ka_count)
         self._mdns_instance = mdns_instance
         self._mdns_txt = mdns_txt
+        # The MAC the hub reported in its banner; see update_discovery_metadata.
+        self._banner_mac: Optional[str] = None
 
         self._stop = threading.Event()
         self._hub_sock: Optional[socket.socket] = None
@@ -407,6 +409,7 @@ class TransportBridge:
             mdns_txt=self._mdns_txt,
             call_me_port=self.proxy_udp_port,
             call_me_cb=self._handle_call_me,
+            banner_mac=self._banner_mac,
         )
         self._notify_registered = True
 
@@ -414,8 +417,15 @@ class TransportBridge:
         self,
         *,
         mdns_txt: Dict[str, str],
+        banner_mac: Optional[str] = None,
     ) -> None:
+        """The identity the next demuxer registration advertises and
+        answers to: the TXT record, and the MAC the hub reported in its
+        banner (accepted as a CALL_ME hint beside the advertised one)."""
+
         self._mdns_txt = mdns_txt
+        if banner_mac:
+            self._banner_mac = banner_mac
 
     def start_notify_listener(self) -> None:
         self._discovery_enabled = True
