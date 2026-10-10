@@ -1,7 +1,7 @@
 # Sofabaton X sidebar
 
 After adding your hub, open **Sofabaton X** in Home
-Assistant's sidebar. It opens a full-page remote designed for phones, with no
+Assistant's sidebar. It opens a full-page remote designed for mobile screens, with no
 dashboard setup needed. If you have several hubs, select one in the header.
 
 <img src="images/sidebar-remote.png" alt="Sofabaton X sidebar remote in a light theme controlling an X1S Activity on a phone" width="300" />
