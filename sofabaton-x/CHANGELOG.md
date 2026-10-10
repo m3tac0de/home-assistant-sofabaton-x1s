@@ -11,18 +11,7 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
-### Fixed
-
-- The app connects again to a hub whose advertised MAC is not the one the
-  app names in its `CALL_ME`. Since 0.2.3 a `CALL_ME` hint that matched no
-  registered proxy was ignored, which broke manually added hubs (their TXT
-  record carries a synthetic MAC) when the app sent the hub's real MAC. The
-  MAC the hub reports in its banner is now accepted as a hint too, and an
-  unknown hint is only refused when more than one proxy is registered (one
-  proxy cannot be the wrong hub). Every routed `CALL_ME` now logs the hint
-  it carried.
-
-## 0.2.4 (2026-10-09)
+## 0.2.4 (2026-10-10)
 
 Changes since `sofabaton-x-v0.2.3`. Backward-compatible additions and
 fixes; applications can use `sofabaton-x>=0.2.4,<0.3`. Applications
@@ -41,6 +30,16 @@ upgrading from older releases should also read their migration notes below.
 
 ### Fixed
 
+- The app connects again to a hub whose advertised MAC is not the one the
+  app names in its `CALL_ME`. In 0.2.3 a `CALL_ME` hint that matched no
+  registered proxy was ignored, which broke hubs added by IP (their TXT
+  record carries a synthetic MAC) when the app sent the hub's real MAC: the
+  app listed the hub and the connect timed out, with
+  `[DEMUX] CALL_ME ... ignored (no proxy match, ...)` in the log. The MAC
+  the hub reports in its banner is now accepted as a hint too, and an
+  unknown hint is only refused when more than one proxy is registered (one
+  proxy cannot be the wrong hub). Every routed `CALL_ME` now logs the hint
+  it carried.
 - Multi-homed hosts: when OS routing picks a source address that is not on
   the hub's subnet while another local address is (source-based policy
   routing, for example), that address is advertised in `CALL_ME`, mDNS and

@@ -6,7 +6,7 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
-## 0.2.5 (2026-10-09)
+## 0.2.5 (2026-10-10)
 
 Changes since `sofabaton-x-server-v0.2.4`. Requires
 **sofabaton-x >=0.2.4,<0.3**; publish the library first.
@@ -21,6 +21,11 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
   address override and multi-interface routing fixes.
 - Changing an existing Wifi Device between HTTP and MQTT is a Home
   Assistant feature in this release; the server retains its deployed transport.
+- Server 0.2.4 ran on library 0.2.3, which carried a connect regression:
+  the app listed a hub that was added by IP, but connecting to it timed out
+  and the server log showed `[DEMUX] CALL_ME ... ignored (no proxy match,
+  ...)`. Library 0.2.4 fixes it; this release requires that library, and
+  the container images are rebuilt on it.
 
 ### Added
 
@@ -41,6 +46,9 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
 
 ### Fixed
 
+- The app connects again to hubs added by IP (library 0.2.4, see the
+  upgrade notes). The server log now also shows the MAC hint the app sent
+  with each connect request.
 - Panel and remote readability with glass themes, plus translated labels
   and editor layout details.
 
