@@ -78,7 +78,7 @@ After Home Assistant has restarted:
 
 If the hub is on another VLAN or subnet, see the [networking guide](docs/networking.md).
 
-In **0.7.0**, open **Sofabaton X** in the sidebar after setup to [start using the remote and Control Panel](#-sofabaton-x-sidebar).
+Open **Sofabaton X** in the sidebar after setup to [start using the remote and Control Panel](#-sofabaton-x-sidebar).
 
 ### Disable X2 discovery
 
