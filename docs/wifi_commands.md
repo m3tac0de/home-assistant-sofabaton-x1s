@@ -2,6 +2,8 @@
 
 Use the Sofabaton Control Panel to turn remote commands and hub state changes into Home Assistant Actions. Configuration is split between the **Automation** tab and the Activity and device editors. Once configured, triggers are handled and Actions run in the Home Assistant backend; the Control Panel is only the configuration interface and does not need to remain open.
 
+Open **Sofabaton X → Control Panel** from the [sidebar](sidebar.md) (0.7.0), or use the dashboard Control Panel card.
+
 To control the hub from Home Assistant instead, see the [remote entity guide](remote_entity.md).
 
 ## ◇ Choose a workflow

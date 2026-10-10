@@ -1,7 +1,8 @@
 # Sofabaton Backup and Restore
 
-The **Backup** tab in the **Sofabaton Control Panel** can create, edit, and
-restore local JSON backup files.
+Open **Sofabaton X → Control Panel → Backup** from the
+[sidebar](sidebar.md) (0.7.0), or use the dashboard Control Panel card, to
+create, edit, and restore local JSON backup files.
 
 A backup contains hub configuration: Devices, Activities, commands and their
 payloads, inputs, power sequences, button assignments, shortcuts, macros,
@@ -12,7 +13,7 @@ Activity was running or whether a Device was powered on.
 
 ## ◇ Before you start
 
-- **Persistent cache must be enabled to make a backup.** The card uses the
+- **Persistent cache must be enabled to make a backup.** The Control Panel uses the
   cached hub catalog to offer the available Devices and Activities.
 - Backup, restore, and hub editing are unavailable while the Sofabaton app or
   another hub operation holds the connection.
@@ -32,9 +33,9 @@ depend on Devices and commands, so a complete hub backup is the safest recovery
 point. Selected-Device backups are useful for archiving or copying individual
 Devices.
 
-Choose **Start backup** and follow the progress in the card. The job runs in the
-integration backend, so it continues if you close the card or navigate elsewhere
-in Home Assistant. Returning to the card reconnects to the active operation.
+Choose **Start backup** and follow the progress in the Control Panel. The job
+runs in the integration backend, so it continues if you navigate elsewhere in
+Home Assistant. Returning to the Control Panel reconnects to the active operation.
 
 When the backup is ready, download it within **5 minutes**. That limit applies
 only to the integration's temporary copy; the JSON file you downloaded does not
@@ -74,7 +75,7 @@ For command payload fields and formats, see the
 2. Select the Activities and Devices to restore.
 3. Leave **Erase existing Devices and Activities** off for a merge, or enable it
    for a clean replacement.
-4. Choose **Start restore** and follow the progress in the card.
+4. Choose **Start restore** and follow the progress in the Control Panel.
 
 Selecting an Activity automatically includes the Devices and linked Activities
 it depends on.
@@ -128,7 +129,7 @@ a clean rebuild.
 
 ## ◇ Advanced JSON editing
 
-The card editor is the recommended way to modify a backup. Manual JSON editing
+The Control Panel editor is the recommended way to modify a backup. Manual JSON editing
 is possible, but changing ids, required fields, or the bundle structure can make
 the file invalid.
 
