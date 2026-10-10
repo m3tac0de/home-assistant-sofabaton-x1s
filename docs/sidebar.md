@@ -42,8 +42,27 @@ Under **Control Panel → Settings → Sidebar Panel**, choose:
 
 This setting applies to all hubs and takes effect immediately. If the panel
 is off, use the [dashboard Control Panel card](../README.md#sofabaton-control-panel)
-to enable it again. Users can also hide the entry through Home Assistant's
-own sidebar customization.
+to enable it again.
+
+## ◇ Reorder or hide the sidebar entry
+
+Use Home Assistant's [sidebar customization](https://www.home-assistant.io/dashboards/dashboards/#reorganizing-items-in-the-sidebar)
+to arrange your own sidebar:
+
+1. Select your name at the bottom of the sidebar.
+2. Under **User preferences**, find **Change the order and hide items from the
+   sidebar** and select **Edit**. In some Home Assistant versions, this setting
+   is under **Appearance**.
+3. Drag items to reorder them, or toggle **Sofabaton X** off to hide its entry,
+   then select **Save**.
+
+You can also press and hold the sidebar header to enter edit mode.
+
+Hiding the entry keeps the remote and Control Panel views available through
+[dashboard navigation links](#-link-from-a-dashboard). Keep the integration's
+**Sidebar Panel** setting on **All users** or **Admins only**: setting it to
+**Off** removes the panel and its navigation destinations. Administrator-only
+access still applies when opening a view through a link.
 
 ## ◇ Link from a dashboard
 
