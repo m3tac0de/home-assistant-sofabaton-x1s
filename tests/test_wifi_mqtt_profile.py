@@ -299,17 +299,32 @@ def test_select_wifi_command_transport_matrix():
         fake.wifi_mqtt_available = lambda: SofabatonHub.wifi_mqtt_available(fake)
         return SofabatonHub._select_wifi_command_transport(fake, payload)
 
-    # Deployed records keep their transport forever, whatever is requested.
+    # Deployed records keep their transport unless the desired one differs
+    # AND can be deployed: then the deploy is a transport switch
+    # (wifi-events-transport-plan §2).
     assert (
         select("X2", {"mqtt"}, {"deployed_device_id": 9, "deployed_transport": "http", "requested_transport": "mqtt"})
-        == "http"
-    )
-    assert (
-        select("X2", set(), {"deployed_device_id": 9, "deployed_transport": "mqtt"})
         == "mqtt"
     )
-    # Legacy deployed record without the field: replace stays HTTP.
-    assert select("X2", {"mqtt"}, {"deployed_device_id": 9, "requested_transport": "mqtt"}) == "http"
+    # A wish for MQTT where MQTT is unavailable keeps the deployed HTTP.
+    assert (
+        select("X2", set(), {"deployed_device_id": 9, "deployed_transport": "http", "requested_transport": "mqtt"})
+        == "http"
+    )
+    # Back to HTTP needs nothing.
+    assert (
+        select("X2", set(), {"deployed_device_id": 9, "deployed_transport": "mqtt", "requested_transport": "http"})
+        == "http"
+    )
+    # Aligned fields: the deployed transport stays, available or not.
+    assert (
+        select("X2", set(), {"deployed_device_id": 9, "deployed_transport": "mqtt", "requested_transport": "mqtt"})
+        == "mqtt"
+    )
+    # Legacy deployed record without the field reads as HTTP; a wish for
+    # MQTT switches it like any other HTTP record.
+    assert select("X2", {"mqtt"}, {"deployed_device_id": 9, "requested_transport": "mqtt"}) == "mqtt"
+    assert select("X2", set(), {"deployed_device_id": 9, "requested_transport": "mqtt"}) == "http"
 
     # Fresh deploys: X2 + mqtt loaded + real MAC honors the request.
     assert select("X2", {"mqtt"}, {"requested_transport": "mqtt"}) == "mqtt"
@@ -362,3 +377,87 @@ def test_wifi_mqtt_mac_preference_chain():
     assert mac_for(SYNTHETIC_MAC) is None
     # All-zero stored value is treated as absent.
     assert mac_for(SYNTHETIC_MAC, stored="000000000000") is None
+
+
+def test_create_wifi_mqtt_device_deletes_the_device_when_a_config_step_fails():
+    """bench_310 (X2, 2026-10-06): the restore had created the device and the
+    input configuration failed; the deploy reported "not created", the store
+    never learned the id, and the device stayed on the hub forever."""
+    import logging
+
+    from custom_components.sofabaton_x1s.lib.proxy_wifi_device import WifiDeviceMixin
+
+    deleted: list[int] = []
+
+    class FakeProxy(WifiDeviceMixin):
+        _log = logging.getLogger("test")
+
+        def restore_device(self, payload):
+            return {"status": "success", "device_id": 0x0B, "command_id_map": {}}
+
+        def _sync_step_wifi_power_config(self, payload):
+            return True
+
+        def _sync_step_wifi_input_config(self, payload):
+            return False
+
+        def delete_device(self, device_id):
+            deleted.append(int(device_id))
+            return {"status": "success"}
+
+    defs = [{"display_name": "Lights", "press_type": "short", "command_index": 0}]
+    result = FakeProxy().create_wifi_mqtt_device(
+        device_name="Wifi Commands", commands=defs, brand_name="m3-benchwifi-h",
+        power_on_command_id=1, input_command_ids=[1],
+    )
+    assert result is None
+    assert deleted == [0x0B]
+
+
+def test_wifi_input_configuration_accepts_an_absent_inputs_page(monkeypatch):
+    """A wifi_mqtt device fresh from the restore pipeline has no inputs page;
+    the hub answers the candidates request with a bare 0x07. That is
+    "ready", not a timeout (bench_310)."""
+    import logging
+
+    from custom_components.sofabaton_x1s.lib.proxy_wifi_device import WifiDeviceMixin
+
+    class FakeStep:
+        ok = True
+
+    class FakeProxy(WifiDeviceMixin):
+        _log = logging.getLogger("test")
+        hub_version = "X2"
+        state = type("S", (), {"commands": {}})()
+        asked: list[tuple[int, bool]] = []
+        pages: list[bytes] = []
+
+        def exchange(self, name):
+            import contextlib
+            return contextlib.nullcontext()
+
+        def fetch_device_input_record(self, device_id, *, timeout=5.0, absent_as_empty=False):
+            self.asked.append((device_id, absent_as_empty))
+            return {"device_id": device_id, "entries": []} if absent_as_empty else None
+
+        def _build_paged_macro_save_payloads(self, payload):
+            return [payload]
+
+        def _send_step(self, *, step_name, family, payload, ack_opcode):
+            self.pages.append(payload)
+            return FakeStep()
+
+        def _send_cmd_frame(self, opcode, payload):
+            return None
+
+        def _wait_for_wifi_input_refresh(self, *, device_id, command_id, timeout=5.0):
+            return True
+
+    proxy = FakeProxy()
+    ok = proxy._apply_wifi_input_configuration(
+        device_id=0x0B, device_name="Bench", ip_address="", brand_name="m3-x-y",
+        commands=[{"display_name": "One"}, {"display_name": "Two"}], input_command_ids=[2],
+    )
+    assert ok is True
+    assert proxy.asked == [(0x0B, True)]
+    assert len(proxy.pages) == 1

@@ -5,7 +5,7 @@ triggers in your platform. The server already manages hub connections,
 configuration, backups and the web remote. Your client can consume those
 capabilities over HTTP and WebSocket, in any language.
 
-This guide uses **API 1**, with **server 0.2.4** as its baseline.
+This guide uses **API 1**, with **server 0.2.5** as its baseline.
 Use the [OpenAPI document](../openapi.json) for complete schemas and the
 [changelog](../CHANGELOG.md) for release-specific changes.
 
@@ -47,7 +47,7 @@ GET /api/v1/server
 
 ```json
 {
-  "version": "0.2.4",
+  "version": "0.2.5",
   "api_version": "1",
   "instance_id": "example-server-instance",
   "auth": {"claimed": true}

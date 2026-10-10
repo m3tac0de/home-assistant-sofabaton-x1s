@@ -34,6 +34,7 @@ NO_FRONTEND_CALLER: dict[str, str] = {
     "sofabaton_x1s/ir_library/commands": "L-K2: the dormant IR catalog, IR browser parked",
     "sofabaton_x1s/activity/sync_plan": "bench and debug API since the review dialog went (CR-X2-3)",
     "sofabaton_x1s/device/sync_plan": "bench and debug API since the review dialog went (CR-X2-3)",
+    "sofabaton_x1s/catalog/refresh": "live-hub benches 130/131/170 still use it after the Refresh list UI was removed",
 }
 
 _TYPE_RE = re.compile(r"""type\s*:\s*["'](sofabaton_x1s/[a-z0-9_/]+)["']""")

@@ -909,23 +909,115 @@ export const backupTabStyles = css`
       background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
       color: var(--primary-text-color);
     }
-    .binding-toggle-row {
+    /* The button assignment dialog: the button in the header, one card per press, the type as segments. */
+    .dialog-header--extra .dialog-title { flex: 0 1 auto; min-width: 0; }
+    .dialog-header-extra { flex: 0 1 auto; min-width: 0; margin-right: auto; }
+    .dialog-header-select { width: auto; max-width: 100%; padding: 6px 10px; font-weight: 600; }
+    .press-card {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 40%, transparent);
     }
-    .binding-static-field {
+    .press-card-head { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13.5px; font-weight: 700; color: var(--primary-text-color); }
+    .press-card-head ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); flex: 0 0 auto; }
+    .press-card-title { flex: 1; min-width: 0; }
+    .kind-seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--backup-radius-sm); background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); }
+    .kind-seg-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      border: 1px solid transparent;
+      border-radius: calc(var(--backup-radius-sm) - 3px);
+      background: none;
+      color: var(--secondary-text-color);
+      font: inherit;
       font-size: 13px;
       font-weight: 600;
+      padding: 6px 8px;
+      cursor: pointer;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+    .kind-seg-btn:hover { color: var(--primary-text-color); }
+    .kind-seg-btn[aria-pressed="true"] {
+      background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+      border-color: var(--divider-color);
       color: var(--primary-text-color);
-      padding: 8px 10px;
+    }
+    .kind-seg-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+    /* The macro picker: a select-like trigger and a fixed list (positioned inline, see anchoredListPosition). */
+    .macro-picker-trigger { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+    .macro-picker-trigger[aria-expanded="true"] { border-color: var(--primary-color); }
+    .macro-picker-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .macro-picker-icon { --mdc-icon-size: 16px; flex: 0 0 auto; color: var(--secondary-text-color); }
+    .macro-picker-chip {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 45%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: var(--backup-radius-pill);
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
       border: 1px solid var(--divider-color);
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 74%, transparent);
+    }
+    .macro-picker-backdrop { position: fixed; inset: 0; z-index: 4; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }
+    .macro-picker-menu {
+      z-index: 5;
+      box-sizing: border-box;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      background: var(--sb-popup-surface, var(--card-background-color, #fff));
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    }
+    .macro-picker-option {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      border: none;
+      background: none;
+      text-align: left;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px;
+      color: var(--primary-text-color);
       border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+      cursor: pointer;
+    }
+    .macro-picker-option:hover, .macro-picker-option:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    .quick-access-head--inline .quick-access-head-actions { flex-wrap: nowrap; }
+    @container sofabaton-card (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
+    .macro-picker-option[aria-selected="true"] { background: color-mix(in srgb, var(--primary-color) 16%, transparent); }
+    .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon { color: var(--primary-color); font-weight: 600; }
+    .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--divider-color); }
+    .macro-picker-group { flex: 0 0 auto; padding: 8px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+    .field-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+    @container sofabaton-card (max-width: 360px) {
+      .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); position: relative; isolation: isolate; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
     /* Reminder banner inside the Edit Payload dialog nudging the user

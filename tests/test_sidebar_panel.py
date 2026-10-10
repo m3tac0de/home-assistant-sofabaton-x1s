@@ -72,7 +72,7 @@ def test_ui_settings_store_persists_sidebar_panel_mode():
 
     async def scenario():
         await store.async_load()
-        assert store.sidebar_panel_mode == "off"
+        assert store.sidebar_panel_mode == "all"
         await store.async_set_sidebar_panel_mode("admin")
         assert store.sidebar_panel_mode == "admin"
         # A fresh store over the same backing data reads the mode back.
@@ -86,11 +86,11 @@ def test_ui_settings_store_persists_sidebar_panel_mode():
 
 def test_ui_settings_store_ignores_unknown_sidebar_panel_mode():
     store = UiSettingsStore(SimpleNamespace(data={}))
-    # The pre-release boolean shape and junk both fall back to "off".
+    # The pre-release boolean shape and junk both fall back to the default.
     store._store._data = {"hub_click_action": "send", "sidebar_panel": True}
     asyncio.run(store.async_load())
     assert store.hub_click_action == "send"
-    assert store.sidebar_panel_mode == "off"
+    assert store.sidebar_panel_mode == "all"
 
     try:
         asyncio.run(store.async_set_sidebar_panel_mode("everyone"))
@@ -115,14 +115,14 @@ def test_sync_registers_custom_panel_for_all_users(monkeypatch):
     assert panel["frontend_url_path"] == "sofabaton-x"
     assert panel["require_admin"] is False
     assert panel["update"] is True
-    # The module is the card bundle at its versioned URL: the browser fetches
-    # it once for the card and the panel, and the card's version check passes.
+    # The module is the sidebar panel bundle at its versioned URL (the remote
+    # view; tools-card.js is pulled in lazily by the admin toggle).
     assert panel["config"] == {
         "_panel_custom": {
             "name": "sofabaton-x-panel",
             "embed_iframe": False,
             "trust_external": False,
-            "module_url": "/sofabaton_x1s/www/tools-card.js?v=0.6.9",
+            "module_url": "/sofabaton_x1s/www/sidebar-panel.js?v=0.6.9",
         }
     }
     assert sidebar_panel.sidebar_panel_registered(hass) is True

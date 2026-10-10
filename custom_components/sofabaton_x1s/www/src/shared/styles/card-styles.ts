@@ -57,6 +57,16 @@ export const cardStyles = [secondaryTabStyles, css`
        host, which wins over these no-JS fallbacks. */
     --sb-scheme-ground: #fff;
     --sb-popup-surface: var(--sb-field-surface);
+    /* Dialog surface. Glass themes put their transparency on
+       --ha-card-background and keep the dialog surface readable, so a
+       dialog painted with the card surface showed the page through it.
+       Mirror HA's own ha-dialog: its surface is
+       --ha-dialog-surface-background, then --mdc-theme-surface (HA sets
+       it to the opaque --card-background-color), with the theme's
+       --ha-dialog-surface-backdrop-filter (blur) when the theme makes
+       the dialog surface translucent too. */
+    --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+    --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
   }
   ha-card {
     --secondary-text-color: color-mix(in srgb, var(--sb-theme-secondary-text) 40%, var(--primary-text-color));
@@ -93,7 +103,14 @@ export const cardStyles = [secondaryTabStyles, css`
      container; .card-inner gets height:100% inline from the card. */
   :host([fill-height]) { height: 100%; }
   :host([fill-height]) ha-card { height: 100%; }
-  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
+  /* The card shell's corners (ha-card and the clipping .card-inner) follow
+     --tools-card-outer-radius; it defaults to the theme's card radius. A
+     host that wants a squared shell (the sidebar panel on a phone, where
+     the card is the page) sets only this variable: everything inside the
+     card keeps deriving its corners from --ha-card-border-radius, so the
+     theme's radius still shows on tabs, blocks, menus and dialogs. */
+  ha-card { border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
+  .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--tools-card-outer-radius, var(--ha-card-border-radius, 12px)); }
   .card-topbar {
     position: relative;
     flex-shrink: 0;
@@ -215,6 +232,27 @@ export const cardStyles = [secondaryTabStyles, css`
     color: color-mix(in srgb, var(--warning-color, #f59e0b) 64%, var(--primary-text-color));
     font-weight: 600;
   }
+  /* The dirty dock's Sync button, beside the banner text. */
+  .card-bottom-dock-action {
+    flex: 0 0 auto;
+    margin-left: 10px;
+    border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 60%, var(--divider-color));
+    border-radius: 999px;
+    padding: 3px 12px;
+    background: color-mix(in srgb, var(--warning-color, #f59e0b) 20%, transparent);
+    color: var(--primary-text-color);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  /* A phone-width card has no room for it: Sync stays in the editor's header there. */
+  @container sofabaton-card (max-width: 480px) {
+    .card-bottom-dock-action { display: none; }
+  }
+  .card-bottom-dock-action:hover { background: color-mix(in srgb, var(--warning-color, #f59e0b) 34%, transparent); }
+  .card-bottom-dock-action:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .card-bottom-dock-link {
     color: var(--sb-accent-text);
     text-decoration: underline;
@@ -548,6 +586,14 @@ export const cardStyles = [secondaryTabStyles, css`
   .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
   .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
   .cache-footer-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  /* The theme's dialog blur (--sb-dialog-backdrop-filter) sits on a
+     pseudo-element, never on the dialog itself: a backdrop-filter makes the
+     dialog the containing block of its position: fixed descendants (the
+     dropdown lists and their click-away backdrops), which then measure from
+     the dialog's corner and are clipped by its overflow — under the glass
+     themes the lists sat adrift and the dialog body went blank. isolation
+     keeps the pseudo-element under the dialog's own content. Same pattern in
+     the tab stylesheets that declare their own .dialog. */
   /* Add Activity dialog. */
   .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
   .cache-dialog {
@@ -556,9 +602,11 @@ export const cardStyles = [secondaryTabStyles, css`
     padding: 16px;
     border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
     border: 1px solid var(--divider-color);
-    background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+    background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+    position: relative; isolation: isolate;
     box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
   }
+  .cache-dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
   .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--secondary-text-color); }
   .cache-dialog-input {
@@ -656,7 +704,8 @@ export const cardStyles = [secondaryTabStyles, css`
      (backup-tab-styles.ts): hosts that render inside the card's own shadow
      root (the Settings tab's hub rename) get the same rules here. */
   .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33); border: 1px solid var(--divider-color); background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))))); position: relative; isolation: isolate; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+  .dialog::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none); backdrop-filter: var(--sb-dialog-backdrop-filter, none); }
   .dialog.small { width: min(500px, calc(100vw - 36px)); }
   .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
   .dialog-header { border-bottom: 1px solid var(--divider-color); }

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  replayDeviceEntryEdits,
   activityAddableDevices,
   activityButtonBindingItems,
   activityQuickAccessItems,
@@ -14,6 +15,12 @@ import {
   removeActivityMemberDevice,
   addActivityMacroCommandStep,
   addActivityUserMacro,
+  copyActivityShortcuts,
+  copyActivityUserMacro,
+  shortcutCopySources,
+  copyableActivityMacroSummaries,
+  macroCopyValue,
+  macroTargetFromValue,
   activityHasFavorite,
   activityShortcutCommandItems,
   activityShortcutDeviceOptions,
@@ -1087,6 +1094,89 @@ test("addActivityUserMacro creates an empty macro at the next slot", () => {
   assert.deepEqual(macro.steps, []);
 });
 
+// A second activity that uses only the AVR and has no macros of its own.
+function twoActivityMacroBundle() {
+  let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 5);
+  b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
+  return {
+    ...b,
+    activities: [...b.activities, {
+      device: { device_id: 102, name: "Music", entity_type: "activity" },
+      favorite_slots: [{ button_id: 1, device_id: 2, command_id: 20 }],
+      button_bindings: [],
+      macros: [],
+    }],
+  };
+}
+
+test("copyableActivityMacroSummaries lists the other activities' user macros, never the own or the power macros", () => {
+  const b = twoActivityMacroBundle();
+  assert.deepEqual(copyableActivityMacroSummaries(b, 102), [
+    { buttonId: 1, name: "Combo", commandStepCount: 2, activityId: 101, activityName: "Watch TV" },
+  ]);
+  assert.deepEqual(copyableActivityMacroSummaries(b, 101), []);
+  // Imported backups can lack source names; both pickers still identify the source as an activity.
+  b.activities[0].device!.name = " ";
+  assert.equal(copyableActivityMacroSummaries(b, 102)[0].activityName, "Activity 101");
+  assert.equal(shortcutCopySources(b, 102)[0].activityName, "Activity 101");
+});
+
+test("copyActivityUserMacro copies name and steps verbatim to the next slot and brings the new devices in", () => {
+  const b = twoActivityMacroBundle();
+  const next = copyActivityUserMacro(b, 102, 101, 1);
+  const source = b.activities[0].macros!.find((m) => m.button_id === 1)!;
+  const target = next.activities.find((a) => a.device!.device_id === 102)!;
+  const copy = target.macros!.find((m) => m.name === "Combo")!;
+  // Slot 1 is the favorite, so the macro takes slot 2.
+  assert.equal(copy.button_id, 2);
+  assert.deepEqual(copy.steps, source.steps);
+  assert.notEqual(copy.steps, source.steps);
+  // The TV was not used by Music before: the copy makes it a member, power macros included.
+  assert.equal((target.referenced_source_device_ids ?? []).includes(1), true);
+  assert.equal(target.macros!.some((m) => m.button_id === 198), true);
+  // The source activity is untouched.
+  assert.deepEqual(next.activities[0], b.activities[0]);
+  // An identical copy is not offered a second time; an edited one is a different macro again.
+  assert.deepEqual(copyableActivityMacroSummaries(next, 102), []);
+  assert.equal(copyableActivityMacroSummaries(addActivityMacroCommandStep(next, 102, 2, 2, 20, 0), 102).length, 1);
+});
+
+test("copyActivityUserMacro leaves the bundle alone for a missing source, a power macro or the own activity", () => {
+  const b = twoActivityMacroBundle();
+  assert.equal(copyActivityUserMacro(b, 102, 101, 9), b);
+  assert.equal(copyActivityUserMacro(b, 102, 101, 198), b);
+  assert.equal(copyActivityUserMacro(b, 101, 101, 1), b);
+});
+
+test("copyActivityShortcuts takes over what the activity lacks, favorites and macros, and never doubles", () => {
+  // Watch TV: macro Combo (TV + AVR steps) and a TV favorite; Music: a favorite on the AVR.
+  let b = twoActivityMacroBundle();
+  b = addBundleActivityFavorite(b, 101, 1, 11, "Vol");
+  b = addBundleActivityFavorite(b, 101, 2, 20, "AVR power");
+  // Music already has the AVR power favorite: only Combo and Vol are new.
+  assert.deepEqual(shortcutCopySources(b, 102), [{ activityId: 101, activityName: "Watch TV", newCount: 2 }]);
+  const next = copyActivityShortcuts(b, 102, 101);
+  const music = next.activities.find((a) => a.device!.device_id === 102)!;
+  assert.deepEqual(
+    music.favorite_slots!.map((slot) => [slot.device_id, slot.command_id]),
+    [[2, 20], [1, 11]],
+  );
+  assert.equal(music.macros!.filter((m) => m.name === "Combo").length, 1);
+  // The copied shortcuts bring the TV into the activity.
+  assert.equal((music.referenced_source_device_ids ?? []).includes(1), true);
+  // A second copy finds nothing new and changes nothing.
+  assert.equal(shortcutCopySources(next, 102)[0].newCount, 0);
+  assert.equal(copyActivityShortcuts(next, 102, 101), next);
+  // The other direction: Watch TV has everything Music has.
+  assert.equal(shortcutCopySources(next, 101)[0].newCount, 0);
+});
+
+test("the macro dropdown values round-trip: an id, a new macro, a copy source", () => {
+  assert.deepEqual(macroTargetFromValue("7"), { mode: "existing", macroId: 7, sourceId: null });
+  assert.deepEqual(macroTargetFromValue("__new__"), { mode: "new", macroId: null, sourceId: null });
+  assert.deepEqual(macroTargetFromValue(macroCopyValue(101, 3)), { mode: "copy", macroId: 3, sourceId: 101 });
+});
+
 test("activityMacroStepItems marks power-macro refs as protected and labels them", () => {
   const items = activityMacroStepItems(realPowerActivity(), 101, 198);
   assert.equal(items.every((i) => (i.kind === "power" || i.kind === "input") && i.protected === true), true);
@@ -1822,4 +1912,38 @@ test("retiring the Wifi Events long records follows the hub in a bundle", () => 
   assert.equal(act.macros[0].steps[1].command_id, 0);
   // no slot count -> untouched
   assert.equal(retireWifiEventLongRecords(bundle, 9, 0), bundle);
+});
+
+test("replayDeviceEntryEdits carries the user's edits onto the replacement device only", () => {
+  const baseline = {
+    device: { device_id: 9, name: "Wifi Events", device_class: "wifi_ip" },
+    commands: [{ command_id: 1, name: "R1" }],
+    button_bindings: [{ button_id: 0xB0, device_id: 9, command_id: 1 }],
+    macros: [],
+  } as any;
+  const working = {
+    ...baseline,
+    device: { ...baseline.device, name: "Events MQTT" },
+    button_bindings: [{ button_id: 0xB0, device_id: 9, command_id: 1 }, { button_id: 0xB1, device_id: 9, command_id: 1, long_press_device_id: 9, long_press_command_id: 1 }],
+  };
+  const fresh = {
+    device: { device_id: 12, name: "Wifi Events", device_class: "wifi_mqtt", brand: "m3-haevents-x" },
+    commands: [{ command_id: 1, name: "R1 (hub)" }],
+    button_bindings: [{ button_id: 0xB0, device_id: 12, command_id: 1 }],
+    macros: [{ button_id: 198, name: "POWER_ON", steps: [] }],
+  } as any;
+  const result = replayDeviceEntryEdits(fresh, baseline, working, 9, 12) as any;
+  assert.equal(result.device.device_id, 12);
+  assert.equal(result.device.device_class, "wifi_mqtt");
+  assert.equal(result.device.name, "Events MQTT");
+  // untouched fields take the hub's state
+  assert.deepEqual(result.commands, fresh.commands);
+  assert.deepEqual(result.macros, fresh.macros);
+  // edited fields replay with the id rewritten
+  assert.deepEqual(result.button_bindings, [
+    { button_id: 0xB0, device_id: 12, command_id: 1 },
+    { button_id: 0xB1, device_id: 12, command_id: 1, long_press_device_id: 12, long_press_command_id: 1 },
+  ]);
+  assert.deepEqual(fresh.button_bindings, [{ button_id: 0xB0, device_id: 12, command_id: 1 }], "fresh entry is not mutated");
+  assert.equal(replayDeviceEntryEdits(fresh, baseline, null, 9, 12), fresh);
 });

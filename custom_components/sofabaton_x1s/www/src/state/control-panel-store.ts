@@ -638,11 +638,16 @@ export class ControlPanelStore {
     this._snapshot = { ...this._snapshot, pendingSettingKey: setting };
     this.applyOptimisticSetting(setting, enabled);
 
+    let cacheJustEnabled = false;
     try {
       await this.api().setSetting(hub.entry_id, setting, enabled);
       if (setting === "persistent_cache") {
-        if (enabled) await this.loadCacheContents();
-        else await this.loadControlPanelState();
+        if (enabled) {
+          await this.loadCacheContents();
+          cacheJustEnabled = !previousPersistentCacheEnabled;
+        } else {
+          await this.loadControlPanelState();
+        }
       } else {
         await this.loadControlPanelState();
       }
@@ -656,6 +661,14 @@ export class ControlPanelStore {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
     }
+
+    // Switching the cache on stores nothing by itself: the Hub tab would
+    // open on whatever the hub happened to hold in memory. Follow up with the
+    // whole-hub refresh so the user lands on a complete, freshly fetched
+    // catalog without having to find "Refresh all" first. Runs after the
+    // toggle settles so the switch itself doesn't stay pending for the
+    // duration; progress surfaces through the dock like a manual refresh.
+    if (cacheJustEnabled) await this.refreshAllForHub();
   }
 
   /** Persist the global Hub-tab click behavior ("do nothing" / "send" /
@@ -834,23 +847,6 @@ export class ControlPanelStore {
     delete byHub[entryId];
     this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
     this.emit();
-  }
-
-  async refreshSection(sectionId: SectionId) {
-    if (this._isHubCommandBusy()) return;
-    const hub = selectedHub(this._snapshot);
-    if (!hub) return;
-    this._setRefreshBusy(hub.entry_id, null);
-    try {
-      await this.api().refreshCatalog(hub.entry_id, sectionId);
-      await this.loadState({ silent: true });
-    } catch (error) {
-      // A hub that did not answer leaves the cached catalog as it was;
-      // say so instead of silently showing the old data as refreshed.
-      this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
-    } finally {
-      this._clearRefreshBusy(hub.entry_id);
-    }
   }
 
   /**

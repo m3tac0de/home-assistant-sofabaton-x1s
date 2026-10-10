@@ -6,6 +6,14 @@ export const editDetailViewStyles = css`
     :host {
       flex-direction: column;
     }
+    /* Read-only delivery badge of the Wifi Events device; the same pill the
+       Wifi Commands tab shows. */
+    .transport-pill { display: inline-flex; align-items: center; align-self: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
+    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
+    .transport-pill.pending { border-style: dashed; }
+    /* The same pill as a two-option select (the delivery switch). */
+    select.transport-select { appearance: none; -webkit-appearance: none; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: normal; padding-right: 20px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 11px) 55%, calc(100% - 7px) 55%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+    select.transport-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
     /* Glanceable member roster under the Activity power-sequence rows. */
     .power-members-summary {
       padding: 8px 4px 0;

@@ -14,6 +14,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .const import (
     DOMAIN,
     CONF_HEX_LOGGING_ENABLED,
+    CONF_LOCAL_ADDRESS,
     CONF_PROXY_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
     HUB_VERSION_X1,
@@ -65,6 +66,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         hex_logging_enabled: bool,
         roku_server_enabled: bool = False,
         version: str | None = None,
+        local_address: str | None = None,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -118,6 +120,8 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         self._activities_generation: int = 0
         self._cache_generation: int = 0
         self.proxy_enabled: bool = proxy_enabled
+        # Manual "Home Assistant IP address" for this hub; None = automatic.
+        self.local_address: str | None = local_address
         self.hex_logging_enabled: bool = hex_logging_enabled
         self.roku_server_enabled: bool = roku_server_enabled
         # store mac so service can find us by mac
@@ -195,6 +199,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
             hub_listen_base=self._hub_listen_base,
             proxy_enabled=self.proxy_enabled,
             hub_version=self.version,
+            local_address=self.local_address,
         )
 
         proxy.on_activity_change(self._on_activity_change)
@@ -405,6 +410,33 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
             self._async_update_options, CONF_PROXY_ENABLED, enable
         )
         async_dispatcher_send(self.hass, signal_settings(self.entry_id))
+
+    def local_address_in_use(self) -> str:
+        """The local IPv4 address in use toward the hub (blocking lookup)."""
+
+        return self._proxy.get_routed_local_ip()
+
+    async def async_set_local_address(self, address: str | None) -> None:
+        """Set the manual local address; None or blank returns to automatic.
+
+        Raises ValueError for anything but a dotted-decimal IPv4 address.
+        """
+
+        await self.hass.async_add_executor_job(self._proxy.set_local_address, address)
+        self.local_address = self._proxy.local_address
+        self._log.debug(
+            "[%s] Local address set to %s", self.entry_id, self.local_address or "automatic"
+        )
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        if entry:
+            new_options = entry.options.copy()
+            if self.local_address is None:
+                new_options.pop(CONF_LOCAL_ADDRESS, None)
+            else:
+                new_options[CONF_LOCAL_ADDRESS] = self.local_address
+            if new_options != entry.options:
+                self.hass.config_entries.async_update_entry(entry, options=new_options)
+        async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
     async def async_set_roku_server_enabled(self, enable: bool) -> None:
         self._log.debug("[%s] Setting WiFi device enabled=%s", self.entry_id, enable)

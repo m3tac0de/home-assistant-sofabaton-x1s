@@ -12,6 +12,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
+from .network import select_local_address as _select_local_address
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 from .deframer import Deframer
 from .notify_demuxer import (
@@ -23,20 +24,6 @@ log = logging.getLogger("x1proxy.transport")
 
 def _sum8(b: bytes) -> int:
     return sum(b) & 0xFF
-
-
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
 
 
 def _enable_keepalive(
@@ -145,8 +132,11 @@ class TransportBridge:
         ka_idle: int = 30,
         ka_interval: int = 10,
         ka_count: int = 3,
+        local_address: Optional[str] = None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
+        # Manual local IPv4 address for this hub; None selects automatically.
+        self.local_address = local_address
         self.real_hub_udp_port = int(real_hub_udp_port)
         self.proxy_udp_port = int(proxy_udp_port)
         self.hub_listen_base = int(hub_listen_base)
@@ -157,6 +147,8 @@ class TransportBridge:
         self.ka_count = int(ka_count)
         self._mdns_instance = mdns_instance
         self._mdns_txt = mdns_txt
+        # The MAC the hub reported in its banner; see update_discovery_metadata.
+        self._banner_mac: Optional[str] = None
 
         self._stop = threading.Event()
         self._hub_sock: Optional[socket.socket] = None
@@ -417,6 +409,7 @@ class TransportBridge:
             mdns_txt=self._mdns_txt,
             call_me_port=self.proxy_udp_port,
             call_me_cb=self._handle_call_me,
+            banner_mac=self._banner_mac,
         )
         self._notify_registered = True
 
@@ -424,8 +417,15 @@ class TransportBridge:
         self,
         *,
         mdns_txt: Dict[str, str],
+        banner_mac: Optional[str] = None,
     ) -> None:
+        """The identity the next demuxer registration advertises and
+        answers to: the TXT record, and the MAC the hub reported in its
+        banner (accepted as a CALL_ME hint beside the advertised one)."""
+
         self._mdns_txt = mdns_txt
+        if banner_mac:
+            self._banner_mac = banner_mac
 
     def start_notify_listener(self) -> None:
         self._discovery_enabled = True
@@ -492,6 +492,8 @@ class TransportBridge:
         TCP accept lives in the shared :class:`HubListener`.
         """
 
+        # Unbound, so OS routing picks the source; replaced by a bound
+        # socket only for attempts whose selected address differs from it.
         udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             last = 0.0
@@ -505,10 +507,10 @@ class TransportBridge:
                 now = time.time()
                 if now - last >= 2.0 + random.uniform(-0.25, 0.25):
                     try:
-                        my_ip = _route_local_ip(self.real_hub_ip)
+                        selected = _select_local_address(self.real_hub_ip, self.local_address)
                         payload = (
                             b"\x00" * 6
-                            + socket.inet_aton(my_ip)
+                            + socket.inet_aton(selected.ip)
                             + struct.pack(">H", self.hub_listen_base)
                         )
                         frame = (
@@ -516,7 +518,16 @@ class TransportBridge:
                             + payload
                         )
                         frame += bytes([_sum8(frame)])
-                        udp.sendto(frame, (self.real_hub_ip, self.real_hub_udp_port))
+                        hub_addr = (self.real_hub_ip, self.real_hub_udp_port)
+                        if selected.bind:
+                            # Keep the packet source and callback address
+                            # consistent. Reopened per attempt to recover
+                            # from address changes or bind errors.
+                            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as bound:
+                                bound.bind((selected.ip, 0))
+                                bound.sendto(frame, hub_addr)
+                        else:
+                            udp.sendto(frame, hub_addr)
                     except OSError:
                         self._log.debug("%s CALL_ME send failed", LogTag.TRANSPORT, exc_info=True)
                     last = now
@@ -629,6 +640,11 @@ class TransportBridge:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             s.settimeout(5.0)
+            # The app may sit on another subnet than the hub: select for
+            # its address, and bind only when that differs from OS routing.
+            selected = _select_local_address(app_addr[0])
+            if selected.bind:
+                s.bind((selected.ip, 0))
             s.connect(app_addr)
             s.settimeout(0.0)
             _disable_nagle(s)
@@ -1018,5 +1034,3 @@ class TransportBridge:
         if self._notify_registered:
             get_notify_demuxer().unregister_proxy(self.proxy_id)
             self._notify_registered = False
-
-

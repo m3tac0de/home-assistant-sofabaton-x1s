@@ -10,8 +10,9 @@ adding commands, sharing codes, and correcting Wifi command details.
 
 ## ◇ Edit an existing command
 
-In the **Sofabaton Control Panel**, open **Hub → Devices**, select a Device, and
-choose **Edit device**. Under **Commands**:
+Open **Sofabaton X → Control Panel** from the [sidebar](sidebar.md) (0.7.0),
+or use the dashboard Control Panel card. Go to **Hub → Devices**, select a
+Device, and choose **Edit device**. Under **Commands**:
 
 - use the pencil to rename a command;
 - use the braces (`{}`) to fetch and edit its payload;

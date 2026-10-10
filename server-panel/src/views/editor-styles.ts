@@ -180,8 +180,43 @@ export const EDITOR_CSS = css`
     .decoded-field-input { width: 100%; font: inherit; font-size: 13px; color: var(--sbp-text); background: var(--sbp-input); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 10px; }
     .decoded-field-input:focus { outline: none; border-color: var(--sbp-accent); }
     select.decoded-field-input { cursor: pointer; }
-    .binding-static-field { font-size: 13px; font-weight: 600; color: var(--sbp-text); padding: 8px 10px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-panel-2) 54%, transparent); }
-    .binding-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    /* -- the button assignment dialog: the button in the header, one card per press, the type as segments -- */
+    .dialog-header--extra .dialog-title { flex: 0 1 auto; min-width: 0; }
+    .dialog-header-extra { flex: 0 1 auto; min-width: 0; margin-right: auto; }
+    .dialog-header-select { width: auto; max-width: 100%; padding: 6px 10px; font-weight: 600; }
+    .press-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); background: color-mix(in srgb, var(--sbp-panel-2) 40%, transparent); }
+    .press-card-head, label.press-card-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--sbp-text); }
+    label.press-card-head { cursor: pointer; }
+    .press-card-head .mdi { width: 18px; height: 18px; color: var(--sbp-muted); }
+    .press-card-title { flex: 1; min-width: 0; }
+    .kind-seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--de-radius-sm); background: color-mix(in srgb, var(--sbp-text) 8%, transparent); }
+    .kind-seg-btn { flex: 1 1 0; min-width: 0; border: 1px solid transparent; border-radius: calc(var(--de-radius-sm) - 3px); background: none; color: var(--sbp-muted); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 8px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+    .kind-seg-btn:hover { color: var(--sbp-text); border-color: transparent; }
+    .kind-seg-btn[aria-pressed="true"] { background: var(--sbp-panel); border-color: var(--sbp-line); color: var(--sbp-text); }
+    .kind-seg-btn:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 1px; }
+    /* The macro picker: a select-like trigger and a fixed list (positioned inline, see anchoredListPosition). */
+    .macro-picker-trigger { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; white-space: normal; }
+    .macro-picker-trigger[aria-expanded="true"] { border-color: var(--sbp-accent); }
+    .macro-picker-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .macro-picker-icon.mdi { width: 16px; height: 16px; flex: 0 0 auto; color: var(--sbp-muted); }
+    .macro-picker-chip { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: color-mix(in srgb, var(--sbp-panel-2) 74%, transparent); }
+    .macro-picker-backdrop { position: fixed; inset: 0; z-index: 4; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }
+    .macro-picker-menu { z-index: 5; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 4px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--de-radius-md); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); }
+    .macro-picker-option { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid transparent; background: none; text-align: left; padding: 8px 10px; font: inherit; font-size: 13px; color: var(--sbp-text); border-radius: var(--de-radius-sm); cursor: pointer; }
+    .macro-picker-option:hover, .macro-picker-option:focus-visible { border-color: transparent; background: color-mix(in srgb, var(--sbp-text) 10%, transparent); outline: none; }
+    .macro-picker-option:disabled { opacity: 0.55; cursor: default; background: none; }
+    .shortcut-copy { display: inline-flex; }
+    /* A head whose buttons stay on the title's right: the sub line wraps instead of the buttons. */
+    .quick-access-head--inline { flex-wrap: nowrap; align-items: flex-start; }
+    .quick-access-head--inline .quick-access-head-main { flex: 1 1 0; }
+    @container (max-width: 480px) {
+      .shortcut-copy .quick-access-add-btn > span { display: none; }
+    }
+    .macro-picker-option[aria-selected="true"] { background: rgba(var(--sbp-accent-rgb), 0.16); }
+    .macro-picker-option--new, .macro-picker-option--new .macro-picker-icon.mdi { color: var(--sbp-accent); font-weight: 600; }
+    .macro-picker-sep { flex: 0 0 auto; height: 1px; margin: 4px 2px; background: var(--sbp-line); }
+    .macro-picker-group { flex: 0 0 auto; padding: 8px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sbp-muted); }
+    .field-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: start; }
     /* A switch in place of ha-switch. */
     .sb-switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; appearance: none; margin: 0; border-radius: 999px; background: var(--sbp-line); cursor: pointer; transition: background 120ms ease; }
     .sb-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--sbp-panel); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 120ms ease; }
@@ -234,5 +269,6 @@ export const EDITOR_CSS = css`
       /* The footer is a column here, so the note's 140px basis would be a height. */
       .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
       .dialog-footer-note:empty { display: none; }
+      .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
 `;

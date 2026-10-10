@@ -30,6 +30,7 @@ from .ui_settings_store import HUB_CLICK_ACTIONS, SIDEBAR_PANEL_MODES
 from . import operations
 from . import runtime
 from .ws_wifi import (
+    _hub_mqtt_available,
     _build_wifi_device_sync_payload,
 )
 from . import frontend_resources
@@ -203,6 +204,9 @@ async def _async_build_control_panel_hub_payload(
         "hub_connected": bool(getattr(hub, "hub_connected", False)),
         "proxy_client_connected": bool(getattr(hub, "client_connected", False)),
         "persistent_cache_enabled": persistent_cache_enabled,
+        # Whether MQTT delivery can be offered for this hub (X2, MQTT
+        # integration loaded, MAC known): the device editor's delivery control.
+        "mqtt_available": _hub_mqtt_available(hass, hub),
         "settings": {
             "proxy_enabled": bool(getattr(hub, "proxy_enabled", False)),
             "hex_logging_enabled": bool(getattr(hub, "hex_logging_enabled", False)),
@@ -247,6 +251,49 @@ async def _ws_get_control_panel_state(
         "hubs": hubs,
     }
     connection.send_result(msg["id"], payload)
+
+
+def _sidebar_runtime_summary(runtime_state: dict[str, Any]) -> dict[str, Any]:
+    """The slice of a hub's runtime state the sidebar remote gates on."""
+    return {
+        "kind": runtime_state.get("kind"),
+        "operation": runtime_state.get("operation"),
+        "label": runtime_state.get("label"),
+        "current_step": runtime_state.get("current_step"),
+        "total_steps": runtime_state.get("total_steps"),
+    }
+
+
+async def _async_build_sidebar_hub_payload(hass: HomeAssistant, hub: SofabatonHub) -> dict[str, Any]:
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    banner_model = str(getattr(hub, "banner_model", "") or "").strip()
+    version = banner_model or (get_hub_model(entry) if entry is not None else getattr(hub, "version", ""))
+    runtime_state = await _async_build_control_panel_runtime_payload(hass, hub)
+    return {
+        "entry_id": hub.entry_id,
+        "name": hub.name,
+        "version": version,
+        "hub_connected": bool(getattr(hub, "hub_connected", False)),
+        "proxy_client_connected": bool(getattr(hub, "client_connected", False)),
+        "runtime_state": _sidebar_runtime_summary(runtime_state),
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/sidebar/state",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_sidebar_state(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """The sidebar panel's hub list: name, model, reachability and whether a
+    long-running operation is on (the remote view goes inert while one is).
+    Deliberately lighter than control_panel/state (no catalog counts, no
+    settings, no firmware tables): the panel polls it while visible."""
+    hubs = await asyncio.gather(
+        *[_async_build_sidebar_hub_payload(hass, hub) for hub in runtime._get_hubs(hass.data.get(DOMAIN, {}))]
+    )
+    connection.send_result(msg["id"], {"hubs": list(hubs)})
 
 
 @websocket_api.websocket_command(

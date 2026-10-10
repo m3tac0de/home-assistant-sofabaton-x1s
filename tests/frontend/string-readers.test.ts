@@ -71,6 +71,8 @@ test("every remote-card English string has a production reader (CR-X7-1)", () =>
   const dynamicTables = [
     // Indexed by the layout's key ids.
     "keys",
+    // Indexed by the backend's operation names (sidebar-busy.ts).
+    "sidebar.operations",
   ];
   assert.deepEqual(unreadLeaves(REMOTE_CARD_STRINGS_EN, source, dynamicTables), []);
 });

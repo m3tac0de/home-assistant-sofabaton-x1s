@@ -199,6 +199,14 @@ favorites, and hard buttons all work, with no X1-style carve-outs.
 Capacity matches HTTP wifi devices. Hold does NOT repeat (one publish
 per press), unlike the ~4 Hz HTTP repeat.
 
+**Class is fixed at create.** Rewriting an existing device's head with
+the other class (`0x1C` ↔ `0x20`) is accepted by the hub, and the remote
+keeps showing the device's shortcuts and bindings, but pressing them does
+nothing (observed by hand on an X2, 2026-10-06). A delivery change is
+therefore a device replacement: create the new device, add it to the
+same activities, move every reference onto it, then delete the old one
+(docs/internal/wifi-events-transport-plan.md).
+
 **Broker behavior.** The hub retains nothing and registers no LWT; a
 dead hub→broker link is silent from the subscriber's side. The hub
 does answer the app's hub-scoped request topics

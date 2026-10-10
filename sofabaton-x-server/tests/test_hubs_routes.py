@@ -100,12 +100,60 @@ def test_proxy_toggle_over_http(tmp_path: Path) -> None:
         assert client.post(f"{HUBS}/nope/proxy/disable").status_code == 404
 
 
+def test_local_address_over_http(tmp_path: Path) -> None:
+    factory = Factory()
+    url = f"{HUBS}/192.168.1.50/local-address"
+    with _client(tmp_path, factory) as client:
+        body = client.post(HUBS, json={"host": "192.168.1.50"}).json()
+        # Automatic: the view shows the address in use, the config holds none.
+        assert body["local_address"] == "192.168.1.10" and body["config"]["local_address"] is None
+
+        r = client.put(url, json={"address": " 192.168.1.77 "})
+        assert r.status_code == 200, r.text
+        assert r.json()["local_address"] == "192.168.1.77"
+        assert r.json()["config"]["local_address"] == "192.168.1.77"
+        proxy = factory.latest("192.168.1.50")
+        assert proxy.manual_local_address == "192.168.1.77"
+        assert proxy.stops == []                               # the hub stays connected
+
+        r = client.put(url, json={"address": "not-an-address"})
+        assert r.status_code == 422 and r.json()["type"].endswith("invalid_local_address")
+        assert client.get(f"{HUBS}/192.168.1.50").json()["config"]["local_address"] == "192.168.1.77"
+
+        # Blank (or null) returns to automatic.
+        for cleared in ({"address": ""}, {"address": None}, {}):
+            client.put(url, json={"address": "192.168.1.77"})
+            r = client.put(url, json=cleared)
+            assert r.status_code == 200, r.text
+            assert r.json()["config"]["local_address"] is None
+            assert r.json()["local_address"] == "192.168.1.10"
+        assert client.put(f"{HUBS}/nope/local-address", json={"address": None}).status_code == 404
+
+
+def test_local_address_survives_a_restart_and_reaches_the_proxy(tmp_path: Path) -> None:
+    with _client(tmp_path, Factory()) as client:
+        client.post(HUBS, json={"host": "192.168.1.50", "local_address": "192.168.1.77"})
+    factory = Factory()
+    with _client(tmp_path, factory) as client:
+        assert factory.latest("192.168.1.50").config.local_address == "192.168.1.77"
+        assert client.get(f"{HUBS}/192.168.1.50").json()["local_address"] == "192.168.1.77"
+
+
+def test_a_disabled_hub_has_no_local_address_in_use(tmp_path: Path) -> None:
+    with _client(tmp_path, Factory()) as client:
+        r = client.post(HUBS, json={"host": "192.168.1.60", "enabled": False})
+        assert r.json()["local_address"] is None
+        # The manual address is still stored for when it is enabled.
+        r = client.put(f"{HUBS}/192.168.1.60/local-address", json={"address": "192.168.1.77"})
+        assert r.json()["config"]["local_address"] == "192.168.1.77" and r.json()["local_address"] is None
+
+
 def test_openapi_lists_hub_operations_with_named_components(tmp_path: Path) -> None:
     with _client(tmp_path, Factory()) as client:
         spec = client.get(f"{API_PREFIX}/openapi.json").json()
     ops = {op["operationId"] for path in spec["paths"].values() for op in path.values()}
     assert {"listHubs", "addHub", "getHub", "removeHub", "enableHub", "disableHub",
-            "enableHubProxy", "disableHubProxy"} <= ops
+            "enableHubProxy", "disableHubProxy", "setHubLocalAddress"} <= ops
     schemas = spec["components"]["schemas"]
     assert {"HubView", "HubConfig", "HubStatus", "HubCreate", "Problem"} <= set(schemas)
 

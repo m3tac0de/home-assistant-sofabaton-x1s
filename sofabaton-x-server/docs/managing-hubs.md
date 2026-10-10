@@ -24,6 +24,11 @@ devices, favorites, buttons, macros, power sequences and inputs.
 4. Wait for the operation to finish. Allow the physical remote to
    synchronize before testing its updated configuration.
 
+In an activity’s **Shortcuts** editor, use **Copy** to add missing favorites
+and macros from another activity. Existing shortcuts are kept; review the
+draft and sync it to apply the additions. The same operation is available
+when editing a backup, where it changes only the loaded document.
+
 Deleting a command also removes its references on the hub. Assigning a
 command to an occupied button can replace that button's existing assignment.
 
@@ -186,6 +191,16 @@ proxy on** offers it again. The choice is kept per hub. An app that is
 already connected stays until it disconnects. With the proxy off for
 every hub, the server stops listening for the app altogether (its UDP
 discovery port, 8102 by default, is closed).
+
+**Server IP address** in **Hub settings** is the address of the server the
+hub is told to connect back to. The server chooses it: normally the address
+the operating system routes to the hub with, or, when that address is not on
+the hub's subnet while another address of the server is, that other one. On
+a server with one network interface there is nothing to set. To override the
+choice, type an IPv4 address and save; the field then reads **manual**.
+Clear the field and save to return to **automatic**. The change applies to
+the next connection attempt, so a connected hub stays connected. Callback
+devices use this address too, unless `--callback-host` is set.
 
 **Server settings** in the cog menu shows server status and listener
 settings. Port changes apply after restarting the server. Values supplied

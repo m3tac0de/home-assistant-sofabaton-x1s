@@ -9,6 +9,7 @@
 // mirrors the shape of REMOTE_CARD_STRINGS_EN.
 //
 // Deliberately NOT translated (do not add keys for these):
+// - printed key legends (EXIT, DVR, A/B/C); key-name entries retain them
 // - hub-supplied names (activities, devices, commands, favorites, macros)
 // - generated YAML keys and MQTT discovery payloads/identifiers
 // - documentation URLs
@@ -48,6 +49,41 @@ export const REMOTE_CARD_STRINGS_EN = {
     pickerName: "Sofabaton Virtual Remote",
     pickerDescription:
       "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
+  },
+  // The sidebar remote (docs/internal/sidebar-remote-plan.md): the panel
+  // chrome and the sheet titles. Key names reuse `keys`, drawer names and
+  // the powered-off label reuse `card`.
+  sidebar: {
+    title: "Virtual Remote",
+    controlPanel: "Control Panel",
+    hubMenu: "Choose a hub",
+    back: "Back",
+    hubReachable: "Reachable",
+    hubUnreachable: "Unreachable",
+    noHubs: "No Sofabaton hub is set up yet.",
+    hubUnavailable: "Hub unavailable",
+    remoteUnavailable: "The remote for this hub is unavailable.",
+    controlPanelLoadFailed: "Could not load the Control Panel. Reload the page to try again.",
+    activities: "Activities",
+    devices: "Devices",
+    allOff: "All off",
+    off: "Off",
+    modeToggle: "Switch between activities and devices",
+    numberPad: "Number pad",
+    pullHandle: "Open favorites and macros",
+    pullHandleCommands: "Open commands",
+    close: "Close",
+    starting: "Starting",
+    poweringOff: "Powering off",
+    working: "Working",
+    appConnected: "The Sofabaton app is connected",
+    operations: {
+      backup_restore: "Restoring backup",
+      cache_refresh: "Refreshing hub cache",
+      entity_sync: "Syncing to hub",
+      backup_export: "Creating backup",
+      wifi_deploy: "Deploying Wifi commands",
+    } as Record<string, string>,
   },
   assist: {
     label: "Key capture",
@@ -206,7 +242,7 @@ export const REMOTE_CARD_STRINGS_EN = {
     guide: "Guide",
     dvr: "DVR",
     play: "Play",
-    exit: "Exit",
+    exit: "EXIT",
     rew: "Rewind",
     pause: "Pause",
     fwd: "Fast forward",

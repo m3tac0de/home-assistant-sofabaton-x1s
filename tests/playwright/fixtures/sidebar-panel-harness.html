@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sidebar Panel Harness</title>
+    <!-- The HA theme fixture + engine shared with the card harnesses. -->
+    <script src="/tests/fixtures/ha-themes.js"></script>
+    <script src="/tests/fixtures/ha-theme-engine.js"></script>
+    <style id="harness-fallback-palette">
+      /* Home Assistant's default light palette, enough for the panel. */
+      :root {
+        --primary-color: #03a9f4;
+        --primary-text-color: #212121;
+        --secondary-text-color: #727272;
+        --disabled-text-color: #bdbdbd;
+        --divider-color: rgba(0, 0, 0, 0.12);
+        --card-background-color: #ffffff;
+        --primary-background-color: #fafafa;
+        --secondary-background-color: #e5e5e5;
+        --app-header-background-color: #ffffff;
+        --app-header-text-color: #212121;
+        --header-height: 56px;
+      }
+      html, body { margin: 0; height: 100%; background: var(--primary-background-color); }
+      sofabaton-x-panel { display: flex; height: 100dvh; }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/tests/playwright/fixtures/sidebar-panel-harness.js"></script>
+  </body>
+</html>

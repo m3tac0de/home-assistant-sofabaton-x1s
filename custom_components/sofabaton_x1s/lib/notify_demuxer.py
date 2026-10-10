@@ -3,14 +3,17 @@ from __future__ import annotations
 import logging
 import ipaddress
 import socket
+import sys
 import struct
 import threading
 import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
+from . import network
 from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version
 from .hub_logging import get_hub_logger
+from .network import select_local_address as _select_local_address
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -38,44 +41,6 @@ def _sum8(payload: bytes) -> int:
     return sum(payload) & 0xFF
 
 
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try:
-            s.close()
-        except Exception:
-            pass
-
-
-def _local_ipv4_networks() -> list[ipaddress.IPv4Network]:
-    """The IPv4 networks of this host's interfaces, most specific first.
-
-    ``ifaddr`` ships with zeroconf (the library's one dependency); without
-    it the caller falls back to assuming a /24.
-    """
-
-    try:
-        import ifaddr
-    except ImportError:
-        return []
-    networks: list[ipaddress.IPv4Network] = []
-    try:
-        for adapter in ifaddr.get_adapters():
-            for ip in adapter.ips:
-                if isinstance(ip.ip, str) and ip.network_prefix:
-                    networks.append(
-                        ipaddress.IPv4Network(f"{ip.ip}/{ip.network_prefix}", strict=False)
-                    )
-    except Exception:
-        return []
-    return sorted(networks, key=lambda net: net.prefixlen, reverse=True)
-
-
 def _broadcast_ip(peer_ip: str) -> str:
     """The subnet broadcast address the app at ``peer_ip`` hears.
 
@@ -88,9 +53,9 @@ def _broadcast_ip(peer_ip: str) -> str:
         addr = ipaddress.ip_address(peer_ip)
     except ValueError:
         return "255.255.255.255"
-    for network in _local_ipv4_networks():
-        if addr in network:
-            return str(network.broadcast_address)
+    for interface in network._local_ipv4_interfaces():
+        if addr in interface.network:
+            return str(interface.network.broadcast_address)
     return str(ipaddress.ip_network(f"{addr}/24", strict=False).broadcast_address)
 
 
@@ -105,6 +70,10 @@ class NotifyRegistration:
     mac_bytes: bytes
     device_id: bytes
     call_me_hint: bytes
+    #: The MAC the hub reported in its banner (6 bytes, all zero when not
+    #: known yet). A manually added hub advertises a synthetic MAC, so an
+    #: app that names the hub by its real MAC is matched through this one.
+    banner_mac_bytes: bytes = b"\x00" * 6
 
 
 def _classify_or_x1(mdns_txt: Dict[str, str]) -> str:
@@ -156,6 +125,7 @@ class NotifyDemuxer:
         mdns_txt: Dict[str, str],
         call_me_port: int,
         call_me_cb: Callable[[str, int, str, int], None],
+        banner_mac: Optional[str] = None,
     ) -> None:
         mac_bytes = self._extract_mac_bytes(mdns_txt)
         hub_version = _classify_or_x1(mdns_txt)
@@ -172,13 +142,13 @@ class NotifyDemuxer:
             mac_bytes,
             device_id,
             call_me_hint,
+            self._mac_bytes_from_text(banner_mac),
         )
         with self._lock:
             self._registrations[proxy_id] = reg
             get_hub_logger(log, proxy_id).info(
-                "[DEMUX] registered proxy for hub %s (CALL_ME -> %s:%d)",
+                "[DEMUX] registered proxy for hub %s (app CALL_ME on port %d)",
                 real_hub_ip,
-                _route_local_ip(real_hub_ip),
                 reg.call_me_port,
             )
             self._ensure_running_locked()
@@ -365,9 +335,35 @@ class NotifyDemuxer:
                 dest_ip,
             )
             try:
-                sock.sendto(reply, (dest_ip, BROADCAST_LISTEN_PORT))
+                self._send_notify_reply(sock, reply, src_ip, dest_ip)
             except OSError:
                 get_hub_logger(log, reg.proxy_id).exception("[DEMUX] failed to send NOTIFY_ME reply")
+
+    @staticmethod
+    def _send_notify_reply(
+        sock: socket.socket, reply: bytes, app_ip: str, dest_ip: str
+    ) -> None:
+        """Broadcast one reply, from the address selected for the app.
+
+        The app takes the proxy address from this packet's source. The
+        shared listener is bound to all addresses, so OS routing normally
+        picks that source; only when the address selected for the app
+        differs is it set per packet, which needs Linux ``IP_PKTINFO``.
+        Anywhere else, or when that send fails, the plain send stands.
+        """
+
+        dest = (dest_ip, BROADCAST_LISTEN_PORT)
+        selected = _select_local_address(app_ip)
+        if selected.bind and sys.platform == "linux" and hasattr(sock, "sendmsg"):
+            # Linux's IP_PKTINFO ABI is 8; Python <3.12 omits its name.
+            pktinfo = getattr(socket, "IP_PKTINFO", 8)
+            info = struct.pack("=I4s4s", 0, socket.inet_aton(selected.ip), b"\x00" * 4)
+            try:
+                sock.sendmsg([reply], [(socket.IPPROTO_IP, pktinfo, info)], 0, dest)
+                return
+            except OSError:
+                log.debug("[DEMUX] source-selected reply failed; sending unbound", exc_info=True)
+        sock.sendto(reply, dest)
 
     def _handle_call_me(self, pkt: bytes, src_ip: str, src_port: int) -> None:
         try:
@@ -391,11 +387,12 @@ class NotifyDemuxer:
             return
 
         get_hub_logger(log, reg.proxy_id).info(
-            "[DEMUX] CALL_ME from %s:%d -> app tcp %s:%d",
+            "[DEMUX] CALL_ME from %s:%d -> app tcp %s:%d (hint %s)",
             src_ip,
             src_port,
             app_ip,
             app_port,
+            mac_hint.hex(":"),
         )
         try:
             reg.call_me_cb(src_ip, src_port, app_ip, app_port)
@@ -422,10 +419,25 @@ class NotifyDemuxer:
             for reg in registrations:
                 if any(reg.mac_bytes[:5]) and reg.mac_bytes[:5] == mac_hint[:5]:
                     return reg
-            # A hint that matches nobody names another hub (one whose proxy
-            # was disabled, say); connecting the only registered proxy would
-            # show that hub under the wrong identity.
-            return None
+            # The app may name the hub by the MAC the hub itself reports,
+            # which differs from the advertised one for a manually added
+            # hub (its TXT record carries a synthetic MAC).
+            for reg in registrations:
+                if any(reg.banner_mac_bytes[:5]) and reg.banner_mac_bytes[:5] == mac_hint[:5]:
+                    return reg
+            if len(registrations) > 1:
+                # A hint that matches nobody names another hub; with several
+                # proxies registered, guessing would connect the app to a hub
+                # under the wrong identity.
+                return None
+            # One proxy: the hint cannot be telling the hubs apart, and an
+            # app that learned its MAC elsewhere must still get through.
+            get_hub_logger(log, registrations[0].proxy_id).info(
+                "[DEMUX] CALL_ME hint %s matches no advertised or reported MAC; "
+                "routing to the only registered proxy",
+                mac_hint.hex(":"),
+            )
+            return registrations[0]
 
         if len(registrations) == 1:
             return registrations[0]
@@ -434,12 +446,16 @@ class NotifyDemuxer:
 
     @staticmethod
     def _extract_mac_bytes(mdns_txt: Dict[str, str]) -> bytes:
+        return NotifyDemuxer._mac_bytes_from_text(
+            mdns_txt.get("MAC") or mdns_txt.get("mac") or mdns_txt.get("macaddress")
+        )
+
+    @staticmethod
+    def _mac_bytes_from_text(mac_raw: object) -> bytes:
+        """A MAC in any spelling as exactly 6 bytes; all zero when absent
+        or malformed."""
+
         try:
-            mac_raw = (
-                mdns_txt.get("MAC")
-                or mdns_txt.get("mac")
-                or mdns_txt.get("macaddress")
-            )
             mac_bytes = (
                 bytes.fromhex(str(mac_raw).replace(":", "").replace("-", ""))
                 if mac_raw

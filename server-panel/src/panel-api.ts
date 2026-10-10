@@ -439,6 +439,11 @@ export class PanelApi {
     return this.request<HubView>("POST", `hubs/${encodeURIComponent(hubId)}/proxy/${enabled ? "enable" : "disable"}`);
   }
 
+  /** The server's IPv4 address toward the hub; null returns to automatic. */
+  setHubLocalAddress(hubId: string, address: string | null): Promise<ApiResponse<HubView>> {
+    return this.request<HubView>("PUT", `hubs/${encodeURIComponent(hubId)}/local-address`, { body: { address } });
+  }
+
   removeHub(hubId: string): Promise<ApiResponse<never>> {
     return this.request<never>("DELETE", `hubs/${encodeURIComponent(hubId)}`);
   }

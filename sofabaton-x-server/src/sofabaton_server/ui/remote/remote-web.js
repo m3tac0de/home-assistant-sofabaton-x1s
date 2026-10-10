@@ -1862,6 +1862,41 @@ var REMOTE_CARD_STRINGS_EN = {
     pickerName: "Sofabaton Virtual Remote",
     pickerDescription: "A configurable remote for the Sofabaton X1, X1S and X2 integration."
   },
+  // The sidebar remote (docs/internal/sidebar-remote-plan.md): the panel
+  // chrome and the sheet titles. Key names reuse `keys`, drawer names and
+  // the powered-off label reuse `card`.
+  sidebar: {
+    title: "Virtual Remote",
+    controlPanel: "Control Panel",
+    hubMenu: "Choose a hub",
+    back: "Back",
+    hubReachable: "Reachable",
+    hubUnreachable: "Unreachable",
+    noHubs: "No Sofabaton hub is set up yet.",
+    hubUnavailable: "Hub unavailable",
+    remoteUnavailable: "The remote for this hub is unavailable.",
+    controlPanelLoadFailed: "Could not load the Control Panel. Reload the page to try again.",
+    activities: "Activities",
+    devices: "Devices",
+    allOff: "All off",
+    off: "Off",
+    modeToggle: "Switch between activities and devices",
+    numberPad: "Number pad",
+    pullHandle: "Open favorites and macros",
+    pullHandleCommands: "Open commands",
+    close: "Close",
+    starting: "Starting",
+    poweringOff: "Powering off",
+    working: "Working",
+    appConnected: "The Sofabaton app is connected",
+    operations: {
+      backup_restore: "Restoring backup",
+      cache_refresh: "Refreshing hub cache",
+      entity_sync: "Syncing to hub",
+      backup_export: "Creating backup",
+      wifi_deploy: "Deploying Wifi commands"
+    }
+  },
   assist: {
     label: "Key capture",
     waiting: "Waiting for keypress",
@@ -2007,7 +2042,7 @@ var REMOTE_CARD_STRINGS_EN = {
     guide: "Guide",
     dvr: "DVR",
     play: "Play",
-    exit: "Exit",
+    exit: "EXIT",
     rew: "Rewind",
     pause: "Pause",
     fwd: "Fast forward",
@@ -2151,6 +2186,12 @@ var REMOTE_CARD_CSS = `
            a drawer button from it is not a self-reference. */
         --sb-key-surface: color-mix(in srgb, var(--sb-tint-base) 8%, var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
         --sb-key-border: color-mix(in srgb, var(--sb-tint-base) 20%, transparent);
+        /* Dialog surface: HA's own ha-dialog chain, not the card surface.
+           Glass themes make --ha-card-background see-through and keep
+           the dialog surface readable (opaque, or translucent with a
+           --ha-dialog-surface-backdrop-filter blur). */
+        --sb-dialog-surface: var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff))));
+        --sb-dialog-backdrop-filter: var(--ha-dialog-surface-backdrop-filter, none);
         /* Glossy: a vertical curve of the same tint (bright top, dark
            bottom) plus specular inset highlights. A gradient is legal here
            because every consumer puts the token in a background shorthand. */
@@ -2271,7 +2312,7 @@ var REMOTE_CARD_CSS = `
         border-right-color: var(--sb-panel-border);
       }
       .wrap--panels .mf-overlay {
-        background: var(--sb-panel-surface);
+        --sb-drawer-layer: var(--sb-panel-surface);
         border-color: var(--sb-panel-border);
       }
       /* drawer-up re-declares border-top with the divider colour at higher
@@ -2693,8 +2734,18 @@ var REMOTE_CARD_CSS = `
         left: 0;
         right: 0;
         z-index: 1; /* Lowered: Sits behind the buttons, above the remote body */
-        
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+
+        /* The drawer floats over the keys. Glass / iOS themes make the card
+           background translucent (alpha 0.3-0.4), which is fine for the card
+           over a wallpaper but lets the keys underneath show through the
+           drawer. Stack the same surface twice (0.3 becomes ~0.51, 0.4
+           ~0.64, an opaque colour stays pixel-identical) and blur what
+           remains: more layers made the dark glass themes' drawer read as
+           a black slab against their translucent card. */
+        --sb-drawer-layer: linear-gradient(
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))),
+          var(--ha-card-background, var(--card-background-color, var(--primary-background-color))));
+        background: var(--sb-drawer-layer), var(--sb-drawer-layer);
         border: 1px solid var(--divider-color);
         border-top: none; 
         border-bottom-left-radius: var(--sb-group-radius);
@@ -2705,8 +2756,12 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(0);
         opacity: 0;
         pointer-events: none;
-        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
-        
+        /* The blur lives on .open only (a closed drawer with a backdrop
+           filter changes how the card's text rasterises); the delay keeps
+           it through the closing fade. */
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease,
+          -webkit-backdrop-filter 0s 0.25s, backdrop-filter 0s 0.25s;
+
         max-height: 350px;
         overflow-y: auto;
         padding: 12px;
@@ -2736,6 +2791,9 @@ var REMOTE_CARD_CSS = `
         transform: scaleY(1);
         opacity: 1;
         pointer-events: auto;
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
       }
 
       /* Device mode: power key sharing the commands strip row. The
@@ -2835,8 +2893,17 @@ var REMOTE_CARD_CSS = `
         padding: 8px 0;
       }
 
-      /* Drawer buttons (Macros/Favorites) */
+      /* Drawer buttons (Macros/Favorites). They sit on the drawer panel,
+         which is the card surface, so with flat keys an ha-card at the card
+         colour would only be separated by its border, and iOS / Material
+         You / glass themes set --ha-card-border-width to 0: the buttons
+         vanished into the panel. Raise them unconditionally with the
+         key-style tint and floored border (the key_style rules above
+         re-point the same tokens for tinted / elevated / glossy). */
       .drawer-btn {
+        --ha-card-background: var(--sb-key-surface);
+        --ha-card-border-color: var(--sb-key-border);
+        --ha-card-border-width: 1px;
         height: 50px !important;
         font-size: 13px !important;
         border-radius: var(--sb-group-radius) !important;
@@ -2850,6 +2917,11 @@ var REMOTE_CARD_CSS = `
       .drawer-btn .name,
       .drawer-btn__icon {
         color: var(--sb-key-label-color, var(--primary-color));
+      }
+      /* A name that wraps to a second line inherited the page's ~1.5
+         line-height; tighten it so two lines still sit as one label. */
+      .drawer-btn .name {
+        line-height: 1.15;
       }
 
       /* Hover/press overlay  */
@@ -3310,7 +3382,9 @@ var REMOTE_CARD_CSS = `
 
       .sb-modal__dialog {
         width: min(420px, 90vw);
-        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        background: var(--sb-dialog-surface, var(--ha-dialog-surface-background, var(--mdc-theme-surface, var(--card-background-color, var(--primary-background-color, #fff)))));
+        -webkit-backdrop-filter: var(--sb-dialog-backdrop-filter, none);
+        backdrop-filter: var(--sb-dialog-backdrop-filter, none);
         color: var(--primary-text-color);
         border-radius: 16px;
         border: 1px solid var(--divider-color);
@@ -4174,7 +4248,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.6";
+var CARD_VERSION = "0.2.7";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -6797,10 +6871,10 @@ if (!customElements.get("sb-key-button")) {
 
 // remote-card/src/sections/key-groups.ts
 function keyFaceLabel(spec) {
-  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+  return spec.label;
 }
 function keyAccessibleLabel(spec) {
-  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  if (spec.glyphFace) return str().keys[spec.key] ?? spec.label;
   return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
 }
 var X2_ONLY_KEY_IDS = /* @__PURE__ */ new Set([
@@ -6859,7 +6933,7 @@ var MEDIA_KEYS = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true }
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "EXIT", icon: "", extraClass: "area-exit" }
 ];
 var COLOR_KEYS = [
   { key: "red", id: ID.RED, cmd: ID.RED, label: "", icon: "", color: "#d32f2f" },
@@ -8717,6 +8791,7 @@ var mdiEyeOff = "M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,
 var mdiFan = "M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12.5,2C17,2 17.11,5.57 14.75,6.75C13.76,7.24 13.32,8.29 13.13,9.22C13.61,9.42 14.03,9.73 14.35,10.13C18.05,8.13 22.03,8.92 22.03,12.5C22.03,17 18.46,17.1 17.28,14.73C16.78,13.74 15.72,13.3 14.79,13.11C14.59,13.59 14.28,14 13.88,14.34C15.87,18.03 15.08,22 11.5,22C7,22 6.91,18.42 9.27,17.24C10.25,16.75 10.69,15.71 10.89,14.79C10.4,14.59 9.97,14.27 9.65,13.87C5.96,15.85 2,15.07 2,11.5C2,7 5.56,6.89 6.74,9.26C7.24,10.25 8.29,10.68 9.22,10.87C9.41,10.39 9.73,9.97 10.14,9.65C8.15,5.96 8.94,2 12.5,2Z";
 var mdiFanOff = "M12.5,2C9.64,2 8.57,4.55 9.29,7.47L15,13.16C15.87,13.37 16.81,13.81 17.28,14.73C18.46,17.1 22.03,17 22.03,12.5C22.03,8.92 18.05,8.13 14.35,10.13C14.03,9.73 13.61,9.42 13.13,9.22C13.32,8.29 13.76,7.24 14.75,6.75C17.11,5.57 17,2 12.5,2M3.28,4L2,5.27L4.47,7.73C3.22,7.74 2,8.87 2,11.5C2,15.07 5.96,15.85 9.65,13.87C9.97,14.27 10.4,14.59 10.89,14.79C10.69,15.71 10.25,16.75 9.27,17.24C6.91,18.42 7,22 11.5,22C13.8,22 14.94,20.36 14.94,18.21L18.73,22L20,20.72L3.28,4Z";
 var mdiFastForward = "M13,6V18L21.5,12M4,18L12.5,12L4,6V18Z";
+var mdiFastForwardOutline = "M15,9.9L18,12L15,14.1V9.9M6,9.9L9,12L6,14.1V9.9M13,6V18L21.5,12L13,6M4,6V18L12.5,12L4,6Z";
 var mdiFilm = "M3.5,3H5V1.8C5,1.36 5.36,1 5.8,1H10.2C10.64,1 11,1.36 11,1.8V3H12.5A1.5,1.5 0 0,1 14,4.5V5H22V20H14V20.5A1.5,1.5 0 0,1 12.5,22H3.5A1.5,1.5 0 0,1 2,20.5V4.5A1.5,1.5 0 0,1 3.5,3M18,7V9H20V7H18M14,7V9H16V7H14M10,7V9H12V7H10M14,16V18H16V16H14M18,16V18H20V16H18M10,16V18H12V16H10Z";
 var mdiFilmstrip = "M18,9H16V7H18M18,13H16V11H18M18,17H16V15H18M8,9H6V7H8M8,13H6V11H8M8,17H6V15H8M18,3V5H16V3H8V5H6V3H4V21H6V19H8V21H16V19H18V21H20V3H18Z";
 var mdiFire = "M17.66 11.2C17.43 10.9 17.15 10.64 16.89 10.38C16.22 9.78 15.46 9.35 14.82 8.72C13.33 7.26 13 4.85 13.95 3C13 3.23 12.17 3.75 11.46 4.32C8.87 6.4 7.85 10.07 9.07 13.22C9.11 13.32 9.15 13.42 9.15 13.55C9.15 13.77 9 13.97 8.8 14.05C8.57 14.15 8.33 14.09 8.14 13.93C8.08 13.88 8.04 13.83 8 13.76C6.87 12.33 6.69 10.28 7.45 8.64C5.78 10 4.87 12.3 5 14.47C5.06 14.97 5.12 15.47 5.29 15.97C5.43 16.57 5.7 17.17 6 17.7C7.08 19.43 8.95 20.67 10.96 20.92C13.1 21.19 15.39 20.8 17.03 19.32C18.86 17.66 19.5 15 18.56 12.72L18.43 12.46C18.22 12 17.66 11.2 17.66 11.2M14.5 17.5C14.22 17.74 13.76 18 13.4 18.1C12.28 18.5 11.16 17.94 10.5 17.28C11.69 17 12.4 16.12 12.61 15.23C12.78 14.43 12.46 13.77 12.33 13C12.21 12.26 12.23 11.63 12.5 10.94C12.69 11.32 12.89 11.7 13.13 12C13.9 13 15.11 13.44 15.37 14.8C15.41 14.94 15.43 15.08 15.43 15.23C15.46 16.05 15.1 16.95 14.5 17.5H14.5Z";
@@ -8791,6 +8866,7 @@ var mdiMonitor = "M21,16H3V4H21M21,2H3C1.89,2 1,2.89 1,4V16A2,2 0 0,0 3,18H10V20
 var mdiMotionSensor = "M10,0.2C9,0.2 8.2,1 8.2,2C8.2,3 9,3.8 10,3.8C11,3.8 11.8,3 11.8,2C11.8,1 11,0.2 10,0.2M15.67,1A7.33,7.33 0 0,0 23,8.33V7A6,6 0 0,1 17,1H15.67M18.33,1C18.33,3.58 20.42,5.67 23,5.67V4.33C21.16,4.33 19.67,2.84 19.67,1H18.33M21,1A2,2 0 0,0 23,3V1H21M7.92,4.03C7.75,4.03 7.58,4.06 7.42,4.11L2,5.8V11H3.8V7.33L5.91,6.67L2,22H3.8L6.67,13.89L9,17V22H10.8V15.59L8.31,11.05L9.04,8.18L10.12,10H15V8.2H11.38L9.38,4.87C9.08,4.37 8.54,4.03 7.92,4.03Z";
 var mdiMovie = "M18,4L20,8H17L15,4H13L15,8H12L10,4H8L10,8H7L5,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V4H18Z";
 var mdiMovieOpen = "M20.84 2.18L16.91 2.96L19.65 6.5L21.62 6.1L20.84 2.18M13.97 3.54L12 3.93L14.75 7.46L16.71 7.07L13.97 3.54M9.07 4.5L7.1 4.91L9.85 8.44L11.81 8.05L9.07 4.5M4.16 5.5L3.18 5.69A2 2 0 0 0 1.61 8.04L2 10L6.9 9.03L4.16 5.5M2 10V20C2 21.11 2.9 22 4 22H20C21.11 22 22 21.11 22 20V10H2Z";
+var mdiMovieOpenOutline = "M20.84 2.18L16.91 2.96L19.65 6.5L21.62 6.1L20.84 2.18M13.97 3.54L12 3.93L14.75 7.46L16.71 7.07L13.97 3.54M9.07 4.5L7.1 4.91L9.85 8.44L11.81 8.05L9.07 4.5M4.16 5.5L3.18 5.69C2.1 5.9 1.39 6.96 1.61 8.04L2 10L6.9 9.03L4.16 5.5M20 12V20H4V12H20M22 10H2V20C2 21.11 2.9 22 4 22H20C21.11 22 22 21.11 22 20V10Z";
 var mdiMovieRoll = "M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A2.5,2.5 0 0,0 9.5,6.5A2.5,2.5 0 0,0 12,9A2.5,2.5 0 0,0 14.5,6.5A2.5,2.5 0 0,0 12,4M4.4,9.53C3.97,10.84 4.69,12.25 6,12.68C7.32,13.1 8.73,12.39 9.15,11.07C9.58,9.76 8.86,8.35 7.55,7.92C6.24,7.5 4.82,8.21 4.4,9.53M19.61,9.5C19.18,8.21 17.77,7.5 16.46,7.92C15.14,8.34 14.42,9.75 14.85,11.07C15.28,12.38 16.69,13.1 18,12.67C19.31,12.25 20.03,10.83 19.61,9.5M7.31,18.46C8.42,19.28 10,19.03 10.8,17.91C11.61,16.79 11.36,15.23 10.24,14.42C9.13,13.61 7.56,13.86 6.75,14.97C5.94,16.09 6.19,17.65 7.31,18.46M16.7,18.46C17.82,17.65 18.07,16.09 17.26,14.97C16.45,13.85 14.88,13.6 13.77,14.42C12.65,15.23 12.4,16.79 13.21,17.91C14,19.03 15.59,19.27 16.7,18.46M12,10.5A1.5,1.5 0 0,0 10.5,12A1.5,1.5 0 0,0 12,13.5A1.5,1.5 0 0,0 13.5,12A1.5,1.5 0 0,0 12,10.5Z";
 var mdiMusic = "M21,3V15.5A3.5,3.5 0 0,1 17.5,19A3.5,3.5 0 0,1 14,15.5A3.5,3.5 0 0,1 17.5,12C18.04,12 18.55,12.12 19,12.34V6.47L9,8.6V17.5A3.5,3.5 0 0,1 5.5,21A3.5,3.5 0 0,1 2,17.5A3.5,3.5 0 0,1 5.5,14C6.04,14 6.55,14.12 7,14.34V6L21,3Z";
 var mdiMusicBox = "M16,9H13V14.5A2.5,2.5 0 0,1 10.5,17A2.5,2.5 0 0,1 8,14.5A2.5,2.5 0 0,1 10.5,12C11.07,12 11.58,12.19 12,12.5V7H16M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z";
@@ -8809,7 +8885,9 @@ var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 
 var mdiPlay = "M8,5.14V19.14L19,12.14L8,5.14Z";
 var mdiPlayCircle = "M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPlayCircleOutline = "M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z";
+var mdiPlayOutline = "M8.5,8.64L13.77,12L8.5,15.36V8.64M6.5,5V19L17.5,12";
 var mdiPlayPause = "M3,5V19L11,12M13,19H16V5H13M18,5V19H21V5";
+var mdiPlaylistPlay = "M3 10H14V12H3V10M3 6H14V8H3V6M3 14H10V16H3V14M16 13V21L22 17L16 13Z";
 var mdiPlex = "M4,2C2.89,2 2,2.89 2,4V20C2,21.11 2.89,22 4,22H20C21.11,22 22,21.11 22,20V4C22,2.89 21.11,2 20,2H4M8.56,6H12.06L15.5,12L12.06,18H8.56L12,12L8.56,6Z";
 var mdiPlus = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
 var mdiPlusBox = "M17,13H13V17H11V13H7V11H11V7H13V11H17M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3Z";
@@ -8837,6 +8915,7 @@ var mdiRemoteTv = "M9,2C7.89,2 7,2.89 7,4V20C7,21.11 7.89,22 9,22H15C16.11,22 17
 var mdiRepeat = "M17,17H7V14L3,18L7,22V19H19V13H17M7,7H17V10L21,6L17,2V5H5V11H7V7Z";
 var mdiRepeatOnce = "M13,15V9H12L10,10V11H11.5V15M17,17H7V14L3,18L7,22V19H19V13H17M7,7H17V10L21,6L17,2V5H5V11H7V7Z";
 var mdiRewind = "M11.5,12L20,18V6M11,18V6L2.5,12L11,18Z";
+var mdiRewindOutline = "M10,9.9L7,12L10,14.1V9.9M19,9.9L16,12L19,14.1V9.9M12,6V18L3.5,12L12,6M21,6V18L12.5,12L21,6Z";
 var mdiRhombus = "M12 2C11.5 2 11 2.19 10.59 2.59L2.59 10.59C1.8 11.37 1.8 12.63 2.59 13.41L10.59 21.41C11.37 22.2 12.63 22.2 13.41 21.41L21.41 13.41C22.2 12.63 22.2 11.37 21.41 10.59L13.41 2.59C13 2.19 12.5 2 12 2Z";
 var mdiRhombusOutline = "M12 2C11.5 2 11 2.19 10.59 2.59L2.59 10.59C1.8 11.37 1.8 12.63 2.59 13.41L10.59 21.41C11.37 22.2 12.63 22.2 13.41 21.41L21.41 13.41C22.2 12.63 22.2 11.37 21.41 10.59L13.41 2.59C13 2.19 12.5 2 12 2M12 4L20 12L12 20L4 12Z";
 var mdiRobot = "M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z";
@@ -9039,6 +9118,7 @@ var MDI_ICON_PATHS = {
   "fan": mdiFan,
   "fan-off": mdiFanOff,
   "fast-forward": mdiFastForward,
+  "fast-forward-outline": mdiFastForwardOutline,
   "film": mdiFilm,
   "filmstrip": mdiFilmstrip,
   "fire": mdiFire,
@@ -9113,6 +9193,7 @@ var MDI_ICON_PATHS = {
   "motion-sensor": mdiMotionSensor,
   "movie": mdiMovie,
   "movie-open": mdiMovieOpen,
+  "movie-open-outline": mdiMovieOpenOutline,
   "movie-roll": mdiMovieRoll,
   "music": mdiMusic,
   "music-box": mdiMusicBox,
@@ -9131,7 +9212,9 @@ var MDI_ICON_PATHS = {
   "play": mdiPlay,
   "play-circle": mdiPlayCircle,
   "play-circle-outline": mdiPlayCircleOutline,
+  "play-outline": mdiPlayOutline,
   "play-pause": mdiPlayPause,
+  "playlist-play": mdiPlaylistPlay,
   "plex": mdiPlex,
   "plus": mdiPlus,
   "plus-box": mdiPlusBox,
@@ -9159,6 +9242,7 @@ var MDI_ICON_PATHS = {
   "repeat": mdiRepeat,
   "repeat-once": mdiRepeatOnce,
   "rewind": mdiRewind,
+  "rewind-outline": mdiRewindOutline,
   "rhombus": mdiRhombus,
   "rhombus-outline": mdiRhombusOutline,
   "robot": mdiRobot,
@@ -9818,6 +9902,38 @@ var REMOTE_CARD_STRINGS_AR = {
     pickerName: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A \u0645\u0646 ${SOFABATON}`,
     pickerDescription: `\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0642\u0627\u0628\u0644 \u0644\u0644\u062A\u062E\u0635\u064A\u0635 \u0644\u062A\u0643\u0627\u0645\u0644 ${isolate("Sofabaton X1 / X1S / X2")}.`
   },
+  sidebar: {
+    title: "\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0627\u0641\u062A\u0631\u0627\u0636\u064A",
+    controlPanel: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
+    hubMenu: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0645\u062D\u0648\u0631",
+    back: "\u0631\u062C\u0648\u0639",
+    hubReachable: "\u0645\u062A\u0635\u0644",
+    hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
+    noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
+    hubUnavailable: "\u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D",
+    remoteUnavailable: "\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 \u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.",
+    controlPanelLoadFailed: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645. \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0635\u0641\u062D\u0629 \u0644\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u064B\u0627.",
+    activities: "\u0627\u0644\u0623\u0646\u0634\u0637\u0629",
+    devices: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    allOff: "\u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0643\u0644",
+    off: "\u0645\u0637\u0641\u0623",
+    modeToggle: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0628\u064A\u0646 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
+    numberPad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
+    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
+    close: "\u0625\u063A\u0644\u0627\u0642",
+    starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
+    poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
+    working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
+    appConnected: "\u062A\u0637\u0628\u064A\u0642 \u2068Sofabaton\u2069 \u0645\u062A\u0635\u0644",
+    operations: {
+      backup_restore: "\u062C\u0627\u0631\u064D \u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
+      cache_refresh: "\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 \u0627\u0644\u0645\u062D\u0648\u0631 \u0627\u0644\u0645\u0624\u0642\u062A\u0629",
+      entity_sync: "\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 \u0627\u0644\u0645\u062D\u0648\u0631",
+      backup_export: "\u062C\u0627\u0631\u064D \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
+      wifi_deploy: "\u062C\u0627\u0631\u064D \u0646\u0634\u0631 \u2068Wifi Commands\u2069"
+    }
+  },
   assist: {
     label: "\u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0623\u0632\u0631\u0627\u0631",
     waiting: "\u0628\u0627\u0646\u062A\u0638\u0627\u0631 \u0636\u063A\u0637\u0629 \u0632\u0631",
@@ -9963,7 +10079,7 @@ var REMOTE_CARD_STRINGS_AR = {
     guide: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0628\u0631\u0627\u0645\u062C",
     dvr: DVR,
     play: "\u062A\u0634\u063A\u064A\u0644",
-    exit: "\u062E\u0631\u0648\u062C",
+    exit: "EXIT",
     rew: "\u062A\u0631\u062C\u064A\u0639",
     pause: "\u0625\u064A\u0642\u0627\u0641 \u0645\u0624\u0642\u062A",
     fwd: "\u062A\u0642\u062F\u064A\u0645 \u0633\u0631\u064A\u0639",
@@ -10042,6 +10158,38 @@ var REMOTE_CARD_STRINGS_DE = {
     deviceFallback: (id) => `Ger\xE4t ${id}`,
     pickerName: "Virtuelle Sofabaton-Fernbedienung",
     pickerDescription: "Eine konfigurierbare Fernbedienung f\xFCr die Sofabaton-X1-, X1S- und X2-Integration."
+  },
+  sidebar: {
+    title: "Virtuelle Fernbedienung",
+    controlPanel: "Steuerzentrale",
+    hubMenu: "Hub w\xE4hlen",
+    back: "Zur\xFCck",
+    hubReachable: "Erreichbar",
+    hubUnreachable: "Nicht erreichbar",
+    noHubs: "Es ist noch kein Sofabaton-Hub eingerichtet.",
+    hubUnavailable: "Hub nicht verf\xFCgbar",
+    remoteUnavailable: "Die Fernsteuerung f\xFCr diesen Hub ist nicht verf\xFCgbar.",
+    controlPanelLoadFailed: "Die Steuerzentrale konnte nicht geladen werden. Lade die Seite neu, um es erneut zu versuchen.",
+    activities: "Aktivit\xE4ten",
+    devices: "Ger\xE4te",
+    allOff: "Alles aus",
+    off: "Aus",
+    modeToggle: "Zwischen Aktivit\xE4ten und Ger\xE4ten wechseln",
+    numberPad: "Zifferntasten",
+    pullHandle: "Favoriten und Makros \xF6ffnen",
+    pullHandleCommands: "Befehle \xF6ffnen",
+    close: "Schlie\xDFen",
+    starting: "Wird gestartet",
+    poweringOff: "Wird ausgeschaltet",
+    working: "Wird ausgef\xFChrt",
+    appConnected: "Die Sofabaton-App ist verbunden",
+    operations: {
+      backup_restore: "Backup wird wiederhergestellt",
+      cache_refresh: "Hub-Cache wird aktualisiert",
+      entity_sync: "Wird mit dem Hub synchronisiert",
+      backup_export: "Backup wird erstellt",
+      wifi_deploy: "Wifi Commands werden \xFCbertragen"
+    }
   },
   assist: {
     label: "Tastendr\xFCcke erfassen",
@@ -10188,7 +10336,7 @@ var REMOTE_CARD_STRINGS_DE = {
     guide: "Guide",
     dvr: "DVR",
     play: "Wiedergabe",
-    exit: "Beenden",
+    exit: "EXIT",
     rew: "Zur\xFCckspulen",
     pause: "Pause",
     fwd: "Vorspulen",
@@ -10247,6 +10395,38 @@ var REMOTE_CARD_STRINGS_ES = {
     deviceFallback: (id) => `Dispositivo ${id}`,
     pickerName: "Mando a distancia virtual Sofabaton",
     pickerDescription: "Un mando a distancia configurable para la integraci\xF3n Sofabaton X1, X1S y X2."
+  },
+  sidebar: {
+    title: "Mando virtual",
+    controlPanel: "Panel de control",
+    hubMenu: "Elegir un hub",
+    back: "Atr\xE1s",
+    hubReachable: "Accesible",
+    hubUnreachable: "Inaccesible",
+    noHubs: "Todav\xEDa no hay ning\xFAn hub Sofabaton configurado.",
+    hubUnavailable: "Hub no disponible",
+    remoteUnavailable: "El mando a distancia de este hub no est\xE1 disponible.",
+    controlPanelLoadFailed: "No se pudo cargar el panel de control. Recarga la p\xE1gina para volver a intentarlo.",
+    activities: "Actividades",
+    devices: "Dispositivos",
+    allOff: "Apagar todo",
+    off: "Apagado",
+    modeToggle: "Cambiar entre actividades y dispositivos",
+    numberPad: "Teclado num\xE9rico",
+    pullHandle: "Abrir favoritos y macros",
+    pullHandleCommands: "Abrir comandos",
+    close: "Cerrar",
+    starting: "Iniciando",
+    poweringOff: "Apagando",
+    working: "Trabajando",
+    appConnected: "La app de Sofabaton est\xE1 conectada",
+    operations: {
+      backup_restore: "Restaurando la copia de seguridad",
+      cache_refresh: "Actualizando la cach\xE9 del hub",
+      entity_sync: "Sincronizando con el hub",
+      backup_export: "Creando la copia de seguridad",
+      wifi_deploy: "Desplegando Wifi Commands"
+    }
   },
   assist: {
     label: "Captura de botones",
@@ -10393,7 +10573,7 @@ var REMOTE_CARD_STRINGS_ES = {
     guide: "Gu\xEDa",
     dvr: "DVR",
     play: "Reproducir",
-    exit: "Salir",
+    exit: "EXIT",
     rew: "Retroceder",
     pause: "Pausa",
     fwd: "Avance r\xE1pido",
@@ -10452,6 +10632,38 @@ var REMOTE_CARD_STRINGS_FR = {
     deviceFallback: (id) => `Appareil ${id}`,
     pickerName: "T\xE9l\xE9commande virtuelle Sofabaton",
     pickerDescription: "Une t\xE9l\xE9commande configurable pour l\u2019int\xE9gration Sofabaton X1, X1S et X2."
+  },
+  sidebar: {
+    title: "T\xE9l\xE9commande virtuelle",
+    controlPanel: "Panneau de contr\xF4le",
+    hubMenu: "Choisir un hub",
+    back: "Retour",
+    hubReachable: "Joignable",
+    hubUnreachable: "Injoignable",
+    noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
+    hubUnavailable: "Hub indisponible",
+    remoteUnavailable: "La t\xE9l\xE9commande de ce hub est indisponible.",
+    controlPanelLoadFailed: "Impossible de charger le panneau de contr\xF4le. Rechargez la page pour r\xE9essayer.",
+    activities: "Activit\xE9s",
+    devices: "Appareils",
+    allOff: "Tout \xE9teindre",
+    off: "\xC9teint",
+    modeToggle: "Basculer entre activit\xE9s et appareils",
+    numberPad: "Pav\xE9 num\xE9rique",
+    pullHandle: "Ouvrir les favoris et les macros",
+    pullHandleCommands: "Ouvrir les commandes",
+    close: "Fermer",
+    starting: "D\xE9marrage",
+    poweringOff: "Extinction",
+    working: "En cours",
+    appConnected: "L'application Sofabaton est connect\xE9e",
+    operations: {
+      backup_restore: "Restauration de la sauvegarde",
+      cache_refresh: "Actualisation du cache du hub",
+      entity_sync: "Synchronisation avec le hub",
+      backup_export: "Cr\xE9ation de la sauvegarde",
+      wifi_deploy: "D\xE9ploiement des Wifi Commands"
+    }
   },
   assist: {
     label: "Capture de touches",
@@ -10598,7 +10810,7 @@ var REMOTE_CARD_STRINGS_FR = {
     guide: "Guide",
     dvr: "DVR",
     play: "Lecture",
-    exit: "Quitter",
+    exit: "EXIT",
     rew: "Retour rapide",
     pause: "Pause",
     fwd: "Avance rapide",
@@ -10656,6 +10868,38 @@ var REMOTE_CARD_STRINGS_NL = {
     deviceFallback: (id) => `Apparaat ${id}`,
     pickerName: "Sofabaton virtuele afstandsbediening",
     pickerDescription: "Een configureerbare afstandsbediening voor de Sofabaton X1-, X1S- en X2-integratie."
+  },
+  sidebar: {
+    title: "Virtuele afstandsbediening",
+    controlPanel: "Bedieningspaneel",
+    hubMenu: "Kies een hub",
+    back: "Terug",
+    hubReachable: "Bereikbaar",
+    hubUnreachable: "Niet bereikbaar",
+    noHubs: "Er is nog geen Sofabaton-hub ingesteld.",
+    hubUnavailable: "Hub niet beschikbaar",
+    remoteUnavailable: "De afstandsbediening voor deze hub is niet beschikbaar.",
+    controlPanelLoadFailed: "Het bedieningspaneel kon niet worden geladen. Laad de pagina opnieuw om het nogmaals te proberen.",
+    activities: "Activiteiten",
+    devices: "Apparaten",
+    allOff: "Alles uit",
+    off: "Uit",
+    modeToggle: "Wisselen tussen activiteiten en apparaten",
+    numberPad: "Cijfertoetsen",
+    pullHandle: "Favorieten en macro's openen",
+    pullHandleCommands: "Commando's openen",
+    close: "Sluiten",
+    starting: "Wordt gestart",
+    poweringOff: "Wordt uitgeschakeld",
+    working: "Bezig",
+    appConnected: "De Sofabaton-app is verbonden",
+    operations: {
+      backup_restore: "Back-up wordt teruggezet",
+      cache_refresh: "Hub-cache wordt vernieuwd",
+      entity_sync: "Wordt gesynchroniseerd met de hub",
+      backup_export: "Back-up wordt gemaakt",
+      wifi_deploy: "Wifi Commands worden uitgerold"
+    }
   },
   assist: {
     label: "Knopdrukken registreren",
@@ -10802,7 +11046,7 @@ var REMOTE_CARD_STRINGS_NL = {
     guide: "Gids",
     dvr: "DVR",
     play: "Afspelen",
-    exit: "Afsluiten",
+    exit: "EXIT",
     rew: "Terugspoelen",
     pause: "Pauze",
     fwd: "Vooruitspoelen",
@@ -10860,6 +11104,38 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     deviceFallback: (id) => `\u8BBE\u5907 ${id}`,
     pickerName: "Sofabaton \u865A\u62DF\u9065\u63A7\u5668",
     pickerDescription: "\u9002\u7528\u4E8E Sofabaton X1\u3001X1S \u548C X2 \u96C6\u6210\u7684\u53EF\u914D\u7F6E\u9065\u63A7\u5668\u3002"
+  },
+  sidebar: {
+    title: "\u865A\u62DF\u9065\u63A7\u5668",
+    controlPanel: "\u63A7\u5236\u9762\u677F",
+    hubMenu: "\u9009\u62E9 Hub",
+    back: "\u8FD4\u56DE",
+    hubReachable: "\u53EF\u8FDE\u63A5",
+    hubUnreachable: "\u65E0\u6CD5\u8FDE\u63A5",
+    noHubs: "\u5C1A\u672A\u8BBE\u7F6E\u4EFB\u4F55 Sofabaton Hub\u3002",
+    hubUnavailable: "Hub \u4E0D\u53EF\u7528",
+    remoteUnavailable: "\u6B64 Hub \u7684\u9065\u63A7\u5B9E\u4F53\u4E0D\u53EF\u7528\u3002",
+    controlPanelLoadFailed: "\u65E0\u6CD5\u52A0\u8F7D\u63A7\u5236\u9762\u677F\u3002\u8BF7\u91CD\u65B0\u52A0\u8F7D\u9875\u9762\u540E\u91CD\u8BD5\u3002",
+    activities: "\u6D3B\u52A8",
+    devices: "\u8BBE\u5907",
+    allOff: "\u5168\u90E8\u5173\u95ED",
+    off: "\u5173\u95ED",
+    modeToggle: "\u5728\u6D3B\u52A8\u548C\u8BBE\u5907\u4E4B\u95F4\u5207\u6362",
+    numberPad: "\u6570\u5B57\u952E\u76D8",
+    pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
+    pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
+    close: "\u5173\u95ED",
+    starting: "\u6B63\u5728\u542F\u52A8",
+    poweringOff: "\u6B63\u5728\u5173\u95ED",
+    working: "\u5904\u7406\u4E2D",
+    appConnected: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
+    operations: {
+      backup_restore: "\u6B63\u5728\u6062\u590D\u5907\u4EFD",
+      cache_refresh: "\u6B63\u5728\u5237\u65B0 Hub \u7F13\u5B58",
+      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230 Hub",
+      backup_export: "\u6B63\u5728\u521B\u5EFA\u5907\u4EFD",
+      wifi_deploy: "\u6B63\u5728\u90E8\u7F72 Wifi Commands"
+    }
   },
   assist: {
     label: "\u6309\u952E\u6355\u83B7",
@@ -11006,7 +11282,7 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     guide: "\u8282\u76EE\u6307\u5357",
     dvr: "DVR",
     play: "\u64AD\u653E",
-    exit: "\u9000\u51FA",
+    exit: "EXIT",
     rew: "\u5FEB\u9000",
     pause: "\u6682\u505C",
     fwd: "\u5FEB\u8FDB",

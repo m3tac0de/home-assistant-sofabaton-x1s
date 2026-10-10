@@ -92,6 +92,23 @@ const TARGETS = {
     viewport: { width: 700, height: 1700 },
     outName: "contrast-audit-remote",
   },
+  // The sidebar remote inside its panel (docs/internal/sidebar-remote-plan.md):
+  // phone viewport, theme on <html> as HA applies it to a panel.
+  sidebar: {
+    url: () => "/tests/playwright/fixtures/sidebar-panel-harness.html",
+    ready: "() => window.__sidebarHarness?.themeFixtureLoaded === true && Boolean(window.__sidebarHarness.remote()?.shadowRoot?.querySelector('[data-key]'))",
+    options: "() => window.__sidebarHarness.themeOptions",
+    scenarioIds: "() => window.__sidebarHarness.scenarioIds",
+    load: "(id) => window.__sidebarHarness.loadScenario(id)",
+    setTheme: "(value, mode) => window.__sidebarHarness.setTheme(value)",
+    cardSelector: "sofabaton-x-panel",
+    viewAreaSelector: "body",
+    modes: ["global"],
+    includeHosts: [],
+    defaultScenarios: ["x1s", "x1s+favorites", "x1s+activities", "x2", "x2+commands"],
+    viewport: { width: 390, height: 844 },
+    outName: "contrast-audit-sidebar",
+  },
 };
 
 const DEFAULT_SCENARIOS = [

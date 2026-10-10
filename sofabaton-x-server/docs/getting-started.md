@@ -43,14 +43,14 @@ host.
 [pipx](https://pipx.pypa.io/latest/how-to/install-pipx.html) once, then:
 
 ```sh
-pipx install "sofabaton-x-server>=0.2.4,<0.3"
+pipx install "sofabaton-x-server>=0.2.5,<0.3"
 sofabaton-x-server --data-dir <a folder for its data>
 ```
 
 The server runs as long as that terminal window stays open; stop it with
 Ctrl+C and start it again the same way, with the same data directory.
 Without `--data-dir` it uses `./data` in the folder you started from.
-Plain pip works too: `python -m pip install "sofabaton-x-server>=0.2.4,<0.3"`.
+Plain pip works too: `python -m pip install "sofabaton-x-server>=0.2.5,<0.3"`.
 See [Install](running-server.md#install) for both.
 
 **From a source checkout,** see

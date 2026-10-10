@@ -39,7 +39,6 @@ from .protocol_const import (
     ButtonName,
     DEVICE_CLASS_WIFI_IP,
     DEVICE_CLASS_WIFI_ROKU,
-    OP_REQ_ACTIVITY_INPUTS,
     OP_REQ_BLOB,
 )
 from .state_helpers import normalize_device_entry
@@ -422,13 +421,20 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         # transaction. The _send_step calls inside nest harmlessly
         # (reentrant exchange).
         with self.exchange("wifi_input_config"):
-            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
-            burst = self.wait_for_activity_inputs_burst(timeout=5.0)
-            if not burst.ok:
+            # The hub must answer for the device before the page is written.
+            # A callback-class device created through DEFINE_IP_CMD answers
+            # with its candidate page; a wifi_mqtt device created through
+            # the restore pipeline holds no inputs page yet and answers a
+            # bare 0x07 (X2, bench_310 2026-10-06). Both are "ready": only
+            # an unanswered request stops the write. The page written below
+            # is built from the wifi entries alone either way.
+            record = self.fetch_device_input_record(
+                device_id & 0xFF, timeout=5.0, absent_as_empty=True
+            )
+            if record is None:
                 self._log.warning(
-                    "[WIFI] missing activity-input candidates before input config dev=0x%02X (%s)",
+                    "[WIFI] no answer to the inputs request before input config dev=0x%02X",
                     device_id & 0xFF,
-                    burst.outcome.value,
                 )
                 return False
 
@@ -733,6 +739,25 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
         device_id = int(result["device_id"]) & 0xFF
 
+        def _abandon(what: str) -> None:
+            # The device exists on the hub from the restore above; a create
+            # that fails after it must not leave it behind (the deploy
+            # layer reports "not created" and the store never learns the
+            # id, so nothing else would ever delete it: bench_310).
+            self._log.warning(
+                "[WIFI] create_wifi_mqtt_device: %s failed for dev=0x%02X; deleting the device again",
+                what,
+                device_id,
+            )
+            try:
+                self.delete_device(device_id)
+            except Exception:  # noqa: BLE001 - best effort, the create already failed
+                self._log.warning(
+                    "[WIFI] create_wifi_mqtt_device: could not delete dev=0x%02X after the failed create",
+                    device_id,
+                    exc_info=True,
+                )
+
         if power_on_command_id is not None or power_off_command_id is not None:
             if not self._sync_step_wifi_power_config(
                 {
@@ -741,10 +766,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
                     "power_off_command_id": power_off_command_id,
                 }
             ):
-                self._log.warning(
-                    "[WIFI] create_wifi_mqtt_device: power config failed for dev=0x%02X",
-                    device_id,
-                )
+                _abandon("power config")
                 return None
         validated_inputs = _validate_wifi_input_ids(
             input_command_ids, max_command_id=slot_count
@@ -753,10 +775,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             if not self._sync_step_wifi_input_config(
                 {"device_id": device_id, "input_command_ids": validated_inputs}
             ):
-                self._log.warning(
-                    "[WIFI] create_wifi_mqtt_device: input config failed for dev=0x%02X",
-                    device_id,
-                )
+                _abandon("input config")
                 return None
         return {"device_id": device_id, "status": "success"}
 

@@ -2,6 +2,8 @@
 
 Use the Sofabaton Control Panel to turn remote commands and hub state changes into Home Assistant Actions. Configuration is split between the **Automation** tab and the Activity and device editors. Once configured, triggers are handled and Actions run in the Home Assistant backend; the Control Panel is only the configuration interface and does not need to remain open.
 
+Open **Sofabaton X → Control Panel** from the [sidebar](sidebar.md) (0.7.0), or use the dashboard Control Panel card.
+
 To control the hub from Home Assistant instead, see the [remote entity guide](remote_entity.md).
 
 ## ◇ Choose a workflow
@@ -17,7 +19,7 @@ The integration provides four automation mechanisms. Wifi Commands and Wifi Even
 
 Configuring Actions is optional. Every received Wifi Command and Wifi Event updates `sensor.<hub>_wifi_commands`, whether or not an Action is configured. A configured Action runs in addition to the sensor update; use the sensor to handle presses in your own Home Assistant automations.
 
-> **Port compatibility:** HTTP Wifi Commands and all Wifi Events use TCP port `8060` by default, which commonly conflicts with existing Emulated Roku deployments. X1 requires port `8060`; X1S and X2 can use another Sofabaton listener port. MQTT Wifi Commands on X2 avoid this port, but Wifi Events still require HTTP. See [delivery and network setup](#-delivery-and-network-setup).
+> **Port compatibility:** HTTP Wifi Commands and HTTP-delivered Wifi Events use TCP port `8060` by default, which commonly conflicts with existing Emulated Roku deployments. X1 requires port `8060`; X1S and X2 can use another Sofabaton listener port. On X2, Wifi Commands and Wifi Events delivered over MQTT avoid this port. See [delivery and network setup](#-delivery-and-network-setup).
 
 <img height="220" alt="Automation tab, Wifi Commands sub-tab" src="images/wifi-commands-devices.png" /> <img height="220" alt="Automation tab, Events sub-tab" src="images/automation-events.png" />
 
@@ -83,7 +85,7 @@ All staged and deployed events appear under **Automation → Events → Wifi Eve
 
 Selecting an Action link opens Home Assistant's Action selector; the small × resets it to _do nothing_. Action changes apply immediately and do not require a hub sync. While the Control Panel is open, an event's row briefly highlights when it fires.
 
-All events live on one reserved hub device named **Wifi Events**. It is hidden from the user-managed Wifi Devices list and does not count toward the five-device limit, but appears in the remote's device list and in backups. Wifi Events currently use HTTP on every hub model and therefore need the [shared callback listener](#http-setup-and-port-compatibility).
+All events live on one reserved hub device named **Wifi Events**. It is hidden from the user-managed Wifi Devices list and does not count toward the five-device limit, but appears in the remote's device list and in backups. Wifi Events are delivered over HTTP on X1 and X1S, and over HTTP or MQTT on X2 (see [changing the delivery method](#changing-the-delivery-method)). Over HTTP they need the [shared callback listener](#http-setup-and-port-compatibility).
 
 Use **Hub → Devices → Wifi Events → Edit** to maintain deployed events:
 
@@ -161,7 +163,7 @@ actions:
 
 ## ◇ Delivery and network setup
 
-Delivery affects how Wifi Command presses reach Home Assistant, not how their Actions are configured. Wifi Events always use HTTP.
+Delivery affects how presses reach Home Assistant, not how their Actions are configured. It applies to each Wifi Device and, on X2, to the Wifi Events device.
 
 |                   | HTTP                                  | MQTT                                                               |
 | ----------------- | ------------------------------------- | ------------------------------------------------------------------ |
@@ -170,11 +172,11 @@ Delivery affects how Wifi Command presses reach Home Assistant, not how their Ac
 | **Default port**  | TCP `8060` on Home Assistant          | Broker port, commonly TCP `1883`                                   |
 | **Hold behavior** | Repeats at about 4 presses/second     | Delivers once for the resolved short or long press                 |
 
-The choice is fixed when a Wifi Device is first deployed. To change it, delete and recreate the Wifi Device; existing HTTP devices are never migrated automatically.
+The choice is made when a Wifi Device is created and applied at its first deployment. On X2 it can be changed later, device by device; see [changing the delivery method](#changing-the-delivery-method). Nothing is ever migrated automatically.
 
 ### HTTP setup and port compatibility
 
-HTTP is available on every supported hub and selected automatically when MQTT is unavailable. HTTP Wifi Commands and all Wifi Events share one callback listener, using port `8060` by default.
+HTTP is available on every supported hub and selected automatically when MQTT is unavailable. HTTP Wifi Commands and HTTP-delivered Wifi Events share one callback listener, using port `8060` by default.
 
 Emulated Roku commonly uses the same port. If `8060` is already bound, change the Sofabaton listener port in the integration's global options on X1S or X2. X1 cannot use a different port.
 
@@ -184,25 +186,36 @@ See the [networking and listener security model](networking.md#-security--listen
 
 MQTT is offered when the hub identifies as X2 and Home Assistant's MQTT integration is loaded. Configure the broker host, port, and credentials in the **Sofabaton app**. The hub and Home Assistant must use and be able to reach the same broker; the integration cannot read or test the hub's broker settings before deployment.
 
-MQTT Wifi Commands avoid port `8060`, but any Wifi Events still require the HTTP listener.
+Wifi Commands and Wifi Events delivered over MQTT do not use port `8060`; the listener switches off once nothing deployed on the hub needs it.
 
 For retry and offline behavior, message structure, measured latency, and other implementation details, see the [networking guide](networking.md#optional--mqtt-delivery-x2) and [Wifi Commands protocol notes](protocol/wifi-commands.md#-virtual-mqtt-devices-wifi_mqtt-class-0x20-x2-only).
 
+### Changing the delivery method
+
+On an X2 with Home Assistant's MQTT integration loaded, every deployed Wifi Device and the Wifi Events device show an **HTTP** or **MQTT** badge. The badge is a dropdown in the device's editor (**Hub → Devices**, open the device, then select the badge next to its name). Picking the other method is an edit like any other: the editor reads unsynced until you select **Sync**, so you can add events or change assignments first and apply everything in one go. The sync runs the switch with the same busy screen as every sync and reopens the editor on the switched device. The badge under **Automation → Wifi Commands** only shows the current method.
+
+A delivery change replaces the device on the hub. The integration creates the new device, adds it to the same Activities, moves every shortcut, button assignment, macro step, and input that pointed at the old device onto the new one, and only then deletes the old device. Nothing is lost and no Activity is ever left without a device. The remote shows the new device after the sync's final remote update.
+
+The Wifi Events device follows HTTP on its first deployment unless a Wifi Device on the same hub is already delivered over MQTT. Having the MQTT integration loaded does not show that the hub has been pointed at the broker; the badge is the place to opt in once it has.
+
+Delivery over MQTT delivers one activation per press, even when a button is held; HTTP repeats a held button at about four presses per second. An automation that counted repeats sees one.
+
 ## ◇ Wifi Commands: synchronization, recovery, and limitations
 
-| Change                                   | Result                                                                                  |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- |
-| Home Assistant Action only               | Applies immediately; no sync.                                                           |
-| Normal command, name, or assignment edit | Updates changed records in place and preserves device identity and external references. |
-| No command slots remain                  | Removes the hub device but keeps the empty Home Assistant configuration for reuse.      |
-| Delete in **Automation → Wifi Commands** | Removes both the hub device and saved configuration.                                    |
-| Delete through the Sofabaton app         | Keeps the saved configuration; sync it back to the hub or delete it in Wifi Commands.   |
+| Change                                   | Result                                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Home Assistant Action only               | Applies immediately; no sync.                                                                |
+| Normal command, name, or assignment edit | Updates changed records in place and preserves device identity and external references.      |
+| No command slots remain                  | Removes the hub device but keeps the empty Home Assistant configuration for reuse.           |
+| Delete in **Automation → Wifi Commands** | Removes both the hub device and saved configuration.                                         |
+| Delete through the Sofabaton app         | Keeps the saved configuration; sync it back to the hub or delete it in Wifi Commands.        |
+| Delivery method changed (X2)             | Replaces the hub device over the other method; references are moved to the new device first. |
 
-A full replacement is required for the first deployment, the first sync of a legacy deployment, a changed HTTP listener port, a managed device edited in the Sofabaton app since its last sync, or a command removed from an Activity where the managed Wifi Device was the only remaining device.
+A full replacement is required for the first deployment, the first sync of a legacy deployment, a changed HTTP listener port, a changed delivery method, a managed device edited in the Sofabaton app since its last sync, or a command removed from an Activity where the managed Wifi Device was the only remaining device.
 
 Before a replacement or deletion, note that:
 
-- The hub deletes an Activity with no devices. Add another device first or create a backup.
+- The hub deletes an Activity with no devices. Add another device first or create a backup. A replacement run by the integration adds the new device before deleting the old one, so this only applies to deletions.
 - Removing a Wifi Command clears its physical-button assignment; the previous assignment is not restored.
 
 Failed first deployments are rolled back. During replacement, the integration verifies the new command table before changing Activities or deleting the old device; failed verification removes the unused replacement and keeps the old device. Interrupted in-place updates are safe to retry.

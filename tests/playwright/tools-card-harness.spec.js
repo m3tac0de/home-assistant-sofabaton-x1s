@@ -1,6 +1,61 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("tools-card browser harness", () => {
+  test("glass theme: dropdown lists inside a blurred card and dialog open on their trigger", async ({ page }) => {
+    // Liquid Glass puts backdrop-filter on ha-card and (via
+    // --ha-dialog-surface-backdrop-filter) on the dialog surface. A
+    // backdrop-filter makes the element the containing block of its
+    // position: fixed descendants, so the fixed dropdown lists measured from
+    // the wrong corner and the dialog's overflow clipped them. The helpers
+    // now measure against that containing block, and the dialog's blur lives
+    // on a pseudo-element so the dialog itself never becomes one.
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto("/tests/tools-card-harness.html?scenario=macro-add-step&theme=Liquid%20Glass%7Cdark&width=900");
+    const detail = page.locator("sofabaton-control-panel sofabaton-backup-tab sofabaton-edit-detail-view");
+    await expect(detail.locator(".dialog")).toBeVisible();
+    await detail.locator(".dialog button", { hasText: "Cancel" }).click();
+    await detail.locator(".back-btn").click();
+
+    const rect = (locator) => locator.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom) };
+    });
+    const card = page.locator("sofabaton-control-panel ha-card");
+    expect(await card.evaluate((el) => getComputedStyle(el).backdropFilter)).toBe("blur(8px)");
+
+    // The role menu in the activity editor: under the blurred card it opens
+    // flush with its trigger (here above it: the card's bottom is close).
+    const roleTrigger = detail.locator(".role-trigger").first();
+    await roleTrigger.click();
+    const roleMenu = detail.locator(".role-menu");
+    await expect(roleMenu).toBeVisible();
+    const [trig, menu, cardBox] = [await rect(roleTrigger), await rect(roleMenu), await rect(card)];
+    expect(menu.right).toBe(trig.right);
+    expect(menu.bottom === trig.top - 4 || menu.top === trig.bottom + 4).toBe(true);
+    expect(menu.top).toBeGreaterThanOrEqual(cardBox.top);
+    await detail.locator(".member-add-backdrop").click();
+
+    // The macro picker inside the button-assignment dialog.
+    await detail.locator(".edit-selection-row--footer").click();
+    await detail.locator(".quick-access-add-btn").click();
+    const dialog = detail.locator(".dialog");
+    await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate((el) => getComputedStyle(el).backdropFilter)).toBe("none");
+    expect(await dialog.evaluate((el) => getComputedStyle(el, "::before").backdropFilter)).toBe("blur(8px)");
+    await detail.locator(".kind-seg-btn", { hasText: "Macro" }).first().click();
+    const pickerTrigger = detail.locator(".macro-picker-trigger").first();
+    await pickerTrigger.click();
+    const picker = detail.locator(".macro-picker-menu");
+    await expect(picker).toBeVisible();
+    await expect(picker.locator(".macro-picker-option", { hasText: "Volume Combo" })).toBeVisible();
+    const [pt, pm] = [await rect(pickerTrigger), await rect(picker)];
+    expect(pm.left).toBe(pt.left);
+    expect(pm.right).toBe(pt.right);
+    expect(pm.top).toBe(pt.bottom + 4);
+    // The dialog's title is still there: nothing of the dialog body went blank.
+    await expect(dialog.locator(".dialog-title")).toContainText("Add button assignment");
+  });
+
   test("drives every supported locale through the visible harness control", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     const expected = [

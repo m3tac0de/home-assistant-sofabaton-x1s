@@ -18,16 +18,14 @@ export interface KeySpec {
   extraClass?: string;
   size?: string;
   color?: string;
-  /** The face is the key's localized name (str().keys), not `label`. */
-  localizedFace?: boolean;
   /** The face is a glyph ("E"); screen readers and Key capture use the
    *  key's localized name instead. */
   glyphFace?: boolean;
 }
 
-/** The text a key shows on its face. */
+/** Printed key legends and glyphs match the remote in every language. */
 export function keyFaceLabel(spec: KeySpec): string {
-  return spec.localizedFace ? str().keys[spec.key] ?? spec.label : spec.label;
+  return spec.label;
 }
 
 /**
@@ -36,7 +34,7 @@ export function keyFaceLabel(spec: KeySpec): string {
  * the face itself (CR-F4b-3).
  */
 export function keyAccessibleLabel(spec: KeySpec): string {
-  if (spec.localizedFace || spec.glyphFace) return str().keys[spec.key] ?? spec.label;
+  if (spec.glyphFace) return str().keys[spec.key] ?? spec.label;
   return automationAssistLabelForKey(spec.key, spec.color ? spec.key : spec.label);
 }
 
@@ -105,7 +103,7 @@ const MEDIA_KEYS: KeySpec[] = [
   { key: "fwd", id: ID.FWD, cmd: ID.FWD, label: "", icon: "mdi:fast-forward", extraClass: "area-fwd" },
   { key: "dvr", id: ID.DVR, cmd: ID.DVR, label: "DVR", icon: "", extraClass: "area-dvr" },
   { key: "pause", id: ID.PAUSE, cmd: ID.PAUSE, label: "", icon: "mdi:pause", extraClass: "area-pause" },
-  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "Exit", icon: "", extraClass: "area-exit", localizedFace: true },
+  { key: "exit", id: ID.EXIT, cmd: ID.EXIT, label: "EXIT", icon: "", extraClass: "area-exit" },
 ];
 
 const COLOR_KEYS: KeySpec[] = [

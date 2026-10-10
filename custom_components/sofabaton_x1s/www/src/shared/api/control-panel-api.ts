@@ -22,6 +22,7 @@ import type {
   SettingKey,
   WifiCommandConfigResponse,
   WifiCommandSyncState,
+  WifiDeviceSummary,
   WifiDevicesListResponse,
   WifiEventCreateResponse,
   WifiEventsListResponse,
@@ -351,6 +352,20 @@ export class ControlPanelApi {
     });
   }
 
+  /** Set the desired delivery method of a Wifi Device record (the reserved
+   *  Wifi Events record included). A store write: on a deployed record a
+   *  value other than the deployed one makes the next sync a transport
+   *  switch, the deployed value cancels a pending one. Answers with the
+   *  events state for the events record, the device's row otherwise. */
+  setWifiTransport(hubEntryId: string, deviceKey: string, transport: "mqtt" | "http") {
+    return this.hass.callWS<WifiEventsListResponse & WifiDeviceSummary>({
+      type: "sofabaton_x1s/command_config/set_transport",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+      transport,
+    });
+  }
+
   getWifiCommandSyncProgress(hubEntryId: string, deviceKey: string) {
     return this.hass.callWS<Partial<WifiCommandSyncState>>({
       type: "sofabaton_x1s/command_sync/progress",
@@ -456,14 +471,6 @@ export class ControlPanelApi {
     return this.hass.callWS<{ ok: boolean }>({
       type: "sofabaton_x1s/backup/clear_result",
       operation_id: operationId,
-    });
-  }
-
-  refreshCatalog(entryId: string, kind: "activities" | "devices") {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/catalog/refresh",
-      entry_id: entryId,
-      kind,
     });
   }
 

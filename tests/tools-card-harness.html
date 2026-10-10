@@ -1469,6 +1469,9 @@
         hubEventActions: clone(scenario.hubEventActions ?? HUB_EVENT_ACTIONS),
         activityEventActions: clone(scenario.activityEventActions ?? ACTIVITY_EVENT_ACTIONS),
         wifiEvents: clone(scenario.wifiEvents ?? WIFI_EVENTS),
+        // Delivery method of the events device (wifi-events-transport-plan):
+        // scenarios set `wifiEventsTransport: { requested, deployed }`.
+        wifiEventsTransport: clone(scenario.wifiEventsTransport ?? { requested: "http", deployed: "http" }),
         operationSequence: 1,
         wifiDeviceSequence: 1,
         activitySequence: 105,
@@ -1478,10 +1481,19 @@
         return Promise.resolve(clone(value));
       };
       const operationId = (kind) => `${kind}-${mock.operationSequence++}`;
+      const wifiEventsTransportPending = () => {
+        const deployed = mock.wifiEvents.some((event) => event.device_id != null);
+        const t = mock.wifiEventsTransport;
+        return deployed && t.requested !== t.deployed && (t.requested !== "mqtt" || Boolean(scenario.mqttAvailable));
+      };
       const wifiEventsResponse = () => ({
         events: clone(mock.wifiEvents),
-        record_needs_sync: mock.wifiEvents.some((event) => !event.deployed),
+        record_needs_sync: mock.wifiEvents.some((event) => !event.deployed) || wifiEventsTransportPending(),
         device_id: mock.wifiEvents.find((event) => event.device_id != null)?.device_id ?? null,
+        requested_transport: mock.wifiEventsTransport.requested,
+        deployed_transport: mock.wifiEvents.some((event) => event.device_id != null) ? mock.wifiEventsTransport.deployed : null,
+        transport_switch_pending: wifiEventsTransportPending(),
+        mqtt_available: scenario.mqttAvailable ?? false,
       });
       return {
         states:     scenario.states ?? {},
@@ -1585,7 +1597,13 @@
           // returning a shape that may hide harness drift.
           switch (type) {
             case "sofabaton_x1s/control_panel/state":
-              return respond(type, mock.state);
+              // The backend reports per hub whether MQTT delivery can be
+              // offered (X2 + MQTT integration); the device editor's
+              // delivery select follows it.
+              return respond(type, {
+                ...mock.state,
+                hubs: (mock.state.hubs ?? []).map((hub) => ({ mqtt_available: scenario.mqttAvailable ?? false, ...hub })),
+              });
             case "sofabaton_x1s/persistent_cache/contents":
               return respond(type, mock.contents);
             case "sofabaton_x1s/control_panel/set_setting": {
@@ -1609,8 +1627,6 @@
             case "sofabaton_x1s/persistent_cache/refresh":
             case "sofabaton_x1s/cache/refresh_all":
               return respond(type, { operation_id: operationId("cache-refresh") });
-            case "sofabaton_x1s/catalog/refresh":
-              return respond(type, { ok: true });
             case "sofabaton_x1s/cache/structural_bundle":
               return respond(type, {
                 bundle: mock.structuralBundle,
@@ -1838,7 +1854,22 @@
                 (event) => event.slot_index !== Number(message.slot_index),
               );
               return respond(type, wifiEventsResponse());
+            case "sofabaton_x1s/command_config/set_transport": {
+              const transport = String(message.transport ?? "http");
+              if (String(message.device_key ?? "") === "haevents") {
+                mock.wifiEventsTransport = { ...mock.wifiEventsTransport, requested: transport };
+                return respond(type, wifiEventsResponse());
+              }
+              const key = String(message.device_key ?? "");
+              mock.wifiDevices = mock.wifiDevices.map((device) => {
+                if (device.device_key !== key) return device;
+                const pending = Boolean(device.deployed_transport) && (device.deployed_transport || "http") !== transport;
+                return { ...device, requested_transport: transport, transport_switch_pending: pending, sync_needed: pending || Boolean(device.sync_needed) };
+              });
+              return respond(type, mock.wifiDevices.find((device) => device.device_key === key) ?? {});
+            }
             case "sofabaton_x1s/wifi_event/sync":
+              mock.wifiEventsTransport = { ...mock.wifiEventsTransport, deployed: mock.wifiEventsTransport.requested };
               mock.wifiEvents = mock.wifiEvents.map((event) => ({
                 ...event,
                 device_id: event.device_id ?? 10,
@@ -2459,6 +2490,57 @@
         },
       },
       {
+        id: "device-editor-wifi-transport", group: "Activity Editor",
+        label: "Device editor — Wifi Device with the HTTP/MQTT delivery select (X2 + MQTT)",
+        states: STATES_CONNECTED,
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            devices_list: [
+              ...BASE_CONTENTS.hubs[0].devices_list,
+              { id: 4, name: "Home Assistant", command_count: 2, device_class: "wifi_ip" },
+            ],
+          }],
+        },
+        mqttAvailable: true,
+        handlers: {
+          // The device the switch replaces: a managed Wifi Device (brand
+          // m3-<key>-<hash>) over HTTP; after the switch the bundle holds
+          // its MQTT replacement under a new id.
+          "sofabaton_x1s/cache/structural_bundle": (() => {
+            let switched = false;
+            window.__sbWifiTransportSwitched = () => { switched = true; };
+            return () => {
+              const bundle = clone(EDIT_BACKUP_BUNDLE);
+              bundle.devices.push({
+                device: {
+                  device_id: switched ? 5 : 4, name: "Home Assistant", sort: 4,
+                  brand: "m3-abc123-deadbeef", device_class: switched ? "wifi_mqtt" : "wifi_ip",
+                },
+                commands: [{ command_id: 1, name: "Lights" }, { command_id: 2, name: "Curtains" }],
+                button_bindings: [], macros: [],
+              });
+              return { bundle, generation: switched ? 2 : 1 };
+            };
+          })(),
+          "sofabaton_x1s/command_config/set_transport": (message) => ({
+            device_key: message.device_key, requested_transport: message.transport, deployed_transport: "http", transport_switch_pending: true,
+          }),
+          "sofabaton_x1s/command_sync/progress": () => ({
+            status: "running", phase: "moving_references", current_step: 3, total_steps: 7, transport_switch: true,
+          }),
+          "sofabaton_x1s/command_sync/run": async () => {
+            await new Promise(r => setTimeout(r, 2500));
+            window.__sbWifiTransportSwitched?.();
+            return { status: "success", wifi_device_id: 5 };
+          },
+        },
+        async postLoad(card) {
+          await openLiveEditor(card, "Devices", "Home Assistant");
+        },
+      },
+      {
         id: "payload-editor-ir", group: "Activity Editor",
         label: "Device editor — IR payload dialog open",
         states: STATES_CONNECTED,
@@ -2801,6 +2883,26 @@
         wifiDevices: WIFI_DEVICES_HEALTHY,
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         wifiSyncByKey:     { "dev-lr": WIFI_SYNC_IDLE },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Living Room Remote");
+        },
+      },
+      {
+        id: "wifi-device-switch-pending", group: "WiFi Commands",
+        label: "Inside device — delivery switch to MQTT waiting for a sync",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        mqttAvailable: true,
+        wifiDevices: [
+          { ...WIFI_DEVICE_LR, deployed_transport: "http", requested_transport: "mqtt", transport_switch_pending: true, sync_needed: true },
+          WIFI_DEVICE_BR,
+        ],
+        wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
+        wifiSyncByKey:     { "dev-lr": { ...WIFI_SYNC_IDLE, sync_needed: true, transport_switch_pending: true } },
         async postLoad(card) {
           await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");

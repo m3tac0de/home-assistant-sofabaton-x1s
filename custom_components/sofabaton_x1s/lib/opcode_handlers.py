@@ -1205,8 +1205,13 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
             #   <dev_id> <slot_id> <fmt> ...
             dev_id = payload[6]
             command_id = payload[7]
-            if len(payload) >= 76 and payload[8] == 0x1C:
-                # A 60-byte UTF-16BE slot at offset 15, like every X1S/X2 label.
+            if len(payload) >= 76 and payload[8] in (0x1C, 0x20):
+                # A 60-byte UTF-16BE slot at offset 15, like every X1S/X2
+                # label. The format byte names the record class: 0x1C for
+                # wifi_ip, 0x20 for wifi_mqtt (X2 bench_310 2026-10-06: the
+                # MQTT reply carries the same wide label; reading it as the
+                # X1's ASCII layout left the label empty and the create's
+                # refresh wait timed out).
                 label = payload[15:75].decode("utf-16-be", errors="ignore").split("\x00", 1)[0].strip()
             else:
                 label_bytes = payload[15:45]

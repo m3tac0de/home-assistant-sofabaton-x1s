@@ -122,7 +122,7 @@ def test_all_entity_names_use_translation_keys() -> None:
             "recorded_keypress",
         },
         "switch": {"hex_logging", "proxy", "wifi_device"},
-        "text": {"hub_ip_address"},
+        "text": {"hub_ip_address", "local_ip_address"},
     }
     translated = _english()["entity"]
     entity_class_counts = {
@@ -133,7 +133,7 @@ def test_all_entity_names_use_translation_keys() -> None:
         "select": 1,
         "sensor": 5,
         "switch": 3,
-        "text": 1,
+        "text": 2,
     }
 
     assert expected.keys() == translated.keys()

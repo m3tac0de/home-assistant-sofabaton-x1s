@@ -296,7 +296,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "nl",
       tabs: ["Hub", "Automatisering", "Back-up"],
-      cache: ["Inschakelen", "Lijst", "Alles", "Ordenen", "Toevoegen", "Toevoegen", "Synchroniseren"],
+      cache: ["Inschakelen", "Alles", "Ordenen", "Toevoegen", "Toevoegen", "Synchroniseren"],
       backupSections: ["Maken", "Bewerken", "Herstellen"],
       backupButtons: ["Downloaden", "Geen", "Alles", "Starten", "Bestand kiezen"],
       wifiButtons: ["Toevoegen", "Synchroniseren"],
@@ -305,7 +305,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "de",
       tabs: ["Hub", "Automatisierung", "Backup"],
-      cache: ["Aktivieren", "Liste", "Alle", "Sortieren", "Hinzufügen", "Hinzufügen", "Synchronisieren"],
+      cache: ["Aktivieren", "Alle", "Sortieren", "Hinzufügen", "Hinzufügen", "Synchronisieren"],
       backupSections: ["Sichern", "Ändern", "Wiederherstellen"],
       backupButtons: ["Herunterladen", "Keine", "Alle", "Starten", "Datei auswählen"],
       wifiButtons: ["Hinzufügen", "Synchronisieren"],
@@ -314,7 +314,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "fr",
       tabs: ["Hub", "Automatisation", "Sauvegarde"],
-      cache: ["Activer", "Liste", "Tout", "Réordonner", "Ajouter", "Ajouter", "Synchroniser"],
+      cache: ["Activer", "Tout", "Réordonner", "Ajouter", "Ajouter", "Synchroniser"],
       backupSections: ["Créer", "Modifier", "Restaurer"],
       backupButtons: ["Télécharger", "Aucun", "Tout", "Démarrer", "Choisir un fichier"],
       wifiButtons: ["Ajouter", "Synchroniser"],
@@ -323,7 +323,7 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     {
       locale: "es",
       tabs: ["Hub", "Automatización", "Backup"],
-      cache: ["Activar", "Lista", "Todo", "Ordenar", "Añadir", "Añadir", "Sincronizar"],
+      cache: ["Activar", "Todo", "Ordenar", "Añadir", "Añadir", "Sincronizar"],
       backupSections: ["Crear", "Editar", "Restaurar"],
       backupButtons: ["Descargar", "Ninguno", "Todos", "Iniciar", "Elegir archivo"],
       wifiButtons: ["Añadir", "Sincronizar"],
@@ -341,7 +341,6 @@ test("compact navigation and button copy stays clear in translated UI", () => {
     assert.deepEqual(
       [
         TOOLS_CARD_STRINGS.cache.enablePersistentCache,
-        TOOLS_CARD_STRINGS.cache.refreshList,
         TOOLS_CARD_STRINGS.cache.refreshAll,
         TOOLS_CARD_STRINGS.cache.changeOrder,
         TOOLS_CARD_STRINGS.cache.addActivity,

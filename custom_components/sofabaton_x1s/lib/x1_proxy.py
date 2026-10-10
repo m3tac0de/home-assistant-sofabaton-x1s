@@ -29,6 +29,13 @@ from .hub_versions import (
 )
 from .ack import AckOutcome
 from .hub_logging import LogTag, get_hub_logger
+from .network import (
+    LocalAddress,
+    SOURCE_MANUAL,
+    SOURCE_SUBNET,
+    normalize_local_address,
+    select_local_address as _select_local_address,
+)
 from .commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
@@ -249,18 +256,6 @@ def _normalize_mdns_instance(name: str) -> str:
     return normalized or "X1-HUB-PROXY"
 
 
-def _route_local_ip(peer_ip: str) -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((peer_ip, 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        try: s.close()
-        except Exception: pass
-
-
 # ============================================================================
 # Proxy
 # ============================================================================
@@ -283,8 +278,11 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         ka_count: int = 3,
         zeroconf=None,
         hub_version: str | None = None,
+        local_address: Optional[str] = None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
+        self._local_address = normalize_local_address(local_address)
+        self._local_address_logged: Optional[tuple[str, str, str]] = None
         self.real_hub_udp_port = int(real_hub_udp_port)
         self.proxy_udp_port = int(proxy_udp_port)
         self.hub_listen_base = int(hub_listen_base)
@@ -463,6 +461,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             ka_idle=ka_idle,
             ka_interval=ka_interval,
             ka_count=ka_count,
+            local_address=self._local_address,
         )
         self._proxy_enabled = bool(proxy_enabled)
         self.transport.on_hub_frame(self._handle_hub_frame)
@@ -539,7 +538,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             self.mdns_host = next_host
             changed = True
 
-        self.transport.update_discovery_metadata(mdns_txt=self.mdns_txt)
+        self._push_discovery_metadata()
 
         if changed and self._adv_started:
             self._stop_discovery()
@@ -1579,12 +1578,63 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         )
 
 
+    @property
+    def local_address(self) -> Optional[str]:
+        """The manual local IPv4 address for this hub, None when automatic."""
+
+        return self._local_address
+
+    def set_local_address(self, address: Optional[str]) -> None:
+        """Set or clear (None/blank) the manual local IPv4 address.
+
+        Applies to the next CALL_ME, so a connected hub keeps its session,
+        and re-registers a running mDNS advertisement on the new address.
+        """
+
+        normalized = normalize_local_address(address)
+        if normalized == self._local_address:
+            return
+        self._local_address = normalized
+        self.transport.local_address = normalized
+        self._log.info(
+            "%s local address %s", LogTag.PROXY, normalized or "selection is automatic"
+        )
+        if self._adv_started:
+            self._stop_discovery()
+            self._start_discovery()
+
+    def select_local_address(self) -> LocalAddress:
+        """The local IPv4 address in use toward the real hub, and why."""
+
+        selected = _select_local_address(self.real_hub_ip, self._local_address)
+        key = (selected.ip, selected.os_ip, selected.source)
+        if selected.ip != selected.os_ip and key != self._local_address_logged:
+            # Once per distinct outcome: this runs on every CALL_ME.
+            self._local_address_logged = key
+            if selected.source == SOURCE_MANUAL:
+                self._log.info(
+                    "%s using manual local address %s for hub %s (OS routing would use %s)%s",
+                    LogTag.PROXY,
+                    selected.ip,
+                    self.real_hub_ip,
+                    selected.os_ip,
+                    "" if selected.bind else "; not an address of this host, so it is advertised only",
+                )
+            elif selected.source == SOURCE_SUBNET:
+                self._log.info(
+                    "%s using local address %s on the subnet of hub %s; OS routing would use %s. "
+                    "Set a manual local address to override.",
+                    LogTag.PROXY,
+                    selected.ip,
+                    self.real_hub_ip,
+                    selected.os_ip,
+                )
+        return selected
+
     def get_routed_local_ip(self) -> str:
-        """Return the local IPv4 address selected by OS routing toward the real hub."""
+        """Return the local IPv4 address in use toward the real hub."""
 
-        return _route_local_ip(self.real_hub_ip)
-
-
+        return self.select_local_address().ip
 
 
     # ---------------------------------------------------------------------
@@ -1593,7 +1643,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
     def _start_mdns(self) -> None:
         from zeroconf import BadTypeInNameException, IPVersion, NonUniqueNameException, ServiceInfo, Zeroconf
 
-        ip_bytes = socket.inet_aton(_route_local_ip(self.real_hub_ip))
+        ip_bytes = socket.inet_aton(self.get_routed_local_ip())
         service_type = mdns_service_type_for_props(self.mdns_txt)
         instance = self.mdns_instance
         host = (self.mdns_host or instance) + "."
@@ -1872,8 +1922,16 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self.proxy_udp_port = self.transport.proxy_udp_port
         if not self._start_mdns():
             return
+        self._push_discovery_metadata()
         self.transport.start_notify_listener()
         self._adv_started = True
+
+    def _push_discovery_metadata(self) -> None:
+        """Hand the transport what the app may name this hub by: the TXT
+        record it advertises and the MAC the hub reported in its banner."""
+
+        banner_mac = str(self.get_banner_info().get("mac") or "").strip() or None
+        self.transport.update_discovery_metadata(mdns_txt=self.mdns_txt, banner_mac=banner_mac)
 
     def _stop_discovery(self) -> None:
         self.transport.stop_notify_listener()

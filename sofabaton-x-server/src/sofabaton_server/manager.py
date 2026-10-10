@@ -214,7 +214,24 @@ class HubManager:
             active_job=light_job(jobs.active(hub_id)) if jobs is not None else None,
             last_job=light_job(jobs.last_finished(hub_id)) if jobs is not None else None,
             hub_name=hub_name,
+            local_address=await self._local_address(proxy),
         )
+
+    @staticmethod
+    async def _local_address(proxy: Optional[AsyncXProxy]) -> Optional[str]:
+        """The server's address in use toward a running proxy's hub.
+
+        An interface and routing lookup on this host, no hub traffic; in
+        the executor because an interface scan can take milliseconds.
+        """
+
+        if proxy is None:
+            return None
+        try:
+            return await asyncio.get_running_loop().run_in_executor(None, proxy.local_address)
+        except Exception:  # a display value must never fail the hub list
+            log.debug("local address lookup failed", exc_info=True)
+            return None
 
     async def views(self) -> list[HubView]:
         return [await self.view(hub_id) for hub_id in list(self._records)]
@@ -320,6 +337,31 @@ class HubManager:
         if changed:
             self._emit_server("hub_proxy_enabled" if enabled else "hub_proxy_disabled", hub_id)
         log.info("hub %s: app proxy %s", hub_id, "enabled" if enabled else "disabled")
+        return record
+
+    async def set_local_address(self, hub_id: str, address: Optional[str]) -> HubRecord:
+        """Set the server's address toward this hub; None/blank = automatic.
+
+        What the hub is told to call back (and, when it is an address of
+        this host, what the server sends from). Stored in the record's
+        config. A running proxy takes it for its next connection attempt
+        and re-registers its app discovery; a connected hub keeps its
+        session. Raises ValueError for anything but an IPv4 address.
+        """
+
+        async with self._transition:
+            record = self.record(hub_id)
+            new_config = HubConfig.from_dict({**record.config.to_dict(), "local_address": address})
+            changed = new_config.local_address != record.config.local_address
+            if changed:
+                record.config = new_config
+                self._persist()
+            proxy = self._proxies.get(hub_id)
+            if proxy is not None:
+                await proxy.set_local_address(new_config.local_address)
+        if changed:
+            self._emit_server("hub_local_address_changed", hub_id)
+            log.info("hub %s: local address %s", hub_id, new_config.local_address or "automatic")
         return record
 
     async def set_host(self, hub_id: str, host: str) -> HubRecord:

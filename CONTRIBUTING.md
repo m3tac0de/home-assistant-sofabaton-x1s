@@ -61,10 +61,11 @@ TypeScript sources:
 ```powershell
 npm run build:tools-card    # www/src/tools-card.ts  -> www/tools-card.js
 npm run build:remote-card   # remote-card/src/remote-card.ts -> www/remote-card.js
+npm run build:sidebar-panel # remote-card/src/sidebar-panel.ts -> www/sidebar-panel.js
 npm run build:remote-web    # remote-card/src/remote-web.ts  -> sofabaton-x-server/src/sofabaton_server/ui/remote/remote-web.js
 npm run build:remote-embed  # remote-card/src/remote-embed.ts -> sofabaton-x-server/src/sofabaton_server/ui/embed/sofabaton-remote.js (served) + packages/sofabaton-x-remote/dist/ (npm, not committed)
 npm run build:server-panel  # server-panel/src/panel.ts      -> sofabaton-x-server/src/sofabaton_server/ui/panel/panel.js
-npm run build:frontend      # all five bundles
+npm run build:frontend      # all bundles, locale modules and shared assets
 npm run typecheck           # tsc --noEmit over www/src, remote-card/src + frontend tests
 ```
 
@@ -73,8 +74,9 @@ commit **both** the source and the regenerated `.js` files — frontend CI
 fails on drift between the two (it checks `www/`, the server's `ui/`
 directory and `remote-card/src/shims/`). Run `npm run typecheck` too; all
 frontend code must pass strict type checking. A change to the remote
-card's shared code affects both bundles; a change under `src/shims/` or
-`src/backend/server-backend.ts` only the web remote. When the card starts
+card's shared code affects the HA card, sidebar remote, web remote and
+embeddable remote; a change under `src/shims/` or
+`src/backend/server-backend.ts` affects the standalone web and embedded remotes. When the card starts
 using a new `mdi:` icon, or after `npm run fetch:ha-themes`, run
 `npm run build:remote-web-assets` and commit the regenerated shim
 modules (a frontend test fails when an icon is missing from the table).
@@ -204,13 +206,19 @@ npm run typecheck                  # tsc strict, unused locals included
 
 ## ◇ Versioning and releases
 
-The integration, library and server are **versioned independently**:
+The integration, Virtual Remote card, library, server and npm remote package are **versioned independently**:
 
 | Component             | Version lives in                                                                | Released by                                                                                                                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HA integration        | `custom_components/sofabaton_x1s/manifest.json` | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). The README release badge updates automatically. |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
-| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.3,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.4,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+
+The npm remote version lives in `packages/sofabaton-x-remote/package.json`.
+Record its changes in that directory's `CHANGELOG.md`; pushing
+`sofabaton-x-remote-vX.Y.Z` builds, tests and publishes it through
+`sofabaton-x-remote-release.yml`. The root npm package is private build
+tooling and has no release version.
 
 The Virtual Remote has its own `CARD_VERSION` in
 `remote-card/src/remote-card-shared.ts`. When an integration release includes
@@ -219,6 +227,15 @@ and copy the HA bundle, update the card README's version badge and guides, and
 publish the matching card release. Home Assistant installations with the HACS
 card use that copy instead of the integration's bundled card, so updating the
 integration alone does not update their remote.
+
+For the coordinated 0.7.0 release, prepare the integration release body
+from [docs/releases/0.7.0.md](docs/releases/0.7.0.md). The companion versions
+are card **0.2.7**, library **0.2.4**, server **0.2.5**, and npm remote
+**0.1.2**. Verify changelog dates on publication day. Publish the library
+before the server; use `sofabaton-x-remote-v0.1.2` for the npm package.
+The separate card repository needs its own release and the rebuilt HA
+bundle as `sofabaton-virtual-remote.js`. Preparation does not publish any
+of these releases.
 
 Library stability contract: names exported from the package root
 (`sofabaton.__all__`) follow semver; everything else is internal. Changes to

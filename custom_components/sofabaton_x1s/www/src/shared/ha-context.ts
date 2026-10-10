@@ -51,6 +51,8 @@ export interface ControlPanelHubState {
   entry_id: string;
   name?: string;
   version?: string;
+  /** MQTT delivery can be offered for this hub (X2 + MQTT integration). */
+  mqtt_available?: boolean;
   firmware_version?: number | string | null;
   /** Firmware gate, computed backend-side (the floor tables live in Python).
    *  "outdated" nags (newer firmware recommended); "unsupported" blocks the
@@ -209,6 +211,10 @@ export interface WifiCommandSyncState {
   commands_hash: string;
   managed_command_hashes: string[];
   sync_needed: boolean;
+  /** The desired delivery method differs from the deployed one and can be
+   *  deployed now: the next sync replaces the device over the other
+   *  transport (docs/internal/wifi-events-transport-plan.md §2). */
+  transport_switch_pending?: boolean;
 }
 
 export interface WifiDeviceSummary extends WifiCommandSyncState {
@@ -233,6 +239,8 @@ export interface WifiCommandConfigResponse {
   commands?: unknown[];
   power_on_command_id?: number | null;
   power_off_command_id?: number | null;
+  requested_transport?: string;
+  deployed_transport?: string | null;
 }
 
 export interface HubEventActionsResponse {
@@ -252,6 +260,13 @@ export interface WifiEventsListResponse {
    *  also holds a long record per event at `command_id + slot_count`; the
    *  Sync that retires those moves their references onto the event. */
   slot_count?: number;
+  /** Delivery method of the events device: the desired one, the one on the
+   *  hub (null before the first deploy), whether a switch waits for the next
+   *  sync, and whether MQTT can be offered for this hub at all. */
+  requested_transport?: string | null;
+  deployed_transport?: string | null;
+  transport_switch_pending?: boolean;
+  mqtt_available?: boolean;
 }
 
 export interface WifiEventCreateResponse extends WifiEventsListResponse {

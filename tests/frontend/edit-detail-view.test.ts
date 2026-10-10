@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LitElement } from "lit";
+import { LitElement, nothing } from "lit";
 import {
   editorErrorMessage,
   sanitizeBundleName,
@@ -1569,8 +1569,11 @@ test("the Add shortcut dialog shows no empty Wifi Event row once every event is 
   assert.ok(text.includes("sb-add-fav-wifi-event-name"));
 
   // A second event that is not a shortcut yet brings the picker back with only that one.
+  // (The picker lists its rows while it is open.)
   element._events.list = [wifiEvent(2, "Lights off"), wifiEvent(5, "Doorbell")];
+  element._binding.macroPicker = { id: "sb-add-fav-wifi-event", style: "", root: {} as never };
   const picker = templateText(element._renderAddFavoriteDialog());
+  element._binding.macroPicker = null;
   assert.ok(picker.includes("Doorbell"));
   assert.ok(!picker.includes("Lights off"));
 
@@ -1732,4 +1735,67 @@ test("two new items on one assignment never save", () => {
   element._binding.lpTargetKind = "wifi_event";
   element._events.longPress = { mode: "new", slot: null, name: "Doorbell" };
   assert.match(templateText(element._binding.render()), /dialog-btn-primary[^>]*disabled/);
+});
+
+// ── Delivery badge / switch (docs/internal/wifi-events-transport-plan.md) ──
+
+function managedWifiEditor(deviceClass = "wifi_ip"): EditorElement {
+  const element = new EditDetailViewElement() as EditorElement;
+  const bundle = editorBundle("X2");
+  bundle.devices.push({
+    device: { device_id: 4, name: "Home Assistant", brand: "m3-abc123-deadbeef", device_class: deviceClass },
+    commands: [{ command_id: 1, name: "Lights" }],
+  } as any);
+  element.bundle = bundle;
+  element.kind = "device";
+  element.entityId = 4;
+  element.mode = "live";
+  element.mqttAvailable = true;
+  return element;
+}
+
+test("a managed Wifi device's delivery badge is a two-option select in the live editor", () => {
+  const element = managedWifiEditor();
+  const text = templateText(element._renderTransportControl("device"));
+  assert.match(text, /transport-select/);
+  assert.match(text, /HTTP/);
+  assert.match(text, /MQTT/);
+  assert.doesNotMatch(text, /pending/);
+
+  // A pending pick shows dashed, and stays a select while other edits go in.
+  element.pendingTransport = "mqtt";
+  element.dirty = true;
+  const pending = templateText(element._renderTransportControl("device"));
+  assert.match(pending, /<select/);
+  assert.match(pending, /mqtt pending/);
+  element.pendingTransport = null;
+  element.dirty = false;
+
+  // No MQTT on this hub: an HTTP device shows nothing...
+  element.mqttAvailable = false;
+  assert.equal(element._renderTransportControl("device"), nothing);
+  // ...an MQTT device keeps its read-only badge.
+  element.bundle.devices[3].device.device_class = "wifi_mqtt";
+  const mqttPill = templateText(element._renderTransportControl("device"));
+  assert.doesNotMatch(mqttPill, /<select/);
+  assert.match(mqttPill, /MQTT/);
+
+  // The backup editor and unmanaged devices never carry it.
+  element.mqttAvailable = true;
+  element.mode = "backup";
+  assert.equal(element._renderTransportControl("device"), nothing);
+  element.mode = "live";
+  element.entityId = 2;
+  assert.equal(element._renderTransportControl("device"), nothing);
+});
+
+test("changing the delivery select hands the pick to the host", () => {
+  const element = managedWifiEditor();
+  const picks: unknown[] = [];
+  element.addEventListener("transport-change", (event) => picks.push((event as CustomEvent).detail));
+  const template = element._renderTransportControl("device") as { values: unknown[] };
+  const onChange = template.values.find((value) => typeof value === "function") as (event: unknown) => void;
+  onChange({ target: { value: "mqtt" } });
+  onChange({ target: { value: "http" } });
+  assert.deepEqual(picks, [{ transport: "mqtt" }, { transport: "http" }]);
 });

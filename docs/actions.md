@@ -37,7 +37,7 @@ filter by `sofabaton_x1s`.
 
 > **Busy guard:** every action that talks to the hub raises an error while
 > another backup, restore, sync or hub write is running for that hub (from an
-> action or from the Control Panel card). Wait for it to finish, then retry.
+> action or from the Control Panel). Wait for it to finish, then retry.
 
 ---
 
@@ -468,7 +468,7 @@ The Sofabaton hub then calls back into the integration's HTTP listener whenever
 one of those commands is triggered.
 
 > **Note:** If you are using the **Wifi Commands** feature through the Control
-> Panel card, you do not need to call this action directly.
+> Panel, you do not need to call this action directly.
 > `sync_command_config` handles the full lifecycle.
 
 | Parameter | Type | Required | Description |
@@ -505,7 +505,7 @@ Deploys the saved Wifi Commands configuration to the hub.
 This recreates the managed Wifi Device with the current command-slot settings
 and applies all activity button mappings.
 
-Normally triggered by the **Sync to hub** button in the Control Panel card's
+Normally triggered by the **Sync to hub** button in the Control Panel's
 Wifi Commands tab, but can also be called directly from automations or scripts.
 
 > This operation reconfigures the hub. It can take several minutes.
@@ -574,7 +574,7 @@ data:
 
 Returns the cached structural `hub_bundle` used by the Control Panel's live Activity and Device editors. This is a cache-only read: it does not contact the hub and does not download command payload blobs.
 
-Persistent cache must be enabled and populated. On a fresh installation, open the Control Panel's Hub or Activities tab once, or run a whole-hub cache refresh, before calling this action.
+Persistent cache must be enabled and populated. Switching the cache on in the Control Panel fetches the full hub catalog right away; if the cache was emptied since, run a whole-hub cache refresh (Hub tab, Refresh all) before calling this action.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |
@@ -860,7 +860,7 @@ data:
 
 ### Trigger a hub resync after modifying Wifi Commands
 
-If you update Wifi Command configuration outside the Control Panel card, call
+If you update Wifi Command configuration outside the Control Panel, call
 `sync_command_config` to push the changes to the hub.
 
 ```yaml
