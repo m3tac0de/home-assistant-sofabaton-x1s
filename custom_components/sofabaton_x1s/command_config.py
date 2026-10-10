@@ -18,6 +18,8 @@ _LOGGER = logging.getLogger(__name__)
 
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 3
+# Top-level store flag: the one-time requested_transport alignment ran.
+_TRANSPORTS_ALIGNED_KEY = "requested_transport_aligned"
 COMMAND_HASH_VERSION = "v5"
 COMMAND_BRAND_PREFIX = "m3"
 LEGACY_COMMAND_BRAND_PREFIX = "m3tac0de"
@@ -565,17 +567,26 @@ class CommandConfigStore:
             f"{DOMAIN}.command_config",
             minor_version=COMMAND_CONFIG_STORE_MINOR_VERSION,
         )
-        self._data: dict[str, Any] = {"hubs": {}}
+        # A fresh store starts aligned: every requested_transport it will
+        # ever hold is a real wish (see _normalize_requested_transports).
+        self._data: dict[str, Any] = {"hubs": {}, _TRANSPORTS_ALIGNED_KEY: True}
 
     async def async_load(self) -> None:
         loaded = await self._store.async_load()
         if isinstance(loaded, dict) and isinstance(loaded.get("hubs"), dict):
             self._data = loaded
-            if self._normalize_requested_transports():
+            if not loaded.get(_TRANSPORTS_ALIGNED_KEY):
+                self._normalize_requested_transports()
+                self._data[_TRANSPORTS_ALIGNED_KEY] = True
                 await self._store.async_save(self._data)
 
     def _normalize_requested_transports(self) -> bool:
         """One-time alignment of ``requested_transport`` with the deployed one.
+
+        Runs once per store, the first load after the upgrade, and records
+        that in ``_TRANSPORTS_ALIGNED_KEY``. Running it again would cancel
+        every pending switch the user asked for since (a restart between
+        the pick and the Sync).
 
         Before requested_transport became the desired state
         (wifi-events-transport-plan §2) nothing read it after the first

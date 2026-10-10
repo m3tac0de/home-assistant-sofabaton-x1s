@@ -2655,3 +2655,26 @@ entry stayed enabled throughout.
   slow action (`homeassistant.check_config`) was answered 6 ms after the
   callback arrived, with the action dispatched rather than awaited, and the
   hub delivered it once.
+
+## ◇ Validated: replace-path reference ownership (X1 + X1S via HA, 2026-10-10)
+
+`bench_313_replace_ownership_ha.py`, run against the deployed integration
+through HA's own WebSocket API on a scratch activity and a scratch Wifi
+Device; all three entries stayed enabled. A command renamed on the hub
+through the device editor's sync (drift) makes the next Wifi sync decline in
+place and replace. Both hubs passed 28/28.
+
+- **The slot config's own edits land through a replace.** Config v1 bound
+  RED, GREEN (with long press) and YELLOW and favorited two commands; v2
+  moved YELLOW to another command, switched GREEN's long press off and
+  dropped one favorite. After the replace the new device carries YELLOW on
+  its new command, GREEN without a long leg, and only the kept favorite.
+  The references the last deploy made and the config no longer wants are
+  left on the old device, and its delete removes them.
+- **Editor-made references still move.** A BLUE binding, a favorite and a
+  power-on macro step added through the activity editor moved onto the new
+  device, and a long leg the editor added to the config's unchanged RED
+  binding survived it.
+- **Nothing else changes.** Every other activity reads the same before and
+  after (read stamps aside), nothing points at the old device id, and the
+  old device is gone.

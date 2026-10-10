@@ -33,7 +33,10 @@ from custom_components.sofabaton_x1s.lib.activity_sync import (
     DEVICE_POWER_OFF_REF_COMMAND,
     DEVICE_POWER_ON_REF_COMMAND,
 )
+from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
 from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (
+    desired_snapshot_from_config,
+    replace_ref_dispositions,
     retarget_device_refs,
     wifi_device_retarget_steps,
     wifi_membership_order_steps,
@@ -148,6 +151,46 @@ def test_load_aligns_requested_with_deployed_once() -> None:
     store2._store = backing2
     _run(store2.async_load())
     assert backing2.saves == 0
+
+    # A switch picked after the alignment is a real wish: a restart before
+    # the Sync must not cancel it.
+    _run(store2.async_set_requested_transport("hub-1", "c3", "mqtt"))
+    store3 = CommandConfigStore(SimpleNamespace())
+    backing3 = _Backing(backing2.data)
+    store3._store = backing3
+    _run(store3.async_load())
+    assert backing3.saves == 0
+    by_key = {d["device_key"]: d for d in _run(store3.async_list_hub_devices("hub-1"))}
+    assert by_key["c3"]["requested_transport"] == "mqtt"
+
+
+def test_fresh_store_never_aligns_a_pending_switch() -> None:
+    class _Backing:
+        def __init__(self):
+            self.data = None
+
+        async def async_load(self):
+            return self.data
+
+        async def async_save(self, data):
+            self.data = data
+
+    # Created on this release: the first save already carries the flag, so a
+    # wish picked before the first restart survives it.
+    store = CommandConfigStore(SimpleNamespace())
+    backing = _Backing()
+    store._store = backing
+    _run(store.async_load())
+    store._data["hubs"]["hub-1"] = {"devices": [
+        {"device_key": "a1", "deployed_device_id": 9, "deployed_transport": "http",
+         "requested_transport": "http", "commands": []},
+    ]}
+    _run(store.async_set_requested_transport("hub-1", "a1", "mqtt"))
+    reloaded = CommandConfigStore(SimpleNamespace())
+    reloaded._store = backing
+    _run(reloaded.async_load())
+    devices = _run(reloaded.async_list_hub_devices("hub-1"))
+    assert devices[0]["requested_transport"] == "mqtt"
 
 
 def test_events_record_is_seeded_at_creation_only() -> None:
@@ -964,3 +1007,155 @@ def test_config_favorites_and_bindings_moved_by_the_retarget_are_not_added_again
     assert result["status"] == "success"
     assert fav_calls == [(ACT_ID, 3)]
     assert (ACT_ID, 0xB7) not in btn_calls
+
+
+# ── Replace: which references move, which stay for the delete ────────────
+
+_SLOTS = 10
+
+
+def _refs_snapshot(commands):
+    return desired_snapshot_from_config(
+        {"commands": commands},
+        device_id=0,
+        device_name="",
+        brand="",
+        hard_button_codes=wifi_deploy_module._HARD_BUTTON_TO_CODE,
+        slot_count=_SLOTS,
+        long_press_offset=_SLOTS,
+    )
+
+
+def _slot(**kwargs):
+    return {"name": "Cmd", "activities": [str(ACT_ID)], **kwargs}
+
+
+def _replace_entry(*, favorites=(), bindings=()):
+    return {
+        "device": {"device_id": ACT_ID, "name": "Watch TV"},
+        "favorite_slots": [
+            {"button_id": 40 + idx, "device_id": dev, "command_id": cmd}
+            for idx, (dev, cmd) in enumerate(favorites)
+        ],
+        "button_bindings": list(bindings),
+        "macros": [],
+    }
+
+
+def test_replace_rewrites_a_binding_the_config_changed() -> None:
+    # The last deploy bound Red to command 1; the config now binds it to 2.
+    owned = _refs_snapshot([_slot(hard_button="red"), _slot()])
+    desired = _refs_snapshot([_slot(), _slot(hard_button="red")])
+    red = int(ButtonName.RED)
+    entry = _replace_entry(bindings=[{"button_id": red, "device_id": OLD_ID, "command_id": 1}])
+    result = replace_ref_dispositions([entry], old_device_id=OLD_ID, owned=owned, desired=desired)
+    # Left for the delete, and the config's own write is not skipped.
+    assert result.keep == {ACT_ID: (frozenset(), frozenset({red}))}
+    assert (ACT_ID, red) not in result.carried_bindings
+    edited, _ = retarget_device_refs(
+        entry, old_device_id=OLD_ID, new_device_id=NEW_ID,
+        keep_bindings=result.keep[ACT_ID][1],
+    )
+    assert edited["button_bindings"][0]["device_id"] == OLD_ID
+
+
+def test_replace_drops_a_favorite_the_config_removed() -> None:
+    owned = _refs_snapshot([_slot(add_as_favorite=True), _slot(add_as_favorite=True)])
+    desired = _refs_snapshot([_slot(add_as_favorite=True), _slot()])
+    entry = _replace_entry(favorites=[(OLD_ID, 1), (OLD_ID, 2), (OLD_ID, 5)])
+    result = replace_ref_dispositions([entry], old_device_id=OLD_ID, owned=owned, desired=desired)
+    # 2 was the deploy's and is gone from the config; 1 is still wanted and
+    # moves with its position; 5 was made in the activity editor and moves.
+    assert result.keep == {ACT_ID: (frozenset({2}), frozenset())}
+    assert result.carried_favorites == {(ACT_ID, 1)}
+    edited, _ = retarget_device_refs(
+        entry, old_device_id=OLD_ID, new_device_id=NEW_ID,
+        keep_favorites=result.keep[ACT_ID][0],
+    )
+    assert [(f["device_id"], f["command_id"]) for f in edited["favorite_slots"]] == [
+        (NEW_ID, 1), (OLD_ID, 2), (NEW_ID, 5),
+    ]
+
+
+def test_replace_keeps_a_long_press_added_in_the_activity_editor() -> None:
+    # The config binds Red to command 1 without a long press; the activity
+    # editor added a long press to another device's command.
+    owned = desired = _refs_snapshot([_slot(hard_button="red")])
+    red = int(ButtonName.RED)
+    entry = _replace_entry(bindings=[{
+        "button_id": red, "device_id": OLD_ID, "command_id": 1,
+        "long_press_device_id": OTHER_DEV, "long_press_command_id": 4,
+    }])
+    result = replace_ref_dispositions([entry], old_device_id=OLD_ID, owned=owned, desired=desired)
+    # Carried as it is: the config write (which has no long press) is skipped.
+    assert result.keep == {}
+    assert result.carried_bindings == {(ACT_ID, red)}
+
+
+def test_replace_drops_a_long_press_the_config_switched_off() -> None:
+    owned = _refs_snapshot([_slot(hard_button="red", long_press_enabled=True)])
+    desired = _refs_snapshot([_slot(hard_button="red")])
+    red = int(ButtonName.RED)
+    entry = _replace_entry(bindings=[{
+        "button_id": red, "device_id": OLD_ID, "command_id": 1,
+        "long_press_device_id": OLD_ID, "long_press_command_id": 1 + _SLOTS,
+    }])
+    result = replace_ref_dispositions([entry], old_device_id=OLD_ID, owned=owned, desired=desired)
+    assert result.keep == {ACT_ID: (frozenset(), frozenset({red}))}
+    assert not result.carried_bindings
+
+
+def test_replace_without_a_deployed_snapshot_moves_what_it_cannot_attribute() -> None:
+    desired = _refs_snapshot([_slot()])
+    red = int(ButtonName.RED)
+    entry = _replace_entry(
+        favorites=[(OLD_ID, 3)],
+        bindings=[{"button_id": red, "device_id": OLD_ID, "command_id": 2}],
+    )
+    result = replace_ref_dispositions([entry], old_device_id=OLD_ID, owned=None, desired=desired)
+    assert result.keep == {}
+    assert not result.carried_favorites and not result.carried_bindings
+
+
+def test_replace_deploy_rewrites_a_changed_binding(monkeypatch) -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = _make_hub(monkeypatch, loop, activity_entries=[_activity_entry(ACT_ID)])
+    chup = int(ButtonName.CH_UP)
+    payload = _payload()
+    # The last deploy bound CH_UP to command 1 (the hub row in
+    # _activity_entry); the config now binds it to command 3.
+    deployed = [{"name": slot["name"]} for slot in _commands()]
+    deployed[0].update(hard_button="chup", activities=[str(ACT_ID)])
+    monkeypatch.setattr(hub._store, "get_deployed_wifi_commands", lambda *_a, **_k: deployed)
+    payload["commands"][2]["hard_button"] = "chup"
+    payload["commands"][2]["activities"] = [str(ACT_ID)]
+    btn_calls: list[tuple[int, int, int]] = []
+
+    async def _btn(act_id, button_id, _dev_id, command_id, **_k):
+        btn_calls.append((act_id, button_id, command_id))
+        return {"status": "success"}
+
+    async def _fav(*_a, **_k):
+        return {"fav_id": 60}
+
+    async def _order(*_a, **_k):
+        return []
+
+    monkeypatch.setattr(hub, "async_command_to_button", _btn)
+    monkeypatch.setattr(hub, "async_command_to_favorite", _fav)
+    monkeypatch.setattr(hub, "async_request_favorites_order", _order)
+    result = loop.run_until_complete(_sync(hub, payload))
+    loop.close()
+    assert result["status"] == "success"
+    # The move left the old CH_UP binding on the old device for its delete...
+    moved_rows = [
+        row
+        for plan in hub._plans
+        for step in plan.steps
+        for row in (step.payload.get("button_bindings") or [])
+        if isinstance(row, dict)
+    ]
+    assert not any(row.get("button_id") == chup and row.get("device_id") == NEW_ID for row in moved_rows)
+    # ...and the config wrote its own.
+    assert (ACT_ID, chup, 3) in btn_calls

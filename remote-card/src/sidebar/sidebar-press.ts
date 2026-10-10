@@ -45,20 +45,29 @@ interface ActiveHold {
 export class SidebarPressController {
   private readonly holds = new Map<number, ActiveHold>();
 
+  /** Every listener on the root, so dispose() can take each one off again.
+   *  Filled in the constructor: the handlers are fields declared below. */
+  private readonly listeners: Array<[string, EventListener, boolean]> = [];
+
   constructor(private readonly root: EventTarget, private readonly handlers: SidebarPressHandlers) {
-    root.addEventListener("pointerdown", this.onDown as EventListener, { capture: true });
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
-      root.addEventListener(type, this.onEnd as EventListener, { capture: true });
-    }
-    root.addEventListener("pointerleave", this.onLeave as EventListener, { capture: true });
-    root.addEventListener("pointermove", this.onMove as EventListener, { capture: true });
-    root.addEventListener("keydown", this.onKey as EventListener);
-    root.addEventListener("contextmenu", this.onContextMenu as EventListener);
+    this.listeners.push(
+      ["pointerdown", this.onDown as EventListener, true],
+      ["pointerup", this.onEnd as EventListener, true],
+      ["pointercancel", this.onEnd as EventListener, true],
+      ["lostpointercapture", this.onEnd as EventListener, true],
+      ["pointerleave", this.onLeave as EventListener, true],
+      ["pointermove", this.onMove as EventListener, true],
+      ["keydown", this.onKey as EventListener, false],
+      ["contextmenu", this.onContextMenu as EventListener, false],
+    );
+    for (const [type, listener, capture] of this.listeners) root.addEventListener(type, listener, { capture });
   }
 
+  /** Stops every hold and takes the listeners off the root. */
   dispose(): void {
     for (const hold of this.holds.values()) this.stopTimers(hold);
     this.holds.clear();
+    for (const [type, listener, capture] of this.listeners) this.root.removeEventListener(type, listener, { capture });
   }
 
   /** The element under a pointer event that is a key or a `[data-press]` item, or null. */

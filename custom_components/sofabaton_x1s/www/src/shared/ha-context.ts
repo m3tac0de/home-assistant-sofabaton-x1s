@@ -239,6 +239,8 @@ export interface WifiCommandConfigResponse {
   commands?: unknown[];
   power_on_command_id?: number | null;
   power_off_command_id?: number | null;
+  requested_transport?: string;
+  deployed_transport?: string | null;
 }
 
 export interface HubEventActionsResponse {

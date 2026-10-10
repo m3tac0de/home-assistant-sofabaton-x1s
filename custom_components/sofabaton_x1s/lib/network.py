@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import threading
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -29,7 +31,39 @@ class LocalAddress:
     bind: bool
 
 
-def _local_ipv4_interfaces() -> list[ipaddress.IPv4Interface]:
+#: How long one interface listing is reused. While a hub is offline every
+#: proxy asks for its address on each CALL_ME (about every 2 s), and listing
+#: every adapter is the expensive part of that; the OS route lookup beside it
+#: stays per call. An address change is picked up within this window.
+INTERFACE_CACHE_TTL_S = 10.0
+
+_interface_cache: Optional[tuple[float, list[ipaddress.IPv4Interface]]] = None
+_interface_cache_lock = threading.Lock()
+
+
+def clear_interface_cache() -> None:
+    """Forget the cached interface listing (the next lookup reads it fresh)."""
+    global _interface_cache
+    with _interface_cache_lock:
+        _interface_cache = None
+
+
+def _local_ipv4_interfaces(*, fresh: bool = False) -> list[ipaddress.IPv4Interface]:
+    """Local IPv4 interface addresses and subnet prefixes, most specific
+    first; reused for :data:`INTERFACE_CACHE_TTL_S` unless ``fresh``."""
+    global _interface_cache
+    now = time.monotonic()
+    with _interface_cache_lock:
+        cached = _interface_cache
+    if not fresh and cached is not None and now - cached[0] < INTERFACE_CACHE_TTL_S:
+        return list(cached[1])
+    interfaces = _read_local_ipv4_interfaces()
+    with _interface_cache_lock:
+        _interface_cache = (now, interfaces)
+    return list(interfaces)
+
+
+def _read_local_ipv4_interfaces() -> list[ipaddress.IPv4Interface]:
     """Read local IPv4 interface addresses and subnet prefixes."""
     try:
         import ifaddr
@@ -67,8 +101,12 @@ def normalize_local_address(value: object) -> Optional[str]:
 
 
 def is_local_ipv4(address: str) -> bool:
-    """Whether ``address`` is assigned to one of this host's interfaces."""
-    return any(str(interface.ip) == address for interface in _local_ipv4_interfaces())
+    """Whether ``address`` is assigned to one of this host's interfaces.
+
+    Always a fresh listing: it validates an address the user just typed,
+    possibly on an interface that has only just come up.
+    """
+    return any(str(interface.ip) == address for interface in _local_ipv4_interfaces(fresh=True))
 
 
 def select_local_address(peer_ip: str, override: Optional[str] = None) -> LocalAddress:

@@ -199,6 +199,9 @@ export class SofabatonXPanel extends LitElement {
   private _view: "remote" | "panel" = "remote";
   /** Opened on a tab's own path: back arrow instead of the menu button. */
   private _subview = false;
+  /** Opened on the Control Panel's path before `hass` named the user: the
+   *  admin check, and the tab, wait for it. */
+  private _routeWantsPanel = false;
   /** Tab labels hidden because the labelled strip does not fit beside the hub picker. */
   private _compact = false;
   private _tabsObserver: ResizeObserver | null = null;
@@ -220,6 +223,10 @@ export class SofabatonXPanel extends LitElement {
     this.lang = remoteCardLanguage();
     this.dir = remoteCardDirection();
     if (this._controlPanel) this._controlPanel.hass = value;
+    if (this._routeWantsPanel && value?.user) {
+      this._routeWantsPanel = false;
+      void this._setView("panel", false);
+    }
     // The first `hass` is what makes the hub poll possible (connectedCallback
     // usually runs before HA sets it).
     if (!this._hassSeen) {
@@ -253,7 +260,10 @@ export class SofabatonXPanel extends LitElement {
     const path = String((value as { path?: unknown } | null)?.path ?? "");
     const view = viewForPath(path);
     this._subview = view != null;
-    if (view != null && view !== this._view) void this._setView(view, false);
+    // The Control Panel is admin-only, on its path as on its tab; whether
+    // this user is one is known once `hass` names the user.
+    this._routeWantsPanel = view === "panel" && !this._hass?.user;
+    if (view != null && view !== this._view && !this._routeWantsPanel) void this._setView(view, false);
     this.requestUpdate();
   }
 
@@ -381,6 +391,9 @@ export class SofabatonXPanel extends LitElement {
   /** `fromUser`: a tab click. In a subview that also moves the URL to the tab's
    *  path (replace, not push), so a reload or a share lands on the same tab. */
   private async _setView(view: "remote" | "panel", fromUser = true): Promise<void> {
+    // Admins only: a non-admin on the Control Panel's path gets the remote,
+    // and the panel's bundle is never fetched for them.
+    if (view === "panel" && !this.isAdmin) return;
     if (fromUser && this._subview) this._replacePath(view);
     if (view === "remote") {
       if (this._view !== "remote") {

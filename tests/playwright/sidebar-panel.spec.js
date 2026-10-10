@@ -177,6 +177,27 @@ test.describe("sidebar panel", () => {
     await expect(r.locator(".wheel")).not.toHaveClass(/flipped/);
   });
 
+  test("re-attached (HA parks a background panel): one send per tap, and the layout still follows the size", async ({ page }) => {
+    await open(page, "switch_ms=200");
+    const r = remote(page);
+    // HA detaches the panel element after a while in a background tab and
+    // puts the same element back on return.
+    await page.evaluate(() => {
+      const element = window.__sidebarHarness.panel();
+      const parent = element.parentNode;
+      const next = element.nextSibling;
+      element.remove();
+      parent.insertBefore(element, next);
+    });
+    const calls = () => page.evaluate(() => window.__sidebarHarness.serviceCalls.map((c) => c.data));
+    await r.locator("[data-key='176']").click();
+    await expect.poll(calls).toEqual([{ entity_id: "remote.souterrain", command: 176, device: 101 }]);
+    await page.waitForTimeout(300);
+    expect(await calls()).toHaveLength(1);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect(r.locator(".app")).toHaveClass(/landscape/);
+  });
+
   test("a tap sends the key in the activity's scope; a held arrow repeats; a bound long-press fires its pair", async ({ page }) => {
     await open(page, "switch_ms=200");
     const r = remote(page);
@@ -440,6 +461,16 @@ test.describe("sidebar panel", () => {
       await panel(page).locator(".back").click();
       expect(await page.evaluate(() => window.__nav)).toEqual([{ path: "/", detail: { replace: true } }]);
       expect(await page.evaluate(() => window.history.state)).toEqual({ root: true });
+    });
+
+    test("/control-panel for a non-admin: the remote, and the panel bundle is never fetched", async ({ page }) => {
+      const bundles = [];
+      page.on("request", (request) => { if (request.url().includes("tools-card.js")) bundles.push(request.url()); });
+      await open(page, "path=/control-panel&admin=0");
+      await expect(remote(page)).toBeVisible();
+      await expect(panel(page).locator("sofabaton-control-panel")).toHaveCount(0);
+      await expect(panel(page).locator(".tab")).toHaveCount(0);
+      expect(bundles).toEqual([]);
     });
 
     test("/virtual-remote for a non-admin: the remote, the back arrow, no tabs", async ({ page }) => {

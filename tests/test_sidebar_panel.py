@@ -72,7 +72,7 @@ def test_ui_settings_store_persists_sidebar_panel_mode():
 
     async def scenario():
         await store.async_load()
-        assert store.sidebar_panel_mode == "off"
+        assert store.sidebar_panel_mode == "all"
         await store.async_set_sidebar_panel_mode("admin")
         assert store.sidebar_panel_mode == "admin"
         # A fresh store over the same backing data reads the mode back.
@@ -86,11 +86,11 @@ def test_ui_settings_store_persists_sidebar_panel_mode():
 
 def test_ui_settings_store_ignores_unknown_sidebar_panel_mode():
     store = UiSettingsStore(SimpleNamespace(data={}))
-    # The pre-release boolean shape and junk both fall back to "off".
+    # The pre-release boolean shape and junk both fall back to the default.
     store._store._data = {"hub_click_action": "send", "sidebar_panel": True}
     asyncio.run(store.async_load())
     assert store.hub_click_action == "send"
-    assert store.sidebar_panel_mode == "off"
+    assert store.sidebar_panel_mode == "all"
 
     try:
         asyncio.run(store.async_set_sidebar_panel_mode("everyone"))

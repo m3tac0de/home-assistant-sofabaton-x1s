@@ -429,6 +429,18 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _fresh_interface_listing():
+    """The local-address selection reuses one interface listing for a few
+    seconds; every test starts from the inventory it installs itself."""
+
+    from custom_components.sofabaton_x1s.lib import network
+
+    network.clear_interface_cache()
+    yield
+    network.clear_interface_cache()
+
+
+@pytest.fixture(autouse=True)
 def _x1_live_quick_access_read_unavailable(monkeypatch):
     """The X1 order writers re-read the activity's favorites and macros from
     the hub before writing the order table (the unlisted-record repair).

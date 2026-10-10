@@ -210,6 +210,10 @@ export class SofabatonSidebarRemote extends LitElement {
     };
     this.addEventListener("pointerdown", this._outsideTap);
     this.addEventListener("keydown", this._onKeydown);
+    // Re-attached after a disconnect (HA detaches a panel that sits in a
+    // background tab): firstUpdated does not run again, so the root helpers
+    // come back here.
+    if (this.hasUpdated) this._attachRootHelpers();
   }
 
   disconnectedCallback(): void {
@@ -230,9 +234,17 @@ export class SofabatonSidebarRemote extends LitElement {
   };
 
   protected firstUpdated(): void {
+    this._attachRootHelpers();
+    this._applyTheme();
+  }
+
+  /** The press controller and the size observer; disconnectedCallback
+   *  takes both down again. */
+  private _attachRootHelpers(): void {
+    if (this._press && this._sizeObserver) return;
     // The shadow root, not `.app`: the first render may be the no-hub
     // notice, and a later render swaps the whole tree.
-    this._press = new SidebarPressController(this.renderRoot, {
+    this._press ??= new SidebarPressController(this.renderRoot, {
       resolve: (el) => {
         const id = Number((el as HTMLElement).dataset.key);
         if (!Number.isFinite(id)) return null;
@@ -246,8 +258,8 @@ export class SofabatonSidebarRemote extends LitElement {
       onPressed: (el, pressed) => this._setPressed(el, pressed),
       haptic: () => this._haptic(),
     });
-    this._applyTheme();
-    if (typeof ResizeObserver !== "undefined") {
+    if (!this._sizeObserver && typeof ResizeObserver !== "undefined") {
+      // Its first callback measures, so a re-attached view re-checks its size.
       this._sizeObserver = new ResizeObserver(() => this._measureLayout());
       this._sizeObserver.observe(this);
     }

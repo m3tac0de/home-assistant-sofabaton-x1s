@@ -923,7 +923,7 @@ test("edits made before the switch sync against the replacement device", async (
 });
 
 test("a failed delivery switch lands in sync_failed with the localized reason", async () => {
-  const { hass } = switchHass({
+  const { hass, calls } = switchHass({
     "sofabaton_x1s/wifi_event/sync": () => { throw { code: "retarget_failed", message: "retarget_failed" }; },
   });
   const element = eventsDeviceEditor(hass);
@@ -937,4 +937,24 @@ test("a failed delivery switch lands in sync_failed with the localized reason", 
   assert.equal(element._syncError, TOOLS_CARD_STRINGS.wifiCommands.syncFailedRetarget);
   // The pick survives the failure: Retry runs the switch again.
   assert.equal(element._pendingTransport, "mqtt");
+  // The store does not keep it, though: withdrawn to what the hub has now, so
+  // no other sync applies a switch the user may still discard.
+  const sent = calls.filter((call) => String(call.type).endsWith("set_transport")).map((call) => call.transport);
+  assert.deepEqual(sent, ["mqtt", "http"]);
+});
+
+test("a withdrawn wish follows the transport the hub has after the failure", async () => {
+  const { hass, calls } = switchHass({
+    // Failed after the replacement took over: the hub is on MQTT already.
+    "sofabaton_x1s/wifi_event/sync": () => { throw { code: "writes_refused", message: "writes_refused" }; },
+    "sofabaton_x1s/wifi_event/list": () => ({ device_id: 12, record_needs_sync: false, slot_count: 50, events: [], deployed_transport: "mqtt" }),
+  });
+  const element = eventsDeviceEditor(hass);
+  await element._startCapture(9);
+  element._handleTransportChange(new CustomEvent("transport-change", { detail: { transport: "mqtt" } }));
+
+  await element._requestSync();
+
+  const sent = calls.filter((call) => String(call.type).endsWith("set_transport")).map((call) => call.transport);
+  assert.deepEqual(sent, ["mqtt", "mqtt"]);
 });

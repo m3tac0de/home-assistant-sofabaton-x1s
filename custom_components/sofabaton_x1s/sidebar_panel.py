@@ -1,8 +1,8 @@
 """The optional "Sofabaton X" sidebar panel.
 
-The Control Panel card's global "Sidebar Panel" setting (off by default)
-adds a panel to Home Assistant's sidebar that hosts the card full-page,
-for every user or for administrators only (HA's ``require_admin``: the
+The Control Panel card's global "Sidebar Panel" setting (all users by
+default) adds a panel to Home Assistant's sidebar, for every user or for
+administrators only (HA's ``require_admin``: the
 sidebar entry and the URL are both withheld from non-admins).
 The panel is a plain custom panel: the frontend loads ``sidebar-panel.js``
 (the sidebar remote plus the panel shell; it pulls ``tools-card.js`` in

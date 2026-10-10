@@ -285,3 +285,28 @@ def test_mdns_advertises_the_address_in_use(monkeypatch, interface_inventory, os
         [socket.inet_aton("192.0.2.10")],
         [socket.inet_aton("192.0.2.99")],
     ]
+
+
+def test_interface_listing_is_reused_within_the_ttl(monkeypatch, os_route):
+    reads: list[int] = []
+
+    def read():
+        reads.append(1)
+        return [network.ipaddress.IPv4Interface("192.0.2.10/24")]
+
+    clock = [1000.0]
+    monkeypatch.setattr(network, "_read_local_ipv4_interfaces", read)
+    monkeypatch.setattr(network.time, "monotonic", lambda: clock[0])
+
+    # CALL_ME asks every ~2 s while a hub is offline: one listing serves them.
+    for _ in range(4):
+        select_local_address("192.0.2.20")
+        clock[0] += 2.0
+    assert len(reads) == 1
+    # Past the TTL the next ask reads again, so a new address shows up.
+    clock[0] += network.INTERFACE_CACHE_TTL_S
+    select_local_address("192.0.2.20")
+    assert len(reads) == 2
+    # Validating a typed address always reads fresh.
+    assert network.is_local_ipv4("192.0.2.10")
+    assert len(reads) == 3

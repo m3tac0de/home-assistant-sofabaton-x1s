@@ -186,7 +186,7 @@ def _local_address_entity(monkeypatch, loop, *, os_ip="192.0.2.10", options=None
     # The host's addresses: its routed one and a second one on another subnet.
     monkeypatch.setattr(
         network,
-        "_local_ipv4_interfaces",
+        "_read_local_ipv4_interfaces",
         lambda: [ipaddress.IPv4Interface(f"{os_ip}/32"), ipaddress.IPv4Interface("192.0.2.99/32")],
     )
     signals: list[str] = []

@@ -21507,8 +21507,10 @@ var SofabatonActivitiesTab = class extends i4 {
     }, 1e3);
     let newId = null;
     let recordNeedsSync = false;
+    let wishStored = false;
     try {
       await this.api().setWifiTransport(hubId, deviceKey, transport);
+      wishStored = true;
       if (isEvents) {
         const state = await this.api().syncWifiEvents(hubId);
         recordNeedsSync = Boolean(state.record_needs_sync);
@@ -21520,6 +21522,7 @@ var SofabatonActivitiesTab = class extends i4 {
       }
     } catch (error) {
       clearInterval(poll);
+      if (wishStored) await this._withdrawTransportWish(hubId, deviceKey, isEvents);
       this._syncMessage = null;
       this._syncError = localizeWifiSyncFailure(error);
       this._syncFailedAt = null;
@@ -21569,6 +21572,18 @@ var SofabatonActivitiesTab = class extends i4 {
       composed: true
     }));
     return true;
+  }
+  /** Set the stored delivery wish back to what the hub has now, so no switch
+   *  is pending in the store. Read first: a deploy that failed after the
+   *  replacement took over has already moved the deployed transport.
+   *  Best effort; a failure leaves the wish, which the Wifi Commands tab
+   *  shows as pending. */
+  async _withdrawTransportWish(hubId, deviceKey, isEvents) {
+    try {
+      const deployed = isEvents ? (await this.api().listWifiEvents(hubId)).deployed_transport : (await this.api().getWifiCommandConfig(hubId, deviceKey)).deployed_transport;
+      await this.api().setWifiTransport(hubId, deviceKey, String(deployed ?? "").toLowerCase() === "mqtt" ? "mqtt" : "http");
+    } catch {
+    }
   }
   async _subscribeSync(operationId) {
     this._teardownProgressSubscription();

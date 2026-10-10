@@ -49,7 +49,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Collection, Mapping, Sequence
 
 from .activity_sync import (
     DEVICE_INPUT_REF_COMMAND,
@@ -1037,6 +1037,17 @@ def wifi_events_retarget_steps(
 # knew about (the activity editor made them).
 
 
+def _int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _ref_on(row: Mapping[str, Any], dev_key: str, device_id: int) -> bool:
+    return _int(row.get(dev_key)) == int(device_id)
+
+
 def _retarget_device(
     row: dict[str, Any],
     dev_key: str,
@@ -1082,6 +1093,8 @@ def retarget_device_refs(
     new_device_id: int,
     fold_long_ids_at: int | None = None,
     membership: str = "move",
+    keep_favorites: Collection[int] = (),
+    keep_bindings: Collection[int] = (),
 ) -> tuple[dict[str, Any], bool]:
     """Copy of one activity entry with every reference to *old_device_id*
     moved onto *new_device_id* at the same command id. Returns
@@ -1103,9 +1116,16 @@ def retarget_device_refs(
       add_device_to_activity appended for the new device are dropped, so
       the new device takes the old one's position in the sequences. This
       is the DESIRED shape, written once the old device is gone.
+
+    ``keep_favorites`` (command ids) and ``keep_bindings`` (button ids) are
+    references left on the old device: the delete cascades them away. A
+    replace leaves there what the last deploy made and the slot config no
+    longer wants (:func:`replace_ref_dispositions`).
     """
 
     edited = deepcopy(dict(activity))
+    kept_favorites = {int(c) for c in keep_favorites}
+    kept_bindings = {int(b) for b in keep_bindings}
     changed = False
     old_id = int(old_device_id)
     kwargs = {
@@ -1115,9 +1135,13 @@ def retarget_device_refs(
     }
     for fav in edited.get("favorite_slots") or []:
         if isinstance(fav, dict):
+            if _ref_on(fav, "device_id", old_id) and _int(fav.get("command_id")) in kept_favorites:
+                continue
             changed |= _retarget_device(fav, "device_id", "command_id", **kwargs)
     for binding in edited.get("button_bindings") or []:
         if isinstance(binding, dict):
+            if _int(binding.get("button_id")) in kept_bindings:
+                continue
             changed |= _retarget_device(binding, "device_id", "command_id", **kwargs)
             changed |= _retarget_device(
                 binding, "long_press_device_id", "long_press_command_id", **kwargs
@@ -1202,6 +1226,7 @@ def wifi_device_retarget_steps(
     new_device_id: int,
     fold_long_ids_at: int | None = None,
     membership: str = "keep",
+    keep: Mapping[int, tuple[Collection[int], Collection[int]]] | None = None,
 ) -> tuple[SyncStep, ...]:
     """The activity writes that move every reference to *old_device_id*
     onto *new_device_id*, for every activity in *activity_entries* (live
@@ -1215,24 +1240,136 @@ def wifi_device_retarget_steps(
     when an activity cannot be planned; the caller must then write nothing.
     The default keeps the old device's membership rows (see
     :func:`retarget_device_refs`); the sequence positions are restored by
-    :func:`wifi_membership_order_steps` after the delete.
+    :func:`wifi_membership_order_steps` after the delete. ``keep`` maps an
+    activity id to the ``(favorite command ids, binding button ids)`` left
+    on the old device there.
     """
 
     steps: list[SyncStep] = []
     for entry in activity_entries:
         if not isinstance(entry, Mapping):
             continue
+        kept_favorites, kept_bindings = (keep or {}).get(
+            _int((entry.get("device") or {}).get("device_id")), ((), ())
+        )
         edited, changed = retarget_device_refs(
             entry,
             old_device_id=old_device_id,
             new_device_id=new_device_id,
             fold_long_ids_at=fold_long_ids_at,
             membership=membership,
+            keep_favorites=kept_favorites,
+            keep_bindings=kept_bindings,
         )
         if not changed:
             continue
         steps.extend(_activity_plan_steps(entry, edited))
     return tuple(steps)
+
+
+@dataclass(frozen=True)
+class ReplaceRefDispositions:
+    """What a replace does with each reference to the old device.
+
+    ``keep`` maps an activity id to ``(favorite command ids, binding button
+    ids)`` left on the old device, for its delete to cascade away.
+    ``carried_favorites`` ``(activity, command id)`` and ``carried_bindings``
+    ``(activity, button id)`` are moved references that already are what the
+    slot config writes, so the config's own write is skipped for them (a
+    favorite add would append a second copy). Every other moved reference
+    is foreign to the slot config, and its write, where it has one, runs.
+    """
+
+    keep: Mapping[int, tuple[frozenset[int], frozenset[int]]]
+    carried_favorites: frozenset[tuple[int, int]]
+    carried_bindings: frozenset[tuple[int, int]]
+
+
+def replace_ref_dispositions(
+    activity_entries: Sequence[Mapping[str, Any]],
+    *,
+    old_device_id: int,
+    owned: ManagedWifiSnapshot | None,
+    desired: ManagedWifiSnapshot,
+) -> ReplaceRefDispositions:
+    """Sort the old device's favorites and bindings for a replace.
+
+    *owned* is the last deploy's expansion (the deployed snapshot through
+    :func:`desired_snapshot_from_config`, ``None`` when there is none) and
+    *desired* the slot config's. The in-place path's ownership rule
+    applies: only references the last deploy made may be planned away;
+    references made in the activity editor or the Sofabaton app always move.
+
+    * A favorite the last deploy made and the config no longer wants is
+      kept (dropped with the old device). One the config wants is carried.
+    * A binding that already is the config's (same command, and the long
+      press the config sets, or none it owns) is carried. A binding at a
+      button the config writes differently is kept: the config's write
+      replaces it. A binding the last deploy made at a button the config
+      no longer binds is kept. Everything else moves as it is.
+    """
+
+    old_id = int(old_device_id)
+    keep: dict[int, tuple[frozenset[int], frozenset[int]]] = {}
+    carried_favorites: set[tuple[int, int]] = set()
+    carried_bindings: set[tuple[int, int]] = set()
+    for entry in activity_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        act_id = _int((entry.get("device") or {}).get("device_id"))
+        owned_refs = owned.activities.get(act_id) if owned is not None else None
+        desired_refs = desired.activities.get(act_id)
+        owned_favs = set(owned_refs.favorites) if owned_refs else set()
+        desired_favs = set(desired_refs.favorites) if desired_refs else set()
+        owned_binds = {b[0]: b for b in owned_refs.bindings} if owned_refs else {}
+        desired_binds = {b[0]: b for b in desired_refs.bindings} if desired_refs else {}
+        keep_favs: set[int] = set()
+        keep_buttons: set[int] = set()
+
+        for fav in entry.get("favorite_slots") or []:
+            if not isinstance(fav, Mapping) or not _ref_on(fav, "device_id", old_id):
+                continue
+            command_id = _int(fav.get("command_id"))
+            if command_id in desired_favs:
+                carried_favorites.add((act_id, command_id))
+            elif command_id in owned_favs:
+                keep_favs.add(command_id)
+
+        for row in entry.get("button_bindings") or []:
+            if not isinstance(row, Mapping):
+                continue
+            short_on_old = _ref_on(row, "device_id", old_id)
+            long_on_old = _ref_on(row, "long_press_device_id", old_id)
+            if not (short_on_old or long_on_old):
+                continue
+            button_id = _int(row.get("button_id"))
+            command_id = _int(row.get("command_id"))
+            long_id = _int(row.get("long_press_command_id")) if _int(row.get("long_press_device_id")) else 0
+            mine = owned_binds.get(button_id)
+            short_owned = short_on_old and mine is not None and mine[1] == command_id
+            long_owned = long_on_old and mine is not None and mine[2] is not None and mine[2] == long_id
+            want = desired_binds.get(button_id)
+            if want is not None:
+                short_matches = short_on_old and want[1] == command_id
+                if want[2] is None:
+                    # No long press from the config: any it does not own may stay.
+                    long_matches = not long_id or not long_owned
+                else:
+                    long_matches = long_on_old and long_id == want[2]
+                if short_matches and long_matches:
+                    carried_bindings.add((act_id, button_id))
+                else:
+                    keep_buttons.add(button_id)
+            elif short_owned or long_owned:
+                keep_buttons.add(button_id)
+
+        if keep_favs or keep_buttons:
+            keep[act_id] = (frozenset(keep_favs), frozenset(keep_buttons))
+    return ReplaceRefDispositions(
+        keep=keep,
+        carried_favorites=frozenset(carried_favorites),
+        carried_bindings=frozenset(carried_bindings),
+    )
 
 
 def wifi_membership_order_steps(

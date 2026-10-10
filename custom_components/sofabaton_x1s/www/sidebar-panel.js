@@ -3101,6 +3101,9 @@ var SidebarPressController = class {
     this.root = root;
     this.handlers = handlers;
     this.holds = /* @__PURE__ */ new Map();
+    /** Every listener on the root, so dispose() can take each one off again.
+     *  Filled in the constructor: the handlers are fields declared below. */
+    this.listeners = [];
     this.onDown = (ev) => {
       if (ev.isPrimary === false || typeof ev.button === "number" && ev.button !== 0) return;
       const el = this.keyElement(ev);
@@ -3178,18 +3181,23 @@ var SidebarPressController = class {
     this.onContextMenu = (ev) => {
       if (this.keyElement(ev)) ev.preventDefault();
     };
-    root.addEventListener("pointerdown", this.onDown, { capture: true });
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
-      root.addEventListener(type, this.onEnd, { capture: true });
-    }
-    root.addEventListener("pointerleave", this.onLeave, { capture: true });
-    root.addEventListener("pointermove", this.onMove, { capture: true });
-    root.addEventListener("keydown", this.onKey);
-    root.addEventListener("contextmenu", this.onContextMenu);
+    this.listeners.push(
+      ["pointerdown", this.onDown, true],
+      ["pointerup", this.onEnd, true],
+      ["pointercancel", this.onEnd, true],
+      ["lostpointercapture", this.onEnd, true],
+      ["pointerleave", this.onLeave, true],
+      ["pointermove", this.onMove, true],
+      ["keydown", this.onKey, false],
+      ["contextmenu", this.onContextMenu, false]
+    );
+    for (const [type, listener, capture] of this.listeners) root.addEventListener(type, listener, { capture });
   }
+  /** Stops every hold and takes the listeners off the root. */
   dispose() {
     for (const hold of this.holds.values()) this.stopTimers(hold);
     this.holds.clear();
+    for (const [type, listener, capture] of this.listeners) this.root.removeEventListener(type, listener, { capture });
   }
   /** The element under a pointer event that is a key or a `[data-press]` item, or null. */
   keyElement(ev) {
@@ -4046,6 +4054,7 @@ var SofabatonSidebarRemote = class extends i4 {
     };
     this.addEventListener("pointerdown", this._outsideTap);
     this.addEventListener("keydown", this._onKeydown);
+    if (this.hasUpdated) this._attachRootHelpers();
   }
   disconnectedCallback() {
     super.disconnectedCallback();
@@ -4058,7 +4067,14 @@ var SofabatonSidebarRemote = class extends i4 {
     this._sizeObserver = null;
   }
   firstUpdated() {
-    this._press = new SidebarPressController(this.renderRoot, {
+    this._attachRootHelpers();
+    this._applyTheme();
+  }
+  /** The press controller and the size observer; disconnectedCallback
+   *  takes both down again. */
+  _attachRootHelpers() {
+    if (this._press && this._sizeObserver) return;
+    this._press ?? (this._press = new SidebarPressController(this.renderRoot, {
       resolve: (el) => {
         const id = Number(el.dataset.key);
         if (!Number.isFinite(id)) return null;
@@ -4071,9 +4087,8 @@ var SofabatonSidebarRemote = class extends i4 {
       onLongPress: (id, el, at) => this._sendLongPress(id, el, at),
       onPressed: (el, pressed) => this._setPressed(el, pressed),
       haptic: () => this._haptic()
-    });
-    this._applyTheme();
-    if (typeof ResizeObserver !== "undefined") {
+    }));
+    if (!this._sizeObserver && typeof ResizeObserver !== "undefined") {
       this._sizeObserver = new ResizeObserver(() => this._measureLayout());
       this._sizeObserver.observe(this);
     }
@@ -4552,6 +4567,9 @@ var SofabatonXPanel = class extends i4 {
     this._view = "remote";
     /** Opened on a tab's own path: back arrow instead of the menu button. */
     this._subview = false;
+    /** Opened on the Control Panel's path before `hass` named the user: the
+     *  admin check, and the tab, wait for it. */
+    this._routeWantsPanel = false;
     /** Tab labels hidden because the labelled strip does not fit beside the hub picker. */
     this._compact = false;
     this._tabsObserver = null;
@@ -4578,6 +4596,10 @@ var SofabatonXPanel = class extends i4 {
     this.lang = remoteCardLanguage();
     this.dir = remoteCardDirection();
     if (this._controlPanel) this._controlPanel.hass = value;
+    if (this._routeWantsPanel && value?.user) {
+      this._routeWantsPanel = false;
+      void this._setView("panel", false);
+    }
     if (!this._hassSeen) {
       this._hassSeen = true;
       void this._poll();
@@ -4605,7 +4627,8 @@ var SofabatonXPanel = class extends i4 {
     const path = String(value?.path ?? "");
     const view = viewForPath(path);
     this._subview = view != null;
-    if (view != null && view !== this._view) void this._setView(view, false);
+    this._routeWantsPanel = view === "panel" && !this._hass?.user;
+    if (view != null && view !== this._view && !this._routeWantsPanel) void this._setView(view, false);
     this.requestUpdate();
   }
   set panel(_value) {
@@ -4710,6 +4733,7 @@ var SofabatonXPanel = class extends i4 {
   /** `fromUser`: a tab click. In a subview that also moves the URL to the tab's
    *  path (replace, not push), so a reload or a share lands on the same tab. */
   async _setView(view, fromUser = true) {
+    if (view === "panel" && !this.isAdmin) return;
     if (fromUser && this._subview) this._replacePath(view);
     if (view === "remote") {
       if (this._view !== "remote") {

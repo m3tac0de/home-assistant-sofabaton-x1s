@@ -21,6 +21,7 @@ HUB_CLICK_ACTIONS = (
 
 # The "Sofabaton X" sidebar panel: absent, for every user, or admins only
 # (HA's require_admin, the same gate a dashboard's "admin only" sets).
+# On for every user by default: non-admins only get the remote.
 SIDEBAR_PANEL_OFF = "off"
 SIDEBAR_PANEL_ALL = "all"
 SIDEBAR_PANEL_ADMIN = "admin"
@@ -29,6 +30,7 @@ SIDEBAR_PANEL_MODES = (
     SIDEBAR_PANEL_ALL,
     SIDEBAR_PANEL_ADMIN,
 )
+SIDEBAR_PANEL_DEFAULT = SIDEBAR_PANEL_ALL
 
 
 class UiSettingsStore:
@@ -42,7 +44,7 @@ class UiSettingsStore:
         )
         self._data: dict[str, Any] = {
             "hub_click_action": HUB_CLICK_ACTION_NONE,
-            "sidebar_panel": SIDEBAR_PANEL_OFF,
+            "sidebar_panel": SIDEBAR_PANEL_DEFAULT,
         }
 
     async def async_load(self) -> None:
@@ -69,7 +71,7 @@ class UiSettingsStore:
     @property
     def sidebar_panel_mode(self) -> str:
         mode = self._data.get("sidebar_panel")
-        return mode if mode in SIDEBAR_PANEL_MODES else SIDEBAR_PANEL_OFF
+        return mode if mode in SIDEBAR_PANEL_MODES else SIDEBAR_PANEL_DEFAULT
 
     async def async_set_sidebar_panel_mode(self, mode: str) -> None:
         if mode not in SIDEBAR_PANEL_MODES:

@@ -31,6 +31,7 @@ from .lib.wifi_inplace_plan import (
     clone_wifi_record_for_add,
     derive_device_level_bindings,
     desired_snapshot_from_config,
+    replace_ref_dispositions,
     retarget_device_refs,
     WifiInplacePlan,
     wifi_device_retarget_steps,
@@ -155,14 +156,18 @@ class _DeployRun:
     transport_switch_from: str | None = None
     # Replace path: the live activity reads taken before the new device
     # joined (old device present), the activities that referenced the old
-    # device, and the references the move carried over, so the config-driven
-    # favorite and binding writes below do not add them a second time.
+    # device, the references the move carried over that already are the
+    # config's own (so the config-driven favorite and binding writes below
+    # do not add them a second time), and per old device the references
+    # left behind for its delete (made by the last deploy, no longer
+    # wanted by the config, or about to be rewritten by it).
     pre_add_entries: list[dict[str, Any]] = field(default_factory=list)
     old_device_ids: list[int] = field(default_factory=list)
     referencing_act_ids: list[int] = field(default_factory=list)
     fold_long_ids_at: int | None = None
     moved_favorites: set[tuple[int, int]] = field(default_factory=set)
     moved_bindings: set[tuple[int, int]] = field(default_factory=set)
+    kept_refs: dict[int, Any] = field(default_factory=dict)
 
 
 class WifiDeployMixin:
@@ -1542,17 +1547,30 @@ class WifiDeployMixin:
         run.old_device_ids = old_device_ids
         run.referencing_act_ids = referencing_act_ids
         run.fold_long_ids_at = fold_long_ids_at
-        for entry in pre_add_entries:
-            act_id = int((entry.get("device") or {}).get("device_id") or 0)
-            for fav in entry.get("favorite_slots") or []:
-                if int(fav.get("device_id") or 0) in old_device_ids:
-                    run.moved_favorites.add((act_id, int(fav.get("command_id") or 0)))
-            for row in entry.get("button_bindings") or []:
-                if (
-                    int(row.get("device_id") or 0) in old_device_ids
-                    or int(row.get("long_press_device_id") or 0) in old_device_ids
-                ):
-                    run.moved_bindings.add((act_id, int(row.get("button_id") or 0)))
+        # Which references move as they are and which stay behind: the
+        # in-place path's ownership rule (only what the last deploy made may
+        # be planned away), so a slot-config edit synced through a replace
+        # lands like it does in place.
+        desired_snapshot = self._replace_ref_snapshot(run.command_payload, slot_count)
+        for old_id in old_device_ids:
+            deployed_slots = (
+                run.store.get_deployed_wifi_commands(self.entry_id, hub_device_id=old_id)
+                if run.store is not None
+                else []
+            )
+            dispositions = replace_ref_dispositions(
+                pre_add_entries,
+                old_device_id=old_id,
+                owned=(
+                    self._replace_ref_snapshot({"commands": deployed_slots}, slot_count)
+                    if deployed_slots
+                    else None
+                ),
+                desired=desired_snapshot,
+            )
+            run.kept_refs[old_id] = dispositions.keep
+            run.moved_favorites |= dispositions.carried_favorites
+            run.moved_bindings |= dispositions.carried_bindings
         if referencing_act_ids:
             await self._async_move_references_to_replacement(
                 run,
@@ -1764,6 +1782,21 @@ class WifiDeployMixin:
         run.failed_writes = failed_writes
 
 
+    @staticmethod
+    def _replace_ref_snapshot(config: dict[str, Any], slot_count: int) -> Any:
+        """A slot config's favorites and bindings as a snapshot (the device
+        fields are unused: only the per-activity references are compared)."""
+
+        return desired_snapshot_from_config(
+            config,
+            device_id=0,
+            device_name="",
+            brand="",
+            hard_button_codes=_HARD_BUTTON_TO_CODE,
+            slot_count=slot_count,
+            long_press_offset=slot_count,
+        )
+
     async def _async_read_replace_baseline(
         self, old_device_ids: list[int]
     ) -> tuple[list[dict[str, Any] | None], list[dict[str, Any]]] | None:
@@ -1828,6 +1861,7 @@ class WifiDeployMixin:
             old_device_id=old_device_id,
             new_device_id=new_device_id,
             fold_long_ids_at=fold_long_ids_at,
+            keep=run.kept_refs.get(old_device_id),
         )
         if not steps:
             return {"status": "success", "completed_steps": 0, "total_steps": 0}
