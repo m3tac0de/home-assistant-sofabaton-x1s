@@ -38,23 +38,20 @@ export const EDITOR_CSS = css`
     .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
     .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    /* A phone-width header with the IR pill: the pill takes the crumb's line (the back arrow
-       already leads to the list), so the title keeps the room it has without a pill. */
-    @container (max-width: 420px) {
-      .detail-title-main:has(> .ir-pill-wrap) {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-areas: "back pill actions" "back title actions";
-        align-items: center;
-        column-gap: 8px;
-        row-gap: 2px;
-      }
-      .detail-title-main:has(> .ir-pill-wrap) > .back-btn { grid-area: back; }
-      .detail-title-main:has(> .ir-pill-wrap) > .detail-title-stack { display: contents; }
-      .detail-title-main:has(> .ir-pill-wrap) .detail-crumbs { display: none; }
-      .detail-title-main:has(> .ir-pill-wrap) .detail-title { grid-area: title; }
-      .detail-title-main:has(> .ir-pill-wrap) > .ir-pill-wrap { grid-area: pill; justify-self: start; }
-      .detail-title-main:has(> .ir-pill-wrap) > .detail-title-actions { grid-area: actions; }
+    /* Identity and controls have separate lanes in narrow editors, including
+       embedded ones on a wide screen. Empty subview toolbars take no space. */
+    .sticky-header { container: editor-header / inline-size; }
+    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
+    .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
+    @container editor-header (max-width: 600px) {
+      .detail-title-row { flex-wrap: wrap; gap: 10px; }
+      .detail-title-main { flex-basis: 100%; }
+      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
+      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-header-tools .detail-sync-btn { min-height: 44px; }
+      .detail-header-tools .delivery-pill, .detail-header-tools .ir-pill { min-height: 44px; box-sizing: border-box; }
     }
     /* Offline mode (a backup file): the card's "Unsaved" chip stands where the live editor has its Sync button. */
     .edit-unsaved-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 8px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; color: var(--sbp-warn); background: color-mix(in srgb, var(--sbp-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-warn) 35%, transparent); }

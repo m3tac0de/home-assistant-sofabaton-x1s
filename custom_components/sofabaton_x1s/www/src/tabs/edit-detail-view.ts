@@ -455,6 +455,8 @@ export class SofabatonEditDetailView extends LitElement {
                   ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
+              </div>
+              <div class="detail-header-tools">
                 ${this._renderDeliveryPill(params.kind)}
                 ${this._renderIrPill(params.kind)}
                 ${this._renderDirtyChip()}

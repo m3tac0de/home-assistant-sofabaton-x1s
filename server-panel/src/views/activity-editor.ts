@@ -943,6 +943,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
               </div>
               <div class="detail-title" id=${options.titleId}>${options.title}</div>
             </div>
+          </div>
+          <div class="detail-header-tools">
             ${this._offline && this._dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B.unsavedTooltip}>${B.unsaved}</span>` : nothing}
             ${options.actions ?? nothing}
           </div>

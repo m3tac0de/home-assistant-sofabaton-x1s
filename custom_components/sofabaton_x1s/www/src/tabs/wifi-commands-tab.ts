@@ -337,6 +337,18 @@ class SofabatonWifiCommandsTab extends LitElement {
     .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .sticky-header { container: editor-header / inline-size; }
+    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
+    @container editor-header (max-width: 600px) {
+      .detail-title-row { flex-wrap: wrap; gap: 10px; }
+      .detail-title-main { flex-basis: 100%; }
+      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
+      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-header-tools .detail-sync-btn { min-height: 44px; }
+      .detail-header-tools .delivery-pill { min-height: 44px; box-sizing: border-box; }
+    }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
@@ -1122,11 +1134,13 @@ class SofabatonWifiCommandsTab extends LitElement {
                 </button>
                 ${this._renderDeviceTile(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
                 <div class="detail-title">${selectedDevice.device_name}</div>
-                ${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
               </div>
-              <div class="detail-title-actions">
-                ${this._renderEditDeviceButton(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
+              <div class="detail-header-tools">
+                ${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
+                <div class="detail-title-actions">
+                  ${this._renderEditDeviceButton(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
+                  ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
+                </div>
               </div>
             </div>
           </div>

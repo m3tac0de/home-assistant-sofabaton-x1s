@@ -1179,6 +1179,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
+              </div>
+              <div class="detail-header-tools">
                 ${this._renderIrPill()}
                 ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
                 <div class="detail-title-actions">

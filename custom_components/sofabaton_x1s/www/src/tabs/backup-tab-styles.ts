@@ -465,6 +465,20 @@ export const backupTabStyles = css`
       flex: 1;
       overflow: hidden;
     }
+    /* Reflow by the editor's width, also inside a narrow desktop card. */
+    .sticky-header { container: editor-header / inline-size; }
+    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
+    .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
+    @container editor-header (max-width: 600px) {
+      .detail-title-row { flex-wrap: wrap; gap: 10px; }
+      .detail-title-main { flex-basis: 100%; }
+      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
+      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-header-tools .detail-sync-btn { min-height: 44px; }
+      .detail-header-tools .delivery-pill, .detail-header-tools .ir-pill { min-height: 44px; box-sizing: border-box; }
+    }
     .detail-title-stack {
       display: flex;
       flex-direction: column;

@@ -2331,6 +2331,11 @@ test.describe("control panel, views", () => {
     // Roles: the menu lists the devices, one without a mapping is disabled; a pick copies the device's own buttons.
     const volume = editor.locator('[data-role="volume"]');
     await expect(volume.locator(".role-trigger")).toHaveText("Not used");
+    // Bring the trigger below the sticky header before clicking. Playwright's
+    // automatic scroll only checks the viewport, not sticky occlusion; the
+    // resulting late scroll would close this deliberately scroll-dismissed menu.
+    await volume.locator(".role-trigger").evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await volume.locator(".role-trigger").click();
     await expect(volume.locator(".member-add-option")).toHaveText(["Not used", "TV", "Roku — no button mapping", "Server — no button mapping", "Amp — no button mapping"]);
     await expect(volume.locator('.member-add-option[data-device="2"]')).toBeDisabled();
@@ -4263,7 +4268,12 @@ test.describe("control panel, IR pill", () => {
     const [pillBox, titleBox, renameBox] = await Promise.all([pill.boundingBox(), editor.locator("#editor-title").boundingBox(), editor.locator("#editor-rename").boundingBox()]);
     expect(pillBox.x + pillBox.width).toBeLessThanOrEqual(renameBox.x);
     expect(titleBox.width).toBeGreaterThan(20);
-    expect(pillBox.y + pillBox.height <= titleBox.y + 1 || pillBox.x >= titleBox.x + titleBox.width - 1).toBe(true);
+    expect(pillBox.y + pillBox.height <= titleBox.y + 1 || pillBox.y >= titleBox.y + titleBox.height - 1 || pillBox.x >= titleBox.x + titleBox.width - 1).toBe(true);
+    if (testInfo.project.name.includes("phone")) {
+      expect(titleBox.width).toBeGreaterThan(240);
+      expect(pillBox.y).toBeGreaterThan(titleBox.y + titleBox.height);
+      expect(renameBox.height).toBeGreaterThanOrEqual(44);
+    }
     await page.screenshot({ path: shot(testInfo, "ir-pill-header") });
     await editor.locator("#editor-sync").click();
     await expect.poll(() => puts.length).toBe(1);
