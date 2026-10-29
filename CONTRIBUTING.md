@@ -228,8 +228,9 @@ publish the matching card release. Home Assistant installations with the HACS
 card use that copy instead of the integration's bundled card, so updating the
 integration alone does not update their remote.
 
-For the coordinated 0.7.2 release, the companion versions are card
-**0.2.9**, library **0.2.6**, server **0.2.7**, and npm remote
+For the coordinated 0.7.2 release, prepare the integration release body
+from [docs/releases/0.7.2.md](docs/releases/0.7.2.md). The companion versions
+are card **0.2.9**, library **0.2.6**, server **0.2.7**, and npm remote
 **0.1.4**. Verify changelog dates on publication day. Publish the library
 before the server; use `sofabaton-x-remote-v0.1.4` for the npm package.
 The separate card repository needs its own release and the rebuilt HA

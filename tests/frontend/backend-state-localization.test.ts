@@ -56,6 +56,23 @@ test("structured backend errors are localized without relaying English exception
   setToolsCardLanguage("en");
 });
 
+test("RF Learn and Test explain unsupported hubs in every supported language", () => {
+  try {
+    for (const locale of ["en", "en-gb", "de", "es", "fr", "nl", "zh-Hans"]) {
+      setToolsCardLanguage(locale);
+      for (const surface of ["ir_learn", "hub_request"] as const) {
+        assert.equal(
+          localizeBackendError({ code: "rf_unsupported", message: "Backend English must not leak" }, surface),
+          TOOLS_CARD_STRINGS.backup.learnRfUnsupported,
+          `${locale}: ${surface}`,
+        );
+      }
+    }
+  } finally {
+    setToolsCardLanguage("en");
+  }
+});
+
 test("device creation errors are localized from stable codes", () => {
   const cases = [
     ["de", "invalid_name", "Gib einen Gerätenamen mit 1 bis 30 Zeichen ein."],

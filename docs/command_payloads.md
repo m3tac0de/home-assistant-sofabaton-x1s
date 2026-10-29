@@ -31,6 +31,11 @@ bytes.
 > **Test**, **Save**, and **Sync** are separate steps. Test never saves. Save
 > does not change the hub until the Device is synced.
 
+**IR Test always sends from the hub.** On X2, it does not use the Device's
+IR emitter selection, so a remote or repeater selected there will not send
+the test signal. To check that selection, Sync the Device and run the saved
+command normally.
+
 <img src="images/command-payload-editor.png" alt="Editing and testing a raw IR command payload" width="640" />
 
 ## ◇ Add a command
@@ -43,12 +48,14 @@ The form depends on the Device class:
   payload beginning with `P:`, such as `P:Sony12 R:40000 D:1 F:18 MUL:2`.
   You can Test it before saving.
 - **RF** (433 or 315 MHz Devices): enter the code as raw hex, or use **Learn**
-  to capture it from the original remote. You can Test it before saving.
-- **Supported Wifi classes** — edit the structured fields. The editor uses an
-  existing command from that Device as a template for the hub-specific record.
+  to capture it from the source remote. You can Test it before saving.
+- **Supported Wifi classes** — edit the structured fields. When the Device has
+  an existing command, the editor uses it as a template. For the first command,
+  the form starts with defaults; fill in the required command details.
   For MQTT, changing the payload's IDs does not change the IDs the hub publishes.
-- **Other classes** — enter raw hex. A non-IR Device needs at least one existing
-  command so the integration can reuse its command metadata.
+- **Other classes** — enter raw hex. You can also add the first command to a
+  Device with no commands; the integration uses the Device's type to supply
+  the command metadata.
 
 The new command is staged alongside the other Device edits and created during
 the next Sync.
@@ -95,7 +102,7 @@ Test it, then Save; the command is written to the hub on the next Sync.
 
 RF commands (433 or 315 MHz, X1S and X2 hubs) have a **Learn** button next to
 the payload title. It goes straight to the hub's RF receiver, because Home
-Assistant has no RF source to offer: hold the original remote near the hub and
+Assistant has no RF source to offer: hold the RF remote near the hub and
 press the button once. The code lands as raw hex, tagged with the command's
 band. Test it, then Save.
 

@@ -365,9 +365,9 @@ export const TOOLS_CARD_STRINGS_FR = {
     learnHubRefused: "Le hub n’est pas passé en mode apprentissage. L’application Sofabaton est-elle connectée, ou une synchronisation est-elle en cours ?",
     learnHubFailed: "L’apprentissage a échoué.",
     learnHubNoPayload: "Le hub a capté un signal, mais ses données utiles n’ont pas pu être lues.",
-    learnRfAria: "Apprendre ce code RF depuis sa télécommande d’origine",
+    learnRfAria: "Apprendre ce code RF depuis la télécommande source",
     learnRfListening: (mhz: number) =>
-      `Tenez cette télécommande RF près du hub et appuyez une fois sur la touche (${mhz} MHz).`,
+      `Tenez la télécommande RF près du hub et appuyez une fois sur la touche (${mhz} MHz).`,
     learnRfLearned: (mhz: number) =>
       `Code RF ${mhz} MHz appris depuis la télécommande source. Testez, puis enregistrez.`,
     learnRfFailed: "Le hub n’a pas pu lire ce signal RF. Réessayez avec la télécommande plus près du hub.",

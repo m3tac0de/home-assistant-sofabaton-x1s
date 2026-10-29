@@ -836,9 +836,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
     learnHubFailed: "Learning failed.",
     learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
-    learnRfAria: "Learn this RF code from its original remote",
+    learnRfAria: "Learn this RF code from the source remote",
     learnRfListening: (mhz: number) =>
-      `Hold that RF remote near the hub and press the button once (${mhz} MHz).`,
+      `Hold the RF remote near the hub and press the button once (${mhz} MHz).`,
     learnRfLearned: (mhz: number) =>
       `Learned a ${mhz} MHz RF code from the source remote. Test it, then Save.`,
     learnRfFailed: "The hub could not read that RF signal. Try again with the remote closer to the hub.",

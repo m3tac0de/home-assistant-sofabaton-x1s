@@ -98,6 +98,7 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
     if (code === "busy" || code === "another_operation") return E.anotherOperation;
     if (code === "not_found" && surface === "hub_request") return E.selectedHubUnavailable;
     if (surface === "hub_request") {
+      if (code === "rf_unsupported") return TOOLS_CARD_STRINGS.backup.learnRfUnsupported;
       if (code === "unavailable") return E.hubNotReady;
       if (code === "no_response") return E.hubNoResponse;
       if (code === "invalid_blob") return E.payloadInvalid;

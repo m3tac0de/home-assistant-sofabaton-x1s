@@ -3253,8 +3253,8 @@ var TOOLS_CARD_STRINGS_EN = {
     learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
     learnHubFailed: "Learning failed.",
     learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
-    learnRfAria: "Learn this RF code from its original remote",
-    learnRfListening: (mhz) => `Hold that RF remote near the hub and press the button once (${mhz} MHz).`,
+    learnRfAria: "Learn this RF code from the source remote",
+    learnRfListening: (mhz) => `Hold the RF remote near the hub and press the button once (${mhz} MHz).`,
     learnRfLearned: (mhz) => `Learned a ${mhz} MHz RF code from the source remote. Test it, then Save.`,
     learnRfFailed: "The hub could not read that RF signal. Try again with the remote closer to the hub.",
     learnRfRefused: "The hub did not enter RF learning mode. Is the Sofabaton app connected, or a sync running?",
@@ -4445,6 +4445,7 @@ function localizeBackendError(value, surface) {
     if (code2 === "busy" || code2 === "another_operation") return E2.anotherOperation;
     if (code2 === "not_found" && surface === "hub_request") return E2.selectedHubUnavailable;
     if (surface === "hub_request") {
+      if (code2 === "rf_unsupported") return TOOLS_CARD_STRINGS.backup.learnRfUnsupported;
       if (code2 === "unavailable") return E2.hubNotReady;
       if (code2 === "no_response") return E2.hubNoResponse;
       if (code2 === "invalid_blob") return E2.payloadInvalid;
