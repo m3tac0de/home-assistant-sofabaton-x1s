@@ -55,6 +55,16 @@ export function entityForHub(hass: HassLike | null, entryId: string | null): str
   return null;
 }
 
+/** HA only adds `from` to history entries since 2026.9. Before that its
+ *  goBack() stepped back whenever there was history, so do the same there. */
+export function backStepsBack(state: unknown, historyLength: number, haVersion: string | undefined): boolean {
+  if ((state as { from?: string } | null)?.from !== undefined) return true;
+  const [year, month] = String(haVersion ?? "").split(".").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return false;
+  const tagsFrom = year > 2026 || (year === 2026 && month >= 9);
+  return !tagsFrom && historyLength > 1;
+}
+
 /** The hub to show: the remembered one if it still exists, else the first. */
 /** The panel's URL path (sidebar_panel.py registers it). */
 export const PANEL_URL_PATH = "/sofabaton-x";
@@ -452,12 +462,12 @@ export class SofabatonXPanel extends LitElement {
   }
 
   /** The subview's back arrow, as HA's goBack(): one step back when HA
-   *  navigated here (the entry carries `from`), else the default dashboard
+   *  navigated here (see backStepsBack), else the default dashboard
    *  replaces this entry (a fresh tab, a deep link from outside). */
   private _back(): void {
     if (typeof window === "undefined") return;
     const current = (window.history.state ?? {}) as { root?: boolean; from?: string };
-    if (current.from !== undefined) {
+    if (backStepsBack(current, window.history.length, this._hass?.config?.version)) {
       window.history.back();
       return;
     }

@@ -5403,6 +5403,13 @@ function entityForHub(hass, entryId) {
   }
   return null;
 }
+function backStepsBack(state, historyLength, haVersion) {
+  if (state?.from !== void 0) return true;
+  const [year, month] = String(haVersion ?? "").split(".").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return false;
+  const tagsFrom = year > 2026 || year === 2026 && month >= 9;
+  return !tagsFrom && historyLength > 1;
+}
 var PANEL_URL_PATH = "/sofabaton-x";
 var VIEW_PATHS = { remote: "/virtual-remote", panel: "/control-panel" };
 function viewForPath(path) {
@@ -5654,12 +5661,12 @@ var SofabatonXPanel = class extends i4 {
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: true } }));
   }
   /** The subview's back arrow, as HA's goBack(): one step back when HA
-   *  navigated here (the entry carries `from`), else the default dashboard
+   *  navigated here (see backStepsBack), else the default dashboard
    *  replaces this entry (a fresh tab, a deep link from outside). */
   _back() {
     if (typeof window === "undefined") return;
     const current = window.history.state ?? {};
-    if (current.from !== void 0) {
+    if (backStepsBack(current, window.history.length, this._hass?.config?.version)) {
       window.history.back();
       return;
     }
