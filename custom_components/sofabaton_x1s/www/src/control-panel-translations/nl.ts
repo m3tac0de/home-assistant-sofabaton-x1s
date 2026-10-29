@@ -418,6 +418,14 @@ export const TOOLS_CARD_STRINGS_NL = {
     learnHubRefused: "De hub is niet in de inleermodus gegaan. Is de Sofabaton-app verbonden of loopt er een synchronisatie?",
     learnHubFailed: "Inleren mislukt.",
     learnHubNoPayload: "De hub heeft een signaal opgevangen, maar de payload kon niet worden gelezen.",
+    learnRfAria: "Deze RF-code inleren vanaf de originele afstandsbediening",
+    learnRfListening: (mhz: number) =>
+      `Houd die RF-afstandsbediening bij de hub en druk één keer op de knop (${mhz} MHz).`,
+    learnRfLearned: (mhz: number) =>
+      `RF-code van ${mhz} MHz ingeleerd vanaf de bronafstandsbediening. Test het en sla het daarna op.`,
+    learnRfFailed: "De hub kon dat RF-signaal niet lezen. Probeer het opnieuw met de afstandsbediening dichter bij de hub.",
+    learnRfRefused: "De hub is niet in de RF-inleermodus gegaan. Is de Sofabaton-app verbonden of loopt er een synchronisatie?",
+    learnRfUnsupported: "Deze hub kan geen RF-codes inleren of versturen.",
     learnHaHelper:
       "Verstuur vanuit Home Assistant een commando via de zender van de hub; het verschijnt hieronder zodra de hub het afspeelt. Je kunt deze pagina verlaten en later terugkomen.",
     learnHaConsumers: "Integraties die de zender van deze hub gebruiken",

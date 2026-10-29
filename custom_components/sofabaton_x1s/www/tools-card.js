@@ -3253,6 +3253,12 @@ var TOOLS_CARD_STRINGS_EN = {
     learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
     learnHubFailed: "Learning failed.",
     learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
+    learnRfAria: "Learn this RF code from its original remote",
+    learnRfListening: (mhz) => `Hold that RF remote near the hub and press the button once (${mhz} MHz).`,
+    learnRfLearned: (mhz) => `Learned a ${mhz} MHz RF code from the source remote. Test it, then Save.`,
+    learnRfFailed: "The hub could not read that RF signal. Try again with the remote closer to the hub.",
+    learnRfRefused: "The hub did not enter RF learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnRfUnsupported: "This hub cannot learn or send RF codes.",
     learnHaHelper: "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
     learnHaConsumers: "Integrations using this hub's emitter",
     learnHaEmpty: "Nothing captured yet.",
@@ -3943,11 +3949,13 @@ var ControlPanelApi = class {
       ...commandId != null ? { command_id: commandId } : {}
     });
   }
-  playIrBlob(entryId, blob) {
+  /** One-shot play of a stored code: IR, or RF on `band` (433 / 315 MHz). */
+  playIrBlob(entryId, blob, band = null) {
     return this.hass.callWS({
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
-      blob
+      blob,
+      ...band != null ? { band } : {}
     });
   }
   /**
@@ -3965,15 +3973,21 @@ var ControlPanelApi = class {
   /**
    * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
    * then a terminal state); calling the returned unsubscribe before the
-   * terminal event cancels the window on the hub.
+   * terminal event cancels the window on the hub. With `band` the hub's
+   * RF receiver listens instead of its IR one.
    */
-  subscribeIrLearn(entryId, timeoutS, onMessage) {
+  subscribeIrLearn(entryId, timeoutS, onMessage, band = null) {
     if (!this.hass.connection?.subscribeMessage) {
       return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
-      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) }
+      {
+        type: "sofabaton_x1s/ir_learn/subscribe",
+        entry_id: entryId,
+        timeout: Math.round(timeoutS),
+        ...band != null ? { band } : {}
+      }
     );
   }
   /** Emitter inbox: the intercept ring, replayed on connect and after every send. */
@@ -4492,6 +4506,9 @@ function localizeBackendError(value, surface) {
   const event = value && typeof value === "object" ? value : null;
   const state = String(event?.state || "").trim().toLowerCase();
   const code = backendErrorCode(value);
+  if (code === "rf_unsupported") return S5.learnRfUnsupported;
+  if (code === "rf_learn_refused") return S5.learnRfRefused;
+  if (code === "rf_learn_failed") return S5.learnRfFailed;
   if (state === "refused" || code === "ir_learn_refused" || code === "unavailable" || code === "busy") {
     return S5.learnHubRefused;
   }
@@ -14027,6 +14044,8 @@ var editDetailViewStyles = i`
       border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
       background: color-mix(in srgb, var(--primary-color) 10%, transparent);
     }
+    .payload-raw-head { display: flex; align-items: flex-start; gap: 12px; }
+    .payload-raw-head .decoded-form-head { flex: 1 1 auto; min-width: 0; }
     .payload-learn-btn:hover { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .payload-learn-btn ha-icon { --mdc-icon-size: 16px; }
     .learn-panel { display: flex; flex-direction: column; gap: 12px; }
@@ -14228,12 +14247,13 @@ var IrLearnController = class {
   renderEntryButton() {
     if (!this.host._learnAvailable()) return A;
     const S5 = TOOLS_CARD_STRINGS.backup;
+    const aria = this.rfBand() != null ? S5.learnRfAria : S5.learnAria;
     return b2`
       <button
         class="payload-learn-btn"
         type="button"
-        title=${S5.learnAria}
-        aria-label=${S5.learnAria}
+        title=${aria}
+        aria-label=${aria}
         @click=${() => void this.enter()}
       >
         <ha-icon icon="mdi:import"></ha-icon>
@@ -14290,10 +14310,12 @@ var IrLearnController = class {
         icon = "mdi:progress-clock";
         title = S5.learnHubArming;
         break;
-      case "listening":
-        title = S5.learnHubListening;
+      case "listening": {
+        const band = this.rfBand();
+        title = band != null ? S5.learnRfListening(band) : S5.learnHubListening;
         detail = S5.learnHubCountdown(this.formatCountdown(this.secondsLeft));
         break;
+      }
       case "timed_out":
         icon = "mdi:timer-off-outline";
         title = S5.learnHubTimedOut;
@@ -14412,6 +14434,12 @@ var IrLearnController = class {
   async enter() {
     const host = this.host.irLearn;
     if (!host || !this.host._learnAvailable()) return;
+    if (this.rfBand() != null) {
+      this.sourceNote = "";
+      this.startTicker();
+      void this.startHubLearn();
+      return;
+    }
     this.view = "menu";
     this.sourceNote = "";
     this.haAvailable = null;
@@ -14431,6 +14459,11 @@ var IrLearnController = class {
   /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
   left() {
     return this.view === "off";
+  }
+  /** The RF band of the open command, or null when it learns as IR. */
+  rfBand() {
+    const signal = this.host._learnSignal();
+    return signal == null || signal === "ir" ? null : signal;
   }
   haOptionVisible() {
     return this.haAvailable === true && (this.consumers.length > 0 || this.emissions.length > 0);
@@ -14484,6 +14517,10 @@ var IrLearnController = class {
     if (this.host.irLearn) void this.openEmissionInbox(this.host.irLearn);
   }
   backToMenu() {
+    if (this.rfBand() != null) {
+      this.exit();
+      return;
+    }
     this.cancelHubLearn();
     this.view = "menu";
   }
@@ -14525,7 +14562,7 @@ var IrLearnController = class {
       const cancel = await host.learnFromHub((event) => {
         if (attempt !== this.hubAttempt) return;
         this.handleHubLearnEvent(event);
-      }, LEARN_TIMEOUT_S);
+      }, LEARN_TIMEOUT_S, this.rfBand());
       if (attempt !== this.hubAttempt || this.view !== "hub") {
         try {
           cancel();
@@ -14566,6 +14603,11 @@ var IrLearnController = class {
     if (!hex) {
       this.hubState = "error";
       this.hubEvent = { state: "error", error_code: "ir_learn_no_payload" };
+      return;
+    }
+    const band = this.rfBand();
+    if (band != null) {
+      this.host._adoptLearnedPayload(hex, S5.learnRfLearned(Number(event.band) || band));
       return;
     }
     const timings = Number(event.duration_count) || 0;
@@ -14900,6 +14942,9 @@ function decodedSnapshotFromFetch(decoded) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail/payload-dialog-controller.ts
+var RF_BAND_BY_DEVICE_CLASS = { rf_433mhz: 433, rf_315mhz: 315 };
+var RF_BAND_BY_CODE_TYPE = { 29: 433, 30: 315 };
+var RF_CODE_TYPE_BY_BAND = { 433: 29, 315: 30 };
 var PayloadDialogController = class {
   constructor(host) {
     this.host = host;
@@ -15314,7 +15359,7 @@ var PayloadDialogController = class {
                     <span>${this.host._learn.sourceNote}</span>
                   </div>
                 ` : A}
-            ${this.host._learn.view === "off" && this.liveDeviceIsIr() ? b2`
+            ${this.host._learn.view === "off" && this.payloadSignal() != null ? b2`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
@@ -15343,7 +15388,7 @@ var PayloadDialogController = class {
             </div>
             <div class="dialog-footer-actions">
               ${this.host._learn.view !== "off" ? this.host._learn.renderFooterActions() : A}
-              ${this.host._learn.view === "off" && this.host.mode === "live" && this.liveDeviceIsIr() && this.host.testCommandPayload ? b2`
+              ${this.host._learn.view === "off" && this.host.mode === "live" && this.payloadSignal() != null && this.host.testCommandPayload ? b2`
                     <button
                       class="dialog-btn payload-test-btn"
                       ?disabled=${this.testStatus === "testing"}
@@ -15366,11 +15411,14 @@ var PayloadDialogController = class {
   renderRawForm() {
     return b2`
       <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
-          <div class="decoded-form-sub">
-            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+        <div class="payload-raw-head">
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
+            <div class="decoded-form-sub">
+              ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+            </div>
           </div>
+          ${this.host._learn.renderEntryButton()}
         </div>
         <label class="decoded-field">
           <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
@@ -15653,9 +15701,28 @@ var PayloadDialogController = class {
     return touched ? changed : null;
   }
   /**
-   * True for IR devices. Live payload *editing* is offered for all classes
-   * (raw hex, or the structured form where a parser exists), but the Test
-   * button — `playIrBlob` — is IR-only, so it gates on this.
+   * The open command's signal: IR, RF on a band, or null for classes that
+   * neither play nor learn (Wifi, Bluetooth). Test and Learn gate on it.
+   * The type is per command (an RF device can hold IR commands next to
+   * its RF ones, and the reverse), so a live fetch's record code type
+   * wins; the device class decides when it is unknown and in add mode.
+   */
+  payloadSignal() {
+    if (this.host.entityId == null || !this.host.bundle) return null;
+    const deviceClass = String(bundleDeviceClass(this.host.bundle, Number(this.host.entityId)) || "").trim().toLowerCase();
+    const deviceBand = RF_BAND_BY_DEVICE_CLASS[deviceClass] ?? null;
+    if (deviceClass !== "ir" && deviceBand == null) return null;
+    const libraryType = this.addMode ? null : this.liveFetched?.libraryType;
+    if (libraryType != null) {
+      const band = RF_BAND_BY_CODE_TYPE[Number(libraryType)];
+      if (band) return band;
+      if (deviceBand != null) return "ir";
+    }
+    return deviceClass === "ir" ? "ir" : deviceBand;
+  }
+  /**
+   * True for IR devices: they get the IR hex tabs (Pronto / Sofabaton)
+   * and paste conversion. Test and Learn follow `payloadSignal()`.
    */
   liveDeviceIsIr() {
     if (this.host.entityId == null || !this.host.bundle) return false;
@@ -15846,6 +15913,8 @@ var PayloadDialogController = class {
         return;
       }
       restoreData = { transport: "hub_code_record", data_hex: normalized };
+      const signal = this.payloadSignal();
+      if (signal != null && signal !== "ir") restoreData["library_type"] = RF_CODE_TYPE_BY_BAND[signal];
     }
     const newId = nextFreeDeviceCommandId(this.host.bundle, target.deviceId);
     if (newId == null) {
@@ -15934,7 +16003,8 @@ var PayloadDialogController = class {
     this.testStatus = "testing";
     this.testError = "";
     try {
-      await this.host.testCommandPayload(value);
+      const signal = this.payloadSignal();
+      await this.host.testCommandPayload(value, signal === "ir" ? null : signal);
       this.testStatus = "success";
     } catch (error) {
       this.testStatus = "error";
@@ -17628,6 +17698,7 @@ var SofabatonEditDetailView = class extends i4 {
     // to fetch a command's blob on demand and to Test it on the hub. Absent
     // in backup mode (the payload already lives in the bundle there).
     this.fetchCommandPayload = null;
+    // `band` set = an RF code (433 / 315 MHz); null = IR.
     this.testCommandPayload = null;
     // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
     this.convertForeignPayload = null;
@@ -18916,9 +18987,13 @@ var SofabatonEditDetailView = class extends i4 {
     );
   }
   // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
-  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
+  /** Learn is a live-hub affordance for IR and RF commands; the host must supply the facade. */
   _learnAvailable() {
-    return this.mode === "live" && !!this.irLearn && this._payload.liveDeviceIsIr();
+    return this.mode === "live" && !!this.irLearn && this._learnSignal() != null;
+  }
+  /** What the open command learns as: IR, or RF on a band. */
+  _learnSignal() {
+    return this._payload.payloadSignal();
   }
   /**
    * Drop a captured Sofabaton blob into the editor: hex mode (leaving a
@@ -24935,7 +25010,7 @@ var SofabatonActivitiesTab = class extends i4 {
       const command = commands.find((c4) => Number(c4.command_id) === Number(commandId)) ?? commands[0];
       const dataHex = String(command?.command_blob ?? "").trim();
       if (!command || !dataHex) return null;
-      return { dataHex, decoded: command.decoded ?? null };
+      return { dataHex, decoded: command.decoded ?? null, libraryType: command.library_type ?? null };
     };
     // The delivery pill of a managed Wifi device: it reads and tests through
     // Home Assistant itself; the editor stays hass-free.
@@ -24956,9 +25031,9 @@ var SofabatonActivitiesTab = class extends i4 {
       locked: () => Boolean(this.hubCommandBusy),
       setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || void 0)
     };
-    this._testCommandPayload = async (hex) => {
+    this._testCommandPayload = async (hex, band = null) => {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
-      await this.api().playIrBlob(this.hub.entry_id, hex);
+      await this.api().playIrBlob(this.hub.entry_id, hex, band);
     };
     // Foreign IR codes (Unfolded Circle HEX) are rendered on the backend;
     // the view only detects the shape and shows the result.
@@ -24968,9 +25043,9 @@ var SofabatonActivitiesTab = class extends i4 {
     // hub window); the HA inbox = a subscription onto the emitter intercept
     // ring; consumer discovery = a one-shot lookup that gates the HA option.
     this._irLearnFacade = {
-      learnFromHub: async (onEvent, timeoutS) => {
+      learnFromHub: async (onEvent, timeoutS, band) => {
         if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
-        return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent);
+        return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent, band ?? null);
       },
       subscribeEmissions: async (onEvent) => {
         if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);

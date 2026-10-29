@@ -19,6 +19,7 @@ import type {
   ControlPanelHubState,
   HassLike,
   IrPayloadForeignFormat,
+  RfBand,
   WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
@@ -474,7 +475,7 @@ class SofabatonActivitiesTab extends LitElement {
     const command = commands.find((c) => Number(c.command_id) === Number(commandId)) ?? commands[0];
     const dataHex = String(command?.command_blob ?? "").trim();
     if (!command || !dataHex) return null;
-    return { dataHex, decoded: command.decoded ?? null };
+    return { dataHex, decoded: command.decoded ?? null, libraryType: command.library_type ?? null };
   };
 
   // The delivery pill of a managed Wifi device: it reads and tests through
@@ -498,9 +499,9 @@ class SofabatonActivitiesTab extends LitElement {
     setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || undefined),
   };
 
-  private _testCommandPayload = async (hex: string) => {
+  private _testCommandPayload = async (hex: string, band: RfBand | null = null) => {
     if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
-    await this.api().playIrBlob(this.hub.entry_id, hex);
+    await this.api().playIrBlob(this.hub.entry_id, hex, band);
   };
 
   // Foreign IR codes (Unfolded Circle HEX) are rendered on the backend;
@@ -513,9 +514,9 @@ class SofabatonActivitiesTab extends LitElement {
   // hub window); the HA inbox = a subscription onto the emitter intercept
   // ring; consumer discovery = a one-shot lookup that gates the HA option.
   private _irLearnFacade: IrLearnHost = {
-    learnFromHub: async (onEvent, timeoutS) => {
+    learnFromHub: async (onEvent, timeoutS, band) => {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
-      return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent);
+      return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent, band ?? null);
     },
     subscribeEmissions: async (onEvent) => {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);

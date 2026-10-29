@@ -301,8 +301,16 @@ OP_IR_LEARN_EXIT = 0x0005  # A→H: exit/cancel IR learn mode (len 0)
 OP_IR_LEARN_FAILED = 0x0068  # H→A: learn-failure push per research; not observed live
 
 # RF learning is one two-byte command: payload [enter_flag, band] where
-# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz, 0x01 = 315 MHz.
+# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz, 0x01 = 315 MHz
+# (RF_LEARN_BAND_BY_MHZ). A capture streams back as paged family-0x06
+# frames like an IR one. Bench-validated at 433 MHz on the X1S and X2
+# (2026-10-29): every toggle is acked 0x0103 [00]. The learner also
+# handles OP_LEARN_EXPIRED (the hub closed its own window; it arms again)
+# and OP_IR_LEARN_FAILED, but no bench window, up to 75 s, saw either.
 OP_RF_LEARN = 0x0270  # A→H payload: [enter_flag, band]
+# H→A: the hub's RF learn window closed. Same value as OP_IR_LEARN_EXIT in
+# the other direction, so it has no OPNAMES entry of its own.
+OP_LEARN_EXPIRED = 0x0005
 
 
 # Backward-compatible aliases retained for older call sites and docs.
@@ -542,6 +550,17 @@ DEVICE_CLASS_CODE_WIFI_IP = 0x1C
 # and its signal data after the record header is opaque.
 DEVICE_CLASS_CODE_RF_433 = 0x1D
 DEVICE_CLASS_CODE_RF_315 = 0x1E
+# RF bands as the hub addresses them, keyed by MHz: the band byte of an
+# OP_RF_LEARN frame, and the code type an RF command record and a one-shot
+# play body carry.
+RF_LEARN_BAND_BY_MHZ: Dict[int, int] = {433: 0x00, 315: 0x01}
+RF_CODE_TYPE_BY_MHZ: Dict[int, int] = {
+    433: DEVICE_CLASS_CODE_RF_433,
+    315: DEVICE_CLASS_CODE_RF_315,
+}
+RF_MHZ_BY_CODE_TYPE: Dict[int, int] = {
+    code: mhz for mhz, code in RF_CODE_TYPE_BY_MHZ.items()
+}
 DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
 # Not a device class: the code type of an X2 URL command record, stored on
 # an ordinary wifi_ip device (bench-validated 2026-10-24).
@@ -766,6 +785,10 @@ __all__ = [
     "OP_IR_LEARN_EXIT",
     "OP_IR_LEARN_FAILED",
     "OP_RF_LEARN",
+    "OP_LEARN_EXPIRED",
+    "RF_LEARN_BAND_BY_MHZ",
+    "RF_CODE_TYPE_BY_MHZ",
+    "RF_MHZ_BY_CODE_TYPE",
     "OPNAMES",
     "opcode_hi",
     "opcode_lo",

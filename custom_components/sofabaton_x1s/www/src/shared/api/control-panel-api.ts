@@ -22,6 +22,7 @@ import type {
   IrPayloadForeignFormat,
   LogsResponse,
   RefreshKind,
+  RfBand,
   SettingKey,
   WifiCommandConfigResponse,
   WifiCommandSyncState,
@@ -132,11 +133,13 @@ export class ControlPanelApi {
     });
   }
 
-  playIrBlob(entryId: string, blob: string) {
+  /** One-shot play of a stored code: IR, or RF on `band` (433 / 315 MHz). */
+  playIrBlob(entryId: string, blob: string, band: RfBand | null = null) {
     return this.hass.callWS<BlobPlayResponse>({
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
       blob,
+      ...(band != null ? { band } : {}),
     });
   }
 
@@ -156,15 +159,26 @@ export class ControlPanelApi {
   /**
    * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
    * then a terminal state); calling the returned unsubscribe before the
-   * terminal event cancels the window on the hub.
+   * terminal event cancels the window on the hub. With `band` the hub's
+   * RF receiver listens instead of its IR one.
    */
-  subscribeIrLearn(entryId: string, timeoutS: number, onMessage: (event: IrLearnEvent) => void) {
+  subscribeIrLearn(
+    entryId: string,
+    timeoutS: number,
+    onMessage: (event: IrLearnEvent) => void,
+    band: RfBand | null = null,
+  ) {
     if (!this.hass.connection?.subscribeMessage) {
       return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
-      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) },
+      {
+        type: "sofabaton_x1s/ir_learn/subscribe",
+        entry_id: entryId,
+        timeout: Math.round(timeoutS),
+        ...(band != null ? { band } : {}),
+      },
     );
   }
 

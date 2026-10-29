@@ -1,10 +1,13 @@
-"""IR playback + single-command persist mixin for :class:`X1Proxy`.
+"""IR/RF playback + single-command persist mixin for :class:`X1Proxy`.
 
 Carries everything tied to family-0x0F replay frames and the
 single-command save path (family-0x0E paged writes):
 
-* :meth:`play_ir_blob` and the lower-level :meth:`_play_ir_blob_body`
-  loop that drives the per-frame ack pacing for a one-shot playback.
+* :meth:`play_ir_blob` / :meth:`play_rf_blob` and the lower-level
+  :meth:`_play_ir_blob_body` loop that drives the per-frame ack pacing
+  for a one-shot playback.
+* The learn windows, :meth:`ir_learn_command` and
+  :meth:`rf_learn_command`, fed by :meth:`_ingest_ir_learn_frame`.
 * The persist write-pipeline -- :meth:`persist_ir_blob`,
   :meth:`persist_command_record`, and the
   ``_build_command_write_steps_for_persist`` / ``_allocate_command_id``
@@ -29,9 +32,10 @@ from .blob_decoders import (
 from .commands import (
     descriptive_play_blob_text,
     extract_learned_ir_blob,
+    extract_learned_rf_blob,
     looks_like_descriptive_play_blob,
 )
-from .hub_versions import HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .device_create import (
     build_command_write_steps,
     build_key_sort_steps,
@@ -45,9 +49,14 @@ from .protocol_const import (
     FAMILY_STATUS_ACK,
     OP_IR_LEARN_ENTER,
     OP_IR_LEARN_EXIT,
+    OP_IR_LEARN_FAILED,
+    OP_LEARN_EXPIRED,
+    OP_RF_LEARN,
     OP_STATUS_ACK,
     OPNAMES,
     PLAY_BLOB_BODY_HEADER_LEN,
+    RF_CODE_TYPE_BY_MHZ,
+    RF_LEARN_BAND_BY_MHZ,
     PLAY_BLOB_CHUNK_SIZE,
     PLAY_BLOB_PAGE_HEADER_LEN,
     opcode_family,
@@ -132,15 +141,70 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
             return True
         return False
 
-    def _send_ir_learn_toggle(self, opcode: int, *, ack_timeout: float) -> bool:
-        """Send one zero-payload learn-mode toggle and wait for STATUS_ACK 0x00.
+    def rf_codes_supported(self) -> bool:
+        """True when the hub can learn and send RF codes (X1S and X2; never the X1)."""
 
+        return self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
+
+    def play_rf_blob(
+        self,
+        blob: bytes,
+        *,
+        band: int,
+        inter_frame_delay: float = 0.08,
+        ack_timeout: float = 1.0,
+        final_ack_timeout: float = 0.25,
+    ) -> bool:
+        """Send an RF code once from the hub's RF transmitter (nothing is saved).
+
+        ``blob`` is the RF signal exactly as an RF command record stores it
+        (the bytes ``fetch_blob`` returns for one). The body is the IR
+        one-shot body with the code type of ``band`` (433 or 315 MHz) at
+        body[5]; that byte is what makes the hub send RF instead of IR.
+        Bench-validated at 433 MHz on the X1S and X2 (2026-10-29). A 315 MHz
+        play behaves exactly like the hub's own playback of a stored 315
+        command (docs/protocol/live-hub-testing.md).
+
+        Returns False when the proxy cannot issue commands, the blob is
+        too short, or the hub rejected the play. Raises ``ValueError`` for
+        an unknown band or a hub without RF (the X1).
+        """
+
+        code_type = RF_CODE_TYPE_BY_MHZ.get(int(band))
+        if code_type is None:
+            raise ValueError(f"unknown RF band {band!r} (433 or 315 MHz)")
+        if not self.rf_codes_supported():
+            raise ValueError("RF codes need an X1S or X2 hub")
+
+        if not self.can_issue_commands():
+            self._log.info("[PLAY_RF] ignored: proxy client is connected")
+            return False
+
+        if not isinstance(blob, (bytes, bytearray)) or len(blob) < 5:
+            self._log.warning("[PLAY_RF] blob too short or wrong type: %r", type(blob))
+            return False
+
+        body_buffer = self._build_play_blob_body_buffer(bytes(blob), code_type=code_type)
+        ok, _rejected = self._play_ir_blob_body(
+            body_buffer,
+            inter_frame_delay=inter_frame_delay,
+            ack_timeout=ack_timeout,
+            final_ack_timeout=final_ack_timeout,
+        )
+        return ok
+
+    def _send_ir_learn_toggle(
+        self, opcode: int, *, ack_timeout: float, payload: bytes = b""
+    ) -> bool:
+        """Send one learn-mode toggle and wait for STATUS_ACK 0x00.
+
+        IR toggles are zero-payload; the RF toggle carries ``[flag, band]``.
         Must run inside an ``exchange()`` scope (see
         tests/lib/test_sequencer_boundary.py).
         """
 
         send_ts = time.monotonic()
-        self._send_cmd_frame(opcode, b"")
+        self._send_cmd_frame(opcode, payload)
         ack = self.wait_for_ack_any(
             [(OP_STATUS_ACK, None)], timeout=ack_timeout, not_before=send_ts
         )
@@ -269,21 +333,9 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
                     self._ir_learn_pending = None
 
         if state == "interrupted":
-            interrupt_opcode = int(pending["interrupt_opcode"] or 0)
-            name = (
-                OPNAMES.get(interrupt_opcode)
-                or opcode_family_name(interrupt_opcode)
-                or "unknown"
-            )
-            self._log.info(
-                "[IR_LEARN] interrupted by wire traffic: %s (0x%04X)",
-                name,
-                interrupt_opcode,
-            )
-            return {
-                "state": "interrupted",
-                "interrupted_by": f"{name} (0x{interrupt_opcode:04X})",
-            }
+            interrupted_by = self._learn_interrupt_label(pending)
+            self._log.info("[IR_LEARN] interrupted by wire traffic: %s", interrupted_by)
+            return {"state": "interrupted", "interrupted_by": interrupted_by}
 
         total_pages = int(pending["total_pages"] or 0)
         record = b"".join(
@@ -308,8 +360,156 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
             result["duration_count"] = int.from_bytes(blob[0:2], "big") // 4
         return result
 
+    def rf_learn_command(
+        self, *, band: int, timeout: float = 60.0, ack_timeout: float = 2.0
+    ) -> dict[str, Any] | None:
+        """Arm RF learn mode on ``band`` (433 or 315 MHz) and wait for one capture.
+
+        The window works like :meth:`ir_learn_command`: EXIT before arming,
+        the code streams back as paged family 0x06, other hub traffic ends
+        the window (``interrupted``), :meth:`cancel_ir_learn` cancels it, and
+        nothing arriving within ``timeout`` gives ``timed_out``. Two RF
+        pushes are handled on top, though no bench window has seen either:
+        ``OP_LEARN_EXPIRED`` (the hub closed its own, shorter window) is
+        answered by arming again while ``timeout`` lasts, and
+        ``OP_IR_LEARN_FAILED`` ends the window as ``failed``. Every ending
+        except a capture sends EXIT, because it is not known whether
+        traffic knocks the RF receiver out of learn mode the way it does
+        the IR one. Bench-validated at 433 MHz on the X1S and X2
+        (2026-10-29); no 315 MHz capture has been seen yet.
+
+        A capture returns ``payload_hex`` (the RF signal as a command record
+        stores it), ``band`` and ``code_type``. Returns None when the proxy
+        cannot issue commands or the hub refuses to arm. Raises
+        ``ValueError`` for an unknown band or a hub without RF (the X1).
+        """
+
+        band_byte = RF_LEARN_BAND_BY_MHZ.get(int(band))
+        if band_byte is None:
+            raise ValueError(f"unknown RF band {band!r} (433 or 315 MHz)")
+        if not self.rf_codes_supported():
+            raise ValueError("RF codes need an X1S or X2 hub")
+
+        if not self.can_issue_commands():
+            self._log.info("[RF_LEARN] ignored: proxy client is connected")
+            return None
+
+        arm = bytes([0x01, band_byte])
+        disarm = bytes([0x00, band_byte])
+        pending: dict[str, Any] = {
+            "kind": "rf",
+            "event": threading.Event(),
+            "pages": {},
+            "total_pages": None,
+            "state": None,
+            "interrupt_opcode": None,
+        }
+
+        with self.exchange("rf_learn"):
+            self.clear_ack_queue()
+            with self._ir_learn_lock:
+                self._ir_learn_pending = pending
+            try:
+                if not self._send_ir_learn_toggle(
+                    OP_RF_LEARN, ack_timeout=ack_timeout, payload=disarm
+                ):
+                    self._log.info("[RF_LEARN] pre-arm exit not acked; arming anyway")
+                if not self._send_ir_learn_toggle(
+                    OP_RF_LEARN, ack_timeout=ack_timeout, payload=arm
+                ):
+                    self._log.warning("[RF_LEARN] hub did not accept learn-mode arm")
+                    return None
+
+                self._log.info(
+                    "[RF_LEARN] armed at %d MHz; waiting up to %.0fs for a capture",
+                    int(band),
+                    timeout,
+                )
+                deadline = time.monotonic() + timeout
+                rearms = 0
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not pending["event"].wait(remaining):
+                        break
+                    with self._ir_learn_lock:
+                        expired = pending["state"] == "expired"
+                        if expired:
+                            pending["state"] = None
+                            pending["event"].clear()
+                    if not expired:
+                        break
+                    rearms += 1
+                    self._log.info("[RF_LEARN] hub window expired; arming again (%d)", rearms)
+                    if not self._send_ir_learn_toggle(
+                        OP_RF_LEARN, ack_timeout=ack_timeout, payload=arm
+                    ):
+                        self._log.warning("[RF_LEARN] hub did not accept the re-arm")
+                        return {"state": "timed_out", "timeout_s": timeout}
+
+                state = pending["state"]
+                if state != "learned":
+                    self._send_ir_learn_toggle(
+                        OP_RF_LEARN, ack_timeout=ack_timeout, payload=disarm
+                    )
+                if state is None:
+                    return {"state": "timed_out", "timeout_s": timeout}
+                if state == "cancelled":
+                    self._log.info("[RF_LEARN] cancelled by caller; learn mode exited")
+                    return {"state": "cancelled"}
+                if state == "failed":
+                    self._log.info("[RF_LEARN] hub reported a failed capture")
+                    return {"state": "failed"}
+                if state == "interrupted":
+                    interrupted_by = self._learn_interrupt_label(pending)
+                    self._log.info("[RF_LEARN] interrupted by wire traffic: %s", interrupted_by)
+                    return {"state": "interrupted", "interrupted_by": interrupted_by}
+            finally:
+                with self._ir_learn_lock:
+                    self._ir_learn_pending = None
+
+        total_pages = int(pending["total_pages"] or 0)
+        record = b"".join(
+            pending["pages"][page_no] for page_no in range(1, total_pages + 1)
+        )
+        blob = extract_learned_rf_blob(record)
+        if blob is None:
+            self._log.warning(
+                "[RF_LEARN] capture received but too short for a signal (%dB record)",
+                len(record),
+            )
+            return {
+                "state": "learned",
+                "payload_hex": None,
+                "record_hex": record.hex(" "),
+            }
+
+        # The record's own code-type byte is logged for the bench, never
+        # used: the armed band names the code.
+        self._log.info(
+            "[RF_LEARN] learned a %dB payload at %d MHz (record type byte 0x%02X)",
+            len(blob),
+            int(band),
+            record[5] if len(record) > 5 else 0,
+        )
+        return {
+            "state": "learned",
+            "payload_hex": blob.hex(" "),
+            "band": int(band),
+            "code_type": RF_CODE_TYPE_BY_MHZ[int(band)],
+        }
+
+    @staticmethod
+    def _learn_interrupt_label(pending: dict[str, Any]) -> str:
+        interrupt_opcode = int(pending["interrupt_opcode"] or 0)
+        name = (
+            OPNAMES.get(interrupt_opcode)
+            or opcode_family_name(interrupt_opcode)
+            or "unknown"
+        )
+        return f"{name} (0x{interrupt_opcode:04X})"
+
     def cancel_ir_learn(self) -> bool:
-        """End an in-flight :meth:`ir_learn_command` wait early.
+        """End an in-flight :meth:`ir_learn_command` / :meth:`rf_learn_command` wait early.
 
         Thread-safe and non-blocking: flags the pending capture as
         ``cancelled`` and wakes the waiting exchange, which then sends
@@ -319,7 +519,10 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
 
         with self._ir_learn_lock:
             pending = self._ir_learn_pending
-            if pending is None or pending["event"].is_set():
+            if pending is None:
+                return False
+            # An RF window that just expired is still open: it re-arms.
+            if pending["event"].is_set() and pending["state"] != "expired":
                 return False
             pending["state"] = "cancelled"
             pending["event"].set()
@@ -332,35 +535,46 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
         STATUS_ACKs are our own arm/exit acks and are ignored; family-0x06
         pages accumulate into the capture; anything else is evidence of
         wire traffic, which ends the hub's learn window (live-bench
-        finding, 2026-09-01).
+        finding, 2026-09-01). An RF window also reads the hub's
+        expired push (the waiter arms again) and its failed push.
         """
 
         with self._ir_learn_lock:
             pending = self._ir_learn_pending
-        if pending is None or pending["event"].is_set():
-            return
-
-        family = opcode_family(opcode)
-        if family == FAMILY_STATUS_ACK:
-            return
-        if family == FAMILY_IR_LEARN_DATA:
-            if len(payload) < 4:
+            if pending is None or pending["event"].is_set():
                 return
-            page_no = int.from_bytes(payload[1:3], "big")
-            pending["pages"][page_no] = bytes(payload[3:])
-            if page_no == 1 and len(payload) >= 6:
-                pending["total_pages"] = int.from_bytes(payload[4:6], "big")
-            total_pages = pending["total_pages"]
-            if total_pages and all(
-                page in pending["pages"] for page in range(1, total_pages + 1)
-            ):
-                pending["state"] = "learned"
-                pending["event"].set()
-            return
 
-        pending["state"] = "interrupted"
-        pending["interrupt_opcode"] = opcode
-        pending["event"].set()
+            family = opcode_family(opcode)
+            if family == FAMILY_STATUS_ACK:
+                return
+            if family == FAMILY_IR_LEARN_DATA:
+                if len(payload) < 4:
+                    return
+                page_no = int.from_bytes(payload[1:3], "big")
+                pending["pages"][page_no] = bytes(payload[3:])
+                if page_no == 1 and len(payload) >= 6:
+                    pending["total_pages"] = int.from_bytes(payload[4:6], "big")
+                total_pages = pending["total_pages"]
+                if total_pages and all(
+                    page in pending["pages"] for page in range(1, total_pages + 1)
+                ):
+                    pending["state"] = "learned"
+                    pending["event"].set()
+                return
+
+            if pending.get("kind") == "rf":
+                if family == opcode_family(OP_LEARN_EXPIRED):
+                    pending["state"] = "expired"
+                    pending["event"].set()
+                    return
+                if family == opcode_family(OP_IR_LEARN_FAILED):
+                    pending["state"] = "failed"
+                    pending["event"].set()
+                    return
+
+            pending["state"] = "interrupted"
+            pending["interrupt_opcode"] = opcode
+            pending["event"].set()
 
     @staticmethod
     def _next_available_command_id(existing_command_ids: list[int]) -> int:
@@ -939,14 +1153,15 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
         """Return the human-readable descriptor string from a descriptive blob."""
         return descriptive_play_blob_text(blob)
 
-    def _build_play_blob_body_buffer(self, library_data: bytes) -> bytes:
+    def _build_play_blob_body_buffer(self, library_data: bytes, *, code_type: int = 0) -> bytes:
         """Return the fully sealed body buffer for a playback of ``library_data``.
 
         Layout::
 
             body[0]     = 0x01
             body[1..2]  = total_pages BE
-            body[3..5]  = 0x00 0x00 0x00
+            body[3..4]  = 0x00 0x00
+            body[5]     = code_type (0x00 for IR, 0x1D / 0x1E for RF)
             body[6..11] = 0x00 * 6
             body[12..]  = library_data
             body[-1]    = sum8(body[:-1])
@@ -958,6 +1173,7 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
         body[0] = 0x01
         body[1] = (total_pages >> 8) & 0xFF
         body[2] = total_pages & 0xFF
+        body[5] = code_type & 0xFF
         body[PLAY_BLOB_BODY_HEADER_LEN:PLAY_BLOB_BODY_HEADER_LEN + len(library_data)] = library_data
         body[-1] = sum(body[:-1]) & 0xFF
         return bytes(body)

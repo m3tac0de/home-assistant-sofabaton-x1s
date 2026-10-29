@@ -1061,6 +1061,23 @@
       ],
     };
 
+    // A synthesized 433 MHz fan code in the hub's RF record shape (byte
+    // count, duration count, gap, then on/off durations); harness data only.
+    const RF_FAN_OFF_HEX = "00 0d 05 e0 1e 5c 01 e4 03 5c 01 e4 03 5c 01";
+
+    /** The hub list and the structural bundle with the Television swapped
+     *  for a 433 MHz RF ceiling fan (device 1, same commands). */
+    function rfContents() {
+      const contents = clone(BASE_CONTENTS);
+      contents.hubs[0].devices_list[0] = { ...contents.hubs[0].devices_list[0], name: "Ceiling fan", icon: 14, device_class: "rf_433mhz" };
+      return contents;
+    }
+    function rfBundle() {
+      const bundle = clone(EDIT_BACKUP_BUNDLE);
+      bundle.devices[0].device = { ...bundle.devices[0].device, name: "Ceiling fan", icon: 14, device_class: "rf_433mhz" };
+      return bundle;
+    }
+
     // Rich bundle for exercising the Edit section: devices carry commands,
     // and activity 101 carries favorites, an editable macro, and the two
     // internal power macros (198 / 199) that must survive single deletes.
@@ -1549,14 +1566,23 @@
             function learnModeSubscription() {
               if (type === "sofabaton_x1s/ir_learn/subscribe") {
               wsLog(type, "res");
+              // With a band the window is the hub's RF receiver.
+              const learned = message.band != null
+                ? {
+                    state: "learned",
+                    payload_hex: RF_FAN_OFF_HEX,
+                    band: Number(message.band),
+                    code_type: Number(message.band) === 315 ? 0x1e : 0x1d,
+                  }
+                : {
+                    state: "learned",
+                    payload_hex: "02 20 00 00 00 00 96 07 00 00 11 b4 00 00 11 71 00 00 02 64 00 00 06 66 00 00 02 64 00 03 0d 40 00 00 00 00",
+                    carrier_hz: 38407,
+                    duration_count: 136,
+                  };
               const timers = [
                 setTimeout(() => callback({ state: "listening", timeout_s: Number(message.timeout ?? 60) }), 100),
-                setTimeout(() => callback({
-                  state: "learned",
-                  payload_hex: "02 20 00 00 00 00 96 07 00 00 11 b4 00 00 11 71 00 00 02 64 00 00 06 66 00 00 02 64 00 03 0d 40 00 00 00 00",
-                  carrier_hz: 38407,
-                  duration_count: 136,
-                }), 2800),
+                setTimeout(() => callback(learned), 2800),
               ];
               return Promise.resolve(() => timers.forEach((timer) => clearTimeout(timer)));
             }
@@ -2841,6 +2867,26 @@
             dataHex: "00180000000094700000232800001194000002300000069a0000023000009c4000000000",
             decoded: null,
           });
+          detail.requestUpdate();
+          await detail.updateComplete;
+        },
+      },
+      {
+        id: "payload-editor-rf", group: "Activity Editor",
+        label: "Device editor — RF payload dialog (433 MHz fan): Test and Learn",
+        states: STATES_CONNECTED,
+        contents: rfContents(),
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: rfBundle(), generation: 1 }),
+        },
+        async postLoad(card) {
+          const editor = await openLiveEditor(card, "Devices", "Ceiling fan");
+          const detail = editor.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+          if (!detail) throw new Error("payload-editor-rf: detail view did not open");
+          await detail.updateComplete;
+          // What the per-command pencil hands over for an RF command: the
+          // stored signal and its record code type (0x1D = 433 MHz).
+          detail._payload.openLive(1, 10, { dataHex: RF_FAN_OFF_HEX, decoded: null, libraryType: 0x1d });
           detail.requestUpdate();
           await detail.updateComplete;
         },

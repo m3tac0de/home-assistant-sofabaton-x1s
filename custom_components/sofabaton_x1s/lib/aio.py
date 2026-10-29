@@ -3626,6 +3626,10 @@ _R_REMOTE_SYNC_BENCH = (
     "X2 paired-device rows for the targeted remote-sync bench (bench_333); "
     "no facade feature uses them until that form is validated"
 )
+_R_RF_CODES = (
+    "RF learn and one-shot play for the Home Assistant payload editor; the "
+    "facade waits for an RF payload type (RF bridge decision D3)"
+)
 
 
 def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
@@ -3635,6 +3639,7 @@ def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
 ENGINE_ONLY: dict[str, str] = {
     **_reasons(_R_ENTITY_RESTORE, ("restore_device", "restore_activity")),
     **_reasons(_R_REMOTE_SYNC_BENCH, ("x2_paired_devices",)),
+    **_reasons(_R_RF_CODES, ("rf_codes_supported", "play_rf_blob", "rf_learn_command")),
     **_reasons(_R_ITEM_SYNC, ("sync_remote_entity", "sync_remotes_after_write")),
     **_reasons(_R_SYNC_REFUSAL, ("refused_during_remote_sync",)),
     **_reasons(

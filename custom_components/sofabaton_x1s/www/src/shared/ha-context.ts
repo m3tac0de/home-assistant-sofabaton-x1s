@@ -386,6 +386,8 @@ export interface BlobFetchCommandResult {
   device_id: number;
   command_id?: number | null;
   device_class?: string | null;
+  /** The record's code type (0x1D / 0x1E for RF); null when the command list is not cached. */
+  library_type?: number | null;
   blob_kind?: string | null;
   command_blob?: string | null;
   parsed_blob?: string | null;
@@ -406,6 +408,9 @@ export interface BlobFetchResponse {
 export interface BlobPlayResponse {
   ok: boolean;
 }
+
+/** The RF bands a hub learns and sends on (MHz). */
+export type RfBand = 433 | 315;
 
 /** Foreign IR code formats the backend can render to the canonical signal. */
 export type IrPayloadForeignFormat = "uc_hex";
@@ -487,6 +492,9 @@ export interface IrLearnEvent {
   payload_hex?: string | null;
   carrier_hz?: number;
   duration_count?: number;
+  /** RF windows: the band the code was learned on and its code type. */
+  band?: number;
+  code_type?: number;
   timeout_s?: number;
   interrupted_by?: string;
   /** Diagnostic fallback for old backends; cards must render `error_code`, not this text. */

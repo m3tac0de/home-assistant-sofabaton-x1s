@@ -48,7 +48,7 @@ import {
   updateCommandDecodedFields,
   wifiIpFormErrorText,
 } from "../backup-state";
-import type { FetchedCommandPayload } from "./host-types";
+import type { FetchedCommandPayload, PayloadSignal } from "./host-types";
 import { bundleIsX2, editorErrorMessage, sanitizeBundleName } from "./names";
 import { decodedSnapshotFromFetch, draftToFieldValue, fieldValueToDraft } from "./payload-drafts";
 import type { SofabatonEditDetailView } from "../edit-detail-view";
@@ -66,6 +66,11 @@ export type PayloadDialogHost = ReactiveControllerHost &
     | "mode"
     | "testCommandPayload"
   >;
+
+/** RF bands by device class and by a record's code type (0x1D / 0x1E). */
+const RF_BAND_BY_DEVICE_CLASS: Record<string, 433 | 315> = { rf_433mhz: 433, rf_315mhz: 315 };
+const RF_BAND_BY_CODE_TYPE: Record<number, 433 | 315> = { 0x1d: 433, 0x1e: 315 };
+const RF_CODE_TYPE_BY_BAND: Record<433 | 315, number> = { 433: 0x1d, 315: 0x1e };
 
 export class PayloadDialogController implements ReactiveController {
   // ── Payload dialog (structured decoded form OR raw hex) ────────────
@@ -320,7 +325,7 @@ export class PayloadDialogController implements ReactiveController {
                   </div>
                 `
               : nothing}
-            ${this.host._learn.view === "off" && this.liveDeviceIsIr()
+            ${this.host._learn.view === "off" && this.payloadSignal() != null
               ? html`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
@@ -367,7 +372,7 @@ export class PayloadDialogController implements ReactiveController {
               ${this.host._learn.view !== "off"
                 ? this.host._learn.renderFooterActions()
                 : nothing}
-              ${this.host._learn.view === "off" && this.host.mode === "live" && this.liveDeviceIsIr() && this.host.testCommandPayload
+              ${this.host._learn.view === "off" && this.host.mode === "live" && this.payloadSignal() != null && this.host.testCommandPayload
                 ? html`
                     <button
                       class="dialog-btn payload-test-btn"
@@ -393,13 +398,18 @@ export class PayloadDialogController implements ReactiveController {
   }
 
   renderRawForm() {
+    // Learn sits beside the title: RF codes (and IR commands on an RF
+    // device) are edited as raw bytes, without the IR format tabs.
     return html`
       <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
-          <div class="decoded-form-sub">
-            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+        <div class="payload-raw-head">
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
+            <div class="decoded-form-sub">
+              ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+            </div>
           </div>
+          ${this.host._learn.renderEntryButton()}
         </div>
         <label class="decoded-field">
           <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
@@ -827,9 +837,31 @@ export class PayloadDialogController implements ReactiveController {
   };
 
   /**
-   * True for IR devices. Live payload *editing* is offered for all classes
-   * (raw hex, or the structured form where a parser exists), but the Test
-   * button — `playIrBlob` — is IR-only, so it gates on this.
+   * The open command's signal: IR, RF on a band, or null for classes that
+   * neither play nor learn (Wifi, Bluetooth). Test and Learn gate on it.
+   * The type is per command (an RF device can hold IR commands next to
+   * its RF ones, and the reverse), so a live fetch's record code type
+   * wins; the device class decides when it is unknown and in add mode.
+   */
+  payloadSignal(): PayloadSignal | null {
+    if (this.host.entityId == null || !this.host.bundle) return null;
+    const deviceClass = String(bundleDeviceClass(this.host.bundle, Number(this.host.entityId)) || "")
+      .trim()
+      .toLowerCase();
+    const deviceBand = RF_BAND_BY_DEVICE_CLASS[deviceClass] ?? null;
+    if (deviceClass !== "ir" && deviceBand == null) return null;
+    const libraryType = this.addMode ? null : this.liveFetched?.libraryType;
+    if (libraryType != null) {
+      const band = RF_BAND_BY_CODE_TYPE[Number(libraryType)];
+      if (band) return band;
+      if (deviceBand != null) return "ir";
+    }
+    return deviceClass === "ir" ? "ir" : deviceBand;
+  }
+
+  /**
+   * True for IR devices: they get the IR hex tabs (Pronto / Sofabaton)
+   * and paste conversion. Test and Learn follow `payloadSignal()`.
    */
   liveDeviceIsIr(): boolean {
     if (this.host.entityId == null || !this.host.bundle) return false;
@@ -1045,6 +1077,10 @@ export class PayloadDialogController implements ReactiveController {
         return;
       }
       restoreData = { transport: "hub_code_record", data_hex: normalized };
+      // An RF code names its record type: the backend would otherwise copy
+      // the type of the device's first command, which may be IR.
+      const signal = this.payloadSignal();
+      if (signal != null && signal !== "ir") restoreData["library_type"] = RF_CODE_TYPE_BY_BAND[signal];
     }
     const newId = nextFreeDeviceCommandId(this.host.bundle, target.deviceId);
     if (newId == null) {
@@ -1139,7 +1175,8 @@ export class PayloadDialogController implements ReactiveController {
     this.testStatus = "testing";
     this.testError = "";
     try {
-      await this.host.testCommandPayload(value);
+      const signal = this.payloadSignal();
+      await this.host.testCommandPayload(value, signal === "ir" ? null : signal);
       this.testStatus = "success";
     } catch (error) {
       this.testStatus = "error";

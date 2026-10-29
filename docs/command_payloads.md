@@ -23,8 +23,8 @@ payloads get a structured form; everything else is shown as raw hexadecimal
 bytes.
 
 1. Make the required change.
-2. For an IR Device, use **Test** to send the current payload once without
-   saving it.
+2. For an IR or RF command, use **Test** to send the current payload once
+   without saving it.
 3. Choose **Save** to stage the change in the Device editor.
 4. Review the pending changes and choose **Sync** to write them to the hub.
 
@@ -42,6 +42,8 @@ The form depends on the Device class:
   code (see below). On **X2 hubs only**, you can also enter a descriptive
   payload beginning with `P:`, such as `P:Sony12 R:40000 D:1 F:18 MUL:2`.
   You can Test it before saving.
+- **RF** (433 or 315 MHz Devices): enter the code as raw hex, or use **Learn**
+  to capture it from the original remote. You can Test it before saving.
 - **Supported Wifi classes** — edit the structured fields. The editor uses an
   existing command from that Device as a template for the hub-specific record.
   For MQTT, changing the payload's IDs does not change the IDs the hub publishes.
@@ -90,6 +92,21 @@ tabs. It offers up to two sources:
 
 Either way the code lands as Sofabaton Hex with its Pronto Hex view alongside.
 Test it, then Save; the command is written to the hub on the next Sync.
+
+RF commands (433 or 315 MHz, X1S and X2 hubs) have a **Learn** button next to
+the payload title. It goes straight to the hub's RF receiver, because Home
+Assistant has no RF source to offer: hold the original remote near the hub and
+press the button once. The code lands as raw hex, tagged with the command's
+band. Test it, then Save.
+
+433 MHz Learn and Test are tested on an X1S and an X2. For a 315 MHz command,
+Test sends the code exactly the way the hub does when you press that button on
+the remote, but our test hubs never captured a 315 MHz code, so 315 MHz Learn
+may simply time out on your hub.
+
+Learn and Test follow each command's own signal type, not the Device's class:
+an RF Device can hold IR commands next to its RF ones, and each one learns and
+plays as what it is.
 
 ## ◇ Payload forms
 
@@ -208,14 +225,15 @@ fields, response data, and examples.
 
 ## ◇ Important notes
 
-- **Test is available only for IR Devices.** Payload editing and saving also
-  support other Device classes.
+- **Test is available for IR and RF commands.** Payload editing and saving
+  also support other Device classes.
 - A payload Save in the live editor is staged; use the Device's **Sync** button
   to write it to the hub.
 - Test an IR payload before syncing it whenever possible, and confirm the
   target device actually reacts. The hub accepts a malformed IR payload
   without any error and then emits nothing, so a Test that "succeeds" in the
-  editor is not proof of IR output.
+  editor is not proof of IR output. The same goes for RF: Test only shows that
+  the hub accepted the code.
 - Editing and syncing are unavailable while the Sofabaton app or another hub
   operation holds the connection.
 - If the editor asks for a cache refresh, use **Refresh all** in the prompt

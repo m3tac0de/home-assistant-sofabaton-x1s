@@ -7,6 +7,7 @@ import type {
   IrEmissionRecord,
   IrEmitterConsumersResponse,
   IrLearnEvent,
+  RfBand,
   WifiEvent,
 } from "../../shared/ha-context";
 
@@ -21,7 +22,12 @@ export type BackupEditTargetKind = "activity" | "device";
 export interface FetchedCommandPayload {
   dataHex: string;
   decoded: BlobFetchDecodedBlock | null;
+  /** The record's code type (0x1D / 0x1E = RF); absent or null when unknown. */
+  libraryType?: number | null;
 }
+
+/** How a command's payload plays and learns: IR, or RF on a band. */
+export type PayloadSignal = "ir" | RfBand;
 
 export type BackupEditDetailSectionId =
   | "power"
@@ -61,10 +67,16 @@ export interface WifiEventsHost {
  * resolved function cancels the window (and is also how the view lets
  * go of a finished subscription). `subscribeEmissions` is the emitter
  * inbox: the backend replays its intercept ring on subscribe and after
- * every send. `consumers` gates the Home Assistant option.
+ * every send. `consumers` gates the Home Assistant option. With
+ * `band`, `learnFromHub` arms the hub's RF receiver instead (no Home
+ * Assistant source exists for RF).
  */
 export interface IrLearnHost {
-  learnFromHub(onEvent: (event: IrLearnEvent) => void, timeoutS: number): Promise<() => void>;
+  learnFromHub(
+    onEvent: (event: IrLearnEvent) => void,
+    timeoutS: number,
+    band?: RfBand | null,
+  ): Promise<() => void>;
   subscribeEmissions(onEvent: (emissions: IrEmissionRecord[]) => void): Promise<() => void>;
   consumers(): Promise<IrEmitterConsumersResponse>;
 }

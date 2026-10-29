@@ -129,12 +129,23 @@ class HubOpsMixin:
                             blob_kind = "decoded"
                         parsed_blob = decoded_blob_display_text(candidate)
 
+            # The record's code type from the cached command list: an RF
+            # device can hold IR commands next to its RF ones, so the
+            # editor reads IR vs RF per command, not from the device.
+            library_type: int | None = None
+            command_meta = (
+                self._proxy.state.command_metadata.get(normalized_device_id & 0xFF) or {}
+            ).get(int(command.get("command_id") or 0) & 0xFF)
+            if isinstance(command_meta, dict) and command_meta.get("library_type") is not None:
+                library_type = int(command_meta["library_type"]) & 0xFF
+
             commands_out.append(
                 {
                     "command_label": command.get("label"),
                     "device_id": normalized_device_id,
                     "command_id": command.get("command_id"),
                     "device_class": cached_device_class,
+                    "library_type": library_type,
                     "blob_kind": blob_kind,
                     "command_blob": blob_body.hex(" ") if blob_body else None,
                     "parsed_blob": parsed_blob,
@@ -619,6 +630,39 @@ class HubOpsMixin:
 
         return await self.hass.async_add_executor_job(
             partial(self._proxy.ir_learn_command, timeout=timeout)
+        )
+
+    @property
+    def rf_codes_supported(self) -> bool:
+        """True when the hub can learn and send RF codes (X1S and X2)."""
+
+        return bool(self._proxy.rf_codes_supported())
+
+    async def async_play_rf_blob(
+        self,
+        blob: bytes,
+        *,
+        band: int,
+        inter_frame_delay: float = 0.08,
+    ) -> bool:
+        """Send an RF code once from the hub (no persistence); ``band`` is 433 or 315."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.play_rf_blob,
+                blob,
+                band=band,
+                inter_frame_delay=inter_frame_delay,
+            )
+        )
+
+    async def async_rf_learn_command(
+        self, *, band: int, timeout: float = 60.0
+    ) -> dict[str, Any] | None:
+        """Arm RF learn mode on ``band`` and wait for one capture (or an ending)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.rf_learn_command, band=band, timeout=timeout)
         )
 
     def cancel_ir_learn(self) -> bool:

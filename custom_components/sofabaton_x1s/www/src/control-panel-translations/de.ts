@@ -376,6 +376,14 @@ export const TOOLS_CARD_STRINGS_DE = {
     learnHubRefused: "Der Hub ist nicht in den Anlernmodus gewechselt. Ist die Sofabaton-App verbunden oder läuft eine Synchronisierung?",
     learnHubFailed: "Anlernen fehlgeschlagen.",
     learnHubNoPayload: "Der Hub hat ein Signal empfangen, aber die Nutzdaten konnten nicht gelesen werden.",
+    learnRfAria: "Diesen RF-Code von der Originalfernbedienung anlernen",
+    learnRfListening: (mhz: number) =>
+      `Halte diese RF-Fernbedienung nah an den Hub und drücke die Taste einmal (${mhz} MHz).`,
+    learnRfLearned: (mhz: number) =>
+      `RF-Code mit ${mhz} MHz von der anderen Fernbedienung angelernt. Erst testen, dann speichern.`,
+    learnRfFailed: "Der Hub konnte dieses RF-Signal nicht lesen. Versuche es erneut mit der Fernbedienung näher am Hub.",
+    learnRfRefused: "Der Hub ist nicht in den RF-Anlernmodus gewechselt. Ist die Sofabaton-App verbunden oder läuft eine Synchronisierung?",
+    learnRfUnsupported: "Dieser Hub kann keine RF-Codes anlernen oder senden.",
     learnHaHelper:
       "Sende aus Home Assistant einen Befehl über den Sender des Hubs; er erscheint unten, sobald der Hub ihn abspielt. Du kannst diese Seite verlassen und später zurückkommen.",
     learnHaConsumers: "Integrationen, die den Infrarotsender dieses Hubs verwenden",

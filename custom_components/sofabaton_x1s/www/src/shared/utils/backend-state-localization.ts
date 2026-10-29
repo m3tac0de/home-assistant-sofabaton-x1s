@@ -164,6 +164,10 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
   const event = value && typeof value === "object" ? value as Record<string, unknown> : null;
   const state = String(event?.state || "").trim().toLowerCase();
   const code = backendErrorCode(value);
+  // RF windows (a learn subscription with a band) carry their own codes.
+  if (code === "rf_unsupported") return S.learnRfUnsupported;
+  if (code === "rf_learn_refused") return S.learnRfRefused;
+  if (code === "rf_learn_failed") return S.learnRfFailed;
   if (
     state === "refused"
     || code === "ir_learn_refused"

@@ -1,7 +1,8 @@
 """IR WS commands (R6, CR-H2-13).
 
 Blob fetch and play, IR learn and emissions subscriptions, the IR emitter
-consumers, the IR library and IR payload conversion.
+consumers, the IR library and IR payload conversion. Play and learn also
+take an RF ``band`` (433 / 315 MHz) for RF commands.
 """
 
 from __future__ import annotations
@@ -62,6 +63,24 @@ def _parse_play_ir_blob_input(raw_blob: Any) -> bytes:
     return blob_bytes
 
 
+# RF bands the payload editor can play and learn on (MHz).
+_RF_BANDS = (433, 315)
+
+
+def _parse_play_rf_blob_input(raw_blob: Any) -> bytes:
+    """An RF signal is plain hex: there is no descriptor form for RF."""
+
+    if not isinstance(raw_blob, str) or not raw_blob.strip():
+        raise ValueError("blob is required and must be a hex string")
+    try:
+        blob_bytes = bytes.fromhex(re.sub(r"\s+", "", raw_blob))
+    except ValueError as err:
+        raise ValueError(f"blob must be valid hex: {err}") from err
+    if len(blob_bytes) < 5:
+        raise ValueError("blob is too short to be a valid RF code")
+    return blob_bytes
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/blobs/fetch",
@@ -116,6 +135,7 @@ async def _ws_fetch_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -
         vol.Required("type"): f"{DOMAIN}/blobs/play",
         vol.Required("entry_id"): str,
         vol.Required("blob"): str,
+        vol.Optional("band"): vol.In(_RF_BANDS),
     }
 )
 @websocket_api.async_response
@@ -126,9 +146,18 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
+    band = msg.get("band")
+    if band is not None and not hub.rf_codes_supported:
+        connection.send_error(msg["id"], "rf_unsupported", "This hub cannot send RF codes")
+        return
+
     try:
-        blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
-        ok = await hub.async_play_ir_blob(blob_bytes)
+        if band is not None:
+            blob_bytes = _parse_play_rf_blob_input(msg.get("blob"))
+            ok = await hub.async_play_rf_blob(blob_bytes, band=int(band))
+        else:
+            blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
+            ok = await hub.async_play_ir_blob(blob_bytes)
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "unavailable", str(err))
         return
@@ -179,11 +208,18 @@ _IR_LEARN_ERROR_FAILED = "ir_learn_failed"
 _IR_LEARN_ERROR_REFUSED = "ir_learn_refused"
 
 
+_RF_LEARN_ERROR_FAILED = "rf_learn_failed"
+
+
+_RF_LEARN_ERROR_REFUSED = "rf_learn_refused"
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/ir_learn/subscribe",
         vol.Required("entry_id"): str,
         vol.Optional("timeout"): int,
+        vol.Optional("band"): vol.In(_RF_BANDS),
     }
 )
 @websocket_api.async_response
@@ -200,12 +236,24 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
     so the hub is never left armed behind a closed card; the outcome is
     then swallowed, because the client already dropped the subscription
     and would log an "unknown subscription" warning for it.
+
+    With ``band`` (433 / 315) the window is the hub's RF receiver instead:
+    the same events, ``learned`` carrying ``band`` and ``code_type``, and
+    ``rf_learn_*`` error codes. A hub without RF is refused up front with
+    ``rf_unsupported``.
     """
 
     hub = await runtime._async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
+
+    band = msg.get("band")
+    if band is not None and not hub.rf_codes_supported:
+        connection.send_error(msg["id"], "rf_unsupported", "This hub cannot learn RF codes")
+        return
+    failed_code = _IR_LEARN_ERROR_FAILED if band is None else _RF_LEARN_ERROR_FAILED
+    refused_code = _IR_LEARN_ERROR_REFUSED if band is None else _RF_LEARN_ERROR_REFUSED
 
     timeout = float(msg.get("timeout", _IR_LEARN_TIMEOUT_DEFAULT))
     timeout = min(max(timeout, _IR_LEARN_TIMEOUT_MIN), _IR_LEARN_TIMEOUT_MAX)
@@ -227,18 +275,24 @@ async def _ws_ir_learn_subscribe(hass: HomeAssistant, connection, msg: dict[str,
     _push({"state": "listening", "timeout_s": timeout})
 
     try:
-        result = await hub.async_ir_learn_command(timeout=timeout)
+        if band is not None:
+            result = await hub.async_rf_learn_command(band=int(band), timeout=timeout)
+        else:
+            result = await hub.async_ir_learn_command(timeout=timeout)
     except Exception as err:  # noqa: BLE001 - logged; card receives a stable code
-        _LOGGER.warning("IR learn window failed: %s", err)
-        result = {"state": "error", "error_code": _IR_LEARN_ERROR_FAILED}
+        _LOGGER.warning("%s learn window failed: %s", "IR" if band is None else "RF", err)
+        result = {"state": "error", "error_code": failed_code}
     finally:
         finished = True
 
     if result is None:
         result = {
             "state": "refused",
-            "error_code": _IR_LEARN_ERROR_REFUSED,
+            "error_code": refused_code,
         }
+    elif result.get("state") == "failed":
+        # The RF receiver reports a failed capture; the card shows it as an error.
+        result = {"state": "error", "error_code": failed_code}
     # HA pops the subscription before running its unsub callback, so a
     # missing entry means the client (or the socket) is gone.
     if msg["id"] in connection.subscriptions:

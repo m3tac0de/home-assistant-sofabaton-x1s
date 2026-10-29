@@ -1404,7 +1404,8 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         * raw hex — ``data_hex`` verbatim.
 
         Non-IR records need a ``library_type``: a structured ``wifi_ip``
-        command names its own (request text or URL record), every other one
+        command names its own (request text or URL record), a row whose
+        ``restore_data`` carries one uses it (an RF code), every other one
         is cloned from the cached record metadata of an existing command on
         the same device (a device's commands share one codec) — refuse
         rather than guess when absent. No
@@ -1492,6 +1493,10 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             return False
 
         library_type: int | None = _wifi_ip_record_type(restore_data)
+        if library_type is None and restore_data.get("library_type") is not None:
+            # The row names its own record type (an RF code added to a
+            # device whose first command may be IR).
+            library_type = int(restore_data["library_type"]) & 0xFF
         if library_type is None:
             for meta in (self.state.command_metadata.get(dev_lo) or {}).values():
                 if isinstance(meta, Mapping) and meta.get("library_type") is not None:

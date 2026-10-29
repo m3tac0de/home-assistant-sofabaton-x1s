@@ -1046,4 +1046,32 @@ test.describe("tools-card browser harness", () => {
     expect(row.right - choices.right).toBeGreaterThan(choices.left - row.left);
   });
 
+
+  test("an RF command learns straight from the hub's RF receiver and tests on its band", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.goto("/tests/tools-card-harness.html?scenario=payload-editor-rf");
+    const detail = page.locator("sofabaton-activities-tab sofabaton-edit-detail-view");
+    const dialog = detail.locator(".dialog");
+    await expect(dialog.locator(".payload-class-badge")).toHaveText("rf_433mhz");
+
+    // RF has no Home Assistant source: Learn opens on the listening view.
+    await dialog.locator(".payload-learn-btn").click();
+    await expect(dialog.locator(".learn-stage")).toContainText("RF remote near the hub");
+    await expect(dialog.locator(".learn-option")).toHaveCount(0);
+    await expect(dialog.locator(".payload-test-status.success")).toContainText("433 MHz RF code");
+    await expect(dialog.locator("textarea")).toHaveValue("00 0d 05 e0 1e 5c 01 e4 03 5c 01 e4 03 5c 01");
+
+    const played = page.waitForEvent("console", (msg) => msg.text().startsWith("rf-play "));
+    await page.evaluate(() => {
+      const tab = document.querySelector("sofabaton-control-panel").shadowRoot.querySelector("sofabaton-activities-tab");
+      const callWS = tab.hass.callWS.bind(tab.hass);
+      tab.hass.callWS = (msg) => {
+        if (String(msg.type).endsWith("blobs/play")) console.log(`rf-play ${msg.band}`);
+        return callWS(msg);
+      };
+    });
+    await dialog.locator(".payload-test-btn").click();
+    expect((await played).text()).toBe("rf-play 433");
+  });
+
 });

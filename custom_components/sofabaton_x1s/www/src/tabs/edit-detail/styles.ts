@@ -113,6 +113,8 @@ export const editDetailViewStyles = css`
       border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
       background: color-mix(in srgb, var(--primary-color) 10%, transparent);
     }
+    .payload-raw-head { display: flex; align-items: flex-start; gap: 12px; }
+    .payload-raw-head .decoded-form-head { flex: 1 1 auto; min-width: 0; }
     .payload-learn-btn:hover { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .payload-learn-btn ha-icon { --mdc-icon-size: 16px; }
     .learn-panel { display: flex; flex-direction: column; gap: 12px; }

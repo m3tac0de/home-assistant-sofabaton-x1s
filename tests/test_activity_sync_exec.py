@@ -982,6 +982,26 @@ def test_command_add_raw_clones_library_type_and_registers_sort():
     assert sort_call[2]["new_command_id"] == 12
 
 
+def test_command_add_raw_uses_the_rows_own_library_type():
+    # An RF code added to a device whose first command is IR names its own
+    # record type; the cached IR type must not be cloned onto it.
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "00 09 03 e0 1e 5c 01", "library_type": 0x1D,
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_command_record")
+    assert call[2]["library_type"] == 0x1D
+    assert call[2]["command_data"] == bytes.fromhex("000903e01e5c01")
+
+
 def test_command_add_raw_refuses_without_metadata_to_clone():
     base = device_base_bundle()
     edited = copy.deepcopy(base)

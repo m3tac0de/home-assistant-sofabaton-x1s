@@ -962,6 +962,25 @@ def extract_learned_ir_blob(record: bytes, *, hub_version: str | None = None) ->
     return data[start:-1] or None
 
 
+def extract_learned_rf_blob(record: bytes) -> bytes | None:
+    """Return the RF signal bytes from a reassembled family-0x06 learn record.
+
+    RF learning needs an X1S or X2, whose capture record has the same
+    layout as an IR one: fixed header (count, pages, device, key, code
+    type, 6-byte code), the empty 60-byte label slot, the signal, and a
+    trailing persist byte. The RF signal is opaque, so it is cut at the
+    fixed offset instead of validated; the record's code-type byte is not
+    used (the band the learn window was armed on names the code).
+    """
+
+    if not isinstance(record, (bytes, bytearray)):
+        return None
+    data = bytes(record)
+    if len(data) <= _LEARN_RECORD_BLOB_START_X1S + 1:
+        return None
+    return data[_LEARN_RECORD_BLOB_START_X1S:-1] or None
+
+
 def _extract_ir_dump_label(payload: bytes) -> str | None:
     if len(payload) <= _IR_DUMP_LABEL_START:
         return None

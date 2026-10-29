@@ -32,7 +32,7 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
-import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat, WifiEvent } from "../shared/ha-context";
+import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat, RfBand, WifiEvent } from "../shared/ha-context";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -108,6 +108,7 @@ import type {
   IrEmitterHost,
   IrLearnHost,
   MacroTargetMode,
+  PayloadSignal,
   WifiEventsHost,
 } from "./edit-detail/host-types";
 import { DeliveryPillController, deliveryPillStyles } from "../components/delivery-pill";
@@ -233,7 +234,8 @@ export class SofabatonEditDetailView extends LitElement {
   // to fetch a command's blob on demand and to Test it on the hub. Absent
   // in backup mode (the payload already lives in the bundle there).
   fetchCommandPayload: ((deviceId: number, commandId: number) => Promise<FetchedCommandPayload | null>) | null = null;
-  testCommandPayload: ((hex: string) => Promise<void>) | null = null;
+  // `band` set = an RF code (433 / 315 MHz); null = IR.
+  testCommandPayload: ((hex: string, band?: RfBand | null) => Promise<void>) | null = null;
   // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
   convertForeignPayload:
     | ((text: string, format: IrPayloadForeignFormat) => Promise<IrPayloadConvertResponse>)
@@ -1427,9 +1429,14 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
-  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
+  /** Learn is a live-hub affordance for IR and RF commands; the host must supply the facade. */
   _learnAvailable(): boolean {
-    return this.mode === "live" && !!this.irLearn && this._payload.liveDeviceIsIr();
+    return this.mode === "live" && !!this.irLearn && this._learnSignal() != null;
+  }
+
+  /** What the open command learns as: IR, or RF on a band. */
+  _learnSignal(): PayloadSignal | null {
+    return this._payload.payloadSignal();
   }
 
   /**

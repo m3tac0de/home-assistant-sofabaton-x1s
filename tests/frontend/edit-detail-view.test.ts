@@ -2016,3 +2016,115 @@ test("an old bundle without an icon or hub line keeps the plain rename dialog", 
   assert.match(templateText(element._renderDetailRenameDeleteButtons("activity")), /Rename activity/);
   assert.equal(templateText(element._renderDetailTile("activity")), "");
 });
+
+// ── RF commands: Test and Learn follow the command's own signal ─────────
+// The record code type (0x1D / 0x1E) wins over the device class: an RF
+// device can hold IR commands and an IR device RF ones.
+
+function liveRfDevice(deviceClass = "rf_433mhz"): EditorElement {
+  const element = createLiveDeviceEditor();
+  element.bundle.devices[0].device.device_class = deviceClass;
+  return element;
+}
+
+test("payloadSignal reads the device class, then the fetched record type", async () => {
+  const element = createLiveDeviceEditor();
+  assert.equal(element._payload.payloadSignal(), "ir");
+  element.entityId = 2; // wifi_roku: neither plays nor learns
+  assert.equal(element._payload.payloadSignal(), null);
+
+  const rf = liveRfDevice("rf_315mhz");
+  assert.equal(rf._payload.payloadSignal(), 315);
+  rf.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null, libraryType: 0x0d });
+  await rf._payload.liveFetchAndOpen(10);
+  assert.equal(rf._payload.payloadSignal(), "ir"); // an IR command on an RF device
+
+  const ir = createLiveDeviceEditor();
+  ir.fetchCommandPayload = async () => ({ dataHex: "00 09 03 e0 1e", decoded: null, libraryType: 0x1d });
+  await ir._payload.liveFetchAndOpen(10);
+  assert.equal(ir._payload.payloadSignal(), 433); // an RF command on an IR device
+});
+
+test("Test on an RF command plays it on the command's band", async () => {
+  const element = liveRfDevice();
+  const played: Array<[string, unknown]> = [];
+  element.testCommandPayload = async (hex: string, band?: unknown) => { played.push([hex, band]); };
+  element.fetchCommandPayload = async () => ({ dataHex: "00 09 03 e0 1e 5c 01", decoded: null, libraryType: 0x1d });
+
+  await element._payload.liveFetchAndOpen(10);
+  assert.match(templateText(element._payload.render()), /payload-test-btn/);
+  await element._payload.runLiveTest();
+
+  assert.deepEqual(played, [["00 09 03 e0 1e 5c 01", 433]]);
+  assert.equal(element._payload.testStatus, "success");
+
+  // IR keeps playing without a band.
+  const ir = createLiveDeviceEditor();
+  ir.testCommandPayload = async (hex: string, band?: unknown) => { played.push([hex, band]); };
+  ir.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
+  await ir._payload.liveFetchAndOpen(10);
+  await ir._payload.runLiveTest();
+  assert.deepEqual(played[1], ["0a 4f 22", null]);
+});
+
+test("RF learn skips the source menu and arms the hub's RF receiver", async () => {
+  const { host, calls } = learnHost();
+  let band: unknown = "unset";
+  const rfHost = {
+    ...host,
+    learnFromHub: async (onEvent: LearnEventSink, timeoutS: number, rfBand?: unknown) => {
+      band = rfBand;
+      return host.learnFromHub(onEvent, timeoutS);
+    },
+  };
+  const element = liveRfDevice();
+  element.irLearn = rfHost;
+  element._payload.openAddWithSnapshot(1, null);
+  assert.equal(element._learnAvailable(), true);
+
+  await element._learn.enter();
+  await settle();
+  assert.equal(element._learn.view, "hub");
+  assert.equal(band, 433);
+  // No Home Assistant source for RF: no inbox, no consumer lookup.
+  assert.equal(calls.emissionSink, null);
+  assert.equal(calls.consumersCalls, 0);
+
+  calls.learnEvents!({ state: "listening", timeout_s: 60 });
+  assert.match(templateText(element._learn.renderHub()), /RF remote near the hub/);
+
+  calls.learnEvents!({ state: "learned", payload_hex: "000903e01e5c01", band: 433, code_type: 0x1d });
+  assert.equal(element._learn.view, "off");
+  assert.equal(element._payload.rawDraft, "00 09 03 e0 1e 5c 01");
+  assert.equal(element._learn.sourceNote, TOOLS_CARD_STRINGS.backup.learnRfLearned(433));
+});
+
+test("RF learn: Back leaves learn mode instead of opening a menu", async () => {
+  const { host, calls } = learnHost();
+  const element = liveRfDevice("rf_315mhz");
+  element.irLearn = host;
+  element._payload.openAddWithSnapshot(1, null);
+
+  await element._learn.enter();
+  await settle();
+  calls.learnEvents!({ state: "error", error_code: "rf_learn_failed" });
+  assert.equal(element._learn.hubLearnIsTerminal(), true);
+  assert.match(templateText(element._learn.renderHub()), /could not read that RF signal/);
+
+  element._learn.backToMenu();
+  assert.equal(element._learn.view, "off");
+});
+
+test("adding a raw RF code names its record type for the sync", () => {
+  const element = liveRfDevice("rf_315mhz");
+  const changes = collectBundleChanges(element);
+  element._payload.openAddWithSnapshot(1, null);
+  element._payload.nameDraft = "Fan off";
+  element._payload.rawDraft = "00 09 03 e0 1e 5c 01";
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const added = (changes[0] as any).devices[0].commands.find((c: any) => c.name === "Fan off");
+  assert.equal(added.restore_data.library_type, 0x1e);
+  assert.equal(added.restore_data.data_hex, "00 09 03 e0 1e 5c 01");
+});

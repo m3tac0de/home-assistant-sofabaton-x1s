@@ -32,6 +32,8 @@ def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
     )
 
     hub._proxy.state.devices[11] = {"device_class": "IR"}
+    # The command list's cached record metadata names the code type.
+    hub._proxy.state.command_metadata[11][18] = {"library_type": 0x0D}
     blob_body = build_descriptive_ir_blob_body("P:Sony12 R:40000 D:1 F:18 MUL:2")
     replay_tail = (sum(blob_body) + 2) & 0xFF
 
@@ -68,6 +70,7 @@ def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
                 "device_id": 11,
                 "command_id": 18,
                 "device_class": "IR",
+                "library_type": 0x0D,
                 "blob_kind": "descriptive",
                 "command_blob": blob_body.hex(" "),
                 "parsed_blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
