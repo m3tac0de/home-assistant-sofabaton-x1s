@@ -5408,7 +5408,7 @@ function backStepsBack(state, historyLength, haVersion) {
   const [year, month] = String(haVersion ?? "").split(".").map(Number);
   if (!Number.isFinite(year) || !Number.isFinite(month)) return false;
   const tagsFrom = year > 2026 || year === 2026 && month >= 9;
-  return !tagsFrom && historyLength > 1;
+  return !tagsFrom && !state?.root && historyLength > 1;
 }
 var PANEL_URL_PATH = "/sofabaton-x";
 var VIEW_PATHS = { remote: "/virtual-remote", panel: "/control-panel" };
@@ -5643,10 +5643,10 @@ var SofabatonXPanel = class extends i4 {
   /* Navigation mirrors HA's own helpers (src/common/navigate.ts): HA pushes a
      history entry with `{ from: <previous path> }` and marks the app's first
      entry `{ root: true }`; its goBack() steps back only when `from` is set
-     and otherwise replaces the entry with the default dashboard. The
-     companion apps (Android's back button, iOS) ride on that same history,
-     so the panel keeps to the same state shape and the same
-     `location-changed` event instead of inventing its own. */
+     (2026.9+, see backStepsBack) and otherwise replaces the entry with the
+     default dashboard. The companion apps (Android's back button, iOS) ride
+     on that same history, so the panel keeps to the same state shape and the
+     same `location-changed` event instead of inventing its own. */
   _replacePath(view) {
     const path = `${PANEL_URL_PATH}${pathForView(view)}`;
     if (typeof window === "undefined" || window.location.pathname === path) return;

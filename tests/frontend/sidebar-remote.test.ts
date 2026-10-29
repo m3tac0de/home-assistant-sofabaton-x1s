@@ -269,6 +269,8 @@ test("back: older HA steps back when there is history", () => {
   assert.equal(backStepsBack(null, 3, "2025.12.4"), true);
   // first entry, nothing to go back to
   assert.equal(backStepsBack({ root: true }, 1, "2026.8.3"), false);
+  // deep link, then a dashboard and browser back: still the first entry
+  assert.equal(backStepsBack({ root: true }, 2, "2026.8.3"), false);
 });
 
 test("back: unknown version without from goes home", () => {
