@@ -179,6 +179,7 @@ export class IrEmitterPillController implements ReactiveController {
       minWidth: 320,
       maxHeight: 560,
       within: trigger.closest<HTMLElement>(".detail-view"),
+      widthOnly: true,
     });
     this.open = true;
     this._listenForEscape(true);

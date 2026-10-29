@@ -957,7 +957,7 @@ export class SbPanelWifiDevices extends LitElement {
       this._closeDelivery();
       return;
     }
-    this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view") });
+    this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true });
     this._deliveryOpen = true;
   };
 

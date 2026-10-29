@@ -23017,15 +23017,16 @@ function anchoredListPosition(trigger, menu = null) {
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
   const room = inner ?? bounds;
+  const tall = menu?.widthOnly ? bounds : room;
   const gap = 4;
   const margin = 8;
-  const top = Math.max(bounds.top, room.top);
-  const bottom = Math.min(bounds.bottom, room.bottom);
+  const top = Math.max(bounds.top, tall.top);
+  const bottom = Math.min(bounds.bottom, tall.bottom);
   const minX = Math.max(bounds.left, room.left) + margin;
   const maxX = Math.min(bounds.right, room.right) - margin;
   const below = bottom - anchor.bottom - gap - margin;
@@ -25591,7 +25592,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._closeIr();
         return;
       }
-      this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view") });
+      this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true });
       this._irOpen = true;
       this._irListen(true);
       void this._readIr();
@@ -30347,7 +30348,7 @@ var SbPanelWifiDevices = class extends i4 {
         this._closeDelivery();
         return;
       }
-      this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view") });
+      this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true });
       this._deliveryOpen = true;
     };
     this._closeDelivery = () => {

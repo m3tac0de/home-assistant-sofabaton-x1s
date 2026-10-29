@@ -75,9 +75,11 @@ export const deliveryPillStyles = css`
   .delivery-backdrop { position: fixed; inset: 0; z-index: 8; border: 0; padding: 0; margin: 0; background: transparent; cursor: default; }
   .delivery-pop {
     z-index: 9;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overscroll-behavior: contain;
     border: 1px solid var(--divider-color);
     border-radius: var(--tools-radius-sm, 12px);
     background: var(--ha-card-background, var(--card-background-color));
@@ -288,6 +290,7 @@ export class DeliveryPillController implements ReactiveController {
       minWidth: 320,
       maxHeight: 560,
       within: trigger.closest<HTMLElement>(".detail-view"),
+      widthOnly: true,
     });
     this.open = true;
     this._listenForEscape(true);

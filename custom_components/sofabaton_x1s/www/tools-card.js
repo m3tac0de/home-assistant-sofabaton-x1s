@@ -7516,15 +7516,16 @@ function anchoredListPosition(trigger, menu = null) {
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
   const room = inner ?? bounds;
+  const tall = menu?.widthOnly ? bounds : room;
   const gap = 4;
   const margin = 8;
-  const top = Math.max(bounds.top, room.top);
-  const bottom = Math.min(bounds.bottom, room.bottom);
+  const top = Math.max(bounds.top, tall.top);
+  const bottom = Math.min(bounds.bottom, tall.bottom);
   const minX = Math.max(bounds.left, room.left) + margin;
   const maxX = Math.min(bounds.right, room.right) - margin;
   const below = bottom - anchor.bottom - gap - margin;
@@ -8137,7 +8138,8 @@ var IrEmitterPillController = class {
       this._menuStyle = anchoredListPosition(trigger, {
         minWidth: 320,
         maxHeight: 560,
-        within: trigger.closest(".detail-view")
+        within: trigger.closest(".detail-view"),
+        widthOnly: true
       });
       this.open = true;
       this._listenForEscape(true);
@@ -13413,9 +13415,11 @@ var deliveryPillStyles = i`
   .delivery-backdrop { position: fixed; inset: 0; z-index: 8; border: 0; padding: 0; margin: 0; background: transparent; cursor: default; }
   .delivery-pop {
     z-index: 9;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overscroll-behavior: contain;
     border: 1px solid var(--divider-color);
     border-radius: var(--tools-radius-sm, 12px);
     background: var(--ha-card-background, var(--card-background-color));
@@ -13509,7 +13513,8 @@ var DeliveryPillController = class {
       this._menuStyle = anchoredListPosition(trigger, {
         minWidth: 320,
         maxHeight: 560,
-        within: trigger.closest(".detail-view")
+        within: trigger.closest(".detail-view"),
+        widthOnly: true
       });
       this.open = true;
       this._listenForEscape(true);

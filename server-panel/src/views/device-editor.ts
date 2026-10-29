@@ -610,7 +610,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
       this._closeIr();
       return;
     }
-    this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view") });
+    this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true });
     this._irOpen = true;
     this._irListen(true);
     void this._readIr();

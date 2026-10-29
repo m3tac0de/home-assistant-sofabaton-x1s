@@ -48,6 +48,17 @@ test("anchoredListStyle: a menu keeps its minimum width, aligns to the trigger's
   assert.equal(anchoredListStyle(button, viewport, within, { minWidth: 260 }), "position: fixed; top: 140px; bottom: auto; left: 876px; right: auto; width: 260px; max-height: 320px;");
 });
 
+test("anchoredListStyle: widthOnly lets a menu run past the bottom of a short `within`", () => {
+  const pill = box(800, 100, 60, 20);
+  const shortView = box(300, 80, 760, 320);
+  // Narrowed to the view: 400 - 120 - 12 = 268.
+  assert.equal(anchoredListStyle(pill, viewport, shortView, { minWidth: 320, maxHeight: 560 }), "position: fixed; top: 124px; bottom: auto; left: 540px; right: auto; width: 320px; max-height: 268px;");
+  // The window's room instead (900 - 120 - 12 = 768, capped to 560); the width stays inside the view.
+  assert.equal(anchoredListStyle(pill, viewport, shortView, { minWidth: 320, maxHeight: 560, widthOnly: true }), "position: fixed; top: 124px; bottom: auto; left: 540px; right: auto; width: 320px; max-height: 560px;");
+  const narrowView = box(700, 80, 300, 320);
+  assert.equal(anchoredListStyle(pill, viewport, narrowView, { minWidth: 320, maxHeight: 560, widthOnly: true }), "position: fixed; top: 124px; bottom: auto; left: 708px; right: auto; width: 284px; max-height: 560px;");
+});
+
 test("anchoredListStyle: in RTL a menu hangs from the trigger's left edge, still inside `within`", () => {
   const within = box(200, 0, 960, 900);
   // The trigger sits at the row's end, which is the left in RTL: LTR math would clamp to 208.

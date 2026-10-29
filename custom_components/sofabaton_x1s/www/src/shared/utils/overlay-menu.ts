@@ -113,6 +113,10 @@ export interface AnchoredMenuOptions {
   within?: HTMLElement | null;
   /** The tallest the menu may grow (320 px when absent). */
   maxHeight?: number;
+  /** `within` bounds the width only: the menu may run past its bottom (or
+   *  top) up to the frame's, so a popover under a short view's header is
+   *  not squeezed into that view. */
+  widthOnly?: boolean;
 }
 
 /**
@@ -128,18 +132,19 @@ export function anchoredListPosition(trigger: HTMLElement, menu: AnchoredMenuOpt
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight } : null,
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null,
   );
 }
 
 /** The pure math behind anchoredListPosition: `anchor` and `inner` in the same coordinates as `bounds`. */
-export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, menu: { minWidth: number; rtl?: boolean; maxHeight?: number } | null): string {
+export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, menu: { minWidth: number; rtl?: boolean; maxHeight?: number; widthOnly?: boolean } | null): string {
   const room = inner ?? bounds;
+  const tall = menu?.widthOnly ? bounds : room;
   const gap = 4;
   const margin = 8;
   // The room the list may use: the frame, narrowed to `inner`.
-  const top = Math.max(bounds.top, room.top);
-  const bottom = Math.min(bounds.bottom, room.bottom);
+  const top = Math.max(bounds.top, tall.top);
+  const bottom = Math.min(bounds.bottom, tall.bottom);
   const minX = Math.max(bounds.left, room.left) + margin;
   const maxX = Math.min(bounds.right, room.right) - margin;
   const below = bottom - anchor.bottom - gap - margin;
