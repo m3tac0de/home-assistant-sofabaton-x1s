@@ -362,8 +362,6 @@ var TOOLS_CARD_STRINGS_NL = {
     capturingFromCache: (kind) => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} uit de hubcache laden\u2026`,
     needsRefreshTitle: "Vernieuw de hubcache om te bewerken",
     needsRefreshBody: (kind) => `${dezeDit(kind)} ${soort(kind)} staat nog niet in de lokale hubcache. Vernieuw de hubcache om ${dezeDitOnzijdig(kind)} in de editor te laden. Dit kan enkele minuten duren, afhankelijk van de grootte van je hubconfiguratie.`,
-    syncToHub: "Synchroniseren met hub",
-    syncUpToDate: "Actueel",
     deletingTitle: (kind) => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} verwijderen`,
     deletingMessage: (kind) => `${dezeDit(kind)} ${soort(kind)} van de hub verwijderen\u2026`,
     syncingTitle: "Synchroniseren met je hub",

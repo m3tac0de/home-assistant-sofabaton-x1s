@@ -368,17 +368,21 @@ test.describe("tools-card Hub list layout", () => {
     expect(deviceMetrics.rowHeight).toBeLessThanOrEqual(50);
   });
 
-  test("clips long Backup edit titles to two lines on narrow headers and ellipsizes them on wider headers", async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 800 });
-    await page.goto("/tests/tools-card-harness.html");
-    await page.evaluate(async () => {
-      await window.__toolsCardHarness.loadScenario("backup-edit");
+  const mountHeader = async (page, url, scenario) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await page.goto(url);
+    await page.evaluate(async (name) => {
+      await window.__toolsCardHarness.loadScenario(name);
       document.body.style.padding = "0";
       document.querySelector(".controls")?.remove();
       document.querySelector(".status-bar")?.remove();
       const layout = document.querySelector(".harness-layout");
       if (layout) layout.style.display = "block";
-    });
+    }, scenario);
+  };
+
+  test("keeps long Backup edit titles on one ellipsized line, with the tile at every width", async ({ page }) => {
+    await mountHeader(page, "/tests/tools-card-harness.html", "backup-edit");
 
     const measureDetail = (kind) => page.evaluate(async ({ kind: detailKind }) => {
       const card = document.querySelector("sofabaton-control-panel");
@@ -398,15 +402,10 @@ test.describe("tools-card Hub list layout", () => {
       const root = detail?.shadowRoot;
       const row = root?.querySelector(".detail-title-row");
       const title = root?.querySelector(".detail-title");
-      const actions = root?.querySelector(".detail-title-actions");
       const back = root?.querySelector(".back-btn");
-      if (!row || !title || !actions || !back) return null;
+      if (!row || !title || !back) return null;
 
       title.textContent = `${detailKind} — An exceptionally long living room entertainment system name that must never widen the card`;
-      const rowRect = row.getBoundingClientRect();
-      const actionsRect = actions.getBoundingClientRect();
-      const backRect = back.getBoundingClientRect();
-      const titleRect = title.getBoundingClientRect();
       const titleStyle = getComputedStyle(title);
       const tile = root.querySelector(".detail-entity-tile");
       return {
@@ -416,21 +415,14 @@ test.describe("tools-card Hub list layout", () => {
         rowScrollWidth: row.scrollWidth,
         titleWidth: title.clientWidth,
         titleScrollWidth: title.scrollWidth,
-        titleHeight: title.clientHeight,
-        titleScrollHeight: title.scrollHeight,
-        lineHeight: parseFloat(titleStyle.lineHeight),
-        lineClamp: titleStyle.webkitLineClamp,
         textOverflow: titleStyle.textOverflow,
         whiteSpace: titleStyle.whiteSpace,
         tileVisible: Boolean(tile && tile.getBoundingClientRect().width > 0),
-        actionsBelowTitle: actionsRect.top >= titleRect.bottom,
-        actionsBesideTitle: actionsRect.left >= titleRect.right,
-        actionsInsideRow: actionsRect.left >= rowRect.left - 0.5 && actionsRect.right <= rowRect.right + 0.5 && actionsRect.bottom <= rowRect.bottom + 0.5,
-        backInsideRow: backRect.left >= rowRect.left - 0.5,
+        backInsideRow: back.getBoundingClientRect().left >= row.getBoundingClientRect().left - 0.5,
       };
     }, { kind });
 
-    for (const width of [320, 450, 470, 600, 620, 900]) {
+    for (const width of [320, 440, 470, 900]) {
       await page.setViewportSize({ width, height: 800 });
       for (const kind of ["activity", "device"]) {
         const metrics = await measureDetail(kind);
@@ -438,24 +430,66 @@ test.describe("tools-card Hub list layout", () => {
         expect(metrics.cardWidth).toBeLessThanOrEqual(width);
         expect(metrics.cardScrollWidth).toBeLessThanOrEqual(metrics.cardWidth);
         expect(metrics.rowScrollWidth).toBeLessThanOrEqual(metrics.rowWidth);
-        expect(metrics.tileVisible).toBe(width > 600);
-        if (width <= 450) {
-          expect(metrics.titleScrollWidth).toBeLessThanOrEqual(metrics.titleWidth);
-          expect(metrics.titleScrollHeight).toBeGreaterThan(metrics.titleHeight);
-          expect(metrics.titleHeight).toBeCloseTo(metrics.lineHeight * 2, 0);
-          expect(metrics.lineClamp).toBe("2");
-          expect(metrics.whiteSpace).toBe("normal");
-          expect(metrics.actionsBelowTitle).toBe(true);
-        } else {
-          expect(metrics.titleScrollWidth).toBeGreaterThan(metrics.titleWidth);
-          expect(metrics.textOverflow).toBe("ellipsis");
-          expect(metrics.whiteSpace).toBe("nowrap");
-          expect(metrics.actionsBesideTitle).toBe(true);
-        }
-        expect(metrics.actionsInsideRow).toBe(true);
+        expect(metrics.tileVisible).toBe(true);
+        expect(metrics.titleScrollWidth).toBeGreaterThan(metrics.titleWidth);
+        expect(metrics.textOverflow).toBe("ellipsis");
+        expect(metrics.whiteSpace).toBe("nowrap");
         expect(metrics.backInsideRow).toBe(true);
       }
     }
+  });
+
+  // The German Sync wording is the long one: if the title keeps its room there, it does everywhere.
+  const expectOneRowHeader = async (page, host, pillSelector) => {
+    const row = page.locator(`${host} .detail-title-row`);
+    const title = page.locator(`${host} .detail-title-row .detail-title`);
+    const pill = page.locator(`${host} .detail-title-meta ${pillSelector}`);
+    const sync = page.locator(`${host} .detail-title-row .detail-sync-btn`);
+    const label = page.locator(`${host} .detail-title-row .detail-sync-label`);
+    const icon = page.locator(`${host} .detail-title-row .detail-sync-icon`);
+
+    for (const width of [320, 440, 470, 900]) {
+      await page.setViewportSize({ width, height: 800 });
+      const [titleBox, pillBox, syncBox] = await Promise.all([title.boundingBox(), pill.boundingBox(), sync.boundingBox()]);
+      expect(pillBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
+      expect(syncBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width - 1);
+      expect(syncBox.y).toBeLessThan(titleBox.y + titleBox.height);
+      expect(titleBox.width).toBeGreaterThanOrEqual(100);
+      expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      if (width <= 440) {
+        await expect(label).toBeHidden();
+        await expect(icon).toBeVisible();
+        expect(syncBox.height).toBeGreaterThanOrEqual(44);
+      } else {
+        await expect(label).toBeVisible();
+        await expect(icon).toBeHidden();
+      }
+    }
+  };
+
+  test("the live editor header stays one row with Sync's long wording at every width", async ({ page }) => {
+    await mountHeader(page, "/tests/tools-card-harness.html?lang=de", "device-editor-ir-repeaters");
+    const host = "sofabaton-activities-tab sofabaton-edit-detail-view";
+    await page.locator(host).evaluate((el) => { el.dirty = true; return el.updateComplete; });
+    await expect(page.locator(`${host} .detail-title-row .detail-sync-label`)).toHaveText("Synchronisieren");
+    await expectOneRowHeader(page, host, "button.ir-pill");
+  });
+
+  test("the Wifi device header stays one row at every width, as in the editors", async ({ page }) => {
+    await mountHeader(page, "/tests/tools-card-harness.html?lang=de", "wifi-delivery-failed");
+    await expectOneRowHeader(page, "sofabaton-wifi-commands-tab", "button.delivery-pill");
+  });
+
+  test("the header tile opens the edit dialog, where Delete lives", async ({ page }) => {
+    await mountHeader(page, "/tests/tools-card-harness.html", "device-editor-ir-repeaters");
+    const host = "sofabaton-activities-tab sofabaton-edit-detail-view";
+    await page.locator(`${host} .detail-entity-tile`).click();
+    const dialog = page.locator(`${host} .dialog.small`);
+    await expect(dialog.locator(".dialog-title")).toHaveText("Edit device");
+    await expect(dialog.locator(".appearance-pane")).toHaveCount(0);
+    await dialog.locator(".dialog-footer-delete").click();
+    await expect(dialog.locator(".dialog-footer-delete")).toHaveCount(0);
+    await expect(page.locator(`${host} .dialog-btn-danger`)).toHaveText("Delete");
   });
 
   test("uses the full Automation label and hides device-detail nav icons on mobile", async ({ page }) => {

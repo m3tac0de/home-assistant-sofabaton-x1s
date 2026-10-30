@@ -359,8 +359,6 @@ var TOOLS_CARD_STRINGS_FR = {
     capturingFromCache: (kind) => `Chargement de ${kind === "activity" ? "l\u2019activit\xE9" : "l\u2019appareil"} depuis le cache du hub\u2026`,
     needsRefreshTitle: "Actualisez le cache du hub pour modifier",
     needsRefreshBody: (kind) => `${kind === "activity" ? "Cette activit\xE9" : "Cet appareil"} ne figure pas encore dans le cache local du hub. Actualisez le cache du hub pour ${kind === "activity" ? "la" : "le"} charger dans l\u2019\xE9diteur. Cela peut prendre quelques minutes selon la taille de la configuration de votre hub.`,
-    syncToHub: "Synchroniser avec le hub",
-    syncUpToDate: "\xC0 jour",
     deletingTitle: (kind) => `Suppression de ${kind === "activity" ? "l\u2019activit\xE9" : "l\u2019appareil"}`,
     deletingMessage: (kind) => `Suppression de ${ceType(kind)} du hub\u2026`,
     syncingTitle: "Synchronisation avec votre hub",

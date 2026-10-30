@@ -667,8 +667,8 @@ test("the Edit device pencil shows only once the Wifi Device is on the hub", () 
   const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1", version: "X2" };
   const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 0 };
-  assert.equal(element._renderEditDeviceButton({ ...device, deployed_device_id: null }, false), nothing);
-  const deployed = JSON.stringify(element._renderEditDeviceButton({ ...device, deployed_device_id: 7 }, false));
+  assert.equal(element._renderDeviceEdit({ ...device, deployed_device_id: null }, false), nothing);
+  const deployed = JSON.stringify(element._renderDeviceEdit({ ...device, deployed_device_id: 7 }, false));
   assert.match(deployed, /mdi:pencil/);
   assert.match(deployed, /Edit device/);
 });
@@ -716,25 +716,24 @@ test("the Edit device dialog refuses to save a device the hub cache does not hol
   assert.equal(calls.some((call) => call.type === "sofabaton_x1s/device/sync"), false);
 });
 
-test("the Wifi device header shows the record's tile once the remote entity publishes it", () => {
+test("the Wifi device header swaps its pencil for the record's tile once the remote entity publishes it", () => {
   const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1", version: "X2" };
   const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 0, deployed_device_id: 7 };
   const remote = (devices: unknown[]) => ({ states: { "remote.living": { state: "on", attributes: { entry_id: "hub-1", hub_version: "X2", devices } } } });
   element.hass = remote([]);
-  assert.equal(element._renderDeviceTile(device, false), nothing);
+  const plain = JSON.stringify(element._renderDeviceEdit(device, false));
+  assert.match(plain, /mdi:pencil/);
+  assert.doesNotMatch(plain, /detail-entity-tile/);
   element.hass = remote([{ id: 7, name: "TV", icon: 16, color_id: 2 }]);
-  const rendered = JSON.stringify(element._renderDeviceTile(device, false));
+  const rendered = JSON.stringify(element._renderDeviceEdit(device, false));
   assert.match(rendered, /detail-entity-tile/);
   assert.match(rendered, /#F16161/);
-  assert.equal(element._renderDeviceTile({ ...device, deployed_device_id: null }, false), nothing);
+  assert.equal(element._renderDeviceEdit({ ...device, deployed_device_id: null }, false), nothing);
 });
 
-test("the header tile opens the Edit device dialog with the picker showing", async () => {
+test("the header tile opens the Edit device dialog with the picker on demand", async () => {
   const { element } = editDeviceElement(EDIT_BUNDLE);
-  await element._openEditDevice(true);
-  assert.equal(element._editDeviceDialog.pickerOpen, true);
-  element._closeEditDeviceDialog();
   await element._openEditDeviceDialog();
   assert.equal(element._editDeviceDialog.pickerOpen, false);
 });

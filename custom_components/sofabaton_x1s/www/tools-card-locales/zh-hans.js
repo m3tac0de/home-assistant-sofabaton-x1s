@@ -359,8 +359,6 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     capturingFromCache: (kind) => `\u6B63\u5728\u4ECE Hub \u7F13\u5B58\u52A0\u8F7D${kindLabel(kind)}\u2026`,
     needsRefreshTitle: "\u8BF7\u5237\u65B0 Hub \u7F13\u5B58\u540E\u518D\u7F16\u8F91",
     needsRefreshBody: (kind) => `\u6B64${kindLabel(kind)}\u5C1A\u672A\u5B58\u5165\u672C\u5730 Hub \u7F13\u5B58\u3002\u8BF7\u5237\u65B0 Hub \u7F13\u5B58\uFF0C\u5C06\u5176\u52A0\u8F7D\u5230\u7F16\u8F91\u5668\u3002\u6240\u9700\u65F6\u95F4\u53D6\u51B3\u4E8E Hub \u914D\u7F6E\u5927\u5C0F\uFF0C\u53EF\u80FD\u9700\u8981\u51E0\u5206\u949F\u3002`,
-    syncToHub: "\u540C\u6B65\u5230 Hub",
-    syncUpToDate: "\u5DF2\u662F\u6700\u65B0",
     deletingTitle: (kind) => `\u5220\u9664${kindLabel(kind)}`,
     deletingMessage: (kind) => `\u6B63\u5728\u4ECE Hub \u5220\u9664\u6B64${kindLabel(kind)}\u2026`,
     syncingTitle: "\u6B63\u5728\u540C\u6B65\u5230 Hub",

@@ -170,7 +170,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     captureFailedTitle: "Impossible de lire le hub", retry: "Réessayer", back: "Retour",
     capturingFromCache: (kind: "activity" | "device") => `Chargement de ${kind === "activity" ? "l’activité" : "l’appareil"} depuis le cache du hub…`, needsRefreshTitle: "Actualisez le cache du hub pour modifier",
     needsRefreshBody: (kind: "activity" | "device") => `${kind === "activity" ? "Cette activité" : "Cet appareil"} ne figure pas encore dans le cache local du hub. Actualisez le cache du hub pour ${kind === "activity" ? "la" : "le"} charger dans l’éditeur. Cela peut prendre quelques minutes selon la taille de la configuration de votre hub.`,
-    syncToHub: "Synchroniser avec le hub", syncUpToDate: "À jour", deletingTitle: (kind: "activity" | "device") => `Suppression de ${kind === "activity" ? "l’activité" : "l’appareil"}`,
+    deletingTitle: (kind: "activity" | "device") => `Suppression de ${kind === "activity" ? "l’activité" : "l’appareil"}`,
     deletingMessage: (kind: "activity" | "device") => `Suppression de ${ceType(kind)} du hub…`, syncingTitle: "Synchronisation avec votre hub", syncingMessage: "Écriture de vos modifications sur le hub…", wifiEventsPhaseMessage: "Déploiement des événements Wifi sur le hub d’abord… cela peut prendre une minute la première fois.",
     syncSuccess: "Synchronisé avec le hub.", syncFailedTitle: "La synchronisation ne s’est pas terminée",
     syncFailedStep: (step: string) => `Le hub s’est arrêté à l’étape : ${step}`, syncStaleTitle: (kind: "activity" | "device") => `${kind === "activity" ? "Cette activité a été modifiée" : "Cet appareil a été modifié"} sur le hub`,

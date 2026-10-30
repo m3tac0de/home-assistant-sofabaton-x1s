@@ -6,9 +6,11 @@
 //   - the Add dialogs' picker: a tile + "Change icon" toggle under the name;
 //   - the tile beside a detail view's title, opening the edit dialog.
 
+import { mdiPencil } from "@mdi/js";
 import { css, html, nothing, type TemplateResult } from "lit";
+import { ifDefined } from "lit/directives/if-defined.js";
 import { entityColor, entityColorHex, entityColorsSupported } from "./entity-colors";
-import { entityTile, renderEntityTile, type EntityTile } from "./entity-tile";
+import { entityTile, renderEntityTile, type EntityTile, type EntityTileBadge } from "./entity-tile";
 import { renderEntityColorPicker, renderEntityIconPicker } from "./entity-picker";
 
 export type AppearanceTab = "icon" | "color";
@@ -174,21 +176,21 @@ export function renderAppearanceToggle(params: {
   `;
 }
 
+const BADGE_EDIT: EntityTileBadge = { icon: "mdi:pencil", path: mdiPencil, nudge: [0, 0] };
+
 /** The entity's tile beside a detail view's title (the editors, a Wifi
- *  Device): it opens the edit dialog with the picker showing. */
+ *  Device), with a pencil badge: it opens the edit dialog. */
 export function renderDetailEntityTile(
   tile: EntityTile,
-  params: { label: string; disabled?: boolean; onClick: () => void },
+  params: { id?: string; label: string; disabled?: boolean; onClick: () => void },
 ): TemplateResult {
-  return html`<button class="detail-entity-tile" type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
-    ${renderEntityTile(tile)}
+  return html`<button class="detail-entity-tile" id=${ifDefined(params.id)} type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
+    ${renderEntityTile(tile, { badge: BADGE_EDIT })}
   </button>`;
 }
 
 /** The edit dialog body and the detail tile. Pair with entityTileStyles and
- *  entityPickerStyles. A narrow host hides the detail tile itself (the
- *  pencil opens the same dialog): the card by its container, the panel by
- *  its own. */
+ *  entityPickerStyles. */
 export const appearanceEditorStyles = css`
   .detail-entity-tile {
     flex: 0 0 auto;

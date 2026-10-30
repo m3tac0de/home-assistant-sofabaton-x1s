@@ -175,7 +175,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     captureFailedTitle: "Hub konnte nicht ausgelesen werden", retry: "Erneut versuchen", back: "Zurück",
     capturingFromCache: (kind: "activity" | "device") => `${art(kind)} wird aus dem Hub-Cache geladen…`, needsRefreshTitle: "Hub-Cache zum Bearbeiten aktualisieren",
     needsRefreshBody: (kind: "activity" | "device") => `${kind === "activity" ? "Diese Aktivität" : "Dieses Gerät"} befindet sich noch nicht im lokalen Hub-Cache. Aktualisiere den Hub-Cache, um ${kind === "activity" ? "sie" : "es"} in den Editor zu laden. Dies kann je nach Größe deiner Hub-Konfiguration einige Minuten dauern.`,
-    syncToHub: "Mit Hub synchronisieren", syncUpToDate: "Aktuell", deletingTitle: (kind: "activity" | "device") => `${art(kind)} wird gelöscht`,
+    deletingTitle: (kind: "activity" | "device") => `${art(kind)} wird gelöscht`,
     deletingMessage: (kind: "activity" | "device") => `${kind === "activity" ? "Diese Aktivität" : "Dieses Gerät"} wird vom Hub entfernt…`, syncingTitle: "Synchronisierung mit deinem Hub",
     syncingMessage: "Deine Änderungen werden auf den Hub geschrieben…", wifiEventsPhaseMessage: "Wifi-Events werden zuerst auf den Hub übertragen… beim ersten Mal kann das eine Minute dauern.", syncSuccess: "Mit dem Hub synchronisiert.",
     syncFailedTitle: "Synchronisierung wurde nicht abgeschlossen", syncFailedStep: (step: string) => `Der Hub stoppte bei: ${step}`,

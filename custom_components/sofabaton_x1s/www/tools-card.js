@@ -4,8 +4,8 @@ var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "a
 var s = /* @__PURE__ */ Symbol();
 var o = /* @__PURE__ */ new WeakMap();
 var n = class {
-  constructor(t4, e5, o5) {
-    if (this._$cssResult$ = true, o5 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
+  constructor(t4, e5, o6) {
+    if (this._$cssResult$ = true, o6 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
     this.cssText = t4, this.t = e5;
   }
   get styleSheet() {
@@ -23,18 +23,18 @@ var n = class {
 };
 var r = (t4) => new n("string" == typeof t4 ? t4 : t4 + "", void 0, s);
 var i = (t4, ...e5) => {
-  const o5 = 1 === t4.length ? t4[0] : e5.reduce((e6, s4, o6) => e6 + ((t5) => {
+  const o6 = 1 === t4.length ? t4[0] : e5.reduce((e6, s4, o7) => e6 + ((t5) => {
     if (true === t5._$cssResult$) return t5.cssText;
     if ("number" == typeof t5) return t5;
     throw Error("Value passed to 'css' function must be a 'css' function result: " + t5 + ". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.");
-  })(s4) + t4[o6 + 1], t4[0]);
-  return new n(o5, t4, s);
+  })(s4) + t4[o7 + 1], t4[0]);
+  return new n(o6, t4, s);
 };
-var S = (s4, o5) => {
-  if (e) s4.adoptedStyleSheets = o5.map((t4) => t4 instanceof CSSStyleSheet ? t4 : t4.styleSheet);
-  else for (const e5 of o5) {
-    const o6 = document.createElement("style"), n4 = t.litNonce;
-    void 0 !== n4 && o6.setAttribute("nonce", n4), o6.textContent = e5.cssText, s4.appendChild(o6);
+var S = (s4, o6) => {
+  if (e) s4.adoptedStyleSheets = o6.map((t4) => t4 instanceof CSSStyleSheet ? t4 : t4.styleSheet);
+  else for (const e5 of o6) {
+    const o7 = document.createElement("style"), n4 = t.litNonce;
+    void 0 !== n4 && o7.setAttribute("nonce", n4), o7.textContent = e5.cssText, s4.appendChild(o7);
   }
 };
 var c = e ? (t4) => t4 : (t4) => t4 instanceof CSSStyleSheet ? ((t5) => {
@@ -352,8 +352,8 @@ var S2 = class _S {
 function M(t4, i7, s4 = t4, e5) {
   if (i7 === E) return i7;
   let h3 = void 0 !== e5 ? s4._$Co?.[e5] : s4._$Cl;
-  const o5 = a2(i7) ? void 0 : i7._$litDirective$;
-  return h3?.constructor !== o5 && (h3?._$AO?.(false), void 0 === o5 ? h3 = void 0 : (h3 = new o5(t4), h3._$AT(t4, s4, e5)), void 0 !== e5 ? (s4._$Co ?? (s4._$Co = []))[e5] = h3 : s4._$Cl = h3), void 0 !== h3 && (i7 = M(t4, h3._$AS(t4, i7.values), h3, e5)), i7;
+  const o6 = a2(i7) ? void 0 : i7._$litDirective$;
+  return h3?.constructor !== o6 && (h3?._$AO?.(false), void 0 === o6 ? h3 = void 0 : (h3 = new o6(t4), h3._$AT(t4, s4, e5)), void 0 !== e5 ? (s4._$Co ?? (s4._$Co = []))[e5] = h3 : s4._$Cl = h3), void 0 !== h3 && (i7 = M(t4, h3._$AS(t4, i7.values), h3, e5)), i7;
 }
 var R = class {
   constructor(t4, i7) {
@@ -368,13 +368,13 @@ var R = class {
   u(t4) {
     const { el: { content: i7 }, parts: s4 } = this._$AD, e5 = (t4?.creationScope ?? l2).importNode(i7, true);
     P.currentNode = e5;
-    let h3 = P.nextNode(), o5 = 0, n4 = 0, r4 = s4[0];
+    let h3 = P.nextNode(), o6 = 0, n4 = 0, r4 = s4[0];
     for (; void 0 !== r4; ) {
-      if (o5 === r4.index) {
+      if (o6 === r4.index) {
         let i8;
         2 === r4.type ? i8 = new k(h3, h3.nextSibling, this, t4) : 1 === r4.type ? i8 = new r4.ctor(h3, r4.name, r4.strings, this, t4) : 6 === r4.type && (i8 = new Z(h3, this, t4)), this._$AV.push(i8), r4 = s4[++n4];
       }
-      o5 !== r4?.index && (h3 = P.nextNode(), o5++);
+      o6 !== r4?.index && (h3 = P.nextNode(), o6++);
     }
     return P.currentNode = l2, e5;
   }
@@ -454,14 +454,14 @@ var H = class {
   }
   _$AI(t4, i7 = this, s4, e5) {
     const h3 = this.strings;
-    let o5 = false;
-    if (void 0 === h3) t4 = M(this, t4, i7, 0), o5 = !a2(t4) || t4 !== this._$AH && t4 !== E, o5 && (this._$AH = t4);
+    let o6 = false;
+    if (void 0 === h3) t4 = M(this, t4, i7, 0), o6 = !a2(t4) || t4 !== this._$AH && t4 !== E, o6 && (this._$AH = t4);
     else {
       const e6 = t4;
       let n4, r4;
-      for (t4 = h3[0], n4 = 0; n4 < h3.length - 1; n4++) r4 = M(this, e6[s4 + n4], i7, n4), r4 === E && (r4 = this._$AH[n4]), o5 || (o5 = !a2(r4) || r4 !== this._$AH[n4]), r4 === A ? t4 = A : t4 !== A && (t4 += (r4 ?? "") + h3[n4 + 1]), this._$AH[n4] = r4;
+      for (t4 = h3[0], n4 = 0; n4 < h3.length - 1; n4++) r4 = M(this, e6[s4 + n4], i7, n4), r4 === E && (r4 = this._$AH[n4]), o6 || (o6 = !a2(r4) || r4 !== this._$AH[n4]), r4 === A ? t4 = A : t4 !== A && (t4 += (r4 ?? "") + h3[n4 + 1]), this._$AH[n4] = r4;
     }
-    o5 && !e5 && this.j(t4);
+    o6 && !e5 && this.j(t4);
   }
   j(t4) {
     t4 === A ? this.element.removeAttribute(this.name) : this.element.setAttribute(this.name, t4 ?? "");
@@ -572,7 +572,7 @@ var i5 = class {
 // node_modules/lit-html/directive-helpers.js
 var { I: t3 } = j;
 var m2 = {};
-var p3 = (o5, t4 = m2) => o5._$AH = t4;
+var p3 = (o6, t4 = m2) => o6._$AH = t4;
 
 // node_modules/lit-html/directives/keyed.js
 var i6 = e4(class extends i5 {
@@ -1687,6 +1687,25 @@ var cardStyles = [secondaryTabStyles, i`
   }
 `];
 
+// node_modules/@mdi/js/mdi.js
+var mdiAccessPoint = "M4.93,4.93C3.12,6.74 2,9.24 2,12C2,14.76 3.12,17.26 4.93,19.07L6.34,17.66C4.89,16.22 4,14.22 4,12C4,9.79 4.89,7.78 6.34,6.34L4.93,4.93M19.07,4.93L17.66,6.34C19.11,7.78 20,9.79 20,12C20,14.22 19.11,16.22 17.66,17.66L19.07,19.07C20.88,17.26 22,14.76 22,12C22,9.24 20.88,6.74 19.07,4.93M7.76,7.76C6.67,8.85 6,10.35 6,12C6,13.65 6.67,15.15 7.76,16.24L9.17,14.83C8.45,14.11 8,13.11 8,12C8,10.89 8.45,9.89 9.17,9.17L7.76,7.76M16.24,7.76L14.83,9.17C15.55,9.89 16,10.89 16,12C16,13.11 15.55,14.11 14.83,14.83L16.24,16.24C17.33,15.15 18,13.65 18,12C18,10.35 17.33,8.85 16.24,7.76M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
+var mdiAccessPointNetwork = "M4.93,3.93C3.12,5.74 2,8.24 2,11C2,13.76 3.12,16.26 4.93,18.07L6.34,16.66C4.89,15.22 4,13.22 4,11C4,8.79 4.89,6.78 6.34,5.34L4.93,3.93M19.07,3.93L17.66,5.34C19.11,6.78 20,8.79 20,11C20,13.22 19.11,15.22 17.66,16.66L19.07,18.07C20.88,16.26 22,13.76 22,11C22,8.24 20.88,5.74 19.07,3.93M7.76,6.76C6.67,7.85 6,9.35 6,11C6,12.65 6.67,14.15 7.76,15.24L9.17,13.83C8.45,13.11 8,12.11 8,11C8,9.89 8.45,8.89 9.17,8.17L7.76,6.76M16.24,6.76L14.83,8.17C15.55,8.89 16,9.89 16,11C16,12.11 15.55,13.11 14.83,13.83L16.24,15.24C17.33,14.15 18,12.65 18,11C18,9.35 17.33,7.85 16.24,6.76M12,9A2,2 0 0,0 10,11A2,2 0 0,0 12,13A2,2 0 0,0 14,11A2,2 0 0,0 12,9M11,15V19H10A1,1 0 0,0 9,20H2V22H9A1,1 0 0,0 10,23H14A1,1 0 0,0 15,22H22V20H15A1,1 0 0,0 14,19H13V15H11Z";
+var mdiAlertOutline = "M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16";
+var mdiBluetooth = "M14.88,16.29L13,18.17V14.41M13,5.83L14.88,7.71L13,9.58M17.71,7.71L12,2H11V9.58L6.41,5L5,6.41L10.59,12L5,17.58L6.41,19L11,14.41V22H12L17.71,16.29L13.41,12L17.71,7.71Z";
+var mdiCheck = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
+var mdiChevronDown = "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z";
+var mdiInformationOutline = "M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z";
+var mdiLedOutline = "M12,6A4,4 0 0,0 8,10V16H6V18H9V23H11V18H13V23H15V18H18V16H16V10A4,4 0 0,0 12,6M12,8A2,2 0 0,1 14,10V15H10V10A2,2 0 0,1 12,8Z";
+var mdiLoading = "M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z";
+var mdiPencil = "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z";
+var mdiRadioTower = "M12,10A2,2 0 0,1 14,12C14,12.5 13.82,12.94 13.53,13.29L16.7,22H14.57L12,14.93L9.43,22H7.3L10.47,13.29C10.18,12.94 10,12.5 10,12A2,2 0 0,1 12,10M12,8A4,4 0 0,0 8,12C8,12.5 8.1,13 8.28,13.46L7.4,15.86C6.53,14.81 6,13.47 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12C18,13.47 17.47,14.81 16.6,15.86L15.72,13.46C15.9,13 16,12.5 16,12A4,4 0 0,0 12,8M12,4A8,8 0 0,0 4,12C4,14.36 5,16.5 6.64,17.94L5.92,19.94C3.54,18.11 2,15.23 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12C22,15.23 20.46,18.11 18.08,19.94L17.36,17.94C19,16.5 20,14.36 20,12A8,8 0 0,0 12,4Z";
+var mdiRemote = "M12,0C8.96,0 6.21,1.23 4.22,3.22L5.63,4.63C7.26,3 9.5,2 12,2C14.5,2 16.74,3 18.36,4.64L19.77,3.23C17.79,1.23 15.04,0 12,0M7.05,6.05L8.46,7.46C9.37,6.56 10.62,6 12,6C13.38,6 14.63,6.56 15.54,7.46L16.95,6.05C15.68,4.78 13.93,4 12,4C10.07,4 8.32,4.78 7.05,6.05M12,15A2,2 0 0,1 10,13A2,2 0 0,1 12,11A2,2 0 0,1 14,13A2,2 0 0,1 12,15M15,9H9A1,1 0 0,0 8,10V22A1,1 0 0,0 9,23H15A1,1 0 0,0 16,22V10A1,1 0 0,0 15,9Z";
+var mdiSwapHorizontal = "M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z";
+var mdiWifi = "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z";
+
+// node_modules/lit-html/directives/if-defined.js
+var o5 = (o6) => o6 ?? A;
+
 // remote-card/src/entity-icons/x2-icons.ts
 var X2_ICON_PATHS = {
   // Monitor
@@ -1985,21 +2004,6 @@ function entityColor(hubVersion, colorId) {
   return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
 }
 
-// node_modules/@mdi/js/mdi.js
-var mdiAccessPoint = "M4.93,4.93C3.12,6.74 2,9.24 2,12C2,14.76 3.12,17.26 4.93,19.07L6.34,17.66C4.89,16.22 4,14.22 4,12C4,9.79 4.89,7.78 6.34,6.34L4.93,4.93M19.07,4.93L17.66,6.34C19.11,7.78 20,9.79 20,12C20,14.22 19.11,16.22 17.66,17.66L19.07,19.07C20.88,17.26 22,14.76 22,12C22,9.24 20.88,6.74 19.07,4.93M7.76,7.76C6.67,8.85 6,10.35 6,12C6,13.65 6.67,15.15 7.76,16.24L9.17,14.83C8.45,14.11 8,13.11 8,12C8,10.89 8.45,9.89 9.17,9.17L7.76,7.76M16.24,7.76L14.83,9.17C15.55,9.89 16,10.89 16,12C16,13.11 15.55,14.11 14.83,14.83L16.24,16.24C17.33,15.15 18,13.65 18,12C18,10.35 17.33,8.85 16.24,7.76M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
-var mdiAccessPointNetwork = "M4.93,3.93C3.12,5.74 2,8.24 2,11C2,13.76 3.12,16.26 4.93,18.07L6.34,16.66C4.89,15.22 4,13.22 4,11C4,8.79 4.89,6.78 6.34,5.34L4.93,3.93M19.07,3.93L17.66,5.34C19.11,6.78 20,8.79 20,11C20,13.22 19.11,15.22 17.66,16.66L19.07,18.07C20.88,16.26 22,13.76 22,11C22,8.24 20.88,5.74 19.07,3.93M7.76,6.76C6.67,7.85 6,9.35 6,11C6,12.65 6.67,14.15 7.76,15.24L9.17,13.83C8.45,13.11 8,12.11 8,11C8,9.89 8.45,8.89 9.17,8.17L7.76,6.76M16.24,6.76L14.83,8.17C15.55,8.89 16,9.89 16,11C16,12.11 15.55,13.11 14.83,13.83L16.24,15.24C17.33,14.15 18,12.65 18,11C18,9.35 17.33,7.85 16.24,6.76M12,9A2,2 0 0,0 10,11A2,2 0 0,0 12,13A2,2 0 0,0 14,11A2,2 0 0,0 12,9M11,15V19H10A1,1 0 0,0 9,20H2V22H9A1,1 0 0,0 10,23H14A1,1 0 0,0 15,22H22V20H15A1,1 0 0,0 14,19H13V15H11Z";
-var mdiAlertOutline = "M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16";
-var mdiBluetooth = "M14.88,16.29L13,18.17V14.41M13,5.83L14.88,7.71L13,9.58M17.71,7.71L12,2H11V9.58L6.41,5L5,6.41L10.59,12L5,17.58L6.41,19L11,14.41V22H12L17.71,16.29L13.41,12L17.71,7.71Z";
-var mdiCheck = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
-var mdiChevronDown = "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z";
-var mdiInformationOutline = "M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z";
-var mdiLedOutline = "M12,6A4,4 0 0,0 8,10V16H6V18H9V23H11V18H13V23H15V18H18V16H16V10A4,4 0 0,0 12,6M12,8A2,2 0 0,1 14,10V15H10V10A2,2 0 0,1 12,8Z";
-var mdiLoading = "M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z";
-var mdiRadioTower = "M12,10A2,2 0 0,1 14,12C14,12.5 13.82,12.94 13.53,13.29L16.7,22H14.57L12,14.93L9.43,22H7.3L10.47,13.29C10.18,12.94 10,12.5 10,12A2,2 0 0,1 12,10M12,8A4,4 0 0,0 8,12C8,12.5 8.1,13 8.28,13.46L7.4,15.86C6.53,14.81 6,13.47 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12C18,13.47 17.47,14.81 16.6,15.86L15.72,13.46C15.9,13 16,12.5 16,12A4,4 0 0,0 12,8M12,4A8,8 0 0,0 4,12C4,14.36 5,16.5 6.64,17.94L5.92,19.94C3.54,18.11 2,15.23 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12C22,15.23 20.46,18.11 18.08,19.94L17.36,17.94C19,16.5 20,14.36 20,12A8,8 0 0,0 12,4Z";
-var mdiRemote = "M12,0C8.96,0 6.21,1.23 4.22,3.22L5.63,4.63C7.26,3 9.5,2 12,2C14.5,2 16.74,3 18.36,4.64L19.77,3.23C17.79,1.23 15.04,0 12,0M7.05,6.05L8.46,7.46C9.37,6.56 10.62,6 12,6C13.38,6 14.63,6.56 15.54,7.46L16.95,6.05C15.68,4.78 13.93,4 12,4C10.07,4 8.32,4.78 7.05,6.05M12,15A2,2 0 0,1 10,13A2,2 0 0,1 12,11A2,2 0 0,1 14,13A2,2 0 0,1 12,15M15,9H9A1,1 0 0,0 8,10V22A1,1 0 0,0 9,23H15A1,1 0 0,0 16,22V10A1,1 0 0,0 15,9Z";
-var mdiSwapHorizontal = "M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z";
-var mdiWifi = "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z";
-
 // remote-card/src/entity-icons/entity-tile.ts
 function entityTile(hubVersion, icon, colorId) {
   if (typeof icon !== "number") return null;
@@ -2291,9 +2295,10 @@ function renderAppearanceToggle(params) {
     </div>
   `;
 }
+var BADGE_EDIT = { icon: "mdi:pencil", path: mdiPencil, nudge: [0, 0] };
 function renderDetailEntityTile(tile, params) {
-  return b2`<button class="detail-entity-tile" type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
-    ${renderEntityTile(tile)}
+  return b2`<button class="detail-entity-tile" id=${o5(params.id)} type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
+    ${renderEntityTile(tile, { badge: BADGE_EDIT })}
   </button>`;
 }
 var appearanceEditorStyles = i`
@@ -2901,10 +2906,6 @@ var TOOLS_CARD_STRINGS_EN = {
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Live-mode edit header (§4.3). The header mirrors the Wifi command
-    // editor: a single stateful Sync button (no dirty chip, no review/discard).
-    syncToHub: "Sync to Hub",
-    syncUpToDate: "Up to date",
     // Immediate entity delete (executed on the hub right away).
     deletingTitle: (kind) => `Deleting ${kind}`,
     deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
@@ -9413,28 +9414,25 @@ var backupTabStyles = i`
       gap: 10px;
       min-width: 0;
       flex: 1;
-      overflow: hidden;
     }
-    /* Reflow by the editor's width, also inside a narrow desktop card. */
+    /* One row: back, the entity, Sync. The name keeps the room: by the editor's
+       width, also inside a narrow desktop card, Sync drops to its icon. */
     .sticky-header { container: editor-header / inline-size; }
-    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
-    .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
-    @container editor-header (max-width: 450px) {
-      .detail-title-row { flex-wrap: wrap; gap: 10px; }
-      .detail-title-main { flex-basis: 100%; }
-      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
-      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
-      .detail-header-tools .detail-sync-btn { min-height: 44px; }
-      .detail-header-tools .delivery-pill, .detail-header-tools .ir-pill { min-height: 44px; box-sizing: border-box; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; --mdc-icon-size: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill, .detail-title-meta .ir-pill { min-height: 24px; box-sizing: border-box; }
     }
     .detail-title-stack {
       display: flex;
       flex-direction: column;
       min-width: 0;
       flex: 1 1 0;
-      overflow: hidden;
     }
     .detail-crumbs {
       display: flex;
@@ -10212,6 +10210,7 @@ var backupTabStyles = i`
     .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; flex-wrap: wrap; }
     .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
     .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--error-color, #db4437); }
+    .dialog-footer-delete { flex: 0 0 auto; }
 
     .status-box {
       display: flex;
@@ -10451,6 +10450,9 @@ var backupTabStyles = i`
       }
       .dialog-footer-note {
         min-height: 0;
+      }
+      .dialog-footer-delete {
+        align-self: flex-start;
       }
     }
 `;
@@ -13957,10 +13959,6 @@ var editDetailViewStyles = i`
     :host {
       flex-direction: column;
     }
-    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
-    @container sofabaton-card (max-width: 600px) {
-      .detail-entity-tile { display: none; }
-    }
     /* Glanceable member roster under the Activity power-sequence rows. */
     .power-members-summary {
       padding: 8px 4px 0;
@@ -13982,7 +13980,11 @@ var editDetailViewStyles = i`
       transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
     }
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .detail-sync-btn.sync-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       Not the pure primary: white on it fails in most themes (2:1 on the iOS orange). The
+       accent-text mix turns with the theme and the card surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: var(--sb-accent-text, var(--primary-color)); --_sync-ink: var(--sb-popup-surface, var(--sb-card-surface, #fff)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--_sync-ink); }
+    .detail-sync-btn.sync-btn-primary:hover { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
     .detail-sync-btn:disabled {
       cursor: default;
       opacity: 0.42;
@@ -17841,11 +17843,6 @@ var SofabatonEditDetailView = class extends i4 {
       this._editAppearanceTab = "icon";
       this._editRenameDialogOpen = true;
     };
-    /** The header tile: the same dialog, with the picker already open. */
-    this._openDetailAppearanceDialog = () => {
-      this._openDetailRenameDialog();
-      this._editAppearanceOpen = true;
-    };
     this._closeEditRenameDialog = () => {
       this._editRenameDialogOpen = false;
       this._editRenameDialogDraft = "";
@@ -17860,6 +17857,10 @@ var SofabatonEditDetailView = class extends i4 {
       const id = Number(this.entityId);
       this._confirmDeleteTarget = this.kind === "activity" ? { kind: "activity", activityId: id } : { kind: "device", deviceId: id };
       this._confirmDeleteLabel = this._selectedEditTitle();
+    };
+    this._deleteFromEditDialog = () => {
+      this._closeEditRenameDialog();
+      this._openDetailDeleteConfirm();
     };
     this._closeDeleteConfirm = () => {
       this._confirmDeleteTarget = null;
@@ -18155,46 +18156,40 @@ var SofabatonEditDetailView = class extends i4 {
     return b2`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.backup.unsavedTooltip}>${TOOLS_CARD_STRINGS.backup.unsaved}</span>`;
   }
   _renderLiveSyncButton() {
-    const S5 = TOOLS_CARD_STRINGS.activities;
+    const S5 = TOOLS_CARD_STRINGS.wifiCommands;
     const dirty = this.dirty;
-    const label = dirty ? S5.syncToHub : S5.syncUpToDate;
+    const label = dirty ? S5.actionButtonSyncToHub : S5.actionButtonUpToDate;
     const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
-    return b2`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
+    return b2`<button class=${classes} title=${label} aria-label=${label} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>
+      <ha-icon class="detail-sync-icon" icon=${dirty ? "mdi:sync" : "mdi:check"}></ha-icon><span class="detail-sync-label">${label}</span>
+    </button>`;
   }
-  // Rename (pencil) + delete (trash) header buttons — shared by live and
-  // backup mode so both editors expose the identical affordance. In live
-  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
-  // delete executes immediately on the hub through the host (see
-  // _confirmDelete).
-  _renderDetailRenameDeleteButtons(kind) {
-    const managed = this._isManagedWifiLiveDevice();
-    const S5 = TOOLS_CARD_STRINGS.backup;
-    const editLabel = iconHubLine(this.bundle?.hub?.version) != null ? kind === "activity" ? S5.editActivity : S5.editDevice : S5.renameKind(kind);
-    return b2`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${editLabel} title=${editLabel}>
-        <ha-icon icon="mdi:pencil"></ha-icon>
-      </button>
-      ${managed ? A : b2`
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${this._openDetailDeleteConfirm}
-              aria-label=${kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
-          `}
-    `;
-  }
-  // The entity's hub icon beside the title; it opens the edit dialog with
-  // the picker showing. Nothing when the bundle carries no icon or no hub
-  // line (an old backup): the header stays as it was.
-  _renderDetailTile(kind) {
+  // The header's way into the edit dialog, shared by live and backup mode: the
+  // entity's hub icon with a pencil badge, or a plain pencil when the bundle
+  // carries no icon or no hub line (an old backup). In live mode an edit rides
+  // the normal Sync (a bundle mutation → dirty → Sync).
+  _renderDetailEdit(kind) {
     if (this.entityId == null) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const label = iconHubLine(this.bundle?.hub?.version) != null ? kind === "activity" ? S5.editActivity : S5.editDevice : S5.renameKind(kind);
     const appearance = bundleEntityAppearance(this.bundle, kind, this.entityId);
     const tile = entityTile(this.bundle?.hub?.version, appearance.icon, appearance.colorId);
-    if (!tile) return A;
-    const label = kind === "activity" ? TOOLS_CARD_STRINGS.backup.editActivity : TOOLS_CARD_STRINGS.backup.editDevice;
-    return renderDetailEntityTile(tile, { label, onClick: this._openDetailAppearanceDialog });
+    if (tile) return renderDetailEntityTile(tile, { label, onClick: this._openDetailRenameDialog });
+    return b2`<button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${label} title=${label}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
+  }
+  // Under the title: the device's pill where it has one (at most one), else
+  // what Back returns to; and "Unsaved" in a backup.
+  _renderDetailMeta(kind) {
+    const delivery = this._renderDeliveryPill(kind);
+    const pill = delivery !== A ? delivery : this._renderIrPill(kind);
+    return b2`
+      <div class="detail-title-meta">
+        ${pill !== A ? pill : b2`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${this._entityKindCrumbLabel(kind)}</button></div>`}
+        ${this._renderDirtyChip()}
+      </div>
+    `;
   }
   _renderManagedWifiLockNotice() {
     return b2`
@@ -18238,23 +18233,13 @@ var SofabatonEditDetailView = class extends i4 {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
-                ${this._renderDetailTile(params.kind)}
+                ${this._renderDetailEdit(params.kind)}
                 <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose }
-    ])}
                   <div class="detail-title">${params.title}</div>
+                  ${this._renderDetailMeta(params.kind)}
                 </div>
               </div>
-              <div class="detail-header-tools">
-                ${this._renderDeliveryPill(params.kind)}
-                ${this._renderIrPill(params.kind)}
-                ${this._renderDirtyChip()}
-                <div class="detail-title-actions">
-                  ${this._renderDetailRenameDeleteButtons(params.kind)}
-                  ${this.mode === "live" ? this._renderLiveSyncButton() : A}
-                </div>
-              </div>
+              ${this.mode === "live" ? b2`<div class="detail-title-actions">${this._renderLiveSyncButton()}</div>` : A}
             </div>
             ${this._renderEditDetailSectionNav(sectionItems)}
           </div>
@@ -18881,6 +18866,7 @@ var SofabatonEditDetailView = class extends i4 {
             ${appearance ? this._renderAppearanceEditor() : this._renderEditRenameField()}
           </div>
           <div class="dialog-footer">
+            ${this._renderEditDialogDelete()}
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
@@ -18890,6 +18876,16 @@ var SofabatonEditDetailView = class extends i4 {
         </div>
       </div>
     `;
+  }
+  // Delete lives in the entity's own edit dialog; it executes immediately on
+  // the hub through the host (see _confirmDelete). A managed Wifi Device has
+  // none: removing it belongs in the Wifi Commands tab, which also clears its
+  // stored configuration.
+  _renderEditDialogDelete() {
+    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice()) return A;
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const label = this._editRenameDialogTarget.entityKind === "activity" ? S5.deleteActivityAria : S5.deleteDeviceAria;
+    return b2`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" aria-label=${label} title=${label} @click=${this._deleteFromEditDialog}>${S5.deleteConfirm}</button>`;
   }
   // Name first, the tile beside it; the picker opens on demand.
   _renderAppearanceEditor() {
@@ -21281,7 +21277,28 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     // list view, Events section, and guard states never count as "in the
     // editor", and a running deploy is narrated by the dock itself.
     this._dockSyncNotified = false;
-    this._openEditDeviceDialog = () => this._openEditDevice(false);
+    this._openEditDeviceDialog = async () => {
+      const device = this._selectedWifiDevice();
+      const deviceId = this._deployedHubDeviceId(device);
+      const entryId = String(this.hub?.entry_id || "").trim();
+      if (!device || deviceId == null || !entryId || this._hubCommandLocked() || this._deviceEditRunning) return;
+      const bundle = await this._captureStructuralBundle(entryId);
+      if (entryId !== String(this.hub?.entry_id || "").trim() || this._selectedDeviceKey !== device.device_key) return;
+      const cached = this._bundleHasDevice(bundle, deviceId);
+      const name = this._sanitizeWifiDeviceName(device.device_name);
+      this._editDeviceDialog = {
+        deviceKey: device.device_key,
+        deviceId,
+        hubVersion: String(bundle?.hub?.version || this._hubVersion()),
+        initialName: name,
+        name,
+        appearance: cached ? bundleEntityAppearance(bundle, "device", deviceId) : { icon: null, colorId: null },
+        cached,
+        pickerOpen: false,
+        tab: "icon",
+        error: cached ? "" : TOOLS_CARD_STRINGS.activities.needsRefreshTitle
+      };
+    };
     this._closeEditDeviceDialog = () => {
       this._editDeviceDialog = null;
     };
@@ -21614,15 +21631,14 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
-                ${this._renderDeviceTile(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                <div class="detail-title">${selectedDevice.device_name}</div>
-              </div>
-              <div class="detail-header-tools">
-                ${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                <div class="detail-title-actions">
-                  ${this._renderEditDeviceButton(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                  ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
+                ${this._renderDeviceEdit(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${selectedDevice.device_name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}</div>
                 </div>
+              </div>
+              <div class="detail-title-actions">
+                ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
               </div>
             </div>
           </div>
@@ -21662,32 +21678,22 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
-  /** The pencil of a deployed device (name, icon and color of its hub
-   *  record), where the editors keep theirs. A device still waiting for its
-   *  first Sync has no record to edit yet. */
-  _renderEditDeviceButton(device, locked) {
-    if (this._deployedHubDeviceId(device) == null) return A;
-    const label = iconHubLine(this._hubVersion()) != null ? TOOLS_CARD_STRINGS.backup.editDevice : TOOLS_CARD_STRINGS.backup.renameDevice;
-    return b2`<button class="icon-btn" title=${label} aria-label=${label} ?disabled=${locked || this._deviceEditRunning} @click=${this._openEditDeviceDialog}>
-      <ha-icon icon="mdi:pencil"></ha-icon>
-    </button>`;
-  }
-  /** The deployed device's hub icon beside the title, as in the editors: it
-   *  opens the Edit device dialog with the picker showing. Nothing until the
-   *  remote entity publishes the record's icon (persistent cache on). */
-  _renderDeviceTile(device, locked) {
+  /** The way into a deployed device's Edit dialog (name, icon and color of
+   *  its hub record), as in the editors: the hub icon with a pencil badge, or
+   *  a plain pencil until the remote entity publishes the record's icon
+   *  (persistent cache on). A device still waiting for its first Sync has no
+   *  record to edit yet. */
+  _renderDeviceEdit(device, locked) {
     const deviceId = this._deployedHubDeviceId(device);
     if (deviceId == null) return A;
+    const label = iconHubLine(this._hubVersion()) != null ? TOOLS_CARD_STRINGS.backup.editDevice : TOOLS_CARD_STRINGS.backup.renameDevice;
+    const disabled = locked || this._deviceEditRunning;
     const appearance = this._hubDeviceAppearance(deviceId);
     const tile = entityTile(this._hubVersion(), appearance.icon, appearance.colorId);
-    if (!tile) return A;
-    return renderDetailEntityTile(tile, {
-      label: TOOLS_CARD_STRINGS.backup.editDevice,
-      disabled: locked || this._deviceEditRunning,
-      onClick: () => {
-        void this._openEditDevice(true);
-      }
-    });
+    if (tile) return renderDetailEntityTile(tile, { label, disabled, onClick: this._openEditDeviceDialog });
+    return b2`<button class="icon-btn" title=${label} aria-label=${label} ?disabled=${disabled} @click=${this._openEditDeviceDialog}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
   }
   /** The record's icon and color from the remote entity's `devices` rows. */
   _hubDeviceAppearance(deviceId) {
@@ -21713,29 +21719,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _bundleHasDevice(bundle, deviceId) {
     return (bundle?.devices ?? []).some((entry) => Number(entry?.device?.device_id) === deviceId);
-  }
-  /** The header tile opens it with the picker showing. */
-  async _openEditDevice(pickerOpen) {
-    const device = this._selectedWifiDevice();
-    const deviceId = this._deployedHubDeviceId(device);
-    const entryId = String(this.hub?.entry_id || "").trim();
-    if (!device || deviceId == null || !entryId || this._hubCommandLocked() || this._deviceEditRunning) return;
-    const bundle = await this._captureStructuralBundle(entryId);
-    if (entryId !== String(this.hub?.entry_id || "").trim() || this._selectedDeviceKey !== device.device_key) return;
-    const cached = this._bundleHasDevice(bundle, deviceId);
-    const name = this._sanitizeWifiDeviceName(device.device_name);
-    this._editDeviceDialog = {
-      deviceKey: device.device_key,
-      deviceId,
-      hubVersion: String(bundle?.hub?.version || this._hubVersion()),
-      initialName: name,
-      name,
-      appearance: cached ? bundleEntityAppearance(bundle, "device", deviceId) : { icon: null, colorId: null },
-      cached,
-      pickerOpen: pickerOpen && cached,
-      tab: "icon",
-      error: cached ? "" : TOOLS_CARD_STRINGS.activities.needsRefreshTitle
-    };
   }
   _patchEditDeviceDialog(patch) {
     if (this._editDeviceDialog) this._editDeviceDialog = { ...this._editDeviceDialog, ...patch };
@@ -23959,9 +23942,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     externallyLocked
   }) {
     const label = remoteUnavailable ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonUnavailable : syncRunning ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncing : externallyLocked ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonBusy : this._syncState.sync_needed ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub : TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate;
+    const icon = remoteUnavailable ? "mdi:sync-off" : syncRunning ? "mdi:sync" : externallyLocked ? "mdi:timer-sand" : this._syncState.sync_needed ? "mdi:sync" : "mdi:check";
     const disabled = remoteUnavailable || syncRunning || externallyLocked || !this._syncState.sync_needed;
     const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}${!remoteUnavailable && !syncRunning && !externallyLocked && !this._syncState.sync_needed ? " detail-sync-btn--state-ok" : ""}`;
-    return b2`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
+    return b2`<button class=${classes} title=${label} aria-label=${label} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>
+      <ha-icon class="detail-sync-icon" icon=${icon}></ha-icon><span class="detail-sync-label">${label}</span>
+    </button>`;
   }
   _selectWifiDevice(deviceKey) {
     this._selectedDeviceKey = String(deviceKey || "").trim();
@@ -24248,24 +24234,25 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
     .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .sticky-header, .sticky-footer { position: sticky; z-index: 2; background: var(--ha-card-background, var(--card-background-color)); }
-    .sticky-header { padding: 12px 16px; }
     .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); }
     .sticky-footer { bottom: 0; border-top: 1px solid var(--divider-color); padding: 0; }
     .detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; }
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    /* One row, as in the editors: back, the device, Sync. By the header's width Sync drops to its icon. */
     .sticky-header { container: editor-header / inline-size; }
-    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
-    @container editor-header (max-width: 450px) {
-      .detail-title-row { flex-wrap: wrap; gap: 10px; }
-      .detail-title-main { flex-basis: 100%; }
-      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
-      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
-      .detail-header-tools .detail-sync-btn { min-height: 44px; }
-      .detail-header-tools .delivery-pill { min-height: 44px; box-sizing: border-box; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
+    .detail-title-meta:empty { display: none; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; --mdc-icon-size: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill { min-height: 24px; box-sizing: border-box; }
     }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
@@ -24370,6 +24357,11 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       Not the pure primary: white on it fails in most themes (2:1 on the iOS orange). The
+       accent-text mix turns with the theme and the card surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: var(--sb-accent-text, var(--primary-color)); --_sync-ink: var(--sb-popup-surface, var(--sb-card-surface, #fff)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--_sync-ink); }
+    .detail-sync-btn.sync-btn-primary:hover { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
     .detail-sync-btn.detail-sync-btn--state-ok {
       border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
       background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
@@ -24629,10 +24621,6 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
     }
     .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
-    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
-    @container sofabaton-card (max-width: 600px) {
-      .detail-entity-tile { display: none; }
-    }
     .dialog-body {
       padding: 16px;
       display: flex;

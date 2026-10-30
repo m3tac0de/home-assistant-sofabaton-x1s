@@ -42,6 +42,7 @@ import {
   mdiPower,
   mdiPowerPlugOutline,
   mdiStarOutline,
+  mdiSync,
   mdiTrashCanOutline,
   mdiWifiCog,
 } from "@mdi/js";
@@ -131,8 +132,8 @@ const S = {
   crumbDevices: B.crumbDevices,
   renameDevice: B.renameDevice,
   deleteDeviceAria: B.deleteDeviceAria,
-  syncToHub: A.syncToHub,
-  syncUpToDate: A.syncUpToDate,
+  syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
+  syncUpToDate: TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate,
   detailPower: B.detailPower,
   detailNetwork: B.detailNetwork,
   detailCommands: B.detailCommands,
@@ -863,7 +864,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   // -- rename dialog --------------------------------------------------------------------------------------
 
   /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
-  private _openRename(target: RenameTarget, pickerOpen = false): void {
+  private _openRename(target: RenameTarget): void {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return;
     let draft = "";
@@ -871,18 +872,20 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
     else draft = deviceCommandItems(this._working, deviceId).find((c) => c.commandId === target.commandId)?.label ?? "";
     this._rename = target.kind === "device"
-      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen, tab: "icon" }
+      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen: false, tab: "icon" }
       : { target, draft, error: "" };
   }
 
-  /** The device's hub icon beside the title: the edit dialog with the picker showing. */
-  private _renderHeaderTile(): TemplateResult | typeof nothing {
+  /** The way into the edit dialog: the device's hub icon with a pencil badge, or a plain pencil without one. */
+  private _renderHeaderEdit(): TemplateResult | typeof nothing {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return nothing;
+    const label = iconHubLine(this._hubVersion) != null ? B.editDevice : S.renameDevice;
     const appearance = bundleEntityAppearance(this._working, "device", deviceId);
     const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
-    if (!tile) return nothing;
-    return renderDetailEntityTile(tile, { label: B.editDevice, onClick: () => this._openRename({ kind: "device" }, true) });
+    const open = () => this._openRename({ kind: "device" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon(mdiPencil)}</button>`;
   }
 
   private _closeRename = (): void => {
@@ -935,6 +938,13 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   };
 
   // -- delete confirm ---------------------------------------------------------------------------------------
+
+  private _deleteFromRename = (): void => {
+    const deviceId = this.deviceId;
+    if (deviceId == null) return;
+    this._closeRename();
+    this._openDeleteConfirm({ kind: "device", deviceId }, this._title);
+  };
 
   private _openDeleteConfirm(target: BackupDeleteTarget, label: string): void {
     this._deleteConfirm = { target, label };
@@ -1164,6 +1174,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const sections = this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
+    const irPill = this._renderIrPill();
     return html`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view" id="device-editor">
@@ -1171,30 +1182,20 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S.back} @click=${this._requestClose}>${icon(mdiArrowLeft)}</button>
-                ${callback ? nothing : this._renderHeaderTile()}
+                ${callback ? nothing : this._renderHeaderEdit()}
                 <div class="detail-title-stack">
-                  <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S.crumbDevices}</button>
-                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
-                  </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
+                  <div class="detail-title-meta">
+                    ${irPill !== nothing
+                      ? irPill
+                      : html`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${S.crumbDevices}</button></div>`}
+                    ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
+                  </div>
                 </div>
               </div>
-              <div class="detail-header-tools">
-                ${this._renderIrPill()}
-                ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
-                <div class="detail-title-actions">
-                  ${callback
-                    ? nothing
-                    : html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B.editDevice : S.renameDevice} title=${iconHubLine(this._hubVersion) != null ? B.editDevice : S.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon(mdiPencil)}</button>`}
-                  ${callback
-                    ? nothing
-                    : html`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon(mdiTrashCanOutline)}</button>`}
-                  ${this._offline
-                    ? nothing
-                    : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S.syncToHub : S.syncUpToDate}</button>`}
-                </div>
-              </div>
+              ${this._offline
+                ? nothing
+                : html`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S.syncToHub : S.syncUpToDate} aria-label=${dirty ? S.syncToHub : S.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S.syncToHub : S.syncUpToDate}</span></button></div>`}
             </div>
             ${sections.length > 1
               ? html`<div class="detail-section-nav" role="tablist" aria-label=${S.detailSectionsAria}>
@@ -1393,6 +1394,9 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
               : nameField}
           </div>
           <div class="dialog-footer">
+            ${dialog.target.kind === "device"
+              ? html`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${S.deleteConfirm}</button>`
+              : nothing}
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" type="button" @click=${this._closeRename}>${S.cancel}</button>

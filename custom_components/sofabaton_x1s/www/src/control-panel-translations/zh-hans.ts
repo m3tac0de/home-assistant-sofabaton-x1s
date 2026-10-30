@@ -203,7 +203,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     capturingFromCache: (kind: "activity" | "device") => `正在从 Hub 缓存加载${kindLabel(kind)}…`,
     needsRefreshTitle: "请刷新 Hub 缓存后再编辑",
     needsRefreshBody: (kind: "activity" | "device") => `此${kindLabel(kind)}尚未存入本地 Hub 缓存。请刷新 Hub 缓存，将其加载到编辑器。所需时间取决于 Hub 配置大小，可能需要几分钟。`,
-    syncToHub: "同步到 Hub", syncUpToDate: "已是最新",
+    
     deletingTitle: (kind: "activity" | "device") => `删除${kindLabel(kind)}`,
     deletingMessage: (kind: "activity" | "device") => `正在从 Hub 删除此${kindLabel(kind)}…`,
     syncingTitle: "正在同步到 Hub", syncingMessage: "正在将更改写入 Hub…", wifiEventsPhaseMessage: "正在先将 Wifi 事件写入 Hub…首次执行可能需要一分钟。", syncSuccess: "已同步到 Hub。",

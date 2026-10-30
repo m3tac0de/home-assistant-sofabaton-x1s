@@ -16,10 +16,6 @@ export const EDITOR_CSS = css`
     }
     .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
     button { border: 0; background: transparent; padding: 0; }
-    /* A narrow editor gives the room to the title; the pencil opens the same dialog. */
-    @container (max-width: 600px) {
-      .detail-entity-tile { display: none; }
-    }
     /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
     .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
     .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
@@ -30,28 +26,30 @@ export const EDITOR_CSS = css`
     /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
     .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
     .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
-    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
-    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
+    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; }
     .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
     .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
     .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
     .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
     .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    /* Identity and controls have separate lanes in narrow editors, including
-       embedded ones on a wide screen. Empty subview toolbars take no space. */
+    /* One row: back, the entity, Sync. The name keeps the room: by the editor's
+       width, also embedded on a wide screen, Sync drops to its icon. Empty
+       subview toolbars take no space. */
     .sticky-header { container: editor-header / inline-size; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
     .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
     .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
-    @container editor-header (max-width: 450px) {
-      .detail-title-row { flex-wrap: wrap; gap: 10px; }
-      .detail-title-main { flex-basis: 100%; }
-      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
-      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
-      .detail-header-tools .detail-sync-btn { min-height: 44px; }
-      .detail-header-tools .delivery-pill, .detail-header-tools .ir-pill { min-height: 44px; box-sizing: border-box; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; }
+      .detail-sync-icon .mdi { width: 20px; height: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill, .detail-title-meta .ir-pill { min-height: 24px; box-sizing: border-box; }
     }
     /* Offline mode (a backup file): the card's "Unsaved" chip stands where the live editor has its Sync button. */
     .edit-unsaved-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 8px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; color: var(--sbp-warn); background: color-mix(in srgb, var(--sbp-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-warn) 35%, transparent); }
@@ -61,8 +59,12 @@ export const EDITOR_CSS = css`
     .back-btn .mdi { width: 18px; height: 18px; }
     .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-    .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       The card's accent-text mix: it turns with the theme and the panel surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-text)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--sbp-panel); }
+    .detail-sync-btn.sync-btn-primary:hover:not(:disabled) { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px rgba(var(--sbp-accent-rgb), 0.35); }
     .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
+    .detail-sync-btn.sync-btn-primary:disabled { background: rgba(var(--sbp-accent-rgb), 0.18); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
     .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); opacity: 1; }
     .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
     .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
@@ -182,6 +184,7 @@ export const EDITOR_CSS = css`
     .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
     .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
     .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
+    .dialog-footer-delete { flex: 0 0 auto; }
     .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
     .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
@@ -287,6 +290,7 @@ export const EDITOR_CSS = css`
       .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
       /* The footer is a column here, so the note's 140px basis would be a height. */
       .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
+      .dialog-footer-delete { align-self: flex-start; }
       .dialog-footer-note:empty { display: none; }
       .field-pair { grid-template-columns: minmax(0, 1fr); }
     }

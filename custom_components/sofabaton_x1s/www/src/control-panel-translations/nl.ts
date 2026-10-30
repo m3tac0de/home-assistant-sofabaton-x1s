@@ -206,7 +206,6 @@ export const TOOLS_CARD_STRINGS_NL = {
     capturingFromCache: (kind: "activity" | "device") => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} uit de hubcache laden…`,
     needsRefreshTitle: "Vernieuw de hubcache om te bewerken",
     needsRefreshBody: (kind: "activity" | "device") => `${dezeDit(kind)} ${soort(kind)} staat nog niet in de lokale hubcache. Vernieuw de hubcache om ${dezeDitOnzijdig(kind)} in de editor te laden. Dit kan enkele minuten duren, afhankelijk van de grootte van je hubconfiguratie.`,
-    syncToHub: "Synchroniseren met hub", syncUpToDate: "Actueel",
     deletingTitle: (kind: "activity" | "device") => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} verwijderen`,
     deletingMessage: (kind: "activity" | "device") => `${dezeDit(kind)} ${soort(kind)} van de hub verwijderen…`,
     syncingTitle: "Synchroniseren met je hub", syncingMessage: "Je wijzigingen naar de hub schrijven…", wifiEventsPhaseMessage: "Wifi-events worden eerst naar de hub gestuurd… de eerste keer kan dit een minuut duren.", syncSuccess: "Gesynchroniseerd met de hub.",

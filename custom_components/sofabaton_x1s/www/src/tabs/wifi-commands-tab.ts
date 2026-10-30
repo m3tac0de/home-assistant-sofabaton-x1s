@@ -330,24 +330,25 @@ class SofabatonWifiCommandsTab extends LitElement {
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
     .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .sticky-header, .sticky-footer { position: sticky; z-index: 2; background: var(--ha-card-background, var(--card-background-color)); }
-    .sticky-header { padding: 12px 16px; }
     .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); }
     .sticky-footer { bottom: 0; border-top: 1px solid var(--divider-color); padding: 0; }
     .detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; }
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    /* One row, as in the editors: back, the device, Sync. By the header's width Sync drops to its icon. */
     .sticky-header { container: editor-header / inline-size; }
-    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
-    @container editor-header (max-width: 450px) {
-      .detail-title-row { flex-wrap: wrap; gap: 10px; }
-      .detail-title-main { flex-basis: 100%; }
-      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
-      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
-      .detail-header-tools .detail-sync-btn { min-height: 44px; }
-      .detail-header-tools .delivery-pill { min-height: 44px; box-sizing: border-box; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
+    .detail-title-meta:empty { display: none; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; --mdc-icon-size: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill { min-height: 24px; box-sizing: border-box; }
     }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
@@ -452,6 +453,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       Not the pure primary: white on it fails in most themes (2:1 on the iOS orange). The
+       accent-text mix turns with the theme and the card surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: var(--sb-accent-text, var(--primary-color)); --_sync-ink: var(--sb-popup-surface, var(--sb-card-surface, #fff)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--_sync-ink); }
+    .detail-sync-btn.sync-btn-primary:hover { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
     .detail-sync-btn.detail-sync-btn--state-ok {
       border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
       background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
@@ -711,10 +717,6 @@ class SofabatonWifiCommandsTab extends LitElement {
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
     }
     .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
-    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
-    @container sofabaton-card (max-width: 600px) {
-      .detail-entity-tile { display: none; }
-    }
     .dialog-body {
       padding: 16px;
       display: flex;
@@ -1132,15 +1134,14 @@ class SofabatonWifiCommandsTab extends LitElement {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
-                ${this._renderDeviceTile(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                <div class="detail-title">${selectedDevice.device_name}</div>
-              </div>
-              <div class="detail-header-tools">
-                ${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                <div class="detail-title-actions">
-                  ${this._renderEditDeviceButton(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
-                  ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
+                ${this._renderDeviceEdit(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${selectedDevice.device_name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}</div>
                 </div>
+              </div>
+              <div class="detail-title-actions">
+                ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
               </div>
             </div>
           </div>
@@ -1189,33 +1190,24 @@ class SofabatonWifiCommandsTab extends LitElement {
     `;
   }
 
-  /** The pencil of a deployed device (name, icon and color of its hub
-   *  record), where the editors keep theirs. A device still waiting for its
-   *  first Sync has no record to edit yet. */
-  private _renderEditDeviceButton(device: WifiDeviceSummary, locked: boolean) {
-    if (this._deployedHubDeviceId(device) == null) return nothing;
+  /** The way into a deployed device's Edit dialog (name, icon and color of
+   *  its hub record), as in the editors: the hub icon with a pencil badge, or
+   *  a plain pencil until the remote entity publishes the record's icon
+   *  (persistent cache on). A device still waiting for its first Sync has no
+   *  record to edit yet. */
+  private _renderDeviceEdit(device: WifiDeviceSummary, locked: boolean) {
+    const deviceId = this._deployedHubDeviceId(device);
+    if (deviceId == null) return nothing;
     const label = iconHubLine(this._hubVersion()) != null
       ? TOOLS_CARD_STRINGS.backup.editDevice
       : TOOLS_CARD_STRINGS.backup.renameDevice;
-    return html`<button class="icon-btn" title=${label} aria-label=${label} ?disabled=${locked || this._deviceEditRunning} @click=${this._openEditDeviceDialog}>
-      <ha-icon icon="mdi:pencil"></ha-icon>
-    </button>`;
-  }
-
-  /** The deployed device's hub icon beside the title, as in the editors: it
-   *  opens the Edit device dialog with the picker showing. Nothing until the
-   *  remote entity publishes the record's icon (persistent cache on). */
-  private _renderDeviceTile(device: WifiDeviceSummary, locked: boolean) {
-    const deviceId = this._deployedHubDeviceId(device);
-    if (deviceId == null) return nothing;
+    const disabled = locked || this._deviceEditRunning;
     const appearance = this._hubDeviceAppearance(deviceId);
     const tile = entityTile(this._hubVersion(), appearance.icon, appearance.colorId);
-    if (!tile) return nothing;
-    return renderDetailEntityTile(tile, {
-      label: TOOLS_CARD_STRINGS.backup.editDevice,
-      disabled: locked || this._deviceEditRunning,
-      onClick: () => { void this._openEditDevice(true); },
-    });
+    if (tile) return renderDetailEntityTile(tile, { label, disabled, onClick: this._openEditDeviceDialog });
+    return html`<button class="icon-btn" title=${label} aria-label=${label} ?disabled=${disabled} @click=${this._openEditDeviceDialog}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
   }
 
   /** The record's icon and color from the remote entity's `devices` rows. */
@@ -1249,10 +1241,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     return (bundle?.devices ?? []).some((entry) => Number(entry?.device?.device_id) === deviceId);
   }
 
-  private _openEditDeviceDialog = () => this._openEditDevice(false);
-
-  /** The header tile opens it with the picker showing. */
-  private async _openEditDevice(pickerOpen: boolean) {
+  private _openEditDeviceDialog = async () => {
     const device = this._selectedWifiDevice();
     const deviceId = this._deployedHubDeviceId(device);
     const entryId = String(this.hub?.entry_id || "").trim();
@@ -1269,11 +1258,11 @@ class SofabatonWifiCommandsTab extends LitElement {
       name,
       appearance: cached ? bundleEntityAppearance(bundle, "device", deviceId) : { icon: null, colorId: null },
       cached,
-      pickerOpen: pickerOpen && cached,
+      pickerOpen: false,
       tab: "icon",
       error: cached ? "" : TOOLS_CARD_STRINGS.activities.needsRefreshTitle,
     };
-  }
+  };
 
   private _patchEditDeviceDialog(patch: Partial<WifiDeviceEditDialog>) {
     if (this._editDeviceDialog) this._editDeviceDialog = { ...this._editDeviceDialog, ...patch };
@@ -3889,9 +3878,20 @@ class SofabatonWifiCommandsTab extends LitElement {
           : this._syncState.sync_needed
             ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub
             : TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate;
+    const icon = remoteUnavailable
+      ? "mdi:sync-off"
+      : syncRunning
+        ? "mdi:sync"
+        : externallyLocked
+          ? "mdi:timer-sand"
+          : this._syncState.sync_needed
+            ? "mdi:sync"
+            : "mdi:check";
     const disabled = remoteUnavailable || syncRunning || externallyLocked || !this._syncState.sync_needed;
     const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}${!remoteUnavailable && !syncRunning && !externallyLocked && !this._syncState.sync_needed ? " detail-sync-btn--state-ok" : ""}`;
-    return html`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
+    return html`<button class=${classes} title=${label} aria-label=${label} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>
+      <ha-icon class="detail-sync-icon" icon=${icon}></ha-icon><span class="detail-sync-label">${label}</span>
+    </button>`;
   }
 
   private _selectWifiDevice(deviceKey: string) {

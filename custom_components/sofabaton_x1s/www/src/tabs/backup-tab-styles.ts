@@ -463,28 +463,25 @@ export const backupTabStyles = css`
       gap: 10px;
       min-width: 0;
       flex: 1;
-      overflow: hidden;
     }
-    /* Reflow by the editor's width, also inside a narrow desktop card. */
+    /* One row: back, the entity, Sync. The name keeps the room: by the editor's
+       width, also inside a narrow desktop card, Sync drops to its icon. */
     .sticky-header { container: editor-header / inline-size; }
-    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
-    .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
-    @container editor-header (max-width: 450px) {
-      .detail-title-row { flex-wrap: wrap; gap: 10px; }
-      .detail-title-main { flex-basis: 100%; }
-      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
-      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
-      .detail-header-tools .detail-sync-btn { min-height: 44px; }
-      .detail-header-tools .delivery-pill, .detail-header-tools .ir-pill { min-height: 44px; box-sizing: border-box; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; --mdc-icon-size: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill, .detail-title-meta .ir-pill { min-height: 24px; box-sizing: border-box; }
     }
     .detail-title-stack {
       display: flex;
       flex-direction: column;
       min-width: 0;
       flex: 1 1 0;
-      overflow: hidden;
     }
     .detail-crumbs {
       display: flex;
@@ -1262,6 +1259,7 @@ export const backupTabStyles = css`
     .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; flex-wrap: wrap; }
     .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
     .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--error-color, #db4437); }
+    .dialog-footer-delete { flex: 0 0 auto; }
 
     .status-box {
       display: flex;
@@ -1501,6 +1499,9 @@ export const backupTabStyles = css`
       }
       .dialog-footer-note {
         min-height: 0;
+      }
+      .dialog-footer-delete {
+        align-self: flex-start;
       }
     }
 `;

@@ -22,6 +22,7 @@
 import { html, nothing, type PropertyDeclarations, type TemplateResult } from "lit";
 import {
   mdiArrowLeft,
+  mdiCheck,
   mdiChevronDown,
   mdiChevronRight,
   mdiClose,
@@ -36,12 +37,13 @@ import {
   mdiInformationOutline,
   mdiLinkVariant,
   mdiPencil,
-  mdiPlayPause,
   mdiPlaylistEdit,
+  mdiPlayPause,
   mdiPlus,
   mdiPound,
   mdiPower,
   mdiStarOutline,
+  mdiSync,
   mdiTrashCanOutline,
   mdiTuneVariant,
   mdiVolumeHigh,
@@ -120,6 +122,7 @@ export const ACTIVITY_EDITOR_TAG = "sb-panel-activity-editor";
 const B = TOOLS_CARD_STRINGS.backup;
 const A = TOOLS_CARD_STRINGS.activities;
 const C = TOOLS_CARD_STRINGS.common;
+const W = TOOLS_CARD_STRINGS.wifiCommands;
 
 const FRAME: EntityFrameStrings = {
   loading: A.capturingFromCache("activity"),
@@ -463,22 +466,24 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   // -- rename (activity, macro) ----------------------------------------------------------------------------
 
   /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
-  private _openRename(target: RenameTarget, pickerOpen = false): void {
+  private _openRename(target: RenameTarget): void {
     const draft = target.kind === "activity" ? this._title : target.kind === "favorite" ? target.label : this._macroName(target.buttonId) || this._macroEditor?.name || "";
     const activityId = this.activityId;
     this._rename = target.kind === "activity" && activityId != null && this._working
-      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen, tab: "icon" }
+      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen: false, tab: "icon" }
       : { target, draft, error: "" };
   }
 
-  /** The activity's hub icon beside the title: the edit dialog with the picker showing. */
-  private _renderHeaderTile(): TemplateResult | typeof nothing {
+  /** The way into the edit dialog: the activity's hub icon with a pencil badge, or a plain pencil without one. */
+  private _renderHeaderEdit(): TemplateResult | typeof nothing {
     const activityId = this.activityId;
     if (activityId == null || !this._working) return nothing;
+    const label = iconHubLine(this._hubVersion) != null ? B.editActivity : B.renameKind("activity");
     const appearance = bundleEntityAppearance(this._working, "activity", activityId);
     const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
-    if (!tile) return nothing;
-    return renderDetailEntityTile(tile, { label: B.editActivity, onClick: () => this._openRename({ kind: "activity" }, true) });
+    const open = () => this._openRename({ kind: "activity" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon(mdiPencil)}</button>`;
   }
 
   private _closeRename = (): void => {
@@ -522,6 +527,13 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   };
 
   // -- delete confirm ----------------------------------------------------------------------------------------
+
+  private _deleteFromRename = (): void => {
+    const activityId = this.activityId;
+    if (activityId == null) return;
+    this._closeRename();
+    this._openDeleteConfirm({ kind: "activity", activityId }, this._title);
+  };
 
   private _openDeleteConfirm(target: BackupDeleteTarget, label: string): void {
     this._deleteConfirm = { target, label };
@@ -930,7 +942,8 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
 
   // -- render: shared pieces ------------------------------------------------------------------------------------------------
 
-  private _renderHeader(options: { id: string; title: string; titleId: string; onBack: () => void; crumbs: Array<{ label: string; onClick: () => void }>; lead?: TemplateResult | typeof nothing; actions?: TemplateResult | typeof nothing }): TemplateResult {
+  private _renderHeader(options: { id: string; title: string; titleId: string; onBack: () => void; crumbs: Array<{ label: string; onClick: () => void }>; meta?: TemplateResult; lead?: TemplateResult | typeof nothing; actions?: TemplateResult | typeof nothing }): TemplateResult {
+    const unsaved = this._offline && this._dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B.unsavedTooltip}>${B.unsaved}</span>` : nothing;
     return html`
       <div class="sticky-header">
         <div class="detail-title-row">
@@ -938,14 +951,17 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             <button class="back-btn" id=${options.id} type="button" aria-label=${FRAME.back} @click=${options.onBack}>${icon(mdiArrowLeft)}</button>
             ${options.lead ?? nothing}
             <div class="detail-title-stack">
-              <div class="detail-crumbs">
-                ${options.crumbs.map((crumb) => html`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
-              </div>
+              ${options.meta
+                ? nothing
+                : html`<div class="detail-crumbs">
+                    ${options.crumbs.map((crumb) => html`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
+                  </div>`}
               <div class="detail-title" id=${options.titleId}>${options.title}</div>
+              ${options.meta ? html`<div class="detail-title-meta">${options.meta}${unsaved}</div>` : nothing}
             </div>
           </div>
           <div class="detail-header-tools">
-            ${this._offline && this._dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B.unsavedTooltip}>${B.unsaved}</span>` : nothing}
+            ${options.meta ? nothing : unsaved}
             ${options.actions ?? nothing}
           </div>
         </div>
@@ -1183,13 +1199,14 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     });
   }
 
-  private _dialog(id: string, title: string, close: () => void, body: TemplateResult, footer: TemplateResult, error = "", headerExtra: TemplateResult | typeof nothing = nothing): TemplateResult {
+  private _dialog(id: string, title: string, close: () => void, body: TemplateResult, footer: TemplateResult, error = "", headerExtra: TemplateResult | typeof nothing = nothing, footerStart: TemplateResult | typeof nothing = nothing): TemplateResult {
     return html`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id=${id} @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header ${headerExtra === nothing ? "" : "dialog-header--extra"}"><div class="dialog-title">${title}</div>${headerExtra === nothing ? nothing : html`<div class="dialog-header-extra">${headerExtra}</div>`}<button class="dialog-close" type="button" aria-label=${B.deleteCancel} @click=${close}>${icon(mdiClose)}</button></div>
           <div class="dialog-body">${body}</div>
           <div class="dialog-footer">
+            ${footerStart}
             <div class="dialog-footer-note" id=${`${id}-error`}>${error}</div>
             <div class="dialog-footer-actions">${footer}</div>
           </div>
@@ -1208,15 +1225,12 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
         <div class="detail-view ${this._sorter.state ? "is-sorting" : ""}" id="activity-editor">
           ${this._renderHeader({
             id: "editor-back", title: this._title, titleId: "editor-title", onBack: this._requestClose,
-            crumbs: [{ label: B.crumbActivities, onClick: this._requestClose }],
-            lead: this._renderHeaderTile(),
-            actions: html`<div class="detail-title-actions">
-              <button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B.editActivity : B.renameKind("activity")} title=${iconHubLine(this._hubVersion) != null ? B.editActivity : B.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon(mdiPencil)}</button>
-              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B.deleteActivityAria} title=${B.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon(mdiTrashCanOutline)}</button>
-              ${this._offline
-                ? nothing
-                : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? A.syncToHub : A.syncUpToDate}</button>`}
-            </div>`,
+            crumbs: [],
+            meta: html`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${B.crumbActivities}</button></div>`,
+            lead: this._renderHeaderEdit(),
+            actions: this._offline
+              ? nothing
+              : html`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate} aria-label=${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate}</span></button></div>`,
           })}
           <div class="detail-scroll">
             ${this._renderEditorBanners()}
@@ -1524,6 +1538,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
         <span class="decoded-field-label">${B.name}</span>
         <input class="decoded-field-input" id="rename-input" type="text" maxlength="30" .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyRename(); } }} />
       </label>`;
+    const del = dialog.target.kind === "activity"
+      ? html`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${B.deleteActivityAria} title=${B.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${B.deleteConfirm}</button>`
+      : nothing;
     return this._dialog("rename-dialog", title, this._closeRename, appearance
       ? renderAppearanceEditor({
           hubVersion: this._hubVersion,
@@ -1538,7 +1555,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
         })
       : nameField, html`
       <button class="dialog-btn" type="button" @click=${this._closeRename}>${B.deleteCancel}</button>
-      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B.bindingSave}</button>`, dialog.error);
+      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B.bindingSave}</button>`, dialog.error, nothing, del);
   }
 
   private _renderDeleteConfirmDialog(): TemplateResult | typeof nothing {

@@ -25,6 +25,7 @@ import {
   mdiArrowRightBold,
   mdiArrowULeftTop,
   mdiArrowUpBold,
+  mdiCheck,
   mdiCheckCircleOutline,
   mdiChevronDown,
   mdiChevronDownCircleOutline,
@@ -38,14 +39,16 @@ import {
   mdiHomeOutline,
   mdiMenu,
   mdiPauseCircleOutline,
-  mdiPencilOutline,
+  mdiPencil,
   mdiPlayCircleOutline,
   mdiPlus,
   mdiPower,
   mdiProgressClock,
   mdiRecordRec,
   mdiRewind,
+  mdiSync,
   mdiTelevisionGuide,
+  mdiTimerSand,
   mdiTimerSandFull,
   mdiTrashCanOutline,
   mdiVideoInputHdmi,
@@ -271,10 +274,6 @@ export class SbPanelWifiDevices extends LitElement {
 
       /* -- the detail view ---------------------------------------------------------------------- */
       .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-      .detail-title-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; cursor: pointer; color: var(--sbp-text); }
-      .detail-title-btn .mdi { color: var(--sbp-muted); opacity: 0; transition: opacity 120ms ease; }
-      .detail-title-btn:hover .mdi, .detail-title-btn:focus-visible .mdi { opacity: 1; }
-      .detail-title-btn .detail-title { width: auto; }
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
@@ -375,7 +374,6 @@ export class SbPanelWifiDevices extends LitElement {
         .device-status-pill-label { display: none; }
         .slot-btn { min-height: 52px; }
         .slot-flag, .slot-clear { width: 32px; height: 32px; }
-        .detail-title-btn .mdi { opacity: 1; }
       }
     `,
   ];
@@ -844,15 +842,12 @@ export class SbPanelWifiDevices extends LitElement {
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
   }
 
-  private _openRename = (): void => this._openEdit(false);
-
-  /** The header tile opens it with the picker showing. */
-  private _openEdit(pickerOpen: boolean): void {
+  private _openRename = (): void => {
     if (!this._draft || this._locked) return;
     const shown = this._shownAppearance();
-    this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen, tab: "icon" };
-    if (!pickerOpen) void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>("#wifi-rename")?.select());
-  }
+    this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen: false, tab: "icon" };
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>("#wifi-rename")?.select());
+  };
 
   /** The icon and color the device shows: the draft's pick, else the hub record's. */
   private _shownAppearance(): AppearanceDraft {
@@ -883,12 +878,14 @@ export class SbPanelWifiDevices extends LitElement {
     this._rename = null;
   };
 
-  /** The device's icon beside its name, as in the editors: the Edit device dialog with the picker showing. */
-  private _renderHeaderTile(device: WifiDeviceView): TemplateResult | typeof nothing {
+  /** The way into the Edit device dialog, as in the editors: the device's icon with a pencil badge, or a plain pencil without one. */
+  private _renderHeaderEdit(device: WifiDeviceView): TemplateResult {
+    const label = iconHubLine(this._hubVersion) != null ? B.editDevice : T.renameTitle;
+    const disabled = this._locked || device.stale;
     const shown = this._shownAppearance();
     const tile = entityTile(this._hubVersion, shown.icon, shown.colorId);
-    if (!tile) return nothing;
-    return renderDetailEntityTile(tile, { label: B.editDevice, disabled: this._locked || device.stale, onClick: () => this._openEdit(true) });
+    if (tile) return renderDetailEntityTile(tile, { id: "wifi-rename-open", label, disabled, onClick: this._openRename });
+    return html`<button class="icon-btn" id="wifi-rename-open" type="button" aria-label=${label} title=${label} ?disabled=${disabled} @click=${this._openRename}>${icon(mdiPencil)}</button>`;
   }
 
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
@@ -1143,16 +1140,18 @@ export class SbPanelWifiDevices extends LitElement {
   // -- render: the detail view -------------------------------------------------------------------------------------------
 
   private _renderSyncButton(device: WifiDeviceView): TemplateResult {
+    const button = (id: string, state: string, label: string, path: string, disabled: boolean, onClick?: () => void) =>
+      html`<button class="detail-sync-btn ${state}" id=${id} type="button" title=${label} aria-label=${label} ?disabled=${disabled} @click=${onClick}><span class="detail-sync-icon">${icon(path)}</span><span class="detail-sync-label">${label}</span></button>`;
     // Another job holds the hub (another view, another client): the card's "Busy".
     const externallyLocked = !this._working && (this.ctx ? !this.ctx.free : false);
     if (device.stale) {
-      return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? (externallyLocked ? S.actionButtonBusy : T.redeploy)}</button>`;
+      return button("wifi-redeploy", "sync-btn-primary", this._working ?? (externallyLocked ? S.actionButtonBusy : T.redeploy), mdiSync, this._locked, this._redeploy);
     }
     const dirty = this.hasUnsyncedChanges();
-    if (this._working) return html`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
-    if (externallyLocked) return html`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${S.actionButtonBusy}</button>`;
-    if (!dirty) return html`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S.actionButtonUpToDate}</button>`;
-    return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S.actionButtonSyncToHub}</button>`;
+    if (this._working) return button("wifi-sync", "", this._working, mdiSync, true);
+    if (externallyLocked) return button("wifi-sync", "", S.actionButtonBusy, mdiTimerSand, true);
+    if (!dirty) return button("wifi-sync", "detail-sync-btn--state-ok", S.actionButtonUpToDate, mdiCheck, true);
+    return button("wifi-sync", "sync-btn-primary", S.actionButtonSyncToHub, mdiSync, !this._canSync(device), () => void this._sync());
   }
 
   private _renderPowerLines(draft: WifiDraft): TemplateResult | typeof nothing {
@@ -1247,13 +1246,13 @@ export class SbPanelWifiDevices extends LitElement {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon(mdiArrowLeft)}</button>
-                ${this._renderHeaderTile(device)}
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${iconHubLine(this._hubVersion) != null ? B.editDevice : T.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon(mdiPencilOutline)}</button>
+                ${this._renderHeaderEdit(device)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${draft.name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(device)}</div>
+                </div>
               </div>
-              <div class="detail-header-tools">
-                ${this._renderDeliveryPill(device)}
-                <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
-              </div>
+              <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
             </div>
           </div>
           ${deploying

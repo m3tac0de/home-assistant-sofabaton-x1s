@@ -643,9 +643,9 @@ test("live editor locks a managed Wifi Device to read-only (rename kept, delete 
   const body = templateText(element._renderManagedWifiLockNotice());
   assert.ok(body.includes("Managed by Wifi Commands"));
 
-  const buttons = templateText(element._renderDetailRenameDeleteButtons("device"));
-  assert.ok(buttons.includes("mdi:pencil")); // rename kept
-  assert.ok(!buttons.includes("mdi:trash-can-outline")); // delete removed
+  assert.notEqual(templateText(element._renderDetailEdit("device")), ""); // rename kept
+  element._openDetailRenameDialog();
+  assert.ok(!templateText(element._renderEditRenameDialog()).includes("dialog-footer-delete")); // delete removed
 });
 
 test("live editor leaves an unmanaged device fully editable", () => {
@@ -657,8 +657,11 @@ test("live editor leaves an unmanaged device fully editable", () => {
 
   assert.equal(element._isManagedWifiLiveDevice(), false);
   assert.ok(element._editDetailSectionItems("device").length > 0);
-  const buttons = templateText(element._renderDetailRenameDeleteButtons("device"));
-  assert.ok(buttons.includes("mdi:trash-can-outline")); // delete present
+  element._openDetailRenameDialog();
+  assert.ok(templateText(element._renderEditRenameDialog()).includes("dialog-footer-delete")); // delete present
+  element._deleteFromEditDialog();
+  assert.equal(element._editRenameDialogOpen, false);
+  assert.deepEqual(element._confirmDeleteTarget, { kind: "device", deviceId: 2 });
 });
 
 test("the offline backup editor never locks a managed Wifi Device", () => {
@@ -1978,7 +1981,7 @@ test("the edit dialog saves a picked icon and color with the name, and only what
   const closed = templateText(element._renderEditRenameDialog());
   assert.match(closed, /Edit activity/);
   assert.match(closed, /Change icon and color/);
-  assert.match(templateText(element._renderDetailRenameDeleteButtons("activity")), /Edit activity/);
+  assert.match(templateText(element._renderDetailEdit("activity")), /Edit activity/);
 
   element._editAppearanceOpen = true;
   element._editAppearance = { ...element._editAppearance, icon: 34 };
@@ -1992,12 +1995,14 @@ test("the edit dialog saves a picked icon and color with the name, and only what
   assert.deepEqual(element._editAppearance, { icon: null, colorId: null });
 });
 
-test("on an X1S the dialog offers icons only, and the header tile opens it with the picker showing", () => {
+test("on an X1S the dialog offers icons only, and the header tile opens it with the picker on demand", () => {
   const element = createEditor("X1S");
   element.bundle.activities[0].device.icon = 9;
 
-  element._openDetailAppearanceDialog();
-  assert.equal(element._editAppearanceOpen, true);
+  assert.match(templateText(element._renderDetailEdit("activity")), /detail-entity-tile/);
+  element._openDetailRenameDialog();
+  assert.equal(element._editAppearanceOpen, false);
+  element._editAppearanceOpen = true;
   const open = templateText(element._renderEditRenameDialog());
   assert.match(open, /Change icon/);
   assert.doesNotMatch(open, /Change icon and color/);
@@ -2013,8 +2018,10 @@ test("an old bundle without an icon or hub line keeps the plain rename dialog", 
   const text = templateText(element._renderEditRenameDialog());
   assert.match(text, /Rename activity/);
   assert.doesNotMatch(text, /appearance-ident/);
-  assert.match(templateText(element._renderDetailRenameDeleteButtons("activity")), /Rename activity/);
-  assert.equal(templateText(element._renderDetailTile("activity")), "");
+  const edit = templateText(element._renderDetailEdit("activity"));
+  assert.match(edit, /Rename activity/);
+  assert.match(edit, /mdi:pencil/);
+  assert.doesNotMatch(edit, /detail-entity-tile/);
 });
 
 // ── RF commands: Test and Learn follow the command's own signal ─────────

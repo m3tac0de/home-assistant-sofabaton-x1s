@@ -359,8 +359,6 @@ var TOOLS_CARD_STRINGS_DE = {
     capturingFromCache: (kind) => `${art(kind)} wird aus dem Hub-Cache geladen\u2026`,
     needsRefreshTitle: "Hub-Cache zum Bearbeiten aktualisieren",
     needsRefreshBody: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} befindet sich noch nicht im lokalen Hub-Cache. Aktualisiere den Hub-Cache, um ${kind === "activity" ? "sie" : "es"} in den Editor zu laden. Dies kann je nach Gr\xF6\xDFe deiner Hub-Konfiguration einige Minuten dauern.`,
-    syncToHub: "Mit Hub synchronisieren",
-    syncUpToDate: "Aktuell",
     deletingTitle: (kind) => `${art(kind)} wird gel\xF6scht`,
     deletingMessage: (kind) => `${kind === "activity" ? "Diese Aktivit\xE4t" : "Dieses Ger\xE4t"} wird vom Hub entfernt\u2026`,
     syncingTitle: "Synchronisierung mit deinem Hub",

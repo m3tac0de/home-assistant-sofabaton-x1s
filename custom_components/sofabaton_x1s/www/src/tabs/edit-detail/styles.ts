@@ -6,10 +6,6 @@ export const editDetailViewStyles = css`
     :host {
       flex-direction: column;
     }
-    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
-    @container sofabaton-card (max-width: 600px) {
-      .detail-entity-tile { display: none; }
-    }
     /* Glanceable member roster under the Activity power-sequence rows. */
     .power-members-summary {
       padding: 8px 4px 0;
@@ -31,7 +27,11 @@ export const editDetailViewStyles = css`
       transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
     }
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .detail-sync-btn.sync-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       Not the pure primary: white on it fails in most themes (2:1 on the iOS orange). The
+       accent-text mix turns with the theme and the card surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: var(--sb-accent-text, var(--primary-color)); --_sync-ink: var(--sb-popup-surface, var(--sb-card-surface, #fff)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--_sync-ink); }
+    .detail-sync-btn.sync-btn-primary:hover { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
     .detail-sync-btn:disabled {
       cursor: default;
       opacity: 0.42;

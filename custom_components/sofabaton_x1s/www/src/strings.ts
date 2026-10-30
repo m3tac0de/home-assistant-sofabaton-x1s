@@ -442,10 +442,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind: "activity" | "device") =>
       `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Live-mode edit header (§4.3). The header mirrors the Wifi command
-    // editor: a single stateful Sync button (no dirty chip, no review/discard).
-    syncToHub: "Sync to Hub",
-    syncUpToDate: "Up to date",
     // Immediate entity delete (executed on the hub right away).
     deletingTitle: (kind: "activity" | "device") => `Deleting ${kind}`,
     deletingMessage: (kind: "activity" | "device") => `Removing this ${kind} from the hub…`,

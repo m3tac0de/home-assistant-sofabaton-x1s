@@ -344,57 +344,46 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _renderLiveSyncButton() {
-    const S = TOOLS_CARD_STRINGS.activities;
+    const S = TOOLS_CARD_STRINGS.wifiCommands;
     const dirty = this.dirty;
-    const label = dirty ? S.syncToHub : S.syncUpToDate;
+    const label = dirty ? S.actionButtonSyncToHub : S.actionButtonUpToDate;
     const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
-    return html`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
+    return html`<button class=${classes} title=${label} aria-label=${label} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>
+      <ha-icon class="detail-sync-icon" icon=${dirty ? "mdi:sync" : "mdi:check"}></ha-icon><span class="detail-sync-label">${label}</span>
+    </button>`;
   }
 
-  // Rename (pencil) + delete (trash) header buttons — shared by live and
-  // backup mode so both editors expose the identical affordance. In live
-  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
-  // delete executes immediately on the hub through the host (see
-  // _confirmDelete).
-  private _renderDetailRenameDeleteButtons(kind: BackupEditTargetKind) {
-    // A managed Wifi Device keeps its rename affordance (it stays in sync
-    // with the Wifi Commands store) but loses delete — removing it belongs in
-    // the Wifi Commands tab, which also clears its stored configuration.
-    const managed = this._isManagedWifiLiveDevice();
+  // The header's way into the edit dialog, shared by live and backup mode: the
+  // entity's hub icon with a pencil badge, or a plain pencil when the bundle
+  // carries no icon or no hub line (an old backup). In live mode an edit rides
+  // the normal Sync (a bundle mutation → dirty → Sync).
+  private _renderDetailEdit(kind: BackupEditTargetKind) {
+    if (this.entityId == null) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
-    const editLabel = iconHubLine(this.bundle?.hub?.version) != null
+    const label = iconHubLine(this.bundle?.hub?.version) != null
       ? (kind === "activity" ? S.editActivity : S.editDevice)
       : S.renameKind(kind);
-    return html`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${editLabel} title=${editLabel}>
-        <ha-icon icon="mdi:pencil"></ha-icon>
-      </button>
-      ${managed
-        ? nothing
-        : html`
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${this._openDetailDeleteConfirm}
-              aria-label=${kind === "activity"
-                ? TOOLS_CARD_STRINGS.backup.deleteActivityAria
-                : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
-          `}
-    `;
-  }
-
-  // The entity's hub icon beside the title; it opens the edit dialog with
-  // the picker showing. Nothing when the bundle carries no icon or no hub
-  // line (an old backup): the header stays as it was.
-  private _renderDetailTile(kind: BackupEditTargetKind) {
-    if (this.entityId == null) return nothing;
     const appearance = bundleEntityAppearance(this.bundle, kind, this.entityId);
     const tile = entityTile(this.bundle?.hub?.version, appearance.icon, appearance.colorId);
-    if (!tile) return nothing;
-    const label = kind === "activity" ? TOOLS_CARD_STRINGS.backup.editActivity : TOOLS_CARD_STRINGS.backup.editDevice;
-    return renderDetailEntityTile(tile, { label, onClick: this._openDetailAppearanceDialog });
+    if (tile) return renderDetailEntityTile(tile, { label, onClick: this._openDetailRenameDialog });
+    return html`<button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${label} title=${label}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
+  }
+
+  // Under the title: the device's pill where it has one (at most one), else
+  // what Back returns to; and "Unsaved" in a backup.
+  private _renderDetailMeta(kind: BackupEditTargetKind) {
+    const delivery = this._renderDeliveryPill(kind);
+    const pill = delivery !== nothing ? delivery : this._renderIrPill(kind);
+    return html`
+      <div class="detail-title-meta">
+        ${pill !== nothing
+          ? pill
+          : html`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${this._entityKindCrumbLabel(kind)}</button></div>`}
+        ${this._renderDirtyChip()}
+      </div>
+    `;
   }
 
   private _renderManagedWifiLockNotice() {
@@ -448,23 +437,13 @@ export class SofabatonEditDetailView extends LitElement {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
-                ${this._renderDetailTile(params.kind)}
+                ${this._renderDetailEdit(params.kind)}
                 <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-                    { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose },
-                  ])}
                   <div class="detail-title">${params.title}</div>
+                  ${this._renderDetailMeta(params.kind)}
                 </div>
               </div>
-              <div class="detail-header-tools">
-                ${this._renderDeliveryPill(params.kind)}
-                ${this._renderIrPill(params.kind)}
-                ${this._renderDirtyChip()}
-                <div class="detail-title-actions">
-                  ${this._renderDetailRenameDeleteButtons(params.kind)}
-                  ${this.mode === "live" ? this._renderLiveSyncButton() : nothing}
-                </div>
-              </div>
+              ${this.mode === "live" ? html`<div class="detail-title-actions">${this._renderLiveSyncButton()}</div>` : nothing}
             </div>
             ${this._renderEditDetailSectionNav(sectionItems)}
           </div>
@@ -1265,6 +1244,7 @@ export class SofabatonEditDetailView extends LitElement {
             ${appearance ? this._renderAppearanceEditor() : this._renderEditRenameField()}
           </div>
           <div class="dialog-footer">
+            ${this._renderEditDialogDelete()}
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
@@ -1274,6 +1254,17 @@ export class SofabatonEditDetailView extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  // Delete lives in the entity's own edit dialog; it executes immediately on
+  // the hub through the host (see _confirmDelete). A managed Wifi Device has
+  // none: removing it belongs in the Wifi Commands tab, which also clears its
+  // stored configuration.
+  private _renderEditDialogDelete() {
+    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice()) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const label = this._editRenameDialogTarget.entityKind === "activity" ? S.deleteActivityAria : S.deleteDeviceAria;
+    return html`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" aria-label=${label} title=${label} @click=${this._deleteFromEditDialog}>${S.deleteConfirm}</button>`;
   }
 
   // Name first, the tile beside it; the picker opens on demand.
@@ -1375,12 +1366,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._editAppearanceOpen = false;
     this._editAppearanceTab = "icon";
     this._editRenameDialogOpen = true;
-  };
-
-  /** The header tile: the same dialog, with the picker already open. */
-  private _openDetailAppearanceDialog = () => {
-    this._openDetailRenameDialog();
-    this._editAppearanceOpen = true;
   };
 
   private _openDeviceIpRenameDialog(deviceId: number) {
@@ -1488,6 +1473,11 @@ export class SofabatonEditDetailView extends LitElement {
       ? { kind: "activity", activityId: id }
       : { kind: "device", deviceId: id };
     this._confirmDeleteLabel = this._selectedEditTitle();
+  };
+
+  private _deleteFromEditDialog = () => {
+    this._closeEditRenameDialog();
+    this._openDetailDeleteConfirm();
   };
 
   private _openCommandDeleteConfirm(commandId: number, label: string) {

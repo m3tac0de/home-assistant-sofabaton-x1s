@@ -4,8 +4,8 @@ var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "a
 var s = /* @__PURE__ */ Symbol();
 var o = /* @__PURE__ */ new WeakMap();
 var n = class {
-  constructor(t5, e6, o8) {
-    if (this._$cssResult$ = true, o8 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
+  constructor(t5, e6, o9) {
+    if (this._$cssResult$ = true, o9 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
     this.cssText = t5, this.t = e6;
   }
   get styleSheet() {
@@ -23,18 +23,18 @@ var n = class {
 };
 var r = (t5) => new n("string" == typeof t5 ? t5 : t5 + "", void 0, s);
 var i = (t5, ...e6) => {
-  const o8 = 1 === t5.length ? t5[0] : e6.reduce((e7, s7, o9) => e7 + ((t6) => {
+  const o9 = 1 === t5.length ? t5[0] : e6.reduce((e7, s7, o10) => e7 + ((t6) => {
     if (true === t6._$cssResult$) return t6.cssText;
     if ("number" == typeof t6) return t6;
     throw Error("Value passed to 'css' function must be a 'css' function result: " + t6 + ". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.");
-  })(s7) + t5[o9 + 1], t5[0]);
-  return new n(o8, t5, s);
+  })(s7) + t5[o10 + 1], t5[0]);
+  return new n(o9, t5, s);
 };
-var S = (s7, o8) => {
-  if (e) s7.adoptedStyleSheets = o8.map((t5) => t5 instanceof CSSStyleSheet ? t5 : t5.styleSheet);
-  else for (const e6 of o8) {
-    const o9 = document.createElement("style"), n7 = t.litNonce;
-    void 0 !== n7 && o9.setAttribute("nonce", n7), o9.textContent = e6.cssText, s7.appendChild(o9);
+var S = (s7, o9) => {
+  if (e) s7.adoptedStyleSheets = o9.map((t5) => t5 instanceof CSSStyleSheet ? t5 : t5.styleSheet);
+  else for (const e6 of o9) {
+    const o10 = document.createElement("style"), n7 = t.litNonce;
+    void 0 !== n7 && o10.setAttribute("nonce", n7), o10.textContent = e6.cssText, s7.appendChild(o10);
   }
 };
 var c = e ? (t5) => t5 : (t5) => t5 instanceof CSSStyleSheet ? ((t6) => {
@@ -352,8 +352,8 @@ var S2 = class _S {
 function M(t5, i8, s7 = t5, e6) {
   if (i8 === E) return i8;
   let h7 = void 0 !== e6 ? s7._$Co?.[e6] : s7._$Cl;
-  const o8 = a2(i8) ? void 0 : i8._$litDirective$;
-  return h7?.constructor !== o8 && (h7?._$AO?.(false), void 0 === o8 ? h7 = void 0 : (h7 = new o8(t5), h7._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h7 : s7._$Cl = h7), void 0 !== h7 && (i8 = M(t5, h7._$AS(t5, i8.values), h7, e6)), i8;
+  const o9 = a2(i8) ? void 0 : i8._$litDirective$;
+  return h7?.constructor !== o9 && (h7?._$AO?.(false), void 0 === o9 ? h7 = void 0 : (h7 = new o9(t5), h7._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h7 : s7._$Cl = h7), void 0 !== h7 && (i8 = M(t5, h7._$AS(t5, i8.values), h7, e6)), i8;
 }
 var R = class {
   constructor(t5, i8) {
@@ -368,13 +368,13 @@ var R = class {
   u(t5) {
     const { el: { content: i8 }, parts: s7 } = this._$AD, e6 = (t5?.creationScope ?? l2).importNode(i8, true);
     P.currentNode = e6;
-    let h7 = P.nextNode(), o8 = 0, n7 = 0, r6 = s7[0];
+    let h7 = P.nextNode(), o9 = 0, n7 = 0, r6 = s7[0];
     for (; void 0 !== r6; ) {
-      if (o8 === r6.index) {
+      if (o9 === r6.index) {
         let i9;
         2 === r6.type ? i9 = new k(h7, h7.nextSibling, this, t5) : 1 === r6.type ? i9 = new r6.ctor(h7, r6.name, r6.strings, this, t5) : 6 === r6.type && (i9 = new Z(h7, this, t5)), this._$AV.push(i9), r6 = s7[++n7];
       }
-      o8 !== r6?.index && (h7 = P.nextNode(), o8++);
+      o9 !== r6?.index && (h7 = P.nextNode(), o9++);
     }
     return P.currentNode = l2, e6;
   }
@@ -454,14 +454,14 @@ var H = class {
   }
   _$AI(t5, i8 = this, s7, e6) {
     const h7 = this.strings;
-    let o8 = false;
-    if (void 0 === h7) t5 = M(this, t5, i8, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
+    let o9 = false;
+    if (void 0 === h7) t5 = M(this, t5, i8, 0), o9 = !a2(t5) || t5 !== this._$AH && t5 !== E, o9 && (this._$AH = t5);
     else {
       const e7 = t5;
       let n7, r6;
-      for (t5 = h7[0], n7 = 0; n7 < h7.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h7[n7 + 1]), this._$AH[n7] = r6;
+      for (t5 = h7[0], n7 = 0; n7 < h7.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o9 || (o9 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h7[n7 + 1]), this._$AH[n7] = r6;
     }
-    o8 && !e6 && this.j(t5);
+    o9 && !e6 && this.j(t5);
   }
   j(t5) {
     t5 === A ? this.element.removeAttribute(this.name) : this.element.setAttribute(this.name, t5 ?? "");
@@ -572,41 +572,41 @@ var i5 = class {
 
 // node_modules/lit-html/directive-helpers.js
 var { I: t4 } = j;
-var i6 = (o8) => o8;
-var l3 = (o8, t5) => void 0 === t5 ? void 0 !== o8?._$litType$ : o8?._$litType$ === t5;
-var d3 = (o8) => null != o8?._$litType$?.h;
-var r4 = (o8) => void 0 === o8.strings;
+var i6 = (o9) => o9;
+var l3 = (o9, t5) => void 0 === t5 ? void 0 !== o9?._$litType$ : o9?._$litType$ === t5;
+var d3 = (o9) => null != o9?._$litType$?.h;
+var r4 = (o9) => void 0 === o9.strings;
 var s4 = () => document.createComment("");
-var v2 = (o8, n7, e6) => {
-  const l6 = o8._$AA.parentNode, d5 = void 0 === n7 ? o8._$AB : n7._$AA;
+var v2 = (o9, n7, e6) => {
+  const l6 = o9._$AA.parentNode, d5 = void 0 === n7 ? o9._$AB : n7._$AA;
   if (void 0 === e6) {
     const i8 = l6.insertBefore(s4(), d5), n8 = l6.insertBefore(s4(), d5);
-    e6 = new t4(i8, n8, o8, o8.options);
+    e6 = new t4(i8, n8, o9, o9.options);
   } else {
-    const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o8;
+    const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o9;
     if (c7) {
       let t6;
-      e6._$AQ?.(o8), e6._$AM = o8, void 0 !== e6._$AP && (t6 = o8._$AU) !== n8._$AU && e6._$AP(t6);
+      e6._$AQ?.(o9), e6._$AM = o9, void 0 !== e6._$AP && (t6 = o9._$AU) !== n8._$AU && e6._$AP(t6);
     }
     if (t5 !== d5 || c7) {
-      let o9 = e6._$AA;
-      for (; o9 !== t5; ) {
-        const t6 = i6(o9).nextSibling;
-        i6(l6).insertBefore(o9, d5), o9 = t6;
+      let o10 = e6._$AA;
+      for (; o10 !== t5; ) {
+        const t6 = i6(o10).nextSibling;
+        i6(l6).insertBefore(o10, d5), o10 = t6;
       }
     }
   }
   return e6;
 };
-var u3 = (o8, t5, i8 = o8) => (o8._$AI(t5, i8), o8);
+var u3 = (o9, t5, i8 = o9) => (o9._$AI(t5, i8), o9);
 var m2 = {};
-var p3 = (o8, t5 = m2) => o8._$AH = t5;
-var M2 = (o8) => o8._$AH;
-var h3 = (o8) => {
-  o8._$AR(), o8._$AA.remove();
+var p3 = (o9, t5 = m2) => o9._$AH = t5;
+var M2 = (o9) => o9._$AH;
+var h3 = (o9) => {
+  o9._$AR(), o9._$AA.remove();
 };
-var j2 = (o8) => {
-  o8._$AR();
+var j2 = (o9) => {
+  o9._$AR();
 };
 
 // node_modules/lit-html/directives/repeat.js
@@ -622,10 +622,10 @@ var c4 = e4(class extends i5 {
   dt(e6, s7, t5) {
     let r6;
     void 0 === t5 ? t5 = s7 : void 0 !== s7 && (r6 = s7);
-    const l6 = [], o8 = [];
+    const l6 = [], o9 = [];
     let i8 = 0;
-    for (const s8 of e6) l6[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
-    return { values: o8, keys: l6 };
+    for (const s8 of e6) l6[i8] = r6 ? r6(s8, i8) : i8, o9[i8] = t5(s8, i8), i8++;
+    return { values: o9, keys: l6 };
   }
   render(e6, s7, t5) {
     return this.dt(e6, s7, t5).values;
@@ -8144,7 +8144,6 @@ var mdiPauseCircle = "M15,16H13V8H15M11,16H9V8H11M12,2A10,10 0 0,0 2,12A10,10 0 
 var mdiPauseCircleOutline = "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiPencil = "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z";
 var mdiPencilBoxOutline = "M19,19V5H5V19H19M19,3A2,2 0 0,1 21,5V19C21,20.11 20.1,21 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3H19M16.7,9.35L15.7,10.35L13.65,8.3L14.65,7.3C14.86,7.08 15.21,7.08 15.42,7.3L16.7,8.58C16.92,8.79 16.92,9.14 16.7,9.35M7,14.94L13.06,8.88L15.12,10.94L9.06,17H7V14.94Z";
-var mdiPencilOutline = "M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z";
 var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z";
 var mdiPin = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
 var mdiPinOffOutline = "M8,6.2V4H7V2H17V4H16V12L18,14V16H17.8L14,12.2V4H10V8.2L8,6.2M20,20.7L18.7,22L12.8,16.1V22H11.2V16H6V14L8,12V11.3L2,5.3L3.3,4L20,20.7M8.8,14H10.6L9.7,13.1L8.8,14Z";
@@ -8246,6 +8245,7 @@ var mdiThermometer = "M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 1
 var mdiThermostat = "M16.95,16.95L14.83,14.83C15.55,14.1 16,13.1 16,12C16,11.26 15.79,10.57 15.43,10L17.6,7.81C18.5,9 19,10.43 19,12C19,13.93 18.22,15.68 16.95,16.95M12,5C13.57,5 15,5.5 16.19,6.4L14,8.56C13.43,8.21 12.74,8 12,8A4,4 0 0,0 8,12C8,13.1 8.45,14.1 9.17,14.83L7.05,16.95C5.78,15.68 5,13.93 5,12A7,7 0 0,1 12,5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z";
 var mdiTimer = "M19.03 7.39L20.45 5.97C20 5.46 19.55 5 19.04 4.56L17.62 6C16.07 4.74 14.12 4 12 4C7.03 4 3 8.03 3 13S7.03 22 12 22C17 22 21 17.97 21 13C21 10.88 20.26 8.93 19.03 7.39M13 14H11V7H13V14M15 1H9V3H15V1Z";
 var mdiTimerOutline = "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z";
+var mdiTimerSand = "M6,2H18V8H18V8L14,12L18,16V16H18V22H6V16H6V16L10,12L6,8V8H6V2M16,16.5L12,12.5L8,16.5V20H16V16.5M12,11.5L16,7.5V4H8V7.5L12,11.5M10,6H14V6.75L12,8.75L10,6.75V6Z";
 var mdiTimerSandFull = "M6,2V8H6V8L10,12L6,16V16H6V22H18V16H18V16L14,12L18,8V8H18V2H6Z";
 var mdiToggleSwitch = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z";
 var mdiToggleSwitchOff = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M7,15A3,3 0 0,1 4,12A3,3 0 0,1 7,9A3,3 0 0,1 10,12A3,3 0 0,1 7,15Z";
@@ -12071,12 +12071,12 @@ var h6 = e4(class extends i5 {
     const u6 = l3(this.it) ? d4(this.it) : null, h7 = l3(e6) ? d4(e6) : null;
     if (null !== u6 && (null === h7 || u6 !== h7)) {
       const e7 = M2(s7).pop();
-      let o8 = this.et.get(u6);
-      if (void 0 === o8) {
+      let o9 = this.et.get(u6);
+      if (void 0 === o9) {
         const s8 = document.createDocumentFragment();
-        o8 = D(A, s8), o8.setConnected(false), this.et.set(u6, o8);
+        o9 = D(A, s8), o9.setConnected(false), this.et.set(u6, o9);
       }
-      p3(o8, [e7]), v2(o8, void 0, e7);
+      p3(o9, [e7]), v2(o9, void 0, e7);
     }
     if (null !== h7) {
       if (null === u6 || u6 !== h7) {
@@ -12991,10 +12991,6 @@ var TOOLS_CARD_STRINGS_EN = {
     capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Live-mode edit header (§4.3). The header mirrors the Wifi command
-    // editor: a single stateful Sync button (no dirty chip, no review/discard).
-    syncToHub: "Sync to Hub",
-    syncUpToDate: "Up to date",
     // Immediate entity delete (executed on the hub right away).
     deletingTitle: (kind) => `Deleting ${kind}`,
     deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
@@ -20866,6 +20862,9 @@ function defineBackupView() {
   if (!customElements.get(BACKUP_VIEW_TAG)) customElements.define(BACKUP_VIEW_TAG, SbPanelBackup);
 }
 
+// node_modules/lit-html/directives/if-defined.js
+var o8 = (o9) => o9 ?? A;
+
 // remote-card/src/entity-icons/x2-icons.ts
 var X2_ICON_PATHS = {
   // Monitor
@@ -21455,9 +21454,10 @@ function renderAppearanceToggle(params) {
     </div>
   `;
 }
+var BADGE_EDIT = { icon: "mdi:pencil", path: mdiPencil, nudge: [0, 0] };
 function renderDetailEntityTile(tile, params) {
-  return b2`<button class="detail-entity-tile" type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
-    ${renderEntityTile(tile)}
+  return b2`<button class="detail-entity-tile" id=${o8(params.id)} type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
+    ${renderEntityTile(tile, { badge: BADGE_EDIT })}
   </button>`;
 }
 var appearanceEditorStyles = i`
@@ -23080,10 +23080,6 @@ var EDITOR_CSS = i`
     }
     .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
     button { border: 0; background: transparent; padding: 0; }
-    /* A narrow editor gives the room to the title; the pencil opens the same dialog. */
-    @container (max-width: 600px) {
-      .detail-entity-tile { display: none; }
-    }
     /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
     .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
     .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
@@ -23094,28 +23090,30 @@ var EDITOR_CSS = i`
     /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
     .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
     .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
-    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
-    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
+    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; }
     .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
     .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
     .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
     .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
     .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-    /* Identity and controls have separate lanes in narrow editors, including
-       embedded ones on a wide screen. Empty subview toolbars take no space. */
+    /* One row: back, the entity, Sync. The name keeps the room: by the editor's
+       width, also embedded on a wide screen, Sync drops to its icon. Empty
+       subview toolbars take no space. */
     .sticky-header { container: editor-header / inline-size; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
     .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
     .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
-    @container editor-header (max-width: 450px) {
-      .detail-title-row { flex-wrap: wrap; gap: 10px; }
-      .detail-title-main { flex-basis: 100%; }
-      .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .detail-header-tools { flex: 1 1 100%; flex-wrap: wrap; }
-      .detail-header-tools .detail-title-actions { margin-inline-start: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-      .detail-title-row .back-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
-      .detail-header-tools .detail-sync-btn { min-height: 44px; }
-      .detail-header-tools .delivery-pill, .detail-header-tools .ir-pill { min-height: 44px; box-sizing: border-box; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; }
+      .detail-sync-icon .mdi { width: 20px; height: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill, .detail-title-meta .ir-pill { min-height: 24px; box-sizing: border-box; }
     }
     /* Offline mode (a backup file): the card's "Unsaved" chip stands where the live editor has its Sync button. */
     .edit-unsaved-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 8px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; color: var(--sbp-warn); background: color-mix(in srgb, var(--sbp-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-warn) 35%, transparent); }
@@ -23125,8 +23123,12 @@ var EDITOR_CSS = i`
     .back-btn .mdi { width: 18px; height: 18px; }
     .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-    .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       The card's accent-text mix: it turns with the theme and the panel surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-text)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--sbp-panel); }
+    .detail-sync-btn.sync-btn-primary:hover:not(:disabled) { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px rgba(var(--sbp-accent-rgb), 0.35); }
     .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
+    .detail-sync-btn.sync-btn-primary:disabled { background: rgba(var(--sbp-accent-rgb), 0.18); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
     .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); opacity: 1; }
     .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
     .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
@@ -23246,6 +23248,7 @@ var EDITOR_CSS = i`
     .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
     .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
     .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
+    .dialog-footer-delete { flex: 0 0 auto; }
     .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
     .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
@@ -23351,6 +23354,7 @@ var EDITOR_CSS = i`
       .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
       /* The footer is a column here, so the note's 140px basis would be a height. */
       .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
+      .dialog-footer-delete { align-self: flex-start; }
       .dialog-footer-note:empty { display: none; }
       .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
@@ -24001,6 +24005,7 @@ var ACTIVITY_EDITOR_TAG = "sb-panel-activity-editor";
 var B2 = TOOLS_CARD_STRINGS.backup;
 var A2 = TOOLS_CARD_STRINGS.activities;
 var C3 = TOOLS_CARD_STRINGS.common;
+var W = TOOLS_CARD_STRINGS.wifiCommands;
 var FRAME = {
   loading: A2.capturingFromCache("activity"),
   back: A2.back,
@@ -24152,6 +24157,13 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         if (this._macroEditor?.buttonId === dialog.target.buttonId) this._macroEditor = { ...this._macroEditor, name: next };
       }
       this._rename = null;
+    };
+    // -- delete confirm ----------------------------------------------------------------------------------------
+    this._deleteFromRename = () => {
+      const activityId = this.activityId;
+      if (activityId == null) return;
+      this._closeRename();
+      this._openDeleteConfirm({ kind: "activity", activityId }, this._title);
     };
     this._closeDeleteConfirm = () => {
       this._deleteConfirm = null;
@@ -24469,21 +24481,22 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   }
   // -- rename (activity, macro) ----------------------------------------------------------------------------
   /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
-  _openRename(target, pickerOpen = false) {
+  _openRename(target) {
     const draft = target.kind === "activity" ? this._title : target.kind === "favorite" ? target.label : this._macroName(target.buttonId) || this._macroEditor?.name || "";
     const activityId = this.activityId;
-    this._rename = target.kind === "activity" && activityId != null && this._working ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen, tab: "icon" } : { target, draft, error: "" };
+    this._rename = target.kind === "activity" && activityId != null && this._working ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen: false, tab: "icon" } : { target, draft, error: "" };
   }
-  /** The activity's hub icon beside the title: the edit dialog with the picker showing. */
-  _renderHeaderTile() {
+  /** The way into the edit dialog: the activity's hub icon with a pencil badge, or a plain pencil without one. */
+  _renderHeaderEdit() {
     const activityId = this.activityId;
     if (activityId == null || !this._working) return A;
+    const label = iconHubLine(this._hubVersion) != null ? B2.editActivity : B2.renameKind("activity");
     const appearance = bundleEntityAppearance(this._working, "activity", activityId);
     const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
-    if (!tile) return A;
-    return renderDetailEntityTile(tile, { label: B2.editActivity, onClick: () => this._openRename({ kind: "activity" }, true) });
+    const open = () => this._openRename({ kind: "activity" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon4(mdiPencil)}</button>`;
   }
-  // -- delete confirm ----------------------------------------------------------------------------------------
   _openDeleteConfirm(target, label) {
     this._deleteConfirm = { target, label };
   }
@@ -24669,6 +24682,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   }
   // -- render: shared pieces ------------------------------------------------------------------------------------------------
   _renderHeader(options) {
+    const unsaved = this._offline && this._dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B2.unsavedTooltip}>${B2.unsaved}</span>` : A;
     return b2`
       <div class="sticky-header">
         <div class="detail-title-row">
@@ -24676,14 +24690,15 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             <button class="back-btn" id=${options.id} type="button" aria-label=${FRAME.back} @click=${options.onBack}>${icon4(mdiArrowLeft)}</button>
             ${options.lead ?? A}
             <div class="detail-title-stack">
-              <div class="detail-crumbs">
-                ${options.crumbs.map((crumb) => b2`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
-              </div>
+              ${options.meta ? A : b2`<div class="detail-crumbs">
+                    ${options.crumbs.map((crumb) => b2`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
+                  </div>`}
               <div class="detail-title" id=${options.titleId}>${options.title}</div>
+              ${options.meta ? b2`<div class="detail-title-meta">${options.meta}${unsaved}</div>` : A}
             </div>
           </div>
           <div class="detail-header-tools">
-            ${this._offline && this._dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B2.unsavedTooltip}>${B2.unsaved}</span>` : A}
+            ${options.meta ? A : unsaved}
             ${options.actions ?? A}
           </div>
         </div>
@@ -24875,13 +24890,14 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       onPick: (value) => onChange(Number(value))
     });
   }
-  _dialog(id, title, close, body, footer, error = "", headerExtra = A) {
+  _dialog(id, title, close, body, footer, error = "", headerExtra = A, footerStart = A) {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id=${id} @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header ${headerExtra === A ? "" : "dialog-header--extra"}"><div class="dialog-title">${title}</div>${headerExtra === A ? A : b2`<div class="dialog-header-extra">${headerExtra}</div>`}<button class="dialog-close" type="button" aria-label=${B2.deleteCancel} @click=${close}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">${body}</div>
           <div class="dialog-footer">
+            ${footerStart}
             <div class="dialog-footer-note" id=${`${id}-error`}>${error}</div>
             <div class="dialog-footer-actions">${footer}</div>
           </div>
@@ -24901,13 +24917,10 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       title: this._title,
       titleId: "editor-title",
       onBack: this._requestClose,
-      crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }],
-      lead: this._renderHeaderTile(),
-      actions: b2`<div class="detail-title-actions">
-              <button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B2.editActivity : B2.renameKind("activity")} title=${iconHubLine(this._hubVersion) != null ? B2.editActivity : B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon4(mdiPencil)}</button>
-              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>
-              ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? A2.syncToHub : A2.syncUpToDate}</button>`}
-            </div>`
+      crumbs: [],
+      meta: b2`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${B2.crumbActivities}</button></div>`,
+      lead: this._renderHeaderEdit(),
+      actions: this._offline ? A : b2`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate} aria-label=${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon4(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate}</span></button></div>`
     })}
           <div class="detail-scroll">
             ${this._renderEditorBanners()}
@@ -25203,6 +25216,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       }
     }} />
       </label>`;
+    const del = dialog.target.kind === "activity" ? b2`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${B2.deleteConfirm}</button>` : A;
     return this._dialog("rename-dialog", title, this._closeRename, appearance ? renderAppearanceEditor({
       hubVersion: this._hubVersion,
       draft: appearance,
@@ -25221,7 +25235,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       }
     }) : nameField, b2`
       <button class="dialog-btn" type="button" @click=${this._closeRename}>${B2.deleteCancel}</button>
-      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B2.bindingSave}</button>`, dialog.error);
+      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B2.bindingSave}</button>`, dialog.error, A, del);
   }
   _renderDeleteConfirmDialog() {
     const dialog = this._deleteConfirm;
@@ -25399,8 +25413,8 @@ var S5 = {
   crumbDevices: B3.crumbDevices,
   renameDevice: B3.renameDevice,
   deleteDeviceAria: B3.deleteDeviceAria,
-  syncToHub: A3.syncToHub,
-  syncUpToDate: A3.syncUpToDate,
+  syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
+  syncUpToDate: TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate,
   detailPower: B3.detailPower,
   detailNetwork: B3.detailNetwork,
   detailCommands: B3.detailCommands,
@@ -25676,6 +25690,13 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         }));
       } else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
       this._rename = null;
+    };
+    // -- delete confirm ---------------------------------------------------------------------------------------
+    this._deleteFromRename = () => {
+      const deviceId = this.deviceId;
+      if (deviceId == null) return;
+      this._closeRename();
+      this._openDeleteConfirm({ kind: "device", deviceId }, this._title);
     };
     this._closeDeleteConfirm = () => {
       this._deleteConfirm = null;
@@ -26118,25 +26139,26 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   }
   // -- rename dialog --------------------------------------------------------------------------------------
   /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
-  _openRename(target, pickerOpen = false) {
+  _openRename(target) {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return;
     let draft = "";
     if (target.kind === "device") draft = this._title;
     else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
     else draft = deviceCommandItems(this._working, deviceId).find((c7) => c7.commandId === target.commandId)?.label ?? "";
-    this._rename = target.kind === "device" ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen, tab: "icon" } : { target, draft, error: "" };
+    this._rename = target.kind === "device" ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen: false, tab: "icon" } : { target, draft, error: "" };
   }
-  /** The device's hub icon beside the title: the edit dialog with the picker showing. */
-  _renderHeaderTile() {
+  /** The way into the edit dialog: the device's hub icon with a pencil badge, or a plain pencil without one. */
+  _renderHeaderEdit() {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return A;
+    const label = iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice;
     const appearance = bundleEntityAppearance(this._working, "device", deviceId);
     const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
-    if (!tile) return A;
-    return renderDetailEntityTile(tile, { label: B3.editDevice, onClick: () => this._openRename({ kind: "device" }, true) });
+    const open = () => this._openRename({ kind: "device" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon4(mdiPencil)}</button>`;
   }
-  // -- delete confirm ---------------------------------------------------------------------------------------
   _openDeleteConfirm(target, label) {
     this._deleteConfirm = { target, label };
   }
@@ -26314,6 +26336,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const sections = this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
+    const irPill = this._renderIrPill();
     return b2`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view" id="device-editor">
@@ -26321,24 +26344,16 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
-                ${callback ? A : this._renderHeaderTile()}
+                ${callback ? A : this._renderHeaderEdit()}
                 <div class="detail-title-stack">
-                  <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
-                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
-                  </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
+                  <div class="detail-title-meta">
+                    ${irPill !== A ? irPill : b2`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button></div>`}
+                    ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
+                  </div>
                 </div>
               </div>
-              <div class="detail-header-tools">
-                ${this._renderIrPill()}
-                ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
-                <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice} title=${iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
-                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S5.syncToHub : S5.syncUpToDate}</button>`}
-                </div>
-              </div>
+              ${this._offline ? A : b2`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S5.syncToHub : S5.syncUpToDate} aria-label=${dirty ? S5.syncToHub : S5.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon4(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S5.syncToHub : S5.syncUpToDate}</span></button></div>`}
             </div>
             ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S5.detailSectionsAria}>
                   ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon4(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
@@ -26526,6 +26541,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     }) : nameField}
           </div>
           <div class="dialog-footer">
+            ${dialog.target.kind === "device" ? b2`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${S5.deleteConfirm}</button>` : A}
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" type="button" @click=${this._closeRename}>${S5.cancel}</button>
@@ -27851,12 +27867,12 @@ var l5 = e4(class extends i5 {
   }
   update(i8, [t5]) {
     if (t5 === E || t5 === A) return t5;
-    const o8 = i8.element, l6 = i8.name;
+    const o9 = i8.element, l6 = i8.name;
     if (i8.type === t3.PROPERTY) {
-      if (t5 === o8[l6]) return E;
+      if (t5 === o9[l6]) return E;
     } else if (i8.type === t3.BOOLEAN_ATTRIBUTE) {
-      if (!!t5 === o8.hasAttribute(l6)) return E;
-    } else if (i8.type === t3.ATTRIBUTE && o8.getAttribute(l6) === t5 + "") return E;
+      if (!!t5 === o9.hasAttribute(l6)) return E;
+    } else if (i8.type === t3.ATTRIBUTE && o9.getAttribute(l6) === t5 + "") return E;
     return p3(i8), t5;
   }
 });
@@ -28422,7 +28438,7 @@ var SbPanelRemoteEditor = class extends i4 {
       }}>Retry</button></div>`}</div>`;
     }
     const options = keymap.commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }));
-    if (this._command && !options.some((o8) => o8.value === this._command)) options.push({ value: this._command, label: e6.shortcutCommandMissing(this._command) });
+    if (this._command && !options.some((o9) => o9.value === this._command)) options.push({ value: this._command, label: e6.shortcutCommandMissing(this._command) });
     return b2`<div class="shortcut-panel">
       ${this._iconPicker()}
       <ha-select class="shortcut-command" .label=${e6.shortcutCommand} .value=${this._command}
@@ -28430,7 +28446,7 @@ var SbPanelRemoteEditor = class extends i4 {
       ev.stopPropagation();
       this._draft(this._icon, ev.detail.value);
     }}>
-        ${options.map((o8) => b2`<mwc-list-item .value=${o8.value}>${o8.label}</mwc-list-item>`)}
+        ${options.map((o9) => b2`<mwc-list-item .value=${o9.value}>${o9.label}</mwc-list-item>`)}
       </ha-select>
       <div class="shortcut-panel-footer"><button type="button" @click=${() => this._resetSlot()}>${e6.shortcutReset}</button></div>
     </div>`;
@@ -29624,7 +29640,7 @@ function formatLatency(seconds, locale = toolsCardLanguage()) {
 
 // server-panel/src/components/delivery-pill.ts
 var D2 = TOOLS_CARD_STRINGS.wifiDelivery;
-var W = TOOLS_CARD_STRINGS.wifiCommands;
+var W2 = TOOLS_CARD_STRINGS.wifiCommands;
 var transportName = (transport) => transport === "mqtt" ? "MQTT" : "HTTP";
 function icon6(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
@@ -29673,7 +29689,7 @@ var DELIVERY_PILL_CSS = i`
 `;
 function renderReadOnlyDeliveryPill(params) {
   return b2`<span class="transport-pill ${params.transport}${params.attention ? " attention" : ""}"
-    title=${params.attention ? D2.pillAttention : W.transportPillDeployedTitle}
+    title=${params.attention ? D2.pillAttention : W2.transportPillDeployedTitle}
   >${params.attention ? icon6(mdiAlertOutline, "delivery-pill-alert") : A}${transportName(params.transport)}</span>`;
 }
 var STATUS_ICONS = {
@@ -29725,7 +29741,7 @@ function renderDeliveryPill(params) {
         aria-haspopup="dialog"
         aria-expanded=${params.open ? "true" : "false"}
         aria-label=${params.attention ? `${D2.pillLabel(name)}. ${D2.pillAttention}` : D2.pillLabel(name)}
-        title=${W.transportPillDeployedTitle}
+        title=${W2.transportPillDeployedTitle}
         @click=${(event) => params.onToggle(event.currentTarget)}
       >${params.attention ? icon6(mdiAlertOutline, "delivery-pill-alert") : A}<span>${name}</span>${icon6(mdiChevronDown)}</button>
       ${params.open ? b2`
@@ -30279,7 +30295,12 @@ var SbPanelWifiDevices = class extends i4 {
       this._edit(withSlotSaved(draft, state.index, { ...state.edit, label }, { powerInput: this._powerInput }));
       this._slotEdit = null;
     };
-    this._openRename = () => this._openEdit(false);
+    this._openRename = () => {
+      if (!this._draft || this._locked) return;
+      const shown = this._shownAppearance();
+      this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen: false, tab: "icon" };
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-rename")?.select());
+    };
     this._saveRename = () => {
       const state = this._rename;
       if (!state || !this._draft) return;
@@ -30636,13 +30657,6 @@ var SbPanelWifiDevices = class extends i4 {
     this._powerPicker = null;
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
   }
-  /** The header tile opens it with the picker showing. */
-  _openEdit(pickerOpen) {
-    if (!this._draft || this._locked) return;
-    const shown = this._shownAppearance();
-    this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen, tab: "icon" };
-    if (!pickerOpen) void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-rename")?.select());
-  }
   /** The icon and color the device shows: the draft's pick, else the hub record's. */
   _shownAppearance() {
     const draft = this._draft;
@@ -30650,12 +30664,14 @@ var SbPanelWifiDevices = class extends i4 {
     const hub = id != null ? this._hubAppearance.get(id) : void 0;
     return { icon: draft?.icon ?? hub?.icon ?? null, colorId: draft?.colorId ?? hub?.colorId ?? null };
   }
-  /** The device's icon beside its name, as in the editors: the Edit device dialog with the picker showing. */
-  _renderHeaderTile(device) {
+  /** The way into the Edit device dialog, as in the editors: the device's icon with a pencil badge, or a plain pencil without one. */
+  _renderHeaderEdit(device) {
+    const label = iconHubLine(this._hubVersion) != null ? B5.editDevice : T2.renameTitle;
+    const disabled = this._locked || device.stale;
     const shown = this._shownAppearance();
     const tile = entityTile(this._hubVersion, shown.icon, shown.colorId);
-    if (!tile) return A;
-    return renderDetailEntityTile(tile, { label: B5.editDevice, disabled: this._locked || device.stale, onClick: () => this._openEdit(true) });
+    if (tile) return renderDetailEntityTile(tile, { id: "wifi-rename-open", label, disabled, onClick: this._openRename });
+    return b2`<button class="icon-btn" id="wifi-rename-open" type="button" aria-label=${label} title=${label} ?disabled=${disabled} @click=${this._openRename}>${icon7(mdiPencil)}</button>`;
   }
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
   /** One rule for every Sync action (header, leave dialog, _sync): a stale device is
@@ -30786,15 +30802,16 @@ var SbPanelWifiDevices = class extends i4 {
   }
   // -- render: the detail view -------------------------------------------------------------------------------------------
   _renderSyncButton(device) {
+    const button = (id, state, label, path, disabled, onClick) => b2`<button class="detail-sync-btn ${state}" id=${id} type="button" title=${label} aria-label=${label} ?disabled=${disabled} @click=${onClick}><span class="detail-sync-icon">${icon7(path)}</span><span class="detail-sync-label">${label}</span></button>`;
     const externallyLocked = !this._working && (this.ctx ? !this.ctx.free : false);
     if (device.stale) {
-      return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? (externallyLocked ? S7.actionButtonBusy : T2.redeploy)}</button>`;
+      return button("wifi-redeploy", "sync-btn-primary", this._working ?? (externallyLocked ? S7.actionButtonBusy : T2.redeploy), mdiSync, this._locked, this._redeploy);
     }
     const dirty = this.hasUnsyncedChanges();
-    if (this._working) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
-    if (externallyLocked) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${S7.actionButtonBusy}</button>`;
-    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S7.actionButtonUpToDate}</button>`;
-    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S7.actionButtonSyncToHub}</button>`;
+    if (this._working) return button("wifi-sync", "", this._working, mdiSync, true);
+    if (externallyLocked) return button("wifi-sync", "", S7.actionButtonBusy, mdiTimerSand, true);
+    if (!dirty) return button("wifi-sync", "detail-sync-btn--state-ok", S7.actionButtonUpToDate, mdiCheck, true);
+    return button("wifi-sync", "sync-btn-primary", S7.actionButtonSyncToHub, mdiSync, !this._canSync(device), () => void this._sync());
   }
   _renderPowerLines(draft) {
     if (!supportsPowerInput(this._hubVersion)) return A;
@@ -30880,13 +30897,13 @@ var SbPanelWifiDevices = class extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon7(mdiArrowLeft)}</button>
-                ${this._renderHeaderTile(device)}
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${iconHubLine(this._hubVersion) != null ? B5.editDevice : T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon7(mdiPencilOutline)}</button>
+                ${this._renderHeaderEdit(device)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${draft.name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(device)}</div>
+                </div>
               </div>
-              <div class="detail-header-tools">
-                ${this._renderDeliveryPill(device)}
-                <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
-              </div>
+              <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
             </div>
           </div>
           ${deploying ? b2`<div class="detail-scroll">${renderOperationProgress({
@@ -31261,10 +31278,6 @@ SbPanelWifiDevices.styles = [
 
       /* -- the detail view ---------------------------------------------------------------------- */
       .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-      .detail-title-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; cursor: pointer; color: var(--sbp-text); }
-      .detail-title-btn .mdi { color: var(--sbp-muted); opacity: 0; transition: opacity 120ms ease; }
-      .detail-title-btn:hover .mdi, .detail-title-btn:focus-visible .mdi { opacity: 1; }
-      .detail-title-btn .detail-title { width: auto; }
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
@@ -31365,7 +31378,6 @@ SbPanelWifiDevices.styles = [
         .device-status-pill-label { display: none; }
         .slot-btn { min-height: 52px; }
         .slot-flag, .slot-clear { width: 32px; height: 32px; }
-        .detail-title-btn .mdi { opacity: 1; }
       }
     `
 ];

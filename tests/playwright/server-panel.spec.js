@@ -2451,8 +2451,10 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#exit-dialog .dialog-text")).toContainText("This activity has changes");
     await editor.locator("#exit-keep").click();
 
-    // Delete activity is immediate: a job, then back to the list.
+    // Delete activity is immediate: a job, then back to the list. It lives in the edit dialog.
+    await editor.locator("#editor-rename").click();
     await editor.locator("#editor-delete").click();
+    await expect(editor.locator("#rename-dialog")).toHaveCount(0);
     await expect(editor.locator("#delete-dialog .dialog-title")).toHaveText('Delete activity "Movies"?');
     await expect(editor.locator("#delete-dialog .delete-replace-note")).toContainText("applied to the hub immediately");
     await editor.locator("#delete-confirm").click();
@@ -2670,6 +2672,7 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-title")).toHaveText("Gaming");
 
     // Delete: the confirm closes at once and the progress view stands in for the editor. A failure re-opens it under a banner.
+    await editor.locator("#editor-rename").click();
     await editor.locator("#editor-delete").click();
     await editor.locator("#delete-confirm").click();
     await expect(editor.locator("#editor-deleting .progress-title")).toHaveText("Deleting activity");
@@ -2699,6 +2702,7 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-delete-error")).toHaveCount(0);
 
     // A delete that lands goes back to the list.
+    await editor.locator("#editor-rename").click();
     await editor.locator("#editor-delete").click();
     await editor.locator("#delete-confirm").click();
     await expect(editor.locator("#editor-deleting")).toBeVisible();
@@ -4267,15 +4271,16 @@ test.describe("control panel, IR pill", () => {
     await page.keyboard.press("Escape");
     await expect(pop).toHaveCount(0);
     await expect(pill).toBeFocused();
-    // The header keeps every part apart at any width: the pill never covers the title or the buttons.
-    const [pillBox, titleBox, renameBox] = await Promise.all([pill.boundingBox(), editor.locator("#editor-title").boundingBox(), editor.locator("#editor-rename").boundingBox()]);
-    expect(pillBox.x + pillBox.width).toBeLessThanOrEqual(renameBox.x);
-    expect(titleBox.width).toBeGreaterThan(20);
-    expect(pillBox.y + pillBox.height <= titleBox.y + 1 || pillBox.y >= titleBox.y + titleBox.height - 1 || pillBox.x >= titleBox.x + titleBox.width - 1).toBe(true);
+    // One row at any width: the edit tile, the title over its pill, and Sync at the end.
+    const [pillBox, titleBox, renameBox, syncBox] = await Promise.all([pill.boundingBox(), editor.locator("#editor-title").boundingBox(), editor.locator("#editor-rename").boundingBox(), editor.locator("#editor-sync").boundingBox()]);
+    expect(renameBox.x + renameBox.width).toBeLessThanOrEqual(titleBox.x + 4);
+    expect(pillBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
+    expect(syncBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width - 1);
+    expect(syncBox.y).toBeLessThan(titleBox.y + titleBox.height);
     if (testInfo.project.name.includes("phone")) {
-      expect(titleBox.width).toBeGreaterThan(240);
-      expect(pillBox.y).toBeGreaterThan(titleBox.y + titleBox.height);
+      expect(titleBox.width).toBeGreaterThan(120);
       expect(renameBox.height).toBeGreaterThanOrEqual(44);
+      expect(syncBox.height).toBeGreaterThanOrEqual(44);
     }
     await page.screenshot({ path: shot(testInfo, "ir-pill-header") });
     await editor.locator("#editor-sync").click();

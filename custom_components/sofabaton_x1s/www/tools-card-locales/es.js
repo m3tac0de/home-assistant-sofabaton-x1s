@@ -358,8 +358,6 @@ var TOOLS_CARD_STRINGS_ES = {
     capturingFromCache: (kind) => `Cargando ${kind === "activity" ? "la actividad" : "el dispositivo"} desde la cach\xE9 del hub\u2026`,
     needsRefreshTitle: "Actualiza la cach\xE9 del hub para editar",
     needsRefreshBody: (kind) => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} todav\xEDa no est\xE1 en la cach\xE9 local del hub. Actualiza la cach\xE9 del hub para ${kind === "activity" ? "cargarla" : "cargarlo"} en el editor. Puede tardar unos minutos, seg\xFAn el tama\xF1o de la configuraci\xF3n del hub.`,
-    syncToHub: "Sincronizar con el hub",
-    syncUpToDate: "Actualizado",
     deletingTitle: (kind) => `Eliminando ${kind === "activity" ? "la actividad" : "el dispositivo"}`,
     deletingMessage: (kind) => `Eliminando ${kind === "activity" ? "esta actividad" : "este dispositivo"} del hub\u2026`,
     syncingTitle: "Sincronizando con tu hub",

@@ -168,7 +168,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     captureFailedTitle: "No se pudo leer el hub", retry: "Reintentar", back: "Atrás",
     capturingFromCache: (kind: "activity" | "device") => `Cargando ${kind === "activity" ? "la actividad" : "el dispositivo"} desde la caché del hub…`, needsRefreshTitle: "Actualiza la caché del hub para editar",
     needsRefreshBody: (kind: "activity" | "device") => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} todavía no está en la caché local del hub. Actualiza la caché del hub para ${kind === "activity" ? "cargarla" : "cargarlo"} en el editor. Puede tardar unos minutos, según el tamaño de la configuración del hub.`,
-    syncToHub: "Sincronizar con el hub", syncUpToDate: "Actualizado", deletingTitle: (kind: "activity" | "device") => `Eliminando ${kind === "activity" ? "la actividad" : "el dispositivo"}`,
+    deletingTitle: (kind: "activity" | "device") => `Eliminando ${kind === "activity" ? "la actividad" : "el dispositivo"}`,
     deletingMessage: (kind: "activity" | "device") => `Eliminando ${kind === "activity" ? "esta actividad" : "este dispositivo"} del hub…`, syncingTitle: "Sincronizando con tu hub", syncingMessage: "Escribiendo tus cambios en el hub…", wifiEventsPhaseMessage: "Desplegando primero los eventos Wifi al hub… la primera vez puede tardar un minuto.",
     syncSuccess: "Sincronizado con el hub.", syncFailedTitle: "La sincronización no terminó",
     syncFailedStep: (step: string) => `El hub se detuvo en: ${step}`, syncStaleTitle: (kind: "activity" | "device") => `${kind === "activity" ? "Esta actividad" : "Este dispositivo"} cambió en el hub`,
