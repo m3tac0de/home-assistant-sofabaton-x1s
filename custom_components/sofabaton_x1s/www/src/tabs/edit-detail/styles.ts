@@ -7,7 +7,7 @@ export const editDetailViewStyles = css`
       flex-direction: column;
     }
     /* A narrow card gives the room to the title; the pencil opens the same dialog. */
-    @container sofabaton-card (max-width: 420px) {
+    @container sofabaton-card (max-width: 600px) {
       .detail-entity-tile { display: none; }
     }
     /* Glanceable member roster under the Activity power-sequence rows. */

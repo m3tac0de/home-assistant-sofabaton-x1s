@@ -339,7 +339,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .sticky-header { container: editor-header / inline-size; }
     .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
-    @container editor-header (max-width: 600px) {
+    @container editor-header (max-width: 450px) {
       .detail-title-row { flex-wrap: wrap; gap: 10px; }
       .detail-title-main { flex-basis: 100%; }
       .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -712,7 +712,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
     /* A narrow card gives the room to the title; the pencil opens the same dialog. */
-    @container sofabaton-card (max-width: 420px) {
+    @container sofabaton-card (max-width: 600px) {
       .detail-entity-tile { display: none; }
     }
     .dialog-body {

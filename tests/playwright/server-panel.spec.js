@@ -934,6 +934,9 @@ test.describe("control panel, shell", () => {
     }) }));
     await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
     await expect(page.locator("#dock-link")).toBeVisible();
+    // The route's docs link renders before the hub list arrives. Wait for its
+    // runtime before injecting a draft: setDraft ignores an unknown hub.
+    await expect(chip(page)).toContainText("Living room");
     // The stub editor: the store's own draft slot, as an editor view would use it.
     await page.evaluate(() => document.querySelector("sofabaton-server-panel").store.setDraft("e26a44861b45", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } }));
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");

@@ -469,7 +469,7 @@ export const backupTabStyles = css`
     .sticky-header { container: editor-header / inline-size; }
     .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
     .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
-    @container editor-header (max-width: 600px) {
+    @container editor-header (max-width: 450px) {
       .detail-title-row { flex-wrap: wrap; gap: 10px; }
       .detail-title-main { flex-basis: 100%; }
       .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

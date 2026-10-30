@@ -23081,7 +23081,7 @@ var EDITOR_CSS = i`
     .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
     button { border: 0; background: transparent; padding: 0; }
     /* A narrow editor gives the room to the title; the pencil opens the same dialog. */
-    @container (max-width: 420px) {
+    @container (max-width: 600px) {
       .detail-entity-tile { display: none; }
     }
     /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
@@ -23107,7 +23107,7 @@ var EDITOR_CSS = i`
     .sticky-header { container: editor-header / inline-size; }
     .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
     .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
-    @container editor-header (max-width: 600px) {
+    @container editor-header (max-width: 450px) {
       .detail-title-row { flex-wrap: wrap; gap: 10px; }
       .detail-title-main { flex-basis: 100%; }
       .detail-title-main .detail-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

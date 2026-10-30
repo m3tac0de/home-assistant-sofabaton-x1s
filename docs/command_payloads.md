@@ -101,8 +101,7 @@ Either way the code lands as Sofabaton Hex with its Pronto Hex view alongside.
 Test it, then Save; the command is written to the hub on the next Sync.
 
 RF commands (433 or 315 MHz, X1S and X2 hubs) have a **Learn** button next to
-the payload title. It goes straight to the hub's RF receiver, because Home
-Assistant has no RF source to offer: hold the RF remote near the hub and
+the payload title. Hold the RF remote near the hub and
 press the button once. The code lands as raw hex, tagged with the command's
 band. Test it, then Save.
 

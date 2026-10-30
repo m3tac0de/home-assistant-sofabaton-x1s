@@ -368,7 +368,7 @@ test.describe("tools-card Hub list layout", () => {
     expect(deviceMetrics.rowHeight).toBeLessThanOrEqual(50);
   });
 
-  test("ellipsizes long activity and device names in Backup edit details", async ({ page }) => {
+  test("clips long Backup edit titles to two lines on narrow headers and ellipsizes them on wider headers", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(async () => {
@@ -406,6 +406,9 @@ test.describe("tools-card Hub list layout", () => {
       const rowRect = row.getBoundingClientRect();
       const actionsRect = actions.getBoundingClientRect();
       const backRect = back.getBoundingClientRect();
+      const titleRect = title.getBoundingClientRect();
+      const titleStyle = getComputedStyle(title);
+      const tile = root.querySelector(".detail-entity-tile");
       return {
         cardWidth: card.clientWidth,
         cardScrollWidth: card.scrollWidth,
@@ -413,24 +416,45 @@ test.describe("tools-card Hub list layout", () => {
         rowScrollWidth: row.scrollWidth,
         titleWidth: title.clientWidth,
         titleScrollWidth: title.scrollWidth,
-        textOverflow: getComputedStyle(title).textOverflow,
-        whiteSpace: getComputedStyle(title).whiteSpace,
-        actionsInsideRow: actionsRect.right <= rowRect.right + 0.5,
+        titleHeight: title.clientHeight,
+        titleScrollHeight: title.scrollHeight,
+        lineHeight: parseFloat(titleStyle.lineHeight),
+        lineClamp: titleStyle.webkitLineClamp,
+        textOverflow: titleStyle.textOverflow,
+        whiteSpace: titleStyle.whiteSpace,
+        tileVisible: Boolean(tile && tile.getBoundingClientRect().width > 0),
+        actionsBelowTitle: actionsRect.top >= titleRect.bottom,
+        actionsBesideTitle: actionsRect.left >= titleRect.right,
+        actionsInsideRow: actionsRect.left >= rowRect.left - 0.5 && actionsRect.right <= rowRect.right + 0.5 && actionsRect.bottom <= rowRect.bottom + 0.5,
         backInsideRow: backRect.left >= rowRect.left - 0.5,
       };
     }, { kind });
 
-    for (const kind of ["activity", "device"]) {
-      const metrics = await measureDetail(kind);
-      expect(metrics).not.toBeNull();
-      expect(metrics.cardWidth).toBeLessThanOrEqual(320);
-      expect(metrics.cardScrollWidth).toBeLessThanOrEqual(metrics.cardWidth);
-      expect(metrics.rowScrollWidth).toBeLessThanOrEqual(metrics.rowWidth);
-      expect(metrics.titleScrollWidth).toBeGreaterThan(metrics.titleWidth);
-      expect(metrics.textOverflow).toBe("ellipsis");
-      expect(metrics.whiteSpace).toBe("nowrap");
-      expect(metrics.actionsInsideRow).toBe(true);
-      expect(metrics.backInsideRow).toBe(true);
+    for (const width of [320, 450, 470, 600, 620, 900]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const kind of ["activity", "device"]) {
+        const metrics = await measureDetail(kind);
+        expect(metrics).not.toBeNull();
+        expect(metrics.cardWidth).toBeLessThanOrEqual(width);
+        expect(metrics.cardScrollWidth).toBeLessThanOrEqual(metrics.cardWidth);
+        expect(metrics.rowScrollWidth).toBeLessThanOrEqual(metrics.rowWidth);
+        expect(metrics.tileVisible).toBe(width > 600);
+        if (width <= 450) {
+          expect(metrics.titleScrollWidth).toBeLessThanOrEqual(metrics.titleWidth);
+          expect(metrics.titleScrollHeight).toBeGreaterThan(metrics.titleHeight);
+          expect(metrics.titleHeight).toBeCloseTo(metrics.lineHeight * 2, 0);
+          expect(metrics.lineClamp).toBe("2");
+          expect(metrics.whiteSpace).toBe("normal");
+          expect(metrics.actionsBelowTitle).toBe(true);
+        } else {
+          expect(metrics.titleScrollWidth).toBeGreaterThan(metrics.titleWidth);
+          expect(metrics.textOverflow).toBe("ellipsis");
+          expect(metrics.whiteSpace).toBe("nowrap");
+          expect(metrics.actionsBesideTitle).toBe(true);
+        }
+        expect(metrics.actionsInsideRow).toBe(true);
+        expect(metrics.backInsideRow).toBe(true);
+      }
     }
   });
 
