@@ -17,6 +17,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
+    HUB_VERSION_X2,
     MIN_RECOMMENDED_FIRMWARE,
     MIN_SUPPORTED_FIRMWARE,
     SIGNAL_PANEL_STORE,
@@ -233,6 +234,9 @@ async def _async_build_control_panel_hub_payload(
         # Whether MQTT delivery can be offered for this hub (X2, MQTT
         # integration loaded, MAC known): the device editor's delivery control.
         "mqtt_available": _hub_mqtt_available(hass, hub),
+        # An X2 has a broker link of its own the Settings tab can show and
+        # set (the hub_mqtt/* commands).
+        "broker_setup_available": classified_version == HUB_VERSION_X2,
         "settings": {
             "proxy_enabled": bool(getattr(hub, "proxy_enabled", False)),
             "hex_logging_enabled": bool(getattr(hub, "hex_logging_enabled", False)),

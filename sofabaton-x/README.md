@@ -1,10 +1,11 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.5.** This release keeps the display order
-> through restores, creates and shortcut edits, makes the X2 remote pick up
-> reorders, and adds `cache_generation` and `peek_snapshot()` for consumers
-> that follow the cache.
-> See the [0.2.5 release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#025-2026-10-17).
+> **This README describes 0.2.6.** Every write now ends with the cheapest
+> remote sync that reaches the remotes. This release adds activity and
+> device icons (and X2 colors), X2 IR emitter routing, a Wifi delivery
+> test, X2 URL Wifi commands and MQTT broker setup, and a typed error for
+> writes refused while the hub updates its remote.
+> See the [0.2.6 release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#026-2026-10-28).
 > Consumers upgrading from before 0.2.3 must also read the
 > [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-02).
 > Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
@@ -79,7 +80,7 @@ Home Assistant integration provide their own listeners on top.
 ## Install
 
 ```
-python -m pip install "sofabaton-x>=0.2.5,<0.3"
+python -m pip install "sofabaton-x>=0.2.6,<0.3"
 ```
 
 From a checkout, run `python -m pip install .` from the repository root
@@ -224,13 +225,19 @@ dataclasses (each with a `to_dict()`), cached if available, else fetched:
 
 | read                     | returns                                                                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------- |
-| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`, `sort`               |
-| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior`, `sort` |
+| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`, `sort`, `icon`, `color_id` |
+| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior`, `sort`, `icon`, `color_id`, `emitters` |
 | `commands(device_id)`    | `list[Command]`: `command_id`, `label`                                                   |
 | `macros(activity_id)`    | `list[Macro]`: `command_id`, `label`                                                     |
 | `favorites(activity_id)` | `list[Favorite]`: `device_id`, `command_id`, `label`                                     |
 | `buttons(entity_id)`     | `list[Button]`: `button_code`, `name`, `device_id`, `command_id`, `long_press_device_id`, `long_press_command_id` |
 | `current_activity()`     | `{activity_id, name}` or `None` when idle                                                |
+
+`icon` is the hub's icon id and `color_id` the X2 palette id (`0` when
+none was picked, `None` on the X1 and X1S); both are `None` until the
+record is cached. `emitters` is an X2 device's IR emitter routing, the
+record's three bytes `(a, b, c)` (see [Icons, colors and IR
+emitters](#icons-colors-and-ir-emitters)); `None` on the X1 and X1S.
 
 `activities()` and `devices()` come in the hub's display order, as the
 physical remote and the app show it: the stored sort byte (what
@@ -507,8 +514,9 @@ in the same document; the array order of `devices` / `activities` is
 the display order. `build_hub_sync_plan` validates the document with no
 hub traffic and previews the items. This checks structure and supported
 edits, not every payload's encoding or whether the hub will accept a write.
-`sync_hub` runs the items inside one batch, with at most one explicit
-remote-sync trigger when required. Snapshot notifications are coalesced;
+`sync_hub` runs the items inside one batch and ends it with the cheapest
+remote sync that covers them (see [Remote syncs](#remote-syncs)).
+Snapshot notifications are coalesced;
 an unchanged document is a successful no-op and need not emit an event.
 Affected entities must pass strict live reads before the first write;
 the comparisons still cover only the selected tables described above.
@@ -578,7 +586,9 @@ The server adds persistent apply records but has further
 The common row edits are pure functions in `sofabaton.edits`: each takes
 a snapshot bundle and returns an edited copy for the sync, so a script
 does not have to know the row shapes. `rename_activity`, `rename_device`,
-`bind_button` (with an optional long press), `clear_button`,
+`set_activity_appearance` / `set_device_appearance` (icon, and color on an
+X2), `set_device_emitters` (X2 IR emitter routing), `bind_button` (with
+an optional long press), `clear_button`,
 `add_favorite`, `remove_favorite`, `reorder_favorites`, `rename_command`,
 `set_idle_behavior`, `set_command_payload`, and `add_command` (which returns
 the edited bundle and an available command id):
@@ -594,6 +604,47 @@ result = await proxy.sync_activity(baseline=snap.bundle, edited=edited, activity
 if not result.ok:
     raise RuntimeError(f"Sync stopped at {result.failed_at}: {result.message}")
 ```
+
+### Icons, colors and IR emitters
+
+An activity's or device's icon and X2 color are edited like a rename:
+`edits.set_activity_appearance(bundle, activity_id, icon=, color_id=)` or
+`edits.set_device_appearance(...)`, then `sync_activity()` /
+`sync_device()`, which write them in the same record write. Each hub
+line has its own icon set: icons 1-25 on the X1, 1-16 on the X1S, 1-45
+on the X2; colors 1-12 exist on the X2 only. `validate_appearance(hub_version,
+icon=, color_id=)` checks a pair without touching the hub and raises
+`ValueError` with the reason. `add_device()` and `add_activity()` take
+`icon` and `color_id` too, and a document's icons and colors reach the
+hub through `sync_hub()`, created entities included.
+
+On an X2, each device chooses which emitters send its IR: the hub's
+own (`all`, `builtin`, `port1` or `port2`), paired remotes 1-5 and
+repeaters 1-4. `EmitterRouting.decode(*device.emitters)` reads the
+current choice, and `with_hub()`, `with_remote()` and `with_repeater()`
+change one part while keeping every other bit:
+
+```python
+from sofabaton import EmitterRouting, edits
+
+device = next(d for d in await proxy.devices() if d.device_id == 7)
+routing = EmitterRouting.decode(*device.emitters).with_hub("port1")
+snap = await proxy.snapshot()
+edited = edits.set_device_emitters(snap.bundle, 7, routing)
+result = await proxy.sync_device(baseline=snap.bundle, edited=edited, device_id=7,
+                                 snapshot_id=snap.snapshot_id, strict=True)
+```
+
+The sync refuses a routing with no emitter left, one that changes the
+RF-button byte, a hub mix other than `all`, `builtin`, `port1`, `port2`
+or `none` (a `custom` mix already on the record may stay), and any
+routing change on the X1 or X1S. Commands
+sent to the device follow the routing; one-shot plays (`play`) use the
+hub's emitters whatever it says. `ir_emitter_status()` lists the paired
+remotes and repeaters a device can route to, with their online state,
+as an `IrEmitterStatus` of `IrEmitterDevice` rows; it takes a few seconds
+while the hub polls them, and `refresh=False` returns the last read. It
+is `None` on the X1 and X1S.
 
 ### Intents
 
@@ -636,6 +687,32 @@ report that separate outcome. An additive restore keeps the current name.
 A partial restore is not rolled back; inspect the resulting snapshot
 before deciding how to recover. Retrying an additive restore can create
 duplicates.
+
+### Remote syncs
+
+The physical remotes keep their own copy of the configuration, so every
+write ends with the cheapest remote sync that brings it to them. A
+per-item sync has the remotes re-read one device or activity (seconds);
+the X2's order-only sync re-reads the device and activity lists (about
+10 seconds); the full sync rebuilds everything (about 30 seconds on the
+X1, a minute on the X1S, 4.5 minutes on the X2). Renames send none: the
+remotes pick them up on their own. Content edits end with a per-item
+sync of each changed entity. Creates and deletes need the full sync on
+the X1 and X1S; the X2 uses the order-only sync and per-item syncs.
+Reorders send the order-only sync on the X2, none on the X1 (its remote
+takes the new order on its own) and the full sync on the X1S. A
+per-item or order-only sync the hub does not acknowledge falls back to
+the full sync. Inside one batch the syncs are deferred and the batch
+sends the smallest set that covers every write.
+
+For a few seconds after a sync starts the hub still takes writes; then
+it refuses them until its remote has the update. A write refused that
+way within 5 minutes of this proxy's own sync raises
+`RemoteSyncInProgressError` (a `HubRejectedError`) from the intents and
+Wifi Device writes, and `sync_activity()` / `sync_device()` report it as
+`SyncResult.reason == "remote_syncing"`.
+Nothing waits or retries for you: wait until the remote is done, then
+write again. The refused write may have landed in part.
 
 ### IR payloads
 
@@ -722,6 +799,15 @@ result = await proxy.sync_device(
 if not result.ok:
     raise RuntimeError(f"Sync stopped at {result.failed_at}: {result.message}")
 ```
+
+On the X2, a `wifi_ip` command can also be a URL record (code type
+0x21), which is how the Sofabaton app writes X2 Wifi commands:
+`NetworkCommand.url(url="https://example.local/hook", method="POST",
+headers=[("Authorization", "Bearer ...")], body="{}")`. The hub requests
+the URL itself, over `http` or `https` (it checks no certificate), with
+GET, POST or PUT, the header pairs in order and the body. `is_url` tells
+the two kinds apart, and a `wifi_ip` command read from the hub decodes
+either one (a `url` field names a URL record).
 
 `NetworkCommand.roku("keypress/Home")` is a Roku ECP path; the Roku device head
 carries the target address (set the device block's `ip_address` in the bundle
@@ -816,6 +902,26 @@ executed command ID: 1..10 short, 11..20 long. The MAC is uppercase hex
 without separators. Subscribing is the consumer's job; the library never talks
 to a broker. The deployment carries `transport="mqtt"` and `target=None`,
 and `update_wifi_device` keeps both. Any other hub is a `ValueError`.
+
+`hub_mqtt_status()` says whether the X2 reports a connected broker
+(`None` when it does not answer). `set_hub_mqtt_broker(host=, port=,
+username=, password=)` points the hub at a broker and returns whether it
+connected; `host` is an IPv4 address as the hub reaches it. The hub
+cannot report which broker it uses, so the old one cannot be restored
+from here. The password is never logged.
+
+`WifiDeviceSpec.icon` and `color_id` set the device's icon and X2 color;
+`None` (the default) keeps what the hub has.
+
+To check that presses reach you, `probe_wifi_delivery(deployment,
+arrived=...)` presses slot 1 (`WIFI_PROBE_COMMAND_ID`) over the hub
+session and waits for `arrived`, an awaitable your own listener or MQTT
+subscription completes when that press comes in. Hold back the slot's
+own action for that one press. The `WifiDeliveryProbe` it returns says
+whether the hub took the press (`sent`), whether it arrived within the
+timeout (`delivered`) and how long it took (`latency_s`). Sent but not
+delivered means the hub cannot reach you: a firewall, a VLAN, a wrong
+address or port, or a broker you do not share.
 
 Every slot is written, defaults included. The
 callback target never changes in place: a new address is a remove and a new
@@ -960,6 +1066,7 @@ values as well as catching exceptions.
 | `SnapshotOutdatedError` | `ValueError` | obtain a new snapshot and reapply the intended edit |
 | `StateDocumentError` | `ValueError` | discard the unreadable state document and start cold |
 | `HubRejectedError` | `RuntimeError` | inspect hub state before retrying a write; its outcome may be uncertain |
+| `RemoteSyncInProgressError` | `HubRejectedError` | the hub is updating its remote; wait until it is done, then write again |
 | `IrLearnError` | `RuntimeError` | inspect `state`; retry capture with the hub idle if appropriate |
 | `WifiUpdateDeclined` | `RuntimeError` | inspect `reason`, `command_ids` and `detail`; reconcile the deployment before another update |
 | `WifiUpdateFailed` | `HubRejectedError` | inspect `failed_at` and `completed_steps`; retain the desired spec to resume the partial update |

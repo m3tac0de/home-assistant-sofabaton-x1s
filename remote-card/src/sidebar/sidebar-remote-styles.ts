@@ -66,7 +66,11 @@ export const sidebarRemoteStyles = css`
     min-height: 0;
     display: flex;
     flex-direction: column;
+    /* clip, not a scroll container: hidden can still be scrolled (a focus
+       or scrollIntoView while the sheet slides in moved the whole remote
+       up). hidden stays the fallback where clip is unknown. */
     overflow: hidden;
+    overflow: clip;
     /* No background of its own: the panel host paints the dashboard ground
        (wallpaper themes carry a fixed-attachment image, and painting that
        twice doubles the repaint cost of every resize frame). */
@@ -462,6 +466,10 @@ export const sidebarRemoteStyles = css`
   .row.current .ic { color: var(--sb-accent-text); }
   .row.current .ic { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
   .row.current .ic ha-icon { opacity: 1; }
+  /* the hub's own icon on its tile (X2: in its color; X1/X1S: neutral, tinted when current) */
+  .row .entity-tile { --entity-tile-size: 36px; --entity-tile-ring: var(--sb-pill); }
+  .row.current .entity-tile { --entity-tile-ring: color-mix(in srgb, var(--primary-color) 12%, var(--sb-pill)); }
+  .row.current .entity-tile--neutral { background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--sb-accent-text); }
   .row.current .st { background: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 25%, transparent); }
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

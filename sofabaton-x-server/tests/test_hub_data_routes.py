@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from sofabaton import FetchTimeoutError, HubBusyError, HubNotConnectedError
+from sofabaton import (
+    Device,
+    FetchTimeoutError,
+    HubBusyError,
+    HubNotConnectedError,
+    IrEmitterDevice,
+    IrEmitterStatus,
+)
 
 from sofabaton_server import API_PREFIX
 from sofabaton_server.app import create_app
@@ -158,3 +165,84 @@ def test_refused_refresh_keeps_the_cached_devices(rig) -> None:
     assert proxy.catalog_clears == 0
     proxy.fail_with = None
     assert [d["device_id"] for d in client.get(f"{h}/devices").json()] == [1, 2]
+
+
+def test_ir_emitters_read_on_an_x2(rig) -> None:
+    client, proxy = rig
+    h = f"{HUBS}/192.168.1.50"
+    proxy.model = "X2"
+
+    # No read yet: both null, and the hub was not asked.
+    r = client.get(f"{h}/ir-emitters")
+    assert r.status_code == 200 and r.json() == {"paired": None, "read_at": None}
+    assert proxy.ir_emitter_reads == 0
+
+    proxy.ir_emitters = IrEmitterStatus(
+        paired=(IrEmitterDevice(kind="remote", number=1, name="X2 Remote", online=True),
+                IrEmitterDevice(kind="repeater", number=2, name="Hall", online=False, port_cable=True)),
+        read_at=1761600000.5,
+    )
+    expected = {
+        "paired": [
+            {"kind": "remote", "number": 1, "name": "X2 Remote", "online": True, "port_cable": None},
+            {"kind": "repeater", "number": 2, "name": "Hall", "online": False, "port_cable": True},
+        ],
+        "read_at": 1761600000.5,
+    }
+    r = client.get(f"{h}/ir-emitters?refresh=true")
+    assert r.status_code == 200 and r.json() == expected
+    assert proxy.ir_emitter_reads == 1
+    # Without refresh: the last read, no hub traffic.
+    assert client.get(f"{h}/ir-emitters").json() == expected
+    assert proxy.ir_emitter_reads == 1
+
+    # A read the hub did not answer: no list, but a read time.
+    proxy.ir_emitters = IrEmitterStatus(paired=None, read_at=1761600100.0)
+    assert client.get(f"{h}/ir-emitters?refresh=true").json() == {"paired": None, "read_at": 1761600100.0}
+    proxy.ir_emitters = IrEmitterStatus(paired=(), read_at=1761600200.0)
+    assert client.get(f"{h}/ir-emitters?refresh=true").json() == {"paired": [], "read_at": 1761600200.0}
+
+    # A refresh that cannot read maps like every other hub read.
+    for err, status, type_ in (
+        (HubBusyError("app holds the hub"), 409, "hub_busy"),
+        (HubNotConnectedError("no session"), 503, "hub_not_connected"),
+        (FetchTimeoutError("a write holds the hub"), 504, "hub_timeout"),
+    ):
+        proxy.fail_with = err
+        r = client.get(f"{h}/ir-emitters?refresh=true")
+        assert (r.status_code, r.json()["type"]) == (status, type_), r.text
+    proxy.fail_with = None
+    proxy.refuse = True
+    r = client.get(f"{h}/ir-emitters?refresh=true")
+    assert r.status_code == 409 and r.json()["type"] == "hub_busy"
+    # The last read stays readable while an app holds the hub.
+    assert client.get(f"{h}/ir-emitters").json()["read_at"] == 1761600200.0
+
+
+def test_ir_emitters_are_x2_only(rig) -> None:
+    client, proxy = rig
+    h = f"{HUBS}/192.168.1.50"
+    for model in ("X1S", "X1"):
+        proxy.model = model
+        for query in ("", "?refresh=true"):
+            r = client.get(f"{h}/ir-emitters{query}")
+            assert r.status_code == 409, r.text
+            body = r.json()
+            assert body["type"] == "not_x2" and body["hub_id"] == "192.168.1.50" and model in body["detail"]
+    assert proxy.ir_emitter_reads == 0
+    # Before the banner names the model there is nothing to ask.
+    proxy.model = None
+    r = client.get(f"{h}/ir-emitters")
+    assert r.status_code == 503 and r.json()["type"] == "hub_not_connected"
+    assert client.get(f"{HUBS}/nope/ir-emitters").status_code == 404
+
+
+def test_device_rows_carry_the_x2_emitter_routing(rig) -> None:
+    client, proxy = rig
+    h = f"{HUBS}/192.168.1.50"
+    assert [d["emitters"] for d in client.get(f"{h}/devices").json()] == [None, None]
+    proxy.model = "X2"
+    tv = proxy.devices_data[0]
+    proxy.devices_data[0] = Device(**{**tv.to_dict(), "emitters": (0, 0, 7)})
+    rows = client.get(f"{h}/devices").json()
+    assert [(d["device_id"], d["emitters"]) for d in rows] == [(1, [0, 0, 7]), (2, None)]

@@ -12,6 +12,7 @@ hub.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Optional
 
 from sofabaton import (
@@ -104,6 +105,18 @@ class FakeProxy:
         self.wifi_update_error: Optional[BaseException] = None
         self.device_blocks: dict[int, dict] = {}
         self.device_commands: dict[int, list] = {}
+        # The delivery test: write batches opened, probes run (device ids), and
+        # what a probe does. ``probe_hook(deployment, arrived)`` stands in for
+        # the hub calling back (it may complete ``arrived``); without one the
+        # hub takes the press and nothing arrives.
+        self.batches = 0
+        self.probes: list[int] = []
+        self.probe_hook = None
+        # The X2's IR emitter read: what a fresh read returns, the last one
+        # kept (as the facade keeps it), and how often the hub was asked.
+        self.ir_emitters = None
+        self.last_ir_emitters = None
+        self.ir_emitter_reads = 0
         self.activities_data = [
             Activity(activity_id=101, name="Watch TV", active=False, needs_confirm=False),
             Activity(activity_id=102, name="Music", active=False, needs_confirm=False),
@@ -195,6 +208,21 @@ class FakeProxy:
     async def current_activity(self):
         return None if self.running is None else {"activity_id": self.running.activity_id, "name": self.running.name}
 
+    async def ir_emitter_status(self, *, refresh: bool = True):
+        """Like the facade: None off the X2; ``refresh=False`` is the last read
+        without hub traffic; a refresh raises the typed refusals, then reads."""
+
+        if self.model != "X2":
+            return None
+        if not refresh:
+            return self.last_ir_emitters
+        self._maybe_fail()
+        if self.refuse:
+            raise HubBusyError("cannot fetch 'ir_emitter_status': an app client is connected and holds the hub")
+        self.ir_emitter_reads += 1
+        self.last_ir_emitters = self.ir_emitters
+        return self.ir_emitters
+
     # -- control -------------------------------------------------------------
 
     async def send(self, entity_id: int, command_id: int) -> bool:
@@ -276,7 +304,7 @@ class FakeProxy:
         return {
             "kind": "hub_bundle", "schema_version": 1, "captured_at": "2026-09-10T00:00:00Z",
             "complete": all(e in self.fetched for e in self._entity_ids()), "payload_profile": "structural",
-            "hub": {"name": self.hub_name},
+            "hub": {"name": self.hub_name, "version": self.model},
             "devices": [_row("device", d.device_id, d.name) for d in self.devices_data],
             "activities": [_row("activity", a.activity_id, a.name) for a in self.activities_data],
         }
@@ -443,16 +471,21 @@ class FakeProxy:
         self.intents.append((name, args))
         if self.reject_intents:
             raise HubRejectedError(f"the hub did not accept {name}")
+        if getattr(self, "remote_syncing", False):
+            from sofabaton import RemoteSyncInProgressError
+            raise RemoteSyncInProgressError(f"the hub refused {name} while it was still updating its remote")
 
-    async def add_device(self, name, device_class):
+    async def add_device(self, name, device_class, *, icon=None, color_id=None):
         await self._intent("add_device", name, device_class)
+        self.create_appearance = (icon, color_id)
         new_id = max(d.device_id for d in self.devices_data) + 1
         self.devices_data.append(Device(device_id=new_id, name=name, brand=None, device_class=device_class,
                                         device_class_code=None, power_state=None, idle_behavior=None))
         return new_id
 
-    async def add_activity(self, name):
+    async def add_activity(self, name, *, icon=None, color_id=None):
         await self._intent("add_activity", name)
+        self.create_appearance = (icon, color_id)
         new_id = max(a.activity_id for a in self.activities_data) + 1
         self.activities_data.append(Activity(activity_id=new_id, name=name, active=False, needs_confirm=False))
         return new_id
@@ -532,6 +565,27 @@ class FakeProxy:
         self._emit_snapshot_changed(device_ids=(new_id,))
         return WifiDeployment(device_id=new_id, spec=normalized, target=WifiTarget(host, port, self._action_id()),
                               labels=labels_from_spec(normalized), hub_version=self.model)
+
+    @contextlib.asynccontextmanager
+    async def batch_writes(self, *, send_remote_sync: bool = True):
+        self.batches += 1
+        yield None
+
+    async def probe_wifi_delivery(self, deployment, *, arrived, timeout: float = 10.0):
+        from sofabaton import WIFI_PROBE_COMMAND_ID, WifiDeliveryProbe
+        device_id = int(deployment.device_id)
+        self.probes.append(device_id)
+        future = asyncio.ensure_future(arrived)
+        if self.refuse:
+            future.cancel()
+            return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=False, delivered=False)
+        if self.probe_hook is not None:
+            await self.probe_hook(deployment, future)
+        await asyncio.sleep(0)
+        if future.done() and not future.cancelled():
+            return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=True, latency_s=0.05)
+        future.cancel()
+        return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=False)
 
     async def update_wifi_device(self, deployment, spec, *, progress=None):
         from sofabaton import WifiDeployment

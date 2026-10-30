@@ -82,6 +82,31 @@ Use the returned code for button control, or the bound device/command
 pair for direct command control. Device/activity documents and backups
 accept these keys for X2; validation rejects them for X1/X1S.
 
+### X2 IR emitters
+
+An X2 device's IR can go out of the hub's built-in emitter, its two IR
+ports, and any paired remote or repeater. Device list rows carry the
+routing as `emitters`, the record's three bytes `[a, b, c]` (`null` on
+X1/X1S); in the snapshot it is the element's `device.extras`. The last
+byte holds the hub (bit 0 built-in, bit 1 port 1, bit 2 port 2) and remotes
+1-5 (bits 3-7); the middle byte holds repeaters (repeater n's built-in
+emitter is bit 2(n-1), its port the next bit); the first byte belongs to
+single-button RF devices and is never changed.
+
+`GET /hubs/{id}/ir-emitters` lists the paired remotes and repeaters
+(`paired`: `kind`, `number`, `name`, `online`, `port_cable`) with
+`read_at`. It returns the last read without hub traffic (both `null`
+before the first); `?refresh=true` reads the hub's list now (a few
+seconds, control mode). `paired` is `null` when the hub did not answer.
+Other hubs answer `409 not_x2`.
+
+Change the routing with a device row edit (`PUT .../devices/{did}` with
+the new `device.extras`): one record update, no remote sync. It is
+refused with `422 out_of_scope` when no emitter is left, the first byte
+changes, the hub bits change to a mix other than all, built-in, port 1,
+port 2 or none, or the hub is not an X2. The routing applies to commands sent to the device; a
+payload play always fires from the hub's own emitters.
+
 ## Access
 
 Every route has exactly one access class. The operator's side (setting

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import custom_components.sofabaton_x1s.hub as hub_module
 import custom_components.sofabaton_x1s.hub_identity as hub_identity_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
-from tests.hub_fakes import FakeDeviceRegistry, FakeHass
+from tests.hub_fakes import FakeDeviceRegistry, FakeHass, LegacyFakeDeviceRegistry
 
 
 def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
@@ -57,7 +57,7 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
 
     hub.version = "X2"
     hub.name = "X2 HUB"
-    hub.hub_firmware_version = 7  # X2 floor is 8
+    hub.hub_firmware_version = 8  # X2 floor is 9
 
     loop.run_until_complete(hub._async_update_firmware_state())
 
@@ -72,11 +72,11 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
     assert kwargs["translation_placeholders"] == {
         "name": "X2 HUB",
         "model": "X2",
-        "installed": "7",
-        "recommended": "8",
+        "installed": "8",
+        "recommended": "9",
     }
     # The installed firmware is mirrored onto the device even while outdated.
-    assert device_registry.updated == [("device-1", {"sw_version": "7"})]
+    assert device_registry.updated == [("device-1", {"sw_version": "8"})]
 
     # The placeholders must line up with the repair text in en.json; a
     # rename on either side silently breaks the rendered issue.
@@ -96,12 +96,12 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
     assert referenced == set(kwargs["translation_placeholders"])
 
     # Hub reports the recommended firmware -> the repair clears.
-    hub.hub_firmware_version = 8
+    hub.hub_firmware_version = 9
     loop.run_until_complete(hub._async_update_firmware_state())
 
     assert len(created) == 1  # no second issue raised
     assert deleted == [(hub_module.DOMAIN, "outdated_firmware_entry-id")]
-    assert device_registry.updated[-1] == ("device-1", {"sw_version": "8"})
+    assert device_registry.updated[-1] == ("device-1", {"sw_version": "9"})
 
     loop.close()
 
@@ -158,6 +158,48 @@ def test_async_sync_authoritative_identity_skips_device_registry_rename_when_nam
     )
 
     assert rename_calls == []
+
+    loop.close()
+
+
+def _hub_with_mac(hass, entry_id="entry-id"):
+    return SofabatonHub(
+        hass,
+        entry_id,
+        "X1S HUB",
+        "127.0.0.1",
+        1234,
+        {"MAC": "aa:bb:cc:dd:ee:ff"},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+
+def test_hub_device_lookup_is_scoped_to_the_config_entry():
+    """Issue #316: HA 2026.10 deprecates the unscoped async_get_device."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    device = SimpleNamespace(id="device-1", name="X1S HUB", name_by_user=None)
+    registry = FakeDeviceRegistry(device)
+
+    assert _hub_with_mac(hass)._async_hub_device(registry) is device
+    # The same MAC under another config entry is not this hub's device.
+    assert _hub_with_mac(hass, "other-entry")._async_hub_device(registry) is None
+
+    loop.close()
+
+
+def test_hub_device_lookup_falls_back_on_home_assistant_before_2026_8():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    device = SimpleNamespace(id="device-1", name="X1S HUB", name_by_user=None)
+
+    assert _hub_with_mac(hass)._async_hub_device(LegacyFakeDeviceRegistry(device)) is device
 
     loop.close()
 

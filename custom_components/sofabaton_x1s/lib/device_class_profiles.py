@@ -142,9 +142,11 @@ def supported_create_classes(hub_version: str | None) -> tuple[str, ...]:
 
 def _x2_extras(device_class: str) -> dict[str, int]:
     # X2 records carry the emitter-routing block (tail bytes 18..21). A
-    # new IR device fires from the hub emitter (``c`` bit 0); the wifi
-    # classes carry an all-zero block like the app writes for them.
-    return {"a": 0, "b": 0, "c": 1 if device_class == DEVICE_CLASS_IR else 0}
+    # new IR device fires from all the hub's emitters, the built-in one and
+    # both IR ports (``c`` 0x07), as the vendor app's database create writes
+    # (bench 2026-10-28); the wifi classes carry an all-zero block like the
+    # app writes for them.
+    return {"a": 0, "b": 0, "c": 0x07 if device_class == DEVICE_CLASS_IR else 0}
 
 
 def build_empty_device_block(

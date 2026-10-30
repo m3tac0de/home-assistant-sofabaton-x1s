@@ -512,3 +512,29 @@ def test_remote_favorite_slot_survives_temporarily_missing_label():
         ]
     finally:
         loop.close()
+
+
+def test_cache_devices_list_carries_the_x2_emitter_routing() -> None:
+    """X2 device rows expose the record's IR routing bytes (device.extras)."""
+    from custom_components.sofabaton_x1s.lib.devices import DeviceConfig, build_device_create_payload
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    hub = SofabatonHub(hass, "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    body = build_device_create_payload(
+        DeviceConfig(name="Projector", device_id=3, extra_c=0x04, extras_present=True), hub_version="X2"
+    )[3:]
+    hub.devices[3] = {"name": "Projector"}
+    hub._proxy.state.devices[3] = {"name": "Projector", "raw_body": body}
+
+    hub._proxy.hub_version = "X2"
+    rows = loop.run_until_complete(hub.async_get_cache_contents())["devices_list"]
+    assert rows[0]["emitters"] == [0, 0, 0x04]
+
+    # No routing off the X2.
+    hub._proxy.hub_version = "X1S"
+    rows = loop.run_until_complete(hub.async_get_cache_contents())["devices_list"]
+    assert "emitters" not in rows[0]
+
+    loop.close()

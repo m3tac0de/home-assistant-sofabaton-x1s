@@ -67,7 +67,7 @@ from .discovery import (  # noqa: F401
 )
 
 # Device catalog records and provisioning flows.
-from .devices import DeviceConfig, device_config_from_backup, parse_device_record  # noqa: F401
+from .devices import DeviceConfig, device_config_from_backup, parse_device_record, validate_appearance  # noqa: F401
 from .device_create import (  # noqa: F401
     DeviceCreateRequest,
     DeviceCreateResult,
@@ -142,9 +142,13 @@ from .models import (  # noqa: F401
     HubInfo,
     HubMode,
     HubStatus,
+    IrEmitterDevice,
+    IrEmitterStatus,
     Macro,
     RunningActivity,
 )
+# X2 IR emitter routing (the three bytes after tail[18]).
+from .emitter_routing import EmitterRouting  # noqa: F401
 from .errors import (  # noqa: F401
     FetchTimeoutError,
     HubBusyError,
@@ -153,6 +157,7 @@ from .errors import (  # noqa: F401
     SnapshotOutdatedError,
     StateDocumentError,
     HubRejectedError,
+    RemoteSyncInProgressError,
     WifiUpdateDeclined,
     WifiUpdateFailed,
     IrLearnError,
@@ -162,7 +167,9 @@ from . import edits  # noqa: F401
 
 # Managed wifi device value types (deploy / update through the facade).
 from .wifi_device import (  # noqa: F401
+    WIFI_PROBE_COMMAND_ID,
     WIFI_SLOT_COUNT,
+    WifiDeliveryProbe,
     WifiDeployment,
     WifiDeviceSpec,
     WifiSlotSpec,
@@ -215,6 +222,7 @@ _CURATED = [
     "DeviceConfig",
     "device_config_from_backup",
     "parse_device_record",
+    "validate_appearance",
     "DeviceCreateRequest",
     "DeviceCreateResult",
     "run_device_create",
@@ -265,6 +273,9 @@ _CURATED = [
     "HubInfo",
     "HubMode",
     "HubStatus",
+    "IrEmitterDevice",
+    "IrEmitterStatus",
+    "EmitterRouting",
     "RunningActivity",
     "FetchTimeoutError",
     "HubBusyError",
@@ -273,6 +284,7 @@ _CURATED = [
     "SnapshotOutdatedError",
     "StateDocumentError",
     "HubRejectedError",
+    "RemoteSyncInProgressError",
     "IrLearnError",
     "WifiUpdateDeclined",
     "WifiUpdateFailed",
@@ -289,7 +301,9 @@ _CURATED = [
     "CommandPayload",
     "edits",
     # managed wifi device value types
+    "WIFI_PROBE_COMMAND_ID",
     "WIFI_SLOT_COUNT",
+    "WifiDeliveryProbe",
     "WifiDeployment",
     "WifiDeviceSpec",
     "WifiSlotSpec",

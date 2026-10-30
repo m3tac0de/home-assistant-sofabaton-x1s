@@ -34,7 +34,7 @@ from .device_create import (
     build_device_create_step,
     build_device_update_step,
     build_key_sort_steps,
-    build_macro_step,
+    build_macro_steps,
     build_macro_step_record,
     build_set_idle_behavior_step,
     run_device_create,
@@ -57,6 +57,7 @@ from .protocol_const import (
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
     ButtonName,
+    classify_device_class_code,
     known_public_device_classes,
     normalize_device_class,
 )
@@ -224,11 +225,17 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing device/activity restore orchestration."""
 
     def _restore_device_class(self, device_block: dict[str, Any]) -> str | None:
-        """Return the normalized device class declared by a backup payload."""
+        """Return the normalized device class declared by a backup payload.
 
-        return normalize_device_class(
-            device_block.get("device_class", device_block.get("device_class_code"))
-        )
+        A block without a class name falls back to its class code: RF
+        devices were exported with ``device_class: None`` before their
+        codes were mapped, and the code still identifies them.
+        """
+
+        declared = normalize_device_class(device_block.get("device_class"))
+        if declared is not None:
+            return declared
+        return classify_device_class_code(device_block.get("device_class_code"))
 
     @staticmethod
     def _command_restore_data(command_row: dict[str, Any]) -> dict[str, Any] | None:
@@ -1298,8 +1305,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                             delay=int(entry.get("delay", 0xFF)) & 0xFF,
                         )
                     )
-            parts.macro_steps.append(
-                build_macro_step(
+            parts.macro_steps.extend(
+                build_macro_steps(
                     hub_version=self.hub_version,
                     device_id=new_device_id,
                     key_id=button_id,
@@ -2075,8 +2082,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                             delay=int(entry.get("delay", 0xFF)) & 0xFF,
                         )
                     )
-            post_steps.append(
-                build_macro_step(
+            post_steps.extend(
+                build_macro_steps(
                     hub_version=self.hub_version,
                     device_id=new_activity_id,
                     key_id=button_id,
@@ -2301,13 +2308,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not step.ok:
             return False
-        step = self._send_step(
-            step_name=f"restore-fav-order-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        return bool(step.ok)
+        return self._send_entity_sync_step(act_lo, f"restore-fav-order-commit-65[act=0x{act_lo:02X}]")
 
     @staticmethod
     def _collect_referenced_entity_ids(payload: dict[str, Any]) -> set[int]:

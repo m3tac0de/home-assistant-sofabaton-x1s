@@ -48,12 +48,15 @@ function unreadLeaves(table: unknown, source: string, dynamicTables: string[]): 
 
 test("every tools-card English string has a production reader (CR-X7-1)", () => {
   const source = productionSource(
-    ["custom_components/sofabaton_x1s/www/src", "server-panel/src"],
+    // The shared icon editors read the backup strings both hosts pass in
+    // (appearanceLabelsFrom); the IR pill's dropdown reads the irEmitters
+    // strings the same way.
+    ["custom_components/sofabaton_x1s/www/src", "server-panel/src", "remote-card/src/entity-icons", "remote-card/src/ir-emitters"],
     /\/www\/src\/(strings\.ts|control-panel-translations\/)/,
   );
   const dynamicTables = [
     // Indexed by the hub's device class.
-    "deviceClassLabels",
+    "cache.deviceClassLabels",
     // Indexed by backend step kinds, phases and error codes.
     "backendState",
     // Indexed by keymap button names.

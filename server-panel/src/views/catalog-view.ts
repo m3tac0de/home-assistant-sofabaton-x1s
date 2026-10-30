@@ -15,6 +15,9 @@
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { mdiBluetooth, mdiDragVerticalVariant, mdiPlayCircleOutline, mdiPlus, mdiRadioTower, mdiRefresh, mdiRemote, mdiSwapVertical, mdiUploadOutline, mdiWifi, mdiWrench } from "@mdi/js";
 
+import { appearanceLabelsFrom, appearanceToggleStyles, renderAppearanceToggle, type AppearanceToggleState } from "../../../remote-card/src/entity-icons/appearance-editor";
+import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileBadge, entityTileStyles, renderEntityTile } from "../../../remote-card/src/entity-icons/entity-tile";
 import { creatableDeviceClasses } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
@@ -41,6 +44,8 @@ import { formatWhen } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { PointerReorder } from "../pointer-reorder";
 import { sanitizeName } from "./device-editor-state";
+import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead, renderReadOnlyIrPill } from "../components/ir-emitter-pill";
+import { irEmitterRowAttention } from "../../../remote-card/src/ir-emitters/emitter-rules";
 
 const S = TOOLS_CARD_STRINGS.cache;
 
@@ -104,6 +109,8 @@ interface AddDialogState {
   kind: CatalogKind;
   name: string;
   deviceClass: string;
+  /** The icon / color picker (closed, nothing picked: the hub's default). */
+  appearance: AppearanceToggleState;
   busy: boolean;
   error: string | null;
 }
@@ -251,6 +258,10 @@ export class SbPanelCatalog extends LitElement {
 
   static styles = [
     PANEL_BASE_CSS,
+    entityTileStyles,
+    entityPickerStyles,
+    appearanceToggleStyles,
+    irEmitterStyles,
     css`
       :host { display: block; container-type: inline-size; }
       /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
@@ -281,7 +292,10 @@ export class SbPanelCatalog extends LitElement {
          here the page scrolls under the shell's sticky top dock, so the
          header pins just under it (the shell measures the dock's height). */
       .entity-block.open > .entity-summary { position: sticky; top: var(--top-dock-height, 0px); z-index: 2; background: var(--sbp-panel-2); border-bottom: 1px solid var(--sbp-line); border-radius: 12px 12px 0 0; }
-      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; color: var(--sbp-text); }
+      /* Clipped sideways only: a device tile's class badge hangs below the tile. */
+      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow-x: clip; color: var(--sbp-text); }
+      /* The hub's own icon on its tile (row height unchanged: 30px like the buttons). */
+      .entity-name-icon--tile { --entity-tile-size: 30px; --entity-tile-ring: var(--sbp-panel-2); }
       .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sbp-muted); flex-shrink: 0; }
       .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -496,6 +510,10 @@ export class SbPanelCatalog extends LitElement {
       this._snapshot = snapshot.ok ? snapshot.body : null;
       this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
       if (this._open && !this.openEntry) this._open = null;
+      // An X2's device rows warn from the server's last paired-device read (no hub exchange).
+      if (String(this._hubVersion ?? "").toUpperCase().includes("X2") && !irEmitterLastReadKnown(hubId)) {
+        void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate());
+      }
     } catch (err) {
       this._notice = String(err);
     } finally {
@@ -686,7 +704,10 @@ export class SbPanelCatalog extends LitElement {
 
   private _openAdd(kind: CatalogKind): void {
     if (this._locked) return;
-    this._add = { kind, name: "", deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "", busy: false, error: null };
+    this._add = {
+      kind, name: "", deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "",
+      appearance: { icon: null, colorId: null, open: false, tab: "icon" }, busy: false, error: null,
+    };
   }
 
   private _closeAdd = (): void => {
@@ -703,7 +724,8 @@ export class SbPanelCatalog extends LitElement {
     this._add = { ...dialog, busy: true, error: null };
     const fail = (error: string) => { if (this._loadedFor === hubId) this._add = { ...dialog, busy: false, error }; };
     try {
-      const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
+      const appearance = { icon: dialog.appearance.icon, colorId: dialog.appearance.colorId };
+      const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass, appearance) : await this.api.addActivity(hubId, name, appearance);
       if (started.status !== 202 || !started.body) return fail(problemText(started));
       const job = await this.api.followJob(hubId, started.body.job_id);
       if (job) this._lastJobId = job.job_id;
@@ -792,13 +814,14 @@ export class SbPanelCatalog extends LitElement {
           this._toggle(e);
         }}>
         <span class="entity-name">
-          <span class="entity-name-icon">${icon(e.kind === "device" ? deviceClassIconPath(e.device?.device_class) : mdiPlayCircleOutline)}</span>
+          ${this._renderEntryIcon(e)}
           <span class="entity-name-copy">
             <span class="entity-name-label">${e.name}</span>
             <span class="entity-count">${count}</span>
           </span>
         </span>
         <span class="entity-meta">
+          ${this._renderIrRowPill(e)}
           ${badge(DEV_ID_BADGE, e.id)}
           <button class="icon-btn entity-edit" type="button" ?disabled=${locked} title=${e.kind === "device" ? "Edit device" : "Edit activity"} aria-label=${e.kind === "device" ? "Edit device" : "Edit activity"} @click=${(event: Event) => { event.stopPropagation(); this._edit(e); }}>${icon(mdiWrench)}</button>
           <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event: Event) => { event.stopPropagation(); this._refreshEntry(e); }}>${icon(mdiRefresh)}</button>
@@ -807,6 +830,26 @@ export class SbPanelCatalog extends LitElement {
       </div>
       ${isOpen ? html`<div class="entity-body">${this._renderBody(e, key)}</div>` : nothing}
     </div>`;
+  }
+
+  /** An IR device whose routing needs attention (an offline repeater, an emitter no longer
+   *  paired) gets the read-only amber IR pill; most devices are IR, so the rest get none. */
+  private _renderIrRowPill(e: CatalogEntry): TemplateResult | typeof nothing {
+    const hubId = this.hub?.hub_id ?? "";
+    if (e.kind !== "device" || !hubId || String(e.device?.device_class ?? "").toLowerCase() !== "ir") return nothing;
+    if (!irEmitterRowAttention(e.device?.emitters, irEmitterLastRead(hubId)?.paired ?? null)) return nothing;
+    return renderReadOnlyIrPill({ labels: TOOLS_CARD_STRINGS.irEmitters, attention: true });
+  }
+
+  /** The hub's own icon on its tile once the record is cached (the class glyph moves to a
+   *  corner badge on devices); the card's glyph before that. */
+  private _renderEntryIcon(e: CatalogEntry): TemplateResult {
+    const row = e.kind === "device" ? e.device : e.activity;
+    const tile = entityTile(this._hubVersion, row?.icon, row?.color_id);
+    if (tile) {
+      return html`<span class="entity-name-icon entity-name-icon--tile">${renderEntityTile(tile, { badge: e.kind === "device" ? entityTileBadge(e.device?.device_class) : null })}</span>`;
+    }
+    return html`<span class="entity-name-icon">${icon(e.kind === "device" ? deviceClassIconPath(e.device?.device_class) : mdiPlayCircleOutline)}</span>`;
   }
 
   /** A row in reorder mode: the whole row drags (as on the card), the arrow keys move it for keyboards. */
@@ -891,6 +934,13 @@ export class SbPanelCatalog extends LitElement {
                 </select>
               </label>`
             : nothing}
+          ${renderAppearanceToggle({
+            hubVersion: this._hubVersion,
+            state: dialog.appearance,
+            labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+            disabled: dialog.busy,
+            onChange: (appearance) => set({ appearance }),
+          })}
           <div class="cache-dialog-actions">
             <button class="cache-footer-btn" type="button" ?disabled=${dialog.busy} @click=${this._closeAdd}>${isDevice ? S.addDeviceCancel : S.addActivityCancel}</button>
             <button class="cache-footer-btn cache-footer-btn--primary" id="add-confirm" type="button" ?disabled=${dialog.busy} @click=${() => void this._confirmAdd()}>${dialog.busy ? S.addActivityCreating : isDevice ? S.addDeviceConfirm : S.addActivityConfirm}</button>

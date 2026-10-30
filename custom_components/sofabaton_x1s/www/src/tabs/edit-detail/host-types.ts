@@ -3,9 +3,11 @@
 import type {
   BackupBundlePayload,
   BlobFetchDecodedBlock,
+  HassLike,
   IrEmissionRecord,
   IrEmitterConsumersResponse,
   IrLearnEvent,
+  RfBand,
   WifiEvent,
 } from "../../shared/ha-context";
 
@@ -20,7 +22,12 @@ export type BackupEditTargetKind = "activity" | "device";
 export interface FetchedCommandPayload {
   dataHex: string;
   decoded: BlobFetchDecodedBlock | null;
+  /** The record's code type (0x1D / 0x1E = RF); absent or null when unknown. */
+  libraryType?: number | null;
 }
+
+/** How a command's payload plays and learns: IR, or RF on a band. */
+export type PayloadSignal = "ir" | RfBand;
 
 export type BackupEditDetailSectionId =
   | "power"
@@ -60,12 +67,51 @@ export interface WifiEventsHost {
  * resolved function cancels the window (and is also how the view lets
  * go of a finished subscription). `subscribeEmissions` is the emitter
  * inbox: the backend replays its intercept ring on subscribe and after
- * every send. `consumers` gates the Home Assistant option.
+ * every send. `consumers` gates the Home Assistant option. With
+ * `band`, `learnFromHub` arms the hub's RF receiver instead (no Home
+ * Assistant source exists for RF).
  */
 export interface IrLearnHost {
-  learnFromHub(onEvent: (event: IrLearnEvent) => void, timeoutS: number): Promise<() => void>;
+  learnFromHub(
+    onEvent: (event: IrLearnEvent) => void,
+    timeoutS: number,
+    band?: RfBand | null,
+  ): Promise<() => void>;
   subscribeEmissions(onEvent: (emissions: IrEmissionRecord[]) => void): Promise<() => void>;
   consumers(): Promise<IrEmitterConsumersResponse>;
+}
+
+/**
+ * What the delivery pill of a managed Wifi device needs from the live host:
+ * Home Assistant (for the delivery record, Test and the broker link), the
+ * hub, whether it is an X2 (the method choice) and the shared hub lock.
+ * Absent in the offline Backup editor, which shows no pill.
+ */
+export interface DeliveryHost {
+  hass(): HassLike | null;
+  hubEntryId(): string;
+  /** An X2: the dropdown offers the method choice. */
+  canSwitch(): boolean;
+  /** Another hub operation runs. */
+  locked(): boolean;
+  setBusy(busy: boolean, label: string | null): void;
+}
+
+/**
+ * What the IR pill of an X2 IR device needs from the live host: Home
+ * Assistant (the paired remotes and repeaters read), the hub, the routing
+ * the hub has (the captured baseline, for the pending state and Undo) and
+ * the shared hub lock. Absent in the offline Backup editor, which shows no
+ * pill.
+ */
+export interface IrEmitterHost {
+  hass(): HassLike | null;
+  hubEntryId(): string;
+  /** The device's routing bytes as the hub has them (`device.extras`). */
+  baselineExtras(deviceId: number): { a: number; b: number; c: number } | null;
+  /** Another hub operation runs. */
+  locked(): boolean;
+  setBusy(busy: boolean, label: string | null): void;
 }
 
 // "copy" brings another activity's macro over verbatim; it is not a "new" item (nothing to fill in).

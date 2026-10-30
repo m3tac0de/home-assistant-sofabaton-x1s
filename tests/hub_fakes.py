@@ -34,16 +34,32 @@ class FakeHass:
             entry.title = title
 
 
-class FakeDeviceRegistry:
+class _FakeDeviceRegistryBase:
     def __init__(self, device=None):
         self.device = device
         self.updated = []
+
+    def async_update_device(self, device_id, **kwargs):
+        self.updated.append((device_id, kwargs))
+
+
+class FakeDeviceRegistry(_FakeDeviceRegistryBase):
+    """HA 2026.8+: device lookups are scoped to the owning config entry."""
+
+    def async_get_device_by_identifier(self, identifier, config_entry_id):
+        if (
+            identifier == (hub_module.DOMAIN, "aa:bb:cc:dd:ee:ff")
+            and config_entry_id == "entry-id"
+        ):
+            return self.device
+        return None
+
+
+class LegacyFakeDeviceRegistry(_FakeDeviceRegistryBase):
+    """Before HA 2026.8: only the unscoped async_get_device exists."""
 
     def async_get_device(self, *, identifiers=None, connections=None):
         expected = {(hub_module.DOMAIN, "aa:bb:cc:dd:ee:ff")}
         if identifiers == expected:
             return self.device
         return None
-
-    def async_update_device(self, device_id, **kwargs):
-        self.updated.append((device_id, kwargs))

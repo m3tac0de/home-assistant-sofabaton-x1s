@@ -16,7 +16,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     FAMILY_ACTIVITY_SORT,
     FAMILY_DEVICE_SORT,
     OP_REMOTE_SYNC,
-    OP_X2_REMOTE_SYNC_ALL,
+    OP_X2_REMOTE_SYNC,
 )
 from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
@@ -103,7 +103,8 @@ def test_reorder_activities_uses_same_write_on_x1(monkeypatch) -> None:
     result = proxy.reorder_activities([0x66, 0x65])
 
     assert result == {"status": "success", "ordered_ids": [0x66, 0x65]}
-    assert [family for family, _payload in sent] == [FAMILY_ACTIVITY_SORT, FAMILY_REMOTE_SYNC]
+    # The X1 remote takes a new activity order on its own (bench_333): no remote sync.
+    assert [family for family, _payload in sent] == [FAMILY_ACTIVITY_SORT]
     payload = sent[0][1]
     assert payload[6:12] == bytes([0x00, 0x66, 0x01, 0x00, 0x65, 0x02])
     assert payload[-1] == sum(payload[3:-1]) & 0xFF
@@ -163,7 +164,7 @@ def _seed_device(proxy: X1Proxy, dev_lo: int, name: str, *, kind: int = 0x00) ->
     proxy._devices_catalog_ready = True  # a seeded catalog counts as read (W2)
 
 
-def test_reorder_devices_sends_family_11_order_then_remote_sync(monkeypatch) -> None:
+def test_reorder_devices_sends_family_11_order_and_no_x1_remote_sync(monkeypatch) -> None:
     proxy = _make_proxy(HUB_VERSION_X1)
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
     for dev_lo, name in enumerate(
@@ -187,14 +188,14 @@ def test_reorder_devices_sends_family_11_order_then_remote_sync(monkeypatch) -> 
     result = proxy.reorder_devices([6, 5, 4, 3, 2, 1])
 
     assert result == {"status": "success", "ordered_ids": [6, 5, 4, 3, 2, 1]}
-    assert [family for family, _payload in sent] == [FAMILY_DEVICE_SORT, FAMILY_REMOTE_SYNC]
+    # The X1 remote takes a new device order on its own (bench_333): no remote sync.
+    assert [family for family, _payload in sent] == [FAMILY_DEVICE_SORT]
     # Golden payload from the live X1 bench write (opcode 0x1011,
     # bench 2026-07-16): reverse order 0x06→1 … 0x01→6; the hub acked and
     # restamped every record's sort byte to match.
     assert sent[0][1] == bytes.fromhex(
         "01 00 01 01 00 01 00 06 01 00 05 02 00 04 03 00 03 04 00 02 05 00 01 06 2c"
     )
-    assert sent[1][1] == b""
     assert refreshed == [True]
 
 
@@ -285,9 +286,9 @@ def _resync_remote_frame(hub_version: str, monkeypatch) -> tuple[int, bytes]:
     [
         (HUB_VERSION_X1, (OP_REMOTE_SYNC, b"")),
         (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
-        # A bare 0x0064 starts no sync on the X2; only the all-remotes
-        # broadcast does (bench 2026-08-27).
-        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+        # The X2 gets its order-only sync (~10 s, bench_333 C3) instead of
+        # the all-remotes full broadcast (a bare 0x0064 starts nothing there).
+        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC, b"\x00\x00\xff\x00")),
     ],
 )
 @pytest.mark.parametrize("kind", ["activity", "device"])
@@ -317,9 +318,15 @@ def test_reorder_remote_sync_is_the_resync_remote_frame(monkeypatch, hub_version
     result = reorder([0x02, 0x01] if kind == "device" else [0x66, 0x65])
 
     assert result is not None and result["status"] == "success"
+    if hub_version == HUB_VERSION_X1:
+        # The X1 remote takes a new device or activity order on its own (bench_333).
+        assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family] and len(ack_waits) == 1
+        return
     assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family, FAMILY_REMOTE_SYNC]
     assert wire[1] == trigger
-    assert wire[1] == _resync_remote_frame(hub_version, monkeypatch)
+    if hub_version != HUB_VERSION_X2:
+        # The X1/X1S have no order-only form: the trigger is resync_remote's.
+        assert wire[1] == _resync_remote_frame(hub_version, monkeypatch)
     # The trigger's own STATUS_ACK is consumed as part of the step.
     assert len(ack_waits) == 2 and ack_waits[1][0] == (0x0103, 0x00)
 
@@ -379,6 +386,31 @@ def test_create_activity_payload_passes_restore_validation(monkeypatch) -> None:
     assert request.button_bindings == []
     assert request.macros == []
     assert request.favorites == []
+
+
+def test_create_activity_carries_a_picked_icon_and_color(monkeypatch) -> None:
+    proxy = _make_proxy("X2")
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_settle_order", lambda kind, ids: "kept")
+    monkeypatch.setattr(proxy, "sync_remotes_after_write", lambda **kw: True)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        proxy,
+        "restore_activity",
+        lambda payload, **kw: captured.update(payload=payload) or {"status": "success", "activity_id": 0x69},
+    )
+
+    assert proxy.create_activity("Sleep", icon=34, color_id=3) is not None
+    assert (captured["payload"]["device"]["icon"], captured["payload"]["device"]["color_id"]) == (34, 3)
+
+
+def test_create_activity_refuses_an_icon_the_hub_lacks(monkeypatch) -> None:
+    proxy = _make_proxy()  # X1S: icons 1-16, no colors
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "restore_activity", lambda *a, **kw: pytest.fail("must not write"))
+
+    assert proxy.create_activity("Sleep", icon=34) is None
+    assert proxy.create_activity("Sleep", color_id=3) is None
 
 
 def test_create_activity_refuses_empty_name(monkeypatch) -> None:

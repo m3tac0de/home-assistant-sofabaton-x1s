@@ -1,12 +1,16 @@
 """The integration's Home Assistant services (R6, CR-H2-13).
 
-The 20 service handlers; they resolve their hub and guard it through
+The 24 service handlers; they resolve their hub and guard it through
 runtime.
 """
 
 from __future__ import annotations
 
+import logging
+import re
+from collections.abc import Mapping
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
@@ -18,10 +22,21 @@ from .command_config import (
     normalize_command_id_list,
     normalize_power_command_id,
 )
+from .hub import _parse_managed_wifi_brand
+from .lib import edits
+from .lib.blob_decoders import WIFI_HTTPS_METHODS
+from .lib.bundle_validation import validate_new_entity_name
+from .lib.device_class_profiles import supported_create_classes
+from .lib.devices import validate_appearance
+from .lib.payloads import NetworkCommand
+from .lib.protocol_const import DEVICE_CLASS_WIFI_IP, normalize_device_class
 from . import runtime
 from . import entity_sync
 from .ws_backup import (
     _validate_backup_device_ids,
+)
+from .ws_editor import (
+    _hub_model_for_names,
 )
 from .ws_ir import (
     _validate_ir_command_name,
@@ -30,6 +45,9 @@ from .ws_ir import (
 from .ws_wifi import (
     _validate_wifi_name_for_hub,
 )
+
+# Same logger name as the package: log lines keep their source name.
+_LOGGER = logging.getLogger(__package__)
 
 
 @runtime._hub_write_service()
@@ -339,7 +357,394 @@ async def _async_handle_delete_device(call: ServiceCall):
     if device_id < 1 or device_id > 255:
         raise ValueError("device_id must be between 1 and 255")
 
-    return await hub.async_delete_device(device_id=device_id)
+    return await hub.async_delete_device(device_id=device_id, sync_remotes=True)
+
+
+def _validate_new_name(hub, value: Any) -> str:
+    """A new activity or device name the hub stores as given, or ValueError."""
+
+    name = str(value or "").strip()
+    if not name:
+        raise ValueError("name is required")
+    validate_new_entity_name(name, hub_version=_hub_model_for_names(hub))
+    return name
+
+
+def _validate_create_appearance(hub, data: Mapping[str, Any]) -> tuple[int | None, int | None]:
+    """A create's optional icon and color, as ints the hub line offers."""
+
+    raw_icon = data.get("icon")
+    raw_color_id = data.get("color_id")
+    icon = int(raw_icon) if raw_icon is not None else None
+    color_id = int(raw_color_id) if raw_color_id is not None else None
+    validate_appearance(str(hub.version or ""), icon=icon, color_id=color_id)
+    return icon, color_id
+
+
+async def _async_refresh_created_entity(hub, *, kind: str, ent_id: int) -> None:
+    """Read a new entity into the cache, as the Control Panel does after a
+    create, so the next export_snapshot carries it. The create stands
+    either way."""
+
+    try:
+        await hub.async_refresh_entity_structure(kind=kind, ent_id=ent_id)
+    except Exception:  # noqa: BLE001 - the entity exists on the hub
+        _LOGGER.warning(
+            "[%s] cache read of new %s %s failed", hub.entry_id, kind, ent_id, exc_info=True
+        )
+
+
+@runtime._hub_write_service()
+async def _async_handle_create_activity(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.create_activity``.
+
+    The Activities tab's Add Activity: an empty activity (no members,
+    buttons or favorites). Fill it in with ``sync_from_snapshot`` on the
+    returned ``activity_id``.
+    """
+
+    hass = call.hass
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    name = _validate_new_name(hub, call.data.get("name"))
+    icon, color_id = _validate_create_appearance(hub, call.data)
+
+    result = await hub.async_create_activity(name, icon=icon, color_id=color_id)
+    activity_id = int((result or {}).get("activity_id") or 0)
+    if str((result or {}).get("status")) != "success" or not activity_id:
+        raise HomeAssistantError("The hub did not confirm creation of the new activity")
+    await _async_refresh_created_entity(hub, kind="activity", ent_id=activity_id)
+    return {"activity_id": activity_id}
+
+
+@runtime._hub_write_service()
+async def _async_handle_delete_activity(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.delete_activity``.
+
+    The hub keeps devices and activities in one table and deletes by id,
+    so this is the device delete on an activity id (as the Control Panel
+    does), limited to the activity range.
+    """
+
+    hass = call.hass
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    activity_id = int(call.data["activity_id"])
+    if activity_id < 101 or activity_id > 255:
+        raise ValueError("activity_id must be between 101 and 255")
+
+    result = await hub.async_delete_device(device_id=activity_id, sync_remotes=True)
+    if not result or str(result.get("status")) != "success":
+        raise HomeAssistantError(f"The hub did not confirm deletion of activity {activity_id}")
+
+
+@runtime._hub_write_service()
+async def _async_handle_create_device(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.create_device``.
+
+    The Hub tab's Add device: an empty device of ``device_class``. Add its
+    commands with ``set_wifi_command`` (``wifi_ip``) or ``persist_ir_blob``
+    (``ir``) on the returned ``device_id``.
+    """
+
+    hass = call.hass
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    name = _validate_new_name(hub, call.data.get("name"))
+    device_class = normalize_device_class(call.data.get("device_class"))
+    creatable = supported_create_classes(hub.version)
+    if device_class is None or device_class not in creatable:
+        raise ValueError(
+            f"device_class must be one of {', '.join(creatable) or 'none'} on a {hub.version} hub"
+        )
+    icon, color_id = _validate_create_appearance(hub, call.data)
+
+    result = await hub.async_create_device(
+        name, device_class=device_class, icon=icon, color_id=color_id
+    )
+    device_id = int((result or {}).get("device_id") or 0)
+    if str((result or {}).get("status")) != "success" or not device_id:
+        raise HomeAssistantError("The hub did not confirm creation of the new device")
+    await _async_refresh_created_entity(hub, kind="device", ent_id=device_id)
+    return {"device_id": device_id}
+
+
+_IPV4_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
+_HTTP_METHOD_RE = re.compile(r"^[A-Z]+$")
+# The request text writer adds these itself (Content-Type from its own field).
+_REQUEST_TEXT_OWNED_HEADERS = frozenset({"host", "content-length"})
+
+
+def _canonical_ipv4(host: str) -> str | None:
+    """The dotted quad without leading zeros (the record packs four bytes), or None."""
+
+    match = _IPV4_RE.match(host)
+    if not match:
+        return None
+    octets = [int(octet) for octet in match.groups()]
+    return ".".join(str(octet) for octet in octets) if all(octet <= 255 for octet in octets) else None
+
+
+def _wifi_command_headers(raw: Any) -> list[list[str]]:
+    """``headers`` as ``[name, value]`` pairs in order: from a mapping, a list
+    of pairs or ``"Name: value"`` lines, or one string of such lines."""
+
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, str):
+        items: list[Any] = [line for line in raw.splitlines() if line.strip()]
+    elif isinstance(raw, Mapping):
+        items = [[name, value] for name, value in raw.items()]
+    elif isinstance(raw, (list, tuple)):
+        items = list(raw)
+    else:
+        raise ValueError("headers must be a mapping, a list of [name, value] pairs or 'Name: value' lines")
+    pairs: list[list[str]] = []
+    for item in items:
+        if isinstance(item, str):
+            name, colon, value = item.partition(":")
+            if not colon:
+                raise ValueError(f"header {item!r} has no colon (Name: value)")
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            name, value = item
+        else:
+            raise ValueError(f"a header is a [name, value] pair, got {item!r}")
+        name = str(name).strip()
+        value = "" if value is None else str(value).strip()
+        if not name:
+            raise ValueError("a header needs a name")
+        if any(ch in name + value for ch in "\r\n"):
+            raise ValueError(f"header {name!r} must be a single line")
+        pairs.append([name, value])
+    return pairs
+
+
+def _wifi_command_payload(
+    *,
+    url: Any,
+    method: Any,
+    headers: Any,
+    body: Any,
+    existing: Mapping[str, Any] | None,
+    is_x2: bool,
+) -> NetworkCommand:
+    """The wifi_ip record to write, its kind picked as the device editor's
+    HTTP form picks it (shared/wifi-ip-form.ts).
+
+    Request text (code 0x1C, X1S and X2) unless the URL needs a URL record
+    (0x21, https or a host name, X2 only). ``existing`` is the stored
+    command's decoded block: a URL record stays one, since turning one into
+    request text was never benched, and the stored trailer is kept while
+    the kind is unchanged.
+    """
+
+    text = str(url or "").strip()
+    if not text or any(ch.isspace() for ch in text):
+        raise ValueError("url must be one URL without spaces, like http://192.168.1.20:8080/path")
+    parts = urlsplit(text)
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https"):
+        raise ValueError("url must start with http:// or https://")
+    if not parts.hostname:
+        raise ValueError("url has no host")
+    try:
+        port = parts.port
+    except ValueError as err:
+        raise ValueError(f"url port is not valid ({err})") from err
+
+    ipv4 = _canonical_ipv4(parts.hostname)
+    stored_url = existing is not None and "url" in (existing.get("fields") or {})
+    needs_url = scheme == "https" or ipv4 is None
+    if needs_url and not is_x2 and not stored_url:
+        raise ValueError(
+            "this hub only stores http:// URLs to an IPv4 address; https and host names need an X2"
+        )
+    kind_url = needs_url or stored_url
+    same_kind = existing is not None and stored_url == kind_url
+    trailer_hex = str(existing.get("trailer_hex") or "") if same_kind and existing else ""
+
+    method_value = str(method or "").strip().upper() or "GET"
+    pairs = _wifi_command_headers(headers)
+    body_value = "" if body is None else str(body)
+
+    if kind_url:
+        if method_value not in WIFI_HTTPS_METHODS:
+            raise ValueError(f"method must be one of {', '.join(WIFI_HTTPS_METHODS)} for this URL")
+        fields: dict[str, Any] = {"url": text, "method": method_value, "headers": pairs, "body": body_value}
+    else:
+        # Request text holds host, port, path and header lines; anything
+        # else in the URL would be dropped without a word.
+        if parts.username or parts.password:
+            raise ValueError("url must not carry user:password@ here; send credentials in a header")
+        if parts.fragment:
+            raise ValueError("url must not carry a #fragment here")
+        if not _HTTP_METHOD_RE.match(method_value):
+            raise ValueError(f"method {method_value!r} is not an HTTP method")
+        content_type: str | None = None
+        lines: list[str] = []
+        for name, value in pairs:
+            lowered = name.lower()
+            if lowered == "content-type" and content_type is None:
+                content_type = value
+                continue
+            if lowered in _REQUEST_TEXT_OWNED_HEADERS or lowered == "content-type":
+                raise ValueError(f"the hub writes the {name} header of this request itself")
+            lines.append(f"{name}: {value}")
+        path = parts.path or "/"
+        if parts.query:
+            path = f"{path}?{parts.query}"
+        fields = {
+            "host": ipv4,
+            "port": port or 80,
+            "method": method_value,
+            "path": path,
+            "header": "\r\n".join(lines),
+            "content_type": content_type or "",
+            "body": body_value,
+        }
+    try:
+        return NetworkCommand.from_dict(
+            {"device_class": DEVICE_CLASS_WIFI_IP, "fields": fields, "trailer_hex": trailer_hex}
+        )
+    except ValueError as err:
+        raise ValueError(f"the hub cannot store this command ({err})") from err
+
+
+async def _async_handle_set_wifi_command(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.set_wifi_command``.
+
+    Writes one HTTP command on a ``wifi_ip`` device: overwrites
+    ``command_id``, or adds a command named ``name`` without one. The
+    record is built as the device editor's HTTP form builds it (see
+    :func:`_wifi_command_payload`) and written by a device sync through the
+    same gauntlet as ``sync_from_snapshot``, with the cached structural
+    snapshot as the baseline; the engine's stale check refuses it when the
+    device changed on the hub since. Not a ``_hub_write_service``: the
+    sync's own busy guard refuses while hub work runs.
+    """
+
+    hass = call.hass
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    device_id = int(call.data["device_id"])
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+    raw_command_id = call.data.get("command_id")
+    command_id: int | None = int(raw_command_id) if raw_command_id is not None else None
+    if command_id is not None and (command_id < 1 or command_id > 255):
+        raise ValueError("command_id must be between 1 and 255")
+    name = str(call.data.get("name") or "").strip()
+    if command_id is None and not name:
+        raise ValueError("name is required to add a command (no command_id given)")
+
+    store = await runtime._async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        raise HomeAssistantError(
+            "set_wifi_command requires the persistent cache to be enabled "
+            "(Sofabaton X1S integration options)."
+        )
+    bundle = await hub.async_get_structural_bundle()
+    if not bundle:
+        raise HomeAssistantError(
+            "No cached structural snapshot is available yet. Open the "
+            "Control Panel's Hub or Activities tab once (or run a "
+            "whole-hub cache refresh) to populate it, then retry."
+        )
+    block = entity_sync._find_bundle_device_block(bundle, device_id)
+    if block is None:
+        raise ValueError(f"device {device_id} is not in the cached snapshot")
+    if normalize_device_class(block.get("device_class")) != DEVICE_CLASS_WIFI_IP:
+        raise ValueError(f"device {device_id} is not a wifi_ip device")
+    if any(_parse_managed_wifi_brand(str(block.get("brand") or ""))):
+        raise HomeAssistantError(
+            f"device {device_id} is a Wifi Device this integration deploys; "
+            "change its commands in the Control Panel's Wifi Commands tab"
+        )
+
+    existing: Mapping[str, Any] | None = None
+    if command_id is not None:
+        rows = next(
+            (
+                entry.get("commands") or []
+                for entry in bundle.get("devices") or []
+                if isinstance(entry, dict) and entry.get("device") is block
+            ),
+            [],
+        )
+        if not any(int(row.get("command_id") or 0) == command_id for row in rows):
+            raise ValueError(f"device {device_id} has no command {command_id}")
+        # The stored record decides its kind and trailer; the structural
+        # snapshot carries no payloads.
+        runtime._raise_if_hub_operation_locked(hass, hub, "set_wifi_command")
+        async with runtime._hub_work(hub):
+            fetched = await hub.async_fetch_blob(device_id=device_id, command_id=command_id)
+        existing = next(
+            (
+                row.get("decoded")
+                for row in (fetched or {}).get("commands") or []
+                if int(row.get("command_id") or 0) == command_id
+            ),
+            None,
+        )
+        if not isinstance(existing, Mapping) or existing.get("class") != DEVICE_CLASS_WIFI_IP:
+            raise HomeAssistantError(
+                f"Could not read the stored record of command {command_id} on device {device_id}"
+            )
+
+    payload = _wifi_command_payload(
+        url=call.data.get("url"),
+        method=call.data.get("method"),
+        headers=call.data.get("headers"),
+        body=call.data.get("body"),
+        existing=existing,
+        is_x2=_hub_model_for_names(hub) == "X2",
+    )
+    try:
+        if command_id is None:
+            edited, command_id = edits.add_command(bundle, device_id, payload, name)
+        else:
+            edited = edits.set_command_payload(bundle, device_id, command_id, payload)
+            if name:
+                edited = edits.rename_command(edited, device_id, command_id, name)
+    except KeyError as err:
+        raise ValueError(str(err.args[0] if err.args else err)) from err
+
+    try:
+        operation_id, baseline, edited, _entity_id = await entity_sync._async_prepare_entity_sync(
+            hass,
+            hub=hub,
+            entity_kind="device",
+            sync_input={"baseline": bundle, "edited": edited, "device_id": device_id},
+            operation_label="set_wifi_command",
+        )
+    except entity_sync._EntitySyncRejected as err:
+        raise HomeAssistantError(str(err)) from err
+
+    result = await entity_sync._run_entity_sync_operation(
+        hass,
+        operation_id,
+        hub=hub,
+        baseline=baseline,
+        edited=edited,
+        entity_kind="device",
+        entity_id=device_id,
+    )
+    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
+        raise HomeAssistantError(str(result.get("message") or "Sync failed"))
+    return {
+        **(result if isinstance(result, dict) else {}),
+        "device_id": device_id,
+        "command_id": command_id,
+        "record": "url" if payload.is_url else "request_text",
+    }
 
 
 @runtime._hub_write_service()
@@ -697,6 +1102,10 @@ SERVICES: tuple[tuple[str, Callable[[ServiceCall], Any], bool], ...] = (
     ("create_wifi_device", _async_handle_create_wifi_device, False),
     ("device_to_activity", _async_handle_device_to_activity, False),
     ("delete_device", _async_handle_delete_device, False),
+    ("create_activity", _async_handle_create_activity, True),
+    ("delete_activity", _async_handle_delete_activity, False),
+    ("create_device", _async_handle_create_device, True),
+    ("set_wifi_command", _async_handle_set_wifi_command, True),
     ("command_to_favorite", _async_handle_command_to_favorite, False),
     ("get_favorites", _async_handle_get_favorites, True),
     ("reorder_favorites", _async_handle_reorder_favorites, False),

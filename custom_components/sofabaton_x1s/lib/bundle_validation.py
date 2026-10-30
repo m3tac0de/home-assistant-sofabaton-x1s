@@ -285,11 +285,14 @@ def _validate_macros(
             # button bindings; the reference check rejects it unless the
             # baseline scan grandfathered it.
             command_id = _integer(step.get("command_id"), f"{step_path}.command_id", minimum=0, maximum=0xFF)
+            # A delay row's device byte is filler: the integration and the
+            # Android app write 0xFF, the iPad app writes 0 (issue #319).
+            device_minimum = 0 if command_id == MACRO_DELAY_SENTINEL else 1
             raw_device_id = step.get("device_id")
             if raw_device_id is None and owner_kind == "device":
                 device_id = owner_id
             else:
-                device_id = _integer(raw_device_id, f"{step_path}.device_id", minimum=1, maximum=0xFF)
+                device_id = _integer(raw_device_id, f"{step_path}.device_id", minimum=device_minimum, maximum=0xFF)
             _optional_byte(step, "duration", step_path)
             _optional_byte(step, "delay", step_path)
             if step.get("button_code") is not None:
@@ -299,8 +302,8 @@ def _validate_macros(
             if is_delay:
                 if command_id != MACRO_DELAY_SENTINEL:
                     raise _error(step_path, "delay rows must use command_id 255")
-                if owner_kind == "activity" and device_id != MACRO_DELAY_SENTINEL:
-                    raise _error(step_path, "activity delay rows must use device_id 255")
+                if owner_kind == "activity" and device_id not in (0, MACRO_DELAY_SENTINEL):
+                    raise _error(step_path, "activity delay rows must use device_id 255 or 0")
                 if macro_strict and (step_index == 0 or previous_was_delay):
                     raise _error(step_path, "delay row must immediately follow a command step")
                 previous_was_delay = True

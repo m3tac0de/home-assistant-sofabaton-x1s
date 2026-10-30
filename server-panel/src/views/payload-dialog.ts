@@ -24,8 +24,19 @@ import {
   unwrapUcCodesetRow,
 } from "../../../custom_components/sofabaton_x1s/www/src/shared/ir-format";
 import {
+  buildWifiIpRecord,
+  wifiIpDraftsChanged,
+  wifiIpDraftsFromFields,
+  wifiIpDraftsWithScheme,
+  wifiIpRequestPreview,
+  type WifiIpRecord,
+} from "../../../custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form";
+import {
   DECODED_CLASS_FORM_SPECS,
+  decodedFieldPlaceholder,
+  decodedFormRows,
   normalizeCommandPayloadHex,
+  wifiIpFormErrorText,
   type BackupCommandDecodedBlock,
   type DecodedFieldSpec,
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
@@ -83,6 +94,8 @@ export interface PayloadSaveDetail {
   restoreData: Record<string, unknown>;
   /** An edit of an existing structured block: only the fields that changed (the offline editor merges them the card's way). */
   changedFields?: Record<string, unknown>;
+  /** `changedFields` is the whole field set, replacing the block's with the trailer in `restoreData` (a wifi_ip edit may switch record kinds). */
+  replaceFields?: boolean;
   /** An edit of the raw bytes: the normalised hex. */
   rawHex?: string;
 }
@@ -164,7 +177,7 @@ export class SbPayloadDialog extends LitElement {
       .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
       .dialog-btn:disabled { opacity: 0.45; cursor: default; }
       .payload-test-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
-      .decoded-form { display: flex; flex-direction: column; gap: 10px; }
+      .decoded-form { display: flex; flex-direction: column; gap: 10px; container-type: inline-size; }
       .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
       .decoded-form-title { font-size: 13px; font-weight: 600; color: var(--sbp-text); }
       .decoded-form-sub { font-size: 12px; color: var(--sbp-muted); line-height: 1.4; }
@@ -183,6 +196,22 @@ export class SbPayloadDialog extends LitElement {
       .decoded-field-input--multiline { font-family: var(--sbp-mono); resize: vertical; min-height: 60px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .decoded-field-input--escaped { white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
       .decoded-field-helper { font-size: 11px; color: var(--sbp-muted); line-height: 1.35; }
+      .decoded-field-input::placeholder { color: var(--sbp-muted); opacity: 0.7; }
+      /* Fields side by side (the wifi_ip address and request line); short values keep a fixed column. The form is the query container (see .decoded-form). */
+      .decoded-row { display: flex; flex-direction: column; gap: 4px; }
+      .decoded-row-fields { display: flex; gap: 10px; align-items: flex-start; }
+      .decoded-row-fields > .decoded-field { flex: 1 1 0; min-width: 0; }
+      .decoded-row-fields > .decoded-field--narrow { flex: 0 0 104px; }
+      @container (max-width: 420px) {
+        /* Three across leaves the host too little room: it takes its own line. */
+        .decoded-row-fields:has(> .decoded-field:nth-child(3)) { flex-wrap: wrap; }
+        .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field:not(.decoded-field--narrow) { flex-basis: 100%; order: -1; }
+        .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field--narrow { flex: 1 1 0; }
+      }
+      /* The request the form describes, as one line: method and URL. Tinted like the class badge so it reads as a summary, not another field. */
+      .decoded-request-preview { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--sbp-accent) 30%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.07); font-family: var(--sbp-mono); font-size: 12.5px; line-height: 1.45; }
+      .decoded-request-method { flex: 0 0 auto; font-weight: 700; color: var(--sbp-accent); }
+      .decoded-request-url { flex: 1 1 auto; min-width: 0; color: var(--sbp-text); overflow-wrap: anywhere; }
       .payload-test-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); color: var(--sbp-text); font-size: 12.5px; line-height: 1.45; }
       .payload-test-note .mdi { width: 18px; height: 18px; color: var(--sbp-warn); margin-top: 1px; }
       .section-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
@@ -258,6 +287,7 @@ export class SbPayloadDialog extends LitElement {
   }
 
   private _initialDrafts(block: BackupCommandDecodedBlock): Record<string, string> {
+    if (block.className === "wifi_ip") return wifiIpDraftsFromFields(block.fields);
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
     const drafts: Record<string, string> = {};
     for (const field of spec?.fields ?? []) drafts[field.key] = fieldValueToDraft(field, block.fields[field.key]);
@@ -385,8 +415,12 @@ export class SbPayloadDialog extends LitElement {
   };
 
   private _onFieldInput(field: DecodedFieldSpec, event: Event): void {
-    const value = (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
+    const value = (event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;
     this._error = "";
+    if (this._decoded?.className === "wifi_ip" && field.key === "scheme") {
+      this._drafts = wifiIpDraftsWithScheme(this._drafts, value);
+      return;
+    }
     if (this._decoded?.className === "ir" && field.key === "descriptor") {
       // The descriptor field flips back to hex on a pasted code the hex tabs own.
       if (this._ucPaste(value)) {
@@ -485,6 +519,21 @@ export class SbPayloadDialog extends LitElement {
   /** The card's live edit: a structured or raw `restore_data` with the `edited` marker; null when nothing changed; undefined on an error shown. */
   private _editDetail(): PayloadSaveDetail | null | undefined {
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      // The whole field set is replaced: the edit may switch record kinds.
+      if (!wifiIpDraftsChanged(block.fields, this._drafts)) return null;
+      const record = this._wifiIpRecord(block, true);
+      if (!record) return undefined;
+      return {
+        name: "",
+        ...(this.snapshot ? { changedFields: record.fields, replaceFields: true } : {}),
+        restoreData: {
+          transport: "hub_code_record",
+          data_hex: this.fetchedHex,
+          decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true },
+        },
+      };
+    }
     if (block) {
       const changed = this._changedFields(block);
       if (!changed) return null;
@@ -515,6 +564,12 @@ export class SbPayloadDialog extends LitElement {
       return undefined;
     }
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      // The template only seeds the form: the new command is request text unless it needs a URL record.
+      const record = this._wifiIpRecord(block, false);
+      if (!record) return undefined;
+      return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true } } };
+    }
     if (block) {
       const spec = DECODED_CLASS_FORM_SPECS[block.className];
       const fields: Record<string, unknown> = { ...block.fields };
@@ -531,6 +586,20 @@ export class SbPayloadDialog extends LitElement {
       return undefined;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
+  }
+
+  /** The wifi_ip record the drafts save as (the card's rule, shared/wifi-ip-form.ts); null with the refusal shown. */
+  private _wifiIpRecord(block: BackupCommandDecodedBlock, existing: boolean): WifiIpRecord | null {
+    try {
+      return buildWifiIpRecord(this._drafts, {
+        original: { fields: block.fields, trailerHex: block.trailerHex },
+        existing,
+        isX2: this._isX2,
+      });
+    } catch (err) {
+      this._error = wifiIpFormErrorText(err);
+      return null;
+    }
   }
 
   // -- render ---------------------------------------------------------------------------------------
@@ -622,25 +691,52 @@ export class SbPayloadDialog extends LitElement {
       ? html`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S.descriptorTab}</button></div>
           ${spec?.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}`
       : html`<div class="decoded-form-head"><div class="decoded-form-title">${spec?.title ?? block.className}</div>${spec?.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}</div>`;
+    const preview = block.className === "wifi_ip" ? wifiIpRequestPreview(this._drafts) : null;
     return html`
       <div class="decoded-form" data-class=${block.className}>
         ${head}
-        ${(spec?.fields ?? []).map((field) => this._renderField(field))}
+        ${preview
+          ? html`<div class="decoded-request-preview" id="payload-request-preview">
+              ${preview.method ? html`<span class="decoded-request-method">${preview.method}</span>` : nothing}
+              <span class="decoded-request-url">${preview.url}</span>
+            </div>`
+          : nothing}
+        ${decodedFormRows(block.className, this._isX2).map((row) => this._renderRow(row))}
       </div>
     `;
   }
 
-  private _renderField(field: DecodedFieldSpec): TemplateResult {
+  private _renderRow(row: DecodedFieldSpec[]): TemplateResult {
+    if (row.length === 1) return this._renderField(row[0]);
+    // Under a side-by-side field a helper would push its input out of line with the others: the row's helpers go under the whole row.
+    return html`
+      <div class="decoded-row">
+        <div class="decoded-row-fields">${row.map((field) => this._renderField(field, false))}</div>
+        ${row.map((field) => field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing)}
+      </div>
+    `;
+  }
+
+  private _renderField(field: DecodedFieldSpec, withHelper = true): TemplateResult {
     const value = this._drafts[field.key] ?? "";
+    const placeholder = decodedFieldPlaceholder(field, this._drafts);
     const helper = field.key === "descriptor" && this._formatError ? this._formatError : field.helper;
     const helperClass = field.key === "descriptor" && this._formatError ? "payload-format-error" : "";
+    const suggestionsId = field.suggestions ? `decoded-suggestions-${field.key}` : "";
     return html`
-      <label class="decoded-field" data-field=${field.key}>
+      <label class="decoded-field ${field.narrow ? "decoded-field--narrow" : ""}" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline
-          ? html`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows="4" spellcheck="false" .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event: Event) => this._onFieldInput(field, event)}></textarea>`
-          : html`<input class="decoded-field-input" type=${field.numeric ? "number" : "text"} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event: Event) => this._onFieldInput(field, event)} />`}
-        ${helper ? html`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : nothing}
+        ${field.options
+          ? html`<select class="decoded-field-input" @change=${(event: Event) => this._onFieldInput(field, event)}>
+              ${field.options.map((option) => html`<option value=${option} ?selected=${option === value}>${option}</option>`)}
+            </select>`
+          : field.multiline
+          ? html`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows=${field.rows ?? 4} spellcheck="false" placeholder=${placeholder} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event: Event) => this._onFieldInput(field, event)}></textarea>`
+          : html`<input class="decoded-field-input" type="text" inputmode=${field.numeric ? "numeric" : "text"} spellcheck="false" autocomplete="off" placeholder=${placeholder} list=${suggestionsId || nothing} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event: Event) => this._onFieldInput(field, event)} />
+              ${field.suggestions
+                ? html`<datalist id=${suggestionsId}>${field.suggestions.map((option) => html`<option value=${option}></option>`)}</datalist>`
+                : nothing}`}
+        ${withHelper && helper ? html`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : nothing}
       </label>
     `;
   }

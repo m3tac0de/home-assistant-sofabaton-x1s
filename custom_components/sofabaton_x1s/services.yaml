@@ -226,6 +226,133 @@ delete_device:
           max: 255
           mode: box
 
+create_activity:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    name:
+      required: true
+      selector:
+        text:
+    icon:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    color_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+
+delete_activity:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+
+create_device:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    name:
+      required: true
+      selector:
+        text:
+    device_class:
+      required: true
+      selector:
+        select:
+          options:
+            - ir
+            - wifi_ip
+            - wifi_roku
+            - wifi_hue
+            - wifi_sonos
+            - wifi_mqtt
+    icon:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    color_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+
+set_wifi_command:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    name:
+      required: false
+      selector:
+        text:
+    url:
+      required: true
+      selector:
+        text:
+    method:
+      required: false
+      default: GET
+      selector:
+        select:
+          custom_value: true
+          options:
+            - GET
+            - POST
+            - PUT
+    headers:
+      required: false
+      selector:
+        object:
+    body:
+      required: false
+      selector:
+        text:
+          multiline: true
+
 command_to_favorite:
   fields:
     device:

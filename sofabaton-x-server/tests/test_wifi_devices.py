@@ -289,3 +289,28 @@ def test_an_update_keeps_the_presses_that_arrived_during_it(tmp_path: Path) -> N
         r = client.put(f"{HUBS}/{hub_id}/wifi-devices/{a['key']}", json={"name": "Lamps", "slots": [{"label": "On"}]})
         assert _wait(client, hub_id, r.json()["job_id"])["status"] == "done"
         assert service.record(hub_id, a["key"]).last_press["seq"] == 42
+
+
+def test_the_spec_carries_an_icon_and_a_color_the_hub_line_has(tmp_path: Path) -> None:
+    client, factory = _rig(tmp_path)   # an X1S: icons 1-16, no colors
+    with client:
+        hub_id, proxy = _hub(client, factory)
+        proxy.fetched.update(a.activity_id for a in proxy.activities_data)
+        lamp = _create(client, hub_id, {"name": "Lamp", "slots": [{"label": "On"}], "icon": 9})
+        assert proxy.wifi_deploys[-1]["spec"].icon == 9 and lamp["spec"]["icon"] == 9 and lamp["spec"]["color_id"] is None
+
+        # An update writes a picked icon; one left out keeps the hub's (null in the spec).
+        r = client.put(f"{HUBS}/{hub_id}/wifi-devices/{lamp['key']}", json={"name": "Lamp", "slots": [{"label": "On"}], "icon": 4})
+        assert _wait(client, hub_id, r.json()["job_id"])["status"] == "done"
+        assert proxy.wifi_updates[-1]["spec"].icon == 4
+        assert client.get(f"{HUBS}/{hub_id}/wifi-devices/{lamp['key']}").json()["spec"]["icon"] == 4
+
+        # An icon the X1S lacks, or a color off the X2, is a 422 before any job.
+        updates = len(proxy.wifi_updates)
+        for body in ({"name": "Lamp", "icon": 30}, {"name": "Lamp", "color_id": 2}):
+            r = client.put(f"{HUBS}/{hub_id}/wifi-devices/{lamp['key']}", json=body)
+            assert r.status_code == 422 and r.json()["type"] == "invalid_appearance", r.text
+        r = client.post(f"{HUBS}/{hub_id}/wifi-devices", json={"name": "Fan", "icon": 17})
+        assert r.status_code == 422 and r.json()["type"] == "invalid_appearance", r.text
+        assert client.put(f"{HUBS}/{hub_id}/wifi-devices/{lamp['key']}", json={"name": "Lamp", "icon": 46}).status_code == 422
+        assert len(proxy.wifi_updates) == updates

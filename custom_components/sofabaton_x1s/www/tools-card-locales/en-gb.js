@@ -21,6 +21,8 @@ var TOOLS_CARD_STRINGS_EN_GB = {
   },
   activities: {},
   backup: {
+    changeIconAndColor: "Change icon and colour",
+    entityColorName: (colorId) => ["Grey", "Red", "Navy", "Purple", "Green", "Salmon", "Cyan", "Slate", "Teal", "Sand", "Sky", "Lavender"][colorId - 1] ?? "Grey",
     roleCustomized: (name) => `${name} (customised)`,
     customizeButtonsToggle: "Customise individual buttons",
     bindingsNoneConfigured: "None customised",

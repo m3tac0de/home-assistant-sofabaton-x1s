@@ -375,6 +375,31 @@ def test_sync_from_snapshot_raises_when_engine_reports_failure(monkeypatch) -> N
         )
 
 
+def test_sync_from_snapshot_says_when_the_hub_was_updating_its_remote(monkeypatch) -> None:
+    """A step the hub refused soon after a remote-sync trigger reads as the
+    remote still updating: wait, then sync again."""
+
+    class _Engine:
+        def refused_during_remote_sync(self, since):
+            return True
+
+    hub = _wire_hub(monkeypatch)
+    hub._proxy = _Engine()
+    _wire_cache_store(monkeypatch, enabled=False)
+    hub.sync_result = {"status": "failed", "failed_at": "commands", "message": "Step rejected."}
+    baseline = _device_bundle([])
+    edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
+
+    with pytest.raises(services_module.HomeAssistantError, match="still updating its remote"):
+        asyncio.run(
+            integration._async_handle_sync_from_snapshot(
+                _FakeCall(
+                    {"entity_kind": "device", "entity_id": 1, "baseline": baseline, "edited": edited}
+                )
+            )
+        )
+
+
 def test_sync_from_snapshot_accepts_string_entity_id(monkeypatch) -> None:
     """Service calls from YAML scripts commonly arrive as strings; every
     other numeric field in this integration's services tolerates that.

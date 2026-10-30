@@ -587,3 +587,89 @@ def test_activity_cascade_without_the_flag_still_trips() -> None:
     _editor_cascade(edited, 11)
     with pytest.raises(ValueError, match="out-of-scope"):
         build_device_sync_plan(base, edited, DEVICE_ID)
+
+
+# ── X2 IR emitter routing (device.extras) ──────────────────────────────
+
+
+def _routed(c: int, *, a: int = 0, b: int = 0) -> tuple[dict, dict]:
+    base = base_bundle()
+    _device(base)["device"]["extras"] = {"a": 0, "b": 0, "c": 0x07}
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["extras"] = {"a": a, "b": b, "c": c}
+    return base, edited
+
+
+def test_emitter_change_rides_the_head_rewrite() -> None:
+    base, edited = _routed(0x04)
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")
+    assert _kinds(plan) == ["device_rename"]
+    assert plan[0].payload == {"device_id": DEVICE_ID, "name": "Television", "emitters": [0, 0, 0x04]}
+    assert plan[0].label == "Updating the device…"
+
+
+def test_emitter_change_and_rename_share_one_write() -> None:
+    base, edited = _routed(0x08)
+    _device(edited)["device"]["name"] = "Projector"
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")
+    assert _kinds(plan) == ["device_rename"]
+    assert plan[0].payload["name"] == "Projector" and plan[0].payload["emitters"] == [0, 0, 0x08]
+
+
+def test_unchanged_emitters_plan_nothing() -> None:
+    base, edited = _routed(0x07)
+    assert build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2") == []
+
+
+def test_emitters_are_x2_only() -> None:
+    base, edited = _routed(0x04)
+    with pytest.raises(ValueError, match="X2 only"):
+        build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X1S")
+    # An unknown hub line is not refused here; the executing proxy knows it.
+    assert _kinds(build_device_sync_plan(base, edited, DEVICE_ID)) == ["device_rename"]
+
+
+@pytest.mark.parametrize(
+    ("extras", "message"),
+    [
+        ({"a": 0x01, "b": 0, "c": 0x07}, "RF-button byte"),
+        ({"a": 0, "b": 0, "c": 0x03}, "not one of the choices"),
+        ({"a": 0, "b": 0, "c": 0x00}, "at least one emitter"),
+        ({"a": 0, "b": 0, "c": 0x1FF}, "0-255"),
+    ],
+)
+def test_invalid_emitters_are_refused(extras, message) -> None:
+    base, edited = _routed(0x07)
+    _device(edited)["device"]["extras"] = extras
+    with pytest.raises(ValueError, match=message):
+        build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")
+
+
+def test_a_custom_hub_mix_already_on_the_record_is_kept() -> None:
+    base, edited = _routed(0x03)
+    _device(base)["device"]["extras"] = {"a": 0, "b": 0, "c": 0x03}
+    _device(edited)["device"]["extras"] = {"a": 0, "b": 0, "c": 0x0B}  # the same mix, plus remote 1
+    plan = build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")
+    assert plan[0].payload["emitters"] == [0, 0, 0x0B]
+
+
+def test_remote_or_repeater_only_routing_is_allowed() -> None:
+    base, edited = _routed(0x08)
+    assert build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")[0].payload["emitters"] == [0, 0, 0x08]
+    base, edited = _routed(0x00, b=0x01)
+    assert build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")[0].payload["emitters"] == [0, 0x01, 0x00]
+
+
+def test_dropping_the_routing_is_out_of_scope() -> None:
+    base, edited = _routed(0x07)
+    del _device(edited)["device"]["extras"]
+    with pytest.raises(ValueError, match="drops its IR emitter routing"):
+        build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")
+
+
+def test_another_devices_emitters_stay_out_of_scope() -> None:
+    base, edited = _routed(0x07)
+    _device(base, 2)["device"]["extras"] = {"a": 0, "b": 0, "c": 0x07}
+    _device(edited, 2)["device"]["extras"] = {"a": 0, "b": 0, "c": 0x01}
+    with pytest.raises(ValueError, match="out-of-scope"):
+        build_device_sync_plan(base, edited, DEVICE_ID, hub_version="X2")

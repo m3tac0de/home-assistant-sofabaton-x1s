@@ -30,6 +30,10 @@ filter by `sofabaton_x1s`.
 | `sofabaton_x1s.sync_command_config` | Deploy the saved Wifi Commands configuration to the hub | No |
 | `sofabaton_x1s.device_to_activity` | Add a device to an activity | No |
 | `sofabaton_x1s.delete_device` | Delete a device from the hub | No |
+| `sofabaton_x1s.create_activity` | Create an empty activity and return its id | Yes |
+| `sofabaton_x1s.delete_activity` | Delete an activity from the hub | No |
+| `sofabaton_x1s.create_device` | Create an empty device of a chosen class and return its id | Yes |
+| `sofabaton_x1s.set_wifi_command` | Write the HTTP request of one command on a Generic HTTP (`wifi_ip`) device | Yes |
 | `sofabaton_x1s.export_snapshot` | Return the cached structural `hub_bundle` and its cache generation | Yes |
 | `sofabaton_x1s.sync_from_snapshot` | Apply a targeted Activity or Device edit from baseline and edited snapshots | Yes |
 | `sofabaton_x1s.backup_bundle` | Read a `hub_bundle` JSON payload covering devices and (optionally) all activities | Yes |
@@ -567,6 +571,155 @@ data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
   device_id: 5
 ```
+
+---
+
+## ◇ `sofabaton_x1s.create_activity`
+
+Creates an empty activity, the same as **Add Activity** in the Control Panel's
+Activities tab: no devices, buttons or favorites yet. The new activity is read
+into the cache straight away, so the next `export_snapshot` includes it. Fill
+it in with `sync_from_snapshot` on the returned `activity_id`.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `name` | string | Yes | Activity name, at most 30 characters. X1 names take letters, digits and spaces only. |
+| `icon` | int | No | Number of one of the activity icons the hub offers. Default icon when omitted. |
+| `color_id` | int | No | X2 only. Color number; `0` is no color. |
+
+**Response**
+
+| Field | Description |
+| ----- | ----------- |
+| `activity_id` | Id the hub assigned to the new activity (101 or higher). |
+
+```yaml
+action: sofabaton_x1s.create_activity
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  name: Movie night
+response_variable: created
+```
+
+---
+
+## ◇ `sofabaton_x1s.delete_activity`
+
+Deletes an activity from the hub, the same as deleting it in the Control
+Panel.
+
+> This is a destructive hub operation. Use with caution.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `activity_id` | int (101-255) | Yes | Activity id to delete. |
+
+```yaml
+action: sofabaton_x1s.delete_activity
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  activity_id: 104
+```
+
+---
+
+## ◇ `sofabaton_x1s.create_device`
+
+Creates an empty device, the same as **Add device** in the Control Panel's Hub
+tab. The new device is read into the cache straight away. Add its commands
+afterwards: with `set_wifi_command` on a Generic HTTP (`wifi_ip`) device, with
+`persist_ir_blob` on an IR device.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `name` | string | Yes | Device name, at most 30 characters. |
+| `device_class` | string | Yes | `ir`, `wifi_ip` (Generic HTTP, X1S and X2), `wifi_roku`, `wifi_hue`, `wifi_sonos`, or `wifi_mqtt` (X2 only). |
+| `icon` | int | No | Number of one of the device icons the hub offers. Default icon when omitted. |
+| `color_id` | int | No | X2 only. Color number; `0` is no color. |
+
+**Response**
+
+| Field | Description |
+| ----- | ----------- |
+| `device_id` | Id the hub assigned to the new device. |
+
+```yaml
+action: sofabaton_x1s.create_device
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  name: Projector
+  device_class: wifi_ip
+response_variable: created
+```
+
+---
+
+## ◇ `sofabaton_x1s.set_wifi_command`
+
+Writes the HTTP request of one command on a Generic HTTP (`wifi_ip`) device,
+the same as the HTTP form of the Control Panel's device editor. With
+`command_id` it overwrites that command; without it, it adds a new command
+named `name`. `fetch_blob` shows what a command holds now.
+
+The hub stores two kinds of HTTP command, and the action picks the kind the
+way the editor does:
+
+- An `http://` URL to an IPv4 address is stored as a plain HTTP request. Every
+  hub with Generic HTTP devices (X1S and X2) runs it.
+- An `https://` URL or a host name needs a URL command, which only the X2
+  stores. Other hubs refuse it.
+- A command that already is a URL command stays one.
+
+The write runs through the same checks as `sync_from_snapshot`, against the
+cached snapshot. It is refused when the device changed on the hub since the
+cache last read it. Wifi Devices that the integration deploys (the Wifi
+Commands tab) are refused too; change those in the Wifi Commands tab.
+
+Persistent cache must be enabled and populated, as for `export_snapshot`.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `device_id` | int | Yes | Id of the Generic HTTP device. |
+| `command_id` | int | No | Command to overwrite. Omit to add a new command. |
+| `name` | string | No | Name of the new command; required when adding. When overwriting, renames the command. |
+| `url` | string | Yes | Full request URL, e.g. `http://192.168.1.20:8080/api/power`. The port defaults to 80 (443 for https), the path to `/`. |
+| `method` | string | No | HTTP method, `GET` when omitted. URL commands take `GET`, `POST` or `PUT`. |
+| `headers` | object or list | No | Request headers: a mapping of name to value, a list of `Name: value` lines, or a list of `[name, value]` pairs. A plain HTTP request sets `Host` and `Content-Length` itself. |
+| `body` | string | No | Request body. A plain HTTP request takes ASCII text only. |
+
+**Response**
+
+| Field | Description |
+| ----- | ----------- |
+| `device_id` | The device written. |
+| `command_id` | The command written; for an added command, the id the new command got. |
+| `record` | `request_text` (plain HTTP request) or `url` (URL command). |
+| `status` | The sync engine's result, as `sync_from_snapshot` returns it. |
+
+```yaml
+action: sofabaton_x1s.set_wifi_command
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  device_id: 7
+  name: Scene movie
+  url: https://homeassistant.local:8123/api/services/scene/turn_on
+  method: POST
+  headers:
+    Authorization: Bearer <long-lived token>
+    Content-Type: application/json
+  body: '{"entity_id": "scene.movie"}'
+response_variable: written
+```
+
+> **Writes in a row:** after a write that updates the remotes (every action
+> on this page that writes does), the hub can refuse further writes for up to
+> about a minute while the remote syncs. The next write then fails;
+> `sync_from_snapshot` and `set_wifi_command` say the hub is still updating
+> its remote. Wait, then run it again.
 
 ---
 

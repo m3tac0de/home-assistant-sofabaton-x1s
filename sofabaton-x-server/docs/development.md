@@ -57,21 +57,21 @@ presses, rename, restart and deletion. They do not cover every route or firmware
 
 ## Release order
 
-The 0.2.6 server requires `sofabaton-x>=0.2.5,<0.3`: its hub view's
-`cache` field reads the cache version added by library 0.2.5, and the
-library's display-order fixes reach server users through it. The library
-must be on PyPI first. The library, server, npm remote package and Home
+The 0.2.7 server requires `sofabaton-x>=0.2.6,<0.3`: its icon and color
+edits, IR emitter routing and Wifi delivery test use the API added by
+library 0.2.6, and the library's remote-sync and restore fixes reach
+server users through it. The library must be on PyPI first. The library, server, npm remote package and Home
 Assistant integration are versioned independently.
 
-1. Set the server version in `src/sofabaton_server/__init__.py` to `0.2.6`.
-   Set the library dependency in `pyproject.toml` to `sofabaton-x>=0.2.5,<0.3`.
+1. Set the server version in `src/sofabaton_server/__init__.py` to `0.2.7`.
+   Set the library dependency in `pyproject.toml` to `sofabaton-x>=0.2.6,<0.3`.
    Do not bump the library solely to match the server version.
-2. Finalize the 0.2.6 date in the server changelog (and the 0.2.5 date in
+2. Finalize the 0.2.7 date in the server changelog (and the 0.2.6 date in
    the library changelog) for the actual release day, leaving a fresh
    **Unreleased** section. Update README notices, installation pins and
-   guides. Keep the API generation at `1`. The release notes cover the
-   `cache` field and `hub_update` push, the control panel following
-   changes made elsewhere, and the library's display-order fixes.
+   guides. Keep the API generation at `1`. The release notes cover icon,
+   color and IR emitter editing, the Wifi delivery test, the 409
+   `remote_syncing` answer, and the library's remote-sync fixes.
 3. Regenerate `openapi.json` with the pinned toolchain even when only the
    package version changed. Rebuild the frontend bundles, run the library,
    server and frontend checks in [CONTRIBUTING](../../CONTRIBUTING.md#-versioning-and-releases),
@@ -81,12 +81,12 @@ Assistant integration are versioned independently.
    allowed dashboard origin.
    Review `git status` before committing so new modules and tests are
    included; `git commit -a` does not include untracked files.
-4. Commit the release preparation, then tag and push `sofabaton-x-v0.2.5`.
+4. Commit the release preparation, then tag and push `sofabaton-x-v0.2.6`.
    Wait for the library workflow to succeed and confirm that PyPI has a
    library version satisfying the dependency.
-5. Tag and push `sofabaton-x-server-v0.2.6` on the same commit. Its
+5. Tag and push `sofabaton-x-server-v0.2.7` on the same commit. Its
    workflow installs the library from PyPI. Confirm the server publishing
-   workflow succeeds and 0.2.6 is available on PyPI.
+   workflow succeeds and 0.2.7 is available on PyPI.
 
 The workflows verify tags against package versions, run tests and publish
 to PyPI. These tags do not create GitHub Releases. For subsequent releases,
@@ -97,7 +97,7 @@ substitute the selected versions and dependency range in this sequence.
 `npm run build:remote-embed` produces both the committed server bundle and
 `packages/sofabaton-x-remote/dist/sofabaton-remote.js` for npm. The npm
 `dist/` is not committed. Its version is in
-`packages/sofabaton-x-remote/package.json` (currently `0.1.3`); a
-`sofabaton-x-remote-v0.1.3` tag runs `sofabaton-x-remote-release.yml`.
+`packages/sofabaton-x-remote/package.json` (currently `0.1.4`); a
+`sofabaton-x-remote-v0.1.4` tag runs `sofabaton-x-remote-release.yml`.
 Publishing the server does not publish this package. The server-hosted
 embed is included in the server wheel and does not require npm publication.

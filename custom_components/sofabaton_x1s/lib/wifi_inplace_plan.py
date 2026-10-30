@@ -167,6 +167,10 @@ class ManagedWifiSnapshot:
     routed local IP, so a rename never moves a deployed callback target
     (review 2026-09-11, point 1). ``None`` on the desired side keeps the
     executor's historical behaviour (the Home Assistant path).
+
+    ``icon`` / ``color_id`` are the head record's icon and X2 color. On the
+    desired side ``None`` keeps the baseline's (the Home Assistant path
+    never names them); a value that differs is written by the head commit.
     """
 
     device_id: int
@@ -179,6 +183,8 @@ class ManagedWifiSnapshot:
     activities: Mapping[int, WifiActivityRefs] = field(default_factory=dict)
     device_bindings: tuple[tuple[int, int, int | None], ...] = ()
     target_host: str | None = None
+    icon: int | None = None
+    color_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -518,15 +524,21 @@ def build_wifi_inplace_plan(
             )
         )
 
-    # ── 5. head commit (name + brand) LAST — the commit marker ───────────
+    # ── 5. head commit (name + brand, a named icon / color) LAST — the commit marker
     # Distinct from the generic device_rename: the wifi head write must carry
     # wifi_power_state from the current head, else is_power_configured flips
     # and activity delivery breaks on X1S (bench chunk 4).
-    if baseline.device_name != desired.device_name or baseline.brand != desired.brand:
+    appearance = {
+        key: value
+        for key, value in (("icon", desired.icon), ("color_id", desired.color_id))
+        if value is not None and value != getattr(baseline, key)
+    }
+    if baseline.device_name != desired.device_name or baseline.brand != desired.brand or appearance:
         head_payload: dict[str, Any] = {
             "device_id": dev,
             "name": desired.device_name,
             "brand": desired.brand,
+            **appearance,
         }
         # Only a desired target pins the head address; without one the
         # executor keeps writing the routed local IP (the HA path, where
@@ -945,7 +957,13 @@ def baseline_snapshot_from_bundle(
         activities=activities,
         device_bindings=device_bindings,
         target_host=str(dev_block.get("ip_address") or "") or None,
+        icon=_optional_int(dev_block.get("icon")),
+        color_id=_optional_int(dev_block.get("color_id")),
     )
+
+
+def _optional_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 # ── Wifi Events long-record retirement ──────────────────────────────────

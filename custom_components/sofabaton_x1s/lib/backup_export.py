@@ -158,6 +158,8 @@ def build_device_block(
                 if config.extras_present
                 else None
             ),
+            "color_id": config.color_id,
+            "bt_mode": config.bt_mode,
         }
     )
     # Schema-decoded name/brand are authoritative when present.

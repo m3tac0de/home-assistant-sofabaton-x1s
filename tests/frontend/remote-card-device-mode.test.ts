@@ -11,7 +11,7 @@ import {
   isDeviceLayoutKey,
   parseDeviceLayoutKey,
 } from "../../remote-card/src/remote-card-layout";
-import { previewSelection } from "../../remote-card/src/remote-card-state";
+import { devicesFromRemote, normalizeActivities, previewSelection } from "../../remote-card/src/remote-card-state";
 import {
   applyLayoutConfigPatch,
   editorDevicesFromState,
@@ -666,4 +666,17 @@ test("editorDevicesFromState mirrors the devices attribute", () => {
     { id: 3, name: "TV" },
     { id: 9, name: "Amp" },
   ]);
+});
+
+test("the activity and device lists keep the hub icon and X2 color when the integration publishes them", () => {
+  const activities = normalizeActivities([
+    { id: 101, name: "Watch TV", state: "on", icon: 5, color_id: 7 },
+    { id: 102, name: "Music", state: "off", icon: "x" },
+  ]);
+  assert.deepEqual(activities, [
+    { id: 101, name: "Watch TV", state: "on", icon: 5, color_id: 7 },
+    { id: 102, name: "Music", state: "off" },
+  ]);
+  const devices = devicesFromRemote({ attributes: { devices: [{ id: 3, name: "Amp", device_class: "ir", icon: 11, color_id: 0 }] } });
+  assert.deepEqual(devices, [{ id: 3, name: "Amp", device_class: "ir", icon: 11, color_id: 0 }]);
 });

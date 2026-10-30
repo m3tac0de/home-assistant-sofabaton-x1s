@@ -8,6 +8,7 @@ handlers and the sync_from_snapshot service both use it.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Mapping
 
 from homeassistant.core import HomeAssistant
@@ -440,6 +441,7 @@ async def _run_entity_sync_operation(
     def _progress(**payload: Any) -> None:
         registry.update_from_thread(operation_id, **payload)
 
+    sync_started = time.monotonic()
     try:
         if entity_kind == "device":
             # Command removal is in scope for EVERY device: a command the
@@ -479,6 +481,13 @@ async def _run_entity_sync_operation(
     if isinstance(result, dict) and str(result.get("status") or "") == "failed":
         failed_at = str(result.get("failed_at") or "")
         message = str(result.get("message") or f"Sync failed at {failed_at!r}.")
+        check = getattr(getattr(hub, "_proxy", None), "refused_during_remote_sync", None)
+        if callable(check) and check(sync_started):
+            message = (
+                "The hub refused a change while it was still updating its remote. "
+                "Wait until the remote is done, then sync again."
+            )
+            result = {**result, "message": message, "reason": "remote_syncing"}
         if failed_at in _ACTIVITY_SYNC_PREWRITE_FAILURES:
             registry.update(
                 operation_id,

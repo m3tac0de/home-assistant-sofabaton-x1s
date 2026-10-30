@@ -12,6 +12,7 @@ from .commands import (
 )
 from .macros import parse_macro_burst_frame
 from .hub_logging import LogTag
+from .proxy_hub_mqtt import redact_wire_hex
 from .protocol_const import (
     FAMILY_PLAY_BLOB,
     OP_CATALOG_ROW_DEVICE,
@@ -27,7 +28,9 @@ if TYPE_CHECKING:
 
 
 def _hexdump(data: bytes) -> str:
-    return data.hex(" ")
+    # Every wire dump goes through here: a broker-setup frame carries the
+    # broker password and must never reach a log in the clear.
+    return redact_wire_hex(data)
 
 
 class FrameDecodeMixin(_ProxyHost if TYPE_CHECKING else object):

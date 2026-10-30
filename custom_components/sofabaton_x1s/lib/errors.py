@@ -79,6 +79,18 @@ class HubRejectedError(RuntimeError):
     """
 
 
+class RemoteSyncInProgressError(HubRejectedError):
+    """The hub refused a write while it was most likely still updating its
+    remote: a STATUS_ACK 0x04 refusal within :data:`REMOTE_SYNC_REFUSAL_WINDOW_S`
+    of this engine's last remote-sync trigger. For a few seconds after a
+    trigger the hub still accepts writes, then it refuses record writes
+    until the remote has its update (bench_336, X1S; the X2 refused the
+    same way). Nothing on the X1/X1S says when that ends: wait until the
+    remote is done (about a minute on the X1S, up to a few minutes on an X2
+    full sync), then try again. The write may have landed in part.
+    """
+
+
 class WifiUpdateDeclined(RuntimeError):
     """:meth:`AsyncXProxy.update_wifi_device` refused before any write.
 

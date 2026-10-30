@@ -98,12 +98,19 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
         lambda *_args, **_kwargs: asyncio.sleep(0),
     )
 
-    resync_calls: list[bool] = []
+    resync_calls: list = []
 
     async def _resync_remote():
         resync_calls.append(True)
 
+    async def _sync_after(*, created=(), touched=(), deleted=()):
+        # Recorded only when a sync was needed at all.
+        if created or touched or deleted:
+            resync_calls.append(("sync", tuple(created), tuple(touched), tuple(deleted)))
+        return True
+
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(hub, "async_sync_remotes_after_write", _sync_after)
     monkeypatch.setattr(
         hub,
         "async_request_favorites_order",
@@ -165,7 +172,7 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     # clears favorites too before refetching them from the keymap burst.
     assert cache_refresh_calls == [(101, True, True, True)]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
-    assert resync_calls == [True]
+    assert resync_calls == [("sync", (9,), (), ())]
 
     loop.close()
 
@@ -510,12 +517,19 @@ def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeyp
     monkeypatch.setattr(hub, "async_set_roku_server_enabled", _set_enabled)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
 
-    resync_calls: list[bool] = []
+    resync_calls: list = []
 
     async def _resync_remote():
         resync_calls.append(True)
 
+    async def _sync_after(*, created=(), touched=(), deleted=()):
+        # Recorded only when a sync was needed at all.
+        if created or touched or deleted:
+            resync_calls.append(("sync", tuple(created), tuple(touched), tuple(deleted)))
+        return True
+
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(hub, "async_sync_remotes_after_write", _sync_after)
 
     payload = {
         "commands": [],
@@ -1050,12 +1064,19 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
         lambda *_args, **_kwargs: asyncio.sleep(0),
     )
 
-    resync_calls: list[bool] = []
+    resync_calls: list = []
 
     async def _resync_remote():
         resync_calls.append(True)
 
+    async def _sync_after(*, created=(), touched=(), deleted=()):
+        # Recorded only when a sync was needed at all.
+        if created or touched or deleted:
+            resync_calls.append(("sync", tuple(created), tuple(touched), tuple(deleted)))
+        return True
+
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(hub, "async_sync_remotes_after_write", _sync_after)
 
     payload = {
         "commands": [
@@ -1076,7 +1097,7 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "success"
     assert progress["current_step"] == 8
-    assert resync_calls == [True]
+    assert resync_calls == [("sync", (9,), (), ())]
 
     loop.close()
 

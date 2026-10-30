@@ -1,6 +1,6 @@
 {
   "pyright": "1.1.414",
-  "errors": 213,
+  "errors": 203,
   "entries": [
     {
       "file": "custom_components/sofabaton_x1s/lib/activity_sync.py",
@@ -162,13 +162,13 @@
       "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
       "rule": "reportCallIssue",
       "message": "Expected 0 positional arguments",
-      "count": 32
+      "count": 33
     },
     {
       "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
       "rule": "reportCallIssue",
       "message": "Object of type \"FrameHandler\" is not callable",
-      "count": 32
+      "count": 33
     },
     {
       "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",
@@ -366,7 +366,7 @@
       "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
       "rule": "reportArgumentType",
       "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
-      "count": 4
+      "count": 5
     },
     {
       "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
@@ -403,18 +403,6 @@
       "rule": "reportArgumentType",
       "message": "Argument of type \"Unknown | Any | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
       "count": 2
-    },
-    {
-      "file": "sofabaton-x-server/src/sofabaton_server/routes_hub_data.py",
-      "rule": "reportArgumentType",
-      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"get\"",
-      "count": 8
-    },
-    {
-      "file": "sofabaton-x-server/src/sofabaton_server/routes_hub_data.py",
-      "rule": "reportArgumentType",
-      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
-      "count": 5
     },
     {
       "file": "sofabaton-x-server/src/sofabaton_server/routes_mqtt.py",

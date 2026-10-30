@@ -497,3 +497,72 @@ def test_ws_consumers_command_returns_the_discovery(monkeypatch) -> None:
         9,
         {"available": True, "emitter_entity_id": "infrared.e", "consumers": []},
     )
+
+
+# ---------------------------------------------------------------------------
+# RF learn (``band`` on the same subscription)
+# ---------------------------------------------------------------------------
+
+
+class _RfHub(_Hub):
+    def __init__(self, learn_result=None, *, rf_codes_supported: bool = True):
+        super().__init__(learn_result)
+        self.rf_codes_supported = rf_codes_supported
+        self.rf_learn_calls: list[tuple[int, float]] = []
+
+    async def async_rf_learn_command(self, *, band: int, timeout: float = 60.0):
+        self.rf_learn_calls.append((band, timeout))
+        return self.learn_result
+
+
+def test_rf_learn_subscribe_runs_the_rf_window(monkeypatch) -> None:
+    learned = {"state": "learned", "payload_hex": "00 09 03", "band": 315, "code_type": 0x1E}
+    hub = _RfHub(learn_result=learned)
+    conn = _Conn()
+    _wire(monkeypatch, hub)
+
+    _run(
+        integration._ws_ir_learn_subscribe(
+            SimpleNamespace(data={}), conn, {"id": 4, "entry_id": "entry-1", "band": 315}
+        )
+    )
+
+    assert hub.rf_learn_calls == [(315, 60.0)]
+    assert hub.learn_calls == []
+    assert conn.messages[-1] == {"id": 4, "event": learned}
+
+
+def test_rf_learn_subscribe_maps_failed_and_refused_to_rf_codes(monkeypatch) -> None:
+    conn = _Conn()
+    hub = _RfHub(learn_result={"state": "failed"})
+    _wire(monkeypatch, hub)
+    _run(
+        integration._ws_ir_learn_subscribe(
+            SimpleNamespace(data={}), conn, {"id": 1, "entry_id": "entry-1", "band": 433}
+        )
+    )
+    assert conn.messages[-1]["event"] == {"state": "error", "error_code": "rf_learn_failed"}
+
+    hub.learn_result = None
+    _run(
+        integration._ws_ir_learn_subscribe(
+            SimpleNamespace(data={}), conn, {"id": 2, "entry_id": "entry-1", "band": 433}
+        )
+    )
+    assert conn.messages[-1]["event"] == {"state": "refused", "error_code": "rf_learn_refused"}
+
+
+def test_rf_learn_subscribe_refuses_a_hub_without_rf(monkeypatch) -> None:
+    hub = _RfHub(learn_result={"state": "learned"}, rf_codes_supported=False)
+    conn = _Conn()
+    _wire(monkeypatch, hub)
+
+    _run(
+        integration._ws_ir_learn_subscribe(
+            SimpleNamespace(data={}), conn, {"id": 5, "entry_id": "entry-1", "band": 433}
+        )
+    )
+
+    assert conn.error is not None and conn.error[1] == "rf_unsupported"
+    assert conn.messages == []
+    assert hub.rf_learn_calls == []

@@ -10,6 +10,7 @@
     "build:remote-embed": "node ./scripts/build-remote-embed.mjs",
     "build:remote-web-assets": "node ./scripts/build-remote-web-assets.mjs",
     "build:server-panel": "node ./scripts/build-server-panel.mjs",
+    "build:x2-icons": "node ./scripts/build-x2-icons.mjs",
     "gen:server-types": "node ./scripts/gen-server-types.mjs",
     "pyright:check": "node ./scripts/pyright-baseline.mjs",
     "pyright:baseline": "node ./scripts/pyright-baseline.mjs --update",

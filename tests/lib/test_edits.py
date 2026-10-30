@@ -115,6 +115,53 @@ def test_rename_activity_plans_one_rename() -> None:
         edits.rename_activity(base, 102, "x")
 
 
+def test_appearance_rides_the_rename_write() -> None:
+    base = _bundle()
+    edited = edits.set_activity_appearance(base, 101, icon=34, color_id=3)
+    # One row write carries the name (unchanged) with the icon and color.
+    assert _activity_plan(base, edited) == [
+        ("activity_rename", {"activity_id": 101, "name": "Watch TV", "icon": 34, "color_id": 3}),
+        ("remote_sync", {"activity_id": 101}),
+    ]
+    renamed = edits.rename_activity(edits.set_activity_appearance(base, 101, icon=5), 101, "Movie")
+    assert _activity_plan(base, renamed)[0] == ("activity_rename", {"activity_id": 101, "name": "Movie", "icon": 5})
+
+    edited = edits.set_device_appearance(base, 5, icon=18, color_id=0)
+    assert _device_plan(base, edited, 5) == [
+        ("device_rename", {"device_id": 5, "name": "TV", "icon": 18, "color_id": 0}),
+    ]
+
+
+def test_set_device_emitters_plans_one_head_write() -> None:
+    routing = importlib.import_module(f"{_pkg.__name__}.emitter_routing")
+    base = _bundle()
+    edits_base = copy.deepcopy(base)
+    _find_device = lambda bundle: next(d for d in bundle["devices"] if d["device"]["device_id"] == 5)  # noqa: E731
+    _find_device(edits_base)["device"]["extras"] = {"a": 0, "b": 0, "c": 7}
+    current = routing.EmitterRouting.decode(0, 0, 7)
+    edited = edits.set_device_emitters(edits_base, 5, current.with_hub("port2").with_remote(1, True))
+    assert _find_device(edited)["device"]["extras"] == {"a": 0, "b": 0, "c": 0x0C}
+    assert _find_device(edits_base)["device"]["extras"] == {"a": 0, "b": 0, "c": 7}  # the input is untouched
+    assert _device_plan(edits_base, edited, 5) == [
+        ("device_rename", {"device_id": 5, "name": "TV", "emitters": [0, 0, 0x0C]}),
+    ]
+
+
+def test_appearance_is_checked_against_the_hub_line() -> None:
+    base = _bundle()
+    plan = activity_sync.build_activity_sync_plan
+    with pytest.raises(ValueError, match="16 icons"):
+        plan(base, edits.set_activity_appearance(base, 101, icon=17), 101, hub_version="X1S")
+    with pytest.raises(ValueError, match="only an X2"):
+        plan(base, edits.set_activity_appearance(base, 101, color_id=4), 101, hub_version="X1S")
+    with pytest.raises(ValueError, match="12 colors"):
+        activity_sync.build_device_sync_plan(
+            base, edits.set_device_appearance(base, 5, color_id=13), 5, hub_version="X2"
+        )
+    # The X1 has its own 25 icons.
+    assert plan(base, edits.set_activity_appearance(base, 101, icon=25), 101, hub_version="X1")
+
+
 def test_bind_and_clear_button_plan_binding_steps() -> None:
     base = _bundle()
     edited = edits.bind_button(base, 101, VOL_UP, 7, 3, long_press=(5, 2))

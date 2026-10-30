@@ -84,9 +84,11 @@ from .state_helpers import (
 )
 from .deframer import Deframer
 from .write_batch import WriteBatchMixin
+from .proxy_x2_remotes import X2RemotesMixin
 from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
+from .proxy_hub_mqtt import HubMqttMixin
 from .proxy_backup import CacheBackupMixin
 from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
@@ -259,7 +261,7 @@ def _normalize_mdns_instance(name: str) -> str:
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin, WriteBatchMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, HubMqttMixin, RestoreMixin, BackupExportMixin, WriteBatchMixin, X2RemotesMixin):
     def __init__(
         self,
         real_hub_ip: str,
@@ -389,9 +391,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # blocks on, so entering would deadlock.
         self._frame_thread_ident: int | None = None
         self._init_write_batch()
-        self._x2_remote_sync_id_lock = threading.Lock()
-        self._x2_remote_sync_id: bytes | None = None
-        self._x2_remote_sync_id_event = threading.Event()
+        self._init_x2_remotes()
         self._macro_payload_lock = threading.Lock()
         # Transient fetch-arrival signals: popped by wait_for_macro_record,
         # cleared by reset_ack_queues before every write transaction.
@@ -1297,19 +1297,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
                 return False
 
         if version == HUB_VERSION_X2:
-            return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")
+            return self.enqueue_cmd(OP_FIND_REMOTE_X2, self._x2_find_remote_target())
 
         return self.enqueue_cmd(OP_FIND_REMOTE)
-
-    def update_x2_remote_sync_id(self, remote_id: bytes) -> None:
-        with self._x2_remote_sync_id_lock:
-            self._x2_remote_sync_id = bytes(remote_id[:3])
-            self._x2_remote_sync_id_event.set()
-
-    def wait_for_x2_remote_sync_id(self, timeout: float = 2.0) -> bytes | None:
-        self._x2_remote_sync_id_event.wait(timeout)
-        with self._x2_remote_sync_id_lock:
-            return self._x2_remote_sync_id
 
     # ------------------------------------------------------------------
     # Virtual IP device/button creation

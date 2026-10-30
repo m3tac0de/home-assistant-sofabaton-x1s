@@ -114,6 +114,8 @@ class FakeProxy:
         self.backup_calls: list[tuple[str, int, bool]] = []
         self.write_calls: list = []
         self.reject = False
+        # What the engine would say about the last refusal (see refused_during_remote_sync).
+        self.remote_syncing = False
         self.payloads: dict[tuple[int, int], bytes] = {}
         descriptor = b"P:NEC1 D:4 F:21"
         descriptive = len(descriptor).to_bytes(2, "big") + bytes([0, 0, 0x11, 0, 0x94, 0x70]) + descriptor + bytes(4)
@@ -200,16 +202,21 @@ class FakeProxy:
     _devices_catalog_ready = True
     _activities_catalog_ready = True
 
-    def create_device(self, name, *, device_class):
+    def refused_during_remote_sync(self, since):
+        return self.remote_syncing
+
+    def create_device(self, name, *, device_class, icon=None, color_id=None):
         self.write_calls.append(("create_device", name, device_class))
+        self.create_appearance = (icon, color_id)
         if self.reject:
             return None
         new_id = max(self._catalog("device"), default=0) + 1
         self._ready["devices"] = {**self._catalog("device"), new_id: {"name": name}}
         return {"status": "success", "device_id": new_id}
 
-    def create_activity(self, name):
+    def create_activity(self, name, *, icon=None, color_id=None):
         self.write_calls.append(("create_activity", name))
+        self.create_appearance = (icon, color_id)
         if self.reject:
             return None
         new_id = max(self._catalog("activity"), default=100) + 1
@@ -1320,7 +1327,31 @@ def test_activities_carry_flags_and_fall_back_to_id_order() -> None:
         assert acts[1] == models.Activity(activity_id=102, name="Music", active=True, needs_confirm=True)
         assert acts[0].to_dict() == {
             "activity_id": 101, "name": "TV", "active": False, "needs_confirm": False, "sort": 0,
+            "icon": None, "color_id": None,
         }
+
+    asyncio.run(main())
+
+
+def test_catalog_lists_carry_icon_and_x2_color() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.hub_version = "X2"
+        record = lambda icon, color: devices_mod.build_device_create_payload(
+            devices_mod.DeviceConfig(name="Row", icon=icon, color_id=color), hub_version="X2"
+        )[3:]
+        fake.make_activities_ready({101: {"name": "TV", "raw_body": record(5, 7)}, 102: {"name": "New"}})
+        fake._ready["devices"] = {5: {"name": "TV", "raw_body": record(18, 0)}}
+        proxy = _wrap(fake)
+        acts = {a.activity_id: a for a in await proxy.activities()}
+        assert (acts[101].icon, acts[101].color_id) == (5, 7)
+        assert (acts[102].icon, acts[102].color_id) == (None, None)
+        [dev] = await proxy.devices()
+        assert (dev.icon, dev.color_id) == (18, 0)
+
+        fake.hub_version = "X1S"  # the byte exists there, unused: no color
+        [dev] = await proxy.devices()
+        assert (dev.icon, dev.color_id) == (18, None)
 
     asyncio.run(main())
 
@@ -3368,8 +3399,8 @@ def test_payload_and_banner_reads_wait_out_another_operations_hold() -> None:
 
 def test_a_create_that_landed_despite_a_failure_is_adopted_not_rejected() -> None:
     class LostAck(FakeProxy):
-        def create_device(self, name, *, device_class):
-            super().create_device(name, device_class=device_class)
+        def create_device(self, name, *, device_class, **appearance):
+            super().create_device(name, device_class=device_class, **appearance)
             return None  # the device exists, the id never came back
 
     async def main():
@@ -3503,5 +3534,57 @@ def test_a_raising_progress_callback_never_breaks_a_write() -> None:
 
         reporter = reporter_cls(asyncio.get_running_loop(), _broken)
         reporter(phase="writing", message="x", completed_steps=0, total_steps=1)  # logged, not raised
+
+    asyncio.run(main())
+
+
+def test_creates_carry_an_icon_and_refuse_one_the_hub_line_lacks() -> None:
+    async def main():
+        fake = _write_fake()  # an X1: icons 1-25, no colors
+        proxy = _wrap(fake)
+        await proxy.snapshot()
+        assert await proxy.add_device("Lamp", "ir", icon=23) == 8
+        assert fake.create_appearance == (23, None)
+        await proxy.add_activity("Read", icon=8)
+        assert fake.create_appearance == (8, None)
+        calls = list(fake.write_calls)
+        for coro in (proxy.add_device("Fan", "ir", icon=26), proxy.add_activity("Nap", color_id=3)):
+            try:
+                await coro
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("expected ValueError")
+        assert fake.write_calls == calls  # refused before the hub was touched
+
+    asyncio.run(main())
+
+
+def test_a_write_refused_while_the_remote_updates_says_so() -> None:
+    async def main():
+        fake = _write_fake()
+        proxy = _wrap(fake)
+        await proxy.snapshot()
+        fake.reject = True
+        fake.remote_syncing = True
+        try:
+            await proxy.add_activity("Read")
+        except aio.RemoteSyncInProgressError as err:
+            assert "updating its remote" in str(err)
+            assert isinstance(err, aio.HubRejectedError)   # existing handlers still catch it
+        else:
+            raise AssertionError("expected RemoteSyncInProgressError")
+        fake.remote_syncing = False
+        try:
+            await proxy.add_activity("Read")
+        except aio.RemoteSyncInProgressError:
+            raise AssertionError("a plain refusal is not the remote updating") from None
+        except aio.HubRejectedError:
+            pass
+        # A sync reports it in its result instead of raising.
+        fake.remote_syncing = True
+        failed = proxy._sync_result({"status": "failed", "failed_at": "device_rename"}, None, 0.0)
+        assert (failed.ok, failed.reason) == (False, "remote_syncing") and "updating its remote" in failed.message
+        assert proxy._sync_result({"status": "success"}, None, 0.0).reason is None
 
     asyncio.run(main())

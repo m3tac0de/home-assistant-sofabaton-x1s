@@ -20,7 +20,12 @@ from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from . import backup_export as _bx
 from .devices import DeviceConfig, parse_device_record
-from .protocol_const import DEVICE_CLASS_IR, normalize_device_class
+from .protocol_const import (
+    DEVICE_CLASS_IR,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
+    normalize_device_class,
+)
 from .state_helpers import reads_live_state
 
 if TYPE_CHECKING:
@@ -43,10 +48,16 @@ def _key_sort_row_or_fallback(
     remote key page to sort, so a timed-out read on a non-IR class is
     recorded as the empty row the STATUS_ACK path produces; otherwise the
     capture would stay incomplete on every read and the device could
-    never be edited. An IR device keeps the timeout as a real gap.
+    never be edited. An IR or RF device (learned commands on a remote key
+    page, like IR) keeps the timeout as a real gap.
     """
 
-    if row is not None or normalized_device_class in (None, DEVICE_CLASS_IR):
+    if row is not None or normalized_device_class in (
+        None,
+        DEVICE_CLASS_IR,
+        DEVICE_CLASS_RF_433,
+        DEVICE_CLASS_RF_315,
+    ):
         return row
     if log is not None:
         log.info(

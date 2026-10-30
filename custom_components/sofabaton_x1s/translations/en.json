@@ -281,6 +281,54 @@
         }
       }
     },
+    "create_activity": {
+      "name": "Create activity",
+      "description": "Creates an empty activity on the selected hub and returns its activity ID. Add its devices, buttons and favorites afterwards with the sync edited snapshot action.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub on which to create the activity."
+        },
+        "name": {
+          "name": "Activity name",
+          "description": "Name of the new activity, at most 30 characters."
+        },
+        "icon": {
+          "name": "Icon",
+          "description": "Optional number of one of the icons the hub offers. Leave empty for the default icon."
+        },
+        "color_id": {
+          "name": "Color",
+          "description": "Optional color number, X2 only. 0 is no color."
+        }
+      }
+    },
+    "create_device": {
+      "name": "Create device",
+      "description": "Creates a device of the chosen type with no commands on the selected hub and returns its device ID. Add commands afterwards: with the set HTTP command action on a Generic HTTP (wifi_ip) device, with the save IR blob action on an IR device.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub on which to create the device."
+        },
+        "name": {
+          "name": "Device name",
+          "description": "Name of the new device, at most 30 characters."
+        },
+        "device_class": {
+          "name": "Device type",
+          "description": "Kind of device: ir, wifi_ip (Generic HTTP, X1S and X2), wifi_roku, wifi_hue, wifi_sonos, or wifi_mqtt (X2 only)."
+        },
+        "icon": {
+          "name": "Icon",
+          "description": "Optional number of one of the icons the hub offers. Leave empty for the default icon."
+        },
+        "color_id": {
+          "name": "Color",
+          "description": "Optional color number, X2 only. 0 is no color."
+        }
+      }
+    },
     "create_wifi_device": {
       "name": "Create Wifi device",
       "description": "Creates a Wifi device on the selected hub.",
@@ -322,6 +370,20 @@
         "device_id": {
           "name": "Device ID",
           "description": "ID of the device to delete."
+        }
+      }
+    },
+    "delete_activity": {
+      "name": "Delete activity",
+      "description": "Deletes an activity from the selected hub.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub from which to delete the activity."
+        },
+        "activity_id": {
+          "name": "Activity ID",
+          "description": "ID of the activity to delete, 101 or higher."
         }
       }
     },
@@ -542,6 +604,44 @@
         "pronto": {
           "name": "Pronto Hex",
           "description": "Space-separated four-digit Pronto Hex values, e.g. `0000 006D 0022 0000 00AB 00AB ...`."
+        }
+      }
+    },
+    "set_wifi_command": {
+      "name": "Set HTTP command",
+      "description": "Writes the HTTP request of one command on a Generic HTTP (wifi_ip) device: overwrites an existing command, or adds a new one when no command ID is given. Returns the device and command IDs. https URLs and host names need an X2; other hubs take http:// URLs to an IPv4 address.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub that holds the device."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the Generic HTTP (wifi_ip) device."
+        },
+        "command_id": {
+          "name": "Command ID",
+          "description": "Command to overwrite. Leave empty to add a new command."
+        },
+        "name": {
+          "name": "Command name",
+          "description": "Name of the new command. Required when adding; renames the command when overwriting."
+        },
+        "url": {
+          "name": "URL",
+          "description": "Full URL of the request, e.g. `http://192.168.1.20:8080/api/power`."
+        },
+        "method": {
+          "name": "Method",
+          "description": "HTTP method; GET when empty. HTTPS URLs, host names, and existing X2 commands stored in URL format (including commands created in the Sofabaton app) support only GET, POST or PUT. Existing URL-format commands keep this restriction even with an HTTP URL and an IPv4 address."
+        },
+        "headers": {
+          "name": "Headers",
+          "description": "Optional request headers, as a mapping of name to value or a list of `Name: value` lines."
+        },
+        "body": {
+          "name": "Body",
+          "description": "Optional request body."
         }
       }
     },

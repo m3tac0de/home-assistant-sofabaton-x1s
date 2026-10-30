@@ -17,8 +17,10 @@ import {
   interactionFor,
   jobLabel,
   jobHeadline,
+  jobDeliveryFailed,
   jobNarration,
   jobProgress,
+  jobStepText,
   noticeForJob,
   runtimeFor,
   selectedHub,
@@ -134,7 +136,7 @@ test("busy: a live job first, then a local call, else nothing; a finished active
 
 test("interaction: a gate outranks a job, a job outranks a local call", () => {
   const busyHub = hub({ active_job: job({ progress: { phase: "device", message: "Writing device 8", completed_steps: 3, total_steps: 12 } }) });
-  assert.deepEqual(interactionFor(snapshot([runtime()]), runtime(busyHub)), { kind: "blocked", reason: "job", label: "Writing device 8 · 3/12" });
+  assert.deepEqual(interactionFor(snapshot([runtime()]), runtime(busyHub)), { kind: "blocked", reason: "job", label: "Writing device 8 (3/12)" });
   assert.deepEqual(interactionFor(snapshot([runtime()]), runtime(hub({ ...busyHub, status: { ...busyHub.status!, mode: "observe" } }))), {
     kind: "blocked",
     reason: "app_holds_hub",
@@ -153,20 +155,20 @@ test("job phrases: labels per kind, narration from the progress record, progress
   assert.equal(jobLabel("rename_hub"), "Renaming the hub");
   assert.equal(jobNarration(job({ kind: "refresh", status: "queued" })), "Refreshing the hub · queued");
   // A step that restates the headline replaces it: each thing is said once.
-  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 1, total_steps: 4, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 · 1/4");
-  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "finalizing", message: "Finalizing snapshot…", completed_steps: 4, total_steps: 4 } })), "Finalizing snapshot · 4/4");
-  assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "device", message: "Backed up device 3.", completed_steps: 2, total_steps: 9, entity_kind: "device", entity_id: 3 } })), "Backed up device 3 · 2/9");
-  assert.equal(jobNarration(job({ kind: "restore", progress: { phase: "activity", message: "Restoring activity 101…", completed_steps: 5, total_steps: 9, entity_kind: "activity", entity_id: 101 } })), "Restoring activity 101 · 5/9");
+  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 1, total_steps: 4, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 (1/4)");
+  assert.equal(jobNarration(job({ kind: "refresh", progress: { phase: "finalizing", message: "Finalizing snapshot…", completed_steps: 4, total_steps: 4 } })), "Finalizing hub cache (4/4)");
+  assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "device", message: "Backed up device 3.", completed_steps: 2, total_steps: 9, entity_kind: "device", entity_id: 3 } })), "Backing up device 3 (2/9)");
+  assert.equal(jobNarration(job({ kind: "restore", progress: { phase: "activity", message: "Restoring activity 101…", completed_steps: 5, total_steps: 9, entity_kind: "activity", entity_id: 101 } })), "Restoring activity 101 (5/9)");
   // The current step replaces the heading, preserving any target named by the step.
   assert.equal(jobNarration(job({ kind: "sync_device", status: "queued" })), "Syncing the device to the hub · queued");
-  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "writing", message: "Renaming the device…", completed_steps: 1, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Renaming the device · 1/5");
-  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "writing", message: "Updating inputs on device 13…", completed_steps: 2, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Updating inputs on device 13 · 2/5");
-  assert.equal(jobNarration(job({ kind: "sync_activity", progress: { phase: "writing", message: "Updating inputs on device 13…", completed_steps: 2, total_steps: 5, entity_kind: "activity", entity_id: 101 } })), "Updating inputs on device 13 · 2/5");
-  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "completed", message: "Synced to hub.", completed_steps: 5, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Synced to hub · 5/5");
-  assert.equal(jobNarration(job({ kind: "refresh_entity", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 0, total_steps: 1, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 · 0/1");
+  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "writing", message: "Renaming the device…", completed_steps: 1, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Renaming the device (1/5)");
+  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "writing", message: "Updating inputs on device 13…", completed_steps: 2, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Updating inputs on device 13 (2/5)");
+  assert.equal(jobNarration(job({ kind: "sync_activity", progress: { phase: "writing", message: "Updating inputs on device 13…", completed_steps: 2, total_steps: 5, entity_kind: "activity", entity_id: 101 } })), "Updating inputs on device 13 (2/5)");
+  assert.equal(jobNarration(job({ kind: "sync_device", progress: { phase: "completed", message: "Synced to hub.", completed_steps: 5, total_steps: 5, entity_kind: "device", entity_id: 13 } })), "Synced to hub (5/5)");
+  assert.equal(jobNarration(job({ kind: "refresh_entity", progress: { phase: "device", message: "Refreshing device 13…", completed_steps: 0, total_steps: 1, entity_kind: "device", entity_id: 13 } })), "Refreshing device 13 (0/1)");
   assert.equal(jobHeadline(job({ kind: "refresh_entity" })), "Refreshing from the hub");
   // The outer item counter replaces the inner step counter; no extra entity fragment.
-  assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Rename TV", completed_steps: 0, total_steps: 1, item_index: 1, item_count: 5 } })), "Rename TV · 2/5");
+  assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Rename TV", completed_steps: 0, total_steps: 1, item_index: 1, item_count: 5 } })), "Rename TV (2/5)");
   assert.equal(jobNarration(job({ kind: "backup", progress: { phase: "reading", message: "", completed_steps: 0, total_steps: 0, entity_kind: "activity", entity_id: 101 } })), "Backing up the hub");
   assert.equal(jobNarration(job({ kind: "sync_hub", progress: { phase: "item", message: "Creating device 113", completed_steps: 0, total_steps: 0, entity_kind: "device", entity_id: 13 } })), "Creating device 113");
   assert.deepEqual(jobProgress(job({ progress: { phase: "item", message: "", completed_steps: 3, total_steps: 12 } })), { current: 3, total: 12, percent: 25, indeterminate: false });
@@ -191,6 +193,30 @@ test("unknown job failures keep backend diagnostics out of dock and view feedbac
   assert.equal(jobOutcomeText(failed), notice.label);
   assert.match(notice.detail!, /POST \/applies\/internal-id\/resume/);
   assert.equal(notice.sticky, false);
+});
+
+test("step text: the card's Wifi deploy words, one counter, the library's message for steps the card does not know", () => {
+  assert.equal(jobStepText(null), "");
+  // The card's copy says "Home Assistant" here; the server's own message stands.
+  assert.equal(jobStepText(job({ kind: "deploy_wifi_device", progress: { phase: "testing_delivery", message: "Testing that button presses reach the server", completed_steps: 0, total_steps: 0 } })), "Testing that button presses reach the server");
+  // The in-place steps count the step being written, as the card does.
+  assert.equal(jobStepText(job({ kind: "update_wifi_device", progress: { phase: "writing", message: "Rename", completed_steps: 1, total_steps: 3, step_kind: "command_rename" } })), "Renaming a command (2/3)");
+  assert.equal(jobStepText(job({ kind: "update_callback_device", progress: { phase: "resyncing_remote", message: "Resyncing the remote", completed_steps: 2, total_steps: 3 } })), "Resyncing the physical remote (2/3)");
+  assert.equal(jobStepText(job({ kind: "sync_hub", progress: { phase: "item", message: "Creating device 113…", completed_steps: 1, total_steps: 2 } })), "Creating device 113 (1/2)");
+});
+
+test("delivery: a Wifi deploy whose test press did not arrive is an error notice, a passed one is not", () => {
+  const deployed = (status: string) => job({ kind: "update_wifi_device", status: "done", result: { delivery: { status } } });
+  assert.equal(jobDeliveryFailed(deployed("not_delivered")), true);
+  assert.equal(jobDeliveryFailed(deployed("not_sent")), true);
+  assert.equal(noticeForJob(deployed("not_sent"), 5)?.label, "Synced, but delivery could not be tested.");
+  assert.equal(noticeForJob(job({ kind: "test_wifi_delivery", status: "done", result: { delivery: { status: "not_sent" } } }), 5)?.label, "Could not send the test command. Try again.");
+  assert.equal(jobDeliveryFailed(deployed("delivered")), false);
+  assert.equal(jobDeliveryFailed(job({ kind: "restore", status: "done", result: { delivery: { status: "not_delivered" } } })), false);
+  assert.equal(noticeForJob(deployed("not_delivered"), 5)?.tone, "error");
+  assert.equal(noticeForJob(deployed("not_delivered"), 5)?.label, "Synced, but the test command did not reach the server.");
+  assert.equal(noticeForJob(job({ kind: "test_wifi_delivery", status: "done", result: { delivery: { status: "not_delivered" } } }), 5)?.label, "The test command did not reach the server.");
+  assert.deepEqual(noticeForJob(deployed("delivered"), 5), { tone: "success", label: "Wifi Device synced.", detail: null, jobId: "j1", sticky: false, at: 5 });
 });
 
 test("a progress message that already contains a counter gets no extra counter", () => {

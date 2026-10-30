@@ -22,6 +22,7 @@ import {
 import { SidebarPressController } from "./sidebar-press";
 import { wantsLandscape } from "./sidebar-layout";
 import { sidebarRemoteStyles } from "./sidebar-remote-styles";
+import { entityTile, entityTileBadge, entityTileStyles, renderEntityTile } from "../entity-icons/entity-tile";
 import { applySidebarTheme } from "./sidebar-remote-theme";
 
 export const SIDEBAR_REMOTE_TAG = "sofabaton-sidebar-remote";
@@ -127,7 +128,7 @@ function sidebarConfig(entity: string): RemoteCardConfig {
 }
 
 export class SofabatonSidebarRemote extends LitElement {
-  static styles = sidebarRemoteStyles;
+  static styles = [entityTileStyles, sidebarRemoteStyles];
 
   private readonly _store: RemoteCardStore;
   private _hass: HassLike | null = null;
@@ -398,7 +399,11 @@ export class SofabatonSidebarRemote extends LitElement {
     const cy = fromPoint && at ? at.y : r.top + r.height / 2;
     const ring = document.createElement("div");
     ring.className = failed ? "ring err" : "ring";
-    ring.style.cssText = `left:${cx - base.left - d / 2}px;top:${cy - base.top - d / 2}px;width:${d}px;height:${d}px`;
+    // The app's scroll offset, for a browser where it can still be scrolled
+    // (overflow: clip unknown): an absolute child moves with the content.
+    const left = cx - base.left + app.scrollLeft - d / 2;
+    const top = cy - base.top + app.scrollTop - d / 2;
+    ring.style.cssText = `left:${left}px;top:${top}px;width:${d}px;height:${d}px`;
     app.appendChild(ring);
     ring.addEventListener("animationend", () => ring.remove());
     setTimeout(() => ring.remove(), 1500);
@@ -1023,25 +1028,36 @@ export class SofabatonSidebarRemote extends LitElement {
         </div>`)}
       </div>`;
     }
+    // The hub's own icon on its tile once the record is cached (in its X2
+    // color); the class glyph otherwise. The current row keeps its tint.
+    const hubVersion = store.hubVersion();
     if (pane === "devices") {
       return html`<div class="rows">
-        ${devices.map((device) => html`
+        ${devices.map((device) => {
+          const tile = entityTile(hubVersion, device.icon, device.color_id);
+          return html`
           <button class=${classMap({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
-            <span class="ic">${icon(deviceClassIcon(device.device_class))}</span>
+            ${tile
+              ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) })
+              : html`<span class="ic">${icon(deviceClassIcon(device.device_class))}</span>`}
             <span class="name">${device.name}</span>
             <span class="st"></span>
-          </button>`)}
+          </button>`;
+        })}
       </div>`;
     }
     // activities (all off is the power disc beside the selector)
     const currentId = store.currentActivityId();
     return html`<div class="rows">
-      ${derived.activities.map((activity) => html`
+      ${derived.activities.map((activity) => {
+        const tile = entityTile(hubVersion, activity.icon, activity.color_id);
+        return html`
         <button class=${classMap({ row: true, current: activity.id === currentId })} type="button" data-press @click=${() => this._pickActivity(activity.name)}>
-          <span class="ic">${icon("mdi:movie-open-outline")}</span>
+          ${tile ? renderEntityTile(tile) : html`<span class="ic">${icon("mdi:movie-open-outline")}</span>`}
           <span class="name">${activity.name}</span>
           <span class="st"></span>
-        </button>`)}
+        </button>`;
+      })}
     </div>`;
   }
 

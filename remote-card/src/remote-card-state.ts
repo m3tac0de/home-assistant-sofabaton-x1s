@@ -11,12 +11,21 @@ export function currentActivityIdFromRemote(remoteState: any) {
   return null;
 }
 
+/** The hub's icon id and X2 palette id, when the integration publishes them. */
+function appearanceOf(source: any): { icon?: number; color_id?: number } {
+  return {
+    ...(Number.isInteger(source?.icon) ? { icon: Number(source.icon) } : {}),
+    ...(Number.isInteger(source?.color_id) ? { color_id: Number(source.color_id) } : {}),
+  };
+}
+
 export function normalizeActivities(source: any) {
   return (Array.isArray(source) ? source : [])
     .map((activity) => ({
       id: Number(activity?.id),
       name: String(activity?.name ?? ""),
       state: String(activity?.state ?? ""),
+      ...appearanceOf(activity),
     }))
     .filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
@@ -56,6 +65,7 @@ export function devicesFromRemote(remoteState: any) {
       name: String(device?.name ?? ""),
       device_class:
         device?.device_class != null ? String(device.device_class) : undefined,
+      ...appearanceOf(device),
     }))
     .filter((device) => Number.isFinite(device.id) && device.name);
 }

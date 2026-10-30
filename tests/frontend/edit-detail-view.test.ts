@@ -643,9 +643,9 @@ test("live editor locks a managed Wifi Device to read-only (rename kept, delete 
   const body = templateText(element._renderManagedWifiLockNotice());
   assert.ok(body.includes("Managed by Wifi Commands"));
 
-  const buttons = templateText(element._renderDetailRenameDeleteButtons("device"));
-  assert.ok(buttons.includes("mdi:pencil")); // rename kept
-  assert.ok(!buttons.includes("mdi:trash-can-outline")); // delete removed
+  assert.notEqual(templateText(element._renderDetailEdit("device")), ""); // rename kept
+  element._openDetailRenameDialog();
+  assert.ok(!templateText(element._renderEditRenameDialog()).includes("dialog-footer-delete")); // delete removed
 });
 
 test("live editor leaves an unmanaged device fully editable", () => {
@@ -657,8 +657,11 @@ test("live editor leaves an unmanaged device fully editable", () => {
 
   assert.equal(element._isManagedWifiLiveDevice(), false);
   assert.ok(element._editDetailSectionItems("device").length > 0);
-  const buttons = templateText(element._renderDetailRenameDeleteButtons("device"));
-  assert.ok(buttons.includes("mdi:trash-can-outline")); // delete present
+  element._openDetailRenameDialog();
+  assert.ok(templateText(element._renderEditRenameDialog()).includes("dialog-footer-delete")); // delete present
+  element._deleteFromEditDialog();
+  assert.equal(element._editRenameDialogOpen, false);
+  assert.deepEqual(element._confirmDeleteTarget, { kind: "device", deviceId: 2 });
 });
 
 test("the offline backup editor never locks a managed Wifi Device", () => {
@@ -1348,6 +1351,146 @@ test("add-command on an empty IR device keeps the IR path (hex tabs on X1S)", as
   assert.equal(element._payload.decodedSnapshot, null);
 });
 
+// ── One wifi_ip form for request text and X2 URL records ─────────────
+
+const APP_URL_RECORD = {
+  url: "http://192.168.1.161:8080/jsonrpc",
+  method: "POST",
+  headers: [["Content-Type", "application/json"]],
+  body: "{\"id\":1}",
+};
+
+const REQUEST_TEXT_RECORD = {
+  host: "192.168.2.77",
+  port: 80,
+  method: "POST",
+  path: "/launch/12",
+  header: "",
+  content_type: "application/json",
+  body: "",
+};
+
+function wifiIpEditor(model: "X1S" | "X2", mode: "live" | "backup", restoreData?: Record<string, unknown>): EditorElement {
+  const element = createEditor(model, "device");
+  element.bundle = {
+    ...element.bundle!,
+    devices: [
+      ...element.bundle!.devices,
+      {
+        device: { device_id: 9, name: "Kodi", device_class: "wifi_ip" },
+        commands: [{ command_id: 1, name: "Home", ...(restoreData ? { restore_data: restoreData } : {}) }],
+      },
+    ],
+  } as BackupBundlePayload;
+  element.mode = mode;
+  element.entityId = 9;
+  return element;
+}
+
+function savedDecoded(changes: BackupBundlePayload[], commandId = 1) {
+  const device = changes[changes.length - 1].devices.find((row) => row.device?.device_id === 9)!;
+  const row = (device.commands ?? []).find((entry) => Number(entry.command_id) === commandId) as { restore_data: Record<string, any> };
+  return row.restore_data.decoded as { class: string; fields: Record<string, unknown>; trailer_hex: string; edited: boolean };
+}
+
+test("an X2 URL record opens in the HTTP form and a body edit keeps its URL", () => {
+  const element = wifiIpEditor("X2", "live");
+  const changes = collectBundleChanges(element);
+  element._payload.openLive(9, 1, {
+    dataHex: "00 01",
+    decoded: { class: "wifi_ip", trailer_hex: "", fields: APP_URL_RECORD },
+  });
+  const drafts = element._payload.decodedDrafts;
+  assert.equal(drafts.scheme, "http");
+  assert.equal(drafts.host, "192.168.1.161");
+  assert.equal(drafts.port, "8080");
+  assert.equal(drafts.path, "/jsonrpc");
+  assert.equal(drafts.content_type, "application/json");
+  const markup = templateText(element._payload.render());
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.protocol));
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.hostOrNameExample));
+  // The summary line reads the request back as one URL.
+  assert.ok(markup.includes("http://192.168.1.161:8080/jsonrpc"));
+
+  element._payload.decodedDrafts = { ...drafts, body: "{\"id\":2}" };
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const decoded = savedDecoded(changes);
+  assert.deepEqual(decoded.fields, { ...APP_URL_RECORD, body: "{\"id\":2}" });
+  assert.equal(decoded.edited, true);
+});
+
+test("switching a backup command to https replaces its request-text fields", () => {
+  const element = wifiIpEditor("X2", "backup", {
+    transport: "hub_code_record",
+    data_hex: "c0 a8 02 4d",
+    decoded: { class: "wifi_ip", trailer_hex: "f1", fields: REQUEST_TEXT_RECORD },
+  });
+  const changes = collectBundleChanges(element);
+  element._payload.openFromBundle(1);
+  element._payload.handleDecodedFieldInput(controlEvent("https"), "scheme");
+  // A port left at the http default follows the protocol.
+  assert.equal(element._payload.decodedDrafts.port, "443");
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const decoded = savedDecoded(changes);
+  assert.deepEqual(decoded.fields, {
+    url: "https://192.168.2.77:443/launch/12",
+    method: "POST",
+    headers: [["Content-Type", "application/json"]],
+    body: "",
+  });
+  assert.equal(decoded.trailer_hex, "");
+  assert.equal(decoded.edited, true);
+});
+
+test("the X1S form has no protocol and refuses a host name", () => {
+  const element = wifiIpEditor("X1S", "live");
+  const changes = collectBundleChanges(element);
+  element._payload.openLive(9, 1, {
+    dataHex: "00 01",
+    decoded: { class: "wifi_ip", trailer_hex: "f1", fields: REQUEST_TEXT_RECORD },
+  });
+  const markup = templateText(element._payload.render());
+  assert.ok(!markup.includes(TOOLS_CARD_STRINGS.decodedPayload.protocol));
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.hostIpv4));
+
+  element._payload.decodedDrafts = { ...element._payload.decodedDrafts, host: "ha.example.com" };
+  element._payload.apply();
+  assert.equal(changes.length, 0);
+  assert.equal(element._payload.open, true);
+  assert.equal(element._payload.error, TOOLS_CARD_STRINGS.decodedPayload.hostNeedsIpv4);
+});
+
+test("a new command seeded from an app-made URL record saves as request text", async () => {
+  const element = wifiIpEditor("X2", "live");
+  const changes = collectBundleChanges(element);
+  element.fetchCommandPayload = async () => ({
+    dataHex: "00 01",
+    decoded: { class: "wifi_ip", trailer_hex: "", fields: APP_URL_RECORD },
+  });
+  await element._payload.openAdd();
+  assert.equal(element._payload.decodedDrafts.host, "192.168.1.161");
+  element._payload.nameDraft = "Back";
+  element._payload.decodedDrafts = { ...element._payload.decodedDrafts, body: "{\"id\":3}" };
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const decoded = savedDecoded(changes, 2);
+  assert.deepEqual(decoded.fields, {
+    host: "192.168.1.161",
+    port: 8080,
+    method: "POST",
+    path: "/jsonrpc",
+    header: "",
+    content_type: "application/json",
+    body: "{\"id\":3}",
+  });
+  assert.equal(decoded.trailer_hex, "");
+});
+
 test("macro steps reorder from the keyboard, with or without ha-sortable (CR-F2-11)", () => {
   const element = createEditor("X1S", "device");
   element.entityId = 1;
@@ -1737,9 +1880,9 @@ test("two new items on one assignment never save", () => {
   assert.match(templateText(element._binding.render()), /dialog-btn-primary[^>]*disabled/);
 });
 
-// ── Delivery badge / switch (docs/internal/wifi-events-transport-plan.md) ──
+// ── Delivery pill (docs/internal/wifi-events-transport-plan.md) ──
 
-function managedWifiEditor(deviceClass = "wifi_ip"): EditorElement {
+function managedWifiEditor(deviceClass = "wifi_ip", canSwitch = true): EditorElement {
   const element = new EditDetailViewElement() as EditorElement;
   const bundle = editorBundle("X2");
   bundle.devices.push({
@@ -1751,51 +1894,244 @@ function managedWifiEditor(deviceClass = "wifi_ip"): EditorElement {
   element.entityId = 4;
   element.mode = "live";
   element.mqttAvailable = true;
+  const calls: Array<Record<string, unknown>> = [];
+  const hass = {
+    states: {},
+    callWS: async (msg: Record<string, unknown>) => {
+      calls.push(msg);
+      if (msg.type === "sofabaton_x1s/hub_mqtt/status") {
+        return { available: true, ha_connected: true, ha_broker: null, hub_connected: true, suggested_host: "", suggested_port: 1883, ha_username: "", ha_login_available: false };
+      }
+      return { device_key: msg.device_key, transport: deviceClass === "wifi_mqtt" ? "mqtt" : "http", target: "", hub_ip: "", delivery: null };
+    },
+  };
+  element.delivery = {
+    hass: () => hass as any,
+    hubEntryId: () => "entry-1",
+    canSwitch: () => canSwitch,
+    locked: () => false,
+    setBusy() {},
+  };
+  (element as any).__calls = calls;
   return element;
 }
 
-test("a managed Wifi device's delivery badge is a two-option select in the live editor", () => {
+test("a managed Wifi device carries the delivery pill in the live editor, on every hub", async () => {
   const element = managedWifiEditor();
-  const text = templateText(element._renderTransportControl("device"));
-  assert.match(text, /transport-select/);
+  const text = templateText(element._renderDeliveryPill("device"));
+  assert.match(text, /transport-pill delivery-pill/);
   assert.match(text, /HTTP/);
-  assert.match(text, /MQTT/);
   assert.doesNotMatch(text, /pending/);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The stored record of the device the brand names: no hub exchange.
+  assert.deepEqual((element as any).__calls.map((msg: any) => [msg.type, msg.device_key]), [["sofabaton_x1s/command_config/delivery", "abc123"]]);
 
-  // A pending pick shows dashed, and stays a select while other edits go in.
+  // A pending pick shows dashed while other edits go in.
   element.pendingTransport = "mqtt";
   element.dirty = true;
-  const pending = templateText(element._renderTransportControl("device"));
-  assert.match(pending, /<select/);
-  assert.match(pending, /mqtt pending/);
+  assert.match(templateText(element._renderDeliveryPill("device")), /mqtt pending/);
   element.pendingTransport = null;
   element.dirty = false;
 
-  // No MQTT on this hub: an HTTP device shows nothing...
+  // No MQTT for this hub (an X1 / X1S, or an X2 without the integration):
+  // the pill stays, for the path and Test.
   element.mqttAvailable = false;
-  assert.equal(element._renderTransportControl("device"), nothing);
-  // ...an MQTT device keeps its read-only badge.
-  element.bundle.devices[3].device.device_class = "wifi_mqtt";
-  const mqttPill = templateText(element._renderTransportControl("device"));
-  assert.doesNotMatch(mqttPill, /<select/);
-  assert.match(mqttPill, /MQTT/);
+  assert.match(templateText(element._renderDeliveryPill("device")), /delivery-pill/);
+  const x1s = managedWifiEditor("wifi_ip", false);
+  x1s._renderDeliveryPill("device");
+  x1s._delivery.open = true;
+  assert.doesNotMatch(templateText(x1s._renderDeliveryPill("device")), /delivery-method/);
 
-  // The backup editor and unmanaged devices never carry it.
+  // The backup editor, a host without the delivery side and unmanaged
+  // devices never carry it.
   element.mqttAvailable = true;
   element.mode = "backup";
-  assert.equal(element._renderTransportControl("device"), nothing);
+  assert.equal(element._renderDeliveryPill("device"), nothing);
   element.mode = "live";
+  const host = element.delivery;
+  element.delivery = null;
+  assert.equal(element._renderDeliveryPill("device"), nothing);
+  element.delivery = host;
   element.entityId = 2;
-  assert.equal(element._renderTransportControl("device"), nothing);
+  assert.equal(element._renderDeliveryPill("device"), nothing);
 });
 
-test("changing the delivery select hands the pick to the host", () => {
+test("a pick in the delivery dropdown hands the method to the host", async () => {
   const element = managedWifiEditor();
   const picks: unknown[] = [];
   element.addEventListener("transport-change", (event) => picks.push((event as CustomEvent).detail));
-  const template = element._renderTransportControl("device") as { values: unknown[] };
-  const onChange = template.values.find((value) => typeof value === "function") as (event: unknown) => void;
-  onChange({ target: { value: "mqtt" } });
-  onChange({ target: { value: "http" } });
+  element._renderDeliveryPill("device");
+  await element._delivery.pick("mqtt");
+  assert.deepEqual(picks, [{ transport: "mqtt" }]);
+  element.pendingTransport = "mqtt";
+  element._renderDeliveryPill("device");
+  await element._delivery.pick("http");
   assert.deepEqual(picks, [{ transport: "mqtt" }, { transport: "http" }]);
+});
+
+test("the edit dialog saves a picked icon and color with the name, and only what was picked", () => {
+  const element = createEditor("X2");
+  const block = element.bundle.activities[0].device;
+  block.icon = 5;
+  block.color_id = 0;
+  const changes = collectBundleChanges(element);
+
+  element._openDetailRenameDialog();
+  assert.deepEqual(element._editAppearance, { icon: 5, colorId: 0 });
+  const closed = templateText(element._renderEditRenameDialog());
+  assert.match(closed, /Edit activity/);
+  assert.match(closed, /Change icon and color/);
+  assert.match(templateText(element._renderDetailEdit("activity")), /Edit activity/);
+
+  element._editAppearanceOpen = true;
+  element._editAppearance = { ...element._editAppearance, icon: 34 };
+  element._applyEditRenameDialog();
+  assert.equal(changes.length, 1);
+  const saved = changes[0].activities[0].device;
+  assert.equal(saved?.icon, 34);
+  // The color was never picked: the record keeps its own 0.
+  assert.equal(saved?.color_id, 0);
+  assert.equal(element._editRenameDialogOpen, false);
+  assert.deepEqual(element._editAppearance, { icon: null, colorId: null });
+});
+
+test("on an X1S the dialog offers icons only, and the header tile opens it with the picker on demand", () => {
+  const element = createEditor("X1S");
+  element.bundle.activities[0].device.icon = 9;
+
+  assert.match(templateText(element._renderDetailEdit("activity")), /detail-entity-tile/);
+  element._openDetailRenameDialog();
+  assert.equal(element._editAppearanceOpen, false);
+  element._editAppearanceOpen = true;
+  const open = templateText(element._renderEditRenameDialog());
+  assert.match(open, /Change icon/);
+  assert.doesNotMatch(open, /Change icon and color/);
+  assert.doesNotMatch(open, /appearance-tabs/);
+  // The X1S's own AV receiver for id 9, not the X2's wifi router.
+  assert.match(open, /AV receiver/);
+});
+
+test("an old bundle without an icon or hub line keeps the plain rename dialog", () => {
+  const element = createEditor("X1S");
+  element.bundle = { ...element.bundle, hub: { name: "Living Room" } };
+  element._openDetailRenameDialog();
+  const text = templateText(element._renderEditRenameDialog());
+  assert.match(text, /Rename activity/);
+  assert.doesNotMatch(text, /appearance-ident/);
+  const edit = templateText(element._renderDetailEdit("activity"));
+  assert.match(edit, /Rename activity/);
+  assert.match(edit, /mdi:pencil/);
+  assert.doesNotMatch(edit, /detail-entity-tile/);
+});
+
+// ── RF commands: Test and Learn follow the command's own signal ─────────
+// The record code type (0x1D / 0x1E) wins over the device class: an RF
+// device can hold IR commands and an IR device RF ones.
+
+function liveRfDevice(deviceClass = "rf_433mhz"): EditorElement {
+  const element = createLiveDeviceEditor();
+  element.bundle.devices[0].device.device_class = deviceClass;
+  return element;
+}
+
+test("payloadSignal reads the device class, then the fetched record type", async () => {
+  const element = createLiveDeviceEditor();
+  assert.equal(element._payload.payloadSignal(), "ir");
+  element.entityId = 2; // wifi_roku: neither plays nor learns
+  assert.equal(element._payload.payloadSignal(), null);
+
+  const rf = liveRfDevice("rf_315mhz");
+  assert.equal(rf._payload.payloadSignal(), 315);
+  rf.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null, libraryType: 0x0d });
+  await rf._payload.liveFetchAndOpen(10);
+  assert.equal(rf._payload.payloadSignal(), "ir"); // an IR command on an RF device
+
+  const ir = createLiveDeviceEditor();
+  ir.fetchCommandPayload = async () => ({ dataHex: "00 09 03 e0 1e", decoded: null, libraryType: 0x1d });
+  await ir._payload.liveFetchAndOpen(10);
+  assert.equal(ir._payload.payloadSignal(), 433); // an RF command on an IR device
+});
+
+test("Test on an RF command plays it on the command's band", async () => {
+  const element = liveRfDevice();
+  const played: Array<[string, unknown]> = [];
+  element.testCommandPayload = async (hex: string, band?: unknown) => { played.push([hex, band]); };
+  element.fetchCommandPayload = async () => ({ dataHex: "00 09 03 e0 1e 5c 01", decoded: null, libraryType: 0x1d });
+
+  await element._payload.liveFetchAndOpen(10);
+  assert.match(templateText(element._payload.render()), /payload-test-btn/);
+  await element._payload.runLiveTest();
+
+  assert.deepEqual(played, [["00 09 03 e0 1e 5c 01", 433]]);
+  assert.equal(element._payload.testStatus, "success");
+
+  // IR keeps playing without a band.
+  const ir = createLiveDeviceEditor();
+  ir.testCommandPayload = async (hex: string, band?: unknown) => { played.push([hex, band]); };
+  ir.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
+  await ir._payload.liveFetchAndOpen(10);
+  await ir._payload.runLiveTest();
+  assert.deepEqual(played[1], ["0a 4f 22", null]);
+});
+
+test("RF learn skips the source menu and arms the hub's RF receiver", async () => {
+  const { host, calls } = learnHost();
+  let band: unknown = "unset";
+  const rfHost = {
+    ...host,
+    learnFromHub: async (onEvent: LearnEventSink, timeoutS: number, rfBand?: unknown) => {
+      band = rfBand;
+      return host.learnFromHub(onEvent, timeoutS);
+    },
+  };
+  const element = liveRfDevice();
+  element.irLearn = rfHost;
+  element._payload.openAddWithSnapshot(1, null);
+  assert.equal(element._learnAvailable(), true);
+
+  await element._learn.enter();
+  await settle();
+  assert.equal(element._learn.view, "hub");
+  assert.equal(band, 433);
+  // No Home Assistant source for RF: no inbox, no consumer lookup.
+  assert.equal(calls.emissionSink, null);
+  assert.equal(calls.consumersCalls, 0);
+
+  calls.learnEvents!({ state: "listening", timeout_s: 60 });
+  assert.match(templateText(element._learn.renderHub()), /RF remote near the hub/);
+
+  calls.learnEvents!({ state: "learned", payload_hex: "000903e01e5c01", band: 433, code_type: 0x1d });
+  assert.equal(element._learn.view, "off");
+  assert.equal(element._payload.rawDraft, "00 09 03 e0 1e 5c 01");
+  assert.equal(element._learn.sourceNote, TOOLS_CARD_STRINGS.backup.learnRfLearned(433));
+});
+
+test("RF learn: Back leaves learn mode instead of opening a menu", async () => {
+  const { host, calls } = learnHost();
+  const element = liveRfDevice("rf_315mhz");
+  element.irLearn = host;
+  element._payload.openAddWithSnapshot(1, null);
+
+  await element._learn.enter();
+  await settle();
+  calls.learnEvents!({ state: "error", error_code: "rf_learn_failed" });
+  assert.equal(element._learn.hubLearnIsTerminal(), true);
+  assert.match(templateText(element._learn.renderHub()), /could not read that RF signal/);
+
+  element._learn.backToMenu();
+  assert.equal(element._learn.view, "off");
+});
+
+test("adding a raw RF code names its record type for the sync", () => {
+  const element = liveRfDevice("rf_315mhz");
+  const changes = collectBundleChanges(element);
+  element._payload.openAddWithSnapshot(1, null);
+  element._payload.nameDraft = "Fan off";
+  element._payload.rawDraft = "00 09 03 e0 1e 5c 01";
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const added = (changes[0] as any).devices[0].commands.find((c: any) => c.name === "Fan off");
+  assert.equal(added.restore_data.library_type, 0x1e);
+  assert.equal(added.restore_data.data_hex, "00 09 03 e0 1e 5c 01");
 });

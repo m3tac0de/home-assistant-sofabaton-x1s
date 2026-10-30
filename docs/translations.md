@@ -83,6 +83,8 @@ setup notice that stays English) goes on the test's allowlist with a reason.
 
 - Keep product and feature names unchanged: `Sofabaton`, `Home Assistant`,
   `Wifi Commands`, `Wifi Events`, and `MQTT Discovery`.
+- Translate generic icon descriptions through `backup.entityIconNames` for
+  picker tooltips and accessible labels. Keep service and brand names unchanged.
 - Preserve printed remote-button legends, including capitalization. `EXIT`
   identifies the physical key; it is not the generic UI action “Exit”. Keep
   that name in the Virtual Remote, Key capture, accessible labels, and Control
@@ -92,6 +94,14 @@ setup notice that stays English) goes on the test's allowlist with a reason.
   assignment term per locale and use it throughout both cards; internal keys
   such as `binding*` are implementation details, not translation guidance.
 - Call the callback component the **HTTP listener**, never the HTTP service.
+- In broker setup, **credentials** means the username and password: German
+  `Zugangsdaten`, Spanish `credenciales`, French `identifiants de connexion`,
+  Dutch `inloggegevens`, and Simplified Chinese `登录凭据`. Describe the
+  integration as saving no additional copy; Home Assistant may already store
+  the MQTT credentials being reused.
+- RF device-type labels retain `RF` and `MHz` in English, German, Spanish,
+  French, and Dutch. Simplified Chinese uses `射频` with `MHz`. Record these
+  labels explicitly in complete catalogues, alongside the existing IR labels.
 - Reuse each locale's editor label for **automatic power control** in progress
   messages instead of introducing a second translation for the same feature.
 - Use **Playback** for the generic media-button section. Reserve *transport* for

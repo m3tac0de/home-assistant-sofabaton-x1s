@@ -4,8 +4,8 @@ var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "a
 var s = /* @__PURE__ */ Symbol();
 var o = /* @__PURE__ */ new WeakMap();
 var n = class {
-  constructor(t5, e6, o8) {
-    if (this._$cssResult$ = true, o8 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
+  constructor(t5, e6, o9) {
+    if (this._$cssResult$ = true, o9 !== s) throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");
     this.cssText = t5, this.t = e6;
   }
   get styleSheet() {
@@ -23,18 +23,18 @@ var n = class {
 };
 var r = (t5) => new n("string" == typeof t5 ? t5 : t5 + "", void 0, s);
 var i = (t5, ...e6) => {
-  const o8 = 1 === t5.length ? t5[0] : e6.reduce((e7, s7, o9) => e7 + ((t6) => {
+  const o9 = 1 === t5.length ? t5[0] : e6.reduce((e7, s7, o10) => e7 + ((t6) => {
     if (true === t6._$cssResult$) return t6.cssText;
     if ("number" == typeof t6) return t6;
     throw Error("Value passed to 'css' function must be a 'css' function result: " + t6 + ". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.");
-  })(s7) + t5[o9 + 1], t5[0]);
-  return new n(o8, t5, s);
+  })(s7) + t5[o10 + 1], t5[0]);
+  return new n(o9, t5, s);
 };
-var S = (s7, o8) => {
-  if (e) s7.adoptedStyleSheets = o8.map((t5) => t5 instanceof CSSStyleSheet ? t5 : t5.styleSheet);
-  else for (const e6 of o8) {
-    const o9 = document.createElement("style"), n7 = t.litNonce;
-    void 0 !== n7 && o9.setAttribute("nonce", n7), o9.textContent = e6.cssText, s7.appendChild(o9);
+var S = (s7, o9) => {
+  if (e) s7.adoptedStyleSheets = o9.map((t5) => t5 instanceof CSSStyleSheet ? t5 : t5.styleSheet);
+  else for (const e6 of o9) {
+    const o10 = document.createElement("style"), n7 = t.litNonce;
+    void 0 !== n7 && o10.setAttribute("nonce", n7), o10.textContent = e6.cssText, s7.appendChild(o10);
   }
 };
 var c = e ? (t5) => t5 : (t5) => t5 instanceof CSSStyleSheet ? ((t6) => {
@@ -352,8 +352,8 @@ var S2 = class _S {
 function M(t5, i8, s7 = t5, e6) {
   if (i8 === E) return i8;
   let h7 = void 0 !== e6 ? s7._$Co?.[e6] : s7._$Cl;
-  const o8 = a2(i8) ? void 0 : i8._$litDirective$;
-  return h7?.constructor !== o8 && (h7?._$AO?.(false), void 0 === o8 ? h7 = void 0 : (h7 = new o8(t5), h7._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h7 : s7._$Cl = h7), void 0 !== h7 && (i8 = M(t5, h7._$AS(t5, i8.values), h7, e6)), i8;
+  const o9 = a2(i8) ? void 0 : i8._$litDirective$;
+  return h7?.constructor !== o9 && (h7?._$AO?.(false), void 0 === o9 ? h7 = void 0 : (h7 = new o9(t5), h7._$AT(t5, s7, e6)), void 0 !== e6 ? (s7._$Co ?? (s7._$Co = []))[e6] = h7 : s7._$Cl = h7), void 0 !== h7 && (i8 = M(t5, h7._$AS(t5, i8.values), h7, e6)), i8;
 }
 var R = class {
   constructor(t5, i8) {
@@ -368,13 +368,13 @@ var R = class {
   u(t5) {
     const { el: { content: i8 }, parts: s7 } = this._$AD, e6 = (t5?.creationScope ?? l2).importNode(i8, true);
     P.currentNode = e6;
-    let h7 = P.nextNode(), o8 = 0, n7 = 0, r6 = s7[0];
+    let h7 = P.nextNode(), o9 = 0, n7 = 0, r6 = s7[0];
     for (; void 0 !== r6; ) {
-      if (o8 === r6.index) {
+      if (o9 === r6.index) {
         let i9;
         2 === r6.type ? i9 = new k(h7, h7.nextSibling, this, t5) : 1 === r6.type ? i9 = new r6.ctor(h7, r6.name, r6.strings, this, t5) : 6 === r6.type && (i9 = new Z(h7, this, t5)), this._$AV.push(i9), r6 = s7[++n7];
       }
-      o8 !== r6?.index && (h7 = P.nextNode(), o8++);
+      o9 !== r6?.index && (h7 = P.nextNode(), o9++);
     }
     return P.currentNode = l2, e6;
   }
@@ -454,14 +454,14 @@ var H = class {
   }
   _$AI(t5, i8 = this, s7, e6) {
     const h7 = this.strings;
-    let o8 = false;
-    if (void 0 === h7) t5 = M(this, t5, i8, 0), o8 = !a2(t5) || t5 !== this._$AH && t5 !== E, o8 && (this._$AH = t5);
+    let o9 = false;
+    if (void 0 === h7) t5 = M(this, t5, i8, 0), o9 = !a2(t5) || t5 !== this._$AH && t5 !== E, o9 && (this._$AH = t5);
     else {
       const e7 = t5;
       let n7, r6;
-      for (t5 = h7[0], n7 = 0; n7 < h7.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o8 || (o8 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h7[n7 + 1]), this._$AH[n7] = r6;
+      for (t5 = h7[0], n7 = 0; n7 < h7.length - 1; n7++) r6 = M(this, e7[s7 + n7], i8, n7), r6 === E && (r6 = this._$AH[n7]), o9 || (o9 = !a2(r6) || r6 !== this._$AH[n7]), r6 === A ? t5 = A : t5 !== A && (t5 += (r6 ?? "") + h7[n7 + 1]), this._$AH[n7] = r6;
     }
-    o8 && !e6 && this.j(t5);
+    o9 && !e6 && this.j(t5);
   }
   j(t5) {
     t5 === A ? this.element.removeAttribute(this.name) : this.element.setAttribute(this.name, t5 ?? "");
@@ -572,41 +572,41 @@ var i5 = class {
 
 // node_modules/lit-html/directive-helpers.js
 var { I: t4 } = j;
-var i6 = (o8) => o8;
-var l3 = (o8, t5) => void 0 === t5 ? void 0 !== o8?._$litType$ : o8?._$litType$ === t5;
-var d3 = (o8) => null != o8?._$litType$?.h;
-var r4 = (o8) => void 0 === o8.strings;
+var i6 = (o9) => o9;
+var l3 = (o9, t5) => void 0 === t5 ? void 0 !== o9?._$litType$ : o9?._$litType$ === t5;
+var d3 = (o9) => null != o9?._$litType$?.h;
+var r4 = (o9) => void 0 === o9.strings;
 var s4 = () => document.createComment("");
-var v2 = (o8, n7, e6) => {
-  const l6 = o8._$AA.parentNode, d5 = void 0 === n7 ? o8._$AB : n7._$AA;
+var v2 = (o9, n7, e6) => {
+  const l6 = o9._$AA.parentNode, d5 = void 0 === n7 ? o9._$AB : n7._$AA;
   if (void 0 === e6) {
     const i8 = l6.insertBefore(s4(), d5), n8 = l6.insertBefore(s4(), d5);
-    e6 = new t4(i8, n8, o8, o8.options);
+    e6 = new t4(i8, n8, o9, o9.options);
   } else {
-    const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o8;
+    const t5 = e6._$AB.nextSibling, n8 = e6._$AM, c7 = n8 !== o9;
     if (c7) {
       let t6;
-      e6._$AQ?.(o8), e6._$AM = o8, void 0 !== e6._$AP && (t6 = o8._$AU) !== n8._$AU && e6._$AP(t6);
+      e6._$AQ?.(o9), e6._$AM = o9, void 0 !== e6._$AP && (t6 = o9._$AU) !== n8._$AU && e6._$AP(t6);
     }
     if (t5 !== d5 || c7) {
-      let o9 = e6._$AA;
-      for (; o9 !== t5; ) {
-        const t6 = i6(o9).nextSibling;
-        i6(l6).insertBefore(o9, d5), o9 = t6;
+      let o10 = e6._$AA;
+      for (; o10 !== t5; ) {
+        const t6 = i6(o10).nextSibling;
+        i6(l6).insertBefore(o10, d5), o10 = t6;
       }
     }
   }
   return e6;
 };
-var u3 = (o8, t5, i8 = o8) => (o8._$AI(t5, i8), o8);
+var u3 = (o9, t5, i8 = o9) => (o9._$AI(t5, i8), o9);
 var m2 = {};
-var p3 = (o8, t5 = m2) => o8._$AH = t5;
-var M2 = (o8) => o8._$AH;
-var h3 = (o8) => {
-  o8._$AR(), o8._$AA.remove();
+var p3 = (o9, t5 = m2) => o9._$AH = t5;
+var M2 = (o9) => o9._$AH;
+var h3 = (o9) => {
+  o9._$AR(), o9._$AA.remove();
 };
-var j2 = (o8) => {
-  o8._$AR();
+var j2 = (o9) => {
+  o9._$AR();
 };
 
 // node_modules/lit-html/directives/repeat.js
@@ -622,10 +622,10 @@ var c4 = e4(class extends i5 {
   dt(e6, s7, t5) {
     let r6;
     void 0 === t5 ? t5 = s7 : void 0 !== s7 && (r6 = s7);
-    const l6 = [], o8 = [];
+    const l6 = [], o9 = [];
     let i8 = 0;
-    for (const s8 of e6) l6[i8] = r6 ? r6(s8, i8) : i8, o8[i8] = t5(s8, i8), i8++;
-    return { values: o8, keys: l6 };
+    for (const s8 of e6) l6[i8] = r6 ? r6(s8, i8) : i8, o9[i8] = t5(s8, i8), i8++;
+    return { values: o9, keys: l6 };
   }
   render(e6, s7, t5) {
     return this.dt(e6, s7, t5).values;
@@ -933,10 +933,10 @@ function shortcutsRowEnabled(layout) {
 var SHORTCUT_SLOTS = ["left", "middle", "right"];
 function normalizedShortcutSlot(value) {
   if (!value || typeof value !== "object") return null;
-  const icon7 = String(value.icon ?? "").trim();
+  const icon8 = String(value.icon ?? "").trim();
   const commandId = Number(value.command_id);
-  if (!icon7 || !Number.isFinite(commandId)) return null;
-  return { icon: icon7, command_id: commandId };
+  if (!icon8 || !Number.isFinite(commandId)) return null;
+  return { icon: icon8, command_id: commandId };
 }
 function deviceShortcutsFromConfig(config, deviceId) {
   const result = {};
@@ -3236,11 +3236,18 @@ function currentActivityIdFromRemote(remoteState) {
   if (activityId != null) return Number(activityId);
   return null;
 }
+function appearanceOf(source) {
+  return {
+    ...Number.isInteger(source?.icon) ? { icon: Number(source.icon) } : {},
+    ...Number.isInteger(source?.color_id) ? { color_id: Number(source.color_id) } : {}
+  };
+}
 function normalizeActivities(source) {
   return (Array.isArray(source) ? source : []).map((activity) => ({
     id: Number(activity?.id),
     name: String(activity?.name ?? ""),
-    state: String(activity?.state ?? "")
+    state: String(activity?.state ?? ""),
+    ...appearanceOf(activity)
   })).filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
 function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache) {
@@ -3256,7 +3263,8 @@ function devicesFromRemote(remoteState) {
   return (Array.isArray(list) ? list : []).map((device) => ({
     id: Number(device?.id),
     name: String(device?.name ?? ""),
-    device_class: device?.device_class != null ? String(device.device_class) : void 0
+    device_class: device?.device_class != null ? String(device.device_class) : void 0,
+    ...appearanceOf(device)
   })).filter((device) => Number.isFinite(device.id) && device.name);
 }
 function deviceNameForId(devices, deviceId) {
@@ -3572,7 +3580,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   if (!item || typeof item !== "object") return null;
   const name = String(item.name ?? item.label ?? "").trim();
   if (!name) return null;
-  const icon7 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+  const icon8 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
   const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
   const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
   const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
@@ -3584,7 +3592,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   return {
     __custom: true,
     name,
-    icon: icon7,
+    icon: icon8,
     action: hasAction ? action : null,
     command_id: Number.isFinite(cmd) ? cmd : null,
     device_id: Number.isFinite(dev) ? dev : null,
@@ -3612,7 +3620,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.8";
+var CARD_VERSION = "0.2.9";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -4976,12 +4984,12 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
   const label = capture.label || str().assist.automationAssistName;
-  const icon7 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
+  const icon8 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
     `name: ${yamlScalar(label)}`,
-    `icon: ${icon7}`,
+    `icon: ${icon8}`,
     "tap_action:",
     "  action: perform-action",
     "  perform_" + serviceYaml.substring(2),
@@ -6198,16 +6206,16 @@ var SbKeyButton = class extends BaseElement {
     control.type = "button";
     control.className = "sb-key-control";
     control.disabled = this._disabled;
-    const icon7 = document.createElement("ha-icon");
-    icon7.className = "sb-key-control__icon";
+    const icon8 = document.createElement("ha-icon");
+    icon8.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
     const trailingIcon = document.createElement("ha-icon");
     trailingIcon.className = "sb-key-control__trailing-icon";
-    control.append(icon7, label, trailingIcon);
+    control.append(icon8, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
-    this._iconEl = icon7;
+    this._iconEl = icon8;
     this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
@@ -6856,7 +6864,7 @@ function renderAssistModal(params) {
           </label>
           <a
             class="sb-modal__link"
-            href=${`https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`}
+            href="https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/automation_triggers.md"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -7915,6 +7923,8 @@ function defineHaCardShim() {
 }
 
 // node_modules/@mdi/js/mdi.js
+var mdiAccessPoint = "M4.93,4.93C3.12,6.74 2,9.24 2,12C2,14.76 3.12,17.26 4.93,19.07L6.34,17.66C4.89,16.22 4,14.22 4,12C4,9.79 4.89,7.78 6.34,6.34L4.93,4.93M19.07,4.93L17.66,6.34C19.11,7.78 20,9.79 20,12C20,14.22 19.11,16.22 17.66,17.66L19.07,19.07C20.88,17.26 22,14.76 22,12C22,9.24 20.88,6.74 19.07,4.93M7.76,7.76C6.67,8.85 6,10.35 6,12C6,13.65 6.67,15.15 7.76,16.24L9.17,14.83C8.45,14.11 8,13.11 8,12C8,10.89 8.45,9.89 9.17,9.17L7.76,7.76M16.24,7.76L14.83,9.17C15.55,9.89 16,10.89 16,12C16,13.11 15.55,14.11 14.83,14.83L16.24,16.24C17.33,15.15 18,13.65 18,12C18,10.35 17.33,8.85 16.24,7.76M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
+var mdiAccessPointNetwork = "M4.93,3.93C3.12,5.74 2,8.24 2,11C2,13.76 3.12,16.26 4.93,18.07L6.34,16.66C4.89,15.22 4,13.22 4,11C4,8.79 4.89,6.78 6.34,5.34L4.93,3.93M19.07,3.93L17.66,5.34C19.11,6.78 20,8.79 20,11C20,13.22 19.11,15.22 17.66,16.66L19.07,18.07C20.88,16.26 22,13.76 22,11C22,8.24 20.88,5.74 19.07,3.93M7.76,6.76C6.67,7.85 6,9.35 6,11C6,12.65 6.67,14.15 7.76,15.24L9.17,13.83C8.45,13.11 8,12.11 8,11C8,9.89 8.45,8.89 9.17,8.17L7.76,6.76M16.24,6.76L14.83,8.17C15.55,8.89 16,9.89 16,11C16,12.11 15.55,13.11 14.83,13.83L16.24,15.24C17.33,14.15 18,12.65 18,11C18,9.35 17.33,7.85 16.24,6.76M12,9A2,2 0 0,0 10,11A2,2 0 0,0 12,13A2,2 0 0,0 14,11A2,2 0 0,0 12,9M11,15V19H10A1,1 0 0,0 9,20H2V22H9A1,1 0 0,0 10,23H14A1,1 0 0,0 15,22H22V20H15A1,1 0 0,0 14,19H13V15H11Z";
 var mdiAccount = "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z";
 var mdiAccountGroup = "M12,5.5A3.5,3.5 0 0,1 15.5,9A3.5,3.5 0 0,1 12,12.5A3.5,3.5 0 0,1 8.5,9A3.5,3.5 0 0,1 12,5.5M5,8C5.56,8 6.08,8.15 6.53,8.42C6.38,9.85 6.8,11.27 7.66,12.38C7.16,13.34 6.16,14 5,14A3,3 0 0,1 2,11A3,3 0 0,1 5,8M19,8A3,3 0 0,1 22,11A3,3 0 0,1 19,14C17.84,14 16.84,13.34 16.34,12.38C17.2,11.27 17.62,9.85 17.47,8.42C17.92,8.15 18.44,8 19,8M5.5,18.25C5.5,16.18 8.41,14.5 12,14.5C15.59,14.5 18.5,16.18 18.5,18.25V20H5.5V18.25M0,20V18.5C0,17.11 1.89,15.94 4.45,15.6C3.86,16.28 3.5,17.22 3.5,18.25V20H0M24,20H20.5V18.25C20.5,17.22 20.14,16.28 19.55,15.6C22.11,15.94 24,17.11 24,18.5V20Z";
 var mdiAirConditioner = "M6.59,0.66C8.93,-1.15 11.47,1.06 12.04,4.5C12.47,4.5 12.89,4.62 13.27,4.84C13.79,4.24 14.25,3.42 14.07,2.5C13.65,0.35 16.06,-1.39 18.35,1.58C20.16,3.92 17.95,6.46 14.5,7.03C14.5,7.46 14.39,7.89 14.16,8.27C14.76,8.78 15.58,9.24 16.5,9.06C18.63,8.64 20.38,11.04 17.41,13.34C15.07,15.15 12.53,12.94 11.96,9.5C11.53,9.5 11.11,9.37 10.74,9.15C10.22,9.75 9.75,10.58 9.93,11.5C10.35,13.64 7.94,15.39 5.65,12.42C3.83,10.07 6.05,7.53 9.5,6.97C9.5,6.54 9.63,6.12 9.85,5.74C9.25,5.23 8.43,4.76 7.5,4.94C5.37,5.36 3.62,2.96 6.59,0.66M5,16H7A2,2 0 0,1 9,18V24H7V22H5V24H3V18A2,2 0 0,1 5,16M5,18V20H7V18H5M12.93,16H15L12.07,24H10L12.93,16M18,16H21V18H18V22H21V24H18A2,2 0 0,1 16,22V18A2,2 0 0,1 18,16Z";
@@ -8086,6 +8096,7 @@ var mdiKodi = "M12.03,1C11.82,1 11.6,1.11 11.41,1.31C10.56,2.16 9.72,3 8.88,3.84
 var mdiLamp = "M8,2H16L20,14H4L8,2M11,15H13V20H18V22H6V20H11V15Z";
 var mdiLanConnect = "M4,1C2.89,1 2,1.89 2,3V7C2,8.11 2.89,9 4,9H1V11H13V9H10C11.11,9 12,8.11 12,7V3C12,1.89 11.11,1 10,1H4M4,3H10V7H4V3M3,13V18L3,20H10V18H5V13H3M14,13C12.89,13 12,13.89 12,15V19C12,20.11 12.89,21 14,21H11V23H23V21H20C21.11,21 22,20.11 22,19V15C22,13.89 21.11,13 20,13H14M14,15H20V19H14V15Z";
 var mdiLaptop = "M4,6H20V16H4M20,18A2,2 0 0,0 22,16V6C22,4.89 21.1,4 20,4H4C2.89,4 2,4.89 2,6V16A2,2 0 0,0 4,18H0V20H24V18H20Z";
+var mdiLedOutline = "M12,6A4,4 0 0,0 8,10V16H6V18H9V23H11V18H13V23H15V18H18V16H16V10A4,4 0 0,0 12,6M12,8A2,2 0 0,1 14,10V15H10V10A2,2 0 0,1 12,8Z";
 var mdiLedStrip = "M2.81,8.46L14.83,20.5L15.54,19.78L16.95,21.19L18.36,19.78L16.95,18.36L18.36,16.95L19.78,18.36L21.19,16.95L19.78,15.54L20.5,14.83L8.46,2.81L2.81,8.46M5.64,8.46L8.46,5.64L17.66,14.83L14.83,17.66L5.64,8.46M7.05,8.46L8.46,9.88L9.88,8.46L8.46,7.05L7.05,8.46M9.17,10.59L10.59,12L12,10.59L10.59,9.17L9.17,10.59M11.29,12.71L12.71,14.12L14.12,12.71L12.71,11.29L11.29,12.71M13.41,14.83L14.83,16.24L16.24,14.83L14.83,13.41L13.41,14.83Z";
 var mdiLedStripVariant = "M2.95 3L2 6.91L19.34 11.25L20.29 7.34L2.95 3M6.09 6.89L4.16 6.41L4.64 4.46L6.57 4.94L6.09 6.89M9.94 7.86L8 7.38L8.5 5.42L10.42 5.91L9.94 7.86M13.8 8.82L11.87 8.34L12.35 6.39L14.27 6.87L13.8 8.82M17.65 9.79L15.72 9.31L16.2 7.35L18.13 7.84L17.65 9.79M4.66 12.75L3.71 16.66L21.05 21L22 17.1L4.66 12.75M7.8 16.65L5.88 16.16L6.35 14.21L8.28 14.69L7.8 16.65M11.65 17.61L9.73 17.13L10.2 15.18L12.13 15.66L11.65 17.61M15.5 18.58L13.58 18.09L14.06 16.14L16 16.62L15.5 18.58M19.36 19.54L17.43 19.06L17.91 17.11L19.84 17.59L19.36 19.54M6.25 12.11L11 10.2L17.75 11.89L13 13.8L6.25 12.11Z";
 var mdiLightbulb = "M12,2A7,7 0 0,0 5,9C5,11.38 6.19,13.47 8,14.74V17A1,1 0 0,0 9,18H15A1,1 0 0,0 16,17V14.74C17.81,13.47 19,11.38 19,9A7,7 0 0,0 12,2M9,21A1,1 0 0,0 10,22H14A1,1 0 0,0 15,21V20H9V21Z";
@@ -8133,7 +8144,6 @@ var mdiPauseCircle = "M15,16H13V8H15M11,16H9V8H11M12,2A10,10 0 0,0 2,12A10,10 0 
 var mdiPauseCircleOutline = "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiPencil = "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z";
 var mdiPencilBoxOutline = "M19,19V5H5V19H19M19,3A2,2 0 0,1 21,5V19C21,20.11 20.1,21 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3H19M16.7,9.35L15.7,10.35L13.65,8.3L14.65,7.3C14.86,7.08 15.21,7.08 15.42,7.3L16.7,8.58C16.92,8.79 16.92,9.14 16.7,9.35M7,14.94L13.06,8.88L15.12,10.94L9.06,17H7V14.94Z";
-var mdiPencilOutline = "M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z";
 var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z";
 var mdiPin = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
 var mdiPinOffOutline = "M8,6.2V4H7V2H17V4H16V12L18,14V16H17.8L14,12.2V4H10V8.2L8,6.2M20,20.7L18.7,22L12.8,16.1V22H11.2V16H6V14L8,12V11.3L2,5.3L3.3,4L20,20.7M8.8,14H10.6L9.7,13.1L8.8,14Z";
@@ -8187,6 +8197,7 @@ var mdiSeat = "M4,18V21H7V18H17V21H20V15H4V18M19,10H22V13H19V10M2,10H5V13H2V10M1
 var mdiSeatOutline = "M15,5V12H9V5H15M15,3H9A2,2 0 0,0 7,5V14H17V5A2,2 0 0,0 15,3M22,10H19V13H22V10M5,10H2V13H5V10M20,15H4V21H6V17H18V21H20V15Z";
 var mdiServer = "M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3V5H7V3H5M5,11V13H7V11H5M5,19V21H7V19H5Z";
 var mdiServerNetwork = "M13,19H14A1,1 0 0,1 15,20H22V22H15A1,1 0 0,1 14,23H10A1,1 0 0,1 9,22H2V20H9A1,1 0 0,1 10,19H11V17H4A1,1 0 0,1 3,16V12A1,1 0 0,1 4,11H20A1,1 0 0,1 21,12V16A1,1 0 0,1 20,17H13V19M4,3H20A1,1 0 0,1 21,4V8A1,1 0 0,1 20,9H4A1,1 0 0,1 3,8V4A1,1 0 0,1 4,3M9,7H10V5H9V7M9,15H10V13H9V15M5,5V7H7V5H5M5,13V15H7V13H5Z";
+var mdiShapeOutline = "M11,13.5V21.5H3V13.5H11M9,15.5H5V19.5H9V15.5M12,2L17.5,11H6.5L12,2M12,5.86L10.08,9H13.92L12,5.86M17.5,13C20,13 22,15 22,17.5C22,20 20,22 17.5,22C15,22 13,20 13,17.5C13,15 15,13 17.5,13M17.5,15A2.5,2.5 0 0,0 15,17.5A2.5,2.5 0 0,0 17.5,20A2.5,2.5 0 0,0 20,17.5A2.5,2.5 0 0,0 17.5,15Z";
 var mdiShieldCheck = "M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z";
 var mdiShieldHome = "M11,13H13V16H16V11H18L12,6L6,11H8V16H11V13M12,1L21,5V11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1Z";
 var mdiShieldHomeOutline = "M21,11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1L21,5V11M12,21C15.75,20 19,15.54 19,11.22V6.3L12,3.18L5,6.3V11.22C5,15.54 8.25,20 12,21M11,14H13V17H16V12H18L12,7L6,12H8V17H11V14";
@@ -8219,6 +8230,7 @@ var mdiStove = "M6,14H8L11,17H9L6,14M4,4H5V3A1,1 0 0,1 6,2H10A1,1 0 0,1 11,3V4H1
 var mdiSubtitles = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M4,12H8V14H4V12M14,18H4V16H14V18M20,18H16V16H20V18M20,14H10V12H20V14Z";
 var mdiSubtitlesOutline = "M20,4A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4H20M20,18V6H4V18H20M6,10H8V12H6V10M6,14H14V16H6V14M16,14H18V16H16V14M10,10H18V12H10V10Z";
 var mdiSurroundSound = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M7.76,16.24L6.35,17.65C4.78,16.1 4,14.05 4,12C4,9.95 4.78,7.9 6.34,6.34L7.75,7.75C6.59,8.93 6,10.46 6,12C6,13.54 6.59,15.07 7.76,16.24M12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16M17.66,17.66L16.25,16.25C17.41,15.07 18,13.54 18,12C18,10.46 17.41,8.93 16.24,7.76L17.65,6.35C19.22,7.9 20,9.95 20,12C20,14.05 19.22,16.1 17.66,17.66M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
+var mdiSwapHorizontal = "M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z";
 var mdiSwapVertical = "M9,3L5,7H8V14H10V7H13M16,17V10H14V17H11L15,21L19,17H16Z";
 var mdiSync = "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z";
 var mdiSyncAlert = "M11,13H13V7H11M21,4H15V10L17.24,7.76C18.32,8.85 19,10.34 19,12C19,14.61 17.33,16.83 15,17.65V19.74C18.45,18.85 21,15.73 21,12C21,9.79 20.09,7.8 18.64,6.36M11,17H13V15H11M3,12C3,14.21 3.91,16.2 5.36,17.64L3,20H9V14L6.76,16.24C5.68,15.15 5,13.66 5,12C5,9.39 6.67,7.17 9,6.35V4.26C5.55,5.15 3,8.27 3,12Z";
@@ -8233,6 +8245,7 @@ var mdiThermometer = "M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 1
 var mdiThermostat = "M16.95,16.95L14.83,14.83C15.55,14.1 16,13.1 16,12C16,11.26 15.79,10.57 15.43,10L17.6,7.81C18.5,9 19,10.43 19,12C19,13.93 18.22,15.68 16.95,16.95M12,5C13.57,5 15,5.5 16.19,6.4L14,8.56C13.43,8.21 12.74,8 12,8A4,4 0 0,0 8,12C8,13.1 8.45,14.1 9.17,14.83L7.05,16.95C5.78,15.68 5,13.93 5,12A7,7 0 0,1 12,5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z";
 var mdiTimer = "M19.03 7.39L20.45 5.97C20 5.46 19.55 5 19.04 4.56L17.62 6C16.07 4.74 14.12 4 12 4C7.03 4 3 8.03 3 13S7.03 22 12 22C17 22 21 17.97 21 13C21 10.88 20.26 8.93 19.03 7.39M13 14H11V7H13V14M15 1H9V3H15V1Z";
 var mdiTimerOutline = "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z";
+var mdiTimerSand = "M6,2H18V8H18V8L14,12L18,16V16H18V22H6V16H6V16L10,12L6,8V8H6V2M16,16.5L12,12.5L8,16.5V20H16V16.5M12,11.5L16,7.5V4H8V7.5L12,11.5M10,6H14V6.75L12,8.75L10,6.75V6Z";
 var mdiTimerSandFull = "M6,2V8H6V8L10,12L6,16V16H6V22H18V16H18V16L14,12L18,8V8H18V2H6Z";
 var mdiToggleSwitch = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z";
 var mdiToggleSwitchOff = "M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M7,15A3,3 0 0,1 4,12A3,3 0 0,1 7,9A3,3 0 0,1 10,12A3,3 0 0,1 7,15Z";
@@ -8437,6 +8450,7 @@ var MDI_ICON_PATHS = {
   "kodi": mdiKodi,
   "lamp": mdiLamp,
   "laptop": mdiLaptop,
+  "led-outline": mdiLedOutline,
   "led-strip": mdiLedStrip,
   "led-strip-variant": mdiLedStripVariant,
   "lightbulb": mdiLightbulb,
@@ -8479,6 +8493,7 @@ var MDI_ICON_PATHS = {
   "pause": mdiPause,
   "pause-circle": mdiPauseCircle,
   "pause-circle-outline": mdiPauseCircleOutline,
+  "pencil": mdiPencil,
   "picture-in-picture-bottom-right": mdiPictureInPictureBottomRight,
   "pin": mdiPin,
   "pin-off-outline": mdiPinOffOutline,
@@ -8527,6 +8542,7 @@ var MDI_ICON_PATHS = {
   "seat": mdiSeat,
   "seat-outline": mdiSeatOutline,
   "server": mdiServer,
+  "shape-outline": mdiShapeOutline,
   "shield-check": mdiShieldCheck,
   "shield-home": mdiShieldHome,
   "shield-home-outline": mdiShieldHomeOutline,
@@ -8618,8 +8634,8 @@ var MDI_ICON_PATHS = {
 
 // remote-card/src/shims/ha-icon.ts
 var FALLBACK_PATH = "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z";
-function mdiPathFor(icon7) {
-  const name = String(icon7 ?? "").trim().replace(/^mdi:/, "");
+function mdiPathFor(icon8) {
+  const name = String(icon8 ?? "").trim().replace(/^mdi:/, "");
   if (!name) return null;
   return MDI_ICON_PATHS[name] ?? null;
 }
@@ -8646,10 +8662,10 @@ var SbHaIcon = class extends HTMLElement {
     this._render();
   }
   _render() {
-    const icon7 = this.icon;
-    if (this._rendered === icon7) return;
-    this._rendered = icon7;
-    const path = mdiPathFor(icon7) ?? FALLBACK_PATH;
+    const icon8 = this.icon;
+    if (this._rendered === icon8) return;
+    this._rendered = icon8;
+    const path = mdiPathFor(icon8) ?? FALLBACK_PATH;
     this._shadow.innerHTML = `
       <style>
         :host {
@@ -11437,6 +11453,12 @@ function jobOutcomeText(job) {
   if (job.status === "failed") return "Failed";
   return "Still running on the server; the dock shows when it ends";
 }
+function appearanceBody(appearance) {
+  return {
+    ...appearance.icon != null ? { icon: appearance.icon } : {},
+    ...appearance.colorId != null ? { color_id: appearance.colorId } : {}
+  };
+}
 var PanelApi = class {
   constructor(baseUrl, fetchImpl) {
     /** Called when a request answers 401 for a signed-out browser (the shell shows the sign-in). */
@@ -11661,16 +11683,20 @@ var PanelApi = class {
     return this.request("DELETE", `${this._hub(hubId)}/activities/${activityId}`);
   }
   /** Create an empty activity (a job); the result carries the hub-assigned `activity_id`. */
-  addActivity(hubId, name) {
-    return this.request("POST", `${this._hub(hubId)}/activities`, { body: { name } });
+  addActivity(hubId, name, appearance = {}) {
+    return this.request("POST", `${this._hub(hubId)}/activities`, { body: { name, ...appearanceBody(appearance) } });
   }
   /** Create an empty device of a class the hub can create (a job); the result carries the hub-assigned `device_id`. */
-  addDevice(hubId, name, deviceClass) {
-    return this.request("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass } });
+  addDevice(hubId, name, deviceClass, appearance = {}) {
+    return this.request("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass, ...appearanceBody(appearance) } });
   }
   /** Store the display order of every activity or device, once each (a job). */
   reorderEntities(hubId, kind, order) {
     return this.request("PUT", `${this._hub(hubId)}/${kind === "device" ? "devices" : "activities"}/order`, { body: { order } });
+  }
+  /** An X2's paired remotes and repeaters: `refresh` reads the hub (a few seconds), otherwise the server's last read. */
+  irEmitters(hubId, refresh) {
+    return this.request("GET", `${this._hub(hubId)}/ir-emitters`, { query: `refresh=${refresh ? "true" : "false"}` });
   }
   devices(hubId) {
     return this.request("GET", `${this._hub(hubId)}/devices`);
@@ -11723,6 +11749,10 @@ var PanelApi = class {
   /** Deploy a stale Wifi Device again from its stored spec (a job). */
   redeployWifiDevice(hubId, key) {
     return this.request("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/redeploy`);
+  }
+  /** Test again: the deploy's test press on its own (a job; the press is no press event). The result is the record, `delivery` included. */
+  testWifiDelivery(hubId, key) {
+    return this.request("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/test-delivery`);
   }
   // -- backup and restore ------------------------------------------------------------
   /** Read a full, restorable bundle from the hub (a job); `deviceIds` limits it to those devices, without activities. */
@@ -12041,12 +12071,12 @@ var h6 = e4(class extends i5 {
     const u6 = l3(this.it) ? d4(this.it) : null, h7 = l3(e6) ? d4(e6) : null;
     if (null !== u6 && (null === h7 || u6 !== h7)) {
       const e7 = M2(s7).pop();
-      let o8 = this.et.get(u6);
-      if (void 0 === o8) {
+      let o9 = this.et.get(u6);
+      if (void 0 === o9) {
         const s8 = document.createDocumentFragment();
-        o8 = D(A, s8), o8.setConnected(false), this.et.set(u6, o8);
+        o9 = D(A, s8), o9.setConnected(false), this.et.set(u6, o9);
       }
-      p3(o8, [e7]), v2(o8, void 0, e7);
+      p3(o9, [e7]), v2(o9, void 0, e7);
     }
     if (null !== h7) {
       if (null === u6 || u6 !== h7) {
@@ -12539,6 +12569,1506 @@ function renderTabBar(params) {
   `;
 }
 
+// custom_components/sofabaton_x1s/www/src/strings.ts
+var TOOLS_CARD_STRINGS_EN = {
+  common: {
+    cancel: "Cancel",
+    save: "Save",
+    complete: "Complete",
+    loading: "Loading\u2026",
+    noHubsFound: "No hubs found.",
+    homeAssistantUnavailable: "Home Assistant is not available",
+    homeAssistantContextUnavailable: "Home Assistant context is unavailable",
+    unknownError: "Unknown error",
+    unknownErrorWithLogs: "Unknown error (check Home Assistant logs)",
+    commandFallback: (id) => `Command ${id}`,
+    buttonFallback: (id) => `Button ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    activityFallback: (id) => `Activity ${id}`,
+    macroFallback: (id) => `Macro ${id}`,
+    favoriteFallback: (id) => `Favorite ${id}`,
+    inputFallback: (id) => `Input ${id}`,
+    noInput: "no input",
+    backAria: "Back",
+    closeAria: "Close"
+  },
+  card: {
+    connectivityAria: "Connectivity",
+    toolsMenuAria: "Settings and logs",
+    hubShort: "HUB",
+    appShort: "APP",
+    brand: (version) => `SOFABATON CONTROL PANEL - v${version}`,
+    wifiDeviceFallback: "Wifi device",
+    wifiCommandFallback: "Wifi command",
+    irLongPress: (device, command) => `${device} \u2022 ${command} (long press)`,
+    irPress: (device, command) => `${device} \u2022 ${command}`,
+    previewDescription: "Tools, cache, backups, logs & automations for your hub",
+    editorHeight: "Card height",
+    editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
+    editorAdminOnly: "Only Home Assistant admins can use this card",
+    editorAdminOnlyHint: "Other users see a notice instead of the control panel. This hides the card; it does not restrict the integration's actions.",
+    pickerName: "Sofabaton Control Panel",
+    pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi Commands."
+  },
+  tabs: {
+    cache: "Hub",
+    wifiCommands: "Automation",
+    backup: "Backup",
+    settings: "Settings",
+    logs: "Logs"
+  },
+  tabDocs: {
+    wifi_commands: "Automation documentation",
+    backup: "Backup documentation"
+  },
+  dock: {
+    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them",
+    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup",
+    syncNow: "Sync"
+  },
+  backend: {
+    unavailableTitle: "Backend not available",
+    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting\u2026",
+    versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
+    versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
+    backendExpects: "Backend expects",
+    cardLoaded: "Card loaded",
+    unknownVersion: "unknown",
+    refreshingCache: "Refreshing cache\u2026",
+    hubCommandInProgress: "Hub command in progress\u2026"
+  },
+  sidebarPanel: {
+    // The sidebar entry's name until someone renames it. A product name:
+    // the same in every language.
+    title: "Sofabaton X"
+  },
+  adminOnly: {
+    title: "Admins only",
+    copy: "This control panel is limited to Home Assistant administrators."
+  },
+  hubUnavailable: {
+    title: "Hub unavailable",
+    copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects."
+  },
+  availability: {
+    operationRunning: "Operation running",
+    working: "Working\u2026",
+    appConnectedOnlyLogs: "Only Logs is available while the Sofabaton app is connected.",
+    hubCommandInProgress: "Hub command in progress\u2026",
+    refreshingCache: "Refreshing cache\u2026",
+    unavailable: "Unavailable",
+    refreshDashboard: "Refresh the dashboard to load the updated Sofabaton Control Panel card.",
+    automationUnavailable: "Automation unavailable",
+    backupUnavailable: "Backup unavailable",
+    automationBlockedByProxy: "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
+    blockedByFirmware: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} is the minimum supported version for Control Panel features that change the hub configuration. Update the hub using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`
+  },
+  buttonNames: {
+    151: "C",
+    152: "B",
+    153: "A",
+    154: "Exit",
+    155: "DVR",
+    156: "Play",
+    157: "Guide",
+    158: "Enter (E)",
+    159: "0",
+    160: "Dash (-)",
+    161: "9",
+    162: "8",
+    163: "7",
+    164: "6",
+    165: "5",
+    166: "4",
+    167: "3",
+    168: "2",
+    169: "1",
+    174: "Up",
+    175: "Left",
+    176: "OK",
+    177: "Right",
+    178: "Down",
+    179: "Back",
+    180: "Home",
+    181: "Menu",
+    182: "Vol +",
+    183: "Ch +",
+    184: "Mute",
+    185: "Vol -",
+    186: "Ch -",
+    187: "Rew",
+    188: "Pause",
+    189: "Fwd",
+    190: "Red",
+    191: "Green",
+    192: "Yellow",
+    193: "Blue",
+    198: "Power on",
+    199: "Power off"
+  },
+  errors: {
+    backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
+    irLearnNoSocket: "Learning is unavailable without a websocket connection",
+    logsNoSocket: "Live logs are unavailable without a websocket connection",
+    wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
+    hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
+    anotherOperation: "Another hub operation is already running.",
+    hubNameInvalid: "The hub cannot store this name.",
+    hubRenameFailed: "The hub did not accept the new name.",
+    noHubSelected: "No hub selected.",
+    noHubSelectedLong: "No hub is selected.",
+    cacheRefreshFailed: "Cache refresh failed.",
+    syncFailed: "Sync failed.",
+    activityIdMissing: "The hub did not return the new activity id.",
+    deviceIdMissing: "The hub did not return the new device id.",
+    deviceCreateFailed: "The device could not be created on the hub.",
+    activityCreateFailed: "The activity could not be created on the hub.",
+    activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
+    reorderFailed: "The hub did not confirm the new order.",
+    hubNotReady: "The hub is not ready. Close the Sofabaton app or wait for the running operation, then try again.",
+    hubNoResponse: "The hub did not respond. Try again.",
+    hubRequestFailed: "The hub could not complete this request.",
+    payloadInvalid: "The hub cannot use this payload.",
+    wifiEventsFull: "All Wifi Event slots are in use.",
+    wifiEventPendingDelete: "A deleted Wifi Event is still being removed from the hub. Sync the hub, then try again.",
+    wifiEventNameTaken: "A Wifi Event with this name already exists.",
+    wifiEventNameInvalid: "Enter a Wifi Event name the hub can store.",
+    wifiEventFailed: "The Wifi Event could not be saved.",
+    deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
+    deviceTypeUnsupported: "This device type cannot be created on this hub.",
+    selectedHubUnavailable: "The selected hub is no longer available."
+  },
+  settings: {
+    loading: "Loading\u2026",
+    noHubsFound: "No hubs found.",
+    unknownHubName: "Unknown",
+    activities: "Activities",
+    devices: "Devices",
+    persistentCacheTitle: "Persistent Cache",
+    persistentCacheDescription: "Store activity and device data locally for faster access.",
+    persistentCacheFooter: "GLOBAL",
+    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
+    hubClickActionTitle: "Hub Tab Clicks",
+    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
+    hubClickActionFooter: "GLOBAL",
+    hubClickActionOptionNone: "Do nothing",
+    hubClickActionOptionSend: "Send the command",
+    hubClickActionOptionCopy: "Copy the command",
+    sidebarPanelTitle: "Sidebar Panel",
+    // The name is the panel's sidebar name (renameable while it is shown).
+    sidebarPanelDescription: (name) => `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
+    sidebarPanelFooter: "GLOBAL",
+    sidebarPanelOptionOff: "Off",
+    sidebarPanelOptionAll: "All users",
+    sidebarPanelOptionAdmin: "Admins only",
+    renameSidebarPanel: "Rename sidebar panel",
+    sidebarPanelNameLabel: "Name in the sidebar",
+    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
+    renameHub: "Rename hub",
+    hubNameLabel: "Hub name",
+    hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
+    renamingHub: "Renaming the hub\u2026",
+    hexLoggingTitle: "Hex Logging",
+    hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
+    proxyTitle: "Proxy",
+    proxyDescription: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
+    wifiDeviceTitle: "Wifi Device",
+    wifiDeviceDescription: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
+    findRemoteTitle: "Find Remote",
+    findRemoteDescription: "Make the remote beep so you can locate it.",
+    syncRemoteTitle: "Sync Remote",
+    syncRemoteDescription: "Push the latest configuration to the physical remote."
+  },
+  cache: {
+    loading: "Loading\u2026",
+    noHubsFound: "No hubs found.",
+    persistentCacheOffTitle: "Persistent cache is off",
+    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
+    enablingPersistentCache: "Enabling\u2026",
+    enablePersistentCache: "Enable persistent cache",
+    activityFallback: (id) => `Activity ${id}`,
+    deviceFallback: (id) => `Device ${id}`,
+    favoriteFallback: (commandId) => `Favorite ${commandId}`,
+    macroFallback: (commandId) => `Macro ${commandId}`,
+    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
+    deviceCommandCount: (count) => `${count} ${count === 1 ? "cmd" : "cmds"}`,
+    favorites: "Favorites",
+    macros: "Macros",
+    buttons: "Buttons",
+    noCachedData: "No cached data yet.",
+    noCachedCommands: "No cached commands.",
+    refresh: "Refresh",
+    activities: "Activities",
+    devices: "Devices",
+    refreshAll: "Refresh all",
+    refreshAllAria: "Refresh the whole hub cache",
+    refreshEntryAria: (name) => `Refresh ${name}`,
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add activity",
+    addDevice: "Add device",
+    reorderSync: "Sync to Hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026",
+    reorderingActivities: "Reordering activities\u2026",
+    reorderingDevices: "Reordering devices\u2026",
+    creatingActivity: "Creating activity\u2026",
+    addDeviceTitle: "Add device",
+    addDeviceBody: "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
+    addDevicePlaceholder: "Device name",
+    addDeviceClass: "Device type",
+    addDeviceCancel: "Cancel",
+    addDeviceConfirm: "Create",
+    addDeviceCreating: "Creating\u2026",
+    addDeviceWifiHint: "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
+    creatingDevice: "Creating device\u2026",
+    deviceClassLabels: {
+      ir: "Infrared",
+      wifi_roku: "Roku",
+      wifi_hue: "Hue",
+      wifi_sonos: "Sonos",
+      wifi_ip: "Generic HTTP",
+      wifi_mqtt: "MQTT",
+      rf_433mhz: "RF 433 MHz",
+      rf_315mhz: "RF 315 MHz"
+    }
+  },
+  // Hub-tab row clicks ("send the command" / "copy the command" modes).
+  hubClick: {
+    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
+    contextActivity: "Activity",
+    contextDevice: "Device",
+    kindLabels: {
+      favorite: "Favorite",
+      macro: "Macro",
+      button: "Button",
+      command: "Command"
+    },
+    lovelaceHeading: "Lovelace button code",
+    lovelaceHint: "Copy this to your dashboard YAML:",
+    actionHeading: "Service call (automation)",
+    actionHint: "Use this in your scripts or automations:",
+    noRemoteEntity: "The hub's remote entity is unavailable.",
+    copied: (label) => `Copied "${label}" to notifications.`,
+    sendTooltip: "Click to send this command to the hub",
+    copyTooltip: "Click to copy this command to a notification"
+  },
+  logs: {
+    loading: "Loading log stream\u2026",
+    empty: "No log lines captured for this hub yet.",
+    liveConsole: "Live Console"
+  },
+  cacheRefresh: {
+    label: "Refresh all",
+    running: "Refreshing\u2026",
+    starting: "Starting hub cache refresh\u2026",
+    working: "Reading your hub's configuration\u2026",
+    done: "Hub cache refreshed."
+  },
+  progress: {
+    homeAssistant: "Home Assistant",
+    sofabatonHub: "Sofabaton Hub",
+    working: "Working\u2026",
+    backupTitle: "Creating backup",
+    restoreTitle: "Restoring backup"
+  },
+  backendState: {
+    // Progress/status labels for a running operation — never button
+    // imperatives. Translations must use a progressive/status form.
+    operationBackup: "Creating backup",
+    operationRestore: "Restoring backup",
+    operationCacheRefresh: "Refreshing hub cache",
+    operationEntitySync: "Syncing with hub",
+    operationWifiDeploy: "Syncing Wifi Commands",
+    operationHubWrite: "Working on the hub",
+    working: "Working\u2026",
+    step: (current, total) => `Step ${current} of ${total}`,
+    backupPreparing: "Preparing backup\u2026",
+    backupDevice: (id) => `Backing up device ${id}\u2026`,
+    backupActivity: (id) => `Backing up activity ${id}\u2026`,
+    backupFinalizing: "Finalizing backup\u2026",
+    restoreValidating: "Validating backup\u2026",
+    restoreErasing: "Erasing the destination hub\u2026",
+    restoreDevice: (id) => `Restoring device ${id}\u2026`,
+    restoreActivity: (id) => `Restoring activity ${id}\u2026`,
+    restoreHub: "Restoring hub settings\u2026",
+    restoreCache: "Refreshing the restored hub cache\u2026",
+    cachePreparing: "Preparing hub cache refresh\u2026",
+    cacheDevice: (id) => `Refreshing device ${id}\u2026`,
+    cacheActivity: (id) => `Refreshing activity ${id}\u2026`,
+    cacheFinalizing: "Finalizing hub cache\u2026",
+    entityChecking: "Checking for changes on the hub\u2026",
+    entityWriting: "Applying changes to the hub\u2026",
+    entitySettling: "Waiting for the hub to finish processing the changes\u2026",
+    entityRefreshing: "Refreshing the cached hub state\u2026",
+    entityComplete: "Synced to hub.",
+    // Live-sync engine write steps, keyed by the `step_kind` the engine
+    // reports (proxy_activity_sync). Kinds that target a specific device
+    // take its id; null when the engine did not name one.
+    entityStepActivityRename: "Updating the activity\u2026",
+    entityStepBindingDelete: "Clearing a button assignment\u2026",
+    entityStepBindingWrite: "Writing button assignments\u2026",
+    entityStepCommandAdd: (id) => id == null ? "Adding a command\u2026" : `Adding a command on device ${id}\u2026`,
+    entityStepCommandDelete: (id) => id == null ? "Removing a command\u2026" : `Removing a command on device ${id}\u2026`,
+    entityStepCommandSortRewrite: (id) => id == null ? "Updating the command order\u2026" : `Updating the command order on device ${id}\u2026`,
+    entityStepCommandPayload: (id) => id == null ? "Updating a command\u2026" : `Updating a command on device ${id}\u2026`,
+    entityStepCommandRename: (id) => id == null ? "Renaming a command\u2026" : `Renaming a command on device ${id}\u2026`,
+    entityStepDeviceIp: "Updating the IP address\u2026",
+    entityStepDeviceRename: "Updating the device\u2026",
+    entityStepFavoriteAdd: "Adding a shortcut\u2026",
+    entityStepFavoriteDelete: "Removing a shortcut\u2026",
+    entityStepFavoriteOrder: "Reordering shortcuts\u2026",
+    entityStepIdleBehavior: "Updating automatic power control\u2026",
+    entityStepInputsWrite: (id) => id == null ? "Updating inputs\u2026" : `Updating inputs on device ${id}\u2026`,
+    entityStepMacroDelete: "Removing a macro\u2026",
+    entityStepMacroPowerOn: "Updating the start sequence\u2026",
+    entityStepMacroPowerOff: "Updating the end sequence\u2026",
+    entityStepMacroCustom: "Updating a macro\u2026",
+    entityStepMemberReplay: "Adding a device to the activity\u2026",
+    entityStepRemoteSync: "Syncing the remote\u2026",
+    wifiSyncing: "Syncing Wifi Commands\u2026",
+    // Deploy pipeline stages, keyed by the `phase` the hub reports.
+    wifiStarting: "Starting the sync\u2026",
+    wifiReadingDevice: "Reading the deployed Wifi Device\u2026",
+    wifiEnablingDevice: "Enabling the Wifi Device\u2026",
+    wifiDisablingDevice: "Disabling the Wifi Device\u2026",
+    wifiValidatingActivities: "Checking activities against the hub\u2026",
+    wifiCreatingDevice: "Creating the Wifi Device on the hub\u2026",
+    wifiDeletingDevice: "Removing the previous Wifi Device\u2026",
+    wifiAddingToActivities: "Adding the Wifi Device to activities\u2026",
+    wifiMovingReferences: "Moving activity references to the new Wifi Device\u2026",
+    wifiApplyingFavorites: "Applying activity shortcuts\u2026",
+    wifiApplyingBindings: "Applying activity button assignments\u2026",
+    wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
+    wifiResyncingRemote: "Resyncing the physical remote\u2026",
+    wifiCheckingBroker: "Checking the MQTT broker link\u2026",
+    wifiTestingDelivery: "Testing that button presses reach Home Assistant\u2026",
+    wifiUpdatedInPlace: "Wifi Device updated.",
+    wifiAlreadyCurrent: "Wifi Device already up to date.",
+    wifiDeviceRemoved: "Wifi Device removed \u2014 no commands configured.",
+    wifiComplete: "Wifi Commands synced.",
+    // In-place deploy write steps, keyed by the `step_kind` the pipeline
+    // reports. The command steps carry the user's own command label.
+    wifiStepCommandAdd: (name) => name == null ? "Adding a command\u2026" : `Adding command \u201C${name}\u201D\u2026`,
+    wifiStepCommandPayload: (name) => name == null ? "Updating a command\u2026" : `Updating command \u201C${name}\u201D\u2026`,
+    wifiStepCommandRename: (name) => name == null ? "Renaming a command\u2026" : `Renaming command to \u201C${name}\u201D\u2026`,
+    wifiStepCommandDelete: (name) => name == null ? "Removing a command\u2026" : `Removing command \u201C${name}\u201D\u2026`,
+    wifiStepPowerConfig: "Updating automatic power control\u2026",
+    wifiStepInputConfig: "Updating input configuration\u2026",
+    wifiStepInputSelect: "Updating input selection\u2026",
+    wifiStepActivityJoin: "Adding the device to an activity\u2026",
+    wifiStepActivityLeave: "Removing the device from an activity\u2026",
+    wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepCommandSortRewrite: "Updating the command order\u2026",
+    wifiStepBindingWrite: "Assigning a button\u2026"
+  },
+  activities: {
+    loading: "Loading activities\u2026",
+    selectHub: "Select a hub to edit its activities.",
+    activityFallback: (id) => `Activity ${id}`,
+    // Guard panels (§4.1), rendered inside the editor view.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
+    firmwareUnsupportedTitle: "Hub firmware update required",
+    firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    captureFailedTitle: "Couldn't read the hub",
+    retry: "Retry",
+    back: "Back",
+    // Cache-sourced capture (blob-free structural bundle).
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
+    needsRefreshTitle: "Refresh the hub cache to edit",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
+    // Immediate entity delete (executed on the hub right away).
+    deletingTitle: (kind) => `Deleting ${kind}`,
+    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
+    // Sync flow (§4.5).
+    syncingTitle: "Syncing to your hub",
+    syncingMessage: "Writing your changes to the hub\u2026",
+    wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first\u2026 this can take a minute the first time.",
+    syncSuccess: "Synced to hub.",
+    syncFailedTitle: "Sync didn't finish",
+    syncFailedStep: (step) => `The hub stopped at: ${step}`,
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
+    syncRetry: "Retry sync",
+    syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
+    // The cache moved under an open editor and an edit of the user's was
+    // also changed elsewhere: the user's version was kept.
+    changedElsewhere: (kind) => `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
+    exitUnsyncedTitle: "Unsynced changes",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
+    exitSyncNow: "Sync now",
+    exitWithoutSync: "Leave without syncing",
+    // Dismiss label reused by the sync-success / delete-error banners.
+    discardConfirmCancel: "Keep editing"
+  },
+  backup: {
+    sectionMake: "Make",
+    sectionEdit: "Edit",
+    sectionRestore: "Restore",
+    loading: "Loading backup tools\u2026",
+    selectHub: "Select a hub to manage backups.",
+    creatingSubtitle: "The hub is creating your backup.",
+    readySubtitle: "Your backup is ready.",
+    chooseSubtitle: "Choose what to include in this backup.",
+    enablePersistentCache: "Enable persistent cache to choose backup contents from the card.",
+    completedTitle: "Backup completed",
+    expired: "Backup expired. Start a new backup to download again.",
+    downloaded: "Downloaded",
+    downloadAgain: "Download again",
+    downloadBackup: "Download backup",
+    complete: "Complete",
+    restoreCompletedTitle: "Restore completed",
+    restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
+    restoreCompletedSuccessfully: "Restore completed successfully.",
+    backupCompletedSuccessfully: "Backup completed successfully.",
+    wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
+    restoreRunningSubtitle: "The hub is restoring your backup.",
+    restoreFinishedSubtitle: "Your restore has completed.",
+    restoreChooseSubtitle: "Load a backup file, then choose exactly what to restore. Activities automatically pull in the devices they depend on.",
+    itemsToRestore: "Items to restore",
+    eraseExisting: "Erase existing devices and activities",
+    startRestore: "Start restore",
+    startingBackup: "Starting backup\u2026",
+    startingRestore: "Starting restore\u2026",
+    backupFailed: "Backup failed.",
+    restoreFailed: "Restore failed.",
+    failedPrepareDownload: "Failed to prepare edited backup for download.",
+    enterName: "Enter a name to continue.",
+    renameDialogTitle: "Rename hub",
+    linked: "linked",
+    hubNameRestoreOnlyAria: "Hub name is only applied at restore time when the user opts to wipe the hub.",
+    entireHub: "Entire hub",
+    selectedDevices: "Selected devices",
+    devicesToInclude: "Devices to include",
+    selectedCount: (count) => `${count} selected`,
+    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
+    linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
+    deselectAll: "Deselect all",
+    selectAll: "Select all",
+    noDevicesAvailable: "No devices available.",
+    working: "Working",
+    startBackup: "Start backup",
+    editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
+    chooseBackupFile: "Choose backup file",
+    reorderHint: " Drag the handle on any row to reorder activities and devices.",
+    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
+    macroStepsHelp: "Each step plays a command; set the following wait below the step.",
+    hubName: "Hub name",
+    hubNameNotSet: "(not set)",
+    renameHub: "Rename hub",
+    activities: "Activities",
+    noActivitiesInFile: "This backup file has no activities.",
+    devices: "Devices",
+    noDevicesInFile: "This backup file has no devices.",
+    downloadEditedBackup: "Download edited backup",
+    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
+    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
+    deleteCommandTitle: (name) => `Delete command "${name}"?`,
+    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
+    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
+    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
+    deleteSimpleBody: "This removes it from the loaded backup.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
+    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
+    deleteImpactMembers: (count) => `${count} ${count === 1 ? "device no longer powers" : "devices no longer power"} on and off with this activity`,
+    deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
+    // Live-edit variants: deletions here act on the hub, not a backup file.
+    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+    deleteSimpleBodyLive: "This removes it.",
+    deleteImmediateNote: "This is applied to the hub immediately.",
+    deleteSyncNote: "This change is written to the hub on the next Sync.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Delete",
+    deleteActivityAria: "Delete activity",
+    deleteDeviceAria: "Delete device",
+    deleteCommandAria: "Delete command",
+    addFavoriteDevice: "Device",
+    addFavoriteCommand: "Command",
+    addFavoriteAdd: "Add",
+    addFavoriteCancel: "Cancel",
+    addFavoriteNoDevices: "This backup has no devices with commands to add.",
+    addFavoriteNoCommands: "This device has no commands to add.",
+    addShortcutNoCommandsLeft: "Every command is already a shortcut.",
+    buttonBindingsTitle: "Button assignments",
+    buttonBindingsActivitySub: "Assign remote buttons to a device's command within this activity.",
+    buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
+    buttonBindingsEmpty: "No button assignments configured.",
+    addBinding: "Add assignment",
+    bindingButton: "Button",
+    bindingTargetDevice: "Device",
+    bindingCommand: "Command",
+    bindingEnableLongPress: "Enable long-press assignment",
+    bindingShortPress: "Short press",
+    bindingLongPress: "Long press",
+    bindingIncomplete: "Choose a button and target first.",
+    bindingNoButtons: "Every button on this hub model is already assigned.",
+    bindingNoCommands: "This device has no commands to assign.",
+    bindingNoDevices: "This backup has no devices with commands to assign.",
+    bindingAdd: "Add",
+    bindingSave: "Save",
+    bindingCancel: "Cancel",
+    bindingDialogAddTitle: "Add button assignment",
+    bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
+    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Delete ${name} assignment?`,
+    deleteBindingAria: "Delete assignment",
+    deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
+    // These headings name the hub's switching *behaviour*, not the electrical
+    // supply. Translating the bare noun "Power" led every catalogue to the
+    // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
+    // which reads as a PSU spec — or, in nl/es/fr, as nutrition. Keep the
+    // English explicit so the behaviour is what gets translated.
+    powerSetupTitle: "Power control",
+    powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
+    powerSetupActivitySub: "The startup and shutdown sequence this activity runs.",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Activity membership (power-only members). The sequences are the
+    // management surface: Add device sits beside Add step in the sequence
+    // editor, deleting a power-ref row removes the device, and the power
+    // section shows a one-line roster summary.
+    memberSummary: (names) => `Devices: ${names}`,
+    memberSummaryEmpty: 'No devices yet. Open a sequence and use "Add device".',
+    addMemberButton: "Add device",
+    addMemberTitle: "Add device to this activity",
+    addMemberHelper: "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
+    addMemberConfirm: "Add",
+    addMemberNoneLeft: "All devices are already part of this activity.",
+    removeMemberAria: "Remove device from this activity",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
+    powerControlStayOn: "Stay on between activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
+    inputStepTitle: "Set input",
+    inputStepCommand: "Input command",
+    inputStepNone: "\u2014 no input \u2014",
+    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
+    noMacroSteps: "No steps yet.",
+    addStep: "Add step",
+    stepDialogAddTitle: "Add step",
+    stepDialogEditTitle: "Edit step",
+    stepDevice: "Device",
+    stepCommand: "Command",
+    stepHoldSeconds: "Hold (seconds, 0 = short press)",
+    holdLabel: (seconds) => `Hold ${seconds}s`,
+    stepAdd: "Add",
+    stepSave: "Save",
+    stepCancel: "Cancel",
+    stepNoCommands: "This device has no commands.",
+    stepWaitAria: "Wait after this step (seconds)",
+    stepWaitLabel: "Delay",
+    stepWaitUnit: "s",
+    renameMacroAria: "Rename macro",
+    deleteStepAria: "Delete step",
+    editStepAria: "Edit step",
+    newMacroName: "Macro",
+    shortcutChipCommand: "command",
+    shortcutChipAction: "macro",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
+    editStepsAria: "Edit steps",
+    crumbActivities: "Activities",
+    crumbDevices: "Devices",
+    // Activity-detail copy.
+    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
+    activityRunningTitle: "Buttons on the remote",
+    activityRunningSub: "Which device each remote button controls in this activity.",
+    activityShortcutsTitle: "Shortcuts on the remote screen",
+    activityShortcutsSubSortable: "Commands and macros shown on the remote's screen. Drag the handle to reorder.",
+    activityShortcutsSubStatic: "Commands and macros shown on the remote's screen. Use the move buttons to reorder.",
+    activityShortcutsEmpty: "No shortcuts yet. Add a command or a macro.",
+    // Role-based button assignment (Phase B).
+    roleVolume: "Volume buttons control",
+    roleNavigation: "Navigation and OK control",
+    rolePlayback: "Playback buttons control",
+    roleChannels: "Channel buttons control",
+    roleNumpad: "Number pad control",
+    roleNotUsed: "Not used",
+    roleCustom: "Custom",
+    roleCustomized: (name) => `${name} (customized)`,
+    roleMappedNote: (bound, total) => `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
+    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
+    roleMenuAria: (roleLabel2) => `Choose a device for: ${roleLabel2}`,
+    roleConfirmTitle: "Replace custom button setup?",
+    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
+    roleConfirmReplace: "Replace",
+    roleConfirmCancel: "Cancel",
+    customizeButtonsToggle: "Customize individual buttons",
+    bindingsViewTitle: "Individual buttons",
+    bindingsConfiguredCount: (count) => `${count} configured`,
+    bindingsNoneConfigured: "None customized",
+    // Unified "add to shortcuts" flow.
+    addShortcutButton: "Add",
+    copyShortcutsButton: "Copy",
+    copyShortcutsHeading: "Copy shortcuts from",
+    copyShortcutsCount: (count) => `${count} new`,
+    copyShortcutsNone: "Nothing new",
+    addShortcutTitle: "Add to shortcuts",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Device command",
+    shortcutKindAction: "Macro",
+    shortcutKindWifiEvent: "Wifi Event",
+    macroTargetLabel: "Macro",
+    macroTargetCreateNew: "Create new macro",
+    macroTargetOwnGroup: "In this activity",
+    macroTargetCopyGroup: "Copy from another activity",
+    macroTargetCopyNote: (steps, activity) => `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
+    bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
+    macroTargetNoExisting: "No macros yet. Create one below.",
+    wifiEventTargetLabel: "Wifi Event",
+    wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
+    wifiEventNameLabel: "Event name",
+    wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation \u2192 Events.",
+    wifiEventDeploying: "Staging the Wifi Event\u2026",
+    wifiEventNoneYet: "No Wifi Events yet. Create one below.",
+    wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
+    wifiEventNameRequired: "Enter a name for the new Wifi Event.",
+    addShortcutActionName: "Name",
+    addShortcutActionHelper: "You'll pick the steps next.",
+    addShortcutCommandHelper: "The shortcut shows up under the command's name.",
+    unsaved: "Unsaved",
+    unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
+    renameKind: (kind) => `Rename ${kind}`,
+    managedWifiTitle: "Managed by Wifi Commands",
+    managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
+    managedWifiBody: "Its commands, power, input, and button assignments are configured there \u2014 editing them here would be overwritten on the next sync.",
+    managedWifiRename: "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
+    detailPower: "On/Off",
+    detailNetwork: "Network",
+    detailCommands: "Commands",
+    detailButtons: "Buttons",
+    detailSectionsAria: "Detail sections",
+    editBindingAria: "Edit assignment",
+    editIpAria: "Edit IP address",
+    networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
+    ipv4Description: "IPv4 dotted-decimal address",
+    addCommand: "Add command",
+    addCommandTitle: "Add command",
+    editPayloadTitle: "Edit payload",
+    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. The bin removes a command with the next Sync.",
+    commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
+    newCommandChip: "new command",
+    commandChip: "command",
+    requiredStepChip: "required",
+    buttonChip: "button",
+    ipChip: "ip",
+    thisItem: "this item",
+    noDeviceCommands: "This device does not currently have any commands.",
+    renameCommandAria: "Rename command",
+    commandId: "Command ID",
+    editPayloadAria: "Edit payload",
+    fetchEditCommandAria: "Fetch and edit this command's payload",
+    moveUpAria: "Move up",
+    moveDownAria: "Move down",
+    reorderHandleAria: (label) => `Reorder ${label} (arrow keys)`,
+    deviceClass: "Device class",
+    name: "Name",
+    nameHelper: "Shown on the remote and in every command picker.",
+    verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
+    verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
+    test: "Test",
+    payloadDocsLink: "Payload documentation",
+    sendingToHub: "Sending to the hub\u2026",
+    sentToHub: "Sent to the hub for one-shot playback.",
+    testFailed: "Test failed.",
+    rawPayload: "Raw payload",
+    rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
+    payloadHex: "Payload (hex bytes)",
+    payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
+    prontoHexTab: "Pronto Hex",
+    sofabatonHexTab: "Sofabaton Hex",
+    descriptorTab: "Descriptor",
+    prontoHexHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026", or a supported Unfolded Circle HEX code such as "3;0x4B36D32C;32;0". The editor converts it to Sofabaton bytes automatically.',
+    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
+    invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
+    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
+    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
+    ucHexConverting: "Converting the Unfolded Circle HEX code\u2026",
+    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
+    ucHexUnknownProtocol: "an unknown protocol",
+    ucHexUnsupported: (protocol) => `This Unfolded Circle HEX code uses ${protocol}, which is not supported. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.`,
+    ucHexUnrepresentable: "This Unfolded Circle HEX code does not match its IR protocol's format rules and cannot be converted. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.",
+    ucHexUnavailable: "Unfolded Circle HEX conversion is unavailable because the required infrared-protocols library cannot be loaded in this Home Assistant installation.",
+    ucHexNoHost: "This editor cannot convert Unfolded Circle HEX codes because conversion requires a connection to Home Assistant.",
+    ucHexFailed: "The Unfolded Circle HEX code could not be converted.",
+    // Payload-editor learn mode (IR9).
+    learn: "Learn",
+    learnAria: "Learn a payload from another remote or from Home Assistant",
+    learnBack: "Back",
+    learnTryAgain: "Try again",
+    learnFromHub: "From another remote",
+    learnFromHubDescription: "The hub's receiver listens for one button press from the IR remote whose command you want to learn.",
+    learnFromHa: "From Home Assistant",
+    learnFromHaDescription: "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
+    learnHaChecking: "Checking which integrations use the hub's emitter\u2026",
+    learnHubArming: "Arming the hub's receiver\u2026",
+    learnHubListening: "Point that remote at the hub and press the button once.",
+    learnHubCountdown: (left) => `Listening\u2026 ${left}`,
+    learnHubLearned: (timings, khz) => `Learned from the source remote: ${timings} timing values at ${khz} kHz. Test it, then Save.`,
+    learnHubLearnedRaw: "Learned from the source remote. Test it, then Save.",
+    learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
+    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}).`,
+    learnHubCancelled: "Learning cancelled.",
+    learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnHubFailed: "Learning failed.",
+    learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
+    learnRfAria: "Learn this RF code from the source remote",
+    learnRfListening: (mhz) => `Hold the RF remote near the hub and press the button once (${mhz} MHz).`,
+    learnRfLearned: (mhz) => `Learned a ${mhz} MHz RF code from the source remote. Test it, then Save.`,
+    learnRfFailed: "The hub could not read that RF signal. Try again with the remote closer to the hub.",
+    learnRfRefused: "The hub did not enter RF learning mode. Is the Sofabaton app connected, or a sync running?",
+    learnRfUnsupported: "This hub cannot learn or send RF codes.",
+    learnHaHelper: "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
+    learnHaConsumers: "Integrations using this hub's emitter",
+    learnHaEmpty: "Nothing captured yet.",
+    learnHaNew: "new",
+    learnHaUse: "Use",
+    learnHaSentCount: (count) => `\xD7${count}`,
+    learnHaCaptured: (label) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
+    learnHaUnavailable: "Could not load recently emitted IR commands.",
+    learnJustNow: "just now",
+    learnSecondsAgo: (seconds) => `${seconds} s ago`,
+    learnMinutesAgo: (minutes) => `${minutes} min ago`,
+    learnHoursAgo: (hours) => `${hours} h ago`,
+    rename: "Rename",
+    renameActivity: "Rename activity",
+    renameDevice: "Rename device",
+    // The name, icon and color dialog (the hub's own icons; colors on an X2).
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeIconAndColor: "Change icon and color",
+    changeIcon: "Change icon",
+    appearanceIcon: "Icon",
+    appearanceServices: "Services",
+    entityIconNames: {
+      "Monitor": "Monitor",
+      "Picture": "Picture",
+      "Music": "Music",
+      "Film reel": "Film reel",
+      "TV": "TV",
+      "Gamepad": "Gamepad",
+      "Game controller": "Game controller",
+      "Router": "Router",
+      "Wifi router": "Wifi router",
+      "Projector": "Projector",
+      "Receiver": "Receiver",
+      "Pendant lamp": "Pendant lamp",
+      "Media player": "Media player",
+      "Curved TV": "Curved TV",
+      "Download": "Download",
+      "Satellite dish": "Satellite dish",
+      "Disc": "Disc",
+      "Set-top box": "Set-top box",
+      "Cassette deck": "Cassette deck",
+      "Projector, front": "Projector, front",
+      "Smart speaker": "Smart speaker",
+      "Air conditioner": "Air conditioner",
+      "Desk fan": "Desk fan",
+      "Ceiling fan": "Ceiling fan",
+      "Table lamp": "Table lamp",
+      "Power outlet": "Power outlet",
+      "Wall switch": "Wall switch",
+      "Presentation screen": "Presentation screen",
+      "Party": "Party",
+      "Sleep": "Sleep",
+      "HD TV": "HD TV",
+      "TV on a stand": "TV on a stand",
+      "3D glasses": "3D glasses",
+      "TV with menu": "TV with menu",
+      "Clapperboard": "Clapperboard",
+      "Handheld console": "Handheld console",
+      "Retro console": "Retro console",
+      "Home": "Home",
+      "Computer": "Computer",
+      "Speaker": "Speaker",
+      "Speakers": "Speakers",
+      "Bulb": "Bulb",
+      "AV receiver": "AV receiver",
+      "Disc player": "Disc player"
+    },
+    entityColorName: (colorId) => ["Gray", "Red", "Navy", "Purple", "Green", "Salmon", "Cyan", "Slate", "Teal", "Sand", "Sky", "Lavender"][colorId - 1] ?? "Gray",
+    renameMacro: "Rename macro",
+    renameFavorite: "Rename favorite",
+    renameCommand: "Rename command",
+    ipAddress: "IP address",
+    noPayloadReturned: "The hub returned no payload for this command.",
+    newCommandNameRequired: "Enter a name for the new command.",
+    descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
+    payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
+    noFreeCommandSlot: "This device has no free command slot left.",
+    nothingToTest: "Nothing to test yet.",
+    ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
+    steps: "Steps",
+    buttonCatalog: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      home: "Home",
+      back: "Back",
+      menu: "Menu",
+      volumeUp: "Volume up",
+      volumeDown: "Volume down",
+      mute: "Mute",
+      channelUp: "Channel up",
+      channelDown: "Channel down",
+      rewind: "Rewind",
+      pause: "Pause",
+      forward: "Fast forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      exit: "EXIT",
+      dvr: "DVR",
+      play: "Play",
+      guide: "Guide",
+      num0: "0",
+      num1: "1",
+      num2: "2",
+      num3: "3",
+      num4: "4",
+      num5: "5",
+      num6: "6",
+      num7: "7",
+      num8: "8",
+      num9: "9",
+      numDash: "Dash (-)",
+      numEnter: "Enter (E)",
+      navigation: "Navigation",
+      volumeChannel: "Volume & channel",
+      transport: "Playback",
+      colour: "Color",
+      extra: "Extra",
+      numpad: "Number pad",
+      unknown: (code) => `Button 0x${code}`
+    },
+    powerOn: "Power on",
+    powerOff: "Power off",
+    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
+    inputStepLabel: (device, input) => `Input \xB7 ${device}: ${input}`,
+    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
+  },
+  hub: {
+    firmwareVersion: (version) => `FW: v${version}`,
+    productVersion: (version) => `Sofabaton ${version}`,
+    firmwareUpdateRequired: "Firmware update required",
+    firmwareUpdateRecommended: "Firmware update recommended",
+    firmwareUpdateTooltip: (recommended, required, unsupported) => {
+      const update = "Update the hub using the Sofabaton app.";
+      if (unsupported) {
+        const recommendation = String(recommended) === String(required) ? "" : ` Firmware version ${recommended} or newer is recommended because it contains fixes for known issues.`;
+        return `Firmware version ${required} or newer is required for Control Panel configuration changes.${recommendation} ${update}`;
+      }
+      return `Firmware version ${recommended} or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. ${update}`;
+    }
+  },
+  decodedPayload: {
+    httpTitle: "HTTP request",
+    httpSubtitle: "Configure the HTTP request sent by the hub. Set its destination using the Host and Port fields.",
+    hostIpv4: "Host (IPv4)",
+    port: "Port",
+    httpMethod: "HTTP method",
+    path: "Path",
+    extraHeaders: "Extra headers",
+    extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
+    contentType: "Content type",
+    body: "Body",
+    protocol: "Protocol",
+    host: "Host",
+    hostOrNameExample: "An IPv4 address or a host name, e.g. 192.168.2.77 or ha.example.com",
+    hostRequired: "Enter the host.",
+    hostInvalid: "Enter only the host here. The port and the path have their own fields.",
+    hostNeedsIpv4: "Enter an IPv4 address, e.g. 192.168.2.77. Host names and https need an X2 hub.",
+    portInvalid: "The port must be a whole number from 1 to 65535.",
+    urlMethodUnsupported: "Use GET, POST or PUT. Commands with https or a host name, and commands made in the Sofabaton app, support only these.",
+    headerLineInvalid: "Each header line needs a name and a colon, e.g. X-Api-Key: 123.",
+    rokuTitle: "Roku ECP request",
+    ecpPath: "ECP URL path",
+    ecpPathExample: "e.g. /launch/12 or /keypress/Home",
+    hueTitle: "Hue REST request",
+    sonosTitle: "Sonos UPnP request",
+    bodyBlockSubtitle: "Body block is injected verbatim between Host headers and the network write.",
+    urlPath: "URL path",
+    bodyBlock: "Body block (raw wire string)",
+    bodyBlockHelper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count.",
+    mqttTitle: "MQTT identifiers",
+    mqttSubtitle: "Both bytes are ignored by the hub: at press time it publishes its own device and key IDs to the broker. There is nothing to configure.",
+    mqttDeviceId: "Device ID (ignored by the hub)",
+    mqttCommandId: "Command ID (ignored by the hub)",
+    irTitle: "Descriptive IR payload",
+    irSubtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
+    descriptor: "Descriptor",
+    descriptorExample: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2",
+    invalidObject: "Backup file must contain a JSON object.",
+    invalidBundle: "Backup file is not a Sofabaton hub bundle.",
+    invalidSchema: (expected, actual) => `Backup file schema_version must be ${expected} (got ${String(actual)}).`,
+    structuralBundle: "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
+    missingArrays: "Backup file is missing devices or activities arrays.",
+    missingSourceModel: "Backup file is missing its source hub model, so compatibility cannot be verified.",
+    unknownDestinationModel: "The destination hub model is unknown, so restore compatibility cannot be verified.",
+    incompatibleModels: (source, destination) => `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`
+  },
+  wifiCommands: {
+    deployingTitle: "Deploying Wifi Commands",
+    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
+    addDeviceButton: "Add",
+    addDevice: "Add Wifi Device",
+    deleteDeviceAria: "Delete Wifi Device",
+    emptyDevices: "No Wifi Devices configured yet. Add one to start assigning command slots.",
+    maximumDevices: "Maximum number of devices reached",
+    configuredSlots: (count) => `${count} slot${count === 1 ? "" : "s"}`,
+    unableSaveAction: "Unable to save Action",
+    hubEventActionsLoadFailed: "The event actions could not be loaded, so they cannot be changed right now.",
+    hubEventResetFailed: "The action was not cleared. Try again.",
+    commandsLoadFailed: "This device's commands could not be loaded, so they cannot be changed right now.",
+    commandsSaveFailed: "The change was not saved. Try again.",
+    retryLoad: "Try again",
+    hubCommandInProgress: "Hub command in progress\u2026",
+    idle: "Idle",
+    unableLoadSyncStatus: "Unable to load sync status",
+    noTargetEntity: "No target entity",
+    commandNameLeadingSpace: "Command name must start with a non-space character.",
+    navigationGroup: "Navigation",
+    transportGroup: "Volume & Channel",
+    mediaGroup: "Playback",
+    abcGroup: "ABC",
+    colorGroup: "Color",
+    inputCommand: "Input command",
+    inputFor: (activity) => `Input for ${activity}`,
+    inActivities: (count) => `in ${count} ${count === 1 ? "activity" : "activities"}`,
+    unconfiguredCommand: "Unconfigured command",
+    powerBothCommand: "Power ON and OFF command",
+    powerOnCommand: "Power ON command",
+    powerOffCommand: "Power OFF command",
+    replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
+    replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot, activities) => `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot, device, activities) => `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
+    none: "None",
+    commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
+    syncingDeviceFallback: "Syncing Wifi Device\u2026",
+    syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
+    // Status line while the sync spins up — not the Sync button label.
+    startSync: "Starting sync",
+    syncMessageFailed: "Last sync failed.",
+    // Why a sync stopped, shown in the dock (one per backend failure code).
+    syncFailedAnotherSync: "Another Wifi Commands sync is already running.",
+    syncFailedHubBusy: "The hub is busy with another operation. Try again when it finishes.",
+    syncFailedPortInUse: "The Wifi Device could not be enabled: its port is in use.",
+    syncFailedActivitiesChanged: "Activities on the hub changed. Re-select this Wifi Device's activities, save, and sync again.",
+    syncFailedHubNoAnswer: "The hub did not answer. Sync again.",
+    syncFailedDeviceAmbiguous: "More than one Wifi Device on the hub matches this one.",
+    syncFailedPowerCommand: "The power on or off command is not one of this device's commands.",
+    syncFailedDelete: "The hub did not delete the previous Wifi Device.",
+    syncFailedCreate: "The hub did not create the Wifi Device.",
+    syncFailedReadback: "The hub did not store the commands as sent; the previous Wifi Device was kept.",
+    syncFailedAttach: "The Wifi Device could not be added to every activity.",
+    syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
+    syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
+    syncFailedRejected: "The hub refused a change. Sync again.",
+    syncFailedRedeployNeeded: "Sync this Wifi Device first, then test it.",
+    syncFailedMqttNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
+    syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
+    syncFailedGeneric: "The sync stopped. Sync again.",
+    syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
+    syncFailedRemoteSyncing: "The hub is updating its remote. Wait until the remote is done, then sync again.",
+    syncShortRunning: "Syncing",
+    syncShortFailed: "Sync failed",
+    syncShortNeeded: "Sync needed",
+    deviceDeleting: "Deleting\u2026",
+    deviceSynced: "Synced",
+    actionButtonUnavailable: "Unavailable",
+    actionButtonSyncing: "Syncing\u2026",
+    actionButtonBusy: "Busy",
+    actionButtonSyncToHub: "Sync to Hub",
+    actionButtonUpToDate: "Up to date",
+    createDeviceBusy: "Creating Wifi Device\u2026",
+    deviceName: "Device name",
+    createDeviceNameRequired: "Device name is required.",
+    createDeviceFailed: "Unable to create Wifi Device",
+    deleteDeviceBusy: "Deleting Wifi Device\u2026",
+    deleteDeviceFailed: "Unable to delete Wifi Device",
+    createModalCancel: "Cancel",
+    createModalCreate: "Create",
+    transportLabel: "Delivery method",
+    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach its configured broker.",
+    transportHttpHint: "The hub calls Home Assistant directly over your network.",
+    // The standalone server panel's create flow (no switch there yet).
+    transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
+    transportChangeNote: "You can change the delivery method later in the device's editor on the Hub tab.",
+    transportPillDeployedTitle: "Current delivery method",
+    transportPillPreviewTitle: "Selected delivery method",
+    transportSwitching: (transport) => `Switching delivery to ${transport}\u2026`,
+    deleteModalTitle: "Delete Wifi Device?",
+    deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
+    deleteModalDelete: "Delete",
+    clearSlotTitle: "Clear command slot?",
+    clearSlotSubtitle: "Resets configuration.",
+    clearSlotNo: "No",
+    clearSlotYes: "Yes",
+    makeCommand: "Make Command",
+    noActionConfigured: "No Action configured",
+    commandSlotTitle: (slotIndex) => `Command Slot ${slotIndex + 1}`,
+    commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
+    commandDisplayName: "Command Display Name",
+    advanced: "Advanced",
+    activityInput: "Perform this command when an activity starts",
+    activityInputHint: "The command is set as the activity's input on the hub, so it runs during the activity's startup sequence.",
+    activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
+    noActivitiesForHub: "No activities available for this hub.",
+    activityInputLabel: "Activity that performs this command",
+    devicePowerOnLabel: "When the hub turns this device ON",
+    devicePowerOffLabel: "When the hub turns this device OFF",
+    devicePowerNothing: "Nothing",
+    devicePowerHint: "Runs as part of this device's power sequence in your activities. Synced to the hub.",
+    devicePowerPerform: (commandName) => `perform ${commandName}`,
+    hubEventsTitle: "Hub Events",
+    hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
+    hubEventPowerOff: "When the hub is switched OFF",
+    hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
+    hubEventActivityStart: "When any activity starts",
+    hubEventActivityStops: "and when one stops",
+    hubEventActivityStopModalTitle: "When any activity stops",
+    hubEventDoNothing: "do nothing",
+    hubEventPerform: (service) => `perform ${service}`,
+    hubEventClearTitle: "Reset to do nothing",
+    hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
+    wifiCommandsTabLabel: "Wifi Commands",
+    eventsTabLabel: "Events",
+    wifiEventsTitle: "Wifi Events",
+    wifiEventsSubtitle: "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
+    wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
+    // Shared by the WIFI EVENTS and ACTIVITY EVENTS sections: the header
+    // count pill and the expander link that reveals unconfigured rows.
+    eventsConfiguredPill: (configured, total) => `${configured} of ${total} configured`,
+    eventsShowUnconfigured: (count) => `Show ${count} unconfigured\u2026`,
+    wifiEventRowPress: (name) => `When ${name} is pressed`,
+    wifiEventModalTitle: (name) => `When ${name} is pressed`,
+    wifiEventNeedsSyncBadge: "needs sync",
+    wifiEventsRecordNeedsSyncNotice: "The Wifi Events device has changes waiting for a sync. Open Hub \u2192 Devices \u2192 Wifi Events \u2192 Edit and press Sync.",
+    // Orphaned-config notice, split around the clickable phrase so locales
+    // can place it anywhere in the sentence.
+    wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
+    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
+    wifiEventsStaleNoticeSuffix: ".",
+    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
+    wifiEventsStaleConfirmRemove: "Remove",
+    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
+    activityEventsTitle: "Activity Events",
+    activityEventsSubtitle: "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
+    activityEventStarts: (name) => `When ${name} starts`,
+    activityEventStops: "and when it stops",
+    activityEventStartModalTitle: (name) => `When ${name} starts`,
+    activityEventStopModalTitle: (name) => `When ${name} stops`,
+    activityEventFallbackName: (id) => `Activity ${id}`,
+    noActivitiesForEvents: "No activities on this hub yet.",
+    favorite: "Set as favorite",
+    physicalButtonAssignment: "Physical button assignment",
+    enableLongPress: "Enable long press",
+    applyToActivities: "Apply to these activities",
+    actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
+    shortPress: "Short press",
+    longPress: "Long press",
+    selectLongPressAction: "Select long-press action",
+    selectTriggeredAction: "Select triggered action",
+    action: "Action",
+    save: "Save",
+    keyLabels: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      ok: "OK",
+      back: "Back",
+      home: "Home",
+      menu: "Menu",
+      volup: "Vol +",
+      voldn: "Vol -",
+      mute: "Mute",
+      chup: "Ch +",
+      chdn: "Ch -",
+      guide: "Guide",
+      dvr: "DVR",
+      play: "Play",
+      exit: "EXIT",
+      rew: "Rewind",
+      pause: "Pause",
+      fwd: "Fast forward",
+      red: "Red",
+      green: "Green",
+      yellow: "Yellow",
+      blue: "Blue",
+      a: "A",
+      b: "B",
+      c: "C"
+    }
+  },
+  // How Wifi Command presses reach Home Assistant: the deploy's test press
+  // and an X2's MQTT broker.
+  wifiDelivery: {
+    title: "How button presses reach Home Assistant",
+    pathListener: (target) => `The hub calls this integration's HTTP listener at ${target}.`,
+    pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; Home Assistant listens on ${broker}.` : "The hub publishes to its MQTT broker.",
+    allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on the Home Assistant host; with Docker, publish port ${port}.`,
+    allowMqtt: (broker) => broker ? `The hub must reach the same broker Home Assistant uses (${broker}), and the broker must let it publish.` : "The hub must reach the same broker Home Assistant uses, and the broker must let it publish.",
+    notDelivered: "The test command did not reach Home Assistant.",
+    notSent: "Could not send the test command. Try again.",
+    delivered: (seconds) => `Test command received (${seconds} s).`,
+    testAgain: "Test again",
+    testing: "Testing\u2026",
+    testFailed: "The test could not run. Try again.",
+    networkingGuide: "Networking guide",
+    syncedNotDeliveredDock: "Synced, but the test command did not reach Home Assistant.",
+    // The delivery pill (Hub editor and Wifi Commands device view) and its dropdown.
+    pillLabel: (method) => `Delivery method: ${method}`,
+    pillAttention: "Button presses need attention.",
+    test: "Test",
+    notTested: "Not tested yet.",
+    notTestedHint: "Test sends one command from the hub and waits for it here.",
+    pressReceived: "A button press arrived.",
+    notOnHub: "Not on the hub yet.",
+    notOnHubHint: "The first Sync puts it there and sends a test command.",
+    needsSync: "Sync this device before button presses can reach Home Assistant.",
+    brokerHaFix: "Button presses can't arrive until it is. Check the MQTT integration in Home Assistant.",
+    onHubTag: "on the hub",
+    afterSyncTag: "after Sync",
+    switchPending: (next, current) => `Switches to ${next} on the next Sync. Until then, button presses keep using ${current}.`,
+    undo: "Undo",
+    mqttNeedsIntegration: "MQTT needs Home Assistant's MQTT integration.",
+    firstSyncMethod: "The first Sync uses this method.",
+    // The create dialog's MQTT option, checked before anything is written.
+    mqttChecking: "Checking the broker link\u2026",
+    mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
+    mqttHubNotConnected: "The hub isn't connected to an MQTT broker. Set it up now?",
+    setUpNow: "Set it up",
+    useHttpInstead: "Use HTTP",
+    // The hub's broker (Settings tab line and the setup dialog).
+    brokerTitle: "MQTT broker",
+    brokerLoading: "Checking the hub's broker connection\u2026",
+    brokerConnected: "The hub is connected to an MQTT broker.",
+    brokerNotConnected: "The hub is not connected to an MQTT broker.",
+    brokerUnknown: "The hub did not report its broker connection.",
+    brokerHa: (broker) => `Home Assistant's broker: ${broker}.`,
+    brokerHaNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
+    brokerSetUp: "Set up",
+    brokerChange: "Change",
+    brokerDialogTitle: "Connect the hub to an MQTT broker",
+    brokerIntro: "The hub publishes button presses to this broker. Enter the broker's IPv4 address, reachable from the hub's network.",
+    brokerHostLabel: "Broker address",
+    brokerPortLabel: "Port",
+    brokerTlsWarning: "Home Assistant's broker uses TLS on this port; the hub may not support it.",
+    brokerUseHaLogin: (username) => username ? `Use Home Assistant's MQTT credentials (${username})` : "Use Home Assistant's MQTT credentials",
+    brokerUseSeparateLogin: "Use separate credentials",
+    brokerUsernameLabel: "Username",
+    brokerPasswordLabel: "Password",
+    brokerLoginNote: "The hub stores these credentials. This integration sends them to the hub without saving an additional copy.",
+    brokerReplaceWarning: "This replaces any MQTT broker settings saved on the hub, which the Sofabaton app or another MQTT integration may rely on. The current settings cannot be read or restored here.",
+    brokerConnect: "Connect",
+    brokerConnecting: "Connecting. The hub tries for up to 15 seconds\u2026",
+    brokerConnectedResult: "The hub is connected to the broker.",
+    brokerFailed: "The hub could not connect. Check the address, port and credentials, and that the hub's network can reach the broker.",
+    brokerNoAnswer: "The hub did not respond. Try again.",
+    brokerHostRequired: "Enter a valid IPv4 address for the broker.",
+    brokerTryAgain: "Try again",
+    syncedNotTestedDock: "Synced, but delivery could not be tested.",
+    brokerPortInvalid: "Enter a port number from 1 to 65535.",
+    brokerUsernameTooLong: "The username is too long for the hub. Use a shorter username or separate credentials.",
+    brokerPasswordTooLong: "The password is too long for the hub. Use a shorter password or separate credentials.",
+    brokerCredentialsTooLong: "The username and password together are too long for the hub. Use shorter credentials.",
+    brokerDone: "Done"
+  },
+  // The IR pill of an X2 IR device (the Hub editor's device header, the
+  // device list rows; the server panel takes the same table) and its
+  // dropdown: which emitters send the device's IR.
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "IR emitters",
+    pillAttention: "An emitter needs attention.",
+    pillPending: "Changes on the next Sync.",
+    rowAttention: "An emitter of this device needs attention.",
+    title: "Where this device's IR comes from",
+    intro: "Pick the emitters that send this device's commands.",
+    scope: "This applies to commands sent to this device. Test plays and the Home Assistant Infrared entity always fire from the hub.",
+    checking: "Checking the paired remotes and repeaters\u2026",
+    readBusy: "The hub is busy, so the paired remotes and repeaters weren't checked.",
+    readUnavailable: "The Sofabaton app is connected to the hub, so the paired remotes and repeaters weren't checked.",
+    readNoAnswer: "The hub didn't list its paired remotes and repeaters.",
+    readFailed: "The paired remotes and repeaters couldn't be checked.",
+    readKept: "The rows show the last check.",
+    checkAgain: "Check again",
+    sendFrom: "Send IR from",
+    hub: "Hub",
+    hubSub: "Built-in emitter and IR ports 1 and 2",
+    hubChoices: "Hub emitters",
+    all: "All",
+    builtin: "Built-in",
+    port1: "Port 1",
+    port2: "Port 2",
+    port: "Port",
+    hubCustom: (mix) => mix === "ports" ? "Now: IR ports 1 and 2" : mix === "builtin_port1" ? "Now: built-in emitter and IR port 1" : "Now: built-in emitter and IR port 2",
+    hubCustomNote: "Kept as it is until you pick one of the choices.",
+    repeaterNumber: (number) => `Repeater ${number}`,
+    remoteNumber: (number) => `Remote ${number}`,
+    repeaterChoices: (name) => `${name} emitters`,
+    online: "online",
+    offline: "offline",
+    notPaired: "no longer paired",
+    remoteOnNote: "The hub passes this device's commands to the remote, which sends them from its own emitter.",
+    repeaterOffline: (name) => `${name} is offline`,
+    repeaterOfflineHint: "Commands sent through it don't reach the device until it's back. Check its power and its distance to the hub.",
+    notPairedTitle: (name) => `${name} is no longer paired`,
+    notPairedHint: "Commands routed to it cannot reach the device. Select another emitter before deselecting this one, or pair it again in the Sofabaton app.",
+    remoteOnly: (count) => count === 1 ? "Commands sent to this device fire from the remote only." : "Commands sent to this device fire from the remotes only.",
+    repeaterOnly: (count) => count === 1 ? "Commands sent to this device fire from the repeater only." : "Commands sent to this device fire from the repeaters only.",
+    noHub: "Commands sent to this device fire from the picked remotes and repeaters only.",
+    noHubHint: "The hub's own emitters stay quiet for it.",
+    duplicateHint: "Pick only the emitters you need. Two emitters that both reach the device send each command twice.",
+    lastOneHint: "At least one emitter stays picked.",
+    undo: "Undo"
+  }
+};
+var currentLanguage2 = "en";
+var currentStrings2 = TOOLS_CARD_STRINGS_EN;
+function isPlainObject3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function toolsCardLanguage() {
+  return currentLanguage2;
+}
+function valueAtPath(path) {
+  let value = currentStrings2;
+  for (const key of path) value = value?.[key];
+  return value;
+}
+var proxyCache = /* @__PURE__ */ new Map();
+function liveStringsProxy(path) {
+  const cacheKey = path.map(String).join(".");
+  const cached = proxyCache.get(cacheKey);
+  if (cached) return cached;
+  const proxy = new Proxy(() => void 0, {
+    get(_target, property) {
+      const value = valueAtPath([...path, property]);
+      if (typeof value === "function" || isPlainObject3(value)) {
+        return liveStringsProxy([...path, property]);
+      }
+      return value;
+    },
+    apply(_target, _thisArg, args) {
+      const value = valueAtPath(path);
+      return typeof value === "function" ? value(...args) : void 0;
+    },
+    ownKeys() {
+      const value = valueAtPath(path);
+      return isPlainObject3(value) ? Reflect.ownKeys(value) : [];
+    },
+    getOwnPropertyDescriptor(_target, property) {
+      const value = valueAtPath(path);
+      if (!isPlainObject3(value) || !(property in value)) return void 0;
+      return { configurable: true, enumerable: true };
+    }
+  });
+  proxyCache.set(cacheKey, proxy);
+  return proxy;
+}
+var TOOLS_CARD_STRINGS = liveStringsProxy([]);
+
+// custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization.ts
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function progressStep(progress) {
+  const total = positiveInteger(progress.total_steps);
+  if (!total) return null;
+  const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? 0);
+  const current = Math.min(total, Math.max(1, Number.isFinite(rawCurrent) ? Math.trunc(rawCurrent) : 1));
+  return TOOLS_CARD_STRINGS.backendState.step(current, total);
+}
+var ENTITY_SYNC_STEP_KINDS = {
+  activity_rename: "entityStepActivityRename",
+  binding_delete: "entityStepBindingDelete",
+  binding_write: "entityStepBindingWrite",
+  command_add: "entityStepCommandAdd",
+  command_delete: "entityStepCommandDelete",
+  command_sort_rewrite: "entityStepCommandSortRewrite",
+  command_payload: "entityStepCommandPayload",
+  command_rename: "entityStepCommandRename",
+  device_ip: "entityStepDeviceIp",
+  device_rename: "entityStepDeviceRename",
+  favorite_add: "entityStepFavoriteAdd",
+  favorite_delete: "entityStepFavoriteDelete",
+  favorite_order: "entityStepFavoriteOrder",
+  idle_behavior: "entityStepIdleBehavior",
+  inputs_write: "entityStepInputsWrite",
+  macro_delete: "entityStepMacroDelete",
+  macro_write_power_on: "entityStepMacroPowerOn",
+  macro_write_power_off: "entityStepMacroPowerOff",
+  macro_write_custom: "entityStepMacroCustom",
+  member_replay: "entityStepMemberReplay",
+  remote_sync: "entityStepRemoteSync"
+};
+var WIFI_INPLACE_STEP_KINDS = {
+  command_add: "wifiStepCommandAdd",
+  command_payload: "wifiStepCommandPayload",
+  command_rename: "wifiStepCommandRename",
+  command_delete: "wifiStepCommandDelete",
+  command_sort_rewrite: "wifiStepCommandSortRewrite",
+  wifi_power_config: "wifiStepPowerConfig",
+  wifi_input_config: "wifiStepInputConfig",
+  member_replay: "wifiStepInputSelect",
+  member_replay_join: "wifiStepActivityJoin",
+  membership_remove: "wifiStepActivityLeave",
+  wifi_head_commit: "wifiStepHeadCommit",
+  favorite_add: "entityStepFavoriteAdd",
+  favorite_delete: "entityStepFavoriteDelete",
+  favorite_order: "entityStepFavoriteOrder",
+  binding_delete: "entityStepBindingDelete",
+  binding_write: "wifiStepBindingWrite"
+};
+var WIFI_DEPLOY_PHASES = {
+  starting: "wifiStarting",
+  reading_device: "wifiReadingDevice",
+  enabling_device: "wifiEnablingDevice",
+  disabling_device: "wifiDisablingDevice",
+  validating_activities: "wifiValidatingActivities",
+  creating_device: "wifiCreatingDevice",
+  deleting_device: "wifiDeletingDevice",
+  adding_to_activities: "wifiAddingToActivities",
+  moving_references: "wifiMovingReferences",
+  applying_favorites: "wifiApplyingFavorites",
+  applying_bindings: "wifiApplyingBindings",
+  refreshing_maps: "wifiRefreshingMaps",
+  resyncing_remote: "wifiResyncingRemote",
+  checking_broker: "wifiCheckingBroker",
+  testing_delivery: "wifiTestingDelivery",
+  updated_in_place: "wifiUpdatedInPlace",
+  already_current: "wifiAlreadyCurrent",
+  device_removed: "wifiDeviceRemoved",
+  complete: "wifiComplete"
+};
+function normalizeOperation(value) {
+  const operation = String(value || "").trim().toLowerCase();
+  if (operation === "backup_export") return "backup_export";
+  if (operation === "backup_restore") return "backup_restore";
+  if (operation === "cache_refresh") return "cache_refresh";
+  if (operation === "activity_sync" || operation === "device_sync" || operation === "entity_sync") {
+    return "entity_sync";
+  }
+  if (operation === "wifi_deploy" || operation === "command_sync") return "wifi_deploy";
+  if (operation === "hub_write") return "hub_write";
+  return null;
+}
+function localizeBackendProgress(progress, operationOverride) {
+  const S8 = TOOLS_CARD_STRINGS.backendState;
+  if (!progress) return S8.working;
+  const operation = operationOverride ?? normalizeOperation(progress.kind);
+  const phase = String(progress.phase || "").trim().toLowerCase();
+  const deviceId = positiveInteger(progress.current_device_id);
+  const activityId = positiveInteger(progress.current_activity_id);
+  switch (operation) {
+    case "backup_export":
+      if (phase === "preparing") return S8.backupPreparing;
+      if (phase === "device" && deviceId) return S8.backupDevice(deviceId);
+      if (phase === "activity" && activityId) return S8.backupActivity(activityId);
+      if (phase === "finalizing" || phase === "completed" || phase === "complete") return S8.backupFinalizing;
+      break;
+    case "backup_restore":
+      if (phase === "validation") return S8.restoreValidating;
+      if (phase === "erase") return S8.restoreErasing;
+      if (phase === "device" && deviceId) return S8.restoreDevice(deviceId);
+      if (phase === "activity" && activityId) return S8.restoreActivity(activityId);
+      if (phase === "hub") return S8.restoreHub;
+      if (phase === "cache_warm") return S8.restoreCache;
+      break;
+    case "cache_refresh":
+      if (phase === "preparing") return S8.cachePreparing;
+      if (phase === "device" && deviceId) return S8.cacheDevice(deviceId);
+      if (phase === "activity" && activityId) return S8.cacheActivity(activityId);
+      if (phase === "finalizing" || phase === "completed" || phase === "complete") return S8.cacheFinalizing;
+      break;
+    case "entity_sync": {
+      if (phase === "stale_check" || phase === "plan") return S8.entityChecking;
+      if (phase === "writing") {
+        const stepKey = ENTITY_SYNC_STEP_KINDS[String(progress.step_kind || "").trim().toLowerCase()];
+        const entry = stepKey ? S8[stepKey] : void 0;
+        const stepLabel = typeof entry === "function" ? entry(positiveInteger(progress.step_device_id)) : entry;
+        const label = stepLabel || String(progress.message || "").trim() || S8.entityWriting;
+        const total = positiveInteger(progress.total_steps);
+        const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? NaN);
+        if (total && Number.isFinite(rawCurrent)) {
+          const current = Math.min(total, Math.max(1, Math.trunc(rawCurrent) + 1));
+          return `${label} (${current}/${total})`;
+        }
+        return label;
+      }
+      if (phase === "settling") return S8.entitySettling;
+      if (phase === "cache_refresh") return S8.entityRefreshing;
+      if (phase === "completed" || phase === "complete") return S8.entityComplete;
+      break;
+    }
+    case "wifi_deploy": {
+      const stage = WIFI_DEPLOY_PHASES[phase];
+      if (stage) {
+        if (stage === "wifiReadingDevice") {
+          const total = positiveInteger(progress.total_steps);
+          const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? 0);
+          if (total && Number.isFinite(rawCurrent) && rawCurrent >= 1) {
+            return `${S8[stage]} (${Math.min(total, Math.trunc(rawCurrent))}/${total})`;
+          }
+        }
+        return S8[stage];
+      }
+      const stepKey = WIFI_INPLACE_STEP_KINDS[String(progress.step_kind || "").trim().toLowerCase()];
+      if (stepKey) {
+        const entry = S8[stepKey];
+        const rawName = typeof progress.step_name === "string" ? progress.step_name.trim() : "";
+        const label = typeof entry === "function" ? entry(rawName || null) : entry;
+        const total = positiveInteger(progress.total_steps);
+        const rawCurrent = Number(progress.current_step ?? progress.completed_steps ?? NaN);
+        if (total && Number.isFinite(rawCurrent) && rawCurrent >= 1) {
+          return `${label} (${Math.min(total, Math.trunc(rawCurrent))}/${total})`;
+        }
+        return label;
+      }
+      const message = String(progress.message || "").trim();
+      if (message) return message;
+      return progressStep(progress) || S8.wifiSyncing;
+    }
+    default:
+      break;
+  }
+  return progressStep(progress) || S8.working;
+}
+
 // server-panel/src/panel-selectors.ts
 function runtimeFor(snapshot, hubId) {
   if (!hubId) return null;
@@ -12618,7 +14148,8 @@ var JOB_LABELS = {
   deploy_wifi_device: "Deploying the Wifi Device",
   update_wifi_device: "Syncing the Wifi Device",
   remove_wifi_device: "Deleting the Wifi Device",
-  redeploy_wifi_device: "Redeploying the Wifi Device"
+  redeploy_wifi_device: "Redeploying the Wifi Device",
+  test_wifi_delivery: "Testing that button presses reach the server"
 };
 function jobLabel(kind) {
   return JOB_LABELS[kind] ?? humanizeSlug(kind);
@@ -12645,22 +14176,79 @@ function jobHeadline(job) {
   const entity = jobEntity(job);
   return entity && job.kind in ENTITY_JOB_LABELS ? ENTITY_JOB_LABELS[job.kind](entity) : jobLabel(job.kind);
 }
+function bareStep(text) {
+  return text.trim().replace(/(…|\.+)$/u, "").replace(/(…|\.+)(\s*\(\d+\s*\/\s*\d+\))$/u, "$2").trim();
+}
 function stepMessage(job) {
   const message = job.progress?.message;
-  return typeof message === "string" ? message.trim().replace(/(…|\.+)$/u, "").trim() : "";
+  return typeof message === "string" ? message.trim() : "";
 }
-function jobNarration(job) {
-  const text = stepMessage(job) || jobHeadline(job);
-  if (job.status === "queued") return text + " \xB7 queued";
+var JOB_OPERATIONS = {
+  refresh: "cache_refresh",
+  refresh_entity: "cache_refresh",
+  backup: "backup_export",
+  restore: "backup_restore",
+  sync_device: "entity_sync",
+  sync_activity: "entity_sync",
+  deploy_wifi_device: "wifi_deploy",
+  update_wifi_device: "wifi_deploy",
+  redeploy_wifi_device: "wifi_deploy",
+  test_wifi_delivery: "wifi_deploy",
+  deploy_callback_device: "wifi_deploy",
+  update_callback_device: "wifi_deploy",
+  redeploy_callback_device: "wifi_deploy"
+};
+var ENTITY_PHASES = /* @__PURE__ */ new Set(["stale_check", "plan", "settling", "cache_refresh", "completed", "complete"]);
+var REFRESH_PHASES = /* @__PURE__ */ new Set(["preparing", "finalizing", "completed", "complete"]);
+var RESTORE_PHASES = /* @__PURE__ */ new Set(["validation", "erase", "hub", "cache_warm"]);
+var HA_WIFI_PHASES = /* @__PURE__ */ new Set(["testing_delivery"]);
+function progressLike(job, operation) {
+  const p4 = job.progress ?? {};
+  const stepKind = typeof p4.step_kind === "string" ? p4.step_kind.trim().toLowerCase() : "";
+  const completed = Number(p4.completed_steps ?? 0);
+  const entityId = typeof p4.entity_id === "number" ? p4.entity_id : null;
+  const like = {
+    phase: typeof p4.phase === "string" ? p4.phase : null,
+    step_kind: stepKind || null,
+    message: typeof p4.message === "string" ? p4.message : null,
+    completed_steps: Number.isFinite(completed) ? completed : 0,
+    total_steps: typeof p4.total_steps === "number" ? p4.total_steps : null,
+    current_device_id: p4.entity_kind === "device" ? entityId : null,
+    current_activity_id: p4.entity_kind === "activity" ? entityId : null
+  };
+  if (operation === "wifi_deploy" && WIFI_INPLACE_STEP_KINDS[stepKind]) like.current_step = like.completed_steps + 1;
+  return like;
+}
+function localizedStep(job) {
+  const operation = JOB_OPERATIONS[job.kind];
+  const p4 = job.progress ?? null;
+  if (!operation || !p4) return "";
+  const like = progressLike(job, operation);
+  const phase = String(like.phase ?? "").trim().toLowerCase();
+  const stepKind = String(like.step_kind ?? "");
+  const known = operation === "wifi_deploy" ? !HA_WIFI_PHASES.has(phase) && Boolean(WIFI_DEPLOY_PHASES[phase] || WIFI_INPLACE_STEP_KINDS[stepKind]) : operation === "entity_sync" ? ENTITY_PHASES.has(phase) || phase === "writing" && Boolean(ENTITY_SYNC_STEP_KINDS[stepKind]) : operation === "backup_restore" ? RESTORE_PHASES.has(phase) || (phase === "device" || phase === "activity") && p4.entity_id != null : REFRESH_PHASES.has(phase) || (phase === "device" || phase === "activity") && p4.entity_id != null;
+  return known ? localizeBackendProgress(like, operation) : "";
+}
+function withCounter(text, job) {
   if (/\d+\s*\/\s*\d+/u.test(text)) return text;
   const p4 = job.progress ?? {};
   const index = p4.item_index;
   const count = p4.item_count;
   if (typeof index === "number" && Number.isFinite(index) && typeof count === "number" && Number.isFinite(count) && count > 0) {
-    return text + " \xB7 " + Math.min(count, Math.max(1, index + 1)) + "/" + count;
+    return `${text} (${Math.min(count, Math.max(1, index + 1))}/${count})`;
   }
   const progress = jobProgress(job);
-  return progress.indeterminate ? text : text + " \xB7 " + Math.min(progress.total, Math.max(0, progress.current ?? 0)) + "/" + progress.total;
+  return progress.indeterminate ? text : `${text} (${Math.min(progress.total, Math.max(0, progress.current ?? 0))}/${progress.total})`;
+}
+function jobStepText(job) {
+  if (!job) return "";
+  const text = bareStep(localizedStep(job) || stepMessage(job));
+  return text ? withCounter(text, job) : "";
+}
+function jobNarration(job) {
+  const step = jobStepText(job);
+  if (job.status === "queued") return `${step || jobHeadline(job)} \xB7 queued`;
+  return step || withCounter(jobHeadline(job), job);
 }
 var JOB_COMPLETIONS = {
   refresh: "Hub refreshed.",
@@ -12687,14 +14275,36 @@ var JOB_COMPLETIONS = {
   deploy_wifi_device: "Wifi Device deployed.",
   update_wifi_device: "Wifi Device synced.",
   remove_wifi_device: "Wifi Device deleted.",
-  redeploy_wifi_device: "Wifi Device redeployed."
+  redeploy_wifi_device: "Wifi Device redeployed.",
+  test_wifi_delivery: "Delivery tested."
 };
+var DELIVERY_JOBS = /* @__PURE__ */ new Set([
+  "deploy_wifi_device",
+  "update_wifi_device",
+  "redeploy_wifi_device",
+  "test_wifi_delivery",
+  "deploy_callback_device",
+  "update_callback_device",
+  "redeploy_callback_device"
+]);
+function jobDeliveryFailed(job) {
+  if (!DELIVERY_JOBS.has(job.kind) || job.status !== "done") return false;
+  const status = job.result?.delivery?.status;
+  return status === "not_delivered" || status === "not_sent";
+}
 function noticeForJob(job, at) {
   if (!TERMINAL_JOB_STATES.has(job.status)) return null;
   if (job.status === "failed") {
     return { tone: "error", label: jobFailureReason(job.error), detail: problemSummary(job.error) || null, jobId: job.job_id, sticky: false, at };
   }
   if (job.status === "cancelled") return { tone: "neutral", label: "Operation cancelled.", detail: null, jobId: job.job_id, sticky: false, at };
+  if (jobDeliveryFailed(job)) {
+    const delivery = job.result?.delivery;
+    if (delivery?.status === "not_sent") {
+      return { tone: "error", label: job.kind === "test_wifi_delivery" ? "Could not send the test command. Try again." : "Synced, but delivery could not be tested.", detail: null, jobId: job.job_id, sticky: false, at };
+    }
+    return { tone: "error", label: job.kind === "test_wifi_delivery" ? "The test command did not reach the server." : "Synced, but the test command did not reach the server.", detail: null, jobId: job.job_id, sticky: false, at };
+  }
   return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
 function draftFor(runtime) {
@@ -14050,7 +15660,7 @@ var SofabatonServerPanel = class extends i4 {
   }
   _onNavigate(event) {
     const d5 = event.detail;
-    if (d5.page) this._go(toolRoute(d5.page));
+    if (d5.page) this._go(toolRoute(d5.page, d5.sub));
     else if (d5.tab) this._go(hubRoute(null, d5.tab, d5.sub, d5.entity, d5.item));
   }
   // -- render ---------------------------------------------------------------------------
@@ -14194,8 +15804,7 @@ var SofabatonServerPanel = class extends i4 {
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
-          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${h6(this._renderView(ctx))}</div>
-          ${blocked ? b2`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>` : A}
+          <div class="stage" id="stage-wrap">${h6(blocked ? b2`<div class="blocked-state" id="blocked-state" role="status"><div class="blocked-state-title">Hub unavailable</div><div class="blocked-state-sub">${blocked.label}</div></div>` : this._renderView(ctx))}</div>
         </main>
         ${renderBottomDock({
       model: dock,
@@ -14345,11 +15954,10 @@ SofabatonServerPanel.styles = [
       .view { position: relative; margin: 0 var(--connected-inline); min-height: max(40vh, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-gap))); border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
       /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
-      .stage[inert] { opacity: 0.5; pointer-events: none; }
-      .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
-      .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
-      .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
-      .scrim-card .hint { font-size: 12px; }
+      /* An unavailable hub: the card's inline block in place of the view (never an overlay). */
+      .blocked-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 220px; padding: 24px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.6; }
+      .blocked-state-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
+      .blocked-state-sub { max-width: 340px; font-size: 13px; }
 
       /* -- bottom dock -------------------------------------------------------- */
       /* The dock is the column's width, centred like it, not the viewport's. */
@@ -15362,1140 +16970,6 @@ function defineApiView() {
   if (!customElements.get(API_VIEW_TAG)) customElements.define(API_VIEW_TAG, SbPanelApi);
 }
 
-// custom_components/sofabaton_x1s/www/src/strings.ts
-var TOOLS_CARD_STRINGS_EN = {
-  common: {
-    cancel: "Cancel",
-    save: "Save",
-    complete: "Complete",
-    loading: "Loading\u2026",
-    noHubsFound: "No hubs found.",
-    homeAssistantUnavailable: "Home Assistant is not available",
-    homeAssistantContextUnavailable: "Home Assistant context is unavailable",
-    unknownError: "Unknown error",
-    unknownErrorWithLogs: "Unknown error (check Home Assistant logs)",
-    commandFallback: (id) => `Command ${id}`,
-    buttonFallback: (id) => `Button ${id}`,
-    deviceFallback: (id) => `Device ${id}`,
-    activityFallback: (id) => `Activity ${id}`,
-    macroFallback: (id) => `Macro ${id}`,
-    favoriteFallback: (id) => `Favorite ${id}`,
-    inputFallback: (id) => `Input ${id}`,
-    noInput: "no input",
-    backAria: "Back",
-    closeAria: "Close"
-  },
-  card: {
-    connectivityAria: "Connectivity",
-    toolsMenuAria: "Settings and logs",
-    hubShort: "HUB",
-    appShort: "APP",
-    brand: (version) => `SOFABATON CONTROL PANEL - v${version}`,
-    wifiDeviceFallback: "Wifi device",
-    wifiCommandFallback: "Wifi command",
-    irLongPress: (device, command) => `${device} \u2022 ${command} (long press)`,
-    irPress: (device, command) => `${device} \u2022 ${command}`,
-    previewDescription: "Tools, cache, backups, logs & automations for your hub",
-    editorHeight: "Card height",
-    editorHeightHint: "Controls how much of the activity/device lists is visible. Default: 600 px.",
-    editorAdminOnly: "Only Home Assistant admins can use this card",
-    editorAdminOnlyHint: "Other users see a notice instead of the control panel. This hides the card; it does not restrict the integration's actions.",
-    pickerName: "Sofabaton Control Panel",
-    pickerDescription: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wifi Commands."
-  },
-  tabs: {
-    cache: "Hub",
-    wifiCommands: "Automation",
-    backup: "Backup",
-    settings: "Settings",
-    logs: "Logs"
-  },
-  tabDocs: {
-    wifi_commands: "Automation documentation",
-    backup: "Backup documentation"
-  },
-  dock: {
-    unsyncedChanges: "Unsynced changes \u2014 sync to the hub to apply them",
-    unsavedBackupChanges: "Unsaved changes \u2014 download the edited backup",
-    syncNow: "Sync"
-  },
-  backend: {
-    unavailableTitle: "Backend not available",
-    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting\u2026",
-    versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
-    versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
-    backendExpects: "Backend expects",
-    cardLoaded: "Card loaded",
-    unknownVersion: "unknown",
-    refreshingCache: "Refreshing cache\u2026",
-    hubCommandInProgress: "Hub command in progress\u2026"
-  },
-  sidebarPanel: {
-    // The sidebar entry's name until someone renames it. A product name:
-    // the same in every language.
-    title: "Sofabaton X"
-  },
-  adminOnly: {
-    title: "Admins only",
-    copy: "This control panel is limited to Home Assistant administrators."
-  },
-  hubUnavailable: {
-    title: "Hub unavailable",
-    copy: "This hub is not connected, so the control panel is unavailable until the hub reconnects."
-  },
-  availability: {
-    operationRunning: "Operation running",
-    working: "Working\u2026",
-    appConnectedOnlyLogs: "Only Logs is available while the Sofabaton app is connected.",
-    hubCommandInProgress: "Hub command in progress\u2026",
-    refreshingCache: "Refreshing cache\u2026",
-    unavailable: "Unavailable",
-    refreshDashboard: "Refresh the dashboard to load the updated Sofabaton Control Panel card.",
-    automationUnavailable: "Automation unavailable",
-    backupUnavailable: "Backup unavailable",
-    automationBlockedByProxy: "Automation cannot be used while the Sofabaton app is connected to the hub through the proxy.",
-    backupBlockedByProxy: "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.",
-    blockedByFirmware: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} is the minimum supported version for Control Panel features that change the hub configuration. Update the hub using the Sofabaton app. This feature becomes available automatically after the hub reports the updated firmware version.`
-  },
-  buttonNames: {
-    151: "C",
-    152: "B",
-    153: "A",
-    154: "Exit",
-    155: "DVR",
-    156: "Play",
-    157: "Guide",
-    158: "Enter (E)",
-    159: "0",
-    160: "Dash (-)",
-    161: "9",
-    162: "8",
-    163: "7",
-    164: "6",
-    165: "5",
-    166: "4",
-    167: "3",
-    168: "2",
-    169: "1",
-    174: "Up",
-    175: "Left",
-    176: "OK",
-    177: "Right",
-    178: "Down",
-    179: "Back",
-    180: "Home",
-    181: "Menu",
-    182: "Vol +",
-    183: "Ch +",
-    184: "Mute",
-    185: "Vol -",
-    186: "Ch -",
-    187: "Rew",
-    188: "Pause",
-    189: "Fwd",
-    190: "Red",
-    191: "Green",
-    192: "Yellow",
-    193: "Blue",
-    198: "Power on",
-    199: "Power off"
-  },
-  errors: {
-    backupProgressNoSocket: "Backup progress is unavailable without a websocket connection",
-    irLearnNoSocket: "Learning is unavailable without a websocket connection",
-    logsNoSocket: "Live logs are unavailable without a websocket connection",
-    wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
-    hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
-    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
-    anotherOperation: "Another hub operation is already running.",
-    hubNameInvalid: "The hub cannot store this name.",
-    hubRenameFailed: "The hub did not accept the new name.",
-    noHubSelected: "No hub selected.",
-    noHubSelectedLong: "No hub is selected.",
-    cacheRefreshFailed: "Cache refresh failed.",
-    syncFailed: "Sync failed.",
-    activityIdMissing: "The hub did not return the new activity id.",
-    deviceIdMissing: "The hub did not return the new device id.",
-    deviceCreateFailed: "The device could not be created on the hub.",
-    activityCreateFailed: "The activity could not be created on the hub.",
-    activityNameInvalid: "Enter an activity name between 1 and 30 characters.",
-    reorderFailed: "The hub did not confirm the new order.",
-    hubNotReady: "The hub is not ready. Close the Sofabaton app or wait for the running operation, then try again.",
-    hubNoResponse: "The hub did not respond. Try again.",
-    hubRequestFailed: "The hub could not complete this request.",
-    payloadInvalid: "The hub cannot use this payload.",
-    wifiEventsFull: "All Wifi Event slots are in use.",
-    wifiEventPendingDelete: "A deleted Wifi Event is still being removed from the hub. Sync the hub, then try again.",
-    wifiEventNameTaken: "A Wifi Event with this name already exists.",
-    wifiEventNameInvalid: "Enter a Wifi Event name the hub can store.",
-    wifiEventFailed: "The Wifi Event could not be saved.",
-    deviceNameInvalid: "Enter a device name between 1 and 30 characters.",
-    deviceTypeUnsupported: "This device type cannot be created on this hub.",
-    selectedHubUnavailable: "The selected hub is no longer available."
-  },
-  settings: {
-    loading: "Loading\u2026",
-    noHubsFound: "No hubs found.",
-    unknownHubName: "Unknown",
-    activities: "Activities",
-    devices: "Devices",
-    persistentCacheTitle: "Persistent Cache",
-    persistentCacheDescription: "Store activity and device data locally for faster access.",
-    persistentCacheFooter: "GLOBAL",
-    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
-    hubClickActionTitle: "Hub Tab Clicks",
-    hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
-    hubClickActionFooter: "GLOBAL",
-    hubClickActionOptionNone: "Do nothing",
-    hubClickActionOptionSend: "Send the command",
-    hubClickActionOptionCopy: "Copy the command",
-    sidebarPanelTitle: "Sidebar Panel",
-    // The name is the panel's sidebar name (renameable while it is shown).
-    sidebarPanelDescription: (name) => `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
-    sidebarPanelFooter: "GLOBAL",
-    sidebarPanelOptionOff: "Off",
-    sidebarPanelOptionAll: "All users",
-    sidebarPanelOptionAdmin: "Admins only",
-    renameSidebarPanel: "Rename sidebar panel",
-    sidebarPanelNameLabel: "Name in the sidebar",
-    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
-    renameHub: "Rename hub",
-    hubNameLabel: "Hub name",
-    hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
-    renamingHub: "Renaming the hub\u2026",
-    hexLoggingTitle: "Hex Logging",
-    hexLoggingDescription: "Log raw hex traffic between hub, integration, and app.",
-    proxyTitle: "Proxy",
-    proxyDescription: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
-    wifiDeviceTitle: "Wifi Device",
-    wifiDeviceDescription: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
-    findRemoteTitle: "Find Remote",
-    findRemoteDescription: "Make the remote beep so you can locate it.",
-    syncRemoteTitle: "Sync Remote",
-    syncRemoteDescription: "Push the latest configuration to the physical remote."
-  },
-  cache: {
-    loading: "Loading\u2026",
-    noHubsFound: "No hubs found.",
-    persistentCacheOffTitle: "Persistent cache is off",
-    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
-    enablingPersistentCache: "Enabling\u2026",
-    enablePersistentCache: "Enable persistent cache",
-    activityFallback: (id) => `Activity ${id}`,
-    deviceFallback: (id) => `Device ${id}`,
-    favoriteFallback: (commandId) => `Favorite ${commandId}`,
-    macroFallback: (commandId) => `Macro ${commandId}`,
-    activityCounts: (favorites, macros, buttons) => `${favorites} ${favorites === 1 ? "fav" : "favs"} / ${macros} ${macros === 1 ? "macro" : "macros"} / ${buttons} ${buttons === 1 ? "button" : "buttons"}`,
-    deviceCommandCount: (count) => `${count} ${count === 1 ? "cmd" : "cmds"}`,
-    favorites: "Favorites",
-    macros: "Macros",
-    buttons: "Buttons",
-    noCachedData: "No cached data yet.",
-    noCachedCommands: "No cached commands.",
-    refresh: "Refresh",
-    activities: "Activities",
-    devices: "Devices",
-    refreshAll: "Refresh all",
-    refreshAllAria: "Refresh the whole hub cache",
-    refreshEntryAria: (name) => `Refresh ${name}`,
-    editActivity: "Edit activity",
-    editDevice: "Edit device",
-    changeOrder: "Change order",
-    addActivity: "Add activity",
-    addDevice: "Add device",
-    reorderSync: "Sync to Hub",
-    reorderCancel: "Cancel",
-    reorderHint: "Drag activities into the desired order, then sync to the hub.",
-    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
-    reorderSyncing: "Writing the new order to the hub\u2026",
-    addActivityTitle: "Add activity",
-    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
-    addActivityPlaceholder: "Activity name",
-    addActivityCancel: "Cancel",
-    addActivityConfirm: "Create",
-    addActivityCreating: "Creating\u2026",
-    reorderingActivities: "Reordering activities\u2026",
-    reorderingDevices: "Reordering devices\u2026",
-    creatingActivity: "Creating activity\u2026",
-    addDeviceTitle: "Add device",
-    addDeviceBody: "Choose a name and device type. The device is created on the hub without commands, then opened in the editor so you can add them.",
-    addDevicePlaceholder: "Device name",
-    addDeviceClass: "Device type",
-    addDeviceCancel: "Cancel",
-    addDeviceConfirm: "Create",
-    addDeviceCreating: "Creating\u2026",
-    addDeviceWifiHint: "For commands handled by Home Assistant, use the Wifi Commands tab instead.",
-    creatingDevice: "Creating device\u2026",
-    deviceClassLabels: {
-      ir: "Infrared",
-      wifi_roku: "Roku",
-      wifi_hue: "Hue",
-      wifi_sonos: "Sonos",
-      wifi_ip: "Generic HTTP",
-      wifi_mqtt: "MQTT"
-    }
-  },
-  // Hub-tab row clicks ("send the command" / "copy the command" modes).
-  hubClick: {
-    notificationTitle: "\u{1F6E0}\uFE0F Automation Assist",
-    contextActivity: "Activity",
-    contextDevice: "Device",
-    kindLabels: {
-      favorite: "Favorite",
-      macro: "Macro",
-      button: "Button",
-      command: "Command"
-    },
-    lovelaceHeading: "Lovelace button code",
-    lovelaceHint: "Copy this to your dashboard YAML:",
-    actionHeading: "Service call (automation)",
-    actionHint: "Use this in your scripts or automations:",
-    noRemoteEntity: "The hub's remote entity is unavailable.",
-    copied: (label) => `Copied "${label}" to notifications.`,
-    sendTooltip: "Click to send this command to the hub",
-    copyTooltip: "Click to copy this command to a notification"
-  },
-  logs: {
-    loading: "Loading log stream\u2026",
-    empty: "No log lines captured for this hub yet.",
-    liveConsole: "Live Console"
-  },
-  cacheRefresh: {
-    label: "Refresh all",
-    running: "Refreshing\u2026",
-    starting: "Starting hub cache refresh\u2026",
-    working: "Reading your hub's configuration\u2026",
-    done: "Hub cache refreshed."
-  },
-  progress: {
-    homeAssistant: "Home Assistant",
-    sofabatonHub: "Sofabaton Hub",
-    working: "Working\u2026",
-    backupTitle: "Creating backup",
-    restoreTitle: "Restoring backup"
-  },
-  backendState: {
-    // Progress/status labels for a running operation — never button
-    // imperatives. Translations must use a progressive/status form.
-    operationBackup: "Creating backup",
-    operationRestore: "Restoring backup",
-    operationCacheRefresh: "Refreshing hub cache",
-    operationEntitySync: "Syncing with hub",
-    operationWifiDeploy: "Syncing Wifi Commands",
-    operationHubWrite: "Working on the hub",
-    working: "Working\u2026",
-    step: (current, total) => `Step ${current} of ${total}`,
-    backupPreparing: "Preparing backup\u2026",
-    backupDevice: (id) => `Backing up device ${id}\u2026`,
-    backupActivity: (id) => `Backing up activity ${id}\u2026`,
-    backupFinalizing: "Finalizing backup\u2026",
-    restoreValidating: "Validating backup\u2026",
-    restoreErasing: "Erasing the destination hub\u2026",
-    restoreDevice: (id) => `Restoring device ${id}\u2026`,
-    restoreActivity: (id) => `Restoring activity ${id}\u2026`,
-    restoreHub: "Restoring hub settings\u2026",
-    restoreCache: "Refreshing the restored hub cache\u2026",
-    cachePreparing: "Preparing hub cache refresh\u2026",
-    cacheDevice: (id) => `Refreshing device ${id}\u2026`,
-    cacheActivity: (id) => `Refreshing activity ${id}\u2026`,
-    cacheFinalizing: "Finalizing hub cache\u2026",
-    entityChecking: "Checking for changes on the hub\u2026",
-    entityWriting: "Applying changes to the hub\u2026",
-    entitySettling: "Waiting for the hub to finish processing the changes\u2026",
-    entityRefreshing: "Refreshing the cached hub state\u2026",
-    entityComplete: "Synced to hub.",
-    // Live-sync engine write steps, keyed by the `step_kind` the engine
-    // reports (proxy_activity_sync). Kinds that target a specific device
-    // take its id; null when the engine did not name one.
-    entityStepActivityRename: "Renaming the activity\u2026",
-    entityStepBindingDelete: "Clearing a button assignment\u2026",
-    entityStepBindingWrite: "Writing button assignments\u2026",
-    entityStepCommandAdd: (id) => id == null ? "Adding a command\u2026" : `Adding a command on device ${id}\u2026`,
-    entityStepCommandDelete: (id) => id == null ? "Removing a command\u2026" : `Removing a command on device ${id}\u2026`,
-    entityStepCommandSortRewrite: (id) => id == null ? "Updating the command order\u2026" : `Updating the command order on device ${id}\u2026`,
-    entityStepCommandPayload: (id) => id == null ? "Updating a command\u2026" : `Updating a command on device ${id}\u2026`,
-    entityStepCommandRename: (id) => id == null ? "Renaming a command\u2026" : `Renaming a command on device ${id}\u2026`,
-    entityStepDeviceIp: "Updating the IP address\u2026",
-    entityStepDeviceRename: "Renaming the device\u2026",
-    entityStepFavoriteAdd: "Adding a shortcut\u2026",
-    entityStepFavoriteDelete: "Removing a shortcut\u2026",
-    entityStepFavoriteOrder: "Reordering shortcuts\u2026",
-    entityStepIdleBehavior: "Updating automatic power control\u2026",
-    entityStepInputsWrite: (id) => id == null ? "Updating inputs\u2026" : `Updating inputs on device ${id}\u2026`,
-    entityStepMacroDelete: "Removing a macro\u2026",
-    entityStepMacroPowerOn: "Updating the start sequence\u2026",
-    entityStepMacroPowerOff: "Updating the end sequence\u2026",
-    entityStepMacroCustom: "Updating a macro\u2026",
-    entityStepMemberReplay: "Adding a device to the activity\u2026",
-    entityStepRemoteSync: "Syncing the remote\u2026",
-    wifiSyncing: "Syncing Wifi Commands\u2026",
-    // Deploy pipeline stages, keyed by the `phase` the hub reports.
-    wifiStarting: "Starting the sync\u2026",
-    wifiReadingDevice: "Reading the deployed Wifi Device\u2026",
-    wifiEnablingDevice: "Enabling the Wifi Device\u2026",
-    wifiDisablingDevice: "Disabling the Wifi Device\u2026",
-    wifiValidatingActivities: "Checking activities against the hub\u2026",
-    wifiCreatingDevice: "Creating the Wifi Device on the hub\u2026",
-    wifiDeletingDevice: "Removing the previous Wifi Device\u2026",
-    wifiAddingToActivities: "Adding the Wifi Device to activities\u2026",
-    wifiMovingReferences: "Moving activity references to the new Wifi Device\u2026",
-    wifiApplyingFavorites: "Applying activity shortcuts\u2026",
-    wifiApplyingBindings: "Applying activity button assignments\u2026",
-    wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
-    wifiResyncingRemote: "Resyncing the physical remote\u2026",
-    wifiUpdatedInPlace: "Wifi Device updated.",
-    wifiAlreadyCurrent: "Wifi Device already up to date.",
-    wifiDeviceRemoved: "Wifi Device removed \u2014 no commands configured.",
-    wifiComplete: "Wifi Commands synced.",
-    // In-place deploy write steps, keyed by the `step_kind` the pipeline
-    // reports. The command steps carry the user's own command label.
-    wifiStepCommandAdd: (name) => name == null ? "Adding a command\u2026" : `Adding command \u201C${name}\u201D\u2026`,
-    wifiStepCommandPayload: (name) => name == null ? "Updating a command\u2026" : `Updating command \u201C${name}\u201D\u2026`,
-    wifiStepCommandRename: (name) => name == null ? "Renaming a command\u2026" : `Renaming command to \u201C${name}\u201D\u2026`,
-    wifiStepCommandDelete: (name) => name == null ? "Removing a command\u2026" : `Removing command \u201C${name}\u201D\u2026`,
-    wifiStepPowerConfig: "Updating automatic power control\u2026",
-    wifiStepInputConfig: "Updating input configuration\u2026",
-    wifiStepInputSelect: "Updating input selection\u2026",
-    wifiStepActivityJoin: "Adding the device to an activity\u2026",
-    wifiStepActivityLeave: "Removing the device from an activity\u2026",
-    wifiStepHeadCommit: "Saving the device\u2026",
-    wifiStepCommandSortRewrite: "Updating the command order\u2026",
-    wifiStepBindingWrite: "Assigning a button\u2026"
-  },
-  activities: {
-    loading: "Loading activities\u2026",
-    selectHub: "Select a hub to edit its activities.",
-    activityFallback: (id) => `Activity ${id}`,
-    // Guard panels (§4.1), rendered inside the editor view.
-    appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
-    firmwareUnsupportedTitle: "Hub firmware update required",
-    firmwareUnsupportedBody: (installed, required) => `This hub is running firmware version ${installed}. Version ${required} or newer is required to edit the hub configuration safely. Editing is disabled to protect your configuration. Update the hub using the Sofabaton app. Editing becomes available automatically after the hub reports the updated firmware version.`,
-    operationRunningTitle: "Another operation is running",
-    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    captureFailedTitle: "Couldn't read the hub",
-    retry: "Retry",
-    back: "Back",
-    // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
-    needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache to load it into the editor. This may take a few minutes, depending on the size of your hub configuration.`,
-    // Live-mode edit header (§4.3). The header mirrors the Wifi command
-    // editor: a single stateful Sync button (no dirty chip, no review/discard).
-    syncToHub: "Sync to Hub",
-    syncUpToDate: "Up to date",
-    // Immediate entity delete (executed on the hub right away).
-    deletingTitle: (kind) => `Deleting ${kind}`,
-    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
-    // Sync flow (§4.5).
-    syncingTitle: "Syncing to your hub",
-    syncingMessage: "Writing your changes to the hub\u2026",
-    wifiEventsPhaseMessage: "Deploying Wifi Events to the hub first\u2026 this can take a minute the first time.",
-    syncSuccess: "Synced to hub.",
-    syncFailedTitle: "Sync didn't finish",
-    syncFailedStep: (step) => `The hub stopped at: ${step}`,
-    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
-    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
-    syncRetry: "Retry sync",
-    syncReload: "Reload from hub",
-    syncKeepEditing: "Keep editing",
-    // The cache moved under an open editor and an edit of the user's was
-    // also changed elsewhere: the user's version was kept.
-    changedElsewhere: (kind) => `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
-    exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
-    exitSyncNow: "Sync now",
-    exitWithoutSync: "Leave without syncing",
-    // Dismiss label reused by the sync-success / delete-error banners.
-    discardConfirmCancel: "Keep editing"
-  },
-  backup: {
-    sectionMake: "Make",
-    sectionEdit: "Edit",
-    sectionRestore: "Restore",
-    loading: "Loading backup tools\u2026",
-    selectHub: "Select a hub to manage backups.",
-    creatingSubtitle: "The hub is creating your backup.",
-    readySubtitle: "Your backup is ready.",
-    chooseSubtitle: "Choose what to include in this backup.",
-    enablePersistentCache: "Enable persistent cache to choose backup contents from the card.",
-    completedTitle: "Backup completed",
-    expired: "Backup expired. Start a new backup to download again.",
-    downloaded: "Downloaded",
-    downloadAgain: "Download again",
-    downloadBackup: "Download backup",
-    complete: "Complete",
-    restoreCompletedTitle: "Restore completed",
-    restoreCompletedSubtitle: "The selected activities and devices were restored to the hub.",
-    restoreCompletedSuccessfully: "Restore completed successfully.",
-    backupCompletedSuccessfully: "Backup completed successfully.",
-    wifiDeviceDeployedSuccessfully: "Wifi Device deployed successfully.",
-    restoreRunningSubtitle: "The hub is restoring your backup.",
-    restoreFinishedSubtitle: "Your restore has completed.",
-    restoreChooseSubtitle: "Load a backup file, then choose exactly what to restore. Activities automatically pull in the devices they depend on.",
-    itemsToRestore: "Items to restore",
-    eraseExisting: "Erase existing devices and activities",
-    startRestore: "Start restore",
-    startingBackup: "Starting backup\u2026",
-    startingRestore: "Starting restore\u2026",
-    backupFailed: "Backup failed.",
-    restoreFailed: "Restore failed.",
-    failedPrepareDownload: "Failed to prepare edited backup for download.",
-    enterName: "Enter a name to continue.",
-    renameDialogTitle: "Rename hub",
-    linked: "linked",
-    hubNameRestoreOnlyAria: "Hub name is only applied at restore time when the user opts to wipe the hub.",
-    entireHub: "Entire hub",
-    selectedDevices: "Selected devices",
-    devicesToInclude: "Devices to include",
-    selectedCount: (count) => `${count} selected`,
-    backupResultSummary: (activities, devices) => `${activities} ${activities === 1 ? "activity" : "activities"} and ${devices} ${devices === 1 ? "device" : "devices"} backed up`,
-    linkedDevices: (count) => `${count} linked ${count === 1 ? "device" : "devices"}`,
-    deselectAll: "Deselect all",
-    selectAll: "Select all",
-    noDevicesAvailable: "No devices available.",
-    working: "Working",
-    startBackup: "Start backup",
-    editLoadPrompt: "Load a backup file, then choose an activity or device to edit.",
-    chooseBackupFile: "Choose backup file",
-    reorderHint: " Drag the handle on any row to reorder activities and devices.",
-    macroStepsSortableHelp: "Drag to reorder. Each step plays a command; set the following wait below the step.",
-    macroStepsHelp: "Each step plays a command; set the following wait below the step.",
-    hubName: "Hub name",
-    hubNameNotSet: "(not set)",
-    renameHub: "Rename hub",
-    activities: "Activities",
-    noActivitiesInFile: "This backup file has no activities.",
-    devices: "Devices",
-    noDevicesInFile: "This backup file has no devices.",
-    downloadEditedBackup: "Download edited backup",
-    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
-    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
-    deleteCommandTitle: (name) => `Delete command "${name}"?`,
-    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
-    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
-    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
-    deleteSimpleBody: "This removes it from the loaded backup.",
-    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
-    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
-    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
-    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
-    deleteImpactMembers: (count) => `${count} ${count === 1 ? "device no longer powers" : "devices no longer power"} on and off with this activity`,
-    deleteReplaceNote: 'Deletions are applied to the hub only when "Erase existing devices and activities" is enabled during restore.',
-    // Live-edit variants: deletions here act on the hub, not a backup file.
-    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
-    deleteSimpleBodyLive: "This removes it.",
-    deleteImmediateNote: "This is applied to the hub immediately.",
-    deleteSyncNote: "This change is written to the hub on the next Sync.",
-    deleteCancel: "Cancel",
-    deleteConfirm: "Delete",
-    deleteActivityAria: "Delete activity",
-    deleteDeviceAria: "Delete device",
-    deleteCommandAria: "Delete command",
-    addFavoriteDevice: "Device",
-    addFavoriteCommand: "Command",
-    addFavoriteAdd: "Add",
-    addFavoriteCancel: "Cancel",
-    addFavoriteNoDevices: "This backup has no devices with commands to add.",
-    addFavoriteNoCommands: "This device has no commands to add.",
-    addShortcutNoCommandsLeft: "Every command is already a shortcut.",
-    buttonBindingsTitle: "Button assignments",
-    buttonBindingsActivitySub: "Assign remote buttons to a device's command within this activity.",
-    buttonBindingsDeviceSub: "Assign remote buttons to this device's own commands.",
-    buttonBindingsEmpty: "No button assignments configured.",
-    addBinding: "Add assignment",
-    bindingButton: "Button",
-    bindingTargetDevice: "Device",
-    bindingCommand: "Command",
-    bindingEnableLongPress: "Enable long-press assignment",
-    bindingShortPress: "Short press",
-    bindingLongPress: "Long press",
-    bindingIncomplete: "Choose a button and target first.",
-    bindingNoButtons: "Every button on this hub model is already assigned.",
-    bindingNoCommands: "This device has no commands to assign.",
-    bindingNoDevices: "This backup has no devices with commands to assign.",
-    bindingAdd: "Add",
-    bindingSave: "Save",
-    bindingCancel: "Cancel",
-    bindingDialogAddTitle: "Add button assignment",
-    bindingDialogEditTitle: (name) => `Edit ${name} assignment`,
-    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
-    deleteBindingTitle: (name) => `Delete ${name} assignment?`,
-    deleteBindingAria: "Delete assignment",
-    deleteImpactBindings: (count) => `${count} button assignment${count === 1 ? "" : "s"} will be cleared`,
-    // These headings name the hub's switching *behaviour*, not the electrical
-    // supply. Translating the bare noun "Power" led every catalogue to the
-    // wattage word (Voeding / Stromversorgung / Alimentación / Alimentation),
-    // which reads as a PSU spec — or, in nl/es/fr, as nutrition. Keep the
-    // English explicit so the behaviour is what gets translated.
-    powerSetupTitle: "Power control",
-    powerSetupDeviceSub: "How the hub switches this device on and off during activities, and the commands it sends to do it.",
-    powerSetupActivitySub: "The startup and shutdown sequence this activity runs.",
-    powerOnLabel: "Power-on sequence",
-    powerOffLabel: "Power-off sequence",
-    // Activity membership (power-only members). The sequences are the
-    // management surface: Add device sits beside Add step in the sequence
-    // editor, deleting a power-ref row removes the device, and the power
-    // section shows a one-line roster summary.
-    memberSummary: (names) => `Devices: ${names}`,
-    memberSummaryEmpty: 'No devices yet. Open a sequence and use "Add device".',
-    addMemberButton: "Add device",
-    addMemberTitle: "Add device to this activity",
-    addMemberHelper: "The device is added to both power sequences. Assign buttons or shortcuts later, or leave them empty.",
-    addMemberConfirm: "Add",
-    addMemberNoneLeft: "All devices are already part of this activity.",
-    removeMemberAria: "Remove device from this activity",
-    // Automatic-power dropdown (device only). One hub byte encodes the whole
-    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
-    powerControlTitle: "Automatic power control",
-    powerControlUnset: "Not captured",
-    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
-    powerControlDisabled: "Don't control power",
-    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
-    powerControlAutoOff: "Turn off when idle",
-    powerControlAutoOffSub: "Recommended. Powers the device off when no activity needs it.",
-    powerControlStayOn: "Stay on between activities",
-    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
-    powerControlAlwaysOn: "Always stay on",
-    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
-    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
-    inputStepTitle: "Set input",
-    inputStepCommand: "Input command",
-    inputStepNone: "\u2014 no input \u2014",
-    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
-    noMacroSteps: "No steps yet.",
-    addStep: "Add step",
-    stepDialogAddTitle: "Add step",
-    stepDialogEditTitle: "Edit step",
-    stepDevice: "Device",
-    stepCommand: "Command",
-    stepHoldSeconds: "Hold (seconds, 0 = short press)",
-    holdLabel: (seconds) => `Hold ${seconds}s`,
-    stepAdd: "Add",
-    stepSave: "Save",
-    stepCancel: "Cancel",
-    stepNoCommands: "This device has no commands.",
-    stepWaitAria: "Wait after this step (seconds)",
-    stepWaitLabel: "Delay",
-    stepWaitUnit: "s",
-    renameMacroAria: "Rename macro",
-    deleteStepAria: "Delete step",
-    editStepAria: "Edit step",
-    newMacroName: "Macro",
-    shortcutChipCommand: "command",
-    shortcutChipAction: "macro",
-    shortcutRenameAria: (kind) => kind === "macro" ? "Rename macro" : "Rename shortcut",
-    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete macro" : "Delete shortcut",
-    editStepsAria: "Edit steps",
-    crumbActivities: "Activities",
-    crumbDevices: "Devices",
-    // Activity-detail copy.
-    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
-    activityRunningTitle: "Buttons on the remote",
-    activityRunningSub: "Which device each remote button controls in this activity.",
-    activityShortcutsTitle: "Shortcuts on the remote screen",
-    activityShortcutsSubSortable: "Commands and macros shown on the remote's screen. Drag the handle to reorder.",
-    activityShortcutsSubStatic: "Commands and macros shown on the remote's screen. Use the move buttons to reorder.",
-    activityShortcutsEmpty: "No shortcuts yet. Add a command or a macro.",
-    // Role-based button assignment (Phase B).
-    roleVolume: "Volume buttons control",
-    roleNavigation: "Navigation and OK control",
-    rolePlayback: "Playback buttons control",
-    roleChannels: "Channel buttons control",
-    roleNumpad: "Number pad control",
-    roleNotUsed: "Not used",
-    roleCustom: "Custom",
-    roleCustomized: (name) => `${name} (customized)`,
-    roleMappedNote: (bound, total) => `${bound} of ${total} ${total === 1 ? "button" : "buttons"} mapped`,
-    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
-    roleMenuAria: (roleLabel2) => `Choose a device for: ${roleLabel2}`,
-    roleConfirmTitle: "Replace custom button setup?",
-    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
-    roleConfirmReplace: "Replace",
-    roleConfirmCancel: "Cancel",
-    customizeButtonsToggle: "Customize individual buttons",
-    bindingsViewTitle: "Individual buttons",
-    bindingsConfiguredCount: (count) => `${count} configured`,
-    bindingsNoneConfigured: "None customized",
-    // Unified "add to shortcuts" flow.
-    addShortcutButton: "Add",
-    copyShortcutsButton: "Copy",
-    copyShortcutsHeading: "Copy shortcuts from",
-    copyShortcutsCount: (count) => `${count} new`,
-    copyShortcutsNone: "Nothing new",
-    addShortcutTitle: "Add to shortcuts",
-    addShortcutKindLabel: "Type",
-    shortcutKindCommand: "Device command",
-    shortcutKindAction: "Macro",
-    shortcutKindWifiEvent: "Wifi Event",
-    macroTargetLabel: "Macro",
-    macroTargetCreateNew: "Create new macro",
-    macroTargetOwnGroup: "In this activity",
-    macroTargetCopyGroup: "Copy from another activity",
-    macroTargetCopyNote: (steps, activity) => `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
-    bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
-    macroTargetNoExisting: "No macros yet. Create one below.",
-    wifiEventTargetLabel: "Wifi Event",
-    wifiEventTargetCreateNew: "Create new Wifi Event\u2026",
-    wifiEventNameLabel: "Event name",
-    wifiEventNameHelper: "The event is staged now and deployed to the hub when you press Sync; attach an action to it in Automation \u2192 Events.",
-    wifiEventDeploying: "Staging the Wifi Event\u2026",
-    wifiEventNoneYet: "No Wifi Events yet. Create one below.",
-    wifiEventCreateFailed: "Creating the Wifi Event failed \u2014 it stays staged and will retry on the next create.",
-    wifiEventNameRequired: "Enter a name for the new Wifi Event.",
-    addShortcutActionName: "Name",
-    addShortcutActionHelper: "You'll pick the steps next.",
-    addShortcutCommandHelper: "The shortcut shows up under the command's name.",
-    unsaved: "Unsaved",
-    unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
-    renameKind: (kind) => `Rename ${kind}`,
-    managedWifiTitle: "Managed by Wifi Commands",
-    managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
-    managedWifiBody: "Its commands, power, input, and button assignments are configured there \u2014 editing them here would be overwritten on the next sync.",
-    managedWifiRename: "You can still rename it here; the new name stays in sync with your Wifi Commands configuration.",
-    detailPower: "On/Off",
-    detailNetwork: "Network",
-    detailCommands: "Commands",
-    detailButtons: "Buttons",
-    detailSectionsAria: "Detail sections",
-    editBindingAria: "Edit assignment",
-    editIpAria: "Edit IP address",
-    networkDescription: "The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).",
-    ipv4Description: "IPv4 dotted-decimal address",
-    addCommand: "Add command",
-    addCommandTitle: "Add command",
-    editPayloadTitle: "Edit payload",
-    commandsLiveHelp: "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. The bin removes a command with the next Sync.",
-    commandsBackupHelp: "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload.",
-    newCommandChip: "new command",
-    commandChip: "command",
-    requiredStepChip: "required",
-    buttonChip: "button",
-    ipChip: "ip",
-    thisItem: "this item",
-    noDeviceCommands: "This device does not currently have any commands.",
-    renameCommandAria: "Rename command",
-    commandId: "Command ID",
-    editPayloadAria: "Edit payload",
-    fetchEditCommandAria: "Fetch and edit this command's payload",
-    moveUpAria: "Move up",
-    moveDownAria: "Move down",
-    reorderHandleAria: (label) => `Reorder ${label} (arrow keys)`,
-    deviceClass: "Device class",
-    name: "Name",
-    nameHelper: "Shown on the remote and in every command picker.",
-    verifyPayloadLive: "Verify a changed payload before saving: Test plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.",
-    verifyPayloadBackup: "Verify a changed payload before trusting it: Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.",
-    test: "Test",
-    payloadDocsLink: "Payload documentation",
-    sendingToHub: "Sending to the hub\u2026",
-    sentToHub: "Sent to the hub for one-shot playback.",
-    testFailed: "Test failed.",
-    rawPayload: "Raw payload",
-    rawPayloadDescription: "No structured editor exists for this device class; the bytes below are replayed to the hub verbatim on restore.",
-    payloadHex: "Payload (hex bytes)",
-    payloadHexHelper: 'Byte pairs like "0a 4f 22"; whitespace and 0x prefixes are tolerated.',
-    prontoHexTab: "Pronto Hex",
-    sofabatonHexTab: "Sofabaton Hex",
-    descriptorTab: "Descriptor",
-    prontoHexHelper: 'Paste a learned-format Pronto Hex code such as "0000 006D 0022 0000 00AB \u2026", or a supported Unfolded Circle HEX code such as "3;0x4B36D32C;32;0". The editor converts it to Sofabaton bytes automatically.',
-    prontoUnavailable: "This payload does not parse as raw IR timings, so it cannot be shown as Pronto Hex.",
-    invalidProntoHex: "This is not a valid learned-format Pronto Hex code.",
-    descriptorX2Only: "Descriptive IR payloads are supported on X2 hubs only.",
-    // Unfolded Circle HEX import (converted on the backend through infrared-protocols).
-    ucHexConverting: "Converting the Unfolded Circle HEX code\u2026",
-    ucHexInvalid: "This is not a valid Unfolded Circle HEX code.",
-    ucHexUnknownProtocol: "an unknown protocol",
-    ucHexUnsupported: (protocol) => `This Unfolded Circle HEX code uses ${protocol}, which is not supported. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.`,
-    ucHexUnrepresentable: "This Unfolded Circle HEX code does not match its IR protocol's format rules and cannot be converted. Export the command from Unfolded Circle in Pronto Hex format, then paste it here.",
-    ucHexUnavailable: "Unfolded Circle HEX conversion is unavailable because the required infrared-protocols library cannot be loaded in this Home Assistant installation.",
-    ucHexNoHost: "This editor cannot convert Unfolded Circle HEX codes because conversion requires a connection to Home Assistant.",
-    ucHexFailed: "The Unfolded Circle HEX code could not be converted.",
-    // Payload-editor learn mode (IR9).
-    learn: "Learn",
-    learnAria: "Learn a payload from another remote or from Home Assistant",
-    learnBack: "Back",
-    learnTryAgain: "Try again",
-    learnFromHub: "From another remote",
-    learnFromHubDescription: "The hub's receiver listens for one button press from the IR remote whose command you want to learn.",
-    learnFromHa: "From Home Assistant",
-    learnFromHaDescription: "Anything another integration sends through the hub's infrared emitter lands here, ready to save.",
-    learnHaChecking: "Checking which integrations use the hub's emitter\u2026",
-    learnHubArming: "Arming the hub's receiver\u2026",
-    learnHubListening: "Point that remote at the hub and press the button once.",
-    learnHubCountdown: (left) => `Listening\u2026 ${left}`,
-    learnHubLearned: (timings, khz) => `Learned from the source remote: ${timings} timing values at ${khz} kHz. Test it, then Save.`,
-    learnHubLearnedRaw: "Learned from the source remote. Test it, then Save.",
-    learnHubTimedOut: "No signal arrived before the hub's learning window closed.",
-    learnHubInterrupted: (by) => `Other hub traffic ended the learning window (${by}).`,
-    learnHubCancelled: "Learning cancelled.",
-    learnHubRefused: "The hub did not enter learning mode. Is the Sofabaton app connected, or a sync running?",
-    learnHubFailed: "Learning failed.",
-    learnHubNoPayload: "The hub captured a signal but its payload could not be read.",
-    learnHaHelper: "Send a command from Home Assistant through the hub's emitter; it appears below the moment the hub plays it. You can leave this page and come back.",
-    learnHaConsumers: "Integrations using this hub's emitter",
-    learnHaEmpty: "Nothing captured yet.",
-    learnHaNew: "new",
-    learnHaUse: "Use",
-    learnHaSentCount: (count) => `\xD7${count}`,
-    learnHaCaptured: (label) => `Captured from Home Assistant: ${label}. Test it, then Save.`,
-    learnHaUnavailable: "Could not load recently emitted IR commands.",
-    learnJustNow: "just now",
-    learnSecondsAgo: (seconds) => `${seconds} s ago`,
-    learnMinutesAgo: (minutes) => `${minutes} min ago`,
-    learnHoursAgo: (hours) => `${hours} h ago`,
-    rename: "Rename",
-    renameActivity: "Rename activity",
-    renameDevice: "Rename device",
-    renameMacro: "Rename macro",
-    renameFavorite: "Rename favorite",
-    renameCommand: "Rename command",
-    ipAddress: "IP address",
-    noPayloadReturned: "The hub returned no payload for this command.",
-    newCommandNameRequired: "Enter a name for the new command.",
-    descriptiveIrRequired: "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).",
-    payloadHexRequired: "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).",
-    noFreeCommandSlot: "This device has no free command slot left.",
-    nothingToTest: "Nothing to test yet.",
-    ipv4Required: "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.",
-    steps: "Steps",
-    buttonCatalog: {
-      up: "Up",
-      down: "Down",
-      left: "Left",
-      right: "Right",
-      ok: "OK",
-      home: "Home",
-      back: "Back",
-      menu: "Menu",
-      volumeUp: "Volume up",
-      volumeDown: "Volume down",
-      mute: "Mute",
-      channelUp: "Channel up",
-      channelDown: "Channel down",
-      rewind: "Rewind",
-      pause: "Pause",
-      forward: "Fast forward",
-      red: "Red",
-      green: "Green",
-      yellow: "Yellow",
-      blue: "Blue",
-      exit: "EXIT",
-      dvr: "DVR",
-      play: "Play",
-      guide: "Guide",
-      num0: "0",
-      num1: "1",
-      num2: "2",
-      num3: "3",
-      num4: "4",
-      num5: "5",
-      num6: "6",
-      num7: "7",
-      num8: "8",
-      num9: "9",
-      numDash: "Dash (-)",
-      numEnter: "Enter (E)",
-      navigation: "Navigation",
-      volumeChannel: "Volume & channel",
-      transport: "Playback",
-      colour: "Color",
-      extra: "Extra",
-      numpad: "Number pad",
-      unknown: (code) => `Button 0x${code}`
-    },
-    powerOn: "Power on",
-    powerOff: "Power off",
-    powerStepLabel: (verb, device) => `${verb} \xB7 ${device}`,
-    inputStepLabel: (device, input) => `Input \xB7 ${device}: ${input}`,
-    macroTargetLabelText: (name) => `Macro \xB7 ${name}`
-  },
-  hub: {
-    firmwareVersion: (version) => `FW: v${version}`,
-    productVersion: (version) => `Sofabaton ${version}`,
-    firmwareUpdateRequired: "Firmware update required",
-    firmwareUpdateRecommended: "Firmware update recommended",
-    firmwareUpdateTooltip: (recommended, required, unsupported) => {
-      const update = "Update the hub using the Sofabaton app.";
-      if (unsupported) {
-        const recommendation = String(recommended) === String(required) ? "" : ` Firmware version ${recommended} or newer is recommended because it contains fixes for known issues.`;
-        return `Firmware version ${required} or newer is required for Control Panel configuration changes.${recommendation} ${update}`;
-      }
-      return `Firmware version ${recommended} or newer is recommended because it contains fixes for known issues. Your installed firmware remains supported for Control Panel configuration changes. ${update}`;
-    }
-  },
-  decodedPayload: {
-    httpTitle: "HTTP request",
-    httpSubtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
-    hostIpv4: "Host (IPv4)",
-    hostExample: "e.g. 192.168.2.77",
-    port: "Port",
-    httpMethod: "HTTP method",
-    httpMethodExample: "e.g. GET, POST",
-    path: "Path",
-    extraHeaders: "Extra headers",
-    extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
-    contentType: "Content type",
-    body: "Body",
-    rokuTitle: "Roku ECP request",
-    ecpPath: "ECP URL path",
-    ecpPathExample: "e.g. /launch/12 or /keypress/Home",
-    hueTitle: "Hue REST request",
-    sonosTitle: "Sonos UPnP request",
-    bodyBlockSubtitle: "Body block is injected verbatim between Host headers and the network write.",
-    urlPath: "URL path",
-    bodyBlock: "Body block (raw wire string)",
-    bodyBlockHelper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count.",
-    mqttTitle: "MQTT identifiers",
-    mqttSubtitle: "Both bytes are ignored by the hub: at press time it publishes its own device and key IDs to the broker. There is nothing to configure.",
-    mqttDeviceId: "Device ID (ignored by the hub)",
-    mqttCommandId: "Command ID (ignored by the hub)",
-    irTitle: "Descriptive IR payload",
-    irSubtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
-    descriptor: "Descriptor",
-    descriptorExample: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2",
-    invalidObject: "Backup file must contain a JSON object.",
-    invalidBundle: "Backup file is not a Sofabaton hub bundle.",
-    invalidSchema: (expected, actual) => `Backup file schema_version must be ${expected} (got ${String(actual)}).`,
-    structuralBundle: "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
-    missingArrays: "Backup file is missing devices or activities arrays.",
-    missingSourceModel: "Backup file is missing its source hub model, so compatibility cannot be verified.",
-    unknownDestinationModel: "The destination hub model is unknown, so restore compatibility cannot be verified.",
-    incompatibleModels: (source, destination) => `This backup was created on a Sofabaton ${source} hub and cannot be restored onto a Sofabaton ${destination} hub.`
-  },
-  wifiCommands: {
-    deployingTitle: "Deploying Wifi Commands",
-    sectionSubtitle: "Use Wifi Commands to run Home Assistant Actions from buttons on your physical remote. Choose a Wifi Device to edit its command slots, or add a new one.",
-    addDeviceButton: "Add",
-    addDevice: "Add Wifi Device",
-    deleteDeviceAria: "Delete Wifi Device",
-    emptyDevices: "No Wifi Devices configured yet. Add one to start assigning command slots.",
-    maximumDevices: "Maximum number of devices reached",
-    configuredSlots: (count) => `${count} slot${count === 1 ? "" : "s"}`,
-    unableSaveAction: "Unable to save Action",
-    hubEventActionsLoadFailed: "The event actions could not be loaded, so they cannot be changed right now.",
-    hubEventResetFailed: "The action was not cleared. Try again.",
-    commandsLoadFailed: "This device's commands could not be loaded, so they cannot be changed right now.",
-    commandsSaveFailed: "The change was not saved. Try again.",
-    retryLoad: "Try again",
-    hubCommandInProgress: "Hub command in progress\u2026",
-    idle: "Idle",
-    unableLoadSyncStatus: "Unable to load sync status",
-    noTargetEntity: "No target entity",
-    commandNameLeadingSpace: "Command name must start with a non-space character.",
-    navigationGroup: "Navigation",
-    transportGroup: "Volume & Channel",
-    mediaGroup: "Playback",
-    abcGroup: "ABC",
-    colorGroup: "Color",
-    inputCommand: "Input command",
-    inputFor: (activity) => `Input for ${activity}`,
-    inActivities: (count) => `in ${count} ${count === 1 ? "activity" : "activities"}`,
-    unconfiguredCommand: "Unconfigured command",
-    powerBothCommand: "Power ON and OFF command",
-    powerOnCommand: "Power ON command",
-    powerOffCommand: "Power OFF command",
-    replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
-    replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
-    replacesOnButtonIn: (slot, activities) => `Replaces "${slot}" on this button in ${activities.join(", ")}`,
-    replacesFromDeviceIn: (slot, device, activities) => `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
-    none: "None",
-    commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
-    syncingDeviceFallback: "Syncing Wifi Device\u2026",
-    syncingDeviceNamed: (deviceName) => `Syncing ${deviceName}\u2026`,
-    // Status line while the sync spins up — not the Sync button label.
-    startSync: "Starting sync",
-    syncMessageFailed: "Last sync failed.",
-    // Why a sync stopped, shown in the dock (one per backend failure code).
-    syncFailedAnotherSync: "Another Wifi Commands sync is already running.",
-    syncFailedHubBusy: "The hub is busy with another operation. Try again when it finishes.",
-    syncFailedPortInUse: "The Wifi Device could not be enabled: its port is in use.",
-    syncFailedActivitiesChanged: "Activities on the hub changed. Re-select this Wifi Device's activities, save, and sync again.",
-    syncFailedHubNoAnswer: "The hub did not answer. Sync again.",
-    syncFailedDeviceAmbiguous: "More than one Wifi Device on the hub matches this one.",
-    syncFailedPowerCommand: "The power on or off command is not one of this device's commands.",
-    syncFailedDelete: "The hub did not delete the previous Wifi Device.",
-    syncFailedCreate: "The hub did not create the Wifi Device.",
-    syncFailedReadback: "The hub did not store the commands as sent; the previous Wifi Device was kept.",
-    syncFailedAttach: "The Wifi Device could not be added to every activity.",
-    syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
-    syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
-    syncFailedRejected: "The hub refused a change. Sync again.",
-    syncFailedGeneric: "The sync stopped. Sync again.",
-    syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
-    syncShortRunning: "Syncing",
-    syncShortFailed: "Sync failed",
-    syncShortNeeded: "Sync needed",
-    deviceDeleting: "Deleting\u2026",
-    deviceSynced: "Synced",
-    actionButtonUnavailable: "Unavailable",
-    actionButtonSyncing: "Syncing\u2026",
-    actionButtonBusy: "Busy",
-    actionButtonSyncToHub: "Sync to Hub",
-    actionButtonUpToDate: "Up to date",
-    createDeviceBusy: "Creating Wifi Device\u2026",
-    deviceName: "Device name",
-    createDeviceNameRequired: "Device name is required.",
-    createDeviceFailed: "Unable to create Wifi Device",
-    deleteDeviceBusy: "Deleting Wifi Device\u2026",
-    deleteDeviceFailed: "Unable to delete Wifi Device",
-    createModalCancel: "Cancel",
-    createModalCreate: "Create",
-    transportLabel: "Delivery method",
-    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
-    transportHttpHint: "The hub calls Home Assistant directly over your network.",
-    // The standalone server panel's create flow (no switch there yet).
-    transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
-    transportChangeNote: "You can change the delivery method later in the device's editor on the Hub tab.",
-    transportPillDeployedTitle: "Current delivery method",
-    transportPillPreviewTitle: "Selected delivery method",
-    transportSwitching: (transport) => `Switching delivery to ${transport}\u2026`,
-    deleteModalTitle: "Delete Wifi Device?",
-    deleteModalBody: (deviceName) => `Delete "${deviceName}" from the hub and remove its saved command-slot configuration?`,
-    deleteModalDelete: "Delete",
-    clearSlotTitle: "Clear command slot?",
-    clearSlotSubtitle: "Resets configuration.",
-    clearSlotNo: "No",
-    clearSlotYes: "Yes",
-    makeCommand: "Make Command",
-    noActionConfigured: "No Action configured",
-    commandSlotTitle: (slotIndex) => `Command Slot ${slotIndex + 1}`,
-    commandSlotActionTitle: (slotIndex) => `Command Slot ${slotIndex + 1} Action`,
-    commandDisplayName: "Command Display Name",
-    advanced: "Advanced",
-    activityInput: "Perform this command when an activity starts",
-    activityInputHint: "The command is set as the activity's input on the hub, so it runs during the activity's startup sequence.",
-    activityInputReplaces: (slotName, activityName) => `Replaces "${slotName}" when ${activityName} starts`,
-    noActivitiesForHub: "No activities available for this hub.",
-    activityInputLabel: "Activity that performs this command",
-    devicePowerOnLabel: "When the hub turns this device ON",
-    devicePowerOffLabel: "When the hub turns this device OFF",
-    devicePowerNothing: "Nothing",
-    devicePowerHint: "Runs as part of this device's power sequence in your activities. Synced to the hub.",
-    devicePowerPerform: (commandName) => `perform ${commandName}`,
-    hubEventsTitle: "Hub Events",
-    hubEventsSubtitle: "Perform a Home Assistant Action when the hub changes state. These run in Home Assistant only and are never synced to the hub.",
-    hubEventPowerOff: "When the hub is switched OFF",
-    hubEventRedundantOff: "When OFF is pressed while the hub is already OFF",
-    hubEventActivityStart: "When any activity starts",
-    hubEventActivityStops: "and when one stops",
-    hubEventActivityStopModalTitle: "When any activity stops",
-    hubEventDoNothing: "do nothing",
-    hubEventPerform: (service) => `perform ${service}`,
-    hubEventClearTitle: "Reset to do nothing",
-    hubEventModalNote: "Choose the Action to perform when this happens. Clear the Action to do nothing.",
-    wifiCommandsTabLabel: "Wifi Commands",
-    eventsTabLabel: "Events",
-    wifiEventsTitle: "Wifi Events",
-    wifiEventsSubtitle: "Events created from the activity editor. Pressing one on the remote fires its Home Assistant Action here (these also update the Wifi Commands sensor).",
-    wifiEventsEmpty: "No Wifi Events yet. Create them from the activity editor's Add dialogs (shortcuts, buttons, and macro steps).",
-    // Shared by the WIFI EVENTS and ACTIVITY EVENTS sections: the header
-    // count pill and the expander link that reveals unconfigured rows.
-    eventsConfiguredPill: (configured, total) => `${configured} of ${total} configured`,
-    eventsShowUnconfigured: (count) => `Show ${count} unconfigured\u2026`,
-    wifiEventRowPress: (name) => `When ${name} is pressed`,
-    wifiEventModalTitle: (name) => `When ${name} is pressed`,
-    wifiEventNeedsSyncBadge: "needs sync",
-    wifiEventsRecordNeedsSyncNotice: "The Wifi Events device has changes waiting for a sync. Open Hub \u2192 Devices \u2192 Wifi Events \u2192 Edit and press Sync.",
-    // Orphaned-config notice, split around the clickable phrase so locales
-    // can place it anywhere in the sentence.
-    wifiEventsStaleNoticePrefix: "These events are no longer on the hub. Adding one to an activity will redeploy them all, or you can ",
-    wifiEventsStaleNoticeLink: "remove this configuration from Home Assistant",
-    wifiEventsStaleNoticeSuffix: ".",
-    wifiEventsStaleConfirmText: "Remove all Wifi Events and their Actions from Home Assistant?",
-    wifiEventsStaleConfirmRemove: "Remove",
-    wifiEventsStaleRemoveFailed: "Removing the Wifi Events configuration failed.",
-    activityEventsTitle: "Activity Events",
-    activityEventsSubtitle: "Perform a Home Assistant Action when a specific activity starts or stops. Switching between activities stops the old one and starts the new one.",
-    activityEventStarts: (name) => `When ${name} starts`,
-    activityEventStops: "and when it stops",
-    activityEventStartModalTitle: (name) => `When ${name} starts`,
-    activityEventStopModalTitle: (name) => `When ${name} stops`,
-    activityEventFallbackName: (id) => `Activity ${id}`,
-    noActivitiesForEvents: "No activities on this hub yet.",
-    favorite: "Set as favorite",
-    physicalButtonAssignment: "Physical button assignment",
-    enableLongPress: "Enable long press",
-    applyToActivities: "Apply to these activities",
-    actionModalNote: "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.",
-    shortPress: "Short press",
-    longPress: "Long press",
-    selectLongPressAction: "Select long-press action",
-    selectTriggeredAction: "Select triggered action",
-    action: "Action",
-    save: "Save",
-    keyLabels: {
-      up: "Up",
-      down: "Down",
-      left: "Left",
-      right: "Right",
-      ok: "OK",
-      back: "Back",
-      home: "Home",
-      menu: "Menu",
-      volup: "Vol +",
-      voldn: "Vol -",
-      mute: "Mute",
-      chup: "Ch +",
-      chdn: "Ch -",
-      guide: "Guide",
-      dvr: "DVR",
-      play: "Play",
-      exit: "EXIT",
-      rew: "Rewind",
-      pause: "Pause",
-      fwd: "Fast forward",
-      red: "Red",
-      green: "Green",
-      yellow: "Yellow",
-      blue: "Blue",
-      a: "A",
-      b: "B",
-      c: "C"
-    }
-  }
-};
-var currentStrings2 = TOOLS_CARD_STRINGS_EN;
-function isPlainObject3(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function valueAtPath(path) {
-  let value = currentStrings2;
-  for (const key of path) value = value?.[key];
-  return value;
-}
-var proxyCache = /* @__PURE__ */ new Map();
-function liveStringsProxy(path) {
-  const cacheKey = path.map(String).join(".");
-  const cached = proxyCache.get(cacheKey);
-  if (cached) return cached;
-  const proxy = new Proxy(() => void 0, {
-    get(_target, property) {
-      const value = valueAtPath([...path, property]);
-      if (typeof value === "function" || isPlainObject3(value)) {
-        return liveStringsProxy([...path, property]);
-      }
-      return value;
-    },
-    apply(_target, _thisArg, args) {
-      const value = valueAtPath(path);
-      return typeof value === "function" ? value(...args) : void 0;
-    },
-    ownKeys() {
-      const value = valueAtPath(path);
-      return isPlainObject3(value) ? Reflect.ownKeys(value) : [];
-    },
-    getOwnPropertyDescriptor(_target, property) {
-      const value = valueAtPath(path);
-      if (!isPlainObject3(value) || !(property in value)) return void 0;
-      return { configurable: true, enumerable: true };
-    }
-  });
-  proxyCache.set(cacheKey, proxy);
-  return proxy;
-}
-var TOOLS_CARD_STRINGS = liveStringsProxy([]);
-
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
@@ -16521,16 +16995,202 @@ function hubIcon(kind, classes = "") {
       <path d="M25.79,130c-7.42,0-14.04-1.44-19.67-4.22,5.85,12.19,14.63,22.79,26.26,31.66,9.25,7.11,24.67,15.57,45.76,15.57h264c14.9,0,28.65-4.5,42.02-13.76,12.95-9.01,22.84-19.89,29.61-32.48-6.92,2.72-14.25,3.23-20.98,3.23H25.79Z"></path>
     </svg>`;
   }
-  const icon7 = {
+  const icon8 = {
     activities: "mdi:play-circle-outline",
     devices: "mdi:audio-video",
     ip: "mdi:router-wireless",
     version: "mdi:cog-outline"
   }[kind];
-  return b2`<ha-icon class=${className.trim()} icon=${icon7}></ha-icon>`;
+  return b2`<ha-icon class=${className.trim()} icon=${icon8}></ha-icon>`;
+}
+
+// custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form.ts
+var WIFI_IP_SCHEMES = ["http", "https"];
+var WIFI_IP_URL_METHODS = ["GET", "POST", "PUT"];
+var WIFI_IP_DRAFT_KEYS = [
+  "scheme",
+  "host",
+  "port",
+  "method",
+  "path",
+  "header",
+  "content_type",
+  "body"
+];
+var WifiIpFormError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "WifiIpFormError";
+  }
+};
+function wifiIpRecordKind(fields) {
+  return "url" in fields ? "url" : "text";
+}
+function fieldText(value) {
+  return value == null ? "" : String(value);
+}
+function methodOf(draft) {
+  return String(draft ?? "").trim().toUpperCase() || "GET";
+}
+function sameLines(a4, b3) {
+  return a4.replace(/\r\n|\r/g, "\n") === b3.replace(/\r\n|\r/g, "\n");
+}
+function splitUrl(url) {
+  const match = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([\s\S]*)$/.exec(url);
+  if (!match) return { scheme: "http", host: url, port: "", path: "" };
+  const [, scheme, authority, path] = match;
+  const withPort = /^(.*):(\d*)$/.exec(authority);
+  return {
+    scheme: scheme.toLowerCase(),
+    host: withPort ? withPort[1] : authority,
+    port: withPort ? withPort[2] : "",
+    path
+  };
+}
+function headerDrafts(pairs) {
+  let contentType = null;
+  const lines = [];
+  for (const pair of Array.isArray(pairs) ? pairs : []) {
+    const [name, value] = Array.isArray(pair) ? [fieldText(pair[0]), fieldText(pair[1])] : ["", ""];
+    if (contentType === null && name.toLowerCase() === "content-type") {
+      contentType = value;
+      continue;
+    }
+    lines.push(`${name}: ${value}`);
+  }
+  return { header: lines.join("\r\n"), contentType: contentType ?? "" };
+}
+function wifiIpDraftsFromFields(fields) {
+  if (wifiIpRecordKind(fields) === "url") {
+    const { scheme, host, port, path } = splitUrl(fieldText(fields.url));
+    const { header, contentType } = headerDrafts(fields.headers);
+    return {
+      scheme,
+      host,
+      port,
+      method: fieldText(fields.method),
+      path,
+      header,
+      content_type: contentType,
+      body: fieldText(fields.body)
+    };
+  }
+  return {
+    scheme: "http",
+    host: fieldText(fields.host),
+    port: fields.port == null ? "" : String(Number(fields.port) || 0),
+    method: fieldText(fields.method),
+    path: fieldText(fields.path),
+    header: fieldText(fields.header),
+    content_type: fieldText(fields.content_type),
+    body: fieldText(fields.body)
+  };
+}
+function wifiIpDraftsChanged(fields, drafts) {
+  const original = wifiIpDraftsFromFields(fields);
+  return WIFI_IP_DRAFT_KEYS.some((key) => !sameLines(drafts[key] ?? "", original[key] ?? ""));
+}
+function wifiIpDraftsWithScheme(drafts, scheme) {
+  const port = String(drafts.port ?? "").trim();
+  const nextPort = scheme === "https" && port === "80" ? "443" : scheme === "http" && port === "443" ? "80" : drafts.port ?? "";
+  return { ...drafts, scheme, port: nextPort };
+}
+function wifiIpDefaultPort(scheme) {
+  return String(scheme ?? "").trim().toLowerCase() === "https" ? "443" : "80";
+}
+function wifiIpRequestPreview(drafts) {
+  const host = String(drafts.host ?? "").trim();
+  if (!host) return null;
+  const scheme = String(drafts.scheme ?? "").trim().toLowerCase() === "https" ? "https" : "http";
+  const port = String(drafts.port ?? "").trim();
+  const shownHost = (host.match(/:/g) ?? []).length > 1 && !host.startsWith("[") ? `[${host}]` : host;
+  return {
+    method: methodOf(drafts.method),
+    url: `${scheme}://${shownHost}${port ? `:${port}` : ""}${urlPath(String(drafts.path ?? "")) || "/"}`
+  };
+}
+function canonicalIpv4(host) {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return null;
+  const octets = match.slice(1).map(Number);
+  return octets.every((octet) => octet <= 255) ? octets.join(".") : null;
+}
+function urlHost(host) {
+  if (/[\s/?#@]/.test(host)) throw new WifiIpFormError("host_invalid");
+  if (host.startsWith("[")) return host;
+  const colons = (host.match(/:/g) ?? []).length;
+  if (colons === 1) throw new WifiIpFormError("host_invalid");
+  return colons ? `[${host}]` : host;
+}
+function urlPath(path) {
+  const trimmed = path.trim();
+  return !trimmed || /^[/?#]/.test(trimmed) ? trimmed : `/${trimmed}`;
+}
+function headerPairs(header, contentType) {
+  const pairs = [];
+  for (const line of header.split(/\r\n|\r|\n/)) {
+    if (!line.trim()) continue;
+    const colon = line.indexOf(":");
+    const name = colon < 0 ? "" : line.slice(0, colon).trim();
+    if (!name) throw new WifiIpFormError("header_line_invalid");
+    pairs.push([name, line.slice(colon + 1).trim()]);
+  }
+  if (contentType.trim()) pairs.push(["Content-Type", contentType.trim()]);
+  return pairs;
+}
+function buildWifiIpRecord(drafts, options) {
+  const { original, existing } = options;
+  const scheme = String(drafts.scheme ?? "").trim().toLowerCase() === "https" ? "https" : "http";
+  const host = String(drafts.host ?? "").trim();
+  if (!host) throw new WifiIpFormError("host_required");
+  const ipv4 = canonicalIpv4(host);
+  const portDraft = String(drafts.port ?? "").trim();
+  const port = portDraft ? Number(portDraft) : null;
+  if (port !== null && !(Number.isInteger(port) && port >= 1 && port <= 65535)) {
+    throw new WifiIpFormError("port_invalid");
+  }
+  const originalKind = original ? wifiIpRecordKind(original.fields) : "text";
+  const keepsUrl = existing && originalKind === "url";
+  const needsUrl = scheme === "https" || ipv4 === null;
+  if (needsUrl && !options.isX2 && !keepsUrl) throw new WifiIpFormError("host_needs_ipv4");
+  const kind = needsUrl || keepsUrl ? "url" : "text";
+  const same2 = original !== null && originalKind === kind ? original : null;
+  const originalDrafts = same2 ? wifiIpDraftsFromFields(same2.fields) : null;
+  const untouched = (...keys) => originalDrafts !== null && keys.every((key) => sameLines(drafts[key] ?? "", originalDrafts[key] ?? ""));
+  const keep = (key, value) => same2 && untouched(key) ? same2.fields[key] : value();
+  const trailerHex = same2 ? same2.trailerHex : "";
+  if (kind === "text") {
+    return {
+      trailerHex,
+      fields: {
+        host: keep("host", () => ipv4),
+        port: keep("port", () => port ?? 80),
+        method: keep("method", () => methodOf(drafts.method)),
+        path: keep("path", () => String(drafts.path ?? "").trim() || "/"),
+        header: keep("header", () => String(drafts.header ?? "").replace(/\r\n|\r|\n/g, "\r\n")),
+        content_type: keep("content_type", () => String(drafts.content_type ?? "")),
+        body: keep("body", () => String(drafts.body ?? ""))
+      }
+    };
+  }
+  const method = methodOf(drafts.method);
+  if (!WIFI_IP_URL_METHODS.includes(method)) throw new WifiIpFormError("method_unsupported");
+  const url = same2 && untouched("scheme", "host", "port", "path") ? fieldText(same2.fields.url) : `${scheme}://${ipv4 ?? urlHost(host)}${port === null ? "" : `:${port}`}${urlPath(String(drafts.path ?? ""))}`;
+  const headers = same2 && untouched("header", "content_type") ? (Array.isArray(same2.fields.headers) ? same2.fields.headers : []).map((pair) => [...pair]) : headerPairs(String(drafts.header ?? ""), String(drafts.content_type ?? ""));
+  return {
+    trailerHex,
+    fields: { url, method, headers, body: keep("body", () => String(drafts.body ?? "")) }
+  };
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var CONTENT_TYPE_SUGGESTIONS = [
+  "application/json",
+  "application/x-www-form-urlencoded",
+  "text/plain",
+  "text/xml"
+];
 function decodedClassFormSpecs() {
   const S8 = TOOLS_CARD_STRINGS.decodedPayload;
   return {
@@ -16538,19 +17198,39 @@ function decodedClassFormSpecs() {
       title: S8.httpTitle,
       subtitle: S8.httpSubtitle,
       fields: [
-        { key: "host", label: S8.hostIpv4, helper: S8.hostExample },
-        { key: "port", label: S8.port, numeric: true },
-        { key: "method", label: S8.httpMethod, helper: S8.httpMethodExample },
-        { key: "path", label: S8.path },
+        { key: "host", label: S8.hostIpv4, placeholder: "192.168.2.77" },
+        {
+          key: "port",
+          label: S8.port,
+          numeric: true,
+          narrow: true,
+          placeholder: (drafts) => wifiIpDefaultPort(drafts.scheme)
+        },
+        {
+          key: "method",
+          label: S8.httpMethod,
+          narrow: true,
+          placeholder: "GET",
+          // The methods a URL record can hold; request text takes any.
+          suggestions: WIFI_IP_URL_METHODS
+        },
+        { key: "path", label: S8.path, placeholder: "/" },
         {
           key: "header",
           label: S8.extraHeaders,
           multiline: true,
           crlfOnWire: true,
+          rows: 2,
+          placeholder: "X-Api-Key: 123",
           helper: S8.extraHeadersHelper
         },
-        { key: "content_type", label: S8.contentType },
-        { key: "body", label: S8.body, multiline: true }
+        {
+          key: "content_type",
+          label: S8.contentType,
+          placeholder: "application/json",
+          suggestions: CONTENT_TYPE_SUGGESTIONS
+        },
+        { key: "body", label: S8.body, multiline: true, rows: 5 }
       ]
     },
     wifi_roku: {
@@ -16626,6 +17306,51 @@ var DECODED_CLASS_FORM_SPECS = new Proxy(
     }
   }
 );
+function decodedFormFields(className, isX2) {
+  const fields = DECODED_CLASS_FORM_SPECS[className]?.fields ?? [];
+  if (className !== "wifi_ip" || !isX2) return fields;
+  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
+  return [
+    { key: "scheme", label: S8.protocol, options: WIFI_IP_SCHEMES, narrow: true },
+    ...fields.map(
+      (field) => field.key === "host" ? { ...field, label: S8.host, helper: S8.hostOrNameExample } : field
+    )
+  ];
+}
+var WIFI_IP_FORM_ROWS = [
+  ["scheme", "host", "port"],
+  ["method", "path"],
+  ["content_type"],
+  ["header"],
+  ["body"]
+];
+function decodedFormRows(className, isX2) {
+  const fields = decodedFormFields(className, isX2);
+  if (className !== "wifi_ip") return fields.map((field) => [field]);
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  return WIFI_IP_FORM_ROWS.map((keys) => keys.flatMap((key) => byKey.get(key) ?? [])).filter((row) => row.length > 0);
+}
+function decodedFieldPlaceholder(field, drafts) {
+  return typeof field.placeholder === "function" ? field.placeholder(drafts) : field.placeholder ?? "";
+}
+function wifiIpFormErrorText(error) {
+  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
+  if (!(error instanceof WifiIpFormError)) return error instanceof Error ? error.message : String(error);
+  switch (error.code) {
+    case "host_required":
+      return S8.hostRequired;
+    case "host_invalid":
+      return S8.hostInvalid;
+    case "host_needs_ipv4":
+      return S8.hostNeedsIpv4;
+    case "port_invalid":
+      return S8.portInvalid;
+    case "method_unsupported":
+      return S8.urlMethodUnsupported;
+    case "header_line_invalid":
+      return S8.headerLineInvalid;
+  }
+}
 function normalizeDecodableClass(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized in DECODED_CLASS_FORM_SPECS) {
@@ -16661,7 +17386,7 @@ function commandDecodedBlock(bundle, deviceId, commandId) {
     edited: Boolean(decodedRecord.edited)
   };
 }
-function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
+function updateCommandDecodedFields(bundle, deviceId, commandId, newFields, replace) {
   const normalizedDeviceId = Number(deviceId);
   const normalizedCommandId = Number(commandId);
   return {
@@ -16684,7 +17409,8 @@ function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
               ...restoreData,
               decoded: {
                 ...decodedRecord,
-                fields: { ...existingFields, ...newFields },
+                ...replace ? { trailer_hex: replace.trailerHex } : {},
+                fields: replace ? { ...newFields } : { ...existingFields, ...newFields },
                 edited: true
               }
             }
@@ -16894,6 +17620,30 @@ function renameBundleActivity(bundle, activityId, name) {
 function renameBundleDevice(bundle, deviceId, name) {
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
 }
+function appearanceInList(list, id, appearance) {
+  return (list ?? []).map((entry) => {
+    const block = entry?.device;
+    if (!block || Number(block.device_id || 0) !== id) return entry;
+    const next = { ...block };
+    if (appearance.icon != null) next.icon = appearance.icon;
+    if (appearance.colorId != null) next.color_id = appearance.colorId;
+    return { ...entry, device: next };
+  });
+}
+function setBundleEntityAppearance(bundle, kind, entityId, appearance) {
+  const id = Number(entityId);
+  return kind === "activity" ? { ...bundle, activities: appearanceInList(bundle.activities, id, appearance) } : { ...bundle, devices: appearanceInList(bundle.devices, id, appearance) };
+}
+function bundleEntityAppearance(bundle, kind, entityId) {
+  const list = kind === "activity" ? bundle?.activities : bundle?.devices;
+  const block = (list ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(entityId))?.device;
+  const icon8 = Number(block?.icon);
+  const colorId = Number(block?.color_id);
+  return {
+    icon: block?.icon != null && Number.isInteger(icon8) ? icon8 : null,
+    colorId: block?.color_id != null && Number.isInteger(colorId) ? colorId : null
+  };
+}
 function updateActivity(bundle, activityId, updater) {
   const normalizedId = Number(activityId);
   return {
@@ -17059,6 +17809,27 @@ function bundleDeviceBrand(bundle, deviceId) {
     (entry) => Number(entry?.device?.device_id || 0) === normalizedId
   );
   return String(device?.device?.brand ?? "").trim();
+}
+function bundleDeviceExtras(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const extras = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  )?.device?.extras;
+  if (!extras || typeof extras !== "object") return null;
+  const { a: a4, b: b3, c: c7 } = extras;
+  return [a4, b3, c7].every((value) => Number.isInteger(value) && value >= 0 && value <= 255) ? { a: a4, b: b3, c: c7 } : null;
+}
+function setBundleDeviceExtras(bundle, deviceId, extras) {
+  const normalizedId = Number(deviceId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      const block = entry?.device;
+      if (!block || Number(block.device_id || 0) !== normalizedId) return entry;
+      return { ...entry, device: { ...block, extras: { a: extras.a, b: extras.b, c: extras.c } } };
+    })
+  };
 }
 function isManagedWifiBrand(brand) {
   const text = String(brand ?? "").trim();
@@ -18733,7 +19504,8 @@ function renderFirmwareBlock(floor, title, id) {
 // server-panel/src/components/operation-progress.ts
 var OPERATION_PROGRESS_CSS = i`
   .progress-shell { border: 1px solid var(--sbp-line); border-radius: 16px; padding: 18px; background: transparent; color: var(--sbp-text); }
-  .progress-shell[data-mode="restore"] .packet { animation-name: opProgressForward; }
+  .progress-shell[data-mode="restore"] .packet,
+  .progress-shell[data-mode="wifi-deploy"] .packet { animation-name: opProgressForward; }
   .progress-stage { position: relative; display: flex; flex-wrap: nowrap; justify-content: center; gap: 4px; align-items: center; min-height: 110px; min-width: 0; }
   .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
   .progress-disc { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 12px; color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-panel) 88%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); }
@@ -18769,12 +19541,7 @@ function renderOperationProgress(view) {
   `;
 }
 function jobStepMessage(job) {
-  const raw = job?.progress?.message;
-  const message = typeof raw === "string" ? raw.trim() : "";
-  if (!message) return "";
-  const progress = jobProgress(job);
-  if (progress.indeterminate || /\d+\s*\/\s*\d+/u.test(message)) return message;
-  return `${message.replace(/(…|\.+)$/u, "")} (${progress.current ?? 0}/${progress.total})`;
+  return jobStepText(job);
 }
 
 // server-panel/src/pointer-reorder.ts
@@ -20095,6 +20862,1295 @@ function defineBackupView() {
   if (!customElements.get(BACKUP_VIEW_TAG)) customElements.define(BACKUP_VIEW_TAG, SbPanelBackup);
 }
 
+// node_modules/lit-html/directives/if-defined.js
+var o8 = (o9) => o9 ?? A;
+
+// remote-card/src/entity-icons/x2-icons.ts
+var X2_ICON_PATHS = {
+  // Monitor
+  1: "M4 3.9h15.8a1.2 1.2 0 0 1 1.2 1.2v9.7a1.2 1.2 0 0 1-1.2 1.2h-15.8a1.2 1.2 0 0 1-1.2-1.2v-9.7a1.2 1.2 0 0 1 1.2-1.2zm7.5 11.6h1v3.2h-1zM6.95 18.3h10.3a.75.75 0 0 1 .75.75h0a.75.75 0 0 1-.75.75h-10.3a.75.75 0 0 1-.75-.75h0a.75.75 0 0 1 .75-.75z",
+  // Picture
+  2: "M3.8 4.5h16.4a1.2 1.2 0 0 1 1.2 1.2v12.5a1.2 1.2 0 0 1-1.2 1.2h-16.4a1.2 1.2 0 0 1-1.2-1.2v-12.5a1.2 1.2 0 0 1 1.2-1.2zM5.45 8.3a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM4.9 17.4h14.9l-5.6-7.3-3.9 5.2-2.5-3z",
+  // Music
+  3: "M2.44 19.45a3.3 2.75-30 1 1 5.72-3.3a3.3 2.75-30 1 1-5.72 3.3zm11.51-3.2a3 2.55-30 1 1 5.2-3a3 2.55-30 1 1-5.2 3zM7 16.8v-10.85a.7.7 0 0 1 .6-.7l11.3-3a.6.6 0 0 1 .6.6v12.15h-1.5v-8.25l-9.5 2.25v7.8z",
+  // Film reel
+  4: "M2.55 11.7a9.2 9.2 0 1 1 18.4 0a9.2 9.2 0 1 1-18.4 0zm15.8 7.15a.75.75 0 1 1 1.5 0a.75.75 0 1 1-1.5 0zM15.5 17l3.6 1.1v1.5c-1.3 0-2.1-.4-4.1.3zM10.45 8.1a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM7 11.65a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zm7 0a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM10.5 15.2a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0z",
+  // TV
+  5: "M4.4 6h15.6a.9.9 0 0 1 .9.9v11.6a.9.9 0 0 1-.9.9h-15.6a.9.9 0 0 1-.9-.9v-11.6a.9.9 0 0 1 .9-.9zm8.4 1a.9.9 0 0 1-1.2 1.2l-4.9-4.6a.9.9 0 0 1 1.2-1.3zm0 1.2a.9.9 0 0 1-1.2-1.2l4.9-4.7a.9.9 0 0 1 1.2 1.3zm-2.8 2v4.8l4.6-2.4z",
+  // Gamepad
+  6: "M8.5 5.4h6.9a6.5 6.5 0 0 1 6.5 6.5v1.4a6.5 6.5 0 0 1-6.5 6.5h-6.9a6.5 6.5 0 0 1-6.5-6.5v-1.4a6.5 6.5 0 0 1 6.5-6.5zM12 2.5a1 1 0 0 1 1 1v2.5h-2v-2.5a1 1 0 0 1 1-1zM7.35 10.6v1.05h-1.05a.6.6 0 0 0 0 1.2h1.05v1.05a.6.6 0 0 0 1.2 0v-1.05h1.05a.6.6 0 0 0 0-1.2h-1.05v-1.05a.6.6 0 0 0-1.2 0zm6.75.05a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0zm2.5 2.95a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z",
+  // Game controller
+  7: "M11.85 8.3c1.15 0 2.35-1.3 4.15-1.3 2.8 0 4.3 1.3 5 4 .6 2.2 1.1 4.5 1 6.6-.05 1.4-.6 2.2-1.7 2.1-3-1.4-5.8-3.3-8.45-3.3-2.65 0-5.45 1.9-8.45 3.3-1.1.1-1.65-.7-1.7-2.1-.1-2.1.4-4.4 1-6.6.7-2.7 2.2-4 5-4 1.8 0 3 1.3 4.15 1.3zM13 7.3h-2v-2.85h2zM11 4.45a2.5 2.5 0 0 1 2.5-2.5v2a.5.5 0 0 0-.5.5zm2.5-.5v-2h4.1v2zM6 10.65v1.35h-1.35v1.5h0 1.35v1.35h1.5 0v-1.35h1.35v-1.5h0-1.35v-1.35h-1.5zm8.15 1.85a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0z",
+  // Router
+  8: "M3 10.4h18a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-18a1.5 1.5 0 0 1-1.5-1.5v-6a1.5 1.5 0 0 1 1.5-1.5zM6.3 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h0a.75.75 0 0 1-.75-.75v-3.5a.75.75 0 0 1 .75-.75zM5.7 7.2h1.4a.4.4 0 0 1 .4.4v3.1h-2.2v-3.1a.4.4 0 0 1 .4-.4zM17.7 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h0a.75.75 0 0 1-.75-.75v-3.5a.75.75 0 0 1 .75-.75zm-.8 4.2h1.4a.4.4 0 0 1 .4.4v3.1h-2.2v-3.1a.4.4 0 0 1 .4-.4zM4.9 14a.9.9 0 0 0-.9.9h0a.9.9 0 0 0 .9.9h4.2a.9.9 0 0 0 .9-.9h0a.9.9 0 0 0-.9-.9zm10.5.95a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zm3 0a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0z",
+  // Wifi router
+  9: "M2.9 11.4h18.1a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4h-18.1a1.4 1.4 0 0 1-1.4-1.4v-5.6a1.4 1.4 0 0 1 1.4-1.4zM15.8 7.9a1.2 1.2 0 0 1 1.2 1.2v2.8h-2.4v-2.8a1.2 1.2 0 0 1 1.2-1.2zM9.3 6.6a7.1 7.1 0 0 1 13.4 0a1 1 0 0 1-1.9.64a5.1 5.1 0 0 0-9.6 0a1 1 0 0 1-1.9-.64zm3 1.16a3.9 3.9 0 0 1 7.4 0a1 1 0 0 1-1.9.58a1.9 1.9 0 0 0-3.6 0a1 1 0 0 1-1.9-.58zM4.4 15.1a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zm3.4 0a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0z",
+  // Projector
+  10: "M2 6h8.44a5.2 5.2 0 1 0 9.42 0h2.04a1 1 0 0 1 1 1v7.9a1 1 0 0 1-1 1h-19.9a1 1 0 0 1-1-1v-7.9a1 1 0 0 1 1-1zm9.05 2.2a4.1 4.1 0 1 1 8.2 0a4.1 4.1 0 1 1-8.2 0zm1.35 0a2.75 2.75 0 1 0 5.5 0a2.75 2.75 0 1 0-5.5 0zM4.5 15.5h3.6l-2 3.9h-2.1zm10.9 0h3.6l.5 3.9h-2.1zM4 10.9a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h1.5a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zm0 2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h1.5a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5z",
+  // Receiver
+  11: "M3.3 6.9h16.9a1.8 1.8 0 0 1 1.8 1.8v6.2a1.8 1.8 0 0 1-1.8 1.8h-16.9a1.8 1.8 0 0 1-1.8-1.8v-6.2a1.8 1.8 0 0 1 1.8-1.8zm.1 5.05a1 1 0 1 0 2 0a1 1 0 1 0-2 0zm14.6 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0zm-11.35 0a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0-4.2 0zm1.25 0a.85.85 0 1 1 1.7 0a.85.85 0 1 1-1.7 0zm5 0a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0-4.2 0zm1.25 0a.85.85 0 1 1 1.7 0a.85.85 0 1 1-1.7 0z",
+  // Pendant lamp
+  12: "M4.4 12.9a7.6 7.9 0 0 1 15.2 0zM12 3.3a.55.55 0 0 1 .55.55v1.4a.55.55 0 0 1-.55.55h0a.55.55 0 0 1-.55-.55v-1.4a.55.55 0 0 1 .55-.55zm3 10.1a3 3 0 0 1-6 0h3zm-3.35 4.4a.4.4 0 0 1 .8 0v1.2a.4.4 0 0 1-.8 0zM8.7 16.5a.45.45 0 0 1 .6.6l-1.1 1.1a.45.45 0 0 1-.6-.6zm6 .6a.45.45 0 0 1 .6-.6l1.1 1.1a.45.45 0 0 1-.6.6z",
+  // Apple TV
+  13: "M5.6 9.7c.8-.4 2.3-.8 3.7.3-.7.6-1 1.4-.9 2.3.1 1 .6 1.7 1.35 2-.35 1-1.05 2.2-2.15 2.3-.7.05-1.2-.3-2-.3-.8 0-1.3.35-1.9.3-1.1-.2-2-2.4-1.95-4.4.05-1.8 1.15-2.9 2.25-2.9.6 0 1.1.2 1.6.4zm.3-.8a1.35.55-48 1 1 1.8-2a1.35.55-48 1 1-1.8 2zM14 8.5v6.1c0 .7.2.8 1.25.8v1.3c-1.45 0-2.45-.8-2.45-2.1h0v-6.1zM11.5 10h3.5v1h-3.5zM16 10h1.3l1.4 4 .7 1 .6-1 1.1-4h1.3l-1.3 4-.8 2.6h-1.6l-1.2-2.6z",
+  // Roku
+  14: "M1.5 8.25h1.25v6.85h-1.25zm0 0h2.8c1.3 0 2 .85 2 2.05 0 1.3-.9 2.35-2.3 2.35h-2.5zM2.75 9.3v2h1.25c.6 0 1-.4 1-1 0-.5-.3-1-1-1zM3.9 12.5h1.7l1.6 2.6h-1.8zm3.35-.15a2.6 2.9 0 1 1 5.2 0a2.6 2.9 0 1 1-5.2 0zm1.45.1a1.3 1.6 0 1 0 2.6 0a1.3 1.6 0 1 0-2.6 0zM13 9.5h1.5v5.75h-1.5zm.9 3.6l2.6-3.6h1.75l-2.65 3.6zm.8-.5h1.7l1.8 2.65h-1.8zm4.85-3.1v3.4c0 1 .25 1.05.85 1.05h0c.9 0 1.2-.25 1.2-1.05h0v-3.4h1.3v3.4c0 1.4-1.2 2.35-2.5 2.35h0c-.8 0-2.15-.35-2.15-2.35h0v-3.4zm1.95 0h1.5v5.75h-1.5z",
+  // Fire TV
+  15: "M2 14.5v-5.1c0-1.1.8-1.85 1.8-1.85h0 .45v1h-.45c-.6 0-.8.15-.8.85h0v5.1zM1.25 10h3v1h-3zM5 8.2h.8v.9h-.8zm0 2.05h.8v4.25h-.8zM7 10h.95v4.5h-.95zm.5 0h2v.85h-2.5v-.35a.5.5 0 0 1 .5-.5zm5.1 2.1c0-.9-.4-1.4-1.1-1.4h0c-.7 0-1.05.5-1.05 1.4h0c0 .95.4 1.5 1.15 1.5h0c.5 0 .8-.1 1.16-.44l.68.68c-.44.46-1.14.76-1.84.76h0c-1.25 0-2.1-1.25-2.1-2.5h0c0-1.3.9-2.35 2-2.35h0c1.1 0 2 1.05 2 2.35zm-3-.35h4.1v.75h-4.1zm6.9-3v4.45c0 .4.14.5.5.5h0 .75v1h-.75c-.64 0-1.5-.5-1.5-1.5h0v-4.45zM14.75 10h2.75v.75h-2.75zm3.5 0h1l1.2 3.4 1.3-3.4h.85l-1.7 4.4h-1z",
+  // Netflix
+  16: "M1.25 9.25h1v5.45h-.6a.4.4 0 0 1-.4-.4zm2 0h1v5.1h-1zm-1.75 0h.75l1.7 5.1h-.75zm3.75 0h2.5v1h-1.7v1h1.2v1h-1.2v1.25h1.7v.75l-2.5.1zm3 0h2.75v1h-.95v4h-.8v-4h-1zm3.5 0h2.5v1h-1.7v1h1.2v1h-1.2v2h-.8zm3 0h1v4.25h1.5v.75h-2.5zm3.25 0h1v5.05h-1zm1.75 0h1.1l2 5.35h-1.1zm2.15 0h1.1l-2.2 5.05h-1.1z",
+  // Media player
+  17: "M3.6 3.9h16.8a.6.6 0 0 1 .6.6v11.8a.6.6 0 0 1-.6.6h-16.8a.6.6 0 0 1-.6-.6v-11.8a.6.6 0 0 1 .6-.6zM8 18.4h8a1 1 0 0 1 1 1h0a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1h0a1 1 0 0 1 1-1zM10 8.1v4.5l4.3-2.25z",
+  // Curved TV
+  18: "M3 3.7q9 .9 18.1 0a.8.8 0 0 1 .8.8v11.3a.8.8 0 0 1-.8.8q-9.1-1-18.2 0a.8.8 0 0 1-.7-.8v-11.3a.8.8 0 0 1 .8-.8zM11.4 16h1.6v2.4h-1.6zM6.5 18.8a19.9 19.9 0 0 1 11.4 0a.6.6 0 0 1-.36 1.2a18.7 18.7 0 0 0-10.68 0a.6.6 0 0 1-.36-1.2zM6.75 7.4l-.4 1.4h1.85l-1 4h1.3l1.1-4h1.35l.4-1.4zm5.85 0l1 5.4h1l3.2-5.4h-1.4l-1.8 3.6-.65-3.6z",
+  // Download
+  19: "M6.5 3h11a1.5 1.5 0 0 1 1.5 1.5v8.9l.5.2v3.3q-7.5-.9-15 0v-3.3l.5-.2v-8.9a1.5 1.5 0 0 1 1.5-1.5zM6 17.4h12a1.5 1.5 0 0 1 1.5 1.5v.4a1.5 1.5 0 0 1-1.5 1.5h-12a1.5 1.5 0 0 1-1.5-1.5v-.4a1.5 1.5 0 0 1 1.5-1.5zM11.05 6.6v4.16l-1.65-1.66a.7.7 0 0 0-1 1l2.85 2.85a.7.7 0 0 0 1 0l2.85-2.85a.7.7 0 0 0-1-1l-1.65 1.66v-4.16a.7.7 0 0 0-1.4 0z",
+  // Satellite dish
+  20: "M12.9 7a.7.7 0 0 1-.9 1c-.8-.9-1.7-1.7-2.8-2-1-.2-2 .6-1.6 2 .7 2.5 3.9 5.1 5.6 6.6 1 .5 2.2.4 2.3-.6.1-1.2-.3-2.2-.9-3.1a.94.94 0 0 1 1.7-.8c.7.5 1.2 1.6 1.2 3.1 0 1.4-.7 2.9-2.2 3.6-1.8.8-4.3.8-6.1.2-2.7-1-4.3-4-4.25-7.5.05-2.9 1.35-4.6 3.55-4.65 1.8-.05 3.5.75 4.4 2.15zM9 16.5h1.5v3.5h-1.5zM7.1 19.4h7.8a.6.6 0 0 1 .6.6v.3a.6.6 0 0 1-.6.6h-7.8a.6.6 0 0 1-.6-.6v-.3a.6.6 0 0 1 .6-.6zm5.3-7.9a.7.7 0 0 1-1-1l2.1-2.1a.7.7 0 0 1 1 1zm2.3-3.95a.8.8 0 1 1 1.6 0a.8.8 0 1 1-1.6 0zm1-3.19a4 4 0 0 1 3.25 3.58a.65.65 0 0 1-1.29.12a2.7 2.7 0 0 0-2.16-2.46a.65.65 0 0 1 .2-1.24zm0-2.6a6.5 6.5 0 0 1 5.26 6.14a.65.65 0 0 1-1.3 0a5.2 5.2 0 0 0-4.16-4.86a.65.65 0 0 1 .2-1.28z",
+  // Disc
+  21: "M2.4 11.85a9.55 9.55 0 1 1 19.1 0a9.55 9.55 0 1 1-19.1 0zm6.6.1a3.1 3.1 0 1 0 6.2 0a3.1 3.1 0 1 0-6.2 0zM6.05 17.8a.45.45 0 0 0 .65-.6a7.45 7.45 0 0 1 5.6-12.74a.45.45 0 0 0 0-.9a8.35 8.35 0 0 0-6.25 14.24z",
+  // Set-top box
+  22: "M5.6 4.9h12.8q1 0 1.3.9c.9 1.2 1.9 4.2 2.3 7.2h-20c.4-3 1.4-6 2.3-7.2q.3-.9 1.3-.9zm-2.3 9h16.9a1.8 1.8 0 0 1 1.8 1.8v2.2a1.8 1.8 0 0 1-1.8 1.8h-16.9a1.8 1.8 0 0 1-1.8-1.8v-2.2a1.8 1.8 0 0 1 1.8-1.8zm1.65 2.4a.45.45 0 0 0-.45.45h0a.45.45 0 0 0 .45.45h3.1a.45.45 0 0 0 .45-.45h0a.45.45 0 0 0-.45-.45zm12.3.45a.45.45 0 1 0 .9 0a.45.45 0 1 0-.9 0zm1.3 0a.45.45 0 1 0 .9 0a.45.45 0 1 0-.9 0z",
+  // Cassette deck
+  23: "M2.6 6.4h18.8a.6.6 0 0 1 .6.6v9.8a.6.6 0 0 1-.6.6h-18.8a.6.6 0 0 1-.6-.6v-9.8a.6.6 0 0 1 .6-.6zM5 12.25a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0zm5-.5a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h2.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zm4.45.4a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0-4.6 0z",
+  // Projector, front
+  24: "M3.3 6.4q8.7-.5 17.3 0a1.8 1.8 0 0 1 1.8 1.8v5.2a2.5 2.5 0 0 1-2.5 2.5h-15.9a2.5 2.5 0 0 1-2.5-2.5v-5.2a1.8 1.8 0 0 1 1.8-1.8zM4 15.5h2.5l.5 3.1q0 .3-.3.3h-1.9q-.3 0-.3-.3zm13.5 0h2.5l-.5 3.1q0 .3-.3.3h-1.9q-.3 0-.3-.3zM4.5 9.4a.5.5 0 0 0-.5.5v2.1a.5.5 0 0 0 .5.5h0a.5.5 0 0 0 .5-.5v-2.1a.5.5 0 0 0-.5-.5zm2 0a.5.5 0 0 0-.5.5v2.1a.5.5 0 0 0 .5.5h0a.5.5 0 0 0 .5-.5v-2.1a.5.5 0 0 0-.5-.5zm2 0a.5.5 0 0 0-.5.5v2.1a.5.5 0 0 0 .5.5h0a.5.5 0 0 0 .5-.5v-2.1a.5.5 0 0 0-.5-.5zm5.45 1.5a3.3 3.3 0 1 0 6.6 0a3.3 3.3 0 1 0-6.6 0zm.6-.05a2.45 2.45 0 1 1 4.9 0a2.45 2.45 0 1 1-4.9 0z",
+  // Smart speaker
+  25: "M9 4.3a3.2 1 0 1 1 6.4 0a3.2 1 0 1 1-6.4 0zm-2.75 1a6 1.7 0 0 0 12 0q.75 0 .75 1.2v8.5c0 3-2 4.85-6.75 4.85-4.75 0-6.75-1.85-6.75-4.85v-8.5q0-1.2.75-1.2z",
+  // Air conditioner
+  26: "M3 4.9h18a1 1 0 0 1 1 1v8.2a.8.8 0 0 1-.8.8h-1.2v-2.5h-16v2.5h-1.2a.8.8 0 0 1-.8-.8v-8.2a1 1 0 0 1 1-1zm2 9.05h14v.95h-14zm1.05 2.4a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0z",
+  // Desk fan
+  27: "M3.5 9.7a8.25 8.25 0 1 1 16.5 0a8.25 8.25 0 1 1-16.5 0zm7.1-.8l.5.2c.4-.5.9-.7 1.8-.8 1.3-.1 2.7-.7 2.7-2.1 0-1.4-1.6-2.3-3.2-2.4-1.2-.1-2.7.2-3.2 1.5-.4 1.3.1 2.7 1.4 3.6zm2.3-.14l-.4.34c.2.6.15 1.1-.2 1.95-.6 1.15-.75 2.69.46 3.39 1.24.7 2.79-.24 3.68-1.54.66-1 1.16-2.5.3-3.55-.94-1-2.39-1.25-3.84-.59zm-1 2.08l-.1-.54c-.6-.1-1.05-.4-1.6-1.15-.7-1.05-1.95-1.99-3.16-1.29-1.24.7-1.19 2.54-.48 3.94.54 1.1 1.54 2.3 2.9 2.05 1.34-.3 2.29-1.45 2.44-3.01zM10.75 9.55a1.1 1.1 0 1 1 2.2 0a1.1 1.1 0 1 1-2.2 0zm0 10.45a1 1 0 1 1 2 0a1 1 0 1 1-2 0zM8.3 19.85h7.4a.8.8 0 0 1 .8.8h0a.8.8 0 0 1-.8.8h-7.4a.8.8 0 0 1-.8-.8h0a.8.8 0 0 1 .8-.8z",
+  // Ceiling fan
+  28: "M9.6 10.14c-.8-.94-3.8-1.74-4.1-4.14-.3-2.4 1.3-4 2.9-4 2.5 0 4.2 2.3 4.5 4.8l-.1 3.5a2.7 2.7 0 0 0-3.2-.16zm5 2.26c1.25-.2 3.44-2.4 5.7-1.5 2.2.96 2.8 3.15 2 4.5-1.3 2.2-4.1 2.5-6.4 1.5l-3-1.8a2.7 2.7 120 0 0 1.7-2.7zm-3.9 2.8c-.4 1.2.4 4.2-1.5 5.7-1.95 1.44-4.1.85-4.9-.5-1.3-2.2-.14-4.8 1.9-6.3l3.06-1.7a2.7 2.7 240 0 0 1.44 2.8zM10 12.4a1.5 1.5 0 1 1 3 0a1.5 1.5 0 1 1-3 0z",
+  // Table lamp
+  29: "M7.4 3.4h9.2q.4 0 .5.4l1.9 9.1q.1.5-.4.5h-13.2q-.5 0-.4-.5l1.9-9.1q.1-.4.5-.4zM11 13h1.5v5.2h-1.5zm4.5 0h1.5v2.2a.7.7 0 0 1-.7.7h-.1a.7.7 0 0 1-.7-.7zM8.4 17.9h7.2a.9.9 0 0 1 .9.9v.1a.9.9 0 0 1-.9.9h-7.2a.9.9 0 0 1-.9-.9v-.1a.9.9 0 0 1 .9-.9z",
+  // Power outlet
+  30: "M4.5 3.4h15a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zm5.6 4a3.6 3.6 0 0 0-3.6 3.6v1.4a3.6 3.6 0 0 0 3.6 3.6h3.8a3.6 3.6 0 0 0 3.6-3.6v-1.4a3.6 3.6 0 0 0-3.6-3.6zm.05 2.5h.3a.2.2 0 0 1 .2.2v1.6a.2.2 0 0 1-.2.2h-.3a.2.2 0 0 1-.2-.2v-1.6a.2.2 0 0 1 .2-.2zm3.05 0h.55a.2.2 0 0 1 .2.2v1.6a.2.2 0 0 1-.2.2h-.55a.2.2 0 0 1-.2-.2v-1.6a.2.2 0 0 1 .2-.2zm-2.05 3.7a.75.75 0 1 1 1.5 0a.75.75 0 1 1-1.5 0z",
+  // Wall switch
+  31: "M4.5 3.4h15a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zm5.5 2a1.5 1.5 0 0 0-1.5 1.5v10a1.5 1.5 0 0 0 1.5 1.5h4a1.5 1.5 0 0 0 1.5-1.5v-10a1.5 1.5 0 0 0-1.5-1.5zm.3 7h3.9a.8.8 0 0 1 .8.8v3.9a.8.8 0 0 1-.8.8h-3.9a.8.8 0 0 1-.8-.8v-3.9a.8.8 0 0 1 .8-.8z",
+  // Presentation screen
+  32: "M3.4 4h17.2a.9.9 0 0 1 .9.9h0a.9.9 0 0 1-.9.9h-17.2a.9.9 0 0 1-.9-.9h0a.9.9 0 0 1 .9-.9zM4 5.5h16v11a.6.6 0 0 1-.6.6h-14.8a.6.6 0 0 1-.6-.6zM9.66 16.34a.85.85 0 0 1 1.28 1.12l-3.1 3.5a.85.85 0 0 1-1.28-1.12zm3.39 1.1a.85.85 0 0 1 1.3-1.08l2.9 3.5a.85.85 0 0 1-1.3 1.08zM10 8.4v4.9l4.9-2.45z",
+  // Party
+  33: "M5.8 9.6l.5-1.1 1-.4 7.3 5.2.5.7-.2.7-4.2 2.7-.7-.1zM5 13l.6-.2 3.1 4.7-.2.7-2.5 1.6-1.5.2-.5-.5v-2.5zM8.05 6.5c-1.05-.8-1.25-4.1 1.15-4.2h0c1.7-.1 2.35 1.44 2.35 2.3h0v1.7c0 1.1-.75 1.94-1.25 2.4a.75.75 0 0 1-1-1.2c.5-.34.75-.7.75-1.2h0v-1.7c0-.54-.15-.8-.85-.8h0c-.8 0-.8 1.1-.25 1.5a.75.75 0 0 1-.9 1.2zM12.5 4.75a1.25 1.25 0 1 1 2.5 0a1.25 1.25 0 1 1-2.5 0zm1.7 3.69a.65.65 0 0 1-.9-.98l3.4-2.96a.65.65 0 0 1 .9 1zm-.7 2.66c.96-1.35 2.8-3.16 4.9-3.1h0c2.1 0 3.55 1.4 3.55 3h0c0 1.5-1.35 2.3-2.45 2.3h0c-.9 0-1.8-.5-2.1-1.1a.7.7 0 0 1 1.2-.6c.1.2.4.3.9.3h0c.7 0 1.05-.2 1.05-.9h0c0-1-.65-1.6-2.15-1.6h0c-1.5-.04-2.86 1.25-3.7 2.5a.7.7 0 0 1-1.2-.8z",
+  // Sleep
+  34: "M11.5 4a6 6 0 0 0 8.4 8.5a8 8 0 1 1-8.4-8.5zm3 .4h4.3l.5.5v.7l-2.8 2.8h2.3l.4.5v.6l-.4.45h-4.4l-.4-.45v-.8l2.8-2.75h-2.3l-.4-.45v-.7z",
+  // DAZN
+  35: "M5.75 3.75h2.85c1.5 0 2.4 1.15 2.4 2.65v1.7c0 1.5-1 2.65-2.6 2.65h-2.65zM7.25 5v4.5h1.15c.7 0 1.1-.6 1.1-1.4v-1.8c0-.7-.3-1.3-1-1.3zm7.5-1.25h2.1l2.05 7h-1.7l-.4-1.5h-2.4l-.5 1.5h-1.6zM15.7 5.6l-.84 2.4h1.54zM5.75 13h5v1.3l-3.3 4.45h3.55v1.25h-5.25v-1.4l3.25-4.3h-3.25zM13 13h1.6l2.15 4.3v-4.3h1.5v7h-1.65l-2.1-4.1v4.1h-1.5z",
+  // DIRECTV
+  36: "M5.45 9.2h.9c1.05 0 1.1.9 1.1 1.4 0 .8-.35 1.4-1.1 1.4h-.9zm.45.45v1.9h.45c.4 0 .65-.45.65-.95 0-.5-.2-.95-.65-.95zM8.75 9.2h.5v2.8h-.5zm1.75 0h.5v2.8h-.5zm0 0h1.1c.7 0 .95.4.95.8 0 .4-.25.75-.95.75h-1.1zm.5.45v.65h.6c.35 0 .5-.1.5-.3 0-.2-.15-.35-.5-.35zm.45.95h.5l.65 1.4h-.5zm2.3-1.4h2v.45h-1.5v.75h1.25v.45h-1.25v.7h1.5v.45h-2zm4.95.7c-.2-.24-.36-.25-.7-.25h0c-.4 0-.55.35-.55.95h0c0 .6.15.96.55.96h0c.34 0 .5-.02.7-.26l.3.3c-.3.36-.64.4-1 .4h0c-.8 0-1-.8-1-1.4h0c0-.6.2-1.4 1-1.4h0c.36 0 .7.04 1 .4zM9.25 13h2v.65h-2zM10 13h.5v2.95h-.5zm2.25 0h.75l.5 1.8.5-1.8h.6l-.8 2.95h-.6z",
+  // Disney
+  37: "M1.75 9.75h1.85c1.3 0 2.15.85 2.15 2.15 0 1.4-.85 2.35-2.25 2.35h-1.75zM3 10.8v2.4h.4c.7 0 1.1-.5 1.1-1.25 0-.75-.4-1.15-1.1-1.15zm3.25-.9a.5.5 0 1 1 1 0a.5.5 0 1 1-1 0zm0 1.1h1v3.25h-1zm4.15 1c-.2-.2-.75-.26-1.3-.2h0c-.5.1-.56.15-.56.16h0c.06.14.36.24.96.24h0c.7 0 1.5.3 1.7.75h0c.2.55-.46 1.09-1.2 1.21h0c-.65.14-1.5-.06-1.9-.36l.5-.6c.2.2.75.26 1.3.2h0c.5-.1.56-.15.56-.16h0c-.06-.14-.36-.24-.96-.24h0c-.7 0-1.5-.3-1.7-.75h0c-.2-.55.46-1.09 1.2-1.21h0c.65-.14 1.5.06 1.9.36zm1.35-1h1v.4c.35-.3.75-.4 1.15-.4.7 0 1.1.4 1.1 1.3v1.95h-1.25v-1.75c0-.35-.15-.55-.45-.55-.35 0-.55.25-.55.65v1.65h-1zm6.99 1.7l-1.94.05v.7h.75v-.3h1.09a1.6 1.6 0 1 1 .1-.45zM17 11.65a.3.3 0 0 0-.3.25h0a.3.3 0 0 0 .3.3h.3a.3.3 0 0 0 .3-.3h0a.3.3 0 0 0-.3-.25zM19 11h1.25l.9 2.5-1.1.4zm2.35 0h1.2l-1.45 3.6q-.3.8-1.15.8h-.75v-.85h.55q.25 0 .35-.35z",
+  // Hulu
+  38: "M2 8.5h1.5v6.5h-1.5zm0 2h2.6c1.4 0 2.15.7 2.15 1.7v2.8h-1.5v-2.6c0-.3-.2-.4-.55-.4h-1.2zm6 0h1.5v2.4c0 .55.4.75.85.75.65 0 1.15-.25 1.15-.95v-2.2h1.5v2.8c0 1.1-1 1.7-2.5 1.7-1.5 0-2.5-.6-2.5-1.7zm6.25-2h1.5v6.5h-1.5zm3 2h1.5v2.4c0 .55.4.75.85.75.15 0 .65-.25.65-.95v-2.2h1.75v2.8c0 1.1-1 1.7-2.4 1.7-1.35 0-2.35-.6-2.35-1.7z",
+  // NVIDIA
+  39: "M1.25 10h2.65c.85 0 1.35.6 1.35 1.4v2.6h-1v-2.5c0-.35-.25-.55-.65-.55h-1.35v3.05h-1zM5.5 10h1.25l.85 2.9.9-2.9h1l-1.2 4h-1.55zm4.75 0h1v4h-1zM12 10h2.2c1 0 1.55.7 1.55 1.6v.8c0 1-.55 1.6-1.55 1.6h-2.2zm1.25.95v2.05h.75c.5 0 .75-.3.75-.8v-.4c0-.5-.25-.85-.75-.85zM16.5 10h1v4h-1zm3 0h1.55l1.75 4h-1.2l-.25-.7h-1.7l-.2.7h-1.15zm.8 1l-.6 1.7h1.25z",
+  // Prime Video
+  40: "M3.5 8.25h1v4.75h-1zM3.7 9.8a1.65 1.6 0 1 1 3.3 0a1.65 1.6 0 1 1-3.3 0zm.8-.05a.7 1 0 1 0 1.4 0a.7 1 0 1 0-1.4 0zm3.25-1.5h.8v3h-.8zM8.1 8.2h1.45a.2.2 0 0 1 .2.2v.55h-2v-.4a.35.35 0 0 1 .35-.35zm2.1-1.05a.55.35 0 1 1 1.1 0a.55.35 0 1 1-1.1 0zm.3 1.1h.75v3h-.75zm1.8 0h.9v3h-.9zm0 1.75c0-1 .7-2 1.6-2h0c.84 0 1.6 1 1.6 2h0v1.25h-1v-1.25c0-.7-.25-1.1-.6-1.1h0c-.4 0-.7.4-.7 1.1zm2.2 0c0-1 .76-2 1.6-2h0c.9 0 1.6 1 1.6 2h0v1.25h-.9v-1.25c0-.7-.3-1.1-.7-1.1h0c-.35 0-.6.4-.6 1.1zm5.85-.25c0-.45-.15-.75-.5-.85h0c-.3-.06-.5.1-.65.5h0c-.14.44-.05.8.25 1.1h0c.25.2.45.2.69-.1l.7.55c-.44.55-1.39.7-1.94.25h0c-.55-.46-.8-1.4-.55-2.1h0c.25-.7 1.05-1.2 1.71-1.06h0c.64.16 1.19.96 1.19 1.71zm-2.1-.3h3v.6h-3zM4 14h1l.65 2.1.6-2.1h1l-1.15 3.1h-.95zm3.75-1.4a.5.4 0 1 1 1 0a.5.4 0 1 1-1 0zm0 1.4h1v3h-1zm4-1.75h1v4.85h-1zM9.5 15.5a1.6 1.7 0 1 1 3.2 0a1.6 1.7 0 1 1-3.2 0zm.95 0a.65 1 0 1 0 1.3 0a.65 1 0 1 0-1.3 0zm5.4 0c0-.5-.15-.76-.5-.84h0c-.3-.06-.5.04-.65.49h0c-.14.45-.05.85.25 1.05h0c.25.26.45.2.69-.06l.7.56c-.44.6-1.39.7-1.94.2h0c-.55-.4-.8-1.34-.55-2.04h0c.25-.72 1.05-1.26 1.71-1.06h0c.64.15 1.19.94 1.19 1.7zm-2.1-.3h3v.6h-3zm3.5.3a1.65 1.75 0 1 1 3.3 0a1.65 1.75 0 1 1-3.3 0zm.9 0a.75 1.05 0 1 0 1.5 0a.75 1.05 0 1 0-1.5 0z",
+  // PS
+  41: "M5.9 6h1.6v12h-1.6zm0 0h3.7c1.4 0 2.15 1.2 2.15 2.8v1.2c0 2-1.05 3.3-2.75 3.3h-3.1zM7.5 8v3.3h1.7c.6 0 1.05-.5 1.05-1.3v-.8c0-.7-.35-1.2-.95-1.2zm8.5.4c-.4-.7-.75-.84-1.3-.54h0c-.6.34-.9 1.04-.7 1.94h0c.1.94.5 1.3 1.1 1.3h0c1.3 0 2.6 1.34 2.85 2.8h0c.25 1.44-.45 3.15-1.65 3.8h0c-1.2.65-2.9.04-3.6-1.24l1.5-.86c.4.7.75.84 1.3.55h0c.6-.35.9-1.05.7-1.95h0c-.1-.9-.5-1.3-1.1-1.3h0c-1.3 0-2.6-1.34-2.85-2.8h0c-.25-1.44.45-3.15 1.65-3.8h0c1.2-.65 2.9-.04 3.6 1.25z",
+  // R
+  42: "M7.5 6h2.5v11.75h-2.5zm0 0h5.7c2.1 0 3.3 1.4 3.3 3.4 0 2.3-1.4 3.9-3.5 3.9h-5.5zM10 7.4v3.75h2.6c.9 0 1.45-.75 1.45-1.9 0-1.05-.45-1.85-1.25-1.85zm1.9 5.9h2.85l3.05 4.45h-3.1z",
+  // SAM
+  43: "M2 10.3q0-1.3 1.3-1.3h2.1q1.2 0 1.2 1.2v.65h-1.85v-.85h-1v.85l1.25.65.75.5.75.75.25.5v1.05q0 1.3-1.35 1.3h-2.1q-1.3 0-1.3-1.3v-.8h1.75v1.05h1.25v-1.25l-1.5-.8-.75-.5-.75-1zM9 9h3.05l1.25 6.6h-1.75l-.95-5.6-.9 5.6h-1.8zm5.75 0h1.95l1.7 4.9 1.65-4.9h1.95v6.6h-1.5v-3.6l-1.2 3.6h-1.85l-1.2-3.6v3.6h-1.5z",
+  // Xbox
+  44: "M3 9.4h1.5l.75 1.3.75-1.3h1.5l-1.3 2.3 1.55 2.7h-1.65l-.85-1.4-.85 1.4h-1.65l1.5-2.7zm5.5.1h1.3v4.85h-1.3zm0 1.3h2.1c1.2 0 1.9.8 1.9 1.75 0 1.05-.7 1.8-1.9 1.8h-2.1zm1.3 1.65a.65.85 0 1 0 1.3 0a.65.85 0 1 0-1.3 0zm3.2.1a1.85 1.8 0 1 1 3.7 0a1.85 1.8 0 1 1-3.7 0zm1.2-.05a.65.9 0 1 0 1.3 0a.65.9 0 1 0-1.3 0zm3.55-1.75h1.25l2 3.6h-1.25zm2.45 0h1.1l-2.8 3.6h-1.25z",
+  // YouTube
+  45: "M2 9h.9l.6 1.85.6-1.85h.9l-1 2.75v3.2h-1v-3.2zm4.26 1.4a1.2 1.2 0 0 1 1.24 1.2v2.2a1.2 1.2 0 0 1-1.24 1.2h0a1.2 1.2 0 0 1-1.26-1.2v-2.2a1.2 1.2 0 0 1 1.26-1.2zm0 .75a.4.4 0 0 0-.36.35v2.4a.4.4 0 0 0 .36.35h0a.4.4 0 0 0 .34-.35v-2.4a.4.4 0 0 0-.34-.35zM9 10.5v2.8c0 .6.2.85.4.85h0c.2 0 .35-.25.35-.85h.85c0 .8-.55 1.7-1.2 1.7h0c-.7 0-1.25-.9-1.25-1.7h0v-2.8zm.75 0h.85v4.45h-.85zm1-1.5h3v.75h-3zm1 0h1v5.95h-1zm3 1.5v2.8c0 .6.15.85.35.85h0c.2 0 .4-.25.4-.85h.85c0 .8-.55 1.7-1.25 1.7h0c-.65 0-1.2-.9-1.2-1.7h0v-2.8zm.75 0h.85v4.45h-.85zM17.15 9h.85v5.95h-.85zm0 1.4h1.25a1.2 1.2 0 0 1 1.2 1.2v2.2a1.2 1.2 0 0 1-1.2 1.2h-1.25zm1.25.75a.4.4 0 0 0-.4.35v2.4a.4.4 0 0 0 .4.35h0a.4.4 0 0 0 .35-.35v-2.4a.4.4 0 0 0-.35-.35zm4.3 1.8h-1.6v.85h1.6a1.2 1.2 0 0 1-2.4 0v-2.2a1.2 1.2 0 0 1 2.4 0zm-1.2-1.8a.4.4 0 0 0-.4.35v.4a.4.4 0 0 0 .4.4h0a.4.4 0 0 0 .4-.4v-.4a.4.4 0 0 0-.4-.35z"
+};
+var X2_ICON_NAMES = {
+  1: "Monitor",
+  2: "Picture",
+  3: "Music",
+  4: "Film reel",
+  5: "TV",
+  6: "Gamepad",
+  7: "Game controller",
+  8: "Router",
+  9: "Wifi router",
+  10: "Projector",
+  11: "Receiver",
+  12: "Pendant lamp",
+  13: "Apple TV",
+  14: "Roku",
+  15: "Fire TV",
+  16: "Netflix",
+  17: "Media player",
+  18: "Curved TV",
+  19: "Download",
+  20: "Satellite dish",
+  21: "Disc",
+  22: "Set-top box",
+  23: "Cassette deck",
+  24: "Projector, front",
+  25: "Smart speaker",
+  26: "Air conditioner",
+  27: "Desk fan",
+  28: "Ceiling fan",
+  29: "Table lamp",
+  30: "Power outlet",
+  31: "Wall switch",
+  32: "Presentation screen",
+  33: "Party",
+  34: "Sleep",
+  35: "DAZN",
+  36: "DIRECTV",
+  37: "Disney",
+  38: "Hulu",
+  39: "NVIDIA",
+  40: "Prime Video",
+  41: "PS",
+  42: "R",
+  43: "SAM",
+  44: "Xbox",
+  45: "YouTube"
+};
+var X1_ICON_PATHS = {
+  // 3D glasses
+  6: "M2.4 8.5h19.2a.5.5 0 0 1 .5.5v.8a.5.5 0 0 1-.5.5h-19.2a.5.5 0 0 1-.5-.5v-.8a.5.5 0 0 1 .5-.5zm0 1.4h8.55l-.55 5.2q-.1 1.2-1.2 1.2h-4.6q-1.1 0-1.2-1.2zm1.45 1.3l.1 1h5.55l.1-1zM21.6 9.9l-1 5.2q-.1 1.2-1.2 1.2h-4.6q-1.1 0-1.2-1.2l-.55-5.2zm-1.45 1.3h-5.75l.1 1h5.55zM3.34 9.2a.65.65 0 0 1-1.28.2l-.96-4.9a.65.65 0 0 1 1.3-.2zm18.6.2a.65.65 0 0 1-1.28-.2l.94-4.9a.65.65 0 0 1 1.3.2z",
+  // TV with menu
+  7: "M4 3.9h15.8a1.2 1.2 0 0 1 1.2 1.2v9.7a1.2 1.2 0 0 1-1.2 1.2h-15.8a1.2 1.2 0 0 1-1.2-1.2v-9.7a1.2 1.2 0 0 1 1.2-1.2zm7.5 11.6h1v3.2h-1zM6.95 18.3h10.3a.75.75 0 0 1 .75.75h0a.75.75 0 0 1-.75.75h-10.3a.75.75 0 0 1-.75-.75h0a.75.75 0 0 1 .75-.75zM5 5.5v1.4h1.4v-1.4zm2.8.2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h10.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zM5 8.3v1.4h1.4v-1.4zm2.8.2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h8.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zM5 11.1v1.4h1.4v-1.4zm2.8.2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h6.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5z",
+  // Clapperboard
+  8: "M3.5 9.4h17a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm6.7 2.85v5.3l4.55-2.65zM3.5 4.3h17a1 1 0 0 1 1 1v3h-19v-3a1 1 0 0 1 1-1zm1.6 0l-1.5 4h1.6l1.5-4zm4.3 0l-1.5 4h1.6l1.5-4zm4.3 0l-1.5 4h1.6l1.5-4zm4.3 0l-1.5 4h1.6l1.5-4z",
+  // Handheld console
+  10: "M4.7 6.2h14.6a3.2 3.2 0 0 1 3.2 3.2v5.2a3.2 3.2 0 0 1-3.2 3.2h-14.6a3.2 3.2 0 0 1-3.2-3.2v-5.2a3.2 3.2 0 0 1 3.2-3.2zM7.5 7.8a.6.6 0 0 0-.6.6v7.2a.6.6 0 0 0 .6.6h9a.6.6 0 0 0 .6-.6v-7.2a.6.6 0 0 0-.6-.6zM3.75 11.85v1.05h-1.05v.9h0 1.05v1.05h.9 0v-1.05h1.05v-.9h0-1.05v-1.05h-.9zm-.4-2.6a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zm15.6 0a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zM18.4 14a.65.65 0 1 0 1.3 0a.65.65 0 1 0-1.3 0zm1.5-1.3a.65.65 0 1 0 1.3 0a.65.65 0 1 0-1.3 0z",
+  // Retro console
+  12: "M8.3 3.6h7.4a3.8 3.8 0 0 1 3.8 3.8h0a3.8 3.8 0 0 1-3.8 3.8h-7.4a3.8 3.8 0 0 1-3.8-3.8h0a3.8 3.8 0 0 1 3.8-3.8zM7.85 5.75v1.15h-1.15v1h0 1.15v1.15h1 0v-1.15h1.15v-1h0-1.15v-1.15h-1zM14.4 8.2a.75.75 0 1 0 1.5 0a.75.75 0 1 0-1.5 0zm1.7-1.6a.75.75 0 1 0 1.5 0a.75.75 0 1 0-1.5 0zm-4.65 4.2h1.1v2.6h-1.1zM3.2 13h17.6a1.2 1.2 0 0 1 1.2 1.2v4.8a1.2 1.2 0 0 1-1.2 1.2h-17.6a1.2 1.2 0 0 1-1.2-1.2v-4.8a1.2 1.2 0 0 1 1.2-1.2zm1.5 1.85a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h2a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zm0 2.4a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h2a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zM10.2 16a.6.6 0 0 0-.6.6h0a.6.6 0 0 0 .6.6h9a.6.6 0 0 0 .6-.6h0a.6.6 0 0 0-.6-.6z",
+  // Apple
+  13: "M11.7 7.2c1.6-.84 4.7-1.66 7.6.6-1.46 1.2-2.1 2.86-1.9 4.7.24 2.06 1.26 3.5 2.8 4.1-.7 2.06-2.15 4.5-4.4 4.7-1.44.1-2.5-.6-4.1-.6-1.65 0-2.7.7-3.9.6-2.26-.4-4.1-4.9-4-9 .1-3.7 2.36-5.94 4.6-5.94 1.24 0 2.3.44 3.3.84zm.6-1.66a2.8 1.1-48 1 1 3.7-4.14a2.8 1.1-48 1 1-3.7 4.14z",
+  // VUDU
+  14: "M2.2 9h1.5l1.25 4.1 1.25-4.1h1.5l-1.95 6h-1.6zM9.7 9v3.6c0 .7.3 1.05.7 1.05h0c.4 0 .7-.35.7-1.05h0v-3.6h1.35v3.6c0 1.2-.95 2.4-2.05 2.4h0c-1.1 0-2.05-1.2-2.05-2.4h0v-3.6zm3.4 0h1.7c1.75 0 2.6 1.35 2.6 3 0 1.65-.85 3-2.6 3h-1.7zm1.35 1.25v3.5h.3c.85 0 1.3-.7 1.3-1.75 0-1.05-.45-1.75-1.3-1.75zM19.4 9v3.6c0 .7.3 1.05.7 1.05h0c.4 0 .7-.35.7-1.05h0v-3.6h1.35v3.6c0 1.2-.95 2.4-2.05 2.4h0c-1.1 0-2.05-1.2-2.05-2.4h0v-3.6z",
+  // Netflix
+  16: "M6.4 2.8h3v18.4h-3zm8.2 0h3v18.4h-3zm-8.2 0h3l8.2 18.4h-3z",
+  // Home
+  17: "M12 2.9l9.9 8.8h-2.5v8.9h-5.1v-4.5a2.3 2.3 0 0 0-4.6 0v4.5h-5.1v-8.9h-2.5z",
+  // Computer
+  18: "M4 3.9h15.8a1.2 1.2 0 0 1 1.2 1.2v9.7a1.2 1.2 0 0 1-1.2 1.2h-15.8a1.2 1.2 0 0 1-1.2-1.2v-9.7a1.2 1.2 0 0 1 1.2-1.2zm.6 1.5a.3.3 0 0 0-.3.3v8.5a.3.3 0 0 0 .3.3h14.6a.3.3 0 0 0 .3-.3v-8.5a.3.3 0 0 0-.3-.3zm6.9 10.1h1v3.2h-1zM6.95 18.3h10.3a.75.75 0 0 1 .75.75h0a.75.75 0 0 1-.75.75h-10.3a.75.75 0 0 1-.75-.75h0a.75.75 0 0 1 .75-.75zm3.15-12l4.95 4.3-2.2.1 1.2 2.5-1.1.5-1.2-2.5-1.65 1.55z",
+  // Speaker
+  19: "M6.7 2.5h10.6a1.2 1.2 0 0 1 1.2 1.2v16.6a1.2 1.2 0 0 1-1.2 1.2h-10.6a1.2 1.2 0 0 1-1.2-1.2v-16.6a1.2 1.2 0 0 1 1.2-1.2zm3.9 4.3a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0zM7.4 15a4.6 4.6 0 1 0 9.2 0a4.6 4.6 0 1 0-9.2 0zm1.5 0a3.1 3.1 0 1 1 6.2 0a3.1 3.1 0 1 1-6.2 0zm2 0a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0z",
+  // Bulb
+  21: "M9.6 13.8a4.5 4.5 0 1 1 4.8 0c-.9 1-.5 1.1-.5 2.5h-3.8c0-1.4.4-1.5-.5-2.5zM8.94 9.2a.4.4 0 0 0 .76.2a2.4 2.4 0 0 1 1.7-1.7a.4.4 0 0 0-.2-.76a3.2 3.2 0 0 0-2.26 2.26zm1.66 7.65h2.8a.5.5 0 0 1 .5.55h0a.5.5 0 0 1-.5.5h-2.8a.5.5 0 0 1-.5-.5h0a.5.5 0 0 1 .5-.55zm0 1.6h2.8a.5.5 0 0 1 .5.55h0a.5.5 0 0 1-.5.5h-2.8a.5.5 0 0 1-.5-.5h0a.5.5 0 0 1 .5-.55zm.7 1.6h1.4a.5.5 0 0 1 .44.45h0a.5.5 0 0 1-.44.5h-1.4a.5.5 0 0 1-.44-.5h0a.5.5 0 0 1 .44-.45zM7 14.1a.6.6 0 0 1 .9.9l-1.04 1a.6.6 0 0 1-.86-.86zM5.6 9.4a.6.6 0 0 1 0 1.2h-1.5a.6.6 0 0 1 0-1.2zM7.9 5a.6.6 0 0 1-.9.9l-1-1.04a.6.6 0 0 1 .86-.86zm4.7-1.4a.6.6 0 0 1-1.2 0v-1.5a.6.6 0 0 1 1.2 0zM17 5.9a.6.6 0 0 1-.9-.9l1.04-1a.6.6 0 0 1 .86.86zm1.4 4.7a.6.6 0 0 1 0-1.2h1.5a.6.6 0 0 1 0 1.2zM16.1 15a.6.6 0 0 1 .9-.9l1 1.04a.6.6 0 0 1-.86.86z",
+  // AV receiver
+  22: "M2.7 6.4h18.6a1.2 1.2 0 0 1 1.2 1.2v8.2a1.2 1.2 0 0 1-1.2 1.2h-18.6a1.2 1.2 0 0 1-1.2-1.2v-8.2a1.2 1.2 0 0 1 1.2-1.2zM3.8 16.5h3v1.5a.7.7 0 0 1-.7.7h-1.6a.7.7 0 0 1-.7-.7zm13.4 0h3v1.5a.7.7 0 0 1-.7.7h-1.6a.7.7 0 0 1-.7-.7zM3.9 11.7a3 3 0 1 0 6 0a3 3 0 1 0-6 0zm1.25 0a1.75 1.75 0 1 1 3.5 0a1.75 1.75 0 1 1-3.5 0zm9.7-3a.95.95 0 0 0-.95.95v4.1a.95.95 0 0 0 .95.95h0a.95.95 0 0 0 .95-.95v-4.1a.95.95 0 0 0-.95-.95zm3.4 0a.95.95 0 0 0-.95.95v4.1a.95.95 0 0 0 .95.95h0a.95.95 0 0 0 .95-.95v-4.1a.95.95 0 0 0-.95-.95z",
+  // Projector
+  23: "M3 9.4h18a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-18a1.5 1.5 0 0 1-1.5-1.5v-7a1.5 1.5 0 0 1 1.5-1.5zM13.2 7.3a3.4 3.4 0 1 1 6.8 0a3.4 3.4 0 1 1-6.8 0zm1.85 0a1.55 1.55 0 1 0 3.1 0a1.55 1.55 0 1 0-3.1 0zM3.6 14.4a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0-4.6 0zm1.2 0a1.1 1.1 0 1 1 2.2 0a1.1 1.1 0 1 1-2.2 0zm6.5-1.1a1.1 1.1 0 0 0-1.1 1.1h0a1.1 1.1 0 0 0 1.1 1.1h7.4a1.1 1.1 0 0 0 1.1-1.1h0a1.1 1.1 0 0 0-1.1-1.1z",
+  // Disc player
+  24: "M2.7 5.6h18.6a1.2 1.2 0 0 1 1.2 1.2v8.2a1.2 1.2 0 0 1-1.2 1.2h-18.6a1.2 1.2 0 0 1-1.2-1.2v-8.2a1.2 1.2 0 0 1 1.2-1.2zM5.8 8.4a1.2 1.2 0 0 0-1.2 1.2h0a1.2 1.2 0 0 0 1.2 1.2h12.4a1.2 1.2 0 0 0 1.2-1.2h0a1.2 1.2 0 0 0-1.2-1.2zM1.5 13.3v.9h21v-.9zM4 15.7h3.4v1.1a1.1 1.1 0 0 1-1.1 1.1h-1.2a1.1 1.1 0 0 1-1.1-1.1zm12.6 0h3.4v1.1a1.1 1.1 0 0 1-1.1 1.1h-1.2a1.1 1.1 0 0 1-1.1-1.1z",
+  // amazon
+  25: "M1.5 9.6c.36-.6 1-.8 1.4-.8h0c.84 0 1.5.66 1.5 1.6h0v2.8h-.9v-2.8c0-.56-.14-.7-.6-.7h0c-.3 0-.46.1-.7.4zm-.1 2.3a1.35 1.3 0 1 1 2.7 0a1.35 1.3 0 1 1-2.7 0zm.85.05a.55.5 0 1 0 1.1 0a.55.5 0 1 0-1.1 0zm2.6 1.25v-2.9c0-.7.49-1.5 1.1-1.5h0c.61 0 1.1.8 1.1 1.5h0v2.9h-.9v-2.9c0-.45-.09-.6-.2-.6h0c-.11 0-.2.15-.2.6h0v2.9zm1.3 0v-2.9c0-.7.49-1.5 1.1-1.5h0c.61 0 1.1.8 1.1 1.5h0v2.9h-.9v-2.9c0-.45-.09-.6-.2-.6h0c-.11 0-.2.15-.2.6h0v2.9zM4.85 8.8h.9v4.4h-.9zm4.25.8c.4-.6 1-.8 1.45-.8h0c.85 0 1.5.66 1.5 1.6h0v2.8h-.9v-2.8c0-.56-.15-.7-.6-.7h0c-.25 0-.45.1-.65.4zm-.05 2.3a1.35 1.3 0 1 1 2.7 0a1.35 1.3 0 1 1-2.7 0zm.85.05a.55.5 0 1 0 1.1 0a.55.5 0 1 0-1.1 0zM12.2 8.8h2.6v.8l-1.45 2.8h1.5v.8h-2.65v-.8l1.45-2.8h-1.45zM15.6 11a1.65 2.2 0 1 1 3.3 0a1.65 2.2 0 1 1-3.3 0zm.9 0a.75 1.3 0 1 0 1.5 0a.75 1.3 0 1 0-1.5 0zm2.9 2.2v-2.9c0-.76.7-1.5 1.4-1.5h0c.76 0 1.45.74 1.45 1.5h0v2.9h-.9v-2.9c0-.4-.15-.6-.55-.6h0c-.3 0-.5.2-.5.6h0v2.9zm0-4.4h.9v4.4h-.9zM2.6 14.7q6.9 2.5 13.7.5-6.8 3.4-13.7-.5zm12.3-.15l2.4-.25-.55 2.25-.5-.6-.45-.6z"
+};
+var X1S_ICON_PATHS = {
+  // Set-top box
+  8: "M3.1 11.6h17.8a1.6 1.6 0 0 1 1.6 1.6v5a1.6 1.6 0 0 1-1.6 1.6h-17.8a1.6 1.6 0 0 1-1.6-1.6v-5a1.6 1.6 0 0 1 1.6-1.6zM5.4 3.2a.8.8 0 0 1 .8.8v7.4a.8.8 0 0 1-.8.8h0a.8.8 0 0 1-.8-.8v-7.4a.8.8 0 0 1 .8-.8zm13.2 0a.8.8 0 0 1 .8.8v7.4a.8.8 0 0 1-.8.8h0a.8.8 0 0 1-.8-.8v-7.4a.8.8 0 0 1 .8-.8zM5.35 14.85a.95.95 0 0 0-.95.95h0a.95.95 0 0 0 .95.95h4.5a.95.95 0 0 0 .95-.95h0a.95.95 0 0 0-.95-.95zm11.75.95a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0zm.75 0a.55.55 0 1 1 1.1 0a.55.55 0 1 1-1.1 0z",
+  // Speakers
+  11: "M3 2.4h7.8a1.2 1.2 0 0 1 1.2 1.2v16.8a1.2 1.2 0 0 1-1.2 1.2h-7.8a1.2 1.2 0 0 1-1.2-1.2v-16.8a1.2 1.2 0 0 1 1.2-1.2zM5.8 5.74a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM3.6 16.8a3.3 3.3 0 1 0 6.6 0a3.3 3.3 0 1 0-6.6 0zm1.06 0a2.24 2.24 0 1 1 4.48 0a2.24 2.24 0 1 1-4.48 0zm1.44 0a.8.8 0 1 0 1.6 0a.8.8 0 1 0-1.6 0zM15 8.4h6a1.2 1.2 0 0 1 1.2 1.2v10.8a1.2 1.2 0 0 1-1.2 1.2h-6a1.2 1.2 0 0 1-1.2-1.2v-10.8a1.2 1.2 0 0 1 1.2-1.2zm2.16 2.66a.84.84 0 1 0 1.68 0a.84.84 0 1 0-1.68 0zm-1.71 6.78a2.55 2.55 0 1 0 5.1 0a2.55 2.55 0 1 0-5.1 0zm.85 0a1.7 1.7 0 1 1 3.4 0a1.7 1.7 0 1 1-3.4 0zm1.1 0a.6.6 0 1 0 1.2 0a.6.6 0 1 0-1.2 0z",
+  // Bulb
+  12: "M8.6 14.1a6.4 6.4 0 1 1 6.8 0c-.9 1-1.1.9-1.1 2.3h-4.6c0-1.4-.2-1.3-1.1-2.3zM7.64 7.5a.54.54 0 0 0 1.06.3a3.4 3.4 0 0 1 2.4-2.4a.54.54 0 0 0-.3-1.06a4.5 4.5 0 0 0-3.16 3.16zm2.56 9.45h3.6a.5.5 0 0 1 .5.55h0a.5.5 0 0 1-.5.5h-3.6a.5.5 0 0 1-.5-.5h0a.5.5 0 0 1 .5-.55zm0 1.6h3.6a.5.5 0 0 1 .5.55h0a.5.5 0 0 1-.5.5h-3.6a.5.5 0 0 1-.5-.5h0a.5.5 0 0 1 .5-.55zm.9 1.6h1.8a.5.5 0 0 1 .5.45h0a.5.5 0 0 1-.5.5h-1.8a.5.5 0 0 1-.5-.5h0a.5.5 0 0 1 .5-.45z",
+  // amazon
+  15: "M6.2 4.1c1.6-.95 3.6-1.2 5.4-1.2h0c4.5 0 5.3 1.9 5.3 4.1h0v7.6h-3v-7.6c0-1.6.2-1.1-2.3-1.1h0c-1.6 0-2.8.15-3.8.8zm.1 6.8a4.3 3.7 0 1 1 8.6 0a4.3 3.7 0 1 1-8.6 0zm2.6.15a1.85 1.6 0 1 0 3.7 0a1.85 1.6 0 1 0-3.7 0zM2.4 16.4q9 3.5 17 1.1-8 5.1-17-1.1zm15.1.2l3.7-.65-.65 3.65-.75-1.25-.75-.9z"
+};
+
+// remote-card/src/entity-icons/entity-icons.ts
+var ENTITY_ICON_COUNT = { X1: 25, X1S: 16, X2: 45 };
+var X1_ICON_AS_X2 = {
+  1: 1,
+  2: 18,
+  3: 32,
+  4: 2,
+  5: 3,
+  9: 7,
+  11: 6,
+  15: 14,
+  20: 9
+};
+var X1S_ICON_AS_X1 = { 4: 6, 5: 8, 6: 10, 9: 22, 13: 13, 16: 16 };
+var X1S_ICON_NAMES = { 8: "Set-top box", 11: "Speakers", 12: "Bulb", 15: "amazon" };
+var X1_ICON_NAMES = {
+  1: "TV",
+  2: "HD TV",
+  3: "TV on a stand",
+  4: "Picture",
+  5: "Music",
+  6: "3D glasses",
+  7: "TV with menu",
+  8: "Clapperboard",
+  9: "Gamepad",
+  10: "Handheld console",
+  11: "Gamepad",
+  12: "Retro console",
+  13: "Apple",
+  14: "VUDU",
+  15: "Roku",
+  16: "Netflix",
+  17: "Home",
+  18: "Computer",
+  19: "Speaker",
+  20: "Set-top box",
+  21: "Bulb",
+  22: "AV receiver",
+  23: "Projector",
+  24: "Disc player",
+  25: "amazon"
+};
+var SERVICE_ICON_IDS = {
+  X1: [13, 14, 15, 16, 25],
+  X1S: [13, 14, 15, 16],
+  X2: [13, 14, 15, 16, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]
+};
+function iconHubLine(hubVersion) {
+  const version = String(hubVersion ?? "").trim().toUpperCase();
+  if (version.includes("X1S")) return "X1S";
+  if (version.includes("X2")) return "X2";
+  if (version.includes("X1")) return "X1";
+  return null;
+}
+function entityIconIds(hubVersion) {
+  const line = iconHubLine(hubVersion);
+  return line ? Array.from({ length: ENTITY_ICON_COUNT[line] }, (_2, i8) => i8 + 1) : [];
+}
+function entityIconGroups(hubVersion) {
+  const line = iconHubLine(hubVersion);
+  if (!line) return { pictures: [], services: [] };
+  const services = new Set(SERVICE_ICON_IDS[line]);
+  const ids = entityIconIds(hubVersion);
+  return { pictures: ids.filter((id) => !services.has(id)), services: ids.filter((id) => services.has(id)) };
+}
+function lineIconId(line, iconId) {
+  return Number.isInteger(iconId) && iconId >= 1 && iconId <= ENTITY_ICON_COUNT[line] ? iconId : 1;
+}
+function entityIconPath(hubVersion, iconId) {
+  const line = iconHubLine(hubVersion);
+  if (!line) return null;
+  const id = lineIconId(line, iconId);
+  if (line === "X1") return X1_ICON_PATHS[id] ?? X2_ICON_PATHS[X1_ICON_AS_X2[id]];
+  if (line === "X1S" && X1S_ICON_PATHS[id]) return X1S_ICON_PATHS[id];
+  if (line === "X1S" && X1S_ICON_AS_X1[id]) return X1_ICON_PATHS[X1S_ICON_AS_X1[id]];
+  return X2_ICON_PATHS[id];
+}
+function entityIconName(hubVersion, iconId) {
+  const line = iconHubLine(hubVersion);
+  if (!line) return "";
+  const id = lineIconId(line, iconId);
+  if (line === "X1") return X1_ICON_NAMES[id];
+  if (line === "X1S" && X1S_ICON_NAMES[id]) return X1S_ICON_NAMES[id];
+  if (line === "X1S" && X1S_ICON_AS_X1[id]) return X1_ICON_NAMES[X1S_ICON_AS_X1[id]];
+  return X2_ICON_NAMES[id];
+}
+
+// remote-card/src/entity-icons/entity-colors.ts
+var PALETTE = {
+  1: "#7F7F7F",
+  2: "#F16161",
+  3: "#2E385E",
+  4: "#8171B4",
+  5: "#64BB80",
+  6: "#E39E89",
+  7: "#00A8E0",
+  8: "#717FB4",
+  9: "#56CBCB",
+  10: "#BCAD90",
+  11: "#6EACEB",
+  12: "#97A5DB"
+};
+var ENTITY_COLOR_IDS = Object.keys(PALETTE).map(Number);
+function entityColorsSupported(hubVersion) {
+  return iconHubLine(hubVersion) === "X2";
+}
+function entityColorHex(colorId) {
+  return PALETTE[Number(colorId)] ?? PALETTE[1];
+}
+function entityColor(hubVersion, colorId) {
+  return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
+}
+
+// remote-card/src/entity-icons/entity-tile.ts
+function entityTile(hubVersion, icon8, colorId) {
+  if (typeof icon8 !== "number") return null;
+  const path = entityIconPath(hubVersion, icon8);
+  if (!path) return null;
+  return { path, color: entityColor(hubVersion, colorId), name: entityIconName(hubVersion, icon8) };
+}
+var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] };
+var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
+var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
+var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+function entityTileBadge(deviceClass) {
+  const cls = String(deviceClass ?? "").toLowerCase();
+  if (cls === "ir") return BADGE_IR;
+  if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
+  if (cls.includes("wifi")) return BADGE_WIFI;
+  if (cls.startsWith("rf")) return BADGE_RF;
+  return null;
+}
+function renderBadge(badge2) {
+  const [dx, dy] = badge2.nudge;
+  return b2`<span class="entity-tile__badge"
+    ><svg viewBox="0 0 24 24" focusable="false"><path transform=${`translate(${dx} ${dy})`} d=${badge2.path}></path></svg
+  ></span>`;
+}
+function renderEntityTile(tile, options = {}) {
+  const classes = ["entity-tile", tile.color ? "" : "entity-tile--neutral", options.className ?? ""].filter(Boolean).join(" ");
+  return b2`<span class=${classes} style=${tile.color ? `--entity-tile-color: ${tile.color}` : ""} aria-hidden="true"
+    ><svg viewBox="0 0 24 24" focusable="false"><path d=${tile.path}></path></svg
+    >${options.badge ? renderBadge(options.badge) : A}</span
+  >`;
+}
+var entityTileStyles = i`
+  .entity-tile {
+    --_entity-tile-size: var(--entity-tile-size, 30px);
+    position: relative;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: var(--_entity-tile-size);
+    height: var(--_entity-tile-size);
+    border-radius: calc(var(--_entity-tile-size) * 0.3);
+    background: var(--entity-tile-color, #7f7f7f);
+    color: #fff;
+  }
+  .entity-tile > svg {
+    width: calc(var(--_entity-tile-size) * 0.64);
+    height: calc(var(--_entity-tile-size) * 0.64);
+    fill: currentColor;
+  }
+  .entity-tile--neutral {
+    background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+    color: var(--primary-text-color);
+  }
+  .entity-tile__badge {
+    position: absolute;
+    inset-inline-end: -5px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--card-background-color, #fff);
+    color: var(--secondary-text-color);
+    box-shadow: 0 0 0 2px var(--entity-tile-ring, var(--card-background-color, #fff));
+  }
+  .entity-tile__badge > svg {
+    display: block;
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+  }
+`;
+
+// remote-card/src/entity-icons/entity-picker.ts
+var CHECK_PATH = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
+function renderEntityIconPicker(params) {
+  const { pictures, services } = entityIconGroups(params.hubVersion);
+  const button = (id) => {
+    const selected = id === params.icon;
+    const name = params.iconName(entityIconName(params.hubVersion, id));
+    const classes = [
+      "entity-picker-icon",
+      selected ? "entity-picker-icon--selected" : "",
+      selected && !params.color ? "entity-picker-icon--neutral" : ""
+    ].filter(Boolean).join(" ");
+    return b2`<button
+      type="button"
+      class=${classes}
+      style=${selected && params.color ? `--entity-tile-color: ${params.color}` : ""}
+      title=${name}
+      aria-label=${name}
+      aria-pressed=${selected ? "true" : "false"}
+      @click=${() => params.onPick(id)}
+    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d=${entityIconPath(params.hubVersion, id) ?? ""}></path></svg></button>`;
+  };
+  return b2`
+    <div class="entity-picker-grid">${pictures.map(button)}</div>
+    ${services.length ? b2`<div class="entity-picker-sub">${params.servicesLabel}</div><div class="entity-picker-grid">${services.map(button)}</div>` : A}
+  `;
+}
+function renderEntityColorPicker(params) {
+  const current = params.colorId >= 1 ? params.colorId : 1;
+  return b2`<div class="entity-picker-swatches" role="radiogroup">
+    ${ENTITY_COLOR_IDS.map((id) => {
+    const selected = id === current;
+    return b2`<button
+        type="button"
+        role="radio"
+        class=${["entity-picker-swatch", selected ? "entity-picker-swatch--selected" : ""].filter(Boolean).join(" ")}
+        style=${`--entity-swatch: ${entityColorHex(id)}`}
+        title=${params.colorName(id)}
+        aria-label=${params.colorName(id)}
+        aria-checked=${selected ? "true" : "false"}
+        @click=${() => params.onPick(id)}
+      ><svg viewBox="0 0 24 24" aria-hidden="true"><path d=${CHECK_PATH}></path></svg></button>`;
+  })}
+  </div>`;
+}
+var entityPickerStyles = i`
+  .entity-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 6px;
+  }
+  .entity-picker-icon {
+    aspect-ratio: 1;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+    color: color-mix(in srgb, var(--primary-text-color) 82%, transparent);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: background 90ms ease;
+  }
+  .entity-picker-icon svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+  }
+  .entity-picker-icon:hover {
+    background: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+  }
+  .entity-picker-icon:focus-visible,
+  .entity-picker-swatch:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+  .entity-picker-icon--selected,
+  .entity-picker-icon--selected:hover {
+    background: var(--entity-tile-color, #7f7f7f);
+    color: #fff;
+    box-shadow: 0 0 0 2px var(--card-background-color, #fff), 0 0 0 4px var(--entity-tile-color, #7f7f7f);
+  }
+  .entity-picker-icon--neutral,
+  .entity-picker-icon--neutral:hover {
+    background: color-mix(in srgb, var(--primary-color) 22%, transparent);
+    color: color-mix(in srgb, var(--primary-color) 45%, var(--primary-text-color));
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+  .entity-picker-sub {
+    margin: 12px 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .entity-picker-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+    gap: 8px;
+  }
+  .entity-picker-swatch {
+    aspect-ratio: 1;
+    max-width: 34px;
+    border: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--entity-swatch);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+  .entity-picker-swatch svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    opacity: 0;
+  }
+  .entity-picker-swatch--selected {
+    box-shadow: 0 0 0 2px var(--card-background-color, #fff), 0 0 0 4px var(--entity-swatch);
+  }
+  .entity-picker-swatch--selected svg {
+    opacity: 1;
+  }
+`;
+
+// remote-card/src/entity-icons/appearance-editor.ts
+function appearanceLabelsFrom(strings) {
+  return {
+    changeIcon: strings.changeIcon,
+    changeIconAndColor: strings.changeIconAndColor,
+    icon: strings.appearanceIcon,
+    services: strings.appearanceServices,
+    iconName: (name) => strings.entityIconNames[name] ?? name,
+    colorName: (colorId) => strings.entityColorName(colorId)
+  };
+}
+function renderPane(params) {
+  return params.tab === "icon" ? renderEntityIconPicker({
+    hubVersion: params.hubVersion,
+    icon: params.icon,
+    color: entityColor(params.hubVersion, params.colorId),
+    servicesLabel: params.labels.services,
+    iconName: params.labels.iconName,
+    onPick: (picked) => params.onPick({ icon: picked })
+  }) : renderEntityColorPicker({
+    colorId: params.colorId,
+    colorName: params.labels.colorName,
+    onPick: (picked) => params.onPick({ colorId: picked })
+  });
+}
+function renderAppearanceEditor(params) {
+  const { labels } = params;
+  const version = params.hubVersion;
+  const colors = entityColorsSupported(version);
+  const draft = params.draft;
+  const icon8 = draft.icon ?? 1;
+  const colorId = draft.colorId ?? 0;
+  const tile = entityTile(version, icon8, colorId);
+  const changeLabel = colors ? labels.changeIconAndColor : labels.changeIcon;
+  const tab = colors ? params.tab : "icon";
+  return b2`
+    <div class="appearance-ident">
+      <button class="appearance-trigger" type="button" title=${changeLabel} aria-label=${changeLabel} aria-expanded=${params.open ? "true" : "false"} @click=${params.onToggle}>
+        ${tile ? renderEntityTile(tile) : A}
+        <span class="appearance-trigger-edit" aria-hidden="true"><ha-icon icon="mdi:pencil"></ha-icon></span>
+      </button>
+      <div class="appearance-name">${params.nameField}</div>
+    </div>
+    ${params.open ? b2`
+          ${colors ? b2`<div class="appearance-tabs" role="tablist">
+                <button role="tab" type="button" class="appearance-tab${tab === "icon" ? " active" : ""}" aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => params.onTab("icon")}>
+                  <ha-icon icon="mdi:shape-outline"></ha-icon><span>${labels.icon}</span>
+                </button>
+                <button role="tab" type="button" class="appearance-tab${tab === "color" ? " active" : ""}" aria-selected=${tab === "color" ? "true" : "false"} @click=${() => params.onTab("color")}>
+                  <span class="appearance-dot" style=${`--entity-swatch: ${entityColorHex(colorId)}`}></span><span>${labels.colorName(colorId >= 1 ? colorId : 1)}</span>
+                </button>
+              </div>` : A}
+          <div class="appearance-pane">
+            ${renderPane({ hubVersion: version, icon: icon8, colorId, tab, labels, onPick: (picked) => params.onPick({ ...draft, ...picked }) })}
+          </div>
+        ` : b2`<button class="appearance-reveal" type="button" aria-expanded="false" @click=${params.onToggle}>
+          <ha-icon icon=${colors ? "mdi:palette-outline" : "mdi:shape-outline"}></ha-icon><span>${changeLabel}</span><ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>`}
+  `;
+}
+function renderAppearanceToggle(params) {
+  const { labels, state } = params;
+  const version = params.hubVersion;
+  const colors = entityColorsSupported(version);
+  const icon8 = state.icon ?? 1;
+  const colorId = state.colorId ?? 0;
+  const tile = entityTile(version, icon8, colorId);
+  if (!tile) return A;
+  const tab = colors ? state.tab : "icon";
+  const set = (patch) => params.onChange({ ...state, ...patch });
+  return b2`
+    <div class="cache-dialog-appearance">
+      <button class="cache-dialog-appearance-toggle" type="button" aria-expanded=${state.open ? "true" : "false"} ?disabled=${params.disabled ?? false} @click=${() => set({ open: !state.open })}>
+        ${renderEntityTile(tile)}
+        <span>${colors ? labels.changeIconAndColor : labels.changeIcon}</span>
+        <ha-icon icon=${state.open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
+      </button>
+      ${state.open ? b2`
+            ${colors ? b2`<div class="cache-dialog-appearance-tabs" role="tablist">
+                  <button role="tab" type="button" class=${tab === "icon" ? "active" : ""} aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => set({ tab: "icon" })}>${labels.icon}</button>
+                  <button role="tab" type="button" class=${tab === "color" ? "active" : ""} aria-selected=${tab === "color" ? "true" : "false"} @click=${() => set({ tab: "color" })}>${labels.colorName(colorId >= 1 ? colorId : 1)}</button>
+                </div>` : A}
+            <div class="cache-dialog-appearance-pane">
+              ${renderPane({ hubVersion: version, icon: icon8, colorId, tab, labels, onPick: (picked) => set(picked) })}
+            </div>
+          ` : A}
+    </div>
+  `;
+}
+var BADGE_EDIT = { icon: "mdi:pencil", path: mdiPencil, nudge: [0, 0] };
+function renderDetailEntityTile(tile, params) {
+  return b2`<button class="detail-entity-tile" id=${o8(params.id)} type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
+    ${renderEntityTile(tile, { badge: BADGE_EDIT })}
+  </button>`;
+}
+var appearanceEditorStyles = i`
+  .detail-entity-tile {
+    flex: 0 0 auto;
+    display: inline-flex;
+    border: 0;
+    padding: 0;
+    background: none;
+    border-radius: 11px;
+    cursor: pointer;
+    --entity-tile-size: 36px;
+  }
+  .detail-entity-tile:disabled { cursor: default; }
+  .detail-entity-tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .detail-entity-tile:hover:not(:disabled) .entity-tile { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
+  .appearance-ident { display: flex; align-items: center; gap: 14px; }
+  .appearance-name { flex: 1; min-width: 0; }
+  .appearance-name > ha-input, .appearance-name > ha-textfield { display: block; width: 100%; }
+  .appearance-trigger {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    border: 0;
+    padding: 0;
+    background: none;
+    border-radius: 15px;
+    cursor: pointer;
+    --entity-tile-size: 50px;
+  }
+  .appearance-trigger:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .appearance-trigger-edit {
+    position: absolute;
+    inset-inline-end: -6px;
+    bottom: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--ha-card-background, var(--card-background-color));
+    color: var(--secondary-text-color);
+    box-shadow: 0 0 0 1px var(--divider-color);
+    --mdc-icon-size: 13px;
+  }
+  .appearance-reveal {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color));
+    cursor: pointer;
+    --mdc-icon-size: 18px;
+  }
+  .appearance-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+  }
+  .appearance-tab {
+    height: 32px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--secondary-text-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    --mdc-icon-size: 16px;
+  }
+  .appearance-tab.active {
+    background: var(--ha-card-background, var(--card-background-color));
+    color: var(--primary-text-color);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+  .appearance-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--entity-swatch); }
+  .appearance-pane { max-height: 232px; overflow-y: auto; padding: 5px; margin: -5px; }
+`;
+var appearanceToggleStyles = i`
+  .cache-dialog-appearance { display: flex; flex-direction: column; gap: 10px; }
+  .cache-dialog-appearance-toggle {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
+    border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13px; font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color)); cursor: pointer;
+    --entity-tile-size: 32px; --mdc-icon-size: 18px;
+  }
+  .cache-dialog-appearance-toggle:disabled { cursor: default; opacity: 0.6; }
+  .cache-dialog-appearance-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--primary-text-color) 7%, transparent); }
+  .cache-dialog-appearance-tabs button { height: 30px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
+  .cache-dialog-appearance-tabs button.active { background: var(--card-background-color, #fff); color: var(--primary-text-color); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .cache-dialog-appearance-pane { max-height: 200px; overflow-y: auto; padding: 5px; margin: -5px; }
+`;
+
+// remote-card/src/ir-emitters/emitter-routing.ts
+var EMITTER_REMOTE_COUNT = 5;
+var EMITTER_REPEATER_COUNT = 4;
+var HUB_BITS = { none: 0, builtin: 1, port1: 2, port2: 4, all: 7 };
+var HUB_MASK = 7;
+var REMOTE_SHIFT = 3;
+var REPEATER_BITS = { builtin: 1, port: 2, all: 3 };
+var HUB_CHOICES = ["all", "builtin", "port1", "port2"];
+var REPEATER_CHOICES = ["all", "builtin", "port"];
+var hubChoiceOfBits = (bits) => {
+  for (const [choice, value] of Object.entries(HUB_BITS)) if (value === bits) return choice;
+  return "custom";
+};
+var repeaterChoiceOfBits = (bits) => {
+  for (const [choice, value] of Object.entries(REPEATER_BITS)) if (value === bits) return choice;
+  return null;
+};
+function decodeEmitters(a4, b3, c7) {
+  const hubBits = c7 & HUB_MASK;
+  const remotes = [];
+  for (let n7 = 1; n7 <= EMITTER_REMOTE_COUNT; n7++) if (c7 & 1 << REMOTE_SHIFT + n7 - 1) remotes.push(n7);
+  const repeaters = [];
+  for (let n7 = 1; n7 <= EMITTER_REPEATER_COUNT; n7++) {
+    const choice = repeaterChoiceOfBits(b3 >> 2 * (n7 - 1) & 3);
+    if (choice) repeaters.push([n7, choice]);
+  }
+  return { hub: hubChoiceOfBits(hubBits), remotes, repeaters, hubBits, rfByte: a4 & 255 };
+}
+function encodeEmitters(routing) {
+  const hubBits = routing.hub === "custom" ? routing.hubBits : HUB_BITS[routing.hub];
+  let c7 = hubBits & HUB_MASK;
+  for (const n7 of routing.remotes) c7 |= 1 << REMOTE_SHIFT + n7 - 1;
+  let b3 = 0;
+  for (const [n7, choice] of routing.repeaters) b3 |= REPEATER_BITS[choice] << 2 * (n7 - 1);
+  return [routing.rfByte & 255, b3 & 255, c7 & 255];
+}
+var isByte = (value) => typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255;
+function routingFromExtras(extras) {
+  if (!extras || typeof extras !== "object") return null;
+  const { a: a4, b: b3, c: c7 } = extras;
+  if (!isByte(a4) || !isByte(b3) || !isByte(c7)) return null;
+  return decodeEmitters(a4, b3, c7);
+}
+function routingFromTriple(triple) {
+  if (!Array.isArray(triple) || triple.length !== 3) return null;
+  const [a4, b3, c7] = triple;
+  if (!isByte(a4) || !isByte(b3) || !isByte(c7)) return null;
+  return decodeEmitters(a4, b3, c7);
+}
+function extrasOfRouting(routing) {
+  const [a4, b3, c7] = encodeEmitters(routing);
+  return { a: a4, b: b3, c: c7 };
+}
+function sameRouting(left, right) {
+  const [a1, b1, c1] = encodeEmitters(left);
+  const [a22, b22, c22] = encodeEmitters(right);
+  return a1 === a22 && b1 === b22 && c1 === c22;
+}
+function repeaterChoice(routing, number) {
+  return routing.repeaters.find(([n7]) => n7 === number)?.[1] ?? null;
+}
+function withHub2(routing, choice) {
+  if (!(choice in HUB_BITS)) throw new RangeError(`hub emitters must be one of ${Object.keys(HUB_BITS).join(", ")}; got ${String(choice)}`);
+  return { ...routing, hub: choice, hubBits: HUB_BITS[choice] };
+}
+function withRemote(routing, number, on) {
+  if (!Number.isInteger(number) || number < 1 || number > EMITTER_REMOTE_COUNT) {
+    throw new RangeError(`remote number must be 1-${EMITTER_REMOTE_COUNT}; got ${number}`);
+  }
+  const remotes = new Set(routing.remotes);
+  if (on) remotes.add(number);
+  else remotes.delete(number);
+  return { ...routing, remotes: [...remotes].sort((x2, y3) => x2 - y3) };
+}
+function withRepeater(routing, number, choice) {
+  if (!Number.isInteger(number) || number < 1 || number > EMITTER_REPEATER_COUNT) {
+    throw new RangeError(`repeater number must be 1-${EMITTER_REPEATER_COUNT}; got ${number}`);
+  }
+  if (choice !== null && !(choice in REPEATER_BITS)) {
+    throw new RangeError(`repeater emitters must be one of ${Object.keys(REPEATER_BITS).join(", ")}; got ${String(choice)}`);
+  }
+  const repeaters = new Map(routing.repeaters.map(([n7, c7]) => [n7, c7]));
+  if (choice === null) repeaters.delete(number);
+  else repeaters.set(number, choice);
+  return { ...routing, repeaters: [...repeaters.entries()].sort(([x2], [y3]) => x2 - y3) };
+}
+
+// remote-card/src/ir-emitters/emitter-rules.ts
+var inRange = (kind, number) => Number.isInteger(number) && number >= 1 && number <= (kind === "remote" ? EMITTER_REMOTE_COUNT : EMITTER_REPEATER_COUNT);
+function normalizePaired(raw) {
+  if (!Array.isArray(raw)) return null;
+  const rows = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item;
+    const kind = row.kind === "remote" || row.kind === "repeater" ? row.kind : null;
+    const number = Number(row.number);
+    if (!kind || !inRange(kind, number)) continue;
+    rows.push({
+      kind,
+      number,
+      name: String(row.name ?? "").trim(),
+      online: row.online === true,
+      port_cable: typeof row.port_cable === "boolean" ? row.port_cable : null
+    });
+  }
+  return rows;
+}
+var pairedRow = (paired, kind, number) => paired?.find((row) => row.kind === kind && row.number === number) ?? null;
+function pickedRowCount(routing) {
+  return (routing.hub === "none" ? 0 : 1) + routing.remotes.length + routing.repeaters.length;
+}
+function irEmitterProblems(routing, paired) {
+  if (!paired) return [];
+  const problems = [];
+  for (const [number] of routing.repeaters) {
+    const row = pairedRow(paired, "repeater", number);
+    if (!row) problems.push({ kind: "unpaired", target: "repeater", number, name: null });
+    else if (!row.online) problems.push({ kind: "offline", target: "repeater", number, name: row.name });
+  }
+  for (const number of routing.remotes) {
+    if (!pairedRow(paired, "remote", number)) problems.push({ kind: "unpaired", target: "remote", number, name: null });
+  }
+  return problems;
+}
+function irEmitterAttention(routing, paired) {
+  return routing !== null && irEmitterProblems(routing, paired).length > 0;
+}
+function irEmitterRowAttention(emitters, paired) {
+  return irEmitterAttention(routingFromTriple(emitters), paired);
+}
+function irEmitterNote(routing) {
+  if (routing.hub !== "none") return null;
+  const remotes = routing.remotes.length > 0;
+  const repeaters = routing.repeaters.length > 0;
+  if (remotes && repeaters) return "no_hub";
+  if (remotes) return "remote_only";
+  if (repeaters) return "repeater_only";
+  return null;
+}
+function irEmitterRows(routing, paired) {
+  const rows = [{
+    key: "hub",
+    kind: "hub",
+    number: 0,
+    name: null,
+    picked: routing.hub !== "none",
+    paired: true,
+    online: true,
+    choice: routing.hub === "none" ? null : routing.hub
+  }];
+  for (const kind of ["repeater", "remote"]) {
+    const picked = kind === "repeater" ? routing.repeaters.map(([n7]) => n7) : [...routing.remotes];
+    const listed = (paired ?? []).filter((row) => row.kind === kind).map((row) => row.number);
+    const numbers = [.../* @__PURE__ */ new Set([...listed, ...picked])].sort((x2, y3) => x2 - y3);
+    for (const number of numbers) {
+      const row = pairedRow(paired, kind, number);
+      rows.push({
+        key: `${kind}:${number}`,
+        kind,
+        number,
+        name: row?.name || null,
+        picked: picked.includes(number),
+        paired: paired ? row !== null : null,
+        online: row ? row.online : null,
+        choice: kind === "repeater" ? repeaterChoice(routing, number) : null
+      });
+    }
+  }
+  return rows;
+}
+function toggleEmitterRow(routing, row) {
+  if (row.picked && pickedRowCount(routing) <= 1) return null;
+  if (row.kind === "hub") return withHub2(routing, row.picked ? "none" : "all");
+  if (row.kind === "repeater") return withRepeater(routing, row.number, row.picked ? null : "all");
+  return withRemote(routing, row.number, !row.picked);
+}
+function pickHubEmitters(routing, choice) {
+  return withHub2(routing, choice);
+}
+function pickRepeaterEmitters(routing, number, choice) {
+  return withRepeater(routing, number, choice);
+}
+function customHubMix(routing) {
+  if (routing.hub !== "custom") return null;
+  switch (routing.hubBits & 7) {
+    case 3:
+      return "builtin_port1";
+    case 5:
+      return "builtin_port2";
+    case 6:
+      return "ports";
+    default:
+      return null;
+  }
+}
+
+// remote-card/src/ir-emitters/emitter-dropdown.ts
+function svg(path, cls = "") {
+  return b2`<svg class="ir-mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d=${path}></path></svg>`;
+}
+function pillInner(labels, attention, chevron) {
+  return b2`${attention ? svg(mdiAlertOutline, "ir-pill-alert") : A}<span class="ir-pill-text">${labels.pill}</span>${chevron ? svg(mdiChevronDown) : A}`;
+}
+function renderReadOnlyIrPill(params) {
+  const { labels, attention } = params;
+  return b2`<span
+    class="ir-pill ir-pill--ro${attention ? " attention" : ""}"
+    title=${attention ? labels.rowAttention : labels.pillLabel}
+    aria-label=${attention ? `${labels.pillLabel}. ${labels.rowAttention}` : labels.pillLabel}
+    role="img"
+  >${pillInner(labels, attention, false)}</span>`;
+}
+function onChoiceKeydown(event) {
+  const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+  if (!keys.includes(event.key)) return;
+  const group = event.currentTarget;
+  if (!group) return;
+  const options = [...group.querySelectorAll("button[role='radio']:not(:disabled)")];
+  if (!options.length) return;
+  const root = group.getRootNode();
+  const current = options.findIndex((option) => option === root.activeElement);
+  const rtl = getComputedStyle(group).direction === "rtl";
+  const forward = event.key === "ArrowDown" || event.key === (rtl ? "ArrowLeft" : "ArrowRight");
+  const back = event.key === "ArrowUp" || event.key === (rtl ? "ArrowRight" : "ArrowLeft");
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : forward ? (current + 1) % options.length : back ? (current - 1 + options.length) % options.length : -1;
+  if (next < 0) return;
+  event.preventDefault();
+  options[next].focus();
+  options[next].click();
+}
+function rowName(labels, row) {
+  if (row.kind === "hub") return labels.hub;
+  return row.name || (row.kind === "repeater" ? labels.repeaterNumber(row.number) : labels.remoteNumber(row.number));
+}
+function rowSub(labels, row, routing) {
+  if (row.kind === "hub") {
+    const mix = customHubMix(routing);
+    return mix ? labels.hubCustom(mix) : labels.hubSub;
+  }
+  const number = row.kind === "repeater" ? labels.repeaterNumber(row.number) : labels.remoteNumber(row.number);
+  if (row.paired === false) return `${number} \xB7 ${labels.notPaired}`;
+  if (row.online === null) return number;
+  return `${number} \xB7 ${row.online ? labels.online : labels.offline}`;
+}
+function problemLine(labels, problem) {
+  const name = problem.kind === "offline" ? problem.name || labels.repeaterNumber(problem.number) : problem.target === "repeater" ? labels.repeaterNumber(problem.number) : labels.remoteNumber(problem.number);
+  const title = problem.kind === "offline" ? labels.repeaterOffline(name) : labels.notPairedTitle(name);
+  const meta = problem.kind === "offline" ? labels.repeaterOfflineHint : labels.notPairedHint;
+  return b2`
+    <div class="ir-status warn" role="alert" data-problem=${`${problem.kind}:${problem.target}:${problem.number}`}>
+      ${svg(mdiAlertOutline)}
+      <div class="ir-status-copy"><span class="ir-status-title">${title}</span><span class="ir-status-meta">${meta}</span></div>
+    </div>`;
+}
+function noteLine(labels, routing) {
+  const note = irEmitterNote(routing);
+  if (!note) return A;
+  const title = note === "remote_only" ? labels.remoteOnly(routing.remotes.length) : note === "repeater_only" ? labels.repeaterOnly(routing.repeaters.length) : labels.noHub;
+  return b2`
+    <div class="ir-status idle" data-note=${note}>
+      ${svg(mdiInformationOutline)}
+      <div class="ir-status-copy"><span class="ir-status-title">${title}</span><span class="ir-status-meta">${labels.noHubHint}</span></div>
+    </div>`;
+}
+function choiceGroup(params) {
+  return b2`
+    <div class="ir-choice" role="radiogroup" aria-label=${params.label} data-choices=${params.key} @keydown=${onChoiceKeydown}>
+      ${params.choices.map((choice) => b2`<button
+        type="button"
+        role="radio"
+        class="ir-option"
+        data-choice=${choice}
+        aria-checked=${params.current === choice ? "true" : "false"}
+        ?disabled=${params.disabled}
+        @click=${() => {
+    if (params.current !== choice) params.onPick(choice);
+  }}
+      >${params.names[choice]}</button>`)}
+    </div>`;
+}
+function renderRow(params, row, lastOne) {
+  const { labels, routing } = params;
+  const disabled = Boolean(params.disabled);
+  const locked = row.picked && lastOne;
+  const name = rowName(labels, row);
+  const glyph = row.kind === "hub" ? mdiAccessPointNetwork : row.kind === "repeater" ? mdiAccessPoint : mdiRemote;
+  const toggle = () => {
+    if (disabled || locked) return;
+    const next = toggleEmitterRow(routing, row);
+    if (next) params.onChange(next);
+  };
+  const dot = row.kind !== "hub" && row.online !== null ? b2`<i class="ir-dot${row.online && row.paired !== false ? "" : " off"}" aria-hidden="true"></i>` : A;
+  let choices = A;
+  if (row.picked && row.kind === "hub") {
+    choices = choiceGroup({
+      label: labels.hubChoices,
+      choices: HUB_CHOICES,
+      current: routing.hub,
+      names: { all: labels.all, builtin: labels.builtin, port1: labels.port1, port2: labels.port2 },
+      disabled,
+      key: "hub",
+      onPick: (choice) => params.onChange(pickHubEmitters(routing, choice))
+    });
+  } else if (row.picked && row.kind === "repeater") {
+    choices = choiceGroup({
+      label: labels.repeaterChoices(name),
+      choices: REPEATER_CHOICES,
+      current: row.choice,
+      names: { all: labels.all, builtin: labels.builtin, port: labels.port },
+      disabled,
+      key: row.key,
+      onPick: (choice) => params.onChange(pickRepeaterEmitters(routing, row.number, choice))
+    });
+  }
+  const note = row.picked && row.kind === "hub" && routing.hub === "custom" ? labels.hubCustomNote : row.picked && row.kind === "remote" ? labels.remoteOnNote : "";
+  return b2`
+    <div class="ir-row${row.picked ? " on" : ""}${locked ? " locked" : ""}" data-row=${row.key}>
+      <button
+        type="button"
+        class="ir-row-head"
+        role="checkbox"
+        aria-checked=${row.picked ? "true" : "false"}
+        aria-disabled=${disabled || locked ? "true" : "false"}
+        @click=${toggle}
+      >
+        <span class="ir-box">${svg(mdiCheck)}</span>
+        <span class="ir-glyph">${svg(glyph)}</span>
+        <span class="ir-name"><span class="ir-name-title">${name}</span><span class="ir-name-sub">${dot}<span>${rowSub(labels, row, routing)}</span></span></span>
+      </button>
+      ${choices}
+      ${note ? b2`<p class="ir-row-note">${note}</p>` : A}
+    </div>`;
+}
+function renderIrEmitterBody(params) {
+  const { labels, routing, paired } = params;
+  const prefix = params.idPrefix;
+  const problems = irEmitterProblems(routing, paired);
+  const rows = irEmitterRows(routing, paired);
+  const picked = pickedRowCount(routing);
+  const lastOne = picked <= 1;
+  const pending = !sameRouting(routing, params.baseline);
+  const labelId = `${prefix}-ir-send-from`;
+  return b2`
+    <div class="ir-main">
+      <span class="ir-title">${labels.title}</span>
+      <p class="ir-intro">${labels.intro}</p>
+      ${params.checking ? b2`<div class="ir-status idle brief" data-status="checking">${svg(mdiLoading, "ir-spin")}<div class="ir-status-copy"><span class="ir-status-title">${labels.checking}</span></div></div>` : A}
+      ${!params.checking && params.error ? b2`<div class="ir-status idle" data-status="error">
+            ${svg(mdiInformationOutline)}
+            <div class="ir-status-copy">
+              <span class="ir-status-title">${params.error}</span>
+              ${paired ? b2`<span class="ir-status-meta">${labels.readKept}</span>` : A}
+              ${params.onRetry ? b2`<span class="ir-actions"><button class="ir-link-btn ir-retry" type="button" @click=${params.onRetry}>${labels.checkAgain}</button></span>` : A}
+            </div>
+          </div>` : A}
+      ${problems.map((problem) => problemLine(labels, problem))}
+      ${noteLine(labels, routing)}
+    </div>
+    <div class="ir-section">
+      <span class="ir-label" id=${labelId}>${labels.sendFrom}</span>
+      <div class="ir-rows" role="group" aria-labelledby=${labelId}>
+        ${rows.map((row) => renderRow(params, row, lastOne))}
+      </div>
+      ${picked > 1 ? b2`<p class="ir-hint" data-hint="duplicate">${labels.duplicateHint}</p>` : A}
+      ${lastOne ? b2`<p class="ir-hint" data-hint="last-one">${labels.lastOneHint}</p>` : A}
+      <p class="ir-hint" data-hint="scope">${labels.scope}</p>
+      ${pending ? b2`<div class="ir-pending">
+            ${svg(mdiSwapHorizontal)}
+            <span>${labels.pillPending}</span>
+            <button class="ir-link-btn ir-undo" type="button" ?disabled=${Boolean(params.disabled)} @click=${params.onUndo}>${labels.undo}</button>
+          </div>` : A}
+    </div>`;
+}
+function renderIrEmitterPill(params) {
+  const { labels } = params;
+  const prefix = params.idPrefix;
+  const attention = irEmitterProblems(params.routing, params.paired).length > 0;
+  const pending = !sameRouting(params.routing, params.baseline);
+  const onKeydown = (event) => {
+    if (event.key !== "Escape" || !params.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    params.onClose();
+  };
+  return b2`
+    <span class="ir-pill-wrap" @keydown=${onKeydown}>
+      <button
+        class="ir-pill${pending ? " pending" : ""}${attention ? " attention" : ""}"
+        id="${prefix}-ir-pill"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded=${params.open ? "true" : "false"}
+        aria-label=${attention ? `${labels.pillLabel}. ${labels.pillAttention}` : labels.pillLabel}
+        title=${pending ? labels.pillPending : labels.pillLabel}
+        @click=${(event) => params.onToggle(event.currentTarget)}
+      >${pillInner(labels, attention, true)}</button>
+      ${params.open ? b2`
+            <button class="ir-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${params.onClose} @wheel=${(event) => event.preventDefault()}></button>
+            <div class="ir-pop" id="${prefix}-ir-pop" role="dialog" aria-label=${labels.title} style=${params.menuStyle}>
+              ${renderIrEmitterBody(params)}
+            </div>` : A}
+    </span>`;
+}
+var irEmitterStyles = i`
+  .ir-pill, .ir-pop {
+    --ir-line: var(--divider-color, rgba(0, 0, 0, 0.12));
+    --ir-text: var(--primary-text-color, #212121);
+    --ir-muted: var(--secondary-text-color, #727272);
+    --ir-surface: var(--ha-card-background, var(--card-background-color, #fff));
+    --ir-accent: var(--primary-color, #03a9f4);
+    --ir-accent-text: var(--sb-accent-text, color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121)));
+    --ir-warn: var(--warning-color, #f59e0b);
+    --ir-ok: var(--success-color, #43a047);
+    --ir-on-accent: var(--text-primary-color, #fff);
+  }
+  /* The card measures an opaque popup surface for glass themes
+     (--sb-popup-surface, theme-polarity.ts); elsewhere the card's surface. */
+  .ir-pop { --ir-pop-surface: var(--sb-popup-surface, var(--ir-surface)); }
+  .ir-mdi { width: 13px; height: 13px; flex: 0 0 auto; display: block; }
+  .ir-pill-wrap { display: inline-flex; align-self: center; flex: 0 0 auto; }
+  .ir-pill {
+    display: inline-flex; align-items: center; align-self: center; gap: 3px; flex: 0 0 auto;
+    margin: 0; border-radius: 999px; padding: 3px 5px 3px 9px; padding-inline: 9px 5px;
+    font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: 1.25;
+    border: 1px solid var(--ir-line); color: var(--ir-muted); background: var(--ir-surface);
+    white-space: nowrap; cursor: pointer; opacity: 1;
+  }
+  .ir-pill--ro { padding-inline: 9px; cursor: default; }
+  .ir-pill.pending { border-style: dashed; }
+  .ir-pill.attention {
+    border-color: color-mix(in srgb, var(--ir-warn) 60%, var(--ir-line));
+    background: color-mix(in srgb, var(--ir-warn) 14%, var(--ir-surface));
+    color: var(--ir-text);
+  }
+  .ir-pill .ir-pill-alert { color: var(--ir-warn); margin-inline-start: -3px; }
+  button.ir-pill:hover { border-color: color-mix(in srgb, var(--ir-accent) 60%, var(--ir-line)); }
+  button.ir-pill.attention:hover { border-color: color-mix(in srgb, var(--ir-warn) 85%, var(--ir-text)); }
+  button.ir-pill:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  button.ir-pill[aria-expanded="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ir-accent) 24%, transparent); }
+  .ir-backdrop { position: fixed; inset: 0; z-index: 8; border: 0; border-radius: 0; padding: 0; margin: 0; background: transparent; cursor: default; }
+  .ir-backdrop:hover { border: 0; }
+  .ir-pop {
+    z-index: 9; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+    border: 1px solid var(--ir-line); border-radius: var(--tools-radius-sm, 12px); background: var(--ir-pop-surface);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1);
+    color: var(--ir-text); font-size: 12.5px; font-weight: 400; letter-spacing: normal; line-height: 1.45;
+    text-align: start; text-transform: none; white-space: normal;
+  }
+  .ir-pop button { font: inherit; letter-spacing: normal; text-transform: none; }
+  .ir-main { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+  .ir-title { font-size: 13px; font-weight: 700; }
+  .ir-intro { margin: 0; color: var(--ir-muted); overflow-wrap: anywhere; }
+  .ir-section { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid var(--ir-line); }
+  .ir-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ir-muted); }
+  .ir-hint { margin: 0; font-size: 12px; color: var(--ir-muted); }
+  .ir-status { display: flex; gap: 8px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--ir-text) 6%, transparent); }
+  .ir-status > .ir-mdi { width: 17px; height: 17px; margin-top: 1px; color: var(--ir-muted); }
+  .ir-status.warn { background: color-mix(in srgb, var(--ir-warn) 14%, transparent); }
+  .ir-status.warn > .ir-mdi { color: var(--ir-warn); }
+  .ir-status.brief { padding: 0 2px; background: transparent; }
+  .ir-status-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+  .ir-status-title { font-weight: 500; }
+  .ir-status.warn .ir-status-title { font-weight: 700; }
+  .ir-status-meta { font-size: 12px; color: var(--ir-muted); }
+  .ir-actions { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 2px; }
+  .ir-link-btn {
+    border: 0; border-radius: 0; margin: 0; padding: 0; background: none; color: var(--ir-accent-text);
+    font-size: 12px; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+  }
+  .ir-link-btn:hover { border: 0; color: var(--ir-text); }
+  .ir-link-btn:disabled { opacity: 0.45; cursor: default; }
+  .ir-link-btn:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  .ir-rows { display: flex; flex-direction: column; border: 1px solid var(--ir-line); border-radius: 10px; overflow: hidden; }
+  .ir-row { display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; }
+  .ir-row + .ir-row { border-top: 1px solid var(--ir-line); }
+  .ir-row.on { background: color-mix(in srgb, var(--ir-accent) 6%, transparent); }
+  .ir-row-head {
+    display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; margin: 0;
+    border: 0; border-radius: 7px; padding: 0; background: none; color: var(--ir-text); text-align: start; cursor: pointer; opacity: 1;
+  }
+  .ir-row-head:hover { border: 0; }
+  .ir-row-head:hover:not([aria-disabled="true"]) .ir-box { border-color: var(--ir-accent); }
+  .ir-row-head:hover:not([aria-disabled="true"]) .ir-glyph { background: color-mix(in srgb, var(--ir-accent) 18%, transparent); }
+  .ir-row-head[aria-disabled="true"] { cursor: default; }
+  .ir-row-head:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  .ir-box {
+    width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--ir-muted); box-sizing: border-box;
+    display: grid; place-items: center; flex: 0 0 auto; color: var(--ir-on-accent);
+  }
+  .ir-box .ir-mdi { width: 14px; height: 14px; opacity: 0; }
+  .ir-row.on .ir-box { background: var(--ir-accent); border-color: var(--ir-accent); }
+  .ir-row.on .ir-box .ir-mdi { opacity: 1; }
+  .ir-row.locked .ir-box { opacity: 0.55; }
+  .ir-glyph { width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--ir-text) 11%, transparent); display: grid; place-items: center; flex: 0 0 auto; color: var(--ir-text); }
+  .ir-glyph .ir-mdi { width: 16px; height: 16px; }
+  .ir-name { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+  .ir-name-title { font-size: 12.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .ir-name-sub { font-size: 11.5px; color: var(--ir-muted); display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+  .ir-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ir-ok); flex: 0 0 auto; }
+  .ir-dot.off { background: var(--ir-muted); opacity: 0.6; }
+  .ir-choice {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border-radius: 9px;
+    background: color-mix(in srgb, var(--ir-text) 6%, transparent); margin-inline-start: 27px;
+  }
+  .ir-option {
+    display: flex; align-items: center; justify-content: center; min-width: 0; margin: 0; padding: 5px 4px;
+    border: 0; border-radius: 7px; background: transparent; color: var(--ir-muted);
+    font-size: 11.5px; font-weight: 700; line-height: 1.25; text-align: center; white-space: normal; cursor: pointer; opacity: 1;
+  }
+  .ir-option:hover:not(:disabled) { border: 0; color: var(--ir-text); background: color-mix(in srgb, var(--ir-text) 6%, transparent); }
+  .ir-option[aria-checked="true"], .ir-option[aria-checked="true"]:hover:not(:disabled) { background: var(--ir-pop-surface); color: var(--ir-text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
+  .ir-option:disabled { opacity: 0.45; cursor: default; }
+  .ir-option:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 1px; }
+  .ir-row-note { margin: 0; margin-inline-start: 27px; font-size: 11.5px; color: var(--ir-muted); }
+  .ir-pending {
+    display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; border-radius: 9px; font-size: 12px;
+    border: 1px dashed color-mix(in srgb, var(--ir-accent) 50%, var(--ir-line));
+    background: color-mix(in srgb, var(--ir-accent) 10%, transparent);
+  }
+  .ir-pending > .ir-mdi { width: 16px; height: 16px; margin-top: 1px; color: var(--ir-accent-text); }
+  .ir-pending .ir-link-btn { margin-inline-start: auto; align-self: center; }
+  .ir-spin { animation: ir-spin 0.9s linear infinite; }
+  @keyframes ir-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .ir-spin { animation: none; } }
+`;
+
+// server-panel/src/components/ir-emitter-pill.ts
+var LAST_READS = /* @__PURE__ */ new Map();
+var LOADING = /* @__PURE__ */ new Map();
+function readOf(view) {
+  return { paired: normalizePaired(view?.paired), readAt: typeof view?.read_at === "number" ? view.read_at : null };
+}
+function irEmitterLastRead(hubId) {
+  return LAST_READS.get(hubId) ?? null;
+}
+function irEmitterLastReadKnown(hubId) {
+  return LAST_READS.has(hubId) || LOADING.has(hubId);
+}
+function loadIrEmitterLastRead(api, hubId) {
+  if (!hubId) return Promise.resolve(null);
+  const known = LAST_READS.get(hubId);
+  if (known) return Promise.resolve(known);
+  const pending = LOADING.get(hubId);
+  if (pending) return pending;
+  const load = api.irEmitters(hubId, false).then(
+    (response) => {
+      const read = response.ok ? readOf(response.body) : { paired: null, readAt: null };
+      if (!LAST_READS.has(hubId)) LAST_READS.set(hubId, read);
+      return LAST_READS.get(hubId) ?? read;
+    },
+    () => null
+  ).finally(() => LOADING.delete(hubId));
+  LOADING.set(hubId, load);
+  return load;
+}
+async function readIrEmitters(api, hubId) {
+  let response;
+  try {
+    response = await api.irEmitters(hubId, true);
+  } catch {
+    return { read: null, error: TOOLS_CARD_STRINGS.irEmitters.readFailed };
+  }
+  if (!response.ok || !response.body) return { read: null, error: irEmitterReadProblem(response) };
+  if (response.body.paired == null) return { read: null, error: TOOLS_CARD_STRINGS.irEmitters.readNoAnswer };
+  const read = readOf(response.body);
+  LAST_READS.set(hubId, read);
+  return { read, error: null };
+}
+function irEmitterReadProblem(response) {
+  const S8 = TOOLS_CARD_STRINGS.irEmitters;
+  const type = String(response.body?.type ?? "");
+  if (type === "hub_busy") return S8.readUnavailable;
+  if (type === "hub_job_running" || type === "hub_conflict" || type === "remote_syncing") return S8.readBusy;
+  if (type === "hub_timeout") return S8.readNoAnswer;
+  return S8.readFailed;
+}
+function renderPanelIrPill(params) {
+  return renderIrEmitterPill({
+    ...params,
+    labels: {
+      ...TOOLS_CARD_STRINGS.irEmitters,
+      scope: "This applies to commands sent to this device. Command tests and raw IR playback always use the hub's emitters."
+    }
+  });
+}
+
 // server-panel/src/views/catalog-view.ts
 var S4 = TOOLS_CARD_STRINGS.cache;
 var CATALOG_VIEW_TAG = "sb-panel-catalog";
@@ -20278,7 +22334,8 @@ var SbPanelCatalog = class extends i4 {
         if (this._loadedFor === hubId) this._add = { ...dialog, busy: false, error };
       };
       try {
-        const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
+        const appearance = { icon: dialog.appearance.icon, colorId: dialog.appearance.colorId };
+        const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass, appearance) : await this.api.addActivity(hubId, name, appearance);
         if (started.status !== 202 || !started.body) return fail(problemText(started));
         const job = await this.api.followJob(hubId, started.body.job_id);
         if (job) this._lastJobId = job.job_id;
@@ -20397,6 +22454,9 @@ var SbPanelCatalog = class extends i4 {
       this._snapshot = snapshot.ok ? snapshot.body : null;
       this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
       if (this._open && !this.openEntry) this._open = null;
+      if (String(this._hubVersion ?? "").toUpperCase().includes("X2") && !irEmitterLastReadKnown(hubId)) {
+        void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate());
+      }
     } catch (err) {
       this._notice = String(err);
     } finally {
@@ -20533,7 +22593,14 @@ var SbPanelCatalog = class extends i4 {
   // -- add activity / add device ------------------------------------------------------------------
   _openAdd(kind) {
     if (this._locked) return;
-    this._add = { kind, name: "", deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "", busy: false, error: null };
+    this._add = {
+      kind,
+      name: "",
+      deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "",
+      appearance: { icon: null, colorId: null, open: false, tab: "icon" },
+      busy: false,
+      error: null
+    };
   }
   // -- render -------------------------------------------------------------------------------
   render() {
@@ -20597,13 +22664,14 @@ var SbPanelCatalog = class extends i4 {
       this._toggle(e6);
     }}>
         <span class="entity-name">
-          <span class="entity-name-icon">${icon3(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
+          ${this._renderEntryIcon(e6)}
           <span class="entity-name-copy">
             <span class="entity-name-label">${e6.name}</span>
             <span class="entity-count">${count}</span>
           </span>
         </span>
         <span class="entity-meta">
+          ${this._renderIrRowPill(e6)}
           ${badge(DEV_ID_BADGE, e6.id)}
           <button class="icon-btn entity-edit" type="button" ?disabled=${locked} title=${e6.kind === "device" ? "Edit device" : "Edit activity"} aria-label=${e6.kind === "device" ? "Edit device" : "Edit activity"} @click=${(event) => {
       event.stopPropagation();
@@ -20618,6 +22686,24 @@ var SbPanelCatalog = class extends i4 {
       </div>
       ${isOpen ? b2`<div class="entity-body">${this._renderBody(e6, key)}</div>` : A}
     </div>`;
+  }
+  /** An IR device whose routing needs attention (an offline repeater, an emitter no longer
+   *  paired) gets the read-only amber IR pill; most devices are IR, so the rest get none. */
+  _renderIrRowPill(e6) {
+    const hubId = this.hub?.hub_id ?? "";
+    if (e6.kind !== "device" || !hubId || String(e6.device?.device_class ?? "").toLowerCase() !== "ir") return A;
+    if (!irEmitterRowAttention(e6.device?.emitters, irEmitterLastRead(hubId)?.paired ?? null)) return A;
+    return renderReadOnlyIrPill({ labels: TOOLS_CARD_STRINGS.irEmitters, attention: true });
+  }
+  /** The hub's own icon on its tile once the record is cached (the class glyph moves to a
+   *  corner badge on devices); the card's glyph before that. */
+  _renderEntryIcon(e6) {
+    const row = e6.kind === "device" ? e6.device : e6.activity;
+    const tile = entityTile(this._hubVersion, row?.icon, row?.color_id);
+    if (tile) {
+      return b2`<span class="entity-name-icon entity-name-icon--tile">${renderEntityTile(tile, { badge: e6.kind === "device" ? entityTileBadge(e6.device?.device_class) : null })}</span>`;
+    }
+    return b2`<span class="entity-name-icon">${icon3(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>`;
   }
   /** A row in reorder mode: the whole row drags (as on the card), the arrow keys move it for keyboards. */
   _renderReorderEntry(e6, position) {
@@ -20713,6 +22799,13 @@ var SbPanelCatalog = class extends i4 {
                   ${classes.map((deviceClass) => b2`<option value=${deviceClass} ?selected=${deviceClass === dialog.deviceClass}>${S4.deviceClassLabels[deviceClass] ?? deviceClass}</option>`)}
                 </select>
               </label>` : A}
+          ${renderAppearanceToggle({
+      hubVersion: this._hubVersion,
+      state: dialog.appearance,
+      labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+      disabled: dialog.busy,
+      onChange: (appearance) => set({ appearance })
+    })}
           <div class="cache-dialog-actions">
             <button class="cache-footer-btn" type="button" ?disabled=${dialog.busy} @click=${this._closeAdd}>${isDevice ? S4.addDeviceCancel : S4.addActivityCancel}</button>
             <button class="cache-footer-btn cache-footer-btn--primary" id="add-confirm" type="button" ?disabled=${dialog.busy} @click=${() => void this._confirmAdd()}>${dialog.busy ? S4.addActivityCreating : isDevice ? S4.addDeviceConfirm : S4.addActivityConfirm}</button>
@@ -20761,6 +22854,10 @@ SbPanelCatalog.properties = {
 };
 SbPanelCatalog.styles = [
   PANEL_BASE_CSS,
+  entityTileStyles,
+  entityPickerStyles,
+  appearanceToggleStyles,
+  irEmitterStyles,
   i`
       :host { display: block; container-type: inline-size; }
       /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
@@ -20791,7 +22888,10 @@ SbPanelCatalog.styles = [
          here the page scrolls under the shell's sticky top dock, so the
          header pins just under it (the shell measures the dock's height). */
       .entity-block.open > .entity-summary { position: sticky; top: var(--top-dock-height, 0px); z-index: 2; background: var(--sbp-panel-2); border-bottom: 1px solid var(--sbp-line); border-radius: 12px 12px 0 0; }
-      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; color: var(--sbp-text); }
+      /* Clipped sideways only: a device tile's class badge hangs below the tile. */
+      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow-x: clip; color: var(--sbp-text); }
+      /* The hub's own icon on its tile (row height unchanged: 30px like the buttons). */
+      .entity-name-icon--tile { --entity-tile-size: 30px; --entity-tile-ring: var(--sbp-panel-2); }
       .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sbp-muted); flex-shrink: 0; }
       .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -20917,21 +23017,22 @@ function anchoredListPosition(trigger, menu = null) {
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
   const room = inner ?? bounds;
+  const tall = menu?.widthOnly ? bounds : room;
   const gap = 4;
   const margin = 8;
-  const top = Math.max(bounds.top, room.top);
-  const bottom = Math.min(bounds.bottom, room.bottom);
+  const top = Math.max(bounds.top, tall.top);
+  const bottom = Math.min(bounds.bottom, tall.bottom);
   const minX = Math.max(bounds.left, room.left) + margin;
   const maxX = Math.min(bounds.right, room.right) - margin;
   const below = bottom - anchor.bottom - gap - margin;
   const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
-  const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
+  const maxHeight = Math.max(120, Math.min(menu?.maxHeight ?? 320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
   const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
@@ -20989,14 +23090,31 @@ var EDITOR_CSS = i`
     /* The card pins its header inside its own scroll box; the panel's page scrolls under the shell's top dock, so pin under it. */
     .sticky-header { position: sticky; top: var(--top-dock-height, 0px); z-index: 3; min-width: 0; background: var(--sbp-panel); }
     .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--sbp-line); }
-    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden; }
-    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; overflow: hidden; }
+    .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; }
     .detail-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 11px; line-height: 1.1; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--sbp-muted); }
     .detail-crumb { flex: 0 1 auto; min-width: 0; font: inherit; color: var(--sbp-muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
     .detail-crumb:hover { color: var(--sbp-text); text-decoration: underline; text-decoration-color: var(--sbp-accent); }
     .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
     .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    /* One row: back, the entity, Sync. The name keeps the room: by the editor's
+       width, also embedded on a wide screen, Sync drops to its icon. Empty
+       subview toolbars take no space. */
+    .sticky-header { container: editor-header / inline-size; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
+    .detail-header-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
+    .detail-header-tools:not(:has(button, .edit-unsaved-chip)) { display: none; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn, .detail-header-tools .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; }
+      .detail-sync-icon .mdi { width: 20px; height: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill, .detail-title-meta .ir-pill { min-height: 24px; box-sizing: border-box; }
+    }
     /* Offline mode (a backup file): the card's "Unsaved" chip stands where the live editor has its Sync button. */
     .edit-unsaved-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 8px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; color: var(--sbp-warn); background: color-mix(in srgb, var(--sbp-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-warn) 35%, transparent); }
     .edit-unsaved-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--sbp-warn); }
@@ -21005,8 +23123,12 @@ var EDITOR_CSS = i`
     .back-btn .mdi { width: 18px; height: 18px; }
     .detail-sync-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; white-space: nowrap; transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease; }
     .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
-    .detail-sync-btn.sync-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       The card's accent-text mix: it turns with the theme and the panel surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-text)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--sbp-panel); }
+    .detail-sync-btn.sync-btn-primary:hover:not(:disabled) { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px rgba(var(--sbp-accent-rgb), 0.35); }
     .detail-sync-btn:disabled { cursor: default; opacity: 0.42; color: var(--sbp-muted); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
+    .detail-sync-btn.sync-btn-primary:disabled { background: rgba(var(--sbp-accent-rgb), 0.18); border-color: color-mix(in srgb, var(--sbp-line) 88%, transparent); }
     .detail-sync-btn.detail-sync-btn--state-ok, .detail-sync-btn.detail-sync-btn--state-ok:disabled { border-color: color-mix(in srgb, #48b851 45%, var(--sbp-line)); background: color-mix(in srgb, #48b851 14%, var(--sbp-panel)); color: color-mix(in srgb, var(--sbp-ok) 40%, var(--sbp-text)); opacity: 1; }
     .icon-btn, .dialog-close { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); background: var(--sbp-panel); color: var(--sbp-muted); cursor: pointer; transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease; }
     .icon-btn:hover:not(:disabled), .dialog-close:hover { border-color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-accent) 10%, var(--sbp-panel)); color: var(--sbp-text); }
@@ -21126,6 +23248,7 @@ var EDITOR_CSS = i`
     .dialog-footer { border-top: 1px solid var(--sbp-line); justify-content: space-between; flex-wrap: wrap; }
     .dialog-footer-actions { display: flex; gap: 8px; margin-left: auto; }
     .dialog-footer-note { flex: 1 1 140px; min-height: 18px; min-width: 0; font-size: 13px; color: var(--sbp-err); }
+    .dialog-footer-delete { flex: 0 0 auto; }
     .dialog-btn { border: 1px solid var(--sbp-line); border-radius: var(--de-radius-sm); padding: 8px 12px; color: var(--sbp-text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
     .dialog-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
     .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
@@ -21231,6 +23354,7 @@ var EDITOR_CSS = i`
       .dialog-footer-actions .dialog-btn { flex: 1 1 0; }
       /* The footer is a column here, so the note's 140px basis would be a height. */
       .dialog-footer-note { flex: 0 0 auto; min-height: 0; }
+      .dialog-footer-delete { align-self: flex-start; }
       .dialog-footer-note:empty { display: none; }
       .field-pair { grid-template-columns: minmax(0, 1fr); }
     }
@@ -21881,6 +24005,7 @@ var ACTIVITY_EDITOR_TAG = "sb-panel-activity-editor";
 var B2 = TOOLS_CARD_STRINGS.backup;
 var A2 = TOOLS_CARD_STRINGS.activities;
 var C3 = TOOLS_CARD_STRINGS.common;
+var W = TOOLS_CARD_STRINGS.wifiCommands;
 var FRAME = {
   loading: A2.capturingFromCache("activity"),
   back: A2.back,
@@ -21950,6 +24075,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     super(...arguments);
     this.activityId = null;
     this.entityKind = "activity";
+    /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
     this._rename = null;
     this._deleteConfirm = null;
     /** The open sequence or macro (the card's macro step editor sub-view). */
@@ -22018,7 +24144,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         return;
       }
       if (dialog.target.kind === "activity") {
-        this._commit(renameBundleActivity(this._working, activityId, next));
+        const base = bundleEntityAppearance(this._working, "activity", activityId);
+        const picked = dialog.appearance ?? base;
+        this._commit(setBundleEntityAppearance(renameBundleActivity(this._working, activityId, next), "activity", activityId, {
+          icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+          colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null
+        }));
       } else if (dialog.target.kind === "favorite") {
         this._commit(renameBundleActivityFavorite(this._working, activityId, dialog.target.buttonId, next));
       } else {
@@ -22026,6 +24157,13 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         if (this._macroEditor?.buttonId === dialog.target.buttonId) this._macroEditor = { ...this._macroEditor, name: next };
       }
       this._rename = null;
+    };
+    // -- delete confirm ----------------------------------------------------------------------------------------
+    this._deleteFromRename = () => {
+      const activityId = this.activityId;
+      if (activityId == null) return;
+      this._closeRename();
+      this._openDeleteConfirm({ kind: "activity", activityId }, this._title);
     };
     this._closeDeleteConfirm = () => {
       this._deleteConfirm = null;
@@ -22342,11 +24480,23 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     void this.updateComplete.then(() => window.scrollTo({ top }));
   }
   // -- rename (activity, macro) ----------------------------------------------------------------------------
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
   _openRename(target) {
     const draft = target.kind === "activity" ? this._title : target.kind === "favorite" ? target.label : this._macroName(target.buttonId) || this._macroEditor?.name || "";
-    this._rename = { target, draft, error: "" };
+    const activityId = this.activityId;
+    this._rename = target.kind === "activity" && activityId != null && this._working ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen: false, tab: "icon" } : { target, draft, error: "" };
   }
-  // -- delete confirm ----------------------------------------------------------------------------------------
+  /** The way into the edit dialog: the activity's hub icon with a pencil badge, or a plain pencil without one. */
+  _renderHeaderEdit() {
+    const activityId = this.activityId;
+    if (activityId == null || !this._working) return A;
+    const label = iconHubLine(this._hubVersion) != null ? B2.editActivity : B2.renameKind("activity");
+    const appearance = bundleEntityAppearance(this._working, "activity", activityId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    const open = () => this._openRename({ kind: "activity" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon4(mdiPencil)}</button>`;
+  }
   _openDeleteConfirm(target, label) {
     this._deleteConfirm = { target, label };
   }
@@ -22532,18 +24682,23 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   }
   // -- render: shared pieces ------------------------------------------------------------------------------------------------
   _renderHeader(options) {
+    const unsaved = this._offline && this._dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B2.unsavedTooltip}>${B2.unsaved}</span>` : A;
     return b2`
       <div class="sticky-header">
         <div class="detail-title-row">
           <div class="detail-title-main">
             <button class="back-btn" id=${options.id} type="button" aria-label=${FRAME.back} @click=${options.onBack}>${icon4(mdiArrowLeft)}</button>
+            ${options.lead ?? A}
             <div class="detail-title-stack">
-              <div class="detail-crumbs">
-                ${options.crumbs.map((crumb) => b2`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
-              </div>
+              ${options.meta ? A : b2`<div class="detail-crumbs">
+                    ${options.crumbs.map((crumb) => b2`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
+                  </div>`}
               <div class="detail-title" id=${options.titleId}>${options.title}</div>
+              ${options.meta ? b2`<div class="detail-title-meta">${options.meta}${unsaved}</div>` : A}
             </div>
-            ${this._offline && this._dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${B2.unsavedTooltip}>${B2.unsaved}</span>` : A}
+          </div>
+          <div class="detail-header-tools">
+            ${options.meta ? A : unsaved}
             ${options.actions ?? A}
           </div>
         </div>
@@ -22735,13 +24890,14 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       onPick: (value) => onChange(Number(value))
     });
   }
-  _dialog(id, title, close, body, footer, error = "", headerExtra = A) {
+  _dialog(id, title, close, body, footer, error = "", headerExtra = A, footerStart = A) {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id=${id} @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header ${headerExtra === A ? "" : "dialog-header--extra"}"><div class="dialog-title">${title}</div>${headerExtra === A ? A : b2`<div class="dialog-header-extra">${headerExtra}</div>`}<button class="dialog-close" type="button" aria-label=${B2.deleteCancel} @click=${close}>${icon4(mdiClose)}</button></div>
           <div class="dialog-body">${body}</div>
           <div class="dialog-footer">
+            ${footerStart}
             <div class="dialog-footer-note" id=${`${id}-error`}>${error}</div>
             <div class="dialog-footer-actions">${footer}</div>
           </div>
@@ -22761,12 +24917,10 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       title: this._title,
       titleId: "editor-title",
       onBack: this._requestClose,
-      crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }],
-      actions: b2`<div class="detail-title-actions">
-              <button class="icon-btn" id="editor-rename" type="button" aria-label=${B2.renameKind("activity")} title=${B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon4(mdiPencil)}</button>
-              <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>
-              ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? A2.syncToHub : A2.syncUpToDate}</button>`}
-            </div>`
+      crumbs: [],
+      meta: b2`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${B2.crumbActivities}</button></div>`,
+      lead: this._renderHeaderEdit(),
+      actions: this._offline ? A : b2`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate} aria-label=${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon4(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? W.actionButtonSyncToHub : W.actionButtonUpToDate}</span></button></div>`
     })}
           <div class="detail-scroll">
             ${this._renderEditorBanners()}
@@ -23050,8 +25204,9 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _renderRenameDialog() {
     const dialog = this._rename;
     if (!dialog) return A;
-    const title = dialog.target.kind === "activity" ? B2.renameActivity : dialog.target.kind === "favorite" ? B2.renameFavorite : B2.renameMacro;
-    return this._dialog("rename-dialog", title, this._closeRename, b2`
+    const appearance = dialog.target.kind === "activity" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B2.editActivity : dialog.target.kind === "activity" ? B2.renameActivity : dialog.target.kind === "favorite" ? B2.renameFavorite : B2.renameMacro;
+    const nameField = b2`
       <label class="decoded-field">
         <span class="decoded-field-label">${B2.name}</span>
         <input class="decoded-field-input" id="rename-input" type="text" maxlength="30" .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
@@ -23060,9 +25215,27 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         this._applyRename();
       }
     }} />
-      </label>`, b2`
+      </label>`;
+    const del = dialog.target.kind === "activity" ? b2`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${B2.deleteConfirm}</button>` : A;
+    return this._dialog("rename-dialog", title, this._closeRename, appearance ? renderAppearanceEditor({
+      hubVersion: this._hubVersion,
+      draft: appearance,
+      open: dialog.pickerOpen ?? false,
+      tab: dialog.tab ?? "icon",
+      nameField,
+      labels: appearanceLabelsFrom(B2),
+      onToggle: () => {
+        if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen };
+      },
+      onTab: (tab) => {
+        if (this._rename) this._rename = { ...this._rename, tab };
+      },
+      onPick: (draft) => {
+        if (this._rename) this._rename = { ...this._rename, appearance: draft };
+      }
+    }) : nameField, b2`
       <button class="dialog-btn" type="button" @click=${this._closeRename}>${B2.deleteCancel}</button>
-      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B2.bindingSave}</button>`, dialog.error);
+      <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B2.bindingSave}</button>`, dialog.error, A, del);
   }
   _renderDeleteConfirmDialog() {
     const dialog = this._deleteConfirm;
@@ -23226,7 +25399,7 @@ SbPanelActivityEditor.properties = {
   _binding: { state: true },
   _stepDialog: { state: true }
 };
-SbPanelActivityEditor.styles = [PANEL_BASE_CSS, EDITOR_CSS, OPERATION_PROGRESS_CSS];
+SbPanelActivityEditor.styles = [PANEL_BASE_CSS, entityTileStyles, entityPickerStyles, appearanceEditorStyles, EDITOR_CSS, OPERATION_PROGRESS_CSS];
 function defineActivityEditor() {
   if (!customElements.get(ACTIVITY_EDITOR_TAG)) customElements.define(ACTIVITY_EDITOR_TAG, SbPanelActivityEditor);
 }
@@ -23240,8 +25413,8 @@ var S5 = {
   crumbDevices: B3.crumbDevices,
   renameDevice: B3.renameDevice,
   deleteDeviceAria: B3.deleteDeviceAria,
-  syncToHub: A3.syncToHub,
-  syncUpToDate: A3.syncUpToDate,
+  syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
+  syncUpToDate: TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate,
   detailPower: B3.detailPower,
   detailNetwork: B3.detailNetwork,
   detailCommands: B3.detailCommands,
@@ -23383,6 +25556,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this.entityKind = "device";
     this._activeSection = "power";
     this._powerMenuOpen = false;
+    /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
     this._rename = null;
     this._deleteConfirm = null;
     this._binding = null;
@@ -23400,6 +25574,12 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._addCommandPreparing = false;
+    /** The IR pill's dropdown: open, where, the read running, a refused read's line. */
+    this._irOpen = false;
+    this._irStyle = "";
+    this._irChecking = false;
+    this._irError = null;
+    this._irEscapeBound = false;
     this._sectionScrollPending = false;
     this._sectionScrollTimer = null;
     this._onWindowScroll = () => {
@@ -23419,6 +25599,27 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     };
     this._closePayloadDialog = () => {
       this._payloadDialog = null;
+    };
+    this._toggleIr = (trigger) => {
+      if (this._irOpen) {
+        this._closeIr();
+        return;
+      }
+      this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true });
+      this._irOpen = true;
+      this._irListen(true);
+      void this._readIr();
+    };
+    this._closeIr = () => {
+      this._irListen(false);
+      if (!this._irOpen) return;
+      this._irOpen = false;
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#editor-ir-pill")?.focus());
+    };
+    this._onIrKeydown = (event) => {
+      if (event.key !== "Escape" || !this._irOpen) return;
+      event.preventDefault();
+      this._closeIr();
     };
     this._closeStepEditor = () => {
       this._stepEditor = null;
@@ -23480,9 +25681,22 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._rename = { ...dialog, error: S5.enterName };
         return;
       }
-      if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
-      else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
+      if (dialog.target.kind === "device") {
+        const base = bundleEntityAppearance(this._working, "device", deviceId);
+        const picked = dialog.appearance ?? base;
+        this._commit(setBundleEntityAppearance(renameBundleDevice(this._working, deviceId, next), "device", deviceId, {
+          icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+          colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null
+        }));
+      } else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
       this._rename = null;
+    };
+    // -- delete confirm ---------------------------------------------------------------------------------------
+    this._deleteFromRename = () => {
+      const deviceId = this.deviceId;
+      if (deviceId == null) return;
+      this._closeRename();
+      this._openDeleteConfirm({ kind: "device", deviceId }, this._title);
     };
     this._closeDeleteConfirm = () => {
       this._deleteConfirm = null;
@@ -23548,6 +25762,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     window.removeEventListener("touchstart", this._onManualScroll);
     window.removeEventListener("keydown", this._onScrollKey);
     this._clearSectionScroll();
+    this._irOpen = false;
+    this._irListen(false);
   }
   _resetView() {
     this._clearSectionScroll();
@@ -23562,6 +25778,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._payloadFetching = null;
     this._addCommandPreparing = false;
     this._activeSection = "power";
+    this._irOpen = false;
+    this._irListen(false);
+    this._irChecking = false;
+    this._irError = null;
   }
   // -- the working copy --------------------------------------------------------------------------
   get _workingElement() {
@@ -23679,9 +25899,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     if (!dialog || deviceId == null || !this._working) return;
     const { name, restoreData } = event.detail;
     if (this._offline && dialog.mode === "edit") {
-      const { changedFields, rawHex } = event.detail;
+      const { changedFields, rawHex, replaceFields } = event.detail;
       if (changedFields && commandDecodedBlock(this._working, deviceId, dialog.commandId)) {
-        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields));
+        const trailerHex = String(restoreData.decoded?.trailer_hex ?? "");
+        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields, replaceFields ? { trailerHex } : void 0));
       } else if (rawHex) {
         this._commit(updateCommandRawPayload(this._working, deviceId, dialog.commandId, rawHex));
       } else {
@@ -23710,6 +25931,78 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     }
     this._commit(addBundleDeviceCommand(this._working, deviceId, newId, name, data));
     this._payloadDialog = null;
+  }
+  // -- the IR pill (X2 IR devices; IR emitter pill plan, IR5) ------------------------------------
+  /** The device's routing bytes on the hub (the snapshot) and in the working copy; null when either has none. */
+  _irRouting() {
+    const deviceId = this.deviceId;
+    if (this._offline || deviceId == null || !this._working || !this._baseline) return null;
+    if (!String(this._hubVersion ?? "").toUpperCase().includes("X2")) return null;
+    if (this._deviceClass.toLowerCase() !== "ir") return null;
+    const baselineExtras = bundleDeviceExtras(this._baseline, deviceId);
+    const baseline = routingFromExtras(baselineExtras);
+    const routing = routingFromExtras(bundleDeviceExtras(this._working, deviceId));
+    return baselineExtras && baseline && routing ? { baseline, routing, baselineExtras } : null;
+  }
+  /** A pick (or Undo) lands in the working copy; back at the hub's bytes it takes the hub's own block, so the element compares equal. */
+  _setIrRouting(next) {
+    const ir = this._irRouting();
+    const deviceId = this.deviceId;
+    if (!ir || deviceId == null || !this._working) return;
+    const extras = sameRouting(next, ir.baseline) ? ir.baselineExtras : extrasOfRouting(next);
+    this._commit(setBundleDeviceExtras(this._working, deviceId, extras));
+  }
+  /** Escape closes the dropdown wherever focus went; the document is only touched while it is open. */
+  _irListen(on) {
+    if (on === this._irEscapeBound) return;
+    this._irEscapeBound = on;
+    if (on) document.addEventListener("keydown", this._onIrKeydown);
+    else document.removeEventListener("keydown", this._onIrKeydown);
+  }
+  /** Read the paired remotes and repeaters from the hub (the dropdown opened, or Check again); the rows show the last read meanwhile. */
+  async _readIr() {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._irChecking) return;
+    if (this._hubBusy) {
+      this._irError = TOOLS_CARD_STRINGS.irEmitters.readBusy;
+      return;
+    }
+    const key = `${hubId}:${this.deviceId ?? ""}`;
+    this._irChecking = true;
+    this._irError = null;
+    try {
+      const { error } = await readIrEmitters(this.api, hubId);
+      if (key === `${this._hub?.hub_id ?? ""}:${this.deviceId ?? ""}`) this._irError = error;
+    } finally {
+      this._irChecking = false;
+    }
+  }
+  _renderIrPill() {
+    const ir = this._irRouting();
+    const hubId = this._hub?.hub_id ?? "";
+    if (!ir || !hubId) return A;
+    if (!irEmitterLastReadKnown(hubId)) {
+      queueMicrotask(() => {
+        void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate());
+      });
+    }
+    return renderPanelIrPill({
+      idPrefix: "editor",
+      routing: ir.routing,
+      baseline: ir.baseline,
+      paired: irEmitterLastRead(hubId)?.paired ?? null,
+      open: this._irOpen,
+      menuStyle: this._irStyle,
+      checking: this._irChecking,
+      error: this._irError,
+      onToggle: this._toggleIr,
+      onClose: this._closeIr,
+      onChange: (next) => this._setIrRouting(next),
+      onUndo: () => this._setIrRouting(ir.baseline),
+      onRetry: () => {
+        void this._readIr();
+      }
+    });
   }
   // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
   _openStepEditor(buttonId, name) {
@@ -23845,6 +26138,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return String(this._workingElement?.device?.name ?? "").trim();
   }
   // -- rename dialog --------------------------------------------------------------------------------------
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
   _openRename(target) {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return;
@@ -23852,9 +26146,19 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     if (target.kind === "device") draft = this._title;
     else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
     else draft = deviceCommandItems(this._working, deviceId).find((c7) => c7.commandId === target.commandId)?.label ?? "";
-    this._rename = { target, draft, error: "" };
+    this._rename = target.kind === "device" ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen: false, tab: "icon" } : { target, draft, error: "" };
   }
-  // -- delete confirm ---------------------------------------------------------------------------------------
+  /** The way into the edit dialog: the device's hub icon with a pencil badge, or a plain pencil without one. */
+  _renderHeaderEdit() {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return A;
+    const label = iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice;
+    const appearance = bundleEntityAppearance(this._working, "device", deviceId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    const open = () => this._openRename({ kind: "device" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon4(mdiPencil)}</button>`;
+  }
   _openDeleteConfirm(target, label) {
     this._deleteConfirm = { target, label };
   }
@@ -24032,6 +26336,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const sections = this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
+    const irPill = this._renderIrPill();
     return b2`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view" id="device-editor">
@@ -24039,20 +26344,16 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
+                ${callback ? A : this._renderHeaderEdit()}
                 <div class="detail-title-stack">
-                  <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
-                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
-                  </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
-                </div>
-                ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
-                <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S5.renameDevice} title=${S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
-                  ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
-                  ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S5.syncToHub : S5.syncUpToDate}</button>`}
+                  <div class="detail-title-meta">
+                    ${irPill !== A ? irPill : b2`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button></div>`}
+                    ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
+                  </div>
                 </div>
               </div>
+              ${this._offline ? A : b2`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S5.syncToHub : S5.syncUpToDate} aria-label=${dirty ? S5.syncToHub : S5.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon4(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S5.syncToHub : S5.syncUpToDate}</span></button></div>`}
             </div>
             ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S5.detailSectionsAria}>
                   ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon4(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
@@ -24205,13 +26506,9 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const dialog = this._rename;
     if (!dialog) return A;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeRename}>
-        <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
-          <div class="dialog-body">
-            <label class="decoded-field">
+    const appearance = dialog.target.kind === "device" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B3.editDevice : dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
+    const nameField = b2`<label class="decoded-field">
               <span class="decoded-field-label">${isIp ? S5.ipAddress : S5.name}</span>
               <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
       if (event.key === "Enter") {
@@ -24219,9 +26516,32 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._applyRename();
       }
     }} />
-            </label>
+            </label>`;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeRename}>
+        <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-body">
+            ${appearance ? renderAppearanceEditor({
+      hubVersion: this._hubVersion,
+      draft: appearance,
+      open: dialog.pickerOpen ?? false,
+      tab: dialog.tab ?? "icon",
+      nameField,
+      labels: appearanceLabelsFrom(B3),
+      onToggle: () => {
+        if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen };
+      },
+      onTab: (tab) => {
+        if (this._rename) this._rename = { ...this._rename, tab };
+      },
+      onPick: (draft) => {
+        if (this._rename) this._rename = { ...this._rename, appearance: draft };
+      }
+    }) : nameField}
           </div>
           <div class="dialog-footer">
+            ${dialog.target.kind === "device" ? b2`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${S5.deleteConfirm}</button>` : A}
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" type="button" @click=${this._closeRename}>${S5.cancel}</button>
@@ -24338,12 +26658,19 @@ SbPanelDeviceEditor.properties = {
   _stepDialog: { state: true },
   _payloadDialog: { state: true },
   _payloadFetching: { state: true },
-  _addCommandPreparing: { state: true }
+  _addCommandPreparing: { state: true },
+  _irOpen: { state: true },
+  _irChecking: { state: true },
+  _irError: { state: true }
 };
 SbPanelDeviceEditor.styles = [
   PANEL_BASE_CSS,
+  entityTileStyles,
+  entityPickerStyles,
+  appearanceEditorStyles,
   EDITOR_CSS,
-  OPERATION_PROGRESS_CSS
+  OPERATION_PROGRESS_CSS,
+  irEmitterStyles
 ];
 function defineDeviceEditor() {
   if (!customElements.get(DEVICE_EDITOR_TAG)) customElements.define(DEVICE_EDITOR_TAG, SbPanelDeviceEditor);
@@ -24737,6 +27064,7 @@ var SbPayloadDialog = class extends i4 {
     return String(this.hubVersion ?? "").toUpperCase().includes("X2");
   }
   _initialDrafts(block) {
+    if (block.className === "wifi_ip") return wifiIpDraftsFromFields(block.fields);
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
     const drafts = {};
     for (const field of spec?.fields ?? []) drafts[field.key] = fieldValueToDraft(field, block.fields[field.key]);
@@ -24806,6 +27134,10 @@ var SbPayloadDialog = class extends i4 {
   _onFieldInput(field, event) {
     const value = event.currentTarget.value;
     this._error = "";
+    if (this._decoded?.className === "wifi_ip" && field.key === "scheme") {
+      this._drafts = wifiIpDraftsWithScheme(this._drafts, value);
+      return;
+    }
     if (this._decoded?.className === "ir" && field.key === "descriptor") {
       if (this._ucPaste(value)) {
         this._drafts = { ...this._drafts, [field.key]: value };
@@ -24879,6 +27211,20 @@ var SbPayloadDialog = class extends i4 {
   /** The card's live edit: a structured or raw `restore_data` with the `edited` marker; null when nothing changed; undefined on an error shown. */
   _editDetail() {
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      if (!wifiIpDraftsChanged(block.fields, this._drafts)) return null;
+      const record = this._wifiIpRecord(block, true);
+      if (!record) return void 0;
+      return {
+        name: "",
+        ...this.snapshot ? { changedFields: record.fields, replaceFields: true } : {},
+        restoreData: {
+          transport: "hub_code_record",
+          data_hex: this.fetchedHex,
+          decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true }
+        }
+      };
+    }
     if (block) {
       const changed = this._changedFields(block);
       if (!changed) return null;
@@ -24908,6 +27254,11 @@ var SbPayloadDialog = class extends i4 {
       return void 0;
     }
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      const record = this._wifiIpRecord(block, false);
+      if (!record) return void 0;
+      return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true } } };
+    }
     if (block) {
       const spec = DECODED_CLASS_FORM_SPECS[block.className];
       const fields = { ...block.fields };
@@ -24924,6 +27275,19 @@ var SbPayloadDialog = class extends i4 {
       return void 0;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
+  }
+  /** The wifi_ip record the drafts save as (the card's rule, shared/wifi-ip-form.ts); null with the refusal shown. */
+  _wifiIpRecord(block, existing) {
+    try {
+      return buildWifiIpRecord(this._drafts, {
+        original: { fields: block.fields, trailerHex: block.trailerHex },
+        existing,
+        isX2: this._isX2
+      });
+    } catch (err) {
+      this._error = wifiIpFormErrorText(err);
+      return null;
+    }
   }
   // -- render ---------------------------------------------------------------------------------------
   render() {
@@ -25006,22 +27370,41 @@ var SbPayloadDialog = class extends i4 {
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
     const head = block.className === "ir" ? b2`<div class="payload-format-tabs" role="tablist"><button class="payload-format-tab active" type="button" role="tab" aria-selected="true">${S6.descriptorTab}</button></div>
           ${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}` : b2`<div class="decoded-form-head"><div class="decoded-form-title">${spec?.title ?? block.className}</div>${spec?.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}</div>`;
+    const preview = block.className === "wifi_ip" ? wifiIpRequestPreview(this._drafts) : null;
     return b2`
       <div class="decoded-form" data-class=${block.className}>
         ${head}
-        ${(spec?.fields ?? []).map((field) => this._renderField(field))}
+        ${preview ? b2`<div class="decoded-request-preview" id="payload-request-preview">
+              ${preview.method ? b2`<span class="decoded-request-method">${preview.method}</span>` : A}
+              <span class="decoded-request-url">${preview.url}</span>
+            </div>` : A}
+        ${decodedFormRows(block.className, this._isX2).map((row) => this._renderRow(row))}
       </div>
     `;
   }
-  _renderField(field) {
+  _renderRow(row) {
+    if (row.length === 1) return this._renderField(row[0]);
+    return b2`
+      <div class="decoded-row">
+        <div class="decoded-row-fields">${row.map((field) => this._renderField(field, false))}</div>
+        ${row.map((field) => field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A)}
+      </div>
+    `;
+  }
+  _renderField(field, withHelper = true) {
     const value = this._drafts[field.key] ?? "";
+    const placeholder = decodedFieldPlaceholder(field, this._drafts);
     const helper = field.key === "descriptor" && this._formatError ? this._formatError : field.helper;
     const helperClass = field.key === "descriptor" && this._formatError ? "payload-format-error" : "";
+    const suggestionsId = field.suggestions ? `decoded-suggestions-${field.key}` : "";
     return b2`
-      <label class="decoded-field" data-field=${field.key}>
+      <label class="decoded-field ${field.narrow ? "decoded-field--narrow" : ""}" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline ? b2`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows="4" spellcheck="false" .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)}></textarea>` : b2`<input class="decoded-field-input" type=${field.numeric ? "number" : "text"} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)} />`}
-        ${helper ? b2`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : A}
+        ${field.options ? b2`<select class="decoded-field-input" @change=${(event) => this._onFieldInput(field, event)}>
+              ${field.options.map((option) => b2`<option value=${option} ?selected=${option === value}>${option}</option>`)}
+            </select>` : field.multiline ? b2`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows=${field.rows ?? 4} spellcheck="false" placeholder=${placeholder} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)}></textarea>` : b2`<input class="decoded-field-input" type="text" inputmode=${field.numeric ? "numeric" : "text"} spellcheck="false" autocomplete="off" placeholder=${placeholder} list=${suggestionsId || A} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)} />
+              ${field.suggestions ? b2`<datalist id=${suggestionsId}>${field.suggestions.map((option) => b2`<option value=${option}></option>`)}</datalist>` : A}`}
+        ${withHelper && helper ? b2`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : A}
       </label>
     `;
   }
@@ -25074,7 +27457,7 @@ SbPayloadDialog.styles = [
       .dialog-btn-primary { border-color: var(--sbp-accent); background: rgba(var(--sbp-accent-rgb), 0.18); }
       .dialog-btn:disabled { opacity: 0.45; cursor: default; }
       .payload-test-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
-      .decoded-form { display: flex; flex-direction: column; gap: 10px; }
+      .decoded-form { display: flex; flex-direction: column; gap: 10px; container-type: inline-size; }
       .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
       .decoded-form-title { font-size: 13px; font-weight: 600; color: var(--sbp-text); }
       .decoded-form-sub { font-size: 12px; color: var(--sbp-muted); line-height: 1.4; }
@@ -25093,6 +27476,22 @@ SbPayloadDialog.styles = [
       .decoded-field-input--multiline { font-family: var(--sbp-mono); resize: vertical; min-height: 60px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .decoded-field-input--escaped { white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
       .decoded-field-helper { font-size: 11px; color: var(--sbp-muted); line-height: 1.35; }
+      .decoded-field-input::placeholder { color: var(--sbp-muted); opacity: 0.7; }
+      /* Fields side by side (the wifi_ip address and request line); short values keep a fixed column. The form is the query container (see .decoded-form). */
+      .decoded-row { display: flex; flex-direction: column; gap: 4px; }
+      .decoded-row-fields { display: flex; gap: 10px; align-items: flex-start; }
+      .decoded-row-fields > .decoded-field { flex: 1 1 0; min-width: 0; }
+      .decoded-row-fields > .decoded-field--narrow { flex: 0 0 104px; }
+      @container (max-width: 420px) {
+        /* Three across leaves the host too little room: it takes its own line. */
+        .decoded-row-fields:has(> .decoded-field:nth-child(3)) { flex-wrap: wrap; }
+        .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field:not(.decoded-field--narrow) { flex-basis: 100%; order: -1; }
+        .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field--narrow { flex: 1 1 0; }
+      }
+      /* The request the form describes, as one line: method and URL. Tinted like the class badge so it reads as a summary, not another field. */
+      .decoded-request-preview { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--sbp-accent) 30%, var(--sbp-line)); background: rgba(var(--sbp-accent-rgb), 0.07); font-family: var(--sbp-mono); font-size: 12.5px; line-height: 1.45; }
+      .decoded-request-method { flex: 0 0 auto; font-weight: 700; color: var(--sbp-accent); }
+      .decoded-request-url { flex: 1 1 auto; min-width: 0; color: var(--sbp-text); overflow-wrap: anywhere; }
       .payload-test-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--sbp-warn) 45%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 10%, transparent); color: var(--sbp-text); font-size: 12.5px; line-height: 1.45; }
       .payload-test-note .mdi { width: 18px; height: 18px; color: var(--sbp-warn); margin-top: 1px; }
       .section-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sbp-line); border-radius: 10px; font-size: 13px; line-height: 1.4; color: var(--sbp-muted); }
@@ -25468,12 +27867,12 @@ var l5 = e4(class extends i5 {
   }
   update(i8, [t5]) {
     if (t5 === E || t5 === A) return t5;
-    const o8 = i8.element, l6 = i8.name;
+    const o9 = i8.element, l6 = i8.name;
     if (i8.type === t3.PROPERTY) {
-      if (t5 === o8[l6]) return E;
+      if (t5 === o9[l6]) return E;
     } else if (i8.type === t3.BOOLEAN_ATTRIBUTE) {
-      if (!!t5 === o8.hasAttribute(l6)) return E;
-    } else if (i8.type === t3.ATTRIBUTE && o8.getAttribute(l6) === t5 + "") return E;
+      if (!!t5 === o9.hasAttribute(l6)) return E;
+    } else if (i8.type === t3.ATTRIBUTE && o9.getAttribute(l6) === t5 + "") return E;
     return p3(i8), t5;
   }
 });
@@ -25879,8 +28278,8 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<div class="field"><label><span class="field-label">${label}</span><select aria-label=${label} @change=${(event) => set(event.target.value)}>
       ${options.map((option) => b2`<option value=${option.value} .selected=${option.value === value}>${option.label}</option>`)}</select></label></div>`;
   }
-  _heading(label, icon7) {
-    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon7}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
+  _heading(label, icon8) {
+    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon8}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
   }
   _groups() {
     const c7 = this.config, s7 = this.selection, e6 = str2().editor;
@@ -25997,13 +28396,13 @@ var SbPanelRemoteEditor = class extends i4 {
    * Draft edit: the slot is written (and the preview updates) the moment
    * both fields are valid; an incomplete draft leaves the stored slot alone.
    */
-  _draft(icon7, command) {
-    this._icon = icon7;
+  _draft(icon8, command) {
+    this._icon = icon8;
     this._command = command;
     const id = parseDeviceLayoutKey(this.selection);
     const commandId = command !== "" && Number.isFinite(Number(command)) ? Number(command) : null;
-    if (id == null || !this._slot || !icon7.trim() || commandId == null) return;
-    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon7.trim(), command_id: commandId }).nextConfig;
+    if (id == null || !this._slot || !icon8.trim() || commandId == null) return;
+    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon8.trim(), command_id: commandId }).nextConfig;
     if (JSON.stringify(next) !== JSON.stringify(this.config)) this._emit(next);
   }
   /** Reset clears the stored slot and the draft; the panel stays open. */
@@ -26020,10 +28419,10 @@ var SbPanelRemoteEditor = class extends i4 {
     const stored = deviceShortcutsFromConfig(this.config, id);
     const label = (slot) => slot === "left" ? e6.shortcutSlotLeft : slot === "middle" ? e6.shortcutSlotMiddle : e6.shortcutSlotRight;
     return b2`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
-      const icon7 = stored[slot]?.icon ?? null;
+      const icon8 = stored[slot]?.icon ?? null;
       const open = this._slot === slot;
-      return b2`<button type="button" class="shortcut-slot ${icon7 ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
-        @click=${() => this._toggleSlot(slot)}>${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : A}</button>`;
+      return b2`<button type="button" class="shortcut-slot ${icon8 ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSlot(slot)}>${icon8 ? b2`<ha-icon icon=${icon8}></ha-icon>` : A}</button>`;
     })}</div>`;
   }
   _slotPanel(id) {
@@ -26039,7 +28438,7 @@ var SbPanelRemoteEditor = class extends i4 {
       }}>Retry</button></div>`}</div>`;
     }
     const options = keymap.commands.map((c7) => ({ value: String(c7.command_id), label: c7.name }));
-    if (this._command && !options.some((o8) => o8.value === this._command)) options.push({ value: this._command, label: e6.shortcutCommandMissing(this._command) });
+    if (this._command && !options.some((o9) => o9.value === this._command)) options.push({ value: this._command, label: e6.shortcutCommandMissing(this._command) });
     return b2`<div class="shortcut-panel">
       ${this._iconPicker()}
       <ha-select class="shortcut-command" .label=${e6.shortcutCommand} .value=${this._command}
@@ -26047,7 +28446,7 @@ var SbPanelRemoteEditor = class extends i4 {
       ev.stopPropagation();
       this._draft(this._icon, ev.detail.value);
     }}>
-        ${options.map((o8) => b2`<mwc-list-item .value=${o8.value}>${o8.label}</mwc-list-item>`)}
+        ${options.map((o9) => b2`<mwc-list-item .value=${o9.value}>${o9.label}</mwc-list-item>`)}
       </ha-select>
       <div class="shortcut-panel-footer"><button type="button" @click=${() => this._resetSlot()}>${e6.shortcutReset}</button></div>
     </div>`;
@@ -26060,8 +28459,8 @@ var SbPanelRemoteEditor = class extends i4 {
    */
   _iconPicker() {
     const e6 = str2().editor;
-    const icon7 = this._icon.trim();
-    const query = icon7.toLowerCase().replace(/^mdi:/, "");
+    const icon8 = this._icon.trim();
+    const query = icon8.toLowerCase().replace(/^mdi:/, "");
     const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
     const pick = (name) => {
       this._draft(`mdi:${name}`, this._command);
@@ -26090,7 +28489,7 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<div class="icon-picker">
       <div class="field"><label><span class="field-label">${e6.shortcutIcon}</span>
         <div class="icon-field">
-          ${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
+          ${icon8 ? b2`<ha-icon icon=${icon8}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
           <input role="combobox" aria-label=${e6.shortcutIcon} aria-autocomplete="list" aria-expanded=${this._iconOpen ? "true" : "false"} aria-controls="icon-options"
             autocomplete="off" spellcheck="false" .value=${l5(this._icon)}
             @focus=${() => {
@@ -26109,7 +28508,7 @@ var SbPanelRemoteEditor = class extends i4 {
             @keydown=${onKey}>
         </div></label></div>
       ${matches.length ? b2`<div class="icon-options" id="icon-options" role="listbox" aria-label=${e6.shortcutIcon}>${matches.map((name, index) => b2`
-        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon7 === `mdi:${name}` ? "true" : "false"}
+        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon8 === `mdi:${name}` ? "true" : "false"}
           @pointerdown=${(ev) => ev.preventDefault()} @click=${() => pick(name)}><ha-icon icon=${`mdi:${name}`}></ha-icon><span>mdi:${name}</span></button>`)}</div>` : A}
     </div>`;
   }
@@ -27189,6 +29588,179 @@ function defineServerView() {
   if (!customElements.get(SERVER_VIEW_TAG)) customElements.define(SERVER_VIEW_TAG, SbPanelServer);
 }
 
+// custom_components/sofabaton_x1s/www/src/shared/doc-links.ts
+var DOCS_BASE = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs";
+var DOC_URLS = {
+  wifiCommands: `${DOCS_BASE}/wifi_commands.md`,
+  // What to allow between the hub and Home Assistant for Wifi Commands
+  // (listener and direct delivery), and for MQTT delivery.
+  networkingWifi: `${DOCS_BASE}/networking.md#optional--wifi-commands-and-wifi-events`,
+  networkingMqtt: `${DOCS_BASE}/networking.md#optional--mqtt-delivery-x2`,
+  backup: `${DOCS_BASE}/backup.md`,
+  commandPayloads: `${DOCS_BASE}/command_payloads.md`
+};
+
+// custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery.ts
+function targetHostPort(target) {
+  const text = String(target ?? "").trim();
+  const match = /^[a-z]+:\/\/([^/?#]+)/i.exec(text);
+  return match ? match[1] : text;
+}
+function targetPort(target) {
+  const hostPort = targetHostPort(target);
+  const index = hostPort.lastIndexOf(":");
+  return index >= 0 ? hostPort.slice(index + 1) : "";
+}
+function deliveryFailed(delivery) {
+  const status = String(delivery?.status ?? "");
+  return status === "not_delivered" || status === "not_sent";
+}
+function formatCheckedAgo(checkedAt, now = Date.now(), locale = toolsCardLanguage()) {
+  const time = Date.parse(String(checkedAt ?? ""));
+  if (!Number.isFinite(time)) return "";
+  const seconds = Math.round((time - now) / 1e3);
+  const size = Math.abs(seconds);
+  const [value, unit] = size < 60 ? [seconds, "second"] : size < 3600 ? [Math.round(seconds / 60), "minute"] : size < 86400 ? [Math.round(seconds / 3600), "hour"] : [Math.round(seconds / 86400), "day"];
+  try {
+    return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
+  } catch {
+    return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(value, unit);
+  }
+}
+function formatLatency(seconds, locale = toolsCardLanguage()) {
+  if (seconds == null) return "?";
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return "?";
+  try {
+    return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  } catch {
+    return new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  }
+}
+
+// server-panel/src/components/delivery-pill.ts
+var D2 = TOOLS_CARD_STRINGS.wifiDelivery;
+var W2 = TOOLS_CARD_STRINGS.wifiCommands;
+var transportName = (transport) => transport === "mqtt" ? "MQTT" : "HTTP";
+function icon6(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+var DELIVERY_PILL_CSS = i`
+  .transport-pill { display: inline-flex; align-items: center; align-self: center; gap: 3px; border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: 1.25; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; }
+  .transport-pill.mqtt { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-accent); }
+  .transport-pill.attention { border-color: color-mix(in srgb, var(--sbp-warn) 60%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 14%, var(--sbp-panel)); color: var(--sbp-text); }
+  .transport-pill .mdi { width: 13px; height: 13px; flex: 0 0 auto; }
+  .transport-pill .delivery-pill-alert { color: var(--sbp-warn); margin-inline-start: -3px; }
+  button.delivery-pill { padding-inline-end: 5px; cursor: pointer; }
+  button.delivery-pill:hover { border-color: color-mix(in srgb, var(--sbp-accent) 60%, var(--sbp-line)); }
+  button.delivery-pill:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
+  button.delivery-pill[aria-expanded="true"] { box-shadow: 0 0 0 3px rgba(var(--sbp-accent-rgb), 0.24); }
+  .delivery-pill-wrap { display: inline-flex; align-self: center; flex: 0 0 auto; }
+  .delivery-backdrop { position: fixed; inset: 0; z-index: 8; border: 0; border-radius: 0; padding: 0; margin: 0; background: transparent; cursor: default; }
+  .delivery-backdrop:hover { border: 0; }
+  .delivery-pop { z-index: 9; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1); color: var(--sbp-text); font-size: 12.5px; line-height: 1.45; text-align: start; white-space: normal; -webkit-user-select: text; user-select: text; }
+  .delivery-main { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+  .delivery-head { display: flex; align-items: center; gap: 10px; }
+  .delivery-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; }
+  .delivery-path { margin: 0; color: var(--sbp-muted); overflow-wrap: anywhere; }
+  .delivery-status { display: flex; gap: 8px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--sbp-text) 6%, transparent); }
+  .delivery-status > .mdi { width: 17px; height: 17px; flex: 0 0 auto; color: var(--sbp-muted); }
+  .delivery-status.ok { background: color-mix(in srgb, var(--sbp-ok) 13%, transparent); }
+  .delivery-status.ok > .mdi { color: var(--sbp-ok); }
+  .delivery-status.warn { background: color-mix(in srgb, var(--sbp-warn) 14%, transparent); }
+  .delivery-status.warn > .mdi { color: var(--sbp-warn); }
+  .delivery-status.brief { padding: 0 2px; background: transparent; }
+  .delivery-status-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+  .delivery-status-title { font-weight: 500; }
+  .delivery-status.warn:not(.brief) .delivery-status-title { font-weight: 700; }
+  /* The broker problem is the server's whole sentence, not a short title. */
+  .delivery-status.problem .delivery-status-title { font-weight: 500; }
+  .delivery-status-meta { font-size: 12px; color: var(--sbp-muted); }
+  .delivery-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 3px; }
+  .delivery-btn { border: 1px solid var(--sbp-line); border-radius: 9px; padding: 5px 10px; background: transparent; color: var(--sbp-text); font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+  .delivery-btn.primary { border-color: var(--sbp-accent); background: var(--sbp-accent); color: #fff; }
+  .delivery-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+  .delivery-btn:disabled { opacity: 0.45; cursor: default; }
+  .delivery-error { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--sbp-err); }
+  .delivery-error-detail { color: var(--sbp-muted); }
+  .delivery-spin { animation: delivery-spin 0.9s linear infinite; }
+  @keyframes delivery-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .delivery-spin { animation: none; } }
+`;
+function renderReadOnlyDeliveryPill(params) {
+  return b2`<span class="transport-pill ${params.transport}${params.attention ? " attention" : ""}"
+    title=${params.attention ? D2.pillAttention : W2.transportPillDeployedTitle}
+  >${params.attention ? icon6(mdiAlertOutline, "delivery-pill-alert") : A}${transportName(params.transport)}</span>`;
+}
+var STATUS_ICONS = {
+  testing: mdiLoading,
+  delivered: mdiCheckCircle,
+  not_delivered: mdiAlertOutline,
+  not_sent: mdiAlertOutline,
+  untested: mdiHelpCircleOutline,
+  not_on_hub: mdiInformationOutline,
+  stale: mdiInformationOutline
+};
+function renderStatus(prefix, status) {
+  const brief = Boolean(status.brief);
+  return b2`
+    <div class="delivery-status ${status.tone}${brief ? " brief" : ""}" id="${prefix}-delivery-status" data-status=${status.kind}
+      role=${status.tone === "warn" && !brief ? "alert" : A}>
+      ${icon6(STATUS_ICONS[status.kind], status.kind === "testing" ? "delivery-spin" : "")}
+      <div class="delivery-status-copy">
+        <span class="delivery-status-title">${status.title}</span>
+        ${status.meta && !brief ? b2`<span class="delivery-status-meta">${status.meta}</span>` : A}
+      </div>
+    </div>`;
+}
+function renderProblem(prefix, problem) {
+  return b2`
+    <div class="delivery-status warn problem" id="${prefix}-delivery-broker" role="alert">
+      ${icon6(mdiAlertOutline)}
+      <div class="delivery-status-copy">
+        <span class="delivery-status-title">${problem.text}</span>
+        ${problem.action ? b2`<span class="delivery-actions"><button class="delivery-btn primary" id="${prefix}-delivery-broker-settings" type="button" @click=${problem.action.onClick}>${problem.action.label}</button></span>` : A}
+      </div>
+    </div>`;
+}
+function renderDeliveryPill(params) {
+  const prefix = params.idPrefix;
+  const name = transportName(params.transport);
+  const onKeydown = (event) => {
+    if (event.key !== "Escape" || !params.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    params.onClose();
+  };
+  return b2`
+    <span class="delivery-pill-wrap" @keydown=${onKeydown}>
+      <button
+        class="transport-pill delivery-pill ${params.transport}${params.attention ? " attention" : ""}"
+        id="${prefix}-delivery-pill"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded=${params.open ? "true" : "false"}
+        aria-label=${params.attention ? `${D2.pillLabel(name)}. ${D2.pillAttention}` : D2.pillLabel(name)}
+        title=${W2.transportPillDeployedTitle}
+        @click=${(event) => params.onToggle(event.currentTarget)}
+      >${params.attention ? icon6(mdiAlertOutline, "delivery-pill-alert") : A}<span>${name}</span>${icon6(mdiChevronDown)}</button>
+      ${params.open ? b2`
+            <button class="delivery-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${params.onClose} @wheel=${(event) => event.preventDefault()}></button>
+            <div class="delivery-pop" id="${prefix}-delivery" role="dialog" aria-label=${params.heading} style=${params.menuStyle}>
+              <div class="delivery-main">
+                <div class="delivery-head">
+                  <span class="delivery-title">${params.heading}</span>
+                  <button class="delivery-btn" id="${prefix}-test-delivery" type="button" ?disabled=${params.test.disabled} @click=${params.test.onClick}>${params.test.label}</button>
+                </div>
+                ${params.path ? b2`<p class="delivery-path" id="${prefix}-delivery-path">${params.path}</p>` : A}
+                ${params.problem ? renderProblem(prefix, params.problem) : A}
+                ${params.status ? renderStatus(prefix, params.status) : A}
+                ${params.error ? b2`<div class="delivery-error" id="${prefix}-delivery-error" role="alert"><span>${D2.testFailed}</span>${params.error !== D2.testFailed ? b2`<span class="delivery-error-detail">${params.error}</span>` : A}</div>` : A}
+              </div>
+            </div>` : A}
+    </span>`;
+}
+
 // server-panel/src/views/wifi-devices-state.ts
 var WIFI_SLOT_COUNT = 10;
 var WIFI_NAME_MAX2 = 20;
@@ -27198,6 +29770,9 @@ function defaultSlotLabel(slot) {
 }
 function emptySlot(slot) {
   return { label: defaultSlotLabel(slot), longLabel: null, favorite: false, button: null, longPress: false, activities: [], inputActivityId: null };
+}
+function appearanceNumber(value) {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 function entityNumber(value) {
   if (value === null || value === void 0 || value === "") return null;
@@ -27235,7 +29810,9 @@ function draftFromSpec(spec) {
     slots,
     powerOn: slotNumber(spec?.power_on_slot),
     powerOff: slotNumber(spec?.power_off_slot),
-    inputs: [...new Set(inputs)].sort((a4, b3) => a4 - b3)
+    inputs: [...new Set(inputs)].sort((a4, b3) => a4 - b3),
+    icon: appearanceNumber(spec?.icon),
+    colorId: appearanceNumber(spec?.color_id)
   };
 }
 function specFromDraft(draft) {
@@ -27256,7 +29833,9 @@ function specFromDraft(draft) {
     }),
     power_on_slot: draft.powerOn,
     power_off_slot: draft.powerOff,
-    input_slots: [...draft.inputs]
+    input_slots: [...draft.inputs],
+    icon: draft.icon,
+    color_id: draft.colorId
   };
 }
 function draftsEqual(a4, b3) {
@@ -27451,6 +30030,28 @@ function mqttProblem(device, mqtt) {
   if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
   return null;
 }
+function deliveryOnHub(device) {
+  return device.device_id != null && !device.stale;
+}
+function deliveryAttention(device, mqtt) {
+  if (!deliveryOnHub(device)) return false;
+  return deliveryFailed(device.delivery) || mqttProblem(device, mqtt) !== null;
+}
+function deliveryVerdict(device, testing = false) {
+  if (testing) return "testing";
+  if (device.stale) return "stale";
+  if (device.device_id == null) return "not_on_hub";
+  const status = String(device.delivery?.status ?? "");
+  return status === "delivered" || status === "not_delivered" || status === "not_sent" ? status : "untested";
+}
+function deliveryTarget(device, mqtt) {
+  if (device.transport === "mqtt") {
+    if (mqtt?.configured && mqtt.host) return mqtt.port != null ? `${mqtt.host}:${mqtt.port}` : mqtt.host;
+    return device.delivery?.transport === "mqtt" ? String(device.delivery.target ?? "") : "";
+  }
+  if (device.target) return `http://${device.target.host}:${device.target.port}`;
+  return device.delivery?.transport === "http" ? String(device.delivery.target ?? "") : "";
+}
 function pressIsFresh(press, now) {
   if (!press) return false;
   const elapsed = now - press.at;
@@ -27466,7 +30067,9 @@ function pressMatchesSlot(press, device, index) {
 
 // server-panel/src/views/wifi-devices-view.ts
 var S7 = TOOLS_CARD_STRINGS.wifiCommands;
+var B5 = TOOLS_CARD_STRINGS.backup;
 var A4 = TOOLS_CARD_STRINGS.activities;
+var D3 = TOOLS_CARD_STRINGS.wifiDelivery;
 var T2 = {
   subtitle: "Use Wifi Commands to put buttons on your physical remote that call this server. Every press arrives as a press event on the event stream. Choose a Wifi Device to edit its command slots, or add a new one.",
   slotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and on every press event.",
@@ -27486,7 +30089,19 @@ var T2 = {
   listenerRetry: "Retry",
   callsBack: (where) => `Presses call ${where} and arrive on the event stream.`,
   x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
-  leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them."
+  leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them.",
+  // The delivery pill's dropdown (the card's "How presses reach Home Assistant", for this server).
+  deliveryTitle: "How button presses reach the server",
+  pathListener: (target) => `The hub calls this server's callback listener at ${target}.`,
+  pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; this server listens on ${broker}.` : "The hub publishes to its MQTT broker.",
+  notDelivered: "The test command did not reach the server.",
+  allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on this server's host; with Docker, publish port ${port}.`,
+  allowMqtt: (broker) => `The hub must publish to the same broker this server uses${broker ? ` (${broker})` : ""}, and the broker must let it.`,
+  delivered: (seconds) => `Test command received (${seconds} s).`,
+  // A real press settles a check without a latency.
+  staleStatus: "The hub no longer has this device.",
+  staleHint: "Redeploy it, then test again.",
+  brokerSettings: "Broker settings"
 };
 var BUTTON_ICONS = {
   up: mdiArrowUpBold,
@@ -27520,11 +30135,14 @@ var BUTTON_ICONS = {
 var BUTTON_COLORS = { red: "#ef4444", green: "#22c55e", yellow: "#facc15", blue: "#3b82f6" };
 var BUTTON_GROUP_TITLES = { navigation: S7.navigationGroup, transport: S7.transportGroup, media: S7.mediaGroup, abc: S7.abcGroup, color: S7.colorGroup };
 var WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
-function icon6(path, cls = "") {
+function icon7(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 function jobFailure(job) {
   return jobOutcomeText(job);
+}
+function pillTransport(device) {
+  return device.transport === "mqtt" ? "mqtt" : "http";
 }
 var SbPanelWifiDevices = class extends i4 {
   constructor() {
@@ -27545,13 +30163,24 @@ var SbPanelWifiDevices = class extends i4 {
     this._create = null;
     this._delete = null;
     this._slotEdit = null;
+    /** The Edit device dialog: the name and, on a hub with icons, the icon / X2 color draft. */
     this._rename = null;
+    /** The hub's own icon and color per device id (the catalog rows), for a device whose draft names none. */
+    this._hubAppearance = /* @__PURE__ */ new Map();
     this._powerPicker = null;
     this._confirmClear = null;
     /** The pending move behind the "Unsynced changes" dialog. */
     this._leave = null;
     /** A job this view started and follows: the text the header's button shows. */
     this._working = null;
+    this._workingKind = null;
+    /** The device being deleted: the confirm is closed, its row says "Deleting…" (the card's way). */
+    this._deletingKey = null;
+    /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened). */
+    this._deliveryOpen = false;
+    this._deliveryStyle = "";
+    /** Why the last Test run from the dropdown could not run. */
+    this._testError = null;
     this._syncError = null;
     this._flashTick = 0;
     this._loadedFor = null;
@@ -27592,7 +30221,7 @@ var SbPanelWifiDevices = class extends i4 {
         return;
       }
       this._create = { ...state, busy: true, error: "" };
-      const { job, error } = await this._runJob(S7.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
+      const { job, error } = await this._runJob(S7.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport), "create");
       if (error) {
         this._create = { ...state, busy: false, error: `${S7.createDeviceFailed}: ${error}` };
         await this._load();
@@ -27610,8 +30239,10 @@ var SbPanelWifiDevices = class extends i4 {
       const state = this._delete;
       const hubId = this._hubId;
       if (!state || !hubId || state.busy) return;
-      this._delete = { ...state, busy: true, error: "" };
+      this._delete = null;
+      this._deletingKey = state.key;
       this._working = S7.deleteDeviceBusy;
+      this._workingKind = "delete";
       let error = null;
       try {
         const started = await this.api.removeWifiDevice(hubId, state.key, state.referenced);
@@ -27631,6 +30262,8 @@ var SbPanelWifiDevices = class extends i4 {
         error = String(err);
       } finally {
         this._working = null;
+        this._workingKind = null;
+        this._deletingKey = null;
       }
       if (error) {
         this._delete = { ...state, busy: false, error: `${S7.deleteDeviceFailed}: ${error}` };
@@ -27664,7 +30297,8 @@ var SbPanelWifiDevices = class extends i4 {
     };
     this._openRename = () => {
       if (!this._draft || this._locked) return;
-      this._rename = { name: this._draft.name, error: "" };
+      const shown = this._shownAppearance();
+      this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen: false, tab: "icon" };
       void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-rename")?.select());
     };
     this._saveRename = () => {
@@ -27676,7 +30310,14 @@ var SbPanelWifiDevices = class extends i4 {
         this._rename = { ...state, error: problem };
         return;
       }
-      this._edit({ ...this._draft, name: name.trim() });
+      const shown = state.shown ?? { icon: null, colorId: null };
+      const picked = state.appearance ?? shown;
+      this._edit({
+        ...this._draft,
+        name: name.trim(),
+        icon: picked.icon !== shown.icon ? picked.icon : this._draft.icon,
+        colorId: picked.colorId !== shown.colorId ? picked.colorId : this._draft.colorId
+      });
       this._rename = null;
     };
     this._sync = async () => {
@@ -27686,7 +30327,7 @@ var SbPanelWifiDevices = class extends i4 {
       if (!this._canSync(device) || !draft || !hubId) return false;
       this._syncError = null;
       const cleanups = buttonCleanups(this._devices, device.key, draft);
-      const { error } = await this._runJob(S7.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
+      const { error } = await this._runJob(S7.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)), "sync");
       if (error) {
         this._syncError = error;
         await this._load();
@@ -27694,7 +30335,7 @@ var SbPanelWifiDevices = class extends i4 {
       }
       this._draftFor = null;
       for (const cleanup of cleanups) {
-        const result = await this._runJob(S7.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
+        const result = await this._runJob(S7.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec), "sync");
         if (result.error) this._say(T2.cleanupFailed(cleanup.device.spec.name, result.error), false);
       }
       await this._load();
@@ -27705,9 +30346,47 @@ var SbPanelWifiDevices = class extends i4 {
       const hubId = this._hubId;
       if (!device || !hubId || this._locked) return;
       this._syncError = null;
-      const { error } = await this._runJob(`${T2.redeploy}\u2026`, () => this.api.redeployWifiDevice(hubId, device.key));
+      const { error } = await this._runJob(`${T2.redeploy}\u2026`, () => this.api.redeployWifiDevice(hubId, device.key), "redeploy");
       if (error) this._syncError = error;
       await this._load();
+    };
+    /** Test: the deploy's test press on its own; the verdict lands on the record (and in the dock). */
+    this._testDelivery = async () => {
+      const device = this._device;
+      const hubId = this._hubId;
+      if (!device || !hubId || this._locked || !deliveryOnHub(device)) return;
+      this._testError = null;
+      const { job, error } = await this._runJob(D3.testing, () => this.api.testWifiDelivery(hubId, device.key), "test");
+      if (error) this._testError = error;
+      const delivery = job?.result?.delivery ?? null;
+      if (delivery && this._list) {
+        this._list = { ...this._list, devices: this._list.devices.map((row) => row.key === device.key ? { ...row, delivery } : row) };
+      }
+      await this._load();
+    };
+    // -- the delivery pill's dropdown ------------------------------------------------------------------------
+    this._toggleDelivery = (trigger) => {
+      if (this._deliveryOpen) {
+        this._closeDelivery();
+        return;
+      }
+      this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true });
+      this._deliveryOpen = true;
+    };
+    this._closeDelivery = () => {
+      if (!this._deliveryOpen) return;
+      this._deliveryOpen = false;
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-delivery-pill")?.focus());
+    };
+    this._onDocumentKeydown = (event) => {
+      if (event.key !== "Escape" || !this._deliveryOpen) return;
+      event.preventDefault();
+      this._closeDelivery();
+    };
+    /** The broker problem's button: the server's MQTT broker page (the card's "Set up"). */
+    this._openBrokerSettings = () => {
+      this._deliveryOpen = false;
+      this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { page: "server", sub: "mqtt" } }));
     };
     this._back = () => {
       this.askToLeave(() => this._navigate(null));
@@ -27750,6 +30429,8 @@ var SbPanelWifiDevices = class extends i4 {
     this._offStream?.();
     this._offStream = null;
     this._follow.cancel();
+    document.removeEventListener("keydown", this._onDocumentKeydown);
+    this._deliveryOpen = false;
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -27819,6 +30500,8 @@ var SbPanelWifiDevices = class extends i4 {
         this._create = this._delete = this._slotEdit = this._rename = null;
         this._powerPicker = null;
         this._confirmClear = null;
+        this._deliveryOpen = false;
+        this._testError = null;
         this._follow.cancel();
         this._loadedVersion = null;
         if (hubId) void this._load();
@@ -27832,10 +30515,18 @@ var SbPanelWifiDevices = class extends i4 {
         if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
+    if (changed.has("deviceKey")) {
+      this._deliveryOpen = false;
+      this._testError = null;
+    }
     if (changed.has("deviceKey") || changed.has("_list")) this._adoptDraft();
     this._scheduleFlashEnd();
   }
-  updated() {
+  updated(changed) {
+    if (changed.has("_deliveryOpen")) {
+      if (this._deliveryOpen) document.addEventListener("keydown", this._onDocumentKeydown);
+      else document.removeEventListener("keydown", this._onDocumentKeydown);
+    }
     this._reportDirty(this.hasUnsyncedChanges());
     if (this.deviceKey && this._list !== null && !this._device && !this._working) this._navigate(null);
   }
@@ -27864,7 +30555,7 @@ var SbPanelWifiDevices = class extends i4 {
     this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
-      const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
+      const [list, activities, listener, mqtt, devices] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState(), this.api.devices(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
@@ -27874,6 +30565,7 @@ var SbPanelWifiDevices = class extends i4 {
       const dirty = this.hasUnsyncedChanges();
       this._list = list.body;
       if (activities.ok && activities.body) this._activities = activities.body.map((a4) => ({ id: a4.activity_id, name: a4.name })).filter((a4) => Number.isInteger(a4.id) && a4.name);
+      if (devices.ok && devices.body) this._hubAppearance = new Map(devices.body.map((d5) => [d5.device_id, { icon: d5.icon ?? null, colorId: d5.color_id ?? null }]));
       this._listener = listener.ok ? listener.body : this._listener;
       this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       if (!dirty) this._draftFor = null;
@@ -27884,10 +30576,11 @@ var SbPanelWifiDevices = class extends i4 {
     }
   }
   /** Start a job, follow it, reload. Resolves with the finished job, or null with the error said. */
-  async _runJob(label, start) {
+  async _runJob(label, start, kind) {
     const hubId = this._hubId;
     if (!hubId) return { job: null, error: "no hub" };
     this._working = label;
+    this._workingKind = kind;
     try {
       const started = await start();
       if (started.status !== 202 || !started.body) return { job: null, error: problemText(started) };
@@ -27898,6 +30591,7 @@ var SbPanelWifiDevices = class extends i4 {
       return { job: null, error: String(err) };
     } finally {
       this._working = null;
+      this._workingKind = null;
     }
   }
   // -- the press glow ----------------------------------------------------------------------------
@@ -27963,6 +30657,22 @@ var SbPanelWifiDevices = class extends i4 {
     this._powerPicker = null;
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
   }
+  /** The icon and color the device shows: the draft's pick, else the hub record's. */
+  _shownAppearance() {
+    const draft = this._draft;
+    const id = this._device?.device_id;
+    const hub = id != null ? this._hubAppearance.get(id) : void 0;
+    return { icon: draft?.icon ?? hub?.icon ?? null, colorId: draft?.colorId ?? hub?.colorId ?? null };
+  }
+  /** The way into the Edit device dialog, as in the editors: the device's icon with a pencil badge, or a plain pencil without one. */
+  _renderHeaderEdit(device) {
+    const label = iconHubLine(this._hubVersion) != null ? B5.editDevice : T2.renameTitle;
+    const disabled = this._locked || device.stale;
+    const shown = this._shownAppearance();
+    const tile = entityTile(this._hubVersion, shown.icon, shown.colorId);
+    if (tile) return renderDetailEntityTile(tile, { id: "wifi-rename-open", label, disabled, onClick: this._openRename });
+    return b2`<button class="icon-btn" id="wifi-rename-open" type="button" aria-label=${label} title=${label} ?disabled=${disabled} @click=${this._openRename}>${icon7(mdiPencil)}</button>`;
+  }
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
   /** One rule for every Sync action (header, leave dialog, _sync): a stale device is
    *  redeployed instead, and a pending create has no hub record to write (CR-F5b-12). */
@@ -27970,15 +30680,72 @@ var SbPanelWifiDevices = class extends i4 {
     return Boolean(device) && !this._locked && !device.stale && device.device_id != null;
   }
   // -- render: shared bits -----------------------------------------------------------------------------------------
-  _renderTransportPill(device) {
-    if (this._transports.length < 2 && device.transport === "http") return A;
-    return b2`<span class="transport-pill ${device.transport}" title=${S7.transportPillDeployedTitle}>${device.transport}</span>`;
+  /** A roster row's pill: read-only (the row opens the device), amber when presses need attention. */
+  _renderRowPill(device) {
+    return renderReadOnlyDeliveryPill({ transport: pillTransport(device), attention: deliveryAttention(device, this._mqtt) });
+  }
+  /** The detail header's pill and its dropdown (the card's layout A, without the method switch). */
+  _renderDeliveryPill(device) {
+    const onHub = deliveryOnHub(device);
+    const problem = onHub ? mqttProblem(device, this._mqtt) : null;
+    const target = deliveryTarget(device, this._mqtt);
+    const testing = this._workingKind === "test";
+    return renderDeliveryPill({
+      idPrefix: "wifi",
+      transport: pillTransport(device),
+      attention: deliveryAttention(device, this._mqtt),
+      open: this._deliveryOpen,
+      menuStyle: this._deliveryStyle,
+      heading: T2.deliveryTitle,
+      path: !onHub ? "" : device.transport === "mqtt" ? T2.pathMqtt(target) : target ? T2.pathListener(target) : "",
+      test: {
+        label: testing ? D3.testing : device.delivery ? D3.testAgain : D3.test,
+        disabled: !onHub || this._locked,
+        onClick: () => void this._testDelivery()
+      },
+      problem: problem ? { text: problem, action: { label: this._mqtt?.configured ? T2.brokerSettings : D3.brokerSetUp, onClick: this._openBrokerSettings } } : null,
+      status: this._deliveryStatus(device, testing, problem !== null),
+      error: this._testError,
+      onToggle: this._toggleDelivery,
+      onClose: this._closeDelivery
+    });
+  }
+  /** The dropdown's result block; one line under a broker problem, which already says why. */
+  _deliveryStatus(device, testing, brief) {
+    const delivery = device.delivery ?? null;
+    const kind = deliveryVerdict(device, testing);
+    switch (kind) {
+      case "testing":
+        return { kind, tone: "idle", title: D3.testing };
+      case "stale":
+        return { kind, tone: "idle", title: T2.staleStatus, meta: T2.staleHint };
+      case "not_on_hub":
+        return { kind, tone: "idle", title: D3.notOnHub };
+      case "delivered": {
+        const latency = delivery?.latency_s;
+        const title = delivery?.via === "press" ? D3.pressReceived : T2.delivered(formatLatency(latency));
+        return { kind, tone: "ok", title, meta: formatCheckedAgo(delivery?.checked_at) };
+      }
+      case "not_delivered":
+        return { kind, tone: "warn", title: T2.notDelivered, meta: this._allowText(device), brief };
+      case "not_sent":
+        return { kind, tone: "warn", title: D3.notSent, brief };
+      default:
+        return { kind, tone: "idle", title: D3.notTested, meta: D3.notTestedHint };
+    }
+  }
+  /** The flow to allow when the test press did not arrive, naming the actual addresses. */
+  _allowText(device) {
+    const delivery = device.delivery ?? null;
+    if (device.transport === "mqtt") return T2.allowMqtt(delivery?.target ?? "");
+    const hubIp = delivery?.hub_ip || this.ctx?.hub?.config?.host || "?";
+    return T2.allowListener(hubIp, targetPort(delivery?.target ?? "") || String(device.target?.port ?? "8060"));
   }
   _renderListenerNotice() {
     const listener = this._listener;
     if (!listener || !listener.wanted || listener.bound) return A;
     const port = listener.port != null ? String(listener.port) : "";
-    return b2`<div class="wifi-notice error" id="wifi-listener-notice">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.listenerDown(port)}${listener.last_error ? ` ${String(listener.last_error)}` : ""}</span><button class="btn" type="button" @click=${this._retryListener}>${T2.listenerRetry}</button></div>`;
+    return b2`<div class="wifi-notice error" id="wifi-listener-notice">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.listenerDown(port)}${listener.last_error ? ` ${String(listener.last_error)}` : ""}</span><button class="btn" type="button" @click=${this._retryListener}>${T2.listenerRetry}</button></div>`;
   }
   // -- render: the roster ---------------------------------------------------------------------------------------------
   _renderList() {
@@ -27991,14 +30758,14 @@ var SbPanelWifiDevices = class extends i4 {
         <div class="list-header">
           <div class="list-header-copy"><div class="section-subtitle">${T2.subtitle}</div></div>
           <div class="list-header-action">
-            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S7.addDeviceButton}</span></button>
+            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon7(mdiPlus)}<span>${S7.addDeviceButton}</span></button>
           </div>
         </div>
         <div class="wifi-notices">${this._renderListenerNotice()}</div>
-        ${this._error ? b2`<div class="wifi-notice error" id="wifi-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${this._error}</span></div>` : A}
+        ${this._error ? b2`<div class="wifi-notice error" id="wifi-error">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${this._error}</span></div>` : A}
         ${this._loading ? b2`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.loading}</div>` : devices.length ? b2`<div class="device-list">
                 ${devices.map((device) => {
-      const deleting = this._delete?.busy === true && this._delete.key === device.key;
+      const deleting = this._deletingKey === device.key;
       const status = deviceStatus(device, { deleting });
       const statusIcon = status.tone === "sync-ok" ? mdiCheckCircleOutline : status.tone === "sync-error" ? mdiAlertCircleOutline : mdiProgressClock;
       const open = () => {
@@ -28014,17 +30781,17 @@ var SbPanelWifiDevices = class extends i4 {
         }
       }}>
                       <div class="device-card-main">
-                        <span class="device-card-lead">${icon6(mdiWifi)}</span>
+                        <span class="device-card-lead">${icon7(mdiWifi)}</span>
                         <div class="device-card-copy">
                           <div class="device-card-name">${device.spec.name}</div>
                           <div class="device-card-count">${S7.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
                         </div>
                         <div class="device-card-meta">
-                          ${this._renderTransportPill(device)}
-                          <span class="status-pill device-status-pill ${status.tone}">${icon6(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
+                          ${this._renderRowPill(device)}
+                          <span class="status-pill device-status-pill ${status.tone}">${icon7(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
                         </div>
                       </div>
-                      <button class="device-delete-btn" type="button" title=${S7.deleteDeviceAria} aria-label=${S7.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
+                      <button class="device-delete-btn" type="button" title=${S7.deleteDeviceAria} aria-label=${S7.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon7(mdiTrashCanOutline)}</button>
                       ${this._flash(Boolean(press && pressMatchesDevice(press, device)), press?.at ?? 0)}
                     </div>`;
     })}
@@ -28035,13 +30802,16 @@ var SbPanelWifiDevices = class extends i4 {
   }
   // -- render: the detail view -------------------------------------------------------------------------------------------
   _renderSyncButton(device) {
+    const button = (id, state, label, path, disabled, onClick) => b2`<button class="detail-sync-btn ${state}" id=${id} type="button" title=${label} aria-label=${label} ?disabled=${disabled} @click=${onClick}><span class="detail-sync-icon">${icon7(path)}</span><span class="detail-sync-label">${label}</span></button>`;
+    const externallyLocked = !this._working && (this.ctx ? !this.ctx.free : false);
     if (device.stale) {
-      return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? T2.redeploy}</button>`;
+      return button("wifi-redeploy", "sync-btn-primary", this._working ?? (externallyLocked ? S7.actionButtonBusy : T2.redeploy), mdiSync, this._locked, this._redeploy);
     }
     const dirty = this.hasUnsyncedChanges();
-    if (this._working) return b2`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
-    if (!dirty) return b2`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S7.actionButtonUpToDate}</button>`;
-    return b2`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S7.actionButtonSyncToHub}</button>`;
+    if (this._working) return button("wifi-sync", "", this._working, mdiSync, true);
+    if (externallyLocked) return button("wifi-sync", "", S7.actionButtonBusy, mdiTimerSand, true);
+    if (!dirty) return button("wifi-sync", "detail-sync-btn--state-ok", S7.actionButtonUpToDate, mdiCheck, true);
+    return button("wifi-sync", "sync-btn-primary", S7.actionButtonSyncToHub, mdiSync, !this._canSync(device), () => void this._sync());
   }
   _renderPowerLines(draft) {
     if (!supportsPowerInput(this._hubVersion)) return A;
@@ -28053,11 +30823,11 @@ var SbPanelWifiDevices = class extends i4 {
       <ul class="device-power-lines" id="wifi-power-lines">
         ${rows.map(({ kind, label, slot }) => b2`
           <li class="hub-event-line">
-            <span class="hub-event-icon ${kind === "on" ? "power-on" : "power-off"}">${icon6(mdiPower)}</span>
+            <span class="hub-event-icon ${kind === "on" ? "power-on" : "power-off"}">${icon7(mdiPower)}</span>
             <span class="hub-event-text">${label},
               <button class="hub-event-action-link" type="button" data-power=${kind} ?disabled=${this._locked} @click=${() => {
       this._powerPicker = kind;
-    }}>${slot !== null ? S7.devicePowerPerform(draft.slots[slot - 1].label) : S7.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S7.hubEventClearTitle} aria-label=${S7.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
+    }}>${slot !== null ? S7.devicePowerPerform(draft.slots[slot - 1].label) : S7.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S7.hubEventClearTitle} aria-label=${S7.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon7(mdiClose)}</button>` : A}.
             </span>
           </li>`)}
       </ul>`;
@@ -28097,20 +30867,20 @@ var SbPanelWifiDevices = class extends i4 {
           <span class="slot-text-wrap">
             <span class="slot-name">${name}</span>
             <span class="slot-meta">
-              ${row.favorite ? b2`<span class="slot-favorite">${icon6(mdiHeart)}</span>` : A}
-              ${button ? b2`<span class="slot-meta-icon" data-button=${button.name} style=${BUTTON_COLORS[button.name] ? `color:${BUTTON_COLORS[button.name]}` : ""}>${icon6(BUTTON_ICONS[button.name] ?? mdiGestureTapButton)}</span>` : A}
-              ${row.longPress ? b2`<span class="slot-meta-icon" data-long-press>${icon6(mdiTimerSandFull)}</span>` : A}
-              ${meta.kind === "unconfigured" ? b2`<span class="slot-meta-icon warning">${icon6(mdiAlertCircle)}</span>` : A}
+              ${row.favorite ? b2`<span class="slot-favorite">${icon7(mdiHeart)}</span>` : A}
+              ${button ? b2`<span class="slot-meta-icon" data-button=${button.name} style=${BUTTON_COLORS[button.name] ? `color:${BUTTON_COLORS[button.name]}` : ""}>${icon7(BUTTON_ICONS[button.name] ?? mdiGestureTapButton)}</span>` : A}
+              ${row.longPress ? b2`<span class="slot-meta-icon" data-long-press>${icon7(mdiTimerSandFull)}</span>` : A}
+              ${meta.kind === "unconfigured" ? b2`<span class="slot-meta-icon warning">${icon7(mdiAlertCircle)}</span>` : A}
               <span class="slot-meta-label">${metaLabel}</span>
             </span>
           </span>
         </button>
         <div class="slot-actions">
-          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S7.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S7.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S7.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
-          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S7.inputFor(this._activityName(row.inputActivityId)) : S7.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
+          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S7.powerBothCommand}>${icon7(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S7.powerOnCommand}>${icon7(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S7.powerOffCommand}>${icon7(mdiPower)}</span>` : A}
+          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S7.inputFor(this._activityName(row.inputActivityId)) : S7.inputCommand}>${icon7(mdiVideoInputHdmi)}</span>` : A}
           <button class="slot-clear" type="button" aria-label=${S7.clearSlotTitle} title=${S7.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
       this._confirmClear = index;
-    }}>${icon6(mdiClose)}</button>
+    }}>${icon7(mdiClose)}</button>
         </div>
         ${flash}
       </div>`;
@@ -28118,28 +30888,42 @@ var SbPanelWifiDevices = class extends i4 {
   _renderDetail(device, draft) {
     const press = this._activePress();
     const target = device.target ? `${device.target.host}:${device.target.port}` : "";
-    const mqttNotice = mqttProblem(device, this._mqtt);
     const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
+    const deploying = this._workingKind === "sync" || this._workingKind === "redeploy";
     return b2`
       <div class="tab-panel--detail" id="wifi-device-detail" data-key=${device.key}>
         <div class="detail-view">
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon6(mdiArrowLeft)}</button>
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon6(mdiPencilOutline)}</button>
-                ${this._renderTransportPill(device)}
+                <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon7(mdiArrowLeft)}</button>
+                ${this._renderHeaderEdit(device)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${draft.name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(device)}</div>
+                </div>
               </div>
               <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
             </div>
           </div>
+          ${deploying ? b2`<div class="detail-scroll">${renderOperationProgress({
+      id: "wifi-syncing",
+      mode: "wifi-deploy",
+      title: S7.deployingTitle,
+      message: jobStepMessage(activeJob(this.ctx?.hub)) || TOOLS_CARD_STRINGS.backendState.wifiSyncing
+    })}</div>` : this._renderDetailBody(device, draft, { press, target, now })}
+        </div>
+      </div>
+    `;
+  }
+  _renderDetailBody(device, draft, { press, target, now }) {
+    return b2`
           <div class="detail-scroll">
             <div class="wifi-notices">
-              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S7.syncMessageFailed} ${this._syncError}</span></div>` : A}
-              ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
-              ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon6(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
-              ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
-              ${mqttNotice ? b2`<div class="wifi-notice error" id="wifi-mqtt-notice">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${mqttNotice}</span></div>` : A}
+              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S7.syncMessageFailed} ${this._syncError}</span></div>` : A}
+              ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
+              ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon7(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
+              ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
               ${device.transport === "mqtt" ? A : this._renderListenerNotice()}
             </div>
             ${this._renderPowerLines(draft)}
@@ -28148,8 +30932,6 @@ var SbPanelWifiDevices = class extends i4 {
             </div>
             <div class="callback-line" id="wifi-callback-line">${device.transport === "mqtt" ? T2.arrivesOverMqtt(device.mqtt_topic ?? "<MAC>/up") : T2.callsBack(target)}${device.device_id != null ? b2` DevID <code>${device.device_id}</code>.` : A}${supportsPowerInput(this._hubVersion) ? A : b2` ${T2.x1Note}`}</div>
           </div>
-        </div>
-      </div>
     `;
   }
   // -- render: dialogs ------------------------------------------------------------------------------------------------------
@@ -28179,7 +30961,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeCreate}>
         <div class="dialog small" id="wifi-create-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S7.addDevice}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.addDevice}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeCreate}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             ${this._nameInput("wifi-new-name", state.name, S7.deviceName, state.busy, (name) => {
       this._create = { ...state, name, error: "" };
@@ -28213,10 +30995,10 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeDelete}>
         <div class="dialog small" id="wifi-delete-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S7.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeDelete}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-text">${T2.deleteBody(device.spec.name)}</div>
-            ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
+            ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-delete-error">${state.error}</div>
@@ -28254,7 +31036,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeSlot}>
         <div class="dialog" id="wifi-slot-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S7.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeSlot}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-note">${T2.slotDescription}</div>
             <div class="config-block">
@@ -28263,10 +31045,10 @@ var SbPanelWifiDevices = class extends i4 {
                 ${this._powerInput ? b2`
                       <button class="advanced-toggle ${state.advanced ? "expanded" : ""}" id="wifi-slot-advanced" type="button" aria-expanded=${String(state.advanced)} @click=${() => {
       this._slotEdit = { ...state, advanced: !state.advanced };
-    }}><span>${S7.advanced}</span>${icon6(mdiChevronDown)}</button>
+    }}><span>${S7.advanced}</span>${icon7(mdiChevronDown)}</button>
                       ${state.advanced ? b2`<div class="advanced-panel">
                             <label class="checkbox-row ${inputOn ? "active" : ""} ${hasActivities ? "" : "disabled"}">
-                              <span class="checkbox-icon">${icon6(mdiVideoInputHdmi)}</span>
+                              <span class="checkbox-icon">${icon7(mdiVideoInputHdmi)}</span>
                               <span class="checkbox-copy"><span>${S7.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
                               <input class="sb-switch" id="wifi-slot-input" type="checkbox" .checked=${inputOn} ?disabled=${!hasActivities} @change=${(event) => setInput(event.currentTarget.checked)} />
                             </label>
@@ -28280,7 +31062,7 @@ var SbPanelWifiDevices = class extends i4 {
               </div>
               <div class="config-group">
                 <label class="checkbox-row ${edit.favorite ? "active" : ""}">
-                  <span class="checkbox-icon plain">${icon6(mdiHeart)}</span>
+                  <span class="checkbox-icon plain">${icon7(mdiHeart)}</span>
                   <span class="checkbox-copy"><span>${S7.favorite}</span></span>
                   <input class="sb-switch" id="wifi-slot-favorite" type="checkbox" .checked=${edit.favorite} @change=${(event) => this._patchSlot({ favorite: event.currentTarget.checked })} />
                 </label>
@@ -28296,7 +31078,7 @@ var SbPanelWifiDevices = class extends i4 {
                 </label>
                 ${buttonHints.length ? b2`<div id="wifi-slot-button-hint">${buttonHints.map((hint) => b2`<div class="button-conflict-hint">${hint}</div>`)}</div>` : A}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
-                  <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
+                  <span class="checkbox-icon plain">${icon7(mdiTimerSandFull)}</span>
                   <span class="checkbox-copy"><span>${S7.enableLongPress}</span></span>
                   <input class="sb-switch" id="wifi-slot-long-press" type="checkbox" .checked=${edit.button !== null && edit.longPress} ?disabled=${edit.button === null} @change=${(event) => this._patchSlot({ longPress: event.currentTarget.checked })} />
                 </label>
@@ -28325,13 +31107,31 @@ var SbPanelWifiDevices = class extends i4 {
     const close = () => {
       this._rename = null;
     };
+    const appearance = iconHubLine(this._hubVersion) != null ? state.appearance ?? null : null;
+    const nameField = this._nameInput("wifi-rename", state.name, S7.deviceName, false, (name) => {
+      if (this._rename) this._rename = { ...this._rename, name, error: "" };
+    }, this._saveRename);
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
-          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S7.deviceName, false, (name) => {
-      this._rename = { name, error: "" };
-    }, this._saveRename)}</div>
+          <div class="dialog-header"><div class="dialog-title">${appearance ? B5.editDevice : T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon7(mdiClose)}</button></div>
+          <div class="dialog-body">${appearance ? renderAppearanceEditor({
+      hubVersion: this._hubVersion,
+      draft: appearance,
+      open: state.pickerOpen ?? false,
+      tab: state.tab ?? "icon",
+      nameField,
+      labels: appearanceLabelsFrom(B5),
+      onToggle: () => {
+        if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen };
+      },
+      onTab: (tab) => {
+        if (this._rename) this._rename = { ...this._rename, tab };
+      },
+      onPick: (draft) => {
+        if (this._rename) this._rename = { ...this._rename, appearance: draft };
+      }
+    }) : nameField}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${state.error}</div>
             <div class="dialog-footer-actions">
@@ -28354,7 +31154,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-power-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S7.devicePowerOnLabel : S7.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S7.devicePowerOnLabel : S7.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-note">${S7.devicePowerHint}</div>
             <div class="device-power-options">
@@ -28374,7 +31174,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-leave-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${A4.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A4.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${A4.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A4.syncKeepEditing} @click=${close}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body"><div class="dialog-text">${T2.leaveBody}</div></div>
           <div class="dialog-footer">
             <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A4.exitWithoutSync}</button>
@@ -28417,14 +31217,23 @@ SbPanelWifiDevices.properties = {
   _confirmClear: { state: true },
   _leave: { state: true },
   _working: { state: true },
+  _workingKind: { state: true },
+  _deletingKey: { state: true },
+  _deliveryOpen: { state: true },
+  _testError: { state: true },
   stream: { attribute: false },
   _syncError: { state: true },
   _flashTick: { state: true }
 };
 SbPanelWifiDevices.styles = [
   PANEL_BASE_CSS,
+  entityTileStyles,
+  entityPickerStyles,
+  appearanceEditorStyles,
   EDITOR_CSS,
   FIRMWARE_BLOCK_CSS,
+  OPERATION_PROGRESS_CSS,
+  DELIVERY_PILL_CSS,
   i`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
@@ -28448,8 +31257,6 @@ SbPanelWifiDevices.styles = [
       .status-pill.sync-error { border-color: color-mix(in srgb, var(--sbp-err) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-err) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-err) 12%, var(--sbp-panel)); }
       .status-pill.sync-running { border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-accent) 12%, var(--sbp-panel)); }
       .status-pill.sync-pending { border-color: color-mix(in srgb, var(--sbp-warn) 40%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-warn) 30%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-warn) 12%, var(--sbp-panel)); }
-      .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; text-transform: uppercase; }
-      .transport-pill.mqtt { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-accent); }
       .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; color: var(--sbp-muted); cursor: pointer; flex: 0 0 auto; margin-left: 4px; }
       .device-delete-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
       .device-delete-btn:disabled { opacity: 0.42; cursor: default; }
@@ -28464,7 +31271,6 @@ SbPanelWifiDevices.styles = [
       .wifi-notice .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
       .wifi-notices { display: grid; gap: 8px; }
       .wifi-notices:empty { display: none; }
-
       /* -- the press glow (the card's .wifi-ir-flash, same 720 ms as the dock's sweep) ---------- */
       .wifi-ir-flash { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sbp-accent) 75%, transparent), inset 0 0 14px color-mix(in srgb, var(--sbp-accent) 22%, transparent), 0 0 14px color-mix(in srgb, var(--sbp-accent) 30%, transparent); opacity: 0; animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
       @keyframes wifiIrGlow { 0% { opacity: 0; } 18% { opacity: 1; } 80% { opacity: 0.7; } 100% { opacity: 0; } }
@@ -28472,10 +31278,6 @@ SbPanelWifiDevices.styles = [
 
       /* -- the detail view ---------------------------------------------------------------------- */
       .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-      .detail-title-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; cursor: pointer; color: var(--sbp-text); }
-      .detail-title-btn .mdi { color: var(--sbp-muted); opacity: 0; transition: opacity 120ms ease; }
-      .detail-title-btn:hover .mdi, .detail-title-btn:focus-visible .mdi { opacity: 1; }
-      .detail-title-btn .detail-title { width: auto; }
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
@@ -28576,7 +31378,6 @@ SbPanelWifiDevices.styles = [
         .device-status-pill-label { display: none; }
         .slot-btn { min-height: 52px; }
         .slot-flag, .slot-clear { width: 32px; height: 32px; }
-        .detail-title-btn .mdi { opacity: 1; }
       }
     `
 ];

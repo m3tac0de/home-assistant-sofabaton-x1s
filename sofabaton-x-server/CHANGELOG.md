@@ -6,6 +6,123 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+## 0.2.7 (2026-10-28)
+
+Changes since `sofabaton-x-server-v0.2.6`. Requires
+**sofabaton-x >=0.2.6,<0.3** (`validate_appearance()`, the `icon` and
+`color_id` arguments of `add_device()` / `add_activity()`,
+`ir_emitter_status()`, `Device.emitters` and `probe_wifi_delivery()`);
+publish the library first. The API prefix and advertised API generation
+remain `/api/v1` and `1`.
+
+### Upgrade notes
+
+- Existing registrations, access settings, Wifi Devices and remote
+  layouts carry forward. Reload browser pages after updating.
+- The API changes are additions, with one exception: a write the hub
+  refuses while it updates its remote answers 409 `remote_syncing` where
+  it answered 502 `hub_rejected`. Regenerate clients from `openapi.json`
+  for the new routes and fields.
+
+### Added
+
+- Every deploy, update and redeploy of a Wifi Device or the callback
+  device ends with a delivery test, as in Home Assistant: the hub
+  presses slot 1 and the server's listener or MQTT path claims it before
+  it becomes a press event, so no client sees it. The verdict is stored
+  on the device record as `delivery` (`status` `delivered`,
+  `not_delivered` or `not_sent`, with `transport`, `target`, `source`,
+  `hub_ip`, `latency_s`, `via` and `checked_at`) and returned with the
+  job. A real press marks a failed check delivered, and a test that
+  cannot run never fails the deploy.
+  `POST /hubs/{id}/wifi-devices/{key}/test-delivery`
+  (`testWifiDeviceDelivery`) runs it again on request, as a job.
+- `GET /hubs/{id}/ir-emitters` (`getIrEmitters`, X2 only): the paired
+  remotes and repeaters an X2 can send a device's IR from (`kind`,
+  `number`, `name`, `online`, `port_cable`) and `read_at`. Without
+  `refresh` it returns the last read without asking the hub (both fields
+  null before the first one); `?refresh=true` reads the hub's
+  paired-device list now (a few seconds, control mode). 409 `not_x2` on an
+  X1 or X1S. A free read, like the other reads.
+- Device list rows (`GET .../devices`) carry `emitters`: an X2 device's IR
+  emitter routing, the record's three bytes `[a, b, c]`; null on the X1
+  and X1S, or when the record is not cached.
+- `PUT /devices/{id}` (and its plan preview) takes a changed IR emitter
+  routing on an X2, as the element's `device.extras` (`a`, `b`, `c`), and
+  writes it as one record update with no remote sync (the hub updates its
+  remotes itself). The routing applies to commands sent to the device; a
+  payload play always fires from the hub's own emitters. A routing the hub
+  cannot take is a 422 `out_of_scope` before any job: no emitter left, a
+  changed RF-button byte `a`, hub emitters changed to a mix other than all,
+  built-in, port 1, port 2 or none, a dropped routing, or a routing change
+  off the X2.
+
+- Activities and devices carry `icon` (the hub's icon id) and `color_id`
+  (the X2 palette id, `0` when none was picked) in the catalog and the
+  snapshot, when the record is cached.
+- `POST /activities` and `POST /devices` take `icon` and `color_id`.
+  `PUT /activities/{id}` and `PUT /devices/{id}` write an element's changed
+  `icon` / `color_id` with the rest of the edit. An icon or color the hub
+  line lacks (icons 1-25 on the X1, 1-16 on the X1S, 1-45 on the X2;
+  colors 1-12, X2 only) is a 422 `invalid_appearance` before any job.
+- The control panel shows the hub's own icons: on a tile in the Hub tab's
+  activity and device rows (colored on an X2), with a corner badge for a
+  device's IR, Bluetooth, Wifi or RF link, and beside the editor's title.
+  The editors' rename dialog becomes Edit activity / Edit device, with the
+  icon (and X2 color) picker on demand; the change goes to the hub with the
+  editor's Sync. Add activity and Add device take an icon and color.
+- Wifi Devices (`POST /wifi-devices`, `PUT /wifi-devices/{key}` and the
+  callback device) take `icon` and `color_id` in their spec; null keeps
+  the hub's. The control panel's Wifi Device view shows the device's icon
+  beside its name, and its Edit device dialog edits the icon and color in
+  the device's draft; the Sync writes them with the rest.
+
+### Changed
+
+- A write the hub refuses while it is updating its remote (soon after an
+  earlier write sent the remote its update) answers 409 `remote_syncing`
+  instead of 502 `hub_rejected`: wait until the remote is done, then send
+  it again.
+- `POST /devices` creates an X2 IR device that sends from all of the hub's
+  emitters (built-in and both IR ports, `00 00 07`), as the Sofabaton app
+  does; it used to be the built-in emitter only (`00 00 01`).
+- Every write ends with the cheapest remote sync that reaches the
+  remotes (library 0.2.6): renames send none, content edits re-sync just
+  the device or activity they changed, and X2 creates and reorders send
+  the order-only sync. A full rebuild (about 30 seconds on an X1, a
+  minute on an X1S, 4.5 minutes on an X2) is left for X1 and X1S creates
+  and deletes and X1S reorders.
+- The control panel's Wifi Devices view shows the delivery test as an
+  HTTP or MQTT pill beside the device, with the flow to allow when the
+  test failed and Test again. Sync and Redeploy show the deploy
+  animation in place of the detail, and a deploy whose test press did
+  not arrive is an error notice in the dock.
+- The control panel shows "Hub unavailable" in place of a view whose hub
+  is unavailable, and progress reads the same everywhere ("Refreshing
+  device 13 (1/4)").
+- Wifi commands open in one HTTP form that reads the request back as one
+  URL. X2 commands made in the Sofabaton app (URL records) open with
+  their host, port and path, and edits to them reach the hub (issue
+  #317). On an X2 the form adds a Protocol select and takes a host name.
+  An empty Method saves as GET.
+- Updated the shared Virtual Remote bundle to 0.2.9 and the embedded
+  package build to 0.1.4.
+
+### Fixed
+
+- Activities containing a macro delay written by the SofaBaton app on
+  iPad no longer fail validation, which refused every edit of that hub
+  (issue #319, library 0.2.6).
+- Macros longer than one frame (more than 18 steps on the X1S and X2, 21
+  on the X1) restore and sync in pages instead of stopping the restore
+  (issue #315, library 0.2.6).
+- RF devices (433 and 315 MHz) are backed up with their signal data and
+  restored; before, any restore containing one was refused (library
+  0.2.6). Take a new backup to capture them.
+- Renames, IP edits, Wifi Device updates and restores keep a device's or
+  activity's X2 color and Bluetooth link mode, and Wifi Device updates
+  and X1 activity renames keep its icon (library 0.2.6).
+
 ## 0.2.6 (2026-10-17)
 
 Changes since `sofabaton-x-server-v0.2.5`. Requires

@@ -19,6 +19,7 @@ import type {
   ControlPanelHubState,
   HassLike,
   IrPayloadForeignFormat,
+  RfBand,
   WifiEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
@@ -28,6 +29,7 @@ import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   bundleDeviceBrand,
   bundleDeviceClass,
+  bundleDeviceExtras,
   graftDeviceIntoBundle,
   isWifiEventsBrand,
   managedWifiDeviceKey,
@@ -37,7 +39,7 @@ import {
   retireWifiEventLongRecords,
   rewriteWifiEventPlaceholderRefs,
 } from "./backup-state";
-import type { IrLearnHost, WifiEventsHost } from "./edit-detail-view";
+import type { DeliveryHost, IrEmitterHost, IrLearnHost, WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 import { rebaseBundle } from "./bundle-rebase";
@@ -68,6 +70,8 @@ class SofabatonActivitiesTab extends LitElement {
     blockedMessage: { type: String },
     selectedHubProxyConnected: { type: Boolean },
     mqttAvailable: { type: Boolean },
+    hubCommandBusy: { type: Boolean },
+    setHubCommandBusy: { attribute: false },
     cacheVersion: { type: String },
     _stage: { state: true },
     _changedElsewhere: { state: true },
@@ -226,6 +230,10 @@ class SofabatonActivitiesTab extends LitElement {
   selectedHubProxyConnected = false;
   /** MQTT delivery can be offered for this hub (control-panel state). */
   mqttAvailable = false;
+  /** Another hub operation runs (the card's shared lock). */
+  hubCommandBusy = false;
+  /** Hold the shared lock and its dock line (the delivery Test). */
+  setHubCommandBusy: ((busy: boolean, label?: string | null, entryId?: string) => void) | null = null;
   /** The version of the hub's cache rows the card holds
    *  (loadedCacheVersionKey): when it moves, an open editor follows. */
   cacheVersion = "";
@@ -467,12 +475,33 @@ class SofabatonActivitiesTab extends LitElement {
     const command = commands.find((c) => Number(c.command_id) === Number(commandId)) ?? commands[0];
     const dataHex = String(command?.command_blob ?? "").trim();
     if (!command || !dataHex) return null;
-    return { dataHex, decoded: command.decoded ?? null };
+    return { dataHex, decoded: command.decoded ?? null, libraryType: command.library_type ?? null };
   };
 
-  private _testCommandPayload = async (hex: string) => {
+  // The delivery pill of a managed Wifi device: it reads and tests through
+  // Home Assistant itself; the editor stays hass-free.
+  private _deliveryHost: DeliveryHost = {
+    hass: () => this.hass ?? null,
+    hubEntryId: () => String(this.hub?.entry_id ?? ""),
+    canSwitch: () => this.hub?.broker_setup_available === true,
+    locked: () => Boolean(this.hubCommandBusy),
+    setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || undefined),
+  };
+
+  // The IR pill of an X2 IR device: it reads the paired remotes and
+  // repeaters through Home Assistant itself; the routing the hub has is the
+  // captured baseline's (the pending state and Undo).
+  private _irEmitterHost: IrEmitterHost = {
+    hass: () => this.hass ?? null,
+    hubEntryId: () => String(this.hub?.entry_id ?? ""),
+    baselineExtras: (deviceId) => bundleDeviceExtras(this._baseline, deviceId),
+    locked: () => Boolean(this.hubCommandBusy),
+    setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || undefined),
+  };
+
+  private _testCommandPayload = async (hex: string, band: RfBand | null = null) => {
     if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
-    await this.api().playIrBlob(this.hub.entry_id, hex);
+    await this.api().playIrBlob(this.hub.entry_id, hex, band);
   };
 
   // Foreign IR codes (Unfolded Circle HEX) are rendered on the backend;
@@ -485,9 +514,9 @@ class SofabatonActivitiesTab extends LitElement {
   // hub window); the HA inbox = a subscription onto the emitter intercept
   // ring; consumer discovery = a one-shot lookup that gates the HA option.
   private _irLearnFacade: IrLearnHost = {
-    learnFromHub: async (onEvent, timeoutS) => {
+    learnFromHub: async (onEvent, timeoutS, band) => {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
-      return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent);
+      return this.api().subscribeIrLearn(this.hub.entry_id, timeoutS, onEvent, band ?? null);
     },
     subscribeEmissions: async (onEvent) => {
       if (!this.hub) throw new Error(TOOLS_CARD_STRINGS.errors.noHubSelectedLong);
@@ -1344,6 +1373,8 @@ class SofabatonActivitiesTab extends LitElement {
           .wifiEvents=${this._wifiEventsFacade}
           .mqttAvailable=${Boolean(this.mqttAvailable)}
           .pendingTransport=${this._pendingTransport}
+          .delivery=${this._deliveryHost}
+          .irEmitters=${this._irEmitterHost}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
           @transport-change=${this._handleTransportChange}

@@ -20,7 +20,7 @@ import type {
   WifiPressEvent,
   WifiSectionId,
 } from "../shared/ha-context";
-import { ControlPanelApi } from "../shared/api/control-panel-api";
+import { ControlPanelApi, type CreateAppearance } from "../shared/api/control-panel-api";
 import {
   cacheVersionOf,
   compareCacheVersion,
@@ -1156,14 +1156,14 @@ export class ControlPanelStore {
    * the live editor can capture it right away. Resolves with the assigned
    * activity id or an error message.
    */
-  async createActivity(name: string): Promise<{ activityId: number } | { error: string }> {
+  async createActivity(name: string, appearance: CreateAppearance = {}): Promise<{ activityId: number } | { error: string }> {
     if (this._isHubCommandBusy()) return { error: TOOLS_CARD_STRINGS.errors.anotherOperation };
     const hub = selectedHub(this._snapshot);
     if (!hub) return { error: TOOLS_CARD_STRINGS.errors.noHubSelected };
     this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingActivity, hub.entry_id);
     let activityId = 0;
     try {
-      const result = await this.api().createActivity(hub.entry_id, name);
+      const result = await this.api().createActivity(hub.entry_id, name, appearance);
       activityId = Number(result?.activity_id || 0);
       if (!activityId) return { error: TOOLS_CARD_STRINGS.errors.activityIdMissing };
     } catch (error) {
@@ -1184,14 +1184,18 @@ export class ControlPanelStore {
    * entry so the live editor can capture it right away. Resolves with the
    * assigned device id or a stable error code. Mirrors `createActivity`.
    */
-  async createDevice(name: string, deviceClass: string): Promise<{ deviceId: number } | { errorCode: string }> {
+  async createDevice(
+    name: string,
+    deviceClass: string,
+    appearance: CreateAppearance = {},
+  ): Promise<{ deviceId: number } | { errorCode: string }> {
     if (this._isHubCommandBusy()) return { errorCode: "another_operation" };
     const hub = selectedHub(this._snapshot);
     if (!hub) return { errorCode: "no_hub_selected" };
     this.setExternalHubCommandBusy(true, TOOLS_CARD_STRINGS.cache.creatingDevice, hub.entry_id);
     let deviceId = 0;
     try {
-      const result = await this.api().createDevice(hub.entry_id, name, deviceClass);
+      const result = await this.api().createDevice(hub.entry_id, name, deviceClass, appearance);
       deviceId = Number(result?.device_id || 0);
       if (!deviceId) return { errorCode: "device_id_missing" };
     } catch (error) {

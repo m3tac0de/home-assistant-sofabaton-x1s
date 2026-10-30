@@ -166,11 +166,10 @@ export class SofabatonServerPanel extends LitElement {
       .view { position: relative; margin: 0 var(--connected-inline); min-height: max(40vh, calc(100dvh - var(--top-dock-height, 0px) - var(--bottom-dock-height, 0px) - var(--view-gap))); border: 1px solid color-mix(in srgb, var(--sbp-line) 84%, transparent); border-top: 0; border-radius: 0 0 var(--connected-radius) var(--connected-radius); background: radial-gradient(circle at top center, rgba(var(--sbp-accent-rgb), 0.05), transparent 48%), var(--sbp-panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); }
       .stage { min-width: 0; padding: 12px 16px 16px; }
       /* No filter here: it would make the stage the containing block of the views' fixed dialogs and clip them. */
-      .stage[inert] { opacity: 0.5; pointer-events: none; }
-      .scrim { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
-      .scrim-card { max-width: 420px; padding: 14px 18px; background: var(--sbp-panel); border: 1px solid var(--sbp-line); border-radius: var(--sbp-radius); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14); text-align: center; }
-      .scrim-card b { display: block; font-size: 14px; margin-bottom: 4px; }
-      .scrim-card .hint { font-size: 12px; }
+      /* An unavailable hub: the card's inline block in place of the view (never an overlay). */
+      .blocked-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 220px; padding: 24px 16px; text-align: center; color: var(--sbp-muted); line-height: 1.6; }
+      .blocked-state-title { color: var(--sbp-text); font-size: 16px; font-weight: 700; }
+      .blocked-state-sub { max-width: 340px; font-size: 13px; }
 
       /* -- bottom dock -------------------------------------------------------- */
       /* The dock is the column's width, centred like it, not the viewport's. */
@@ -784,7 +783,7 @@ export class SofabatonServerPanel extends LitElement {
 
   private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage; entity?: number; item?: string }>): void {
     const d = event.detail;
-    if (d.page) this._go(toolRoute(d.page));
+    if (d.page) this._go(toolRoute(d.page, d.sub));
     else if (d.tab) this._go(hubRoute(null, d.tab, d.sub, d.entity, d.item));
   }
 
@@ -851,8 +850,9 @@ export class SofabatonServerPanel extends LitElement {
     const runtime = selectedRuntime(s);
     const route = s.route;
     const viewId = route.kind === "tool" ? `${route.page}-${route.sub}` : route.tab;
-    // An unavailable hub puts the view under the scrim. A busy hub does not (the HA card's way): the
-    // views lock their own controls, the view that started the job shows it, and the dock narrates it.
+    // An unavailable hub shows the card's inline block in place of the view (its DOM is kept for when the
+    // hub is back). A busy hub does not (the HA card's way): the views lock their own controls, the view
+    // that started the job shows it, and the dock narrates it.
     const unavailable = ctx.interaction.kind === "blocked" && ctx.interaction.reason !== "job" && ctx.interaction.reason !== "local";
     const blocked = route.kind === "hub" && ctx.hub !== null && unavailable && ctx.interaction.kind === "blocked" ? ctx.interaction : null;
     const streamOn = s.stream.connected;
@@ -932,10 +932,9 @@ export class SofabatonServerPanel extends LitElement {
         </header>
         <main class="view" id="view-${viewId}" @sb-message=${this._onMessage} @sb-hubs-changed=${this._onHubsChanged} @sb-navigate=${this._onNavigate}>
           ${this._renderAccessBanner()}
-          <div class="stage" id="stage-wrap" ?inert=${Boolean(blocked)}>${cache(this._renderView(ctx))}</div>
-          ${blocked
-            ? html`<div class="scrim" id="blocked-scrim"><div class="scrim-card"><b>Hub unavailable</b><div class="hint">${blocked.label}</div></div></div>`
-            : nothing}
+          <div class="stage" id="stage-wrap">${cache(blocked
+            ? html`<div class="blocked-state" id="blocked-state" role="status"><div class="blocked-state-title">Hub unavailable</div><div class="blocked-state-sub">${blocked.label}</div></div>`
+            : this._renderView(ctx))}</div>
         </main>
         ${renderBottomDock({
           model: dock,

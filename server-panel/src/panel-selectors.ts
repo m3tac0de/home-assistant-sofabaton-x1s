@@ -5,6 +5,14 @@
 // reads as a phrase. Pure functions over the snapshot, so the node
 // tests cover them without a DOM.
 
+import {
+  ENTITY_SYNC_STEP_KINDS,
+  WIFI_DEPLOY_PHASES,
+  WIFI_INPLACE_STEP_KINDS,
+  localizeBackendProgress,
+  type BackendOperation,
+  type ProgressLike,
+} from "../../custom_components/sofabaton_x1s/www/src/shared/utils/backend-state-localization";
 import type { HubView, JobView } from "./panel-api";
 import { TERMINAL_JOB_STATES, humanizeSlug, problemSummary, jobFailureReason } from "./panel-api";
 import type { Draft, HubNotice, HubRuntime, PanelSnapshot } from "./panel-store";
@@ -127,6 +135,7 @@ const JOB_LABELS: Record<string, string> = {
   update_wifi_device: "Syncing the Wifi Device",
   remove_wifi_device: "Deleting the Wifi Device",
   redeploy_wifi_device: "Redeploying the Wifi Device",
+  test_wifi_delivery: "Testing that button presses reach the server",
 };
 
 export function jobLabel(kind: string): string {
@@ -169,26 +178,106 @@ export function jobHeadline(job: JobView): string {
   return entity && job.kind in ENTITY_JOB_LABELS ? ENTITY_JOB_LABELS[job.kind](entity) : jobLabel(job.kind);
 }
 
-/** The library's step message without its closing "…" or "."; "" when there is none. */
-function stepMessage(job: JobView): string {
-  const message = (job.progress as { message?: unknown } | null)?.message;
-  return typeof message === "string" ? message.trim().replace(/(…|\.+)$/u, "").trim() : "";
+/** A step without its closing "…" or ".", also before a counter the card put on it,
+ *  so every counter reads "<step> (n/total)". */
+function bareStep(text: string): string {
+  return text.trim().replace(/(…|\.+)$/u, "").replace(/(…|\.+)(\s*\(\d+\s*\/\s*\d+\))$/u, "$2").trim();
 }
 
-/** One current step, or the operation when no step is available, with one counter. */
-export function jobNarration(job: JobView): string {
-  const text = stepMessage(job) || jobHeadline(job);
-  if (job.status === "queued") return text + " · queued";
-  // Some backend messages already carry a counter. Never add a second one.
+/** The library's step message as it came; "" when there is none. */
+function stepMessage(job: JobView): string {
+  const message = (job.progress as { message?: unknown } | null)?.message;
+  return typeof message === "string" ? message.trim() : "";
+}
+
+/** Which of the control panel card's progress vocabularies a job speaks. */
+const JOB_OPERATIONS: Record<string, BackendOperation> = {
+  refresh: "cache_refresh",
+  refresh_entity: "cache_refresh",
+  backup: "backup_export",
+  restore: "backup_restore",
+  sync_device: "entity_sync",
+  sync_activity: "entity_sync",
+  deploy_wifi_device: "wifi_deploy",
+  update_wifi_device: "wifi_deploy",
+  redeploy_wifi_device: "wifi_deploy",
+  test_wifi_delivery: "wifi_deploy",
+  deploy_callback_device: "wifi_deploy",
+  update_callback_device: "wifi_deploy",
+  redeploy_callback_device: "wifi_deploy",
+};
+
+const ENTITY_PHASES = new Set(["stale_check", "plan", "settling", "cache_refresh", "completed", "complete"]);
+const REFRESH_PHASES = new Set(["preparing", "finalizing", "completed", "complete"]);
+const RESTORE_PHASES = new Set(["validation", "erase", "hub", "cache_warm"]);
+/** The card's copy for this phase names Home Assistant: the server's own message says "the server". */
+const HA_WIFI_PHASES = new Set(["testing_delivery"]);
+
+/** The job's progress in the card's shape (the server reports the library's WriteProgress). */
+function progressLike(job: JobView, operation: BackendOperation): ProgressLike {
+  const p = (job.progress ?? {}) as Record<string, unknown>;
+  const stepKind = typeof p.step_kind === "string" ? p.step_kind.trim().toLowerCase() : "";
+  const completed = Number(p.completed_steps ?? 0);
+  const entityId = typeof p.entity_id === "number" ? p.entity_id : null;
+  const like: ProgressLike = {
+    phase: typeof p.phase === "string" ? p.phase : null,
+    step_kind: stepKind || null,
+    message: typeof p.message === "string" ? p.message : null,
+    completed_steps: Number.isFinite(completed) ? completed : 0,
+    total_steps: typeof p.total_steps === "number" ? p.total_steps : null,
+    current_device_id: p.entity_kind === "device" ? entityId : null,
+    current_activity_id: p.entity_kind === "activity" ? entityId : null,
+  };
+  // The Wifi in-place steps count 1-based (the step being written); the library
+  // reports the steps already done.
+  if (operation === "wifi_deploy" && WIFI_INPLACE_STEP_KINDS[stepKind]) like.current_step = like.completed_steps! + 1;
+  return like;
+}
+
+/** The step in the card's own words when the card knows it (its phases and step kinds), else "". */
+function localizedStep(job: JobView): string {
+  const operation = JOB_OPERATIONS[job.kind];
+  const p = (job.progress ?? null) as Record<string, unknown> | null;
+  if (!operation || !p) return "";
+  const like = progressLike(job, operation);
+  const phase = String(like.phase ?? "").trim().toLowerCase();
+  const stepKind = String(like.step_kind ?? "");
+  const known = operation === "wifi_deploy"
+    ? !HA_WIFI_PHASES.has(phase) && Boolean(WIFI_DEPLOY_PHASES[phase] || WIFI_INPLACE_STEP_KINDS[stepKind])
+    : operation === "entity_sync"
+      ? ENTITY_PHASES.has(phase) || (phase === "writing" && Boolean(ENTITY_SYNC_STEP_KINDS[stepKind]))
+      : operation === "backup_restore"
+        ? RESTORE_PHASES.has(phase) || ((phase === "device" || phase === "activity") && p.entity_id != null)
+        : REFRESH_PHASES.has(phase) || ((phase === "device" || phase === "activity") && p.entity_id != null);
+  return known ? localizeBackendProgress(like, operation) : "";
+}
+
+/** "<step> (n/total)", the card's counter, once; a text that already counts keeps its own. */
+function withCounter(text: string, job: JobView): string {
   if (/\d+\s*\/\s*\d+/u.test(text)) return text;
   const p = (job.progress ?? {}) as Record<string, unknown>;
   const index = p.item_index;
   const count = p.item_count;
   if (typeof index === "number" && Number.isFinite(index) && typeof count === "number" && Number.isFinite(count) && count > 0) {
-    return text + " · " + Math.min(count, Math.max(1, index + 1)) + "/" + count;
+    return `${text} (${Math.min(count, Math.max(1, index + 1))}/${count})`;
   }
   const progress = jobProgress(job);
-  return progress.indeterminate ? text : text + " · " + Math.min(progress.total!, Math.max(0, progress.current ?? 0)) + "/" + progress.total;
+  return progress.indeterminate ? text : `${text} (${Math.min(progress.total!, Math.max(0, progress.current ?? 0))}/${progress.total})`;
+}
+
+/** The running step with its counter, as the dock, the editors and the Backup tab say it:
+ *  the card's words when the card knows the step, else the library's message. "" without a step. */
+export function jobStepText(job: JobView | null): string {
+  if (!job) return "";
+  const text = bareStep(localizedStep(job) || stepMessage(job));
+  return text ? withCounter(text, job) : "";
+}
+
+/** One current step, or the operation when no step is available, with one counter. */
+export function jobNarration(job: JobView): string {
+  const step = jobStepText(job);
+  if (job.status === "queued") return `${step || jobHeadline(job)} · queued`;
+  return step || withCounter(jobHeadline(job), job);
 }
 
 const JOB_COMPLETIONS: Record<string, string> = {
@@ -204,7 +293,18 @@ const JOB_COMPLETIONS: Record<string, string> = {
   remove_callback_device: "Wifi Events deleted.", redeploy_callback_device: "Wifi Events redeployed.",
   deploy_wifi_device: "Wifi Device deployed.", update_wifi_device: "Wifi Device synced.",
   remove_wifi_device: "Wifi Device deleted.", redeploy_wifi_device: "Wifi Device redeployed.",
+  test_wifi_delivery: "Delivery tested.",
 };
+
+/** A Wifi Device job whose test press did not arrive: the deploy landed, the path did not (wifi webhook plan 4.4). */
+const DELIVERY_JOBS = new Set(["deploy_wifi_device", "update_wifi_device", "redeploy_wifi_device", "test_wifi_delivery",
+  "deploy_callback_device", "update_callback_device", "redeploy_callback_device"]);
+
+export function jobDeliveryFailed(job: JobView): boolean {
+  if (!DELIVERY_JOBS.has(job.kind) || job.status !== "done") return false;
+  const status = (job.result as { delivery?: { status?: unknown } | null } | null)?.delivery?.status;
+  return status === "not_delivered" || status === "not_sent";
+}
 
 /** Compact outcomes; backend diagnostics are available through Details. */
 export function noticeForJob(job: JobView, at: number): HubNotice | null {
@@ -213,6 +313,14 @@ export function noticeForJob(job: JobView, at: number): HubNotice | null {
     return { tone: "error", label: jobFailureReason(job.error), detail: problemSummary(job.error) || null, jobId: job.job_id, sticky: false, at };
   }
   if (job.status === "cancelled") return { tone: "neutral", label: "Operation cancelled.", detail: null, jobId: job.job_id, sticky: false, at };
+  if (jobDeliveryFailed(job)) {
+    const delivery = (job.result as { delivery?: { status?: string } } | null)?.delivery;
+    if (delivery?.status === "not_sent") {
+      return { tone: "error", label: job.kind === "test_wifi_delivery" ? "Could not send the test command. Try again." : "Synced, but delivery could not be tested.", detail: null, jobId: job.job_id, sticky: false, at };
+    }
+    // The card's line: the write landed, presses do not arrive yet; the device's panel says what to allow.
+    return { tone: "error", label: job.kind === "test_wifi_delivery" ? "The test command did not reach the server." : "Synced, but the test command did not reach the server.", detail: null, jobId: job.job_id, sticky: false, at };
+  }
   return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
 

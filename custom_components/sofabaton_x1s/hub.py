@@ -150,6 +150,10 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         # X2 with the MQTT integration loaded (no store refcount).
         self._mqtt_activity_unsub: Any = None
         self._mqtt_activity_topic: str | None = None
+        # Delivery tests waiting for their press, by hub device id.
+        self._wifi_probes: dict[int, asyncio.Future] = {}
+        # When this hub last connected to a broker we pointed it at.
+        self._hub_mqtt_connected_at: float | None = None
         self._last_hub_event: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()

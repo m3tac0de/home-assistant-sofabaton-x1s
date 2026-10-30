@@ -13,6 +13,7 @@ import type {
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
 import { hubDevices } from "../shared/utils/control-panel-selectors";
+import { WIFI_IP_SCHEMES, WIFI_IP_URL_METHODS, WifiIpFormError, wifiIpDefaultPort } from "../shared/wifi-ip-form";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 export interface BackupSelectionOption {
@@ -85,6 +86,17 @@ export interface DecodedFieldSpec {
   // Rendered disabled: an editable field that silently does nothing is
   // a worse trap than raw hex.
   readonly?: boolean;
+  // Rendered as a select of these values (the wifi_ip protocol on the X2).
+  options?: readonly string[];
+  // Offered as a datalist under a free-text input (common HTTP methods).
+  suggestions?: readonly string[];
+  // Shown in an empty field; a function reads the other drafts (the
+  // wifi_ip port shows its protocol's default).
+  placeholder?: string | ((drafts: Record<string, string>) => string);
+  // A short value (a port, a method): a fixed-width column in its row.
+  narrow?: boolean;
+  // Textarea height in lines; 4 when absent.
+  rows?: number;
 }
 
 export interface DecodedFormSpec {
@@ -93,6 +105,13 @@ export interface DecodedFormSpec {
   subtitle?: string;
   fields: DecodedFieldSpec[];
 }
+
+const CONTENT_TYPE_SUGGESTIONS: readonly string[] = [
+  "application/json",
+  "application/x-www-form-urlencoded",
+  "text/plain",
+  "text/xml",
+];
 
 /**
  * Per-class form layouts. The shape mirrors the corresponding decoder
@@ -108,19 +127,39 @@ function decodedClassFormSpecs(): Record<DecodableCommandClass, DecodedFormSpec>
     title: S.httpTitle,
     subtitle: S.httpSubtitle,
     fields: [
-      { key: "host", label: S.hostIpv4, helper: S.hostExample },
-      { key: "port", label: S.port, numeric: true },
-      { key: "method", label: S.httpMethod, helper: S.httpMethodExample },
-      { key: "path", label: S.path },
+      { key: "host", label: S.hostIpv4, placeholder: "192.168.2.77" },
+      {
+        key: "port",
+        label: S.port,
+        numeric: true,
+        narrow: true,
+        placeholder: (drafts) => wifiIpDefaultPort(drafts.scheme),
+      },
+      {
+        key: "method",
+        label: S.httpMethod,
+        narrow: true,
+        placeholder: "GET",
+        // The methods a URL record can hold; request text takes any.
+        suggestions: WIFI_IP_URL_METHODS,
+      },
+      { key: "path", label: S.path, placeholder: "/" },
       {
         key: "header",
         label: S.extraHeaders,
         multiline: true,
         crlfOnWire: true,
+        rows: 2,
+        placeholder: "X-Api-Key: 123",
         helper: S.extraHeadersHelper,
       },
-      { key: "content_type", label: S.contentType },
-      { key: "body", label: S.body, multiline: true },
+      {
+        key: "content_type",
+        label: S.contentType,
+        placeholder: "application/json",
+        suggestions: CONTENT_TYPE_SUGGESTIONS,
+      },
+      { key: "body", label: S.body, multiline: true, rows: 5 },
     ],
   },
   wifi_roku: {
@@ -200,6 +239,71 @@ export const DECODED_CLASS_FORM_SPECS = new Proxy(
 );
 
 /**
+ * The fields a decoded form shows on this hub. On the X2 the wifi_ip form
+ * adds the protocol and takes a host name too: https and host names are
+ * saved as URL records (shared/wifi-ip-form.ts), which only the X2 has.
+ */
+export function decodedFormFields(className: DecodableCommandClass, isX2: boolean): DecodedFieldSpec[] {
+  const fields = DECODED_CLASS_FORM_SPECS[className]?.fields ?? [];
+  if (className !== "wifi_ip" || !isX2) return fields;
+  const S = TOOLS_CARD_STRINGS.decodedPayload;
+  return [
+    { key: "scheme", label: S.protocol, options: WIFI_IP_SCHEMES, narrow: true },
+    ...fields.map((field) =>
+      field.key === "host" ? { ...field, label: S.host, helper: S.hostOrNameExample } : field,
+    ),
+  ];
+}
+
+// The wifi_ip form's rows: the address, the request line, then the content.
+const WIFI_IP_FORM_ROWS: readonly (readonly string[])[] = [
+  ["scheme", "host", "port"],
+  ["method", "path"],
+  ["content_type"],
+  ["header"],
+  ["body"],
+];
+
+/**
+ * The decoded form as rows of fields shown side by side. The wifi_ip form
+ * groups its address and its request line; every other form has one field
+ * per row.
+ */
+export function decodedFormRows(className: DecodableCommandClass, isX2: boolean): DecodedFieldSpec[][] {
+  const fields = decodedFormFields(className, isX2);
+  if (className !== "wifi_ip") return fields.map((field) => [field]);
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  return WIFI_IP_FORM_ROWS
+    .map((keys) => keys.flatMap((key) => byKey.get(key) ?? []))
+    .filter((row) => row.length > 0);
+}
+
+/** The placeholder an empty field shows. */
+export function decodedFieldPlaceholder(field: DecodedFieldSpec, drafts: Record<string, string>): string {
+  return typeof field.placeholder === "function" ? field.placeholder(drafts) : field.placeholder ?? "";
+}
+
+/** The message for a wifi_ip draft the form refused; other errors pass through. */
+export function wifiIpFormErrorText(error: unknown): string {
+  const S = TOOLS_CARD_STRINGS.decodedPayload;
+  if (!(error instanceof WifiIpFormError)) return error instanceof Error ? error.message : String(error);
+  switch (error.code) {
+    case "host_required":
+      return S.hostRequired;
+    case "host_invalid":
+      return S.hostInvalid;
+    case "host_needs_ipv4":
+      return S.hostNeedsIpv4;
+    case "port_invalid":
+      return S.portInvalid;
+    case "method_unsupported":
+      return S.urlMethodUnsupported;
+    case "header_line_invalid":
+      return S.headerLineInvalid;
+  }
+}
+
+/**
  * Shape of the `decoded` block as it lives inside `restore_data` in the
  * bundle JSON. `edited` is set to `true` by the editor to tell the
  * restore path to re-encode the payload from `fields` instead of using
@@ -265,12 +369,17 @@ export function commandDecodedBlock(
  * is set, and re-uses the captured trailer verbatim.
  *
  * No-op when the targeted command, device, or decoded block is absent.
+ *
+ * `replace` swaps the whole field set and the trailer instead: a wifi_ip
+ * edit that switches record kinds (request text to URL record) must not
+ * leave the old kind's fields behind, or the round-trip check refuses it.
  */
 export function updateCommandDecodedFields(
   bundle: BackupBundlePayload,
   deviceId: number,
   commandId: number,
   newFields: Record<string, unknown>,
+  replace?: { trailerHex: string },
 ): BackupBundlePayload {
   const normalizedDeviceId = Number(deviceId);
   const normalizedCommandId = Number(commandId);
@@ -294,7 +403,8 @@ export function updateCommandDecodedFields(
               ...(restoreData as Record<string, unknown>),
               decoded: {
                 ...decodedRecord,
-                fields: { ...existingFields, ...newFields },
+                ...(replace ? { trailer_hex: replace.trailerHex } : {}),
+                fields: replace ? { ...newFields } : { ...existingFields, ...newFields },
                 edited: true,
               },
             },
@@ -627,6 +737,58 @@ export function renameBundleDevice(
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
 }
 
+export interface EntityAppearance {
+  /** The record's icon id; null when the bundle does not carry it. */
+  icon: number | null;
+  /** The X2 palette id (0 = none picked); null when not carried. */
+  colorId: number | null;
+}
+
+function appearanceInList<T extends { device?: BackupBundleDeviceBlock | null }>(
+  list: T[] | undefined,
+  id: number,
+  appearance: Partial<EntityAppearance>,
+): T[] {
+  return (list ?? []).map((entry) => {
+    const block = entry?.device;
+    if (!block || Number(block.device_id || 0) !== id) return entry;
+    const next = { ...block };
+    if (appearance.icon != null) next.icon = appearance.icon;
+    if (appearance.colorId != null) next.color_id = appearance.colorId;
+    return { ...entry, device: next };
+  });
+}
+
+/** Set an activity's or device's icon and/or X2 color; the sync writes them
+ *  in the same record write as a rename. A null value is left as it is. */
+export function setBundleEntityAppearance(
+  bundle: BackupBundlePayload,
+  kind: "activity" | "device",
+  entityId: number,
+  appearance: Partial<EntityAppearance>,
+): BackupBundlePayload {
+  const id = Number(entityId);
+  return kind === "activity"
+    ? { ...bundle, activities: appearanceInList(bundle.activities, id, appearance) }
+    : { ...bundle, devices: appearanceInList(bundle.devices, id, appearance) };
+}
+
+/** The icon and color an activity's or device's block carries. */
+export function bundleEntityAppearance(
+  bundle: BackupBundlePayload | null,
+  kind: "activity" | "device",
+  entityId: number,
+): EntityAppearance {
+  const list = kind === "activity" ? bundle?.activities : bundle?.devices;
+  const block = (list ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(entityId))?.device;
+  const icon = Number(block?.icon);
+  const colorId = Number(block?.color_id);
+  return {
+    icon: block?.icon != null && Number.isInteger(icon) ? icon : null,
+    colorId: block?.color_id != null && Number.isInteger(colorId) ? colorId : null,
+  };
+}
+
 function updateActivity(
   bundle: BackupBundlePayload,
   activityId: number,
@@ -891,6 +1053,40 @@ export function bundleDeviceBrand(
   return String(device?.device?.brand ?? "").trim();
 }
 
+/** A device's X2 IR emitter routing bytes (`device.extras`), or null when the
+ *  block carries none (off the X2, or a record without it). */
+export function bundleDeviceExtras(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): { a: number; b: number; c: number } | null {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const extras = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  )?.device?.extras;
+  if (!extras || typeof extras !== "object") return null;
+  const { a, b, c } = extras;
+  return [a, b, c].every((value) => Number.isInteger(value) && value >= 0 && value <= 0xff) ? { a, b, c } : null;
+}
+
+/** Set a device's IR emitter routing (`device.extras`, X2 only): the sync
+ *  writes it in the same record write as a rename. */
+export function setBundleDeviceExtras(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  extras: { a: number; b: number; c: number },
+): BackupBundlePayload {
+  const normalizedId = Number(deviceId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      const block = entry?.device;
+      if (!block || Number(block.device_id || 0) !== normalizedId) return entry;
+      return { ...entry, device: { ...block, extras: { a: extras.a, b: extras.b, c: extras.c } } };
+    }),
+  };
+}
+
 /** True when a brand string identifies a managed Wifi Commands device. */
 export function isManagedWifiBrand(brand: string): boolean {
   const text = String(brand ?? "").trim();
@@ -901,6 +1097,9 @@ export function isManagedWifiBrand(brand: string): boolean {
   }
   return false;
 }
+
+/** The store key of the reserved Wifi Events device. */
+export const WIFI_EVENTS_DEVICE_KEY = "haevents";
 
 /** The store key of a managed Wifi Commands device from its brand
  *  (`m3-<key>-<hash>`), or null for an unmanaged device. */

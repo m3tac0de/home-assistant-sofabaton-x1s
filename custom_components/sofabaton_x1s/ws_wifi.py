@@ -20,6 +20,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
+    HUB_VERSION_X2,
     signal_hub_events,
     signal_ip_commands,
 )
@@ -32,14 +33,18 @@ from .command_config import (
     is_wifi_events_device_key,
     normalize_activity_event_actions,
     normalize_hub_event_actions,
+    normalize_deployed_transport,
     normalize_wifi_transport,
     WIFI_TRANSPORT_HTTP,
+    WIFI_TRANSPORT_LEGACY_WEBHOOK,
     WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
     wifi_transport_switch_pending,
 )
+from . import hub_mqtt_link
 from . import runtime
 from .wifi_deploy import wifi_sync_failure
+from .lib.proxy_hub_mqtt import HubMqttValidationError
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -454,6 +459,163 @@ async def _ws_run_command_sync(hass: HomeAssistant, connection, msg: dict[str, A
     connection.send_result(msg["id"], result if isinstance(result, dict) else {})
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/delivery",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_wifi_delivery(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """How presses of one Wifi Device reach Home Assistant: the deployed
+    transport, what the hub calls (the listener's address and port, or Home
+    Assistant's broker), the hub's own address and the last delivery check.
+    A device still on the removed X2 "Direct" webhook reports no transport:
+    nothing reaches Home Assistant until its next Sync replaces it."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
+    device_key = str(msg.get("device_key") or "")
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id, device_key=device_key, roku_listen_port=roku_listen_port
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+    deployed = isinstance(payload.get("deployed_device_id"), int)
+    transport = (
+        normalize_deployed_transport(payload.get("deployed_transport")) if deployed else None
+    )
+    if transport == WIFI_TRANSPORT_LEGACY_WEBHOOK:
+        transport = None
+    target = ""
+    if transport == WIFI_TRANSPORT_MQTT:
+        broker = hub_mqtt_link.ha_mqtt_broker(hass)
+        target = f"{broker['host']}:{broker['port']}" if broker and broker["host"] else ""
+    elif transport == WIFI_TRANSPORT_HTTP:
+        address = await hass.async_add_executor_job(hub.local_address_in_use)
+        port = payload.get("deployed_request_port") or roku_listen_port
+        target = f"http://{address}:{int(port)}"
+    connection.send_result(
+        msg["id"],
+        {
+            "device_key": str(payload.get("device_key") or device_key),
+            "transport": transport,
+            "target": target,
+            "hub_ip": str(getattr(hub, "host", "") or ""),
+            "delivery": payload.get("delivery"),
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/test_delivery",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws(persist=False)
+async def _ws_test_wifi_delivery(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """ "Test again": press slot 1 of a deployed Wifi Device (no Action
+    runs) and answer with the delivery check, also stored on the device."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    try:
+        delivery = await hub.async_test_wifi_delivery(str(msg.get("device_key") or ""))
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "No deployed Wifi Device to test")
+        return
+    except HomeAssistantError as err:
+        _send_sync_failure(connection, msg["id"], err)
+        return
+    connection.send_result(msg["id"], delivery)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_mqtt/status",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_hub_mqtt_status(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Both ends of an X2's MQTT broker link (Home Assistant's MQTT
+    connection and the hub's own), plus what the broker setup form
+    prefills. Never a password."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    connection.send_result(msg["id"], await hub_mqtt_link.async_broker_link_state(hass, hub))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_mqtt/setup",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("host"): str,
+        vol.Required("port"): vol.All(int, vol.Range(min=1, max=65535)),
+        vol.Optional("use_ha_login", default=True): bool,
+        vol.Optional("username"): str,
+        vol.Optional("password"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws(persist=False)
+async def _ws_set_hub_mqtt_broker(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Point an X2 at an MQTT broker (replaces whatever broker it had; the
+    hub cannot report the old one) and answer with its verdict and the
+    link state after it. The login is Home Assistant's own MQTT login
+    unless ``use_ha_login`` is off; the password is never stored."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    if getattr(hub, "version", None) != HUB_VERSION_X2:
+        connection.send_error(msg["id"], "not_supported", "Only an X2 hub has a broker setting")
+        return
+    try:
+        connected = await hub_mqtt_link.async_point_hub_at_broker(
+            hass,
+            hub,
+            host=str(msg.get("host") or ""),
+            port=int(msg["port"]),
+            username=msg.get("username"),
+            password=msg.get("password"),
+            use_ha_login=bool(msg.get("use_ha_login", True)),
+        )
+    except HubMqttValidationError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    except ValueError:
+        connection.send_error(msg["id"], "invalid_format", "Invalid broker settings")
+        return
+    if connected is None:
+        connection.send_error(msg["id"], "hub_no_answer", "The hub gave no answer to the broker setup")
+        return
+    connection.send_result(
+        msg["id"],
+        {"connected": connected, **await hub_mqtt_link.async_broker_link_state(hass, hub)},
+    )
+
+
 def _hub_mqtt_available(hass: HomeAssistant, hub: Any) -> bool:
     """Whether the create flow may offer the MQTT transport for this hub.
 
@@ -595,7 +757,7 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
     deployed_device_id = payload.get("deployed_device_id")
     deployed_commands_hash = str(payload.get("deployed_commands_hash") or "").strip()
     if isinstance(deployed_device_id, int):
-        result = await hub.async_delete_device(deployed_device_id)
+        result = await hub.async_delete_device(deployed_device_id, sync_remotes=True)
         deleted_hub_device = bool(result)
     if not deleted_hub_device:
         try:
@@ -623,7 +785,7 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
             # The first delete landed although it reported no success.
             deleted_hub_device = True
         for managed_device_id, _managed_key, _managed_hash, _brand in matches:
-            result = await hub.async_delete_device(managed_device_id)
+            result = await hub.async_delete_device(managed_device_id, sync_remotes=True)
             deleted_hub_device = bool(result)
             if deleted_hub_device:
                 break
@@ -693,6 +855,7 @@ def _wifi_events_state_payload(
         "deployed_transport": record_state.get("deployed_transport"),
         "transport_switch_pending": transport_switch_pending,
         "mqtt_available": mqtt_available,
+        "delivery": record_state.get("delivery"),
     }
 
 

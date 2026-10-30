@@ -140,13 +140,13 @@ def test_empty_device_block_on_x1_fits_the_short_record() -> None:
 
 def test_empty_device_block_on_x2_carries_the_emitter_block() -> None:
     ir_block = build_empty_device_block("Projector", "ir", hub_version=HUB_VERSION_X2)
-    assert ir_block["extras"] == {"a": 0, "b": 0, "c": 1}
+    assert ir_block["extras"] == {"a": 0, "b": 0, "c": 7}
     body = build_device_create_payload(
         device_config_from_backup(ir_block, for_create=False), hub_version=HUB_VERSION_X2
     )[3:]
     parsed = parse_device_record(body, hub_version=HUB_VERSION_X2, entity_kind="device")
     assert parsed.extras_present is True
-    assert (parsed.extra_a, parsed.extra_b, parsed.extra_c) == (0, 0, 1)
+    assert (parsed.extra_a, parsed.extra_b, parsed.extra_c) == (0, 0, 7)
 
     wifi_block = build_empty_device_block("Bridge", "wifi_hue", hub_version=HUB_VERSION_X2)
     assert wifi_block["extras"] == {"a": 0, "b": 0, "c": 0}
@@ -249,6 +249,25 @@ def test_create_device_builds_empty_payload_and_syncs(monkeypatch) -> None:
     # otherwise, bench_332), its idle behavior read into the cache (journey
     # bench W-7), then the remotes hear of it.
     assert calls == [("settle", "devices", [0x2A]), ("idle", 0x2A), "resync"]
+
+
+def test_create_device_carries_a_picked_icon_and_color(monkeypatch) -> None:
+    proxy = _make_proxy(HUB_VERSION_X2)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    _stub_tail(monkeypatch, proxy)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        proxy,
+        "restore_device",
+        lambda payload, **kw: captured.update(payload=payload) or {"status": "success", "device_id": 0x2A},
+    )
+
+    assert proxy.create_device("Lamp", device_class="ir", icon=29, color_id=10) is not None
+    assert (captured["payload"]["device"]["icon"], captured["payload"]["device"]["color_id"]) == (29, 10)
+    # Out of the X2's set: refused before anything is written.
+    captured.clear()
+    assert proxy.create_device("Lamp", device_class="ir", icon=46) is None
+    assert captured == {}
 
 
 def test_create_device_payload_passes_restore_validation(monkeypatch) -> None:
@@ -367,6 +386,34 @@ def test_restore_style_create_with_zero_commands(monkeypatch, device_class: str)
     # The proxy learned the new device and its class right away.
     assert proxy.state.devices[0x23]["device_class"] == device_class
     assert proxy.state.commands[0x23] == {}
+
+
+def test_restore_device_pages_a_power_macro_past_one_frame(monkeypatch) -> None:
+    """Issue #315: a 19-row macro no longer stops a device restore; it goes
+    out as two family-0x12 pages in the post phase."""
+
+    proxy = _make_proxy(HUB_VERSION_X2)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda: None)
+    sequence_calls: list[list[Any]] = []
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _fake_sequence(sequence_calls))
+
+    payload = build_empty_device_payload("Fan", "ir", hub_version=HUB_VERSION_X2)
+    payload["macros"] = [
+        {
+            "button_id": 0xC6,
+            "name": "POWER_ON",
+            "steps": [{"command_id": 0xFF, "delay": 2} for _ in range(19)],
+        }
+    ]
+    result = proxy.restore_device(payload)
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["restored_macros"] == 1
+    macro_steps = [step for step in sequence_calls[1] if step.family == 0x12]
+    assert [step.payload[0:3] for step in macro_steps] == [b"\x01\x00\x01", b"\x01\x00\x02"]
+    assert macro_steps[0].payload[3:9] == bytes([0x01, 0x00, 0x02, 0x23, 0xC6, 19])
 
 
 @pytest.mark.parametrize(

@@ -3019,7 +3019,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.8";
+var CARD_VERSION = "0.2.9";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -5205,11 +5205,18 @@ function currentActivityIdFromRemote(remoteState) {
   if (activityId != null) return Number(activityId);
   return null;
 }
+function appearanceOf(source) {
+  return {
+    ...Number.isInteger(source?.icon) ? { icon: Number(source.icon) } : {},
+    ...Number.isInteger(source?.color_id) ? { color_id: Number(source.color_id) } : {}
+  };
+}
 function normalizeActivities(source) {
   return (Array.isArray(source) ? source : []).map((activity) => ({
     id: Number(activity?.id),
     name: String(activity?.name ?? ""),
-    state: String(activity?.state ?? "")
+    state: String(activity?.state ?? ""),
+    ...appearanceOf(activity)
   })).filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
 function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache) {
@@ -5225,7 +5232,8 @@ function devicesFromRemote(remoteState) {
   return (Array.isArray(list) ? list : []).map((device) => ({
     id: Number(device?.id),
     name: String(device?.name ?? ""),
-    device_class: device?.device_class != null ? String(device.device_class) : void 0
+    device_class: device?.device_class != null ? String(device.device_class) : void 0,
+    ...appearanceOf(device)
   })).filter((device) => Number.isFinite(device.id) && device.name);
 }
 function deviceNameForId(devices, deviceId) {
@@ -8744,7 +8752,7 @@ function renderAssistModal(params) {
           </label>
           <a
             class="sb-modal__link"
-            href=${`https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`}
+            href="https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/automation_triggers.md"
             target="_blank"
             rel="noopener noreferrer"
           >

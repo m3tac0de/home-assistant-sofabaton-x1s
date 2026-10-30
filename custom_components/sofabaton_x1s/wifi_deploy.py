@@ -8,8 +8,11 @@ X1 quick-access check that closes a sync.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Iterable
 
@@ -22,6 +25,8 @@ from .const import (
     signal_devices,
     signal_command_sync,
 )
+from . import hub_mqtt_link
+from .lib.wifi_device import WIFI_PROBE_COMMAND_ID
 from .lib.wifi_inplace_plan import (
     REFERENCED_RECORD_STEP_KINDS,
     baseline_snapshot_from_bundle,
@@ -38,6 +43,7 @@ from .lib.wifi_inplace_plan import (
     wifi_membership_order_steps,
 )
 from .lib.protocol_const import ButtonName
+from .lib.remote_sync_frames import entities_touched_by
 from .command_config import (
     COMMAND_BRAND_PREFIX,
     LEGACY_COMMAND_BRAND_PREFIX,
@@ -47,9 +53,12 @@ from .command_config import (
     count_configured_command_slots,
     is_wifi_events_device_key,
     normalize_power_command_id,
+    normalize_deployed_transport,
     normalize_wifi_transport,
+    record_hash_listen_port,
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
+    WIFI_TRANSPORT_LEGACY_WEBHOOK,
 )
 
 # Same logger name as hub.py: log lines keep their source name.
@@ -61,6 +70,8 @@ _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.
 # id offset always equals the record's slot count (long = short + N,
 # live-validated at N=6/10/50 — docs/internal/wifi-events-plan.md §11).
 _WIFI_COMMAND_SLOT_COUNT = 10
+# How long the deploy's test press may take to reach Home Assistant.
+WIFI_PROBE_TIMEOUT_S = 10.0
 
 
 # Why a Wifi Commands sync stopped: one code the control panel localizes for
@@ -85,8 +96,17 @@ WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {
     ),
     "writes_refused": "The hub refused some changes. Sync again to repair the Wifi Device.",
     "inplace_failed": "The hub refused a change. Sync again.",
+    "mqtt_not_connected": "Home Assistant's MQTT integration is not connected to a broker.",
+    "hub_mqtt_not_connected": "The hub is not connected to an MQTT broker.",
+    "redeploy_needed": "This Wifi Device must be synced again before it can be tested.",
+    "remote_syncing": "The hub is updating its remote. Wait until the remote is done, then sync again.",
     "sync_failed": "The sync stopped. Sync again.",
 }
+
+
+def _refused_during_remote_sync(proxy: object, started: float) -> bool:
+    check = getattr(proxy, "refused_during_remote_sync", None)
+    return bool(check(started)) if callable(check) else False
 
 
 class WifiSyncError(HomeAssistantError):
@@ -153,6 +173,8 @@ class _DeployRun:
     # managed device is deployed with now, when it differs from
     # selected_transport. None for every other deploy.
     transport_switch_from: str | None = None
+    # What the deploy's test press found (see async_probe_wifi_delivery).
+    delivery: dict[str, Any] | None = None
     # Replace path: the live activity reads taken before the new device
     # joined (old device present), the activities that referenced the old
     # device, the references the move carried over that already are the
@@ -365,7 +387,9 @@ class WifiDeployMixin:
         path. A wish for MQTT on a hub where it is unavailable is kept in
         the store and ignored here, so the record keeps working over HTTP.
         Fresh deploys honour the desired transport under the same
-        availability rule; everything else is HTTP.
+        availability rule; everything else is HTTP. A device the 0.7.2 test
+        releases deployed as X2 "Direct" (a webhook, since removed) is
+        always a switch: it is replaced over the desired transport.
         """
 
         requested = normalize_wifi_transport(command_payload.get("requested_transport"))
@@ -376,13 +400,127 @@ class WifiDeployMixin:
         if already_deployed:
             # Absent ⇒ HTTP: every record that predates the MQTT work
             # deployed over HTTP.
-            deployed = normalize_wifi_transport(command_payload.get("deployed_transport"))
+            deployed = normalize_deployed_transport(command_payload.get("deployed_transport"))
+            if deployed == WIFI_TRANSPORT_LEGACY_WEBHOOK:
+                return requested if mqtt_ok else WIFI_TRANSPORT_HTTP
             if requested != deployed and mqtt_ok:
                 return requested
             return deployed
         if not mqtt_ok:
             return WIFI_TRANSPORT_HTTP
         return requested
+
+    async def _async_wifi_delivery_target(self, transport: str, *, request_port: int) -> str:
+        """What the hub calls for a transport, safe to show: the listener's
+        address and port, or Home Assistant's MQTT broker."""
+
+        if transport == WIFI_TRANSPORT_MQTT:
+            broker = hub_mqtt_link.ha_mqtt_broker(self.hass)
+            return f"{broker['host']}:{broker['port']}" if broker and broker["host"] else ""
+        address = await self.hass.async_add_executor_job(self.local_address_in_use)
+        return f"http://{address}:{int(request_port)}"
+
+    async def async_probe_wifi_delivery(
+        self,
+        *,
+        device_key: str,
+        hub_device_id: int,
+        transport: str,
+        target: str = "",
+        timeout: float = WIFI_PROBE_TIMEOUT_S,
+    ) -> dict[str, Any]:
+        """Press slot 1 of a deployed Wifi Device and wait for it to arrive.
+
+        The press runs over our own hub connection; the ingress it arrives
+        at (listener, MQTT subscription) hands it to the waiting
+        test instead of running the slot's Action. The result is stored on
+        the device: a failed test lights a warning until a test passes or a
+        real press arrives. Never raises for a press that did not arrive:
+        that is a network problem the result describes, not a failed deploy.
+        """
+
+        dev_id = int(hub_device_id)
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        probes = self.__dict__.setdefault("_wifi_probes", {})
+        probes[dev_id] = future
+        started = loop.time()
+        arrival: dict[str, Any] | None = None
+        sent = False
+        try:
+            sent = bool(
+                await self.hass.async_add_executor_job(
+                    self._proxy.send_command, dev_id, WIFI_PROBE_COMMAND_ID
+                )
+            )
+            if sent:
+                try:
+                    arrival = await asyncio.wait_for(future, timeout)
+                except asyncio.TimeoutError:
+                    arrival = None
+        finally:
+            if probes.get(dev_id) is future:
+                probes.pop(dev_id, None)
+            if not future.done():
+                future.cancel()
+        status = "delivered" if arrival is not None else ("not_delivered" if sent else "not_sent")
+        delivery: dict[str, Any] = {
+            "status": status,
+            "transport": transport,
+            "target": target,
+            "hub_ip": str(self.host or ""),
+            "source_ip": str((arrival or {}).get("source_ip") or ""),
+            "latency_s": round(loop.time() - started, 2) if arrival is not None else None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "via": "test",
+        }
+        self._log.info(
+            "[%s] delivery test of Wifi Device %s (%s): %s",
+            self.entry_id, device_key, transport, status,
+        )
+        store = await async_get_command_config_store(self.hass)
+        try:
+            await store.async_set_delivery(self.entry_id, device_key, delivery)
+        except KeyError:
+            pass
+        async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
+        return delivery
+
+    async def async_test_wifi_delivery(self, device_key: str) -> dict[str, Any]:
+        """ "Test again": the deploy's test press on its own, for a
+        deployed Wifi Device (the Wifi Events device included)."""
+
+        if self._command_sync_lock.locked():
+            raise WifiSyncError("sync_in_progress", "sync_in_progress")
+        async with self._command_sync_lock:
+            store = await async_get_command_config_store(self.hass)
+            payload = await store.async_get_hub_config(self.entry_id, device_key=device_key)
+            dev_id = payload.get("deployed_device_id")
+            if not isinstance(dev_id, int):
+                raise KeyError(device_key)
+            if normalize_deployed_transport(payload.get("deployed_transport")) == WIFI_TRANSPORT_LEGACY_WEBHOOK:
+                # Its records call a webhook that is gone: nothing can arrive
+                # until the Sync that replaces it.
+                raise WifiSyncError("redeploy_needed", "The Wifi Device needs a Sync before a test")
+            transport = normalize_wifi_transport(payload.get("deployed_transport"))
+            if transport == WIFI_TRANSPORT_MQTT:
+                await self.async_update_wifi_mqtt_ingress()
+            target = await self._async_wifi_delivery_target(
+                transport,
+                request_port=int(payload.get("deployed_request_port") or 0)
+                or self._listener_port(),
+            )
+            return await self.async_probe_wifi_delivery(
+                device_key=str(payload.get("device_key") or device_key),
+                hub_device_id=dev_id,
+                transport=transport,
+                target=target,
+            )
+
+    def _listener_port(self) -> int:
+        from .runtime import _resolve_roku_listen_port  # local import: runtime imports hub
+
+        return _resolve_roku_listen_port(self.hass, self.entry_id)
 
     async def async_delete_wifi_event_records(
         self,
@@ -534,6 +672,17 @@ class WifiDeployMixin:
             steps.append(step)
         return replace(plan, steps=tuple(steps))
 
+    def _raise_if_remote_syncing(self, started: float) -> None:
+        """A write the hub refused while it was updating its remote (a
+        STATUS_ACK 0x04 soon after this engine's last remote-sync trigger)
+        stops the sync with the code that says so: wait, then sync again."""
+
+        if _refused_during_remote_sync(self._proxy, started):
+            raise WifiSyncError(
+                "remote_syncing",
+                "The hub refused a write while it was still updating its remote",
+            )
+
     async def _async_try_inplace_command_sync(
         self,
         *,
@@ -547,6 +696,7 @@ class WifiDeployMixin:
         request_port: int,
         store: Any,
         slot_count: int = _WIFI_COMMAND_SLOT_COUNT,
+        selected_transport: str | None = None,
     ) -> dict[str, Any] | None:
         """Attempt an in-place re-sync of the matched managed Wifi Device.
 
@@ -559,18 +709,17 @@ class WifiDeployMixin:
         docs/internal/wifi-inplace-deploy-plan.md).
         """
         dev_id = int(managed_device_id)
+        deployed_transport = normalize_wifi_transport(command_payload.get("deployed_transport"))
+        if selected_transport is None:
+            selected_transport = deployed_transport
 
-        # Gate 1: the callback port is baked into the deployed records; only
-        # the replace path can change it. None = pre-upgrade deploy with no
-        # recorded port — one replace-path sync backfills it. MQTT records
-        # carry no port at all, so the gate does
-        # not apply to them.
-        deployed_over_mqtt = (
-            normalize_wifi_transport(command_payload.get("deployed_transport"))
-            == WIFI_TRANSPORT_MQTT
-        )
+        # Gate 1: the callback port is baked into the deployed listener
+        # records; only the replace path can change it. None = pre-upgrade
+        # deploy with no recorded port — one replace-path sync backfills it.
+        # MQTT records carry no port at all, so the gate does not apply to
+        # them.
         deployed_request_port = command_payload.get("deployed_request_port")
-        if not deployed_over_mqtt and deployed_request_port != request_port:
+        if selected_transport == WIFI_TRANSPORT_HTTP and deployed_request_port != request_port:
             _LOGGER.info(
                 "[%s] in-place sync declined: request_port %s != deployed %s",
                 self.entry_id, request_port, deployed_request_port,
@@ -758,7 +907,10 @@ class WifiDeployMixin:
                 plan = replace(plan, steps=(*retarget, *plan.steps))
         if any(step.kind == "command_add" for step in plan.steps):
             plan = await self._async_fill_wifi_command_adds(
-                plan, dev_id=dev_id, live_ids=set(baseline.slots), slot_count=slot_count
+                plan,
+                dev_id=dev_id,
+                live_ids=set(baseline.slots),
+                slot_count=slot_count,
             )
 
         total_steps = len(plan.steps) + 2
@@ -797,6 +949,7 @@ class WifiDeployMixin:
 
                 loop.call_soon_threadsafe(_inner)
 
+            plan_started = time.monotonic()
             result = await self.hass.async_add_executor_job(
                 partial(self._proxy.run_wifi_inplace_plan, plan, progress_callback=_progress)
             )
@@ -817,7 +970,11 @@ class WifiDeployMixin:
                         self.entry_id,
                         exc_info=True,
                     )
+                self._raise_if_remote_syncing(plan_started)
                 raise WifiSyncError("inplace_failed", f"In-place sync failed: {message}")
+            item_synced = set(result.get("item_synced") or ())
+        else:
+            item_synced = set()
 
         # X1: heal order tables that leave a live favorite or macro out
         # (see _async_repair_x1_quick_access), before the re-warm reads them.
@@ -836,6 +993,29 @@ class WifiDeployMixin:
                 self._log.debug(
                     "[%s] post-inplace cache persist failed", self.entry_id, exc_info=True
                 )
+
+        if store is not None:
+            await store.async_save_deployed_wifi_commands(
+                self.entry_id,
+                normalized_device_key,
+                list(commands[:slot_count]),
+                deployed_device_id=dev_id,
+                commands_hash=commands_hash,
+                request_port=request_port if selected_transport == WIFI_TRANSPORT_HTTP else None,
+            )
+
+        # The test press runs before the remote sync: the hub runs Wifi
+        # commands itself, and no write may land mid-sync.
+        delivery = await self._async_deploy_delivery_test(
+            device_key=normalized_device_key,
+            hub_device_id=dev_id,
+            transport=selected_transport,
+            request_port=request_port,
+            current_step=total_steps - 1,
+            total_steps=total_steps,
+        )
+
+        if plan.steps or repaired_order:
             self._set_command_sync_progress(
                 device_key=normalized_device_key,
                 current_step=total_steps - 1,
@@ -845,17 +1025,11 @@ class WifiDeployMixin:
                 step_name=None,
                 message="Resyncing physical remote",
             )
-            await self.async_resync_remote()
-
-        if store is not None:
-            await store.async_save_deployed_wifi_commands(
-                self.entry_id,
-                normalized_device_key,
-                list(commands[:slot_count]),
-                deployed_device_id=dev_id,
-                commands_hash=commands_hash,
-                request_port=None if deployed_over_mqtt else request_port,
-            )
+            # A per-item sync of each entity the plan changed for the remotes
+            # (seconds, bench_333); renames reach them alone, and a favorite
+            # or keymap step or an X1 order repair synced its activity itself.
+            touched = [e for e in entities_touched_by(plan.steps, dev_id) if e not in item_synced]
+            await self.async_sync_remotes_after_write(touched=touched)
 
         self._set_command_sync_progress(
             device_key=normalized_device_key,
@@ -868,6 +1042,7 @@ class WifiDeployMixin:
             else "Wifi Device already up to date",
             wifi_device_id=dev_id,
             commands_hash=commands_hash,
+            delivery=delivery,
         )
         _LOGGER.info(
             "[%s] in-place sync applied %d step(s) to device %d (activities %s)",
@@ -880,7 +1055,50 @@ class WifiDeployMixin:
             "activities": touched_acts,
             "inplace": True,
             "steps": len(plan.steps),
+            "delivery": delivery,
         }
+
+    async def _async_deploy_delivery_test(
+        self,
+        *,
+        device_key: str,
+        hub_device_id: int,
+        transport: str,
+        request_port: int,
+        current_step: int,
+        total_steps: int,
+    ) -> dict[str, Any] | None:
+        """The deploy's test press (every deploy, every transport). Its
+        result is reported, never raised: a press that does not arrive is a
+        network problem, and the records are on the hub either way."""
+
+        self._set_command_sync_progress(
+            device_key=device_key,
+            current_step=current_step,
+            total_steps=total_steps,
+            phase="testing_delivery",
+            step_kind=None,
+            step_name=None,
+            message="Testing that button presses reach Home Assistant",
+        )
+        try:
+            if transport == WIFI_TRANSPORT_MQTT:
+                await self.async_update_wifi_mqtt_ingress()
+            target = await self._async_wifi_delivery_target(transport, request_port=request_port)
+            return await self.async_probe_wifi_delivery(
+                device_key=device_key,
+                hub_device_id=hub_device_id,
+                transport=transport,
+                target=target,
+            )
+        except Exception:  # noqa: BLE001 - the test never fails a deploy
+            self._log.warning(
+                "[%s] delivery test of Wifi Device %s could not run",
+                self.entry_id,
+                device_key,
+                exc_info=True,
+            )
+            return None
 
     async def async_sync_command_config(
         self,
@@ -890,6 +1108,8 @@ class WifiDeployMixin:
         device_key: str = DEFAULT_WIFI_DEVICE_KEY,
         device_name: str = "Home Assistant",
     ) -> dict[str, Any]:
+        """Deploy one Wifi Device's config to the hub and test delivery."""
+
         if self._command_sync_lock.locked():
             raise WifiSyncError("sync_in_progress", "sync_in_progress")
 
@@ -916,33 +1136,17 @@ class WifiDeployMixin:
             deployed_device_id = command_payload.get("deployed_device_id")
             selected_transport = self._select_wifi_command_transport(command_payload)
             # A transport switch: the record is deployed over the other
-            # transport. The store's commands_hash was computed with the
-            # deployed transport's listener-port rule (MQTT hashes with
-            # port 0), so it is recomputed for the target transport here;
-            # the brand and the deployed hash written below then match what
-            # the store computes once deployed_transport has moved
-            # (wifi-events-transport-plan §4, §5).
+            # transport (wifi-events-transport-plan §4).
             transport_switch_from: str | None = None
             already_deployed = isinstance(deployed_device_id, int) or bool(
                 deployed_commands_hash.strip()
             )
             if already_deployed:
-                deployed_transport_now = normalize_wifi_transport(
+                deployed_transport_now = normalize_deployed_transport(
                     command_payload.get("deployed_transport")
                 )
                 if deployed_transport_now != selected_transport:
                     transport_switch_from = deployed_transport_now
-                    commands_hash = compute_commands_hash(
-                        commands,
-                        device_name=device_name,
-                        roku_listen_port=(
-                            0 if selected_transport == WIFI_TRANSPORT_MQTT else int(request_port)
-                        ),
-                        power_on_command_id=command_payload.get("power_on_command_id"),
-                        power_off_command_id=command_payload.get("power_off_command_id"),
-                        slot_count=slot_count,
-                        single_record=is_wifi_events_device_key(normalized_device_key),
-                    )
                     self._log.info(
                         "[%s] Wifi Device %s switches delivery from %s to %s",
                         self.entry_id,
@@ -950,6 +1154,24 @@ class WifiDeployMixin:
                         deployed_transport_now,
                         selected_transport,
                     )
+            # The store's commands_hash follows the record's stored transport
+            # (deployed, else requested); this deploy may write another one
+            # (a switch, an HTTP deploy that falls back from an unavailable
+            # MQTT wish), whose listener-port rule then decides (MQTT hashes
+            # with port 0). The brand and the deployed hash written below
+            # match what the store computes once deployed_transport has moved
+            # (wifi-events-transport-plan §4, §5).
+            target_hash_port = 0 if selected_transport == WIFI_TRANSPORT_MQTT else int(request_port)
+            if target_hash_port != record_hash_listen_port(command_payload, request_port):
+                commands_hash = compute_commands_hash(
+                    commands,
+                    device_name=device_name,
+                    roku_listen_port=target_hash_port,
+                    power_on_command_id=command_payload.get("power_on_command_id"),
+                    power_off_command_id=command_payload.get("power_off_command_id"),
+                    slot_count=slot_count,
+                    single_record=is_wifi_events_device_key(normalized_device_key),
+                )
             brand_name = f"{COMMAND_BRAND_PREFIX}-{normalized_device_key}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
             store = await async_get_command_config_store(self.hass)
@@ -967,6 +1189,8 @@ class WifiDeployMixin:
                 transport_switch=(
                     selected_transport if transport_switch_from is not None else None
                 ),
+                # The test press's result, set when the deploy ends.
+                delivery=None,
             )
             run = _DeployRun(
                 commands=commands,
@@ -1014,10 +1238,10 @@ class WifiDeployMixin:
                         request_port=request_port,
                         store=store,
                         slot_count=slot_count,
+                        selected_transport=selected_transport,
                     )
                     if inplace_result is not None:
                         return inplace_result
-
                 await self._deploy_replace_create_and_verify(run)
                 await self._deploy_attach(run)
                 return await self._deploy_epilogue(run)
@@ -1062,7 +1286,14 @@ class WifiDeployMixin:
         )
         if (
             configured_slots > 0
-            and selected_transport != WIFI_TRANSPORT_MQTT
+            and selected_transport == WIFI_TRANSPORT_MQTT
+            and normalize_wifi_transport(command_payload.get("deployed_transport"))
+            != WIFI_TRANSPORT_MQTT
+        ):
+            await self._async_mqtt_precheck(normalized_device_key)
+        if (
+            configured_slots > 0
+            and selected_transport == WIFI_TRANSPORT_HTTP
             and not self.roku_server_enabled
         ):
             await self.async_set_roku_server_enabled(True)
@@ -1196,6 +1427,28 @@ class WifiDeployMixin:
         run.referenced_activity_ids = referenced_activity_ids
         run.managed = managed
 
+
+    async def _async_mqtt_precheck(self, device_key: str) -> None:
+        """Both ends of the broker link, before an MQTT deploy writes a
+        device that could not work: Home Assistant's MQTT integration
+        connected, and the hub's own broker link (when the hub answers;
+        an unknown answer deploys and lets the test press tell)."""
+
+        self._set_command_sync_progress(
+            device_key=device_key,
+            phase="checking_broker",
+            message="Checking the MQTT broker link",
+        )
+        if hub_mqtt_link.ha_mqtt_connected(self.hass) is False:
+            raise WifiSyncError(
+                "mqtt_not_connected",
+                "Home Assistant's MQTT integration is not connected to a broker",
+            )
+        if await hub_mqtt_link.async_hub_mqtt_status(self.hass, self) is False:
+            raise WifiSyncError(
+                "hub_mqtt_not_connected",
+                "The hub reports no MQTT broker connection; set its broker first",
+            )
 
     async def _deploy_teardown_zero_slots(self, run: _DeployRun) -> dict[str, Any]:
         """No configured slots: delete the managed device and forget the deploy."""
@@ -1336,6 +1589,7 @@ class WifiDeployMixin:
             phase="creating_device",
             message="Creating Wifi Device on Hub",
         )
+        create_started = time.monotonic()
         if selected_transport == WIFI_TRANSPORT_MQTT:
             created = await self.async_create_wifi_mqtt_device(
                 device_name=device_name,
@@ -1363,6 +1617,7 @@ class WifiDeployMixin:
                 send_remote_sync=False,
             )
         if not created or not created.get("device_id"):
+            self._raise_if_remote_syncing(create_started)
             raise WifiSyncError("create_failed", "Failed creating Wifi Device")
 
         wifi_device_id = int(created["device_id"])
@@ -2150,17 +2405,10 @@ class WifiDeployMixin:
                 exc_info=True,
             )
 
-        self._set_command_sync_progress(
-            device_key=normalized_device_key,
-            current_step=8,
-            phase="resyncing_remote",
-            message="Resyncing physical remote",
-        )
-        await self.async_resync_remote()
-
         # Persist the command list that was just synced to the hub.
         # Callbacks will resolve command indices against this frozen snapshot,
-        # independently of any subsequent staged-config edits.
+        # independently of any subsequent staged-config edits. Saved before
+        # the test press: every ingress resolves the press against it.
         if store is not None:
             await store.async_save_deployed_wifi_commands(
                 self.entry_id,
@@ -2169,22 +2417,51 @@ class WifiDeployMixin:
                 deployed_device_id=wifi_device_id,
                 # An empty hash reads as "sync needed" in the card.
                 commands_hash="" if failed_writes else commands_hash,
-                # No port is baked into MQTT records; storing None keeps
+                # Only listener records carry a port; storing None keeps
                 # listener-port changes from ever forcing a replace.
                 request_port=(
-                    None if selected_transport == WIFI_TRANSPORT_MQTT else request_port
+                    request_port if selected_transport == WIFI_TRANSPORT_HTTP else None
                 ),
                 deployed_transport=selected_transport,
             )
 
         await self.async_update_wifi_mqtt_ingress()
+        # The test press runs before the remote sync: the hub runs Wifi
+        # commands itself, and no write may land mid-sync.
+        if not failed_writes:
+            run.delivery = await self._async_deploy_delivery_test(
+                device_key=normalized_device_key,
+                hub_device_id=wifi_device_id,
+                transport=selected_transport,
+                request_port=request_port,
+                current_step=8,
+                total_steps=total_steps,
+            )
+
+        self._set_command_sync_progress(
+            device_key=normalized_device_key,
+            current_step=8,
+            phase="resyncing_remote",
+            message="Resyncing physical remote",
+        )
+        # A create: the order-only sync then per-item syncs of the device and
+        # the activities it is used in on the X2, the full sync on the X1/X1S.
+        referencing = await self.hass.async_add_executor_job(
+            self._proxy.activities_referencing_device, wifi_device_id
+        )
+        await self.async_sync_remotes_after_write(
+            created=(wifi_device_id,),
+            touched=tuple(dict.fromkeys((*run.referencing_act_ids, *referencing))),
+        )
+
         # The HTTP listener follows the store the same way the zero-slot
-        # teardown already does: a deploy that moved the last HTTP record to
-        # MQTT leaves nothing for it to serve (bench_311: it stayed on after
-        # the Wifi Events device switched). The reverse is handled by the
-        # preflight, which enables it before an HTTP deploy.
+        # teardown already does: a deploy that moved the last listener
+        # record elsewhere leaves nothing for it to serve (bench_311: it
+        # stayed on after the Wifi Events device switched). The reverse is
+        # handled by the preflight, which enables it before a listener
+        # deploy.
         if (
-            selected_transport == WIFI_TRANSPORT_MQTT
+            selected_transport != WIFI_TRANSPORT_HTTP
             and self.roku_server_enabled
             and not await self._async_wifi_listener_needed()
         ):
@@ -2213,12 +2490,14 @@ class WifiDeployMixin:
             message="Sync complete",
             wifi_device_id=wifi_device_id,
             commands_hash=commands_hash,
+            delivery=run.delivery,
         )
         return {
             "status": "success",
             "wifi_device_id": wifi_device_id,
             "commands_hash": commands_hash,
             "activities": sorted(activity_ids),
+            "delivery": run.delivery,
         }
 
 

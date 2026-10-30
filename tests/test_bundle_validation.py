@@ -233,6 +233,58 @@ def test_delay_rows_must_be_attached_but_zero_wait_may_be_absent_or_retained():
         validate_hub_bundle_for_model(consecutive, hub_version="X1S")
 
 
+# The iPad app fills a delay row's unused bytes with 0 where the Android app
+# and the integration write 0xFF; only the last byte carries the wait (#319).
+IPAD_DELAY_ROW = {
+    "device_id": 0,
+    "command_id": 0xFF,
+    "button_code": 0xFFFFFFFF0000,
+    "duration": 0,
+    "delay": 8,
+}
+
+
+@pytest.mark.parametrize("model", ["X1", "X1S", "X2"])
+def test_delay_rows_with_zero_filler_are_accepted(model):
+    bundle = valid_bundle(model)
+    bundle["activities"][0]["macros"][0]["steps"].append(dict(IPAD_DELAY_ROW))
+    bundle["activities"][0]["macros"][1]["steps"].insert(1, dict(IPAD_DELAY_ROW))
+    bundle["devices"][0]["macros"] = [
+        {
+            "button_id": 198,
+            "name": "POWER_ON",
+            "steps": [
+                {"command_id": 10, "duration": 0, "delay": 0},
+                {"device_id": 0, "command_id": 0xFF, "duration": 0, "delay": 8},
+            ],
+        },
+    ]
+
+    # Hub truth passing through the baseline, and the same rows in macros
+    # the edit changed.
+    validate_hub_bundle_for_model(bundle, hub_version=model, grandfather_baseline=bundle)
+    validate_hub_bundle_for_model(bundle, hub_version=model)
+
+
+def test_zero_device_byte_is_filler_only_on_delay_rows():
+    command_step = valid_bundle("X2")
+    command_step["activities"][0]["macros"][0]["steps"][0]["device_id"] = 0
+    with pytest.raises(ValueError, match="device_id: must be between 1 and 255"):
+        validate_hub_bundle_for_model(command_step, hub_version="X2")
+
+    other_filler = valid_bundle("X2")
+    other_filler["activities"][0]["macros"][0]["steps"].append(
+        {**IPAD_DELAY_ROW, "device_id": 1},
+    )
+    with pytest.raises(ValueError, match="must use device_id 255 or 0"):
+        validate_hub_bundle_for_model(other_filler, hub_version="X2")
+
+    orphan = valid_bundle("X2")
+    orphan["activities"][0]["macros"][0]["steps"].insert(0, dict(IPAD_DELAY_ROW))
+    with pytest.raises(ValueError, match="immediately follow"):
+        validate_hub_bundle_for_model(orphan, hub_version="X2")
+
+
 def test_activity_range_linked_ids_are_grandfathered():
     # Exports from <= 0.6.4 leaked activity-range ids into
     # referenced_source_device_ids (a macro-target binding carries the

@@ -1048,15 +1048,17 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    "hub_version, trigger",
+    "hub_version, trigger, item_syncs",
     [
-        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
-        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+        # The X1S lists a new device only after the full sync.
+        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b""), []),
+        # The X2: the order-only sync lists it, its per-item sync brings its commands.
+        (HUB_VERSION_X2, (0x0464, b"\x00\x00\xff\x00"), [(0x0165, b"\x07")]),
     ],
 )
-def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_version, trigger) -> None:
-    """The virtual-IP create also runs on the X2, where a bare 0x0064
-    starts no sync; its save tail is the frame resync_remote sends."""
+def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_version, trigger, item_syncs) -> None:
+    """The virtual-IP create also runs on the X2; its save tail is the
+    create's remote sync for the model (sync_remotes_after_write)."""
 
     proxy = X1Proxy(
         "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=hub_version
@@ -1076,6 +1078,7 @@ def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_ve
     assert result == {"device_id": 0x07, "status": "success"}
     remote_syncs = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x64]
     assert remote_syncs == [trigger]
+    assert [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x65] == item_syncs
 
     # send_remote_sync=False (the deploy pipeline owns the trigger) sends none.
     sent.clear()
@@ -1733,7 +1736,7 @@ def test_restore_device_rejects_bluetooth_rows_without_backup_metadata(monkeypat
 
 @pytest.mark.parametrize(
     "device_class",
-    ["wifi_sonos", "wifi_roku", "wifi_ip", "wifi_hue", "bluetooth"],
+    ["wifi_sonos", "wifi_roku", "wifi_ip", "wifi_hue", "bluetooth", "rf_433mhz", "rf_315mhz"],
 )
 def test_restore_device_accepts_empty_non_ir_rows(monkeypatch, device_class: str) -> None:
     """An empty command list passes validation for every non-IR class: an
@@ -1824,7 +1827,7 @@ def test_restore_device_still_refuses_rows_without_metadata(
 
 @pytest.mark.parametrize(
     "device_class",
-    ["bluetooth", "rf_433mhz", "wifi_roku", "wifi_ip", "wifi_sonos"],
+    ["bluetooth", "rf_433mhz", "rf_315mhz", "wifi_roku", "wifi_ip", "wifi_sonos"],
 )
 def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str) -> None:
     proxy = X1Proxy(
@@ -1900,6 +1903,64 @@ def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str)
     assert command_steps[0].payload[7] == 0x05
     assert 0x08 in [step.family for step in sequence_calls[1]]
     assert 0x64 not in [step.family for step in sequence_calls[1]]
+
+
+def test_restore_device_classifies_a_block_by_its_class_code(monkeypatch) -> None:
+    """A device block with no class name (RF devices were exported that way
+    before their codes were mapped) is classified by its code: it replays
+    as RF, each command keeping its own record type byte."""
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    sequence_calls: list[list[Any]] = []
+
+    def _run_create_sequence(_proxy, steps):
+        sequence_calls.append(list(steps))
+        return types.SimpleNamespace(success=True, assigned_device_id=0x23, failed_step=None, failed_index=None)
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    def _row(command_id: int, library_type: int) -> dict[str, Any]:
+        return {
+            "command_id": command_id,
+            "name": f"Command {command_id}",
+            "restore_data": {
+                "transport": "hub_code_record",
+                "library_type": library_type,
+                "command_code": "00 00 00 00 00 00",
+                "data_hex": "aa bb cc dd",
+            },
+        }
+
+    backup = {
+        "kind": "device_backup",
+        "schema_version": 4,
+        "device": {"device_id": 9, "name": "Screen", "device_class": None, "device_class_code": 0x1D},
+        # An RF device can hold learned IR commands next to its RF ones.
+        "commands": [_row(1, 0x1D), _row(2, 0x0D)],
+        "inputs": [],
+        "button_bindings": [],
+        "macros": [],
+        "favorite_slots": [],
+    }
+
+    result = proxy.restore_device(backup)
+
+    assert result["status"] == "success"
+    assert result["restored_commands"] == 2
+    first_pages = [step for step in sequence_calls[1] if step.family == 0x0E and step.payload[1:3] == b"\x00\x01"]
+    assert [step.payload[8] for step in first_pages] == [0x1D, 0x0D]
+    assert proxy.state.devices[0x23]["device_class"] == "rf_433mhz"
+
+    backup["commands"] = [{"command_id": 1, "name": "Down"}]
+    with pytest.raises(ValueError, match="rf_433mhz devices needs command restore metadata"):
+        proxy.restore_device(backup)
 
 
 def test_restore_device_allocates_free_destination_device_id(monkeypatch) -> None:

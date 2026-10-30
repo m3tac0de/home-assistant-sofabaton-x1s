@@ -53,6 +53,34 @@ def test_a_wide_hub_never_gets_the_x1_activity_row() -> None:
     assert proxy._build_activity_confirm_payload(0x65, name="Movies") is None
 
 
+# An X1 activity row as the hub lists it ("Jellyfin", icon byte 0x02 at
+# payload[8]); the cached record body is payload[3:].
+_X1_ROW = bytes.fromhex(
+    "01 00 01 0a 00 01 00 65 02 02" + " 00" * 22
+    + " 4a 65 6c 6c 79 66 69 6e 20" + " 00" * 51 + " fc 00 fc 00" + " 00" * 27
+)
+
+
+def test_an_x1_rename_keeps_the_activity_icon() -> None:
+    proxy = _proxy(HUB_VERSION_X1)
+    proxy.state.activities[0x65] = {"name": "Jellyfin", "active": False, "raw_body": _X1_ROW[3:]}
+
+    row = proxy._build_activity_confirm_payload(0x65, name="Movies")
+
+    assert row is not None
+    assert row[8] == 0x02  # the hub's icon, not the TV
+    assert row[32:38] == b"Movies"
+
+
+def test_an_x1_rename_without_a_cached_record_writes_the_tv_icon() -> None:
+    proxy = _proxy(HUB_VERSION_X1)
+    proxy.state.activities[0x65] = {"name": "Jellyfin", "active": False}
+
+    row = proxy._build_activity_confirm_payload(0x65, name="Movies")
+
+    assert row is not None and row[8] == 0x01
+
+
 def test_favoriting_a_high_command_id_is_refused_clearly_on_a_wide_hub() -> None:
     proxy = _proxy(HUB_VERSION_X1S)
 

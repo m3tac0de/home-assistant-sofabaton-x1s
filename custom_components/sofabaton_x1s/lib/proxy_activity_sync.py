@@ -31,7 +31,7 @@ from .device_create import (
     CreateStep,
     FAMILY_DEVICE_UPDATE,
     FAMILY_INPUTS,
-    build_macro_step,
+    build_macro_steps,
     build_macro_step_record,
     run_create_sequence,
     synthesize_command_code,
@@ -41,20 +41,40 @@ from .device_create import (
     sort_pairs_from_hex,
 )
 from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
-from .devices import build_device_create_payload, parse_device_record
+from .devices import build_device_create_payload, parse_device_record, patch_record_appearance
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
+    DEVICE_CLASS_CODE_WIFI_IP,
     DEVICE_CLASS_CODE_WIFI_MQTT,
+    DEVICE_CLASS_WIFI_IP,
     DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_BY_CODE,
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_MACRO_LABELS,
+    WIFI_URL_RECORD_CODE,
     ButtonName,
     normalize_device_class,
 )
+
+
+def _wifi_ip_record_type(restore_data: Mapping[str, Any]) -> int | None:
+    """The code type a structured ``wifi_ip`` command demands, else ``None``.
+
+    A ``wifi_ip`` device holds request-text records (0x1C) and, on the X2,
+    URL records (0x21); an edit may switch kinds, so the decoded fields
+    decide, never the cached type of the record being replaced.
+    """
+
+    decoded = restore_data.get("decoded")
+    if not isinstance(decoded, Mapping) or normalize_device_class(decoded.get("class")) != DEVICE_CLASS_WIFI_IP:
+        return None
+    fields = decoded.get("fields")
+    if not isinstance(fields, Mapping):
+        return None
+    return WIFI_URL_RECORD_CODE if "url" in fields else DEVICE_CLASS_CODE_WIFI_IP
 
 if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
@@ -465,7 +485,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
 
         # Build the plan first so a scope/plan error fails before any write.
         try:
-            plan = build_activity_sync_plan(baseline, edited, activity_id)
+            plan = build_activity_sync_plan(
+                baseline, edited, activity_id, hub_version=self.hub_version
+            )
         except ValueError as err:
             return {"status": "failed", "failed_at": "plan", "message": str(err)}
 
@@ -484,6 +506,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             return {"status": "failed", "failed_at": "stale_check",
                     "preflight": verdict, "message": message}
 
+        self._begin_item_sync_tracking()
         failure, counters = self._walk_sync_plan(
             plan, progress=_progress, context={"current_activity_id": activity_id}
         )
@@ -524,6 +547,11 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             ),
             log_tag="ACTIVITY_SYNC",
         )
+        # Last, after the reads: the per-item sync of what the plan changed
+        # for the remotes (renames reach them alone; favorites and keymaps
+        # synced themselves). A sync that fails never fails the edit.
+        if not self._sync_remotes_after_edit(activity_id, plan, "activity-sync"):
+            self._log.warning("[ACTIVITY_SYNC] remote sync after act=0x%02X was not sent", activity_id & 0xFF)
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_activity_id=activity_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
@@ -658,6 +686,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             plan = build_device_sync_plan(
                 baseline, edited, device_id,
                 allow_command_removal=allow_command_removal,
+                hub_version=self.hub_version,
             )
         except ValueError as err:
             return {"status": "failed", "failed_at": "plan", "message": str(err)}
@@ -674,6 +703,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             return {"status": "failed", "failed_at": "stale_check",
                     "preflight": verdict, "message": message}
 
+        self._begin_item_sync_tracking()
         failure, counters = self._walk_sync_plan(
             plan, progress=_progress, context={"current_device_id": device_id}
         )
@@ -694,6 +724,10 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             lambda: _device_block_signature(self.backup_device(device_id, include_blobs=False)),
             log_tag="DEVICE_SYNC",
         )
+        # Last, after the reads: the device's per-item sync (a renamed or
+        # re-coded command reaches no remote without one, bench_333).
+        if not self._sync_remotes_after_edit(device_id, plan, "device-sync"):
+            self._log.warning("[DEVICE_SYNC] remote sync after dev=0x%02X was not sent", device_id & 0xFF)
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_device_id=device_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
@@ -1081,8 +1115,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
     def _device_sync_macro_write(self, device_id: int, button_id: int, payload: Mapping[str, Any]) -> bool:
         """Device-scope macro write (incl. the 198/199 power sequences).
 
-        Devices use the single-page OP_3212 write that device create and
-        restore already exercise, not the paged activity macro save. Step
+        Devices use the OP_3212 create-step write that device create and
+        restore already exercise (paged past 18 rows on X1S/X2, 21 on
+        X1), not the activity macro save. Step
         rows default the device byte to the device itself and the 48-bit
         button code to the synthetic command code; a ``command_id == 0xFF``
         row is the firmware's delay sentinel (all head bytes 0xFF).
@@ -1111,7 +1146,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                 duration=int(step.get("duration", 0)) & 0xFF,
                 delay=int(step.get("delay", 0xFF)) & 0xFF,
             )
-        step = build_macro_step(
+        steps = build_macro_steps(
             hub_version=self.hub_version,
             device_id=dev_lo,
             key_id=button_id & 0xFF,
@@ -1119,7 +1154,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             step_records=bytes(step_records),
         )
         self.reset_ack_queues()
-        result = run_create_sequence(self, [step])
+        result = run_create_sequence(self, steps)
         return bool(result.success)
 
     def _activity_sync_macro_label_slot(self, activity_id: int, button_id: int) -> bytes | None:
@@ -1368,9 +1403,12 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
           cloned from a template command on the same device by the dialog.
         * raw hex — ``data_hex`` verbatim.
 
-        Non-IR records need a ``library_type``: it is cloned from the cached
-        record metadata of an existing command on the same device (a device's
-        commands share one codec) — refuse rather than guess when absent. No
+        Non-IR records need a ``library_type``: a structured ``wifi_ip``
+        command names its own (request text or URL record), a row whose
+        ``restore_data`` carries one uses it (an RF code), every other one
+        is cloned from the cached record metadata of an existing command on
+        the same device (a device's commands share one codec) — refuse
+        rather than guess when absent. No
         canonical ``button_code`` is asserted; the hub assigns one on accept,
         and the sync epilogue's command-list refresh picks it up.
         """
@@ -1454,11 +1492,16 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             )
             return False
 
-        library_type: int | None = None
-        for meta in (self.state.command_metadata.get(dev_lo) or {}).values():
-            if isinstance(meta, Mapping) and meta.get("library_type") is not None:
-                library_type = int(meta.get("library_type", 0)) & 0xFF
-                break
+        library_type: int | None = _wifi_ip_record_type(restore_data)
+        if library_type is None and restore_data.get("library_type") is not None:
+            # The row names its own record type (an RF code added to a
+            # device whose first command may be IR).
+            library_type = int(restore_data["library_type"]) & 0xFF
+        if library_type is None:
+            for meta in (self.state.command_metadata.get(dev_lo) or {}).values():
+                if isinstance(meta, Mapping) and meta.get("library_type") is not None:
+                    library_type = int(meta.get("library_type", 0)) & 0xFF
+                    break
         if library_type is None:
             # First command on a device created empty (Hub tab "Add
             # device"): nothing to clone, so use the device's class code.
@@ -1525,7 +1568,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         preserved ``button_code`` / ``library_type`` come from
         ``state.command_metadata`` (populated by the command-list fetch the
         sync pre-flight runs), so bindings / macros that reference the
-        command's 48-bit code keep resolving.
+        command's 48-bit code keep resolving. A structured ``wifi_ip`` edit
+        names its own type instead (it may switch between request text and
+        a URL record).
         """
         device_id = int(payload.get("device_id") or 0)
         command_id = int(payload.get("command_id") or 0)
@@ -1580,7 +1625,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             )
             return False
         button_code = int(meta.get("button_code", 0)) & 0xFFFFFFFFFFFF
-        library_type = int(meta.get("library_type", 0x0D)) & 0xFF
+        library_type = _wifi_ip_record_type(restore_data)
+        if library_type is None:
+            library_type = int(meta.get("library_type", 0x0D)) & 0xFF
         command_name = str(payload.get("command_name") or "").strip()
         if not command_name:
             labels, _ = self.get_commands_for_entity(dev_lo, fetch_if_missing=False)
@@ -1609,17 +1656,25 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         name field sits at a fixed offset (ASCII on X1, UTF-16BE on X1S/X2)
         and every other byte of the row is preserved, so only the label
         changes. Mirrors the confirm send the device-delete flow already uses.
+        An ``icon`` / ``color_id`` in the payload rides the same row write.
         """
         activity_id = int(payload.get("activity_id") or 0)
         act_lo = activity_id & 0xFF
         new_name = str(payload.get("name") or "")
+        icon = payload.get("icon")
+        color_id = payload.get("color_id")
         if not act_lo:
             return False
 
         # Both builders take the new name directly (the X1 one re-encodes
         # the row, the X1S/X2 one patches the raw row); the cache follows
         # only once the hub has taken it.
-        confirm_payload = self._build_activity_confirm_payload(act_lo, name=new_name)
+        confirm_payload = self._build_activity_confirm_payload(
+            act_lo,
+            name=new_name,
+            icon=int(icon) if icon is not None else None,
+            color_id=int(color_id) if color_id is not None else None,
+        )
         if confirm_payload is None:
             self._log.warning("[ACTIVITY_SYNC] activity_rename: no row for act=0x%02X", act_lo)
             return False
@@ -1640,13 +1695,27 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         activity = self.state.entities("activity").get(act_lo)
         if isinstance(activity, dict):
             activity["name"] = new_name
+            raw_body = activity.get("raw_body")
+            if (icon is not None or color_id is not None) and isinstance(raw_body, (bytes, bytearray)):
+                activity["raw_body"] = patch_record_appearance(
+                    bytes(raw_body),
+                    hub_version=self.hub_version,
+                    icon=int(icon) if icon is not None else None,
+                    color_id=int(color_id) if color_id is not None else None,
+                )
+        rows = getattr(self, "_activity_row_payloads", None)
+        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2) and isinstance(rows, dict) and act_lo in rows:
+            # The next write of this row (a later rename, a confirm after a
+            # device delete) patches the cached copy; keep it what the hub
+            # now holds, or that write would put the old name and icon back.
+            rows[act_lo] = confirm_payload
         return True
 
     def _sync_step_device_rename(self, payload: Mapping[str, Any]) -> bool:
         """Rename a device in place via a device-record update write.
 
         The device's cached record body is decoded to a full DeviceConfig,
-        the name is swapped, and the canonical write body is rebuilt and
+        the name (and any brand, icon or color in the payload) is swapped, and the canonical write body is rebuilt and
         committed with FAMILY_DEVICE_UPDATE for the device's own id — the same
         record write the create flow ends with. Rebuilding through the
         parser/builder pair (rather than patching bytes) keeps every other
@@ -1672,6 +1741,17 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                 # Managed Wifi Devices carry their command-config identity in
                 # the brand slot; a rename refreshes it in the same rewrite.
                 renamed = replace(renamed, brand=str(new_brand))
+            if payload.get("icon") is not None:
+                renamed = replace(renamed, icon=int(payload["icon"]) & 0xFF)
+            if payload.get("color_id") is not None:
+                renamed = replace(renamed, color_id=int(payload["color_id"]) & 0xFF)
+            emitters = payload.get("emitters")
+            if emitters is not None:
+                # The X2's IR emitter routing (tail[19..21]); the planner
+                # validated it, the RF-button byte included.
+                extra_a, extra_b, extra_c = (int(value) & 0xFF for value in emitters)
+                renamed = replace(renamed, extra_a=extra_a, extra_b=extra_b, extra_c=extra_c,
+                                  extras_present=True)
             body = build_device_create_payload(renamed, hub_version=self.hub_version)
         except (ValueError, TypeError):
             self._log.exception("[DEVICE_SYNC] device_rename: could not rebuild record dev=0x%02X", dev_lo)
@@ -1996,13 +2076,16 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         activity-driven power/input callback delivery. This is the LAST step of
         an in-place re-sync (the commit marker: an interrupted deploy leaves the
         brand hash unwritten, so the device reads out-of-step and re-offers
-        sync).
+        sync). A payload ``icon`` / ``color_id`` replaces the head's own;
+        without one the head keeps what the hub has.
         """
         dev_lo = int(payload.get("device_id") or 0) & 0xFF
         if not dev_lo:
             return False
         new_name = str(payload.get("name") or "")
         new_brand = payload.get("brand")
+        new_icon = payload.get("icon")
+        new_color = payload.get("color_id")
 
         device = self.state.entities("device").get(dev_lo)
         raw = device.get("raw_body") if isinstance(device, dict) else None
@@ -2042,6 +2125,8 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                     name=new_name,
                     brand=str(new_brand) if new_brand is not None else config.brand,
                     device_id=dev_lo,
+                    icon=int(new_icon) if new_icon is not None else config.icon,
+                    color_id=int(new_color) if new_color is not None else config.color_id,
                 ),
                 hub_version=self.hub_version,
             )
@@ -2073,6 +2158,8 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             ip_device=ip_device,
             brand_name=str(new_brand) if new_brand is not None else "m3tac0de",
             wifi_power_state=wifi_power_state,
+            icon=int(new_icon) if new_icon is not None else (config.icon if config is not None else 1),
+            color_id=int(new_color) if new_color is not None else (config.color_id if config is not None else 0),
         )
         self.reset_ack_queues()
         step = self._send_step(
@@ -2114,6 +2201,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         # The same per-run state sync_activity resets: the live favorite map
         # a delete resolves against must not come from an earlier run.
         self._activity_sync_reset_run_state()
+        self._begin_item_sync_tracking()
 
         # Every in-place step is an idempotent rewrite, so a transient ack
         # miss (observed live: a macro-save ack lost under background hub
@@ -2126,7 +2214,10 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         total = len(steps)
         _progress(phase="completed", message="Synced to hub.", step_kind=None, step_name=None,
                   completed_steps=total, total_steps=total)
-        return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
+        # The entities a favorite or keymap step already synced per item:
+        # the caller's closing sync leaves them out.
+        return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters,
+                "item_synced": sorted(self._entity_sync_marks)}
 
     # ── Low-level primitives ────────────────────────────────────────────
 
@@ -2146,13 +2237,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not step.ok:
             return False
-        commit = self._send_step(
-            step_name=f"activity-sync-delete-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        return commit.ok
+        return self._send_entity_sync_step(act_lo, f"activity-sync-delete-commit-65[act=0x{act_lo:02X}]")
 
     def _macro_key_sequence_from_steps(self, steps: Any) -> list[MacroKeyEntry]:
         """Convert bundle macro steps to the wire key-entry sequence.

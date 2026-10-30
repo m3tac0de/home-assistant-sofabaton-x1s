@@ -116,6 +116,8 @@ def _nonzero_device_config() -> DeviceConfig:
         extra_a=0xAA,
         extra_b=0xBB,
         extra_c=0xCC,
+        color_id=0x0B,
+        bt_mode=0x02,
     )
 
 
@@ -159,6 +161,10 @@ def test_device_record_non_zero_round_trip(hub_version: str) -> None:
     assert parsed.extra_a == config.extra_a
     assert parsed.extra_b == config.extra_b
     assert parsed.extra_c == config.extra_c
+    # Color id and Bluetooth mode live on the wide X1S/X2 tail only.
+    wide = hub_version != HUB_VERSION_X1
+    assert parsed.color_id == (config.color_id if wide else 0)
+    assert parsed.bt_mode == (config.bt_mode if wide else 0)
 
     # Body checksum is self-consistent (sum of body[:-1] mod 256).
     assert body[-1] == sum(body[:-1]) & 0xFF
@@ -190,6 +196,23 @@ def test_device_record_tail_slot_fields_land_at_canonical_offsets() -> None:
     # Extras block: marker + 3 vendor bytes at offsets 18..21.
     assert tail[18] == 0xFC
     assert tail[19:22] == bytes([0xAA, 0xBB, 0xCC])
+    # The X1 record has no color / Bluetooth-mode bytes.
+    assert tail[22:] == bytes(8)
+
+
+@pytest.mark.parametrize("hub_version", [HUB_VERSION_X1S, HUB_VERSION_X2])
+def test_device_record_wide_tail_carries_color_and_bt_mode(hub_version: str) -> None:
+    """Pin color id at tail 22 and Bluetooth mode at tail 23 of the 60-byte
+    X1S/X2 tail (record body offsets 171 and 172)."""
+
+    config = _nonzero_device_config()
+    body = build_device_create_payload(config, hub_version=hub_version)[3:]
+    tail = body[149 : 149 + 60]
+
+    assert tail[19:22] == bytes([0xAA, 0xBB, 0xCC])
+    assert tail[22] == 0x0B  # color_id
+    assert tail[23] == 0x02  # bt_mode
+    assert tail[24:] == bytes(36)
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ live here because they are pure consumers of the inputs burst.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Collection, Sequence
 
 from .ack import AckOutcome, InputsBurstResult
 from .inputs import inputs_burst_complete, parse_inputs_burst
@@ -229,12 +229,24 @@ class AckWaitersMixin(_ProxyHost if TYPE_CHECKING else object):
         16-bit opcode value ahead of time.
         """
 
+        return self.wait_for_ack_families_low((family_low,), timeout=timeout, not_before=not_before)
+
+    def wait_for_ack_families_low(
+        self,
+        families_low: Collection[int],
+        *,
+        timeout: float = 5.0,
+        not_before: float | None = None,
+    ) -> tuple[int, bytes] | None:
+        """As :meth:`wait_for_ack_family_low`, for the next queued frame of
+        any of ``families_low`` (a reply that is either rows or a status)."""
+
         deadline = time.monotonic() + timeout
-        target_family = family_low & 0xFF
+        targets = {family & 0xFF for family in families_low}
         while True:
             with self._ack_queue_lock:
                 for ack_opcode, ack_payload, ack_ts in self._ack_queue:
-                    if (ack_opcode & 0xFF) != target_family:
+                    if (ack_opcode & 0xFF) not in targets:
                         continue
                     if not_before is not None and ack_ts < not_before:
                         continue
@@ -247,8 +259,8 @@ class AckWaitersMixin(_ProxyHost if TYPE_CHECKING else object):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self._log.warning(
-                    "[ACK] timeout waiting family(low)=0x%02X",
-                    target_family,
+                    "[ACK] timeout waiting family(low)=%s",
+                    ", ".join(f"0x{family:02X}" for family in sorted(targets)),
                 )
                 return None
             self._ack_event.wait(min(remaining, 0.2))

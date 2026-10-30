@@ -335,6 +335,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                     "proxy_client_connected": False,
                     "persistent_cache_enabled": False,
                     "mqtt_available": False,
+                    "broker_setup_available": False,
                     "settings": {
                         "proxy_enabled": True,
                         "hex_logging_enabled": False,

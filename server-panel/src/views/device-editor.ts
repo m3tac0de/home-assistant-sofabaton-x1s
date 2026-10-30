@@ -42,6 +42,7 @@ import {
   mdiPower,
   mdiPowerPlugOutline,
   mdiStarOutline,
+  mdiSync,
   mdiTrashCanOutline,
   mdiWifiCog,
 } from "@mdi/js";
@@ -57,6 +58,8 @@ import {
   bundleDeleteImpact,
   bundleDeviceBrand,
   bundleDeviceClass,
+  bundleDeviceExtras,
+  setBundleDeviceExtras,
   buttonName,
   deviceButtonBindingItems,
   deviceCommandItems,
@@ -83,6 +86,8 @@ import {
   isManagedWifiBrand,
   isWifiEventsBrand,
   renameBundleDevice,
+  bundleEntityAppearance,
+  setBundleEntityAppearance,
   renameBundleDeviceCommand,
   unboundButtonsForDevice,
   updateBundleDeviceIdleBehavior,
@@ -92,11 +97,18 @@ import {
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { problemText, type ApiResponse, type JobView, type PayloadView, type SnapshotEntity } from "../panel-api";
 import { OPERATION_PROGRESS_CSS } from "../components/operation-progress";
+import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead, readIrEmitters, renderPanelIrPill } from "../components/ir-emitter-pill";
+import { anchoredListPosition } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { extrasOfRouting, routingFromExtras, sameRouting, type EmitterRouting } from "../../../remote-card/src/ir-emitters/emitter-routing";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import { SbPanelEntityEditor, icon, type EntityFrameStrings } from "./entity-editor-base";
 import { byteToSeconds, secondsToByte, type EntityElement } from "./entity-editor-state";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../remote-card/src/entity-icons/appearance-editor";
+import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
 import { PointerReorder } from "../pointer-reorder";
 import type { PayloadSaveDetail } from "./payload-dialog";
 import {
@@ -120,8 +132,8 @@ const S = {
   crumbDevices: B.crumbDevices,
   renameDevice: B.renameDevice,
   deleteDeviceAria: B.deleteDeviceAria,
-  syncToHub: A.syncToHub,
-  syncUpToDate: A.syncUpToDate,
+  syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
+  syncUpToDate: TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate,
   detailPower: B.detailPower,
   detailNetwork: B.detailNetwork,
   detailCommands: B.detailCommands,
@@ -286,12 +298,19 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     _payloadDialog: { state: true },
     _payloadFetching: { state: true },
     _addCommandPreparing: { state: true },
+    _irOpen: { state: true },
+    _irChecking: { state: true },
+    _irError: { state: true },
   };
 
   static styles = [
     PANEL_BASE_CSS,
+    entityTileStyles,
+    entityPickerStyles,
+    appearanceEditorStyles,
     EDITOR_CSS,
     OPERATION_PROGRESS_CSS,
+    irEmitterStyles,
   ];
 
   deviceId: number | null = null;
@@ -303,7 +322,15 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   private _activeSection: SectionId = "power";
   private _powerMenuOpen = false;
-  private _rename: { target: RenameTarget; draft: string; error: string } | null = null;
+  /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
+  private _rename: {
+    target: RenameTarget;
+    draft: string;
+    error: string;
+    appearance?: AppearanceDraft;
+    pickerOpen?: boolean;
+    tab?: AppearanceTab;
+  } | null = null;
   private _deleteConfirm: { target: BackupDeleteTarget; label: string } | null = null;
   private _binding: BindingDialogState | null = null;
   /** The open power sequence (the card's macro editor sub-view, device scope). */
@@ -321,6 +348,12 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   private _payloadDialog: { mode: "add" | "edit"; commandId: number; snapshot: BackupCommandDecodedBlock | null; rawHex: string; fetchedHex: string } | null = null;
   private _payloadFetching: number | null = null;
   private _addCommandPreparing = false;
+  /** The IR pill's dropdown: open, where, the read running, a refused read's line. */
+  private _irOpen = false;
+  private _irStyle = "";
+  private _irChecking = false;
+  private _irError: string | null = null;
+  private _irEscapeBound = false;
   private _sectionScrollPending = false;
   private _sectionScrollTimer: number | null = null;
   private readonly _onWindowScroll = () => {
@@ -358,6 +391,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     window.removeEventListener("touchstart", this._onManualScroll);
     window.removeEventListener("keydown", this._onScrollKey);
     this._clearSectionScroll();
+    this._irOpen = false;
+    this._irListen(false);
   }
 
   protected _resetView(): void {
@@ -373,6 +408,10 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     this._payloadFetching = null;
     this._addCommandPreparing = false;
     this._activeSection = "power";
+    this._irOpen = false;
+    this._irListen(false);
+    this._irChecking = false;
+    this._irError = null;
   }
 
   // -- the working copy --------------------------------------------------------------------------
@@ -509,9 +548,10 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const { name, restoreData } = event.detail;
     if (this._offline && dialog.mode === "edit") {
       // The card's backup-mode save: merge the changed fields into the file's block, or replace its raw bytes.
-      const { changedFields, rawHex } = event.detail;
+      const { changedFields, rawHex, replaceFields } = event.detail;
       if (changedFields && commandDecodedBlock(this._working, deviceId, dialog.commandId)) {
-        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields));
+        const trailerHex = String((restoreData.decoded as { trailer_hex?: unknown } | undefined)?.trailer_hex ?? "");
+        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields, replaceFields ? { trailerHex } : undefined));
       } else if (rawHex) {
         this._commit(updateCommandRawPayload(this._working, deviceId, dialog.commandId, rawHex));
       } else {
@@ -541,6 +581,104 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     }
     this._commit(addBundleDeviceCommand(this._working, deviceId, newId, name, data));
     this._payloadDialog = null;
+  }
+
+  // -- the IR pill (X2 IR devices; IR emitter pill plan, IR5) ------------------------------------
+
+  /** The device's routing bytes on the hub (the snapshot) and in the working copy; null when either has none. */
+  private _irRouting(): { baseline: EmitterRouting; routing: EmitterRouting; baselineExtras: { a: number; b: number; c: number } } | null {
+    const deviceId = this.deviceId;
+    if (this._offline || deviceId == null || !this._working || !this._baseline) return null;
+    if (!String(this._hubVersion ?? "").toUpperCase().includes("X2")) return null;
+    if (this._deviceClass.toLowerCase() !== "ir") return null;
+    const baselineExtras = bundleDeviceExtras(this._baseline, deviceId);
+    const baseline = routingFromExtras(baselineExtras);
+    const routing = routingFromExtras(bundleDeviceExtras(this._working, deviceId));
+    return baselineExtras && baseline && routing ? { baseline, routing, baselineExtras } : null;
+  }
+
+  /** A pick (or Undo) lands in the working copy; back at the hub's bytes it takes the hub's own block, so the element compares equal. */
+  private _setIrRouting(next: EmitterRouting): void {
+    const ir = this._irRouting();
+    const deviceId = this.deviceId;
+    if (!ir || deviceId == null || !this._working) return;
+    const extras = sameRouting(next, ir.baseline) ? ir.baselineExtras : extrasOfRouting(next);
+    this._commit(setBundleDeviceExtras(this._working, deviceId, extras));
+  }
+
+  private _toggleIr = (trigger: HTMLElement): void => {
+    if (this._irOpen) {
+      this._closeIr();
+      return;
+    }
+    this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true });
+    this._irOpen = true;
+    this._irListen(true);
+    void this._readIr();
+  };
+
+  private _closeIr = (): void => {
+    this._irListen(false);
+    if (!this._irOpen) return;
+    this._irOpen = false;
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>("#editor-ir-pill")?.focus());
+  };
+
+  /** Escape closes the dropdown wherever focus went; the document is only touched while it is open. */
+  private _irListen(on: boolean): void {
+    if (on === this._irEscapeBound) return;
+    this._irEscapeBound = on;
+    if (on) document.addEventListener("keydown", this._onIrKeydown);
+    else document.removeEventListener("keydown", this._onIrKeydown);
+  }
+
+  private _onIrKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || !this._irOpen) return;
+    event.preventDefault();
+    this._closeIr();
+  };
+
+  /** Read the paired remotes and repeaters from the hub (the dropdown opened, or Check again); the rows show the last read meanwhile. */
+  private async _readIr(): Promise<void> {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._irChecking) return;
+    if (this._hubBusy) {
+      this._irError = TOOLS_CARD_STRINGS.irEmitters.readBusy;
+      return;
+    }
+    const key = `${hubId}:${this.deviceId ?? ""}`;
+    this._irChecking = true;
+    this._irError = null;
+    try {
+      const { error } = await readIrEmitters(this.api, hubId);
+      if (key === `${this._hub?.hub_id ?? ""}:${this.deviceId ?? ""}`) this._irError = error;
+    } finally {
+      this._irChecking = false;
+    }
+  }
+
+  private _renderIrPill(): TemplateResult | typeof nothing {
+    const ir = this._irRouting();
+    const hubId = this._hub?.hub_id ?? "";
+    if (!ir || !hubId) return nothing;
+    if (!irEmitterLastReadKnown(hubId)) {
+      queueMicrotask(() => { void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate()); });
+    }
+    return renderPanelIrPill({
+      idPrefix: "editor",
+      routing: ir.routing,
+      baseline: ir.baseline,
+      paired: irEmitterLastRead(hubId)?.paired ?? null,
+      open: this._irOpen,
+      menuStyle: this._irStyle,
+      checking: this._irChecking,
+      error: this._irError,
+      onToggle: this._toggleIr,
+      onClose: this._closeIr,
+      onChange: (next) => this._setIrRouting(next),
+      onUndo: () => this._setIrRouting(ir.baseline),
+      onRetry: () => { void this._readIr(); },
+    });
   }
 
   // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
@@ -725,6 +863,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   // -- rename dialog --------------------------------------------------------------------------------------
 
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
   private _openRename(target: RenameTarget): void {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return;
@@ -732,7 +871,21 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     if (target.kind === "device") draft = this._title;
     else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
     else draft = deviceCommandItems(this._working, deviceId).find((c) => c.commandId === target.commandId)?.label ?? "";
-    this._rename = { target, draft, error: "" };
+    this._rename = target.kind === "device"
+      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen: false, tab: "icon" }
+      : { target, draft, error: "" };
+  }
+
+  /** The way into the edit dialog: the device's hub icon with a pencil badge, or a plain pencil without one. */
+  private _renderHeaderEdit(): TemplateResult | typeof nothing {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return nothing;
+    const label = iconHubLine(this._hubVersion) != null ? B.editDevice : S.renameDevice;
+    const appearance = bundleEntityAppearance(this._working, "device", deviceId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    const open = () => this._openRename({ kind: "device" });
+    if (tile) return renderDetailEntityTile(tile, { id: "editor-rename", label, onClick: open });
+    return html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${label} title=${label} @click=${open}>${icon(mdiPencil)}</button>`;
   }
 
   private _closeRename = (): void => {
@@ -770,12 +923,28 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
       this._rename = { ...dialog, error: S.enterName };
       return;
     }
-    if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
+    if (dialog.target.kind === "device") {
+      // Only what the user picked: an untouched draft keeps the record's own
+      // bytes, a never-picked color 0 included.
+      const base = bundleEntityAppearance(this._working, "device", deviceId);
+      const picked = dialog.appearance ?? base;
+      this._commit(setBundleEntityAppearance(renameBundleDevice(this._working, deviceId, next), "device", deviceId, {
+        icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+        colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null,
+      }));
+    }
     else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
     this._rename = null;
   };
 
   // -- delete confirm ---------------------------------------------------------------------------------------
+
+  private _deleteFromRename = (): void => {
+    const deviceId = this.deviceId;
+    if (deviceId == null) return;
+    this._closeRename();
+    this._openDeleteConfirm({ kind: "device", deviceId }, this._title);
+  };
 
   private _openDeleteConfirm(target: BackupDeleteTarget, label: string): void {
     this._deleteConfirm = { target, label };
@@ -1005,6 +1174,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const sections = this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
+    const irPill = this._renderIrPill();
     return html`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view" id="device-editor">
@@ -1012,26 +1182,20 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S.back} @click=${this._requestClose}>${icon(mdiArrowLeft)}</button>
+                ${callback ? nothing : this._renderHeaderEdit()}
                 <div class="detail-title-stack">
-                  <div class="detail-crumbs">
-                    <button class="detail-crumb" type="button" @click=${this._requestClose}>${S.crumbDevices}</button>
-                    <span class="detail-crumb-sep" aria-hidden="true">›</span>
-                  </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
-                </div>
-                ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
-                <div class="detail-title-actions">
-                  ${callback
-                    ? nothing
-                    : html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S.renameDevice} title=${S.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon(mdiPencil)}</button>`}
-                  ${callback
-                    ? nothing
-                    : html`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon(mdiTrashCanOutline)}</button>`}
-                  ${this._offline
-                    ? nothing
-                    : html`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S.syncToHub : S.syncUpToDate}</button>`}
+                  <div class="detail-title-meta">
+                    ${irPill !== nothing
+                      ? irPill
+                      : html`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${S.crumbDevices}</button></div>`}
+                    ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
+                  </div>
                 </div>
               </div>
+              ${this._offline
+                ? nothing
+                : html`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S.syncToHub : S.syncUpToDate} aria-label=${dirty ? S.syncToHub : S.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S.syncToHub : S.syncUpToDate}</span></button></div>`}
             </div>
             ${sections.length > 1
               ? html`<div class="detail-section-nav" role="tablist" aria-label=${S.detailSectionsAria}>
@@ -1204,18 +1368,35 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const dialog = this._rename;
     if (!dialog) return nothing;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S.renameDevice : isIp ? S.editIpAria : S.renameCommand;
+    const appearance = dialog.target.kind === "device" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B.editDevice : dialog.target.kind === "device" ? S.renameDevice : isIp ? S.editIpAria : S.renameCommand;
+    const nameField = html`<label class="decoded-field">
+              <span class="decoded-field-label">${isIp ? S.ipAddress : S.name}</span>
+              <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyRename(); } }} />
+            </label>`;
     return html`
       <div class="modal-backdrop" @click=${this._closeRename}>
         <div class="dialog small" id="rename-dialog" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S.cancel} @click=${this._closeRename}>${icon(mdiClose)}</button></div>
           <div class="dialog-body">
-            <label class="decoded-field">
-              <span class="decoded-field-label">${isIp ? S.ipAddress : S.name}</span>
-              <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyRename(); } }} />
-            </label>
+            ${appearance
+              ? renderAppearanceEditor({
+                  hubVersion: this._hubVersion,
+                  draft: appearance,
+                  open: dialog.pickerOpen ?? false,
+                  tab: dialog.tab ?? "icon",
+                  nameField,
+                  labels: appearanceLabelsFrom(B),
+                  onToggle: () => { if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen }; },
+                  onTab: (tab) => { if (this._rename) this._rename = { ...this._rename, tab }; },
+                  onPick: (draft) => { if (this._rename) this._rename = { ...this._rename, appearance: draft }; },
+                })
+              : nameField}
           </div>
           <div class="dialog-footer">
+            ${dialog.target.kind === "device"
+              ? html`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${this._deleteFromRename}>${S.deleteConfirm}</button>`
+              : nothing}
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" type="button" @click=${this._closeRename}>${S.cancel}</button>

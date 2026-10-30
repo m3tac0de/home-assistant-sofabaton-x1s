@@ -236,6 +236,36 @@ def test_restore_activity_send_remote_sync_false_suppresses_trigger(monkeypatch)
     assert resyncs == []
 
 
+def test_restore_activity_pages_a_power_macro_past_one_frame(monkeypatch) -> None:
+    """Issue #315: a 19-row activity POWER_ON stopped an X2 hub restore at
+    the 18-row single-page cap. It now goes out as two family-0x12 pages."""
+
+    proxy, sequence_calls = _patched_proxy(monkeypatch)
+    monkeypatch.setattr(
+        proxy,
+        "command_to_favorite",
+        lambda *a, **kw: {"status": "success"},
+    )
+    monkeypatch.setattr(proxy, "resync_remote", lambda *a, **kw: True)
+
+    steps = [
+        {"device_id": 11 + (idx % 2), "command_id": idx + 1, "button_code": 0x4E21 + idx}
+        for idx in range(19)
+    ]
+    result = proxy.restore_activity(
+        _activity_backup(macro_steps=steps, favorites=[]),
+        device_id_map={11: 0x21, 12: 0x22},
+    )
+
+    assert result is not None and result["status"] == "success"
+    assert result["restored_macros"] == 1
+    macro_steps = [step for step in sequence_calls[1] if step.family == FAMILY_MACRO]
+    assert [step.payload[0:3] for step in macro_steps] == [b"\x01\x00\x01", b"\x01\x00\x02"]
+    # Body header on page 1: [01][total_pages=2][activity][key][count].
+    assert macro_steps[0].payload[3:9] == bytes([0x01, 0x00, 0x02, 0x55, 0xC6, 19])
+    assert macro_steps[-1].ack_first_byte == 0xC6
+
+
 def test_restore_activity_writes_favorite_slots(monkeypatch) -> None:
     """Each backup favorite triggers a remapped ``command_to_favorite`` call."""
 

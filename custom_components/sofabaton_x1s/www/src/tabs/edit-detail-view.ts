@@ -32,7 +32,7 @@ import {
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
-import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat, WifiEvent } from "../shared/ha-context";
+import type { BackupBundlePayload, IrPayloadConvertResponse, IrPayloadForeignFormat, RfBand, WifiEvent } from "../shared/ha-context";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -65,8 +65,12 @@ import {
   bundleActivityOptions,
   bundleDeviceBrand,
   bundleDeviceClass,
+  bundleDeviceExtras,
+  setBundleDeviceExtras,
   isManagedWifiBrand,
   isWifiEventsBrand,
+  managedWifiDeviceKey,
+  WIFI_EVENTS_DEVICE_KEY,
   bundleDeviceOptions,
   commandDecodedBlock,
   commandRawPayloadHex,
@@ -87,6 +91,8 @@ import {
   renameBundleActivityMacro,
   renameBundleDevice,
   renameBundleDeviceCommand,
+  bundleEntityAppearance,
+  setBundleEntityAppearance,
   unboundButtonsForActivity,
   unboundButtonsForDevice,
   updateBundleDeviceIp,
@@ -97,15 +103,26 @@ import type {
   BackupEditTargetKind,
   BackupQuickAccessKind,
   BackupRenameDialogTarget,
+  DeliveryHost,
   FetchedCommandPayload,
+  IrEmitterHost,
   IrLearnHost,
   MacroTargetMode,
+  PayloadSignal,
   WifiEventsHost,
 } from "./edit-detail/host-types";
+import { DeliveryPillController, deliveryPillStyles } from "../components/delivery-pill";
+import { hubBrokerFormStyles } from "../components/hub-broker-form";
+import { IrEmitterPillController, irEmitterStyles } from "../components/ir-emitter-pill";
+import { extrasOfRouting, routingFromExtras, sameRouting, type EmitterRouting } from "../../../../../remote-card/src/ir-emitters/emitter-routing";
 import { renderKindSegments } from "./edit-detail/kind-segments";
 import { anchoredListPosition, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
-import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
+import { bundleIsX2, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
+import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../../../remote-card/src/entity-icons/appearance-editor";
+import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
 import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
 import { WifiEventTargets } from "./edit-detail/wifi-event-targets";
@@ -113,7 +130,7 @@ import { BindingDialogController } from "./edit-detail/binding-dialog-controller
 import { MacroStepEditorController } from "./edit-detail/macro-step-editor";
 
 // The element's public names, kept here for its importers (R6, CR-F2-14).
-export type { BackupEditTargetKind, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
+export type { BackupEditTargetKind, DeliveryHost, FetchedCommandPayload, IrEmitterHost, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
 export { bundleIsX2, bundleSupportsUnicodeNames, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 
 export class SofabatonEditDetailView extends LitElement {
@@ -125,12 +142,17 @@ export class SofabatonEditDetailView extends LitElement {
     mode: { type: String },
     mqttAvailable: { type: Boolean },
     pendingTransport: { attribute: false },
+    delivery: { attribute: false },
+    irEmitters: { attribute: false },
     wifiEvents: { attribute: false },
     _editDetailActiveSection: { state: true },
     _editRenameDialogOpen: { state: true },
     _editRenameDialogDraft: { state: true },
     _editRenameDialogError: { state: true },
     _editRenameDialogTarget: { state: true },
+    _editAppearance: { state: true },
+    _editAppearanceOpen: { state: true },
+    _editAppearanceTab: { state: true },
     fetchCommandPayload: { attribute: false },
     testCommandPayload: { attribute: false },
     irLearn: { attribute: false },
@@ -156,7 +178,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, editDetailViewStyles];
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, deliveryPillStyles, irEmitterStyles, hubBrokerFormStyles, editDetailViewStyles];
 
   // ── Host-owned props ───────────────────────────────────────────────
   bundle: BackupBundlePayload | null = null;
@@ -192,16 +214,28 @@ export class SofabatonEditDetailView extends LitElement {
   mqttAvailable = false;
   /** The delivery method picked but not yet synced (host-owned). */
   pendingTransport: "mqtt" | "http" | null = null;
+  /** The live host's side of the delivery pill; null in the Backup editor. */
+  delivery: DeliveryHost | null = null;
+  readonly _delivery = new DeliveryPillController(this);
+  /** The live host's side of the IR pill (X2 IR devices); null in the Backup editor. */
+  irEmitters: IrEmitterHost | null = null;
+  readonly _irPill = new IrEmitterPillController(this);
   _editRenameDialogOpen = false;
   _editRenameDialogDraft = "";
   _editRenameDialogError = "";
   _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
+  // The entity's icon / color draft in that dialog (null = untouched), and
+  // whether its picker is open, on which tab.
+  _editAppearance: AppearanceDraft = { icon: null, colorId: null };
+  _editAppearanceOpen = false;
+  _editAppearanceTab: AppearanceTab = "icon";
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
   // to fetch a command's blob on demand and to Test it on the hub. Absent
   // in backup mode (the payload already lives in the bundle there).
   fetchCommandPayload: ((deviceId: number, commandId: number) => Promise<FetchedCommandPayload | null>) | null = null;
-  testCommandPayload: ((hex: string) => Promise<void>) | null = null;
+  // `band` set = an RF code (433 / 315 MHz); null = IR.
+  testCommandPayload: ((hex: string, band?: RfBand | null) => Promise<void>) | null = null;
   // Both hosts (live and backup) provide this: it needs Home Assistant, not a hub.
   convertForeignPayload:
     | ((text: string, format: IrPayloadForeignFormat) => Promise<IrPayloadConvertResponse>)
@@ -310,40 +344,45 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _renderLiveSyncButton() {
-    const S = TOOLS_CARD_STRINGS.activities;
+    const S = TOOLS_CARD_STRINGS.wifiCommands;
     const dirty = this.dirty;
-    const label = dirty ? S.syncToHub : S.syncUpToDate;
+    const label = dirty ? S.actionButtonSyncToHub : S.actionButtonUpToDate;
     const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
-    return html`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
+    return html`<button class=${classes} title=${label} aria-label=${label} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>
+      <ha-icon class="detail-sync-icon" icon=${dirty ? "mdi:sync" : "mdi:check"}></ha-icon><span class="detail-sync-label">${label}</span>
+    </button>`;
   }
 
-  // Rename (pencil) + delete (trash) header buttons — shared by live and
-  // backup mode so both editors expose the identical affordance. In live
-  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
-  // delete executes immediately on the hub through the host (see
-  // _confirmDelete).
-  private _renderDetailRenameDeleteButtons(kind: BackupEditTargetKind) {
-    // A managed Wifi Device keeps its rename affordance (it stays in sync
-    // with the Wifi Commands store) but loses delete — removing it belongs in
-    // the Wifi Commands tab, which also clears its stored configuration.
-    const managed = this._isManagedWifiLiveDevice();
+  // The header's way into the edit dialog, shared by live and backup mode: the
+  // entity's hub icon with a pencil badge, or a plain pencil when the bundle
+  // carries no icon or no hub line (an old backup). In live mode an edit rides
+  // the normal Sync (a bundle mutation → dirty → Sync).
+  private _renderDetailEdit(kind: BackupEditTargetKind) {
+    if (this.entityId == null) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const label = iconHubLine(this.bundle?.hub?.version) != null
+      ? (kind === "activity" ? S.editActivity : S.editDevice)
+      : S.renameKind(kind);
+    const appearance = bundleEntityAppearance(this.bundle, kind, this.entityId);
+    const tile = entityTile(this.bundle?.hub?.version, appearance.icon, appearance.colorId);
+    if (tile) return renderDetailEntityTile(tile, { label, onClick: this._openDetailRenameDialog });
+    return html`<button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${label} title=${label}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
+  }
+
+  // Under the title: the device's pill where it has one (at most one), else
+  // what Back returns to; and "Unsaved" in a backup.
+  private _renderDetailMeta(kind: BackupEditTargetKind) {
+    const delivery = this._renderDeliveryPill(kind);
+    const pill = delivery !== nothing ? delivery : this._renderIrPill(kind);
     return html`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
-        <ha-icon icon="mdi:pencil"></ha-icon>
-      </button>
-      ${managed
-        ? nothing
-        : html`
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${this._openDetailDeleteConfirm}
-              aria-label=${kind === "activity"
-                ? TOOLS_CARD_STRINGS.backup.deleteActivityAria
-                : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
-          `}
+      <div class="detail-title-meta">
+        ${pill !== nothing
+          ? pill
+          : html`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${this._entityKindCrumbLabel(kind)}</button></div>`}
+        ${this._renderDirtyChip()}
+      </div>
     `;
   }
 
@@ -398,19 +437,13 @@ export class SofabatonEditDetailView extends LitElement {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
+                ${this._renderDetailEdit(params.kind)}
                 <div class="detail-title-stack">
-                  ${this._renderDetailCrumbs([
-                    { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose },
-                  ])}
                   <div class="detail-title">${params.title}</div>
-                </div>
-                ${this._renderTransportControl(params.kind)}
-                ${this._renderDirtyChip()}
-                <div class="detail-title-actions">
-                  ${this._renderDetailRenameDeleteButtons(params.kind)}
-                  ${this.mode === "live" ? this._renderLiveSyncButton() : nothing}
+                  ${this._renderDetailMeta(params.kind)}
                 </div>
               </div>
+              ${this.mode === "live" ? html`<div class="detail-title-actions">${this._renderLiveSyncButton()}</div>` : nothing}
             </div>
             ${this._renderEditDetailSectionNav(sectionItems)}
           </div>
@@ -432,6 +465,7 @@ export class SofabatonEditDetailView extends LitElement {
           </div>
         </div>
         ${this._renderEditRenameDialog()}
+        ${this._delivery.renderDialogs()}
         ${this._payload.render()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
@@ -450,40 +484,78 @@ export class SofabatonEditDetailView extends LitElement {
    * the device name (renaming is coordinated with the Wifi Commands store).
    * The offline Backup editor is unaffected (mode !== "live").
    */
-  /** The delivery control of a managed Wifi device (a user Wifi Device or
-   *  the Wifi Events device) in the LIVE editor: a two-option select on the
-   *  class pill, the only place a delivery switch starts
-   *  (docs/internal/wifi-events-transport-plan.md). The pick is a pending
-   *  edit the host owns (`pendingTransport`) and the next Sync applies, so
-   *  other edits (events, bindings) can go in first. Read-only when MQTT
-   *  cannot be offered for this hub. */
-  private _renderTransportControl(kind: BackupEditTargetKind) {
-    if (kind !== "device" || this.entityId == null || this.mode !== "live") return nothing;
+  /** The delivery pill of a managed Wifi device (a user Wifi Device or the
+   *  Wifi Events device) in the LIVE editor, on every hub model: how presses
+   *  reach Home Assistant, Test, and on an X2 the method choice
+   *  (docs/internal/wifi-events-transport-plan.md). A pick is a pending edit
+   *  the host owns (`pendingTransport`) and the next Sync applies, so other
+   *  edits (events, bindings) can go in first. */
+  private _renderDeliveryPill(kind: BackupEditTargetKind) {
+    if (kind !== "device" || this.entityId == null || this.mode !== "live" || !this.delivery) return nothing;
     const brand = bundleDeviceBrand(this.bundle, Number(this.entityId));
     if (!isManagedWifiBrand(brand)) return nothing;
+    const deviceKey = isWifiEventsBrand(brand) ? WIFI_EVENTS_DEVICE_KEY : managedWifiDeviceKey(brand);
+    if (!deviceKey) return nothing;
+    const host = this.delivery;
     const current = bundleDeviceClass(this.bundle, Number(this.entityId)) === "wifi_mqtt" ? "mqtt" : "http";
-    if (!this.mqttAvailable && current !== "mqtt") return nothing;
-    const S = TOOLS_CARD_STRINGS.wifiCommands;
-    if (!this.mqttAvailable) {
-      return html`<span class="transport-pill ${current}" title=${S.transportPillDeployedTitle}>${current === "mqtt" ? "MQTT" : "HTTP"}</span>`;
-    }
-    const shown = this.pendingTransport ?? current;
-    const pending = shown !== current;
-    return html`
-      <select
-        class="transport-pill transport-select ${shown}${pending ? " pending" : ""}"
-        aria-label=${S.transportLabel}
-        title=${pending ? S.transportPillPreviewTitle : S.transportPillDeployedTitle}
-        .value=${shown}
-        @change=${(event: Event) => {
-          const next = String((event.target as HTMLSelectElement).value) === "mqtt" ? "mqtt" : "http";
-          this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport: next }, bubbles: true, composed: true }));
-        }}
-      >
-        <option value="http" ?selected=${shown === "http"}>HTTP</option>
-        <option value="mqtt" ?selected=${shown === "mqtt"}>MQTT</option>
-      </select>
-    `;
+    const pending = this.pendingTransport && this.pendingTransport !== current ? this.pendingTransport : null;
+    return this._delivery.renderPill({
+      hass: host.hass(),
+      hubEntryId: host.hubEntryId(),
+      deviceKey,
+      onHub: true,
+      transport: current,
+      pending,
+      canSwitch: host.canSwitch(),
+      mqttAvailable: this.mqttAvailable,
+      locked: host.locked(),
+      onPick: (transport) => {
+        this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport }, bubbles: true, composed: true }));
+      },
+      onBusy: (busy, label) => host.setBusy(busy, label),
+    });
+  }
+
+  /** The IR pill of an X2 IR device in the LIVE editor: which emitters send
+   *  its IR (docs/internal/ir-emitter-pill-plan.md). Device class `ir` only
+   *  for now; a Bluetooth or RF device holding IR commands could follow the
+   *  same routing (open point). A pick writes `device.extras` into the edited
+   *  bundle, a pending edit the Sync applies like a rename; Undo restores the
+   *  hub's bytes. Never in the offline Backup editor. */
+  _renderIrPill(kind: BackupEditTargetKind) {
+    if (kind !== "device" || this.entityId == null || this.mode !== "live" || !this.irEmitters) return nothing;
+    if (!bundleIsX2(this.bundle)) return nothing;
+    const deviceId = Number(this.entityId);
+    if (bundleDeviceClass(this.bundle, deviceId) !== "ir") return nothing;
+    const host = this.irEmitters;
+    const baselineExtras = host.baselineExtras(deviceId);
+    const baseline = routingFromExtras(baselineExtras);
+    const routing = routingFromExtras(bundleDeviceExtras(this.bundle, deviceId));
+    if (!baselineExtras || !baseline || !routing) return nothing;
+    return this._irPill.renderPill({
+      hass: host.hass(),
+      hubEntryId: host.hubEntryId(),
+      deviceId,
+      routing,
+      baseline,
+      locked: host.locked(),
+      onChange: (next) => this._setDeviceEmitters(deviceId, next, baseline, baselineExtras),
+      onUndo: () => this._setDeviceEmitters(deviceId, baseline, baseline, baselineExtras),
+      onBusy: (busy, label) => host.setBusy(busy, label),
+    });
+  }
+
+  /** A routing back at the hub's bytes takes the hub's own block again, so
+   *  the bundle compares equal and the pending state clears. */
+  private _setDeviceEmitters(
+    deviceId: number,
+    next: EmitterRouting,
+    baseline: EmitterRouting,
+    baselineExtras: { a: number; b: number; c: number },
+  ) {
+    if (!this.bundle) return;
+    const extras = sameRouting(next, baseline) ? baselineExtras : extrasOfRouting(next);
+    this._commitEditBundleEdit(setBundleDeviceExtras(this.bundle, deviceId, extras));
   }
 
   private _isManagedWifiLiveDevice(): boolean {
@@ -1157,7 +1229,10 @@ export class SofabatonEditDetailView extends LitElement {
 
   _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return nothing;
-    const label = this._editRenameDialogLabel();
+    const appearance = this._editRenameDialogTarget.kind === "detail" && iconHubLine(this.bundle?.hub?.version) != null;
+    const label = appearance && this._editRenameDialogTarget.kind === "detail"
+      ? (this._editRenameDialogTarget.entityKind === "activity" ? TOOLS_CARD_STRINGS.backup.editActivity : TOOLS_CARD_STRINGS.backup.editDevice)
+      : this._editRenameDialogLabel();
     return html`
       <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
@@ -1166,6 +1241,49 @@ export class SofabatonEditDetailView extends LitElement {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
+            ${appearance ? this._renderAppearanceEditor() : this._renderEditRenameField()}
+          </div>
+          <div class="dialog-footer">
+            ${this._renderEditDialogDelete()}
+            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Delete lives in the entity's own edit dialog; it executes immediately on
+  // the hub through the host (see _confirmDelete). A managed Wifi Device has
+  // none: removing it belongs in the Wifi Commands tab, which also clears its
+  // stored configuration.
+  private _renderEditDialogDelete() {
+    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice()) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const label = this._editRenameDialogTarget.entityKind === "activity" ? S.deleteActivityAria : S.deleteDeviceAria;
+    return html`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" aria-label=${label} title=${label} @click=${this._deleteFromEditDialog}>${S.deleteConfirm}</button>`;
+  }
+
+  // Name first, the tile beside it; the picker opens on demand.
+  private _renderAppearanceEditor() {
+    return renderAppearanceEditor({
+      hubVersion: this.bundle?.hub?.version,
+      draft: this._editAppearance,
+      open: this._editAppearanceOpen,
+      tab: this._editAppearanceTab,
+      nameField: this._renderEditRenameField(),
+      labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+      onToggle: () => { this._editAppearanceOpen = !this._editAppearanceOpen; },
+      onTab: (tab) => { this._editAppearanceTab = tab; },
+      onPick: (draft) => { this._editAppearance = draft; },
+    });
+  }
+
+  private _renderEditRenameField() {
+    return html`
             ${useLegacyTextField()
               ? html`
                   <ha-textfield
@@ -1190,16 +1308,6 @@ export class SofabatonEditDetailView extends LitElement {
                     @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyEditRenameDialog(); } }}
                   ></ha-input>
                 `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
-            </div>
-          </div>
-        </div>
-      </div>
     `;
   }
 
@@ -1254,6 +1362,9 @@ export class SofabatonEditDetailView extends LitElement {
     };
     this._editRenameDialogDraft = this._selectedEditTitle();
     this._editRenameDialogError = "";
+    this._editAppearance = bundleEntityAppearance(this.bundle, this.kind, this.entityId);
+    this._editAppearanceOpen = false;
+    this._editAppearanceTab = "icon";
     this._editRenameDialogOpen = true;
   };
 
@@ -1305,9 +1416,14 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   // ── Learn mode hooks (IR9): the controller lives in edit-detail/ir-learn-controller ──
-  /** Learn is a live-hub, IR-only affordance; the host must supply the facade. */
+  /** Learn is a live-hub affordance for IR and RF commands; the host must supply the facade. */
   _learnAvailable(): boolean {
-    return this.mode === "live" && !!this.irLearn && this._payload.liveDeviceIsIr();
+    return this.mode === "live" && !!this.irLearn && this._learnSignal() != null;
+  }
+
+  /** What the open command learns as: IR, or RF on a band. */
+  _learnSignal(): PayloadSignal | null {
+    return this._payload.payloadSignal();
   }
 
   /**
@@ -1345,6 +1461,8 @@ export class SofabatonEditDetailView extends LitElement {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
+    this._editAppearance = { icon: null, colorId: null };
+    this._editAppearanceOpen = false;
   };
 
   // ── Delete (with cascade-aware confirm) ─────────────────────────────
@@ -1355,6 +1473,11 @@ export class SofabatonEditDetailView extends LitElement {
       ? { kind: "activity", activityId: id }
       : { kind: "device", deviceId: id };
     this._confirmDeleteLabel = this._selectedEditTitle();
+  };
+
+  private _deleteFromEditDialog = () => {
+    this._closeEditRenameDialog();
+    this._openDetailDeleteConfirm();
   };
 
   private _openCommandDeleteConfirm(commandId: number, label: string) {
@@ -1949,16 +2072,6 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _applyActivityRename(activityId: number, name: string) {
-    if (!this.bundle) return;
-    this._commitEditBundleEdit(renameBundleActivity(this.bundle, activityId, name));
-  }
-
-  private _applyDeviceRename(deviceId: number, name: string) {
-    if (!this.bundle) return;
-    this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
-  }
-
   _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
     return kind === "activity"
       ? TOOLS_CARD_STRINGS.backup.crumbActivities
@@ -2003,8 +2116,17 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     if (target.kind === "detail") {
-      if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
-      else this._applyDeviceRename(target.entityId, next);
+      const renamed = target.entityKind === "activity"
+        ? renameBundleActivity(this.bundle, target.entityId, next)
+        : renameBundleDevice(this.bundle, target.entityId, next);
+      // Only what the user picked; an untouched draft (null) leaves the
+      // record's own bytes, a never-picked color 0 included.
+      const base = bundleEntityAppearance(this.bundle, target.entityKind, target.entityId);
+      const draft = this._editAppearance;
+      this._commitEditBundleEdit(setBundleEntityAppearance(renamed, target.entityKind, target.entityId, {
+        icon: draft.icon != null && draft.icon !== base.icon ? draft.icon : null,
+        colorId: draft.colorId != null && draft.colorId !== base.colorId ? draft.colorId : null,
+      }));
       this._closeEditRenameDialog();
       return;
     }

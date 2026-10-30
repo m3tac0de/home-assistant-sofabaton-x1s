@@ -1,0 +1,486 @@
+{
+  "_comment": "Shared vectors for the wifi_ip payload form (custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form.ts). tests/frontend/wifi-ip-form.test.ts builds each record from the original's drafts plus the edits; tests/test_wifi_ip_form_vectors.py round-trips every expected record and every stored original through the library codec, so a form output the sync would refuse fails one of the two suites.",
+  "vectors": [
+    {
+      "name": "url record: a body edit keeps the URL and headers verbatim",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Home\",\"id\":1}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "body": "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Back\",\"id\":1}" },
+      "expected": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Back\",\"id\":1}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "url record: the header order survives a method edit",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.50/api",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"], ["X-Key", "1"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "method": "put" },
+      "expected": {
+        "fields": {
+          "url": "http://192.168.1.50/api",
+          "method": "PUT",
+          "headers": [["Content-Type", "application/json"], ["X-Key", "1"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "url record: a header edit rebuilds the list with Content-Type last",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.50/api",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"], ["X-Key", "1"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "header": "X-Key: 2\nAccept: */*" },
+      "expected": {
+        "fields": {
+          "url": "http://192.168.1.50/api",
+          "method": "POST",
+          "headers": [["X-Key", "2"], ["Accept", "*/*"], ["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "url record: stays a URL record at http and an IPv4 address",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "host": "192.168.1.162" },
+      "expected": {
+        "fields": {
+          "url": "http://192.168.1.162:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "url record: refuses DELETE",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "method": "DELETE" },
+      "error": "method_unsupported"
+    },
+    {
+      "name": "url record: an empty method saves as GET",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "method": " " },
+      "expected": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "GET",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "url record: a header line without a colon is refused",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "header": "no colon here" },
+      "error": "header_line_invalid"
+    },
+    {
+      "name": "request text: a body edit keeps the other fields and the trailer",
+      "is_x2": false,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "body": "a=1" },
+      "expected": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": "a=1"
+        },
+        "trailer_hex": "f1"
+      }
+    },
+    {
+      "name": "request text: keeps any method",
+      "is_x2": false,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "method": "DELETE" },
+      "expected": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "DELETE",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      }
+    },
+    {
+      "name": "request text: an empty method saves as GET",
+      "is_x2": false,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "method": "" },
+      "expected": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "GET",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      }
+    },
+    {
+      "name": "request text: becomes a URL record for https on the X2",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "scheme": "https", "port": "443" },
+      "expected": {
+        "fields": {
+          "url": "https://192.168.2.77:443/launch/12",
+          "method": "POST",
+          "headers": [["Content-Type", "application/x-www-form-urlencoded"]],
+          "body": ""
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "request text: becomes a URL record for a host name on the X2",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.20",
+          "port": 8123,
+          "method": "POST",
+          "path": "/api/webhook/abc",
+          "header": "X-Api-Key:abc\r\nAccept: */*",
+          "content_type": "application/json",
+          "body": "{}"
+        },
+        "trailer_hex": "4e"
+      },
+      "edits": { "host": "ha.example.com" },
+      "expected": {
+        "fields": {
+          "url": "http://ha.example.com:8123/api/webhook/abc",
+          "method": "POST",
+          "headers": [["X-Api-Key", "abc"], ["Accept", "*/*"], ["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "request text: a URL path gets its leading slash",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "scheme": "https", "port": "", "path": "api/x?y=1" },
+      "expected": {
+        "fields": {
+          "url": "https://192.168.2.77/api/x?y=1",
+          "method": "POST",
+          "headers": [["Content-Type", "application/x-www-form-urlencoded"]],
+          "body": ""
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "request text: a host name on the X1S is refused",
+      "is_x2": false,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "host": "ha.example.com" },
+      "error": "host_needs_ipv4"
+    },
+    {
+      "name": "request text: https on the X1S is refused",
+      "is_x2": false,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "scheme": "https" },
+      "error": "host_needs_ipv4"
+    },
+    {
+      "name": "request text: a port typed into the host field is refused",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "host": "nas.lan:8080" },
+      "error": "host_invalid"
+    },
+    {
+      "name": "request text: the port must be 1 to 65535",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "port": "70000" },
+      "error": "port_invalid"
+    },
+    {
+      "name": "new command: an app-made template at http and IPv4 makes request text",
+      "is_x2": true,
+      "existing": false,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Home\",\"id\":1}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": {},
+      "expected": {
+        "fields": {
+          "host": "192.168.1.161",
+          "port": 8080,
+          "method": "POST",
+          "path": "/jsonrpc",
+          "header": "",
+          "content_type": "application/json",
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Home\",\"id\":1}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "new command: an https template stays a URL record",
+      "is_x2": true,
+      "existing": false,
+      "original": {
+        "fields": {
+          "url": "https://ha.example.com/api/webhook/xyz",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "body": "{\"a\":1}" },
+      "expected": {
+        "fields": {
+          "url": "https://ha.example.com/api/webhook/xyz",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{\"a\":1}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
+      "name": "new command: neutral defaults on an X1S, address and method normalized",
+      "is_x2": false,
+      "existing": false,
+      "original_stored": false,
+      "original": {
+        "fields": {
+          "host": "",
+          "port": 80,
+          "method": "GET",
+          "path": "/",
+          "header": "",
+          "content_type": "",
+          "body": ""
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "host": "192.168.002.010", "method": "post", "path": "" },
+      "expected": {
+        "fields": {
+          "host": "192.168.2.10",
+          "port": 80,
+          "method": "POST",
+          "path": "/",
+          "header": "",
+          "content_type": "",
+          "body": ""
+        },
+        "trailer_hex": ""
+      }
+    }
+  ]
+}

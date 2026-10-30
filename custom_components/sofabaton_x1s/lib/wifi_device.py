@@ -36,6 +36,7 @@ import ipaddress
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional
 
+from .devices import ENTITY_COLOR_COUNT, ENTITY_ICON_COUNT
 from .hub_versions import HUB_VERSION_X1
 from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 from .wifi_inplace_plan import (
@@ -48,11 +49,13 @@ from .wifi_inplace_plan import (
 
 __all__ = [
     "DEFAULT_WIFI_BRAND",
+    "WIFI_PROBE_COMMAND_ID",
     "WIFI_TRANSPORT_HTTP",
     "WIFI_TRANSPORT_MQTT",
     "WIFI_TRANSPORTS",
     "WIFI_SLOT_COUNT",
     "X1_CALLBACK_PORT",
+    "WifiDeliveryProbe",
     "WifiSlotSpec",
     "WifiDeviceSpec",
     "WifiTarget",
@@ -77,6 +80,8 @@ X1_CALLBACK_PORT = 8060
 WIFI_TRANSPORT_HTTP = "http"
 WIFI_TRANSPORT_MQTT = "mqtt"
 WIFI_TRANSPORTS = (WIFI_TRANSPORT_HTTP, WIFI_TRANSPORT_MQTT)
+#: The record a delivery probe presses: slot 1, short.
+WIFI_PROBE_COMMAND_ID = 1
 #: Label width the hub keeps (30 ASCII on X1, 60 UTF-16 bytes elsewhere);
 #: the spec caps at the shorter so labels round-trip on every hub.
 MAX_SLOT_LABEL_LEN = 30
@@ -97,6 +102,17 @@ def _clean(text: Any, *, what: str, limit: int) -> str:
     if len(clean) > limit:
         raise ValueError(f"{what} {clean!r} is longer than {limit} characters")
     return clean
+
+
+def _appearance(value: Any, *, what: str, low: int, high: int) -> Optional[int]:
+    """An icon or color id within the widest hub line's range, or None.
+    The hub line's own range is checked where the hub is known."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise ValueError(f"{what} {value!r} is not one of {low}-{high}")
+    return value
 
 
 def _slot_index(value: Any, *, what: str) -> int:
@@ -220,6 +236,11 @@ class WifiDeviceSpec:
     the X1 firmware fires one power and one input callback per
     transition regardless and these are ignored there). A slot cannot be
     both a power hook and an input, as in the Home Assistant editor.
+
+    ``icon`` and ``color_id`` are the device record's icon (the app's
+    numbering for the hub line) and its X2 tile color (``0`` = none
+    picked); ``None`` keeps what the hub has, which for a new device is
+    the hub's default.
     """
 
     name: str
@@ -228,6 +249,8 @@ class WifiDeviceSpec:
     power_off_slot: Optional[int] = None
     input_slots: tuple[int, ...] = ()
     brand: str = DEFAULT_WIFI_BRAND
+    icon: Optional[int] = None
+    color_id: Optional[int] = None
 
     def normalized(self) -> "WifiDeviceSpec":
         """The canonical form: names cleaned, every slot present, hooks checked.
@@ -284,6 +307,8 @@ class WifiDeviceSpec:
             power_off_slot=power_off,
             input_slots=tuple(inputs),
             brand=brand,
+            icon=_appearance(self.icon, what="icon", low=1, high=max(ENTITY_ICON_COUNT.values())),
+            color_id=_appearance(self.color_id, what="color", low=0, high=ENTITY_COLOR_COUNT),
         )
 
     @property
@@ -305,6 +330,8 @@ class WifiDeviceSpec:
             power_off_slot=normalized.power_off_slot,
             input_slots=input_slots_from_spec(normalized),
             brand=normalized.brand,
+            icon=normalized.icon,
+            color_id=normalized.color_id,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -315,6 +342,8 @@ class WifiDeviceSpec:
             "power_off_slot": self.power_off_slot,
             "input_slots": list(self.input_slots),
             "brand": self.brand,
+            "icon": self.icon,
+            "color_id": self.color_id,
         }
 
     @classmethod
@@ -328,6 +357,8 @@ class WifiDeviceSpec:
             power_off_slot=data.get("power_off_slot"),
             input_slots=tuple(data.get("input_slots") or ()),
             brand=str(data.get("brand") or DEFAULT_WIFI_BRAND),
+            icon=data.get("icon"),
+            color_id=data.get("color_id"),
         )
 
 
@@ -428,6 +459,33 @@ class WifiDeployment:
         )
 
 
+@dataclass(frozen=True)
+class WifiDeliveryProbe:
+    """What :meth:`AsyncXProxy.probe_wifi_delivery` found.
+
+    ``sent``: the hub took the press. ``delivered``: the consumer's own
+    ingress saw it arrive within the timeout; ``latency_s`` is the time
+    from the press to that arrival. A press that was sent but never
+    arrived means the hub cannot reach the consumer (a firewall, a VLAN,
+    a wrong address or port, a broker the consumer does not share).
+    """
+
+    device_id: int
+    command_id: int
+    sent: bool
+    delivered: bool
+    latency_s: Optional[float] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "device_id": self.device_id,
+            "command_id": self.command_id,
+            "sent": self.sent,
+            "delivered": self.delivered,
+            "latency_s": self.latency_s,
+        }
+
+
 def input_slots_from_spec(spec: WifiDeviceSpec) -> tuple[int, ...]:
     """The device's ordered input list: ``input_slots`` as given, then the
     slots an input activity names that are not on it yet, in slot order.
@@ -524,6 +582,8 @@ def snapshot_from_spec(
         activities=activities,
         device_bindings=tuple(sorted(device_bindings)),
         target_host=str(target_host or "") or None,
+        icon=normalized.icon,
+        color_id=normalized.color_id,
     )
 
 

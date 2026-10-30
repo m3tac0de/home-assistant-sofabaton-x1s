@@ -28,6 +28,8 @@ export interface HassLike {
   themes?: HassThemesLike;
   /** The signed-in user; the sidebar panel shows its admin toggle on `is_admin`. */
   user?: { is_admin?: boolean } | null;
+  /** The sidebar back arrow reads `version`. */
+  config?: { version?: string };
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
     domain: string,

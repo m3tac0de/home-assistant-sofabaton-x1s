@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 from .ack import AckOutcome, SendStepResult
 from .device_create import ACK_OPCODE_STATUS, ACK_STATUS_BYTE_OK
+from .remote_sync_frames import FAMILY_ENTITY_SYNC
 from .write_batch import REMOTE_SYNC_FAMILY
 from .hub_logging import LogTag
 
@@ -142,6 +143,7 @@ class ExchangeMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning(
                 "%s[STEP] %s hub rejected status=0x%02X", LogTag.ACK, name, body[0]
             )
+            self._note_step_refusal(body[0])
             return AckOutcome.rejected
         return AckOutcome.acked
 
@@ -283,6 +285,7 @@ class ExchangeMixin(_ProxyHost if TYPE_CHECKING else object):
                 step_name,
                 first_byte,
             )
+            self._note_step_refusal(matched_payload[0])
             return SendStepResult(
                 outcome=AckOutcome.rejected,
                 ack_opcode=matched_opcode,
@@ -297,6 +300,10 @@ class ExchangeMixin(_ProxyHost if TYPE_CHECKING else object):
                 ack_opcode,
             )
         self._log.debug("%s[STEP] %s acked via 0x%04X", LogTag.ACK, step_name, matched_opcode)
+        if family in (REMOTE_SYNC_FAMILY, FAMILY_ENTITY_SYNC):
+            # A remote-sync trigger the hub took: writes refused soon after
+            # are read as "the hub is updating its remote".
+            self._note_remote_sync_sent()
         return SendStepResult(
             outcome=AckOutcome.acked,
             ack_opcode=matched_opcode,

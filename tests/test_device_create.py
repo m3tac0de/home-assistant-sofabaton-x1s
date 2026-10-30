@@ -40,7 +40,7 @@ ensure_stub_package(
     ROOT / "custom_components" / "sofabaton_x1s" / "lib",
 )
 
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from custom_components.sofabaton_x1s.lib.device_create import (
     ACK_OPCODE_ACTIVITY_CREATE,
     ACK_OPCODE_BUTTON_BINDING,
@@ -65,12 +65,15 @@ from custom_components.sofabaton_x1s.lib.device_create import (
     build_command_write_steps,
     build_macro_step_record,
     build_macro_step,
+    build_macro_steps,
     build_remote_sync_step,
     build_set_idle_behavior_step,
     run_create_sequence,
     synthesize_command_code,
 )
 from custom_components.sofabaton_x1s.lib.inputs import InputEntry, build_inputs_write
+from custom_components.sofabaton_x1s.lib.macros import MacroKeyEntry, build_macro_save_payload
+from custom_components.sofabaton_x1s.lib.wire_schema import page_family_body
 from custom_components.sofabaton_x1s.lib.devices import DeviceConfig
 
 
@@ -348,9 +351,9 @@ def test_macro_step_rejects_step_record_length_not_multiple_of_ten() -> None:
 
 def test_macro_step_rejects_rows_past_single_frame_limit() -> None:
     # The family-frame opcode carries the payload length in one byte, so
-    # the single-page write caps at 18 rows on X1S (60B label slot) and
-    # 21 on X1 (30B). One row past the cap must raise, not wrap the
-    # length byte into a corrupt frame.
+    # one page holds 18 rows on X1S (60B label slot) and 21 on X1 (30B).
+    # The single-page builder must raise one row past that, not wrap the
+    # length byte into a corrupt frame (build_macro_steps pages it).
     for hub_version, max_rows in ((HUB_VERSION_X1S, 18), (HUB_VERSION_X1, 21)):
         at_limit = build_macro_step(
             hub_version=hub_version,
@@ -368,6 +371,107 @@ def test_macro_step_rejects_rows_past_single_frame_limit() -> None:
                 label="POWER_ON",
                 step_records=b"\x00" * 10 * (max_rows + 1),
             )
+
+
+def _rows(count: int) -> bytes:
+    return b"".join(
+        build_macro_step_record(
+            device_id=0x0D, command_id=idx + 1, fid=0x4E21 + idx, duration=0, delay=0xFF
+        )
+        for idx in range(count)
+    )
+
+
+def test_macro_steps_stay_one_page_up_to_the_frame_limit() -> None:
+    for hub_version, max_rows in ((HUB_VERSION_X2, 18), (HUB_VERSION_X1, 21)):
+        steps = build_macro_steps(
+            hub_version=hub_version,
+            device_id=0x66,
+            key_id=0xC6,
+            label="POWER_ON",
+            step_records=_rows(max_rows),
+        )
+        assert len(steps) == 1
+        assert steps[0].payload[3:6] == b"\x01\x00\x01"
+        assert len(steps[0].payload) <= 0xFF
+        assert steps[0].ack_opcode == ACK_OPCODE_MACRO
+        assert steps[0].ack_first_byte == 0xC6
+        # The single-page builder returns that same step.
+        assert build_macro_step(
+            hub_version=hub_version,
+            device_id=0x66,
+            key_id=0xC6,
+            label="POWER_ON",
+            step_records=_rows(max_rows),
+        ) == steps[0]
+
+
+def test_macro_steps_page_a_nineteen_row_x2_macro() -> None:
+    """Issue #315: an X2 activity POWER_ON with 19 rows, written by the
+    vendor app, stopped a whole hub restore at the 18-row single-page cap.
+    Past one page the write goes out the way the editor's paged macro
+    save sends it: same body, same 247-byte chunks."""
+
+    steps = build_macro_steps(
+        hub_version=HUB_VERSION_X2,
+        device_id=0x69,
+        key_id=0xC6,
+        label="POWER_ON",
+        step_records=_rows(19),
+    )
+
+    assert [step.family for step in steps] == [FAMILY_MACRO, FAMILY_MACRO]
+    first, last = steps
+    assert first.payload[0:3] == b"\x01\x00\x01"
+    assert last.payload[0:3] == b"\x01\x00\x02"
+    assert all(len(step.payload) <= 0xFF for step in steps)
+    assert len(first.payload) - 3 == 247
+    body = first.payload[3:] + last.payload[3:]
+    assert body[1:3] == b"\x00\x02"  # total_pages
+    assert body[3:6] == bytes([0x69, 0xC6, 19])
+    assert body[-1] == sum(body[:-1]) & 0xFF
+    # Every page but the last is a STATUS_ACK; the last echoes the key.
+    assert first.ack_opcode == ACK_OPCODE_STATUS
+    assert first.ack_first_byte == ACK_STATUS_BYTE_OK
+    assert first.ack_reject_first_bytes == (0x0C,)
+    assert last.ack_opcode == ACK_OPCODE_MACRO
+    assert last.ack_first_byte == 0xC6
+    assert first.label.endswith("page=1/2") and last.label.endswith("page=2/2")
+
+    editor_save = build_macro_save_payload(
+        activity_id=0x69,
+        key_id=0xC6,
+        key_sequence=[
+            MacroKeyEntry(device_id=0x0D, key_id=idx + 1, fid=0x4E21 + idx, duration=0, delay=0xFF)
+            for idx in range(19)
+        ],
+        label="POWER_ON",
+        hub_version=HUB_VERSION_X2,
+    )
+    assert [step.payload for step in steps] == page_family_body(editor_save[3:])
+
+
+def test_macro_steps_page_boundary_on_x1() -> None:
+    steps = build_macro_steps(
+        hub_version=HUB_VERSION_X1,
+        device_id=0x0D,
+        key_id=0xC6,
+        label="POWER_ON",
+        step_records=_rows(22),
+    )
+    assert len(steps) == 2
+    assert steps[1].payload[0:3] == b"\x01\x00\x02"
+
+
+def test_macro_steps_reject_a_step_count_past_one_byte() -> None:
+    with pytest.raises(ValueError, match="step count is one byte"):
+        build_macro_steps(
+            hub_version=HUB_VERSION_X1S,
+            device_id=0x0D,
+            key_id=0xC6,
+            label="POWER_ON",
+            step_records=b"\x00" * 10 * 256,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -875,3 +979,40 @@ def test_run_create_sequence_fails_when_an_earlier_page_is_rejected() -> None:
     assert result.success is False and result.rejected is True
     assert result.reject_payload == b"\x0c"
     assert len(proxy.send_log) == 1, "no further page after a rejection"
+
+
+def test_run_create_sequence_sends_every_macro_page_in_order() -> None:
+    steps = build_macro_steps(
+        hub_version=HUB_VERSION_X2,
+        device_id=0x69,
+        key_id=0xC6,
+        label="POWER_ON",
+        step_records=_rows(19),
+    )
+    proxy = _FakeProxy(
+        ack_script=[(ACK_OPCODE_STATUS, b"\x00"), (ACK_OPCODE_MACRO, b"\xc6")]
+    )
+
+    result = run_create_sequence(proxy, steps)
+
+    assert result.success is True
+    assert proxy.send_log == [(FAMILY_MACRO, step.payload) for step in steps]
+    assert proxy.wait_calls[0][0] == (ACK_OPCODE_STATUS, ACK_STATUS_BYTE_OK)
+    assert proxy.wait_calls[1] == [(ACK_OPCODE_MACRO, 0xC6)]
+
+
+def test_run_create_sequence_stops_a_macro_after_a_rejected_page() -> None:
+    steps = build_macro_steps(
+        hub_version=HUB_VERSION_X2,
+        device_id=0x69,
+        key_id=0xC6,
+        label="POWER_ON",
+        step_records=_rows(19),
+    )
+    proxy = _FakeProxy(ack_script=[(ACK_OPCODE_STATUS, b"\x0c")])
+
+    result = run_create_sequence(proxy, steps)
+
+    assert result.success is False and result.rejected is True
+    assert result.failed_index == 0
+    assert len(proxy.send_log) == 1, "the last page never goes out after a rejection"

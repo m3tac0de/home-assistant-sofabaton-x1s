@@ -483,3 +483,22 @@ def test_the_derived_long_label_fits_the_slot() -> None:
     spec = WifiSlotSpec(label="Living room lamp scene bright")  # 29 characters
     slot = spec.normalized(1)
     assert len(slot.long_label) <= 30 and slot.long_label.endswith(" Long")
+
+
+def test_spec_carries_an_icon_and_a_color_through_every_form() -> None:
+    spec = WifiDeviceSpec(name="Server", slots=(WifiSlotSpec("Play", favorite=True, activities=(101,)),),
+                          icon=29, color_id=10).normalized()
+    assert (spec.icon, spec.color_id) == (29, 10)
+    assert WifiDeviceSpec.from_dict(spec.to_dict()) == spec
+    assert (spec.without_references().icon, spec.without_references().color_id) == (29, 10)
+    shape = wifi_device.snapshot_from_spec(spec, device_id=12, hub_version="X2")
+    assert (shape.icon, shape.color_id) == (29, 10)
+    # None keeps the hub's: an older record without the keys reads as such.
+    old = {key: value for key, value in spec.to_dict().items() if key not in ("icon", "color_id")}
+    assert (WifiDeviceSpec.from_dict(old).icon, WifiDeviceSpec.from_dict(old).color_id) == (None, None)
+
+
+@pytest.mark.parametrize("over", [{"icon": 0}, {"icon": 46}, {"icon": True}, {"color_id": 13}, {"color_id": -1}])
+def test_spec_refuses_an_icon_or_color_no_hub_has(over) -> None:
+    with pytest.raises(ValueError):
+        WifiDeviceSpec(name="Server", **over).normalized()

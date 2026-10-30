@@ -10,7 +10,7 @@ key pressed on the physical remote shows up on your page.
 It is the same card the Home Assistant integration ships. If your
 dashboard *is* Home Assistant, use the HACS card instead.
 
-Version **0.1.3** contains the shared Virtual Remote **0.2.8**.
+Version **0.1.4** contains the shared Virtual Remote **0.2.9**.
 See the [release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/packages/sofabaton-x-remote/CHANGELOG.md).
 
 ## Setup in three steps

@@ -720,8 +720,9 @@ class _DeletingHub(_Hub):
         self._result = result
         self.deleted = None
 
-    async def async_delete_device(self, device_id):
+    async def async_delete_device(self, device_id, *, sync_remotes=False):
         self.deleted = device_id
+        self.sync_remotes = sync_remotes
         return self._result
 
 
@@ -735,6 +736,8 @@ def test_ws_activity_delete_runs_hub_delete(monkeypatch):
     }))
     assert conn.error is None
     assert hub.deleted == 104
+    # A delete the user asked for ends with the remote sync a delete needs.
+    assert hub.sync_remotes is True
     assert conn.result[1]["status"] == "success"
 
 
@@ -1009,9 +1012,11 @@ class _CreatingHub(_Hub):
         self._result = result
         self.version = version
         self.created = None
+        self.appearance = None
 
-    async def async_create_device(self, name, *, device_class):
+    async def async_create_device(self, name, *, device_class, icon=None, color_id=None):
         self.created = (name, device_class)
+        self.appearance = (icon, color_id)
         return self._result
 
 
@@ -1070,8 +1075,9 @@ def test_ws_device_create_refuses_names_the_hub_cannot_store(monkeypatch, versio
 
 
 class _CreatingActivityHub(_CreatingHub):
-    async def async_create_activity(self, name):
+    async def async_create_activity(self, name, *, icon=None, color_id=None):
         self.created = name
+        self.appearance = (icon, color_id)
         return self._result
 
 
@@ -1127,6 +1133,32 @@ def test_ws_device_create_accepts_mqtt_on_x2(monkeypatch):
     assert hub.created == ("Broker", "wifi_mqtt")
 
 
+def test_ws_device_create_passes_a_picked_icon_and_color(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 9}, version="X2")
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 56, "entry_id": "entry-1", "name": "Lamp", "device_class": "ir", "icon": 29, "color_id": 10,
+    }))
+    assert conn.error is None
+    assert hub.appearance == (29, 10)
+
+
+@pytest.mark.parametrize("extra", [{"icon": 17}, {"color_id": 3}])
+def test_ws_device_create_refuses_an_icon_or_color_the_hub_lacks(monkeypatch, extra):
+    # An X1S offers icons 1-16 and no colors.
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 9}, version="X1S")
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 57, "entry_id": "entry-1", "name": "Lamp", "device_class": "ir", **extra,
+    }))
+    assert conn.error[1] == "invalid_appearance"
+    assert hub.created is None
+
+
 def test_ws_device_create_reports_failure_when_hub_declines(monkeypatch):
     conn = _Conn()
     hub = _CreatingHub(None)
@@ -1164,3 +1196,39 @@ def test_ws_device_create_blocked_when_locked(monkeypatch):
     }))
     assert conn.error[1] == "busy"
     assert hub.created is None
+
+
+def _routed_device_bundle(c, version="X1S"):
+    bundle = _device_bundle([])
+    bundle["hub"]["version"] = version
+    bundle["devices"][0]["device"]["extras"] = {"a": 0, "b": 0, "c": c}
+    return bundle
+
+
+def test_ws_device_sync_plan_carries_an_x2_emitter_change(monkeypatch):
+    """The IR pill writes ``device.extras`` into the edited bundle; the WS
+    plan preview hands it to the lib planner as one head write."""
+    hub = _Hub()
+    hub.version = "X2"
+    conn = _Conn()
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 11, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _routed_device_bundle(0x07, "X2"), "edited": _routed_device_bundle(0x04, "X2"),
+    }))
+    assert conn.error is None
+    steps = conn.result[1]["steps"]
+    assert [s["kind"] for s in steps] == ["device_rename"]
+
+
+def test_ws_device_sync_plan_refuses_an_emitter_change_off_the_x2(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)  # the X1S fake hub
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 12, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _routed_device_bundle(0x07), "edited": _routed_device_bundle(0x04),
+    }))
+    assert conn.result is None and conn.error is not None
+    assert "X2 only" in conn.error[2]

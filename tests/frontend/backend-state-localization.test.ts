@@ -56,6 +56,23 @@ test("structured backend errors are localized without relaying English exception
   setToolsCardLanguage("en");
 });
 
+test("RF Learn and Test explain unsupported hubs in every supported language", () => {
+  try {
+    for (const locale of ["en", "en-gb", "de", "es", "fr", "nl", "zh-Hans"]) {
+      setToolsCardLanguage(locale);
+      for (const surface of ["ir_learn", "hub_request"] as const) {
+        assert.equal(
+          localizeBackendError({ code: "rf_unsupported", message: "Backend English must not leak" }, surface),
+          TOOLS_CARD_STRINGS.backup.learnRfUnsupported,
+          `${locale}: ${surface}`,
+        );
+      }
+    }
+  } finally {
+    setToolsCardLanguage("en");
+  }
+});
+
 test("device creation errors are localized from stable codes", () => {
   const cases = [
     ["de", "invalid_name", "Gib einen Gerätenamen mit 1 bis 30 Zeichen ein."],
@@ -115,7 +132,7 @@ test("structured backend progress is localized without relaying its English mess
         step_kind: "activity_rename",
         message: "Renaming the activity…",
       },
-      expected: "Aktivität wird umbenannt…",
+      expected: "Aktivität wird aktualisiert…",
     },
     {
       locale: "fr",
@@ -267,7 +284,7 @@ test("entity-sync write steps are localized from their step kind, with a counter
 
   // Structured step kind → translated copy; the counter is 1-based (the
   // engine emits completed_steps BEFORE the write).
-  assert.equal(writing({ step_kind: "activity_rename" }), "Renaming the activity… (3/5)");
+  assert.equal(writing({ step_kind: "activity_rename" }), "Updating the activity… (3/5)");
   assert.equal(writing({ step_kind: "macro_write_power_on" }), "Updating the start sequence… (3/5)");
   assert.equal(
     writing({ step_kind: "command_rename", step_device_id: 7 }),

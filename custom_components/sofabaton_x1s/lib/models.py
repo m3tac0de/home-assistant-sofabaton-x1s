@@ -15,6 +15,8 @@ __all__ = [
     "HubMode",
     "HubStatus",
     "HubInfo",
+    "IrEmitterDevice",
+    "IrEmitterStatus",
     "RunningActivity",
     "Activity",
     "Device",
@@ -108,6 +110,47 @@ class HubInfo:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class IrEmitterDevice:
+    """A paired remote or repeater an X2 can send a device's IR from.
+
+    ``number`` is remote 1-5 or repeater 1-4, the numbering
+    :class:`EmitterRouting` uses. ``online`` is as of the read.
+    ``port_cable`` says whether a repeater's IR port has a cable in it;
+    None for a remote.
+    """
+
+    kind: Literal["remote", "repeater"]
+    number: int
+    name: str
+    online: bool
+    port_cable: Optional[bool] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class IrEmitterStatus:
+    """An X2's IR emitter hardware, from one read
+    (:meth:`AsyncXProxy.ir_emitter_status`).
+
+    ``paired`` lists the paired remotes and repeaters (single-button RF
+    devices left out), None when the hub did not answer. ``read_at`` is
+    when it was read (epoch seconds). The hub's IR ports are not part of
+    it: both are always available to route to.
+    """
+
+    paired: Optional[tuple[IrEmitterDevice, ...]]
+    read_at: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "paired": [device.to_dict() for device in self.paired] if self.paired is not None else None,
+            "read_at": self.read_at,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Catalog read results
 # ---------------------------------------------------------------------------
@@ -124,6 +167,9 @@ class Activity:
     ``sort`` is the hub's stored display position (the byte the app's and
     :meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the
     record carries none. ``activities()`` already lists in that order.
+    ``icon`` is the hub's icon id (the app's numbering for the hub line)
+    and ``color_id`` the X2 palette id (``0`` = never picked, None on
+    other hubs); either is None when the record is not cached.
     """
 
     activity_id: int
@@ -131,6 +177,8 @@ class Activity:
     active: bool
     needs_confirm: bool
     sort: int = 0
+    icon: Optional[int] = None
+    color_id: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -147,7 +195,10 @@ class Device:
     the device's power-behaviour mode when known. ``sort`` is the hub's
     stored display position (what :meth:`AsyncXProxy.reorder_devices`
     writes), ``0`` when the record carries none; ``devices()`` already
-    lists in that order.
+    lists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.
+    ``emitters`` is an X2 device's IR emitter routing, the record's three
+    bytes ``(a, b, c)`` (decode with :meth:`EmitterRouting.decode`); None
+    on the X1 and X1S, or when the record carries no routing.
     """
 
     device_id: int
@@ -158,6 +209,9 @@ class Device:
     power_state: Optional[int]
     idle_behavior: Optional[int]
     sort: int = 0
+    icon: Optional[int] = None
+    color_id: Optional[int] = None
+    emitters: Optional[tuple[int, int, int]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -423,6 +477,10 @@ class SyncResult:
     # The strict preflight's verdict when it stopped the write
     # ("changed" | "unreadable" | "incomplete"), else None.
     preflight: Optional[str] = None
+    # "remote_syncing" when the hub refused a step while it was still
+    # updating its remote (wait until the remote is done, then sync again;
+    # the writes that raise say it with RemoteSyncInProgressError), else None.
+    reason: Optional[str] = None
 
     @property
     def ok(self) -> bool:

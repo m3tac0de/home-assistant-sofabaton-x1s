@@ -63,7 +63,7 @@ class _Hub:
         self.disable_calls.append(enable)
         self.roku_server_enabled = enable
 
-    async def async_delete_device(self, _device_id):
+    async def async_delete_device(self, _device_id, **_kwargs):
         return {"status": "success"}
 
     async def async_update_wifi_mqtt_ingress(self):

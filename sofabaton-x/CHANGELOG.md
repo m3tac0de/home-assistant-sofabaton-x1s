@@ -11,6 +11,182 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+## 0.2.6 (2026-10-28)
+
+Changes since `sofabaton-x-v0.2.5`. Backward-compatible additions and
+fixes; applications can use `sofabaton-x>=0.2.6,<0.3`. Every write now
+ends with the cheapest remote sync that reaches the remotes, activities
+and devices read and write their icon (and X2 color), and X2 devices
+gain IR emitter routing. Wifi Devices can test that presses reach the
+consumer, and X2 Wifi commands can be URL records.
+
+### Changed
+
+- Every write now ends with the cheapest remote sync that brings it to the
+  remotes, instead of a full rebuild (X1 about 30 seconds, X1S about a
+  minute, X2 about 4.5 minutes) or no sync at all. Three syncs exist: a
+  per-item sync (the remotes re-read one device or activity, seconds), the
+  X2's order-only sync (the device and activity lists, about 10 seconds)
+  and the full sync. Measured on all three models:
+  - device and activity renames, and on the X2 deletes, reach the remotes
+    on their own and send nothing;
+  - content changes (commands, favorites, bindings, membership, macros,
+    inputs) end with a per-item sync of each changed device or activity;
+  - a create (device, activity, Wifi Device) ends with the order-only sync
+    and per-item syncs of the new device and the activities it is used in
+    on the X2, and with the full sync on the X1 and X1S;
+  - a delete through `remove_device()` / `remove_activity()` ends with the
+    full sync on the X1 and X1S, which list a deleted entity until then,
+    and per-item syncs of the activities it cascaded into on the X2;
+  - X2 reorders end with the order-only sync (set the engine's
+    `order_sync_form` to `"full"` for the old trigger); X1 reorders send
+    none (its remote takes a new device or activity order on its own;
+    `"full"` restores the trigger there too); the X1S keeps the full sync.
+  A per-item or order-only sync the hub does not acknowledge falls back to
+  the full sync. The engine gains `sync_remotes_after_write(created=,
+  touched=, deleted=)` and `sync_remote_entity(entity_id)`.
+- `sync_device()` and `sync_activity()` end with that per-item sync, once
+  per entity (a favorite or keymap write's own sync counts). Before,
+  they sent no remote sync, so a renamed command, a favorite added on an X2
+  or a membership change reached the remotes only with the next full sync.
+- A write batch defers per-item and order-only syncs too and sends the
+  cheapest covering set when it closes: the full sync if any write asked
+  for one, otherwise the order-only sync first, then one per-item sync per
+  entity (none for an entity a later write in the batch deleted). The engine's `end_write_batch()` summary gains
+  `remote_sync_kind` (`"full"`, `"order"`, `"item"` or None) and
+  `item_syncs`; the facade's `BatchOutcome` is unchanged.
+- The X2's recommended firmware floor is now 9, the firmware URL Wifi
+  records and the order-only and per-item syncs were validated on:
+  `firmware_outdated` is true for an X2 below it. The supported floor
+  (`firmware_unsupported`) is unchanged.
+- A new X2 IR device (`add_device(name, "ir")`) now sends its IR from all
+  of the hub's emitters, the built-in one and both IR ports (routing
+  `00 00 07`), as the Sofabaton app's database create does. It used to be
+  the built-in emitter only (`00 00 01`), so a device created here never
+  fired from a port cable.
+
+### Added
+
+- `Device.emitters`: an X2 device's IR emitter routing, the record's
+  three bytes `(a, b, c)` (decode with `EmitterRouting.decode`); None on
+  the X1 and X1S.
+- `sync_device()` changes an X2 device's IR emitter routing: edit
+  `device.extras` (`{"a", "b", "c"}`) in the bundle, or use
+  `edits.set_device_emitters(bundle, device_id, routing)` with an
+  `EmitterRouting`. It rides the same record write as a rename (no remote
+  sync: the hub updates the remotes itself). The sync refuses a routing
+  change on the X1 and X1S, one with no emitter left, one that changes
+  the RF-button byte, and a hub mix other than all, built-in, port 1 or
+  port 2 (a mix already on the record may stay). Commands sent to the
+  device follow the routing; one-shot plays (`play`) use the hub's
+  emitters whatever it says.
+
+- `Activity.icon` / `Device.icon` (the hub's icon id) and
+  `Activity.color_id` / `Device.color_id` (the X2 palette id, `0` when none
+  was picked, `None` on other hubs). Both are `None` when the record is not
+  cached.
+- `edits.set_activity_appearance()` / `edits.set_device_appearance()`.
+  `sync_activity()` / `sync_device()` write an icon or color change in the
+  same record write as a rename, after checking it against the hub line:
+  icons 1-25 on the X1, 1-16 on the X1S, 1-45 on the X2; colors 1-12, X2
+  only. A document's icon and color reach the hub through `sync_hub()`,
+  created entities included. Until a bench shows the remotes pick an icon
+  change up on their own, it ends with a per-item remote sync.
+- `add_device()` / `add_activity()` take `icon` and `color_id`, and
+  `validate_appearance(hub_version, icon=, color_id=)` checks a pair against
+  the hub line without touching the hub (a `ValueError` names the reason).
+- `WifiDeviceSpec.icon` and `WifiDeviceSpec.color_id`: the managed Wifi
+  Device's icon and X2 color. `deploy_wifi_device()` writes them with its
+  first update and `update_wifi_device()` with its head commit; `None` (the
+  default, and what older stored specs read as) keeps what the hub has.
+- `RemoteSyncInProgressError`, a `HubRejectedError`: for a few seconds after
+  a remote-sync trigger the hub still takes writes, then it refuses them
+  (STATUS_ACK 0x04) until its remote has the update (about a minute on the
+  X1S, up to a few minutes for an X2 full sync). A write refused that way
+  within 5 minutes of this proxy's own trigger raises this error instead of
+  a bare `HubRejectedError`, and a sync reports it as
+  `SyncResult.reason == "remote_syncing"`. Nothing waits or retries: wait
+  until the remote is done, then write again.
+- `EmitterRouting`: the X2's per-device IR emitter routing, the three bytes
+  after the `0xFC` at tail[18] (`DeviceConfig.extra_a/b/c`). It decodes the
+  hub's choice (`all`, `builtin`, `port1`, `port2`, or `custom` for another
+  mix, kept as it is), remotes 1-5 and repeaters 1-4 (`all`, `builtin`,
+  `port`), and changes one of them at a time with every other bit kept.
+  Bench-validated on the X2: commands sent to a device follow it; one-shot
+  plays (`play`) use the hub's emitters whatever it says.
+- `ir_emitter_status(refresh=True)` (X2): the paired remotes and repeaters
+  a device's IR can be routed to, with their online state, as an
+  `IrEmitterStatus` of `IrEmitterDevice` rows (the hub's own emitters and
+  both IR ports are always available, so they are not read). A refresh
+  asks the hub for its paired-device list after it polls its devices (a
+  few seconds); `refresh=False` returns the last read without asking.
+  `None` on the X1 and X1S.
+- `probe_wifi_delivery(deployment, arrived=, timeout=10.0)` presses slot 1
+  (`WIFI_PROBE_COMMAND_ID`) of a deployed Wifi Device over the hub
+  session and waits for `arrived`, an awaitable the consumer completes
+  when its own listener, webhook or MQTT subscription sees that press.
+  It returns a `WifiDeliveryProbe` (`sent`, `delivered`, `latency_s`). A
+  press that was sent but never arrived means the hub cannot reach the
+  consumer: a firewall, a VLAN, a wrong address or port, or a broker the
+  consumer does not share. Inside `batch_writes()` it runs before the
+  batch's remote sync.
+- `hub_mqtt_status()` and `set_hub_mqtt_broker(host=, port=, username=,
+  password=)` (X2): whether the hub reports a connected MQTT broker
+  (`None` when it does not answer), and pointing it at a broker, which
+  returns whether the hub connected. The hub cannot report which broker
+  it uses, so a broker set here replaces the old one for good. The
+  password is never logged.
+- `NetworkCommand.url(url=, method=, headers=, body=)` and
+  `NetworkCommand.is_url` (X2): a `wifi_ip` command stored as a URL
+  record (code type 0x21), the way the Sofabaton app writes X2 Wifi
+  commands. The hub requests the URL itself, `http` or `https` (it checks
+  no certificate), with GET, POST or PUT, ordered header pairs and a
+  body. A `wifi_ip` command read from the hub decodes either kind; a
+  `url` field names a URL record.
+
+### Fixed
+
+- A Wifi Device's in-place deploy rewrote its head record with the TV icon;
+  it keeps the device's icon now, as it already kept the color.
+- An X1 activity rename rewrote the activity with the TV icon; it keeps the
+  activity's icon now.
+- X2 `find_remote()` addresses the remotes actually paired with the hub,
+  read from its paired-device list (once, when none is cached), instead of
+  a fixed target that only reached the first remote slot.
+- The X2 paired-device list is decoded per row type (remote, repeater,
+  single-button RF device); the remote target it caches was built from the
+  row count byte and addressed nothing. The rows are available from the
+  engine's `x2_paired_devices()`.
+- `validate_hub_bundle_for_model` accepts macro delay rows whose unused
+  device byte is 0, the way the SofaBaton app on iPad writes them (the
+  Android app and this library write 0xFF). One such delay in any activity
+  failed the whole bundle with `device_id: must be between 1 and 255`, so
+  every edit validated against that hub's bundle was refused. A command
+  step with device 0 is still rejected.
+
+- Devices and activities keep their color (X2) and Bluetooth link mode
+  through every record rewrite and through backup and restore. A rename,
+  an IP edit, a Wifi Device update or a restore rebuilt the record with
+  zeros in tail bytes 22-23, which reset a color picked in the app and
+  could change how the hub links a BLE device. `DeviceConfig` gains
+  `color_id` and `bt_mode`, and the backup device block gains the matching
+  `color_id` and `bt_mode` fields. Older backups restore as before. X1
+  records have no such bytes and are unchanged.
+- RF devices (433 MHz and 315 MHz) are recognized: their class codes
+  (`0x1D`, `0x1E`) map to `rf_433mhz` and `rf_315mhz`. Before, an RF
+  device came out class-less, so a backup kept only its command labels
+  (no signal data) and any restore containing it was refused, a whole-hub
+  restore included. Backups now capture each RF command record and
+  restore replays it. A backup taken before this release still holds no
+  RF signal data: take a new one. Restore also classifies a device block
+  that has a class code but no class name.
+- Restore writes a macro that does not fit one frame (more than 18 steps
+  on the X1S and X2, 21 on the X1) as several pages, the way the app does.
+  Before, such a macro stopped the device or activity restore at that
+  macro, and a whole-hub restore with it; `sync_device()` had the same
+  limit for device macros. `device_create.build_macro_steps()` returns the
+  paged write; `build_macro_step()` stays the single-page form.
+
 ## 0.2.5 (2026-10-17)
 
 Changes since `sofabaton-x-v0.2.4`. Backward-compatible additions and

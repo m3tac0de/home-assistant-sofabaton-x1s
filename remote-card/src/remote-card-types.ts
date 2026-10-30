@@ -197,6 +197,9 @@ export interface RemoteActivityAttribute {
   id: number | string;
   name: string;
   state?: string;
+  /** The hub's icon id and X2 palette id, once the record is cached. */
+  icon?: number;
+  color_id?: number;
 }
 
 /**
@@ -208,6 +211,8 @@ export interface RemoteDeviceAttribute {
   name: string;
   sort?: number;
   device_class?: string;
+  icon?: number;
+  color_id?: number;
 }
 
 /** Shape of the remote entity's attributes the card consumes. */

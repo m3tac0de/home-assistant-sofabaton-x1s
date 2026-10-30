@@ -21,7 +21,7 @@
         "type": "object"
       },
       "Activity": {
-        "description": "One activity from the hub's catalog.\n\n``sort`` is the hub's stored display position (the byte the app's and\n:meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the\nrecord carries none. ``activities()`` already lists in that order.",
+        "description": "One activity from the hub's catalog.\n\n``sort`` is the hub's stored display position (the byte the app's and\n:meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the\nrecord carries none. ``activities()`` already lists in that order.\n``icon`` is the hub's icon id (the app's numbering for the hub line)\nand ``color_id`` the X2 palette id (``0`` = never picked, None on\nother hubs); either is None when the record is not cached.",
         "properties": {
           "active": {
             "title": "Active",
@@ -30,6 +30,28 @@
           "activity_id": {
             "title": "Activity Id",
             "type": "integer"
+          },
+          "color_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "name": {
             "title": "Name",
@@ -101,6 +123,34 @@
       },
       "ActivityCreateRequest": {
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the record's tile color, a palette id (0 = none picked); left out, none.",
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); left out, the hub's default. An id the hub line lacks is a 422.",
+            "title": "Icon"
+          },
           "name": {
             "maxLength": 30,
             "minLength": 1,
@@ -809,8 +859,36 @@
         "type": "object"
       },
       "CallbackDeviceRequest": {
-        "description": "Complete desired spec for POST and PUT, not a partial update.\n\nEvery slot is written; omitted slots become ``Button n`` and omitted\npower/input hooks are cleared. For a rename, copy all fields from the\ncurrent record's spec and change only the intended labels. Preserving\ndevice/command IDs and generic bindings does not preserve omitted fields.\nHook slots are one-based (1..10); callback URL indexes are zero-based (0..9).",
+        "description": "Complete desired spec for POST and PUT, not a partial update.\n\nEvery slot is written; omitted slots become ``Button n`` and omitted\npower/input hooks are cleared. For a rename, copy all fields from the\ncurrent record's spec and change only the intended labels. Preserving\ndevice/command IDs and generic bindings does not preserve omitted fields.\nHook slots are one-based (1..10); callback URL indexes are zero-based (0..9).\n``icon`` and ``color_id`` are the exception: left out (null), the device\nkeeps the icon and color the hub has.",
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the device record's tile color, a palette id (0 = none picked); null keeps the hub's",
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the device record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); null keeps the hub's. An id the hub line lacks is a 422",
+            "title": "Icon"
+          },
           "input_slots": {
             "description": "slots offered as activity-start inputs (X1S/X2)",
             "items": {
@@ -871,6 +949,17 @@
           "adopted": {
             "title": "Adopted",
             "type": "boolean"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last delivery check; null before the first"
           },
           "deployed": {
             "title": "Deployed",
@@ -1295,8 +1384,79 @@
         "title": "Credentials",
         "type": "object"
       },
+      "DeliveryView": {
+        "description": "The last delivery check of a Wifi Device: did a press from the hub\nreach this server? Every deploy, update and redeploy ends with a test\npress (slot 1, short) that no client sees as a press event; ``POST\n.../test-delivery`` runs it again, and a real press marks it delivered.",
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "hub_ip": {
+            "default": "",
+            "description": "the hub's address, where the traffic starts",
+            "title": "Hub Ip",
+            "type": "string"
+          },
+          "latency_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "from the test press to its arrival",
+            "title": "Latency S"
+          },
+          "source": {
+            "default": "",
+            "description": "where the press arrived from (empty over mqtt)",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "description": "not_delivered: the hub sent the press, nothing arrived; not_sent: the hub did not take it",
+            "enum": [
+              "delivered",
+              "not_delivered",
+              "not_sent"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "description": "what the hub calls: the listener's address, or the broker",
+            "title": "Target",
+            "type": "string"
+          },
+          "transport": {
+            "description": "http or mqtt",
+            "title": "Transport",
+            "type": "string"
+          },
+          "via": {
+            "description": "a test press, or a real press that arrived",
+            "enum": [
+              "test",
+              "press"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "transport",
+          "checked_at",
+          "via"
+        ],
+        "title": "DeliveryView",
+        "type": "object"
+      },
       "Device": {
-        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order.",
+        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.\n``emitters`` is an X2 device's IR emitter routing, the record's three\nbytes ``(a, b, c)`` (decode with :meth:`EmitterRouting.decode`); None\non the X1 and X1S, or when the record carries no routing.",
         "properties": {
           "brand": {
             "anyOf": [
@@ -1308,6 +1468,17 @@
               }
             ],
             "title": "Brand"
+          },
+          "color_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Id"
           },
           "device_class": {
             "anyOf": [
@@ -1334,6 +1505,41 @@
           "device_id": {
             "title": "Device Id",
             "type": "integer"
+          },
+          "emitters": {
+            "anyOf": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emitters"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "idle_behavior": {
             "anyOf": [
@@ -1381,11 +1587,39 @@
       },
       "DeviceCreateRequest": {
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the record's tile color, a palette id (0 = none picked); left out, none.",
+            "title": "Color Id"
+          },
           "device_class": {
             "description": "Protocol class: X1 supports ir, wifi_roku, wifi_hue, wifi_sonos; X1S also supports wifi_ip; X2 also supports wifi_mqtt. This is not an appliance category such as TV or receiver.",
             "minLength": 1,
             "title": "Device Class",
             "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); left out, the hub's default. An id the hub line lacks is a 422.",
+            "title": "Icon"
           },
           "name": {
             "maxLength": 30,
@@ -2405,6 +2639,86 @@
           "mode"
         ],
         "title": "IdleBehaviorRequest",
+        "type": "object"
+      },
+      "IrEmitterDevice": {
+        "description": "A paired remote or repeater an X2 can send a device's IR from.\n\n``number`` is remote 1-5 or repeater 1-4, the numbering\n:class:`EmitterRouting` uses. ``online`` is as of the read.\n``port_cable`` says whether a repeater's IR port has a cable in it;\nNone for a remote.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "remote",
+              "repeater"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "online": {
+            "title": "Online",
+            "type": "boolean"
+          },
+          "port_cable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port Cable"
+          }
+        },
+        "required": [
+          "kind",
+          "number",
+          "name",
+          "online"
+        ],
+        "title": "IrEmitterDevice",
+        "type": "object"
+      },
+      "IrEmitterStatusView": {
+        "description": "``GET /hubs/{id}/ir-emitters``: the paired remotes and repeaters an X2\ncan send a device's IR from.\n\n``paired`` lists them (single-button RF devices left out), null when\nthe hub did not answer the read or when there was no read yet.\n``read_at`` is when the list was read (epoch seconds), null when there\nwas no read yet. The hub's own emitter and both IR ports are always\navailable to route to, so they are not listed.",
+        "properties": {
+          "paired": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/IrEmitterDevice"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paired"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          }
+        },
+        "required": [
+          "paired",
+          "read_at"
+        ],
+        "title": "IrEmitterStatusView",
         "type": "object"
       },
       "JobView": {
@@ -4521,6 +4835,34 @@
       "WifiDeviceRequest": {
         "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there. ``mqtt``\nneeds an X2 and a server with a broker (set in the control panel, or ``--mqtt-host``): the\nhub then publishes the presses to the broker set in the Sofabaton\napp, no listener and no callback address involved.",
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the device record's tile color, a palette id (0 = none picked); null keeps the hub's",
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the device record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); null keeps the hub's. An id the hub line lacks is a 422",
+            "title": "Icon"
+          },
           "input_slots": {
             "description": "slots offered as activity-start inputs (X1S/X2)",
             "items": {
@@ -4970,7 +5312,7 @@
   "info": {
     "description": "REST + WebSocket over the sofabaton-x library for Sofabaton X1 / X1S / X2 hubs. LAN service. Reads and control calls are free; once the admin account exists, every other write needs a token (Authorization: Bearer, or X-Sofabaton-Token) made in the control panel.\n\nWebSocket: `/api/v1/events` (optional `?hub_id=` filter, repeatable) streams WsHello once, then WsHubEvent / WsServerEvent / WsJobEvent / WsPress / WsDropped messages (see components).",
     "title": "sofabaton-x-server",
-    "version": "0.2.6"
+    "version": "0.2.7"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11565,6 +11907,102 @@
         ]
       }
     },
+    "/api/v1/hubs/{hub_id}/ir-emitters": {
+      "get": {
+        "description": "X2 only (409 `not_x2` on another hub). Without `refresh` this returns the last read without asking the hub (both fields null before the first one); `refresh=true` reads the hub's paired-device list now, which takes a few seconds and needs control mode. A device's routing is its `emitters` in the device list and `device.extras` in the snapshot; change it with `PUT .../devices/{did}`. The routing applies to commands sent to the device; a payload play always fires from the hub's own emitters.",
+        "operationId": "getIrEmitters",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "read the paired-device list from the hub now (a few seconds; needs control mode)",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "read the paired-device list from the hub now (a few seconds; needs control mode)",
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrEmitterStatusView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "security": [],
+        "summary": "The remotes and repeaters an X2 can send a device's IR from",
+        "tags": [
+          "hub"
+        ]
+      }
+    },
     "/api/v1/hubs/{hub_id}/jobs": {
       "get": {
         "operationId": "listJobs",
@@ -14352,6 +14790,119 @@
           }
         ],
         "summary": "Deploy a stale Wifi Device again from its stored spec (a job)",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices/{key}/test-delivery": {
+      "post": {
+        "description": "Press slot 1 of the device over the hub session and wait for it at this\nserver's ingress. The press is not a press event. The verdict lands in the\nrecord's ``delivery`` (``not_delivered``: a firewall, a VLAN, a wrong\naddress, or a broker the hub does not share).",
+        "operationId": "testWifiDeviceDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Test that the Wifi Device's presses reach the server (a job); the result is the record",
         "tags": [
           "callbacks"
         ]

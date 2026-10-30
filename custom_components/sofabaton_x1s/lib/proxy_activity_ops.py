@@ -33,6 +33,7 @@ from .device_create import (
     synthesize_command_code,
 )
 from .device_class_profiles import build_empty_device_payload
+from .devices import patch_record_appearance, validate_appearance
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
@@ -125,12 +126,18 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         return bytes(mutable)
 
     def _build_activity_confirm_payload(
-        self, activity_id: int, *, name: str | None = None
+        self,
+        activity_id: int,
+        *,
+        name: str | None = None,
+        icon: int | None = None,
+        color_id: int | None = None,
     ) -> bytes | None:
         """Build the full activity-row write used by the confirm/finalize
         opcodes. When ``name`` is given the row is rewritten with that name in
         place (an in-place activity rename), otherwise the row's current name
-        is preserved."""
+        is preserved; ``icon`` and ``color_id`` likewise (the X1 row has no
+        color byte)."""
 
         act_lo = activity_id & 0xFF
         activity = self.state.entities("activity").get(act_lo)
@@ -156,6 +163,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 start = _ACTIVITY_ROW_NAME_OFFSET
                 end = min(len(row), _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD)
                 row[start:end] = encode_label_slot(name, end - start, "utf-16-be")
+            # The record body starts after the row's 3-byte prefix.
+            row[3:] = patch_record_appearance(
+                bytes(row[3:]), hub_version=self.hub_version, icon=icon, color_id=color_id
+            )
             return self._clear_x1s_confirm_flag(bytes(row))
 
         row_name = str(activity.get("name", "")) if name is None else str(name)
@@ -163,6 +174,15 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             :_ACTIVITY_ROW_NAME_ASCII_LEN
         ].ljust(_ACTIVITY_ROW_NAME_ASCII_LEN, b"\x00")
         active_flag = 0x01 if bool(activity.get("active", False)) else 0x02
+        # Byte 8 is the record's icon (body[5]); keep the one the hub has,
+        # or a rename resets the activity to the TV icon.
+        if icon is None:
+            raw_body = activity.get("raw_body")
+            icon = (
+                raw_body[5]
+                if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 5
+                else 0x01
+            )
 
         return (
             bytes([
@@ -174,7 +194,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 0x01,
                 0x00,
                 act_lo,
-                0x01,
+                icon & 0xFF,
                 active_flag,
             ])
             + (b"\x00" * 22)
@@ -401,9 +421,11 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning("[ACT_REORDER] hub did not accept the new order")
             return None
 
-        # The app follows the order write with REMOTE_SYNC so the remote
-        # refreshes its local view (on the X2, the all-remotes broadcast).
-        if remote_sync and not self._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00):
+        # The order trigger (the order-only sync on the X2, the full one on
+        # the X1S, nothing on the X1: see _send_remote_sync_step).
+        if remote_sync and not self._send_remote_sync_step(
+            "activity-sort-remote-sync", ack_first_byte=0x00, purpose="order"
+        ):
             self._log.warning("[ACT_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_activities_and_wait():
@@ -496,7 +518,9 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning("[DEV_REORDER] hub did not accept the new order")
             return None
 
-        if remote_sync and not self._send_remote_sync_step("device-sort-remote-sync", ack_first_byte=0x00):
+        if remote_sync and not self._send_remote_sync_step(
+            "device-sort-remote-sync", ack_first_byte=0x00, purpose="order"
+        ):
             self._log.warning("[DEV_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_devices_and_wait():
@@ -555,20 +579,32 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         self._log.info("[ORDER] %s display order settled: %s", kind, desired)
         return "written"
 
-    def create_activity(self, name: str) -> dict[str, Any] | None:
+    def create_activity(
+        self,
+        name: str,
+        *,
+        icon: int | None = None,
+        color_id: int | None = None,
+    ) -> dict[str, Any] | None:
         """Create a fresh, empty activity named *name* on the hub.
 
         Thin wrapper over :meth:`restore_activity` with a synthetic minimal
         ``activity_backup`` payload: the record write (family ``0x37``) plus
         the terminal remote-sync, no bindings / macros / favorites. The
-        record fields mirror a blank activity row (icon ``1``, every other
-        knob zeroed). Returns ``{"status": "success", "activity_id": <id>}``
-        with the hub-assigned id, or ``None`` on refusal / failure.
+        record fields mirror a blank activity row (icon ``1`` unless
+        ``icon`` is given, ``color_id`` on an X2, every other knob zeroed).
+        Returns ``{"status": "success", "activity_id": <id>}`` with the
+        hub-assigned id, or ``None`` on refusal / failure.
         """
 
         clean_name = str(name or "").strip()
         if not clean_name:
             self._log.warning("[ACT_CREATE] refused: empty activity name")
+            return None
+        try:
+            validate_appearance(self.hub_version, icon=icon, color_id=color_id)
+        except ValueError as err:
+            self._log.warning("[ACT_CREATE] refused: %s", err)
             return None
         if not self.can_issue_commands():
             self._log.info("[ACT_CREATE] ignored: proxy client is connected")
@@ -582,7 +618,8 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 "device_id": 0,
                 "name": clean_name,
                 "brand": "",
-                "icon": 1,
+                "icon": 1 if icon is None else icon,
+                "color_id": color_id or 0,
                 "sort": 0,
                 "code_type": 0,
                 "device_type": 0,
@@ -606,9 +643,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         activity_id = int(result.get("activity_id") or 0) & 0xFF
 
         # The new activity last (the hubs append it themselves; the read-back
-        # this does is the catalog refresh), then the one remote sync.
+        # this does is the catalog refresh), then the remote sync that lists
+        # it: the order-only sync on the X2, the full one on the X1/X1S.
         self._settle_order("activities", [activity_id])
-        if not self.resync_remote():
+        if not self.sync_remotes_after_write(created=(activity_id,), origin="activity-create"):
             self._log.warning("[ACT_CREATE] REMOTE_SYNC after create was not acked")
 
         return {
@@ -616,8 +654,18 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             "activity_id": activity_id,
         }
 
-    def create_device(self, name: str, *, device_class: str) -> dict[str, Any] | None:
+    def create_device(
+        self,
+        name: str,
+        *,
+        device_class: str,
+        icon: int | None = None,
+        color_id: int | None = None,
+    ) -> dict[str, Any] | None:
         """Create an EMPTY device of ``device_class`` named *name* on the hub.
+
+        ``icon`` / ``color_id`` (X2) replace the class defaults (icon ``1``,
+        no color) in the head record.
 
         Thin wrapper over :meth:`restore_device` with a synthetic
         ``device_backup`` payload from :mod:`device_class_profiles` (head
@@ -639,12 +687,17 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         try:
+            validate_appearance(self.hub_version, icon=icon, color_id=color_id)
             payload = build_empty_device_payload(
                 clean_name, device_class, hub_version=self.hub_version
             )
         except ValueError as err:
             self._log.warning("[DEV_CREATE] refused: %s", err)
             return None
+        if icon is not None:
+            payload["device"]["icon"] = icon
+        if color_id is not None:
+            payload["device"]["color_id"] = color_id
 
         result = self.restore_device(payload)
         if not isinstance(result, dict) or result.get("status") != "success":
@@ -664,7 +717,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self.fetch_idle_behavior(device_id, timeout=2.0)
         except Exception:  # noqa: BLE001 - the device exists either way
             self._log.debug("[DEV_CREATE] idle behavior read failed", exc_info=True)
-        if not self.resync_remote():
+        if not self.sync_remotes_after_write(created=(device_id,), origin="device-create"):
             self._log.warning("[DEV_CREATE] REMOTE_SYNC after create was not acked")
 
         self._log.info(
@@ -1098,13 +1151,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not step.ok:
             return None
-        step = self._send_step(
-            step_name=f"fav-order-repair-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not step.ok:
+        if not self._send_entity_sync_step(act_lo, f"fav-order-repair-commit-65[act=0x{act_lo:02X}]"):
             return None
         self.state.activity_favorites_order[act_lo] = [
             (fav_id, slot) for slot, fav_id in enumerate(repaired, start=1)
@@ -1284,13 +1331,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name=f"fav-reorder-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"fav-reorder-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
@@ -1388,13 +1429,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # Step 3: commit
-        _step = self._send_step(
-            step_name=f"fav-delete-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"fav-delete-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
@@ -1529,6 +1564,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 map_step,
                 map_ack_payload[0],
             )
+            self._note_step_refusal(map_ack_payload[0])
             return None
         new_fav_id: int | None = None
         if map_ack_opcode == 0x013E and map_ack_payload:
@@ -1569,13 +1605,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name=f"favorite-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"favorite-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
@@ -1684,13 +1714,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name=f"keymap-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"keymap-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         # A 0x3E keymap write changes the entity's key rows only; its

@@ -102,8 +102,9 @@ _BUNDLE_PROVENANCE_KEYS = frozenset(
 )
 # Fields a create cannot set and the hub decides; on a created entity the
 # preview's synthetic baseline copies the rest of the block so the
-# per-entity planner sees exactly the editable fields as changes.
-_CREATE_EDITABLE_BLOCK_KEYS = ("brand", "ip_address", "idle_behavior")
+# per-entity planner sees exactly the editable fields as changes. A
+# document's icon and color ride the head step that follows the create.
+_CREATE_EDITABLE_BLOCK_KEYS = ("brand", "ip_address", "idle_behavior", "icon", "color_id")
 
 _MAX_NAME_LENGTH = 64
 

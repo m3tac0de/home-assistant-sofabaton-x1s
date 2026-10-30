@@ -56,7 +56,9 @@ HVER_BY_HUB_VERSION = {
 MIN_RECOMMENDED_FIRMWARE: dict[str, int] = {
     HUB_VERSION_X1: 17,
     HUB_VERSION_X1S: 5,
-    HUB_VERSION_X2: 8,
+    # 9: URL Wifi records, the hub broker link and the order-only and
+    # per-item remote syncs were all bench-validated on it, and only on it.
+    HUB_VERSION_X2: 9,
 }
 
 

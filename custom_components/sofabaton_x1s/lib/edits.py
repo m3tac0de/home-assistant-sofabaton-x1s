@@ -19,6 +19,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Optional, Sequence
 
+from .emitter_routing import EmitterRouting
 from .payloads import CommandPayload, CommandRecord, NetworkCommand
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
@@ -43,6 +44,9 @@ _NON_IR_DEVICE_CLASSES = frozenset({
 __all__ = [
     "rename_activity",
     "rename_device",
+    "set_activity_appearance",
+    "set_device_appearance",
+    "set_device_emitters",
     "bind_button",
     "clear_button",
     "add_favorite",
@@ -100,6 +104,51 @@ def rename_device(
     device["device"]["name"] = _clean_name(name, "a device")
     if brand is not None:
         device["device"]["brand"] = str(brand).strip()
+    return edited
+
+
+def _set_appearance(
+    bundle: dict[str, Any], kind: str, entity_id: int, icon: Optional[int], color_id: Optional[int]
+) -> dict[str, Any]:
+    edited, entity = _edit(bundle, kind, entity_id)
+    if icon is not None:
+        entity["device"]["icon"] = int(icon)
+    if color_id is not None:
+        entity["device"]["color_id"] = int(color_id)
+    return edited
+
+
+def set_activity_appearance(
+    bundle: dict[str, Any], activity_id: int, *, icon: Optional[int] = None, color_id: Optional[int] = None
+) -> dict[str, Any]:
+    """Set an activity's icon and/or X2 color (a ``sync_activity`` on
+    ``activity_id``). The sync checks both against the hub line: icons
+    1-25 on the X1, 1-16 on the X1S, 1-45 on the X2; colors 1-12, X2 only."""
+
+    return _set_appearance(bundle, "activity", activity_id, icon, color_id)
+
+
+def set_device_appearance(
+    bundle: dict[str, Any], device_id: int, *, icon: Optional[int] = None, color_id: Optional[int] = None
+) -> dict[str, Any]:
+    """Set a device's icon and/or X2 color (a ``sync_device`` on
+    ``device_id``), checked as in :func:`set_activity_appearance`."""
+
+    return _set_appearance(bundle, "device", device_id, icon, color_id)
+
+
+def set_device_emitters(bundle: dict[str, Any], device_id: int, routing: EmitterRouting) -> dict[str, Any]:
+    """Set which emitters send an X2 device's IR (a ``sync_device`` on
+    ``device_id``). Build ``routing`` from the device's current one
+    (``EmitterRouting.decode`` of its ``device.extras``) with the
+    ``with_*`` changes, so the bits it does not touch stay as they are.
+    The sync refuses it on the X1 and X1S, with no emitter at all, or with
+    the RF-button byte changed. Commands sent to the device follow the
+    routing; one-shot plays use the hub's emitters regardless."""
+
+    edited, device = _edit(bundle, "device", device_id)
+    a, b, c = routing.encode()
+    device["device"]["extras"] = {"a": a, "b": b, "c": c}
     return edited
 
 
@@ -287,7 +336,8 @@ def set_command_payload(
     """Replace the stored payload of an existing command (an in-place overwrite).
 
     The command's label, library type and button code are preserved by the
-    engine; only the bytes change. ``payload`` is an :class:`IrPayload` on
+    engine; only the bytes change. A ``wifi_ip`` command's type follows its
+    kind instead (request text or :meth:`NetworkCommand.url`). ``payload`` is an :class:`IrPayload` on
     an IR device, or a :class:`NetworkCommand` / :class:`CommandRecord` of
     the device's class (the executor re-encodes a network command's
     structured form through the canonical writer; a record's bytes are
@@ -302,9 +352,16 @@ def set_command_payload(
             continue
         previous = row.get("restore_data") if isinstance(row.get("restore_data"), dict) else {}
         if isinstance(payload, NetworkCommand):
+            # A wifi_ip record's type follows its kind (request text 0x1C,
+            # URL 0x21): an edit may switch kinds, so the payload decides.
+            record_type = (
+                payload.library_type
+                if payload.device_class == DEVICE_CLASS_WIFI_IP
+                else previous.get("library_type", payload.library_type)
+            )
             row["restore_data"] = {
                 "transport": "hub_code_record",
-                "library_type": int(previous.get("library_type", payload.library_type)) & 0xFF,
+                "library_type": int(record_type) & 0xFF,
                 "button_code": int(previous.get("button_code", 0)) & 0xFFFFFFFFFFFF,
                 "data_hex": payload.blob.hex(),
                 "decoded": payload.decoded,

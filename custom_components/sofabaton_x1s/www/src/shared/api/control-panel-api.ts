@@ -12,23 +12,41 @@ import type {
   HubAction,
   HubEventActionsResponse,
   HubClickAction,
+  HubMqttLinkState,
   SidebarPanelMode,
   IrEmissionsEvent,
   IrEmitterConsumersResponse,
+  IrEmitterStatusResponse,
   IrLearnEvent,
   IrPayloadConvertResponse,
   IrPayloadForeignFormat,
   LogsResponse,
   RefreshKind,
+  RfBand,
   SettingKey,
   WifiCommandConfigResponse,
   WifiCommandSyncState,
+  WifiDelivery,
+  WifiDeliveryInfo,
   WifiDeviceSummary,
   WifiDevicesListResponse,
   WifiEventCreateResponse,
   WifiEventsListResponse,
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
+
+/** A new activity's / device's icon and X2 color, when the user picked them. */
+export interface CreateAppearance {
+  icon?: number | null;
+  colorId?: number | null;
+}
+
+function appearanceFields(appearance: CreateAppearance): { icon?: number; color_id?: number } {
+  return {
+    ...(appearance.icon != null ? { icon: appearance.icon } : {}),
+    ...(appearance.colorId != null ? { color_id: appearance.colorId } : {}),
+  };
+}
 
 export class ControlPanelApi {
   constructor(private readonly hass: HassLike) {}
@@ -115,11 +133,13 @@ export class ControlPanelApi {
     });
   }
 
-  playIrBlob(entryId: string, blob: string) {
+  /** One-shot play of a stored code: IR, or RF on `band` (433 / 315 MHz). */
+  playIrBlob(entryId: string, blob: string, band: RfBand | null = null) {
     return this.hass.callWS<BlobPlayResponse>({
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
       blob,
+      ...(band != null ? { band } : {}),
     });
   }
 
@@ -139,15 +159,26 @@ export class ControlPanelApi {
   /**
    * Arm one hub learn window. Events arrive on `onMessage` (`listening`,
    * then a terminal state); calling the returned unsubscribe before the
-   * terminal event cancels the window on the hub.
+   * terminal event cancels the window on the hub. With `band` the hub's
+   * RF receiver listens instead of its IR one.
    */
-  subscribeIrLearn(entryId: string, timeoutS: number, onMessage: (event: IrLearnEvent) => void) {
+  subscribeIrLearn(
+    entryId: string,
+    timeoutS: number,
+    onMessage: (event: IrLearnEvent) => void,
+    band: RfBand | null = null,
+  ) {
     if (!this.hass.connection?.subscribeMessage) {
       return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.irLearnNoSocket));
     }
     return this.hass.connection.subscribeMessage(
       onMessage,
-      { type: "sofabaton_x1s/ir_learn/subscribe", entry_id: entryId, timeout: Math.round(timeoutS) },
+      {
+        type: "sofabaton_x1s/ir_learn/subscribe",
+        entry_id: entryId,
+        timeout: Math.round(timeoutS),
+        ...(band != null ? { band } : {}),
+      },
     );
   }
 
@@ -166,6 +197,16 @@ export class ControlPanelApi {
     return this.hass.callWS<IrEmitterConsumersResponse>({
       type: "sofabaton_x1s/ir_emitter/consumers",
       entry_id: entryId,
+    });
+  }
+
+  /** An X2's paired remotes and repeaters for the IR pill: `refresh` asks
+   *  the hub (a few seconds), otherwise the last read without asking. */
+  getIrEmitterStatus(entryId: string, refresh = false) {
+    return this.hass.callWS<IrEmitterStatusResponse>({
+      type: "sofabaton_x1s/ir_emitters/status",
+      entry_id: entryId,
+      refresh,
     });
   }
 
@@ -257,23 +298,25 @@ export class ControlPanelApi {
 
   // Create a fresh, empty activity on the hub; resolves with the
   // hub-assigned activity id so the caller can open the live editor on it.
-  createActivity(entryId: string, name: string) {
+  createActivity(entryId: string, name: string, appearance: CreateAppearance = {}) {
     return this.hass.callWS<{ status?: string; activity_id?: number }>({
       type: "sofabaton_x1s/activity/create",
       entry_id: entryId,
       name,
+      ...appearanceFields(appearance),
     });
   }
 
   // Create an EMPTY device of the given class on the hub (Hub tab "Add
   // device"); resolves with the hub-assigned device id so the caller can
   // open the live editor on it. Commands are added there.
-  createDevice(entryId: string, name: string, deviceClass: string) {
+  createDevice(entryId: string, name: string, deviceClass: string, appearance: CreateAppearance = {}) {
     return this.hass.callWS<{ status?: string; device_id?: number }>({
       type: "sofabaton_x1s/device/create",
       entry_id: entryId,
       name,
       device_class: deviceClass,
+      ...appearanceFields(appearance),
     });
   }
 
@@ -403,10 +446,52 @@ export class ControlPanelApi {
    *  sync_command_config action: a failure comes back as a code the card
    *  shows in its dock, never as Home Assistant's error toast. */
   syncWifiCommandConfig(hubEntryId: string, deviceKey: string) {
-    return this.hass.callWS<Record<string, unknown>>({
+    return this.hass.callWS<{ delivery?: WifiDelivery | null } & Record<string, unknown>>({
       type: "sofabaton_x1s/command_sync/run",
       entry_id: hubEntryId,
       device_key: deviceKey,
+    });
+  }
+
+  /** How presses of one deployed Wifi Device reach Home Assistant (the
+   *  Wifi Events device included, key `haevents`). */
+  getWifiDelivery(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<WifiDeliveryInfo>({
+      type: "sofabaton_x1s/command_config/delivery",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  /** Test again: the deploy's test press on its own (no Action runs). */
+  testWifiDelivery(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<WifiDelivery>({
+      type: "sofabaton_x1s/command_config/test_delivery",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  getHubMqttStatus(hubEntryId: string) {
+    return this.hass.callWS<HubMqttLinkState>({
+      type: "sofabaton_x1s/hub_mqtt/status",
+      entry_id: hubEntryId,
+    });
+  }
+
+  /** Point an X2 at a broker; replaces whatever broker it had. With
+   *  `use_ha_login` the backend sends Home Assistant's own MQTT login. */
+  setHubMqttBroker(
+    hubEntryId: string,
+    broker: { host: string; port: number; useHaLogin: boolean; username?: string; password?: string },
+  ) {
+    return this.hass.callWS<HubMqttLinkState & { connected: boolean }>({
+      type: "sofabaton_x1s/hub_mqtt/setup",
+      entry_id: hubEntryId,
+      host: broker.host,
+      port: broker.port,
+      use_ha_login: broker.useHaLogin,
+      ...(broker.useHaLogin ? {} : { username: broker.username ?? "", password: broker.password ?? "" }),
     });
   }
 

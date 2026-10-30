@@ -16,6 +16,43 @@ import {
 } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import { TOOLS_CARD_LOCALES } from "../../custom_components/sofabaton_x1s/www/src/control-panel-language-loader";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
+import de from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
+import es from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
+import fr from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
+import nl from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/nl";
+import zhHans from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/zh-hans";
+import { entityIconGroups, entityIconName } from "../../remote-card/src/entity-icons/entity-icons";
+import { appearanceLabelsFrom } from "../../remote-card/src/entity-icons/appearance-editor";
+
+test("appearance labels follow the active language for every hub's pictures and preserve brands", () => {
+  const labels = appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup);
+  const pictureNames = [...new Set(["X1", "X1S", "X2"].flatMap((hub) =>
+    entityIconGroups(hub).pictures.map((id) => entityIconName(hub, id)),
+  ))].sort();
+  try {
+    for (const [locale, catalogue] of Object.entries({ de, es, fr, nl, "zh-hans": zhHans })) {
+      assert.deepEqual(Object.keys(catalogue.backup.entityIconNames).sort(), pictureNames, locale);
+      setToolsCardLanguage(locale);
+      assert.equal(labels.iconName("Music"), catalogue.backup.entityIconNames.Music, locale);
+      assert.notEqual(labels.iconName("Music"), "Music", locale);
+      for (const hub of ["X1", "X1S", "X2"]) {
+        for (const id of entityIconGroups(hub).services) {
+          const name = entityIconName(hub, id);
+          assert.equal(labels.iconName(name), name, `${locale}: ${hub} ${name}`);
+        }
+      }
+    }
+  } finally {
+    setToolsCardLanguage("en");
+  }
+});
+
+test("complete catalogues explicitly cover every device type, including open-ended map keys", () => {
+  const expected = Object.keys(TOOLS_CARD_STRINGS_EN.cache.deviceClassLabels).sort();
+  for (const [locale, catalogue] of Object.entries({ de, es, fr, nl, "zh-hans": zhHans })) {
+    assert.deepEqual(Object.keys(catalogue.cache.deviceClassLabels).sort(), expected, locale);
+  }
+});
 
 test("control-panel strings default to the complete English table", () => {
   setToolsCardLanguage("en");
@@ -201,8 +238,7 @@ test("correctness-sensitive translations preserve runtime meaning and protocol i
   );
 
   setToolsCardLanguage("es");
-  assert.match(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /\bwifi_ip\b/);
-  assert.doesNotMatch(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /Wifi_ip/);
+  assert.match(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /\bHTTP\b/);
 
   setToolsCardLanguage("nl");
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.clearSlotSubtitle, "De configuratie wordt gewist.");
@@ -742,8 +778,10 @@ test("control-panel UI source does not introduce literal user-facing strings", (
     skip: (relative) => relative === "strings.ts"
       || relative.startsWith("control-panel-translations/")
       || relative.endsWith("-styles.ts"),
-    // Transport names, shown as the protocol spells them in every locale.
-    allowedValues: new Set(["MQTT", "HTTP"]),
+    // Transport names, shown as the protocol spells them in every locale,
+    // and the wifi_ip form's placeholders: an HTTP method, a media type and
+    // a header line, protocol text that no locale translates.
+    allowedValues: new Set(["MQTT", "HTTP", "GET", "application/json", "X-Api-Key: 123"]),
   });
   assert.deepEqual(offenders, [], offenders.join("\n"));
 });

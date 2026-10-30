@@ -1957,3 +1957,48 @@ def test_a_device_whose_power_is_set_up_by_idle_behaviour_keeps_its_macros() -> 
     proxy._idle_behavior_values[5] = 0
     assert proxy._device_power_set_up(5, tail_zero) is False    # never set up: placeholders
     assert proxy._device_power_set_up(6, tail_one) is True      # existing hub devices, as before
+
+
+def _rf_device_payload(*, with_signal_data: bool) -> dict[str, Any]:
+    """An RF device as exported before RF codes were mapped (no class
+    name, code 0x1D), with or without its command records."""
+
+    payload = _device_payload(source_device_id=9, name="Screen")
+    payload["device"] = {"device_id": 9, "name": "Screen", "device_class": None, "device_class_code": 0x1D}
+    row: dict[str, Any] = {"command_id": 1, "name": "Down"}
+    if with_signal_data:
+        row["restore_data"] = {
+            "transport": "hub_code_record",
+            "library_type": 0x1D,
+            "command_code": "00 00 00 00 00 00",
+            "data_hex": "aa bb cc",
+        }
+    payload["commands"] = [row]
+    return payload
+
+
+def test_preflight_accepts_an_rf_device_with_its_command_records(monkeypatch) -> None:
+    """An RF device used to come out class-less, which refused the whole
+    hub restore in the preflight."""
+
+    proxy = _proxy(monkeypatch)
+    plain = _activity_payload(source_activity_id=0x66, macro_steps=[{"device_id": 7, "command_id": 1}])
+    devices = [_device_payload(source_device_id=7), _rf_device_payload(with_signal_data=True)]
+
+    assert proxy.preflight_restore_bundle(_bundle_with_activity(plain, devices=devices)) == {
+        "devices": 2,
+        "activities": 1,
+    }
+
+
+def test_preflight_refuses_an_rf_device_backed_up_without_its_signal_data(monkeypatch) -> None:
+    """Backups taken before RF was classified hold only command labels for
+    an RF device; nothing can rebuild those commands, so the refusal names
+    what is missing instead of an unknown class."""
+
+    proxy = _proxy(monkeypatch)
+    plain = _activity_payload(source_activity_id=0x66, macro_steps=[{"device_id": 7, "command_id": 1}])
+    devices = [_device_payload(source_device_id=7), _rf_device_payload(with_signal_data=False)]
+
+    with pytest.raises(ValueError, match="rf_433mhz devices needs command restore metadata"):
+        proxy.preflight_restore_bundle(_bundle_with_activity(plain, devices=devices))

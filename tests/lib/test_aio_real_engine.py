@@ -721,6 +721,8 @@ def test_key_sort_timeout_on_a_network_device_records_an_empty_row() -> None:
     assert export._key_sort_row_or_fallback(4, "wifi_sonos", None) == empty
     assert export._key_sort_row_or_fallback(4, "wifi_hue", None) == empty
     assert export._key_sort_row_or_fallback(1, "ir", None) is None          # a real gap
+    assert export._key_sort_row_or_fallback(1, "rf_433mhz", None) is None   # RF has key pages too
+    assert export._key_sort_row_or_fallback(1, "rf_315mhz", None) is None
     assert export._key_sort_row_or_fallback(1, None, None) is None          # class unknown: no guess
     row = {"device_id": 1, "msg_hex": "01 ff"}
     assert export._key_sort_row_or_fallback(1, "wifi_sonos", row) is row    # a reply always wins
@@ -997,6 +999,13 @@ def _update_engine(monkeypatch, dep, *, hub_version="X1S", device=None, run_resu
 
     monkeypatch.setattr(engine, "run_wifi_inplace_plan", fake_run)
     monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: trace.append("resync") or True)
+    monkeypatch.setattr(engine, "sync_remote_entity", lambda entity: trace.append(("item", entity)) or True)
+
+    def sync_after(*, created=(), touched=(), deleted=(), origin=""):
+        trace.append(("sync", tuple(created), tuple(touched), tuple(deleted)))
+        return True
+
+    monkeypatch.setattr(engine, "sync_remotes_after_write", sync_after)
     return engine, runs
 
 
@@ -1042,8 +1051,10 @@ def test_update_wifi_device_renames_records_in_place(monkeypatch) -> None:
         monkeypatch.setattr(engine, "activities_referencing_device", lambda dev_id: [101])
         engine.trace.clear()
         await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Go"), _WifiSlotSpec("Pause"))))
-        # One remote-sync trigger closes the update, after the read-back.
-        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101), "resync"]
+        # A rename-only update closes with the device's per-item remote sync, after the read-back;
+        # no full trigger.
+        assert engine.trace[engine.trace.index("run"):] == [
+            "run", ("device", 12), ("activity", 101), ("sync", (), (12,), ())]
 
     asyncio.run(main())
 
@@ -1067,7 +1078,9 @@ def test_update_wifi_device_applies_slot_references_and_checks_the_activities(mo
         # The engine's favorite write drops the activity's favorites and leaves the re-read to its
         # caller: after the run the device and the activity written to are read back (found live
         # 2026-09-21: a deploy left the Hub tab counting 0 favorites).
-        assert engine.trace == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101), "resync"]
+        assert engine.trace[:5] == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101)]
+        # Closed by per-item syncs of the device (its device-page binding) and the activity.
+        assert engine.trace[5:] == [("sync", (), (12, 101), ())]
 
         # An activity the hub does not have is declined before anything is planned or written.
         runs.clear()
@@ -1075,6 +1088,23 @@ def test_update_wifi_device_applies_slot_references_and_checks_the_activities(mo
         with pytest.raises(errors.WifiUpdateDeclined) as caught:
             await proxy.update_wifi_device(dep, gone)
         assert caught.value.reason == "activity" and "150" in str(caught.value) and runs == []
+
+    asyncio.run(main())
+
+
+def test_update_wifi_device_skips_the_closing_sync_of_an_entity_a_step_synced(monkeypatch) -> None:
+    async def main():
+        dep = _deployment()
+        # The favorite step's own commit synced the activity per item.
+        done = {"status": "success", "completed_steps": 3, "total_steps": 3, "counters": {}, "item_synced": [101]}
+        engine, _runs = _update_engine(monkeypatch, dep, run_result=done)
+        proxy = aio.AsyncXProxy.wrap(engine)
+        routed = _WifiDeviceSpec(name="Server", slots=(
+            _WifiSlotSpec("Play", favorite=True, button=0xB6, activities=(101,)), _WifiSlotSpec("Pause")))
+
+        await proxy.update_wifi_device(dep, routed)
+
+        assert engine.trace[-1] == ("sync", (), (12,), ())
 
     asyncio.run(main())
 
@@ -1197,6 +1227,23 @@ def test_update_of_an_mqtt_device_keeps_its_head_an_mqtt_head(monkeypatch) -> No
         assert engine._sync_step_wifi_head_commit(head[0].payload) is False and sent == []
 
     asyncio.run(main())
+
+
+def test_wifi_head_commit_keeps_the_color_the_user_picked(monkeypatch) -> None:
+    # The http head is rebuilt from scratch, not from the cached record; a
+    # color set on the device in the X2 app must survive that rewrite.
+    engine = _engine("X2")
+    _hub_link(engine, True)
+    current = devices_mod.DeviceConfig(name="Server", brand="c0-a1b2c3d4", device_id=12, code_type=0x1C,
+                                       input_mode=2, tail_marker=1, color_id=7)
+    raw = devices_mod.build_device_create_payload(current, hub_version="X2")[3:]
+    engine.state.devices[12] = {"name": "Server", "brand": "c0-a1b2c3d4", "device_class": "wifi_ip", "raw_body": raw}
+    sent: list[dict] = []
+    monkeypatch.setattr(engine, "_send_step", lambda **kw: sent.append(kw) or _ok_step())
+
+    assert engine._sync_step_wifi_head_commit({"device_id": 12, "name": "Media", "ip_address": _TARGET}) is True
+    written = devices_mod.parse_device_record(sent[0]["payload"][3:], hub_version="X2", entity_kind="device")
+    assert (written.name, written.color_id) == ("Media", 7)
 
 
 def test_update_wifi_device_rename_on_x1_pins_the_head_address(monkeypatch) -> None:
@@ -1385,7 +1432,8 @@ def test_write_batch_without_requests_sends_nothing_and_reports_not_needed(monke
     enqueued: list = []
     monkeypatch.setattr(engine, "enqueue_cmd", lambda *a, **kw: enqueued.append(a) or True)
     engine.begin_write_batch()
-    assert engine.end_write_batch() == {"remote_sync": "not_needed", "remote_sync_requests": 0, "origins": []}
+    assert engine.end_write_batch() == {"remote_sync": "not_needed", "remote_sync_kind": None,
+                                        "remote_sync_requests": 0, "item_syncs": 0, "origins": []}
     assert enqueued == []
 
 
@@ -1668,7 +1716,7 @@ def test_backup_with_an_empty_or_out_of_range_id_list_is_refused_not_widened() -
 def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
     """X1: after the plan (and even with nothing to write) the update checks
     each activity's quick-access order and rewrites one an older restore left
-    short; what it rewrote is read back and closed by one remote sync. The
+    short; what it rewrote is read back (the rewrite synced it itself). The
     X1S keeps macros outside its order table: never checked there."""
 
     async def main():
@@ -1692,10 +1740,13 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
 
             await proxy.update_wifi_device(dep, routed)
             if expect_repairs:
-                assert engine.trace[engine.trace.index("run"):] == [
-                    "run", ("repair", 101), ("device", 12), ("activity", 101), "resync"]
+                assert engine.trace[engine.trace.index("run"):engine.trace.index("run") + 4] == [
+                    "run", ("repair", 101), ("device", 12), ("activity", 101)]
             else:
                 assert repairs == []
+            # The favorite's activity gets its per-item sync; no full trigger.
+            assert engine.trace[-1][0] == "sync" and 101 in engine.trace[-1][2]
+            assert "resync" not in engine.trace
 
             # Nothing to write: an X1 still heals, then re-reads and resyncs.
             engine.trace.clear()
@@ -1703,9 +1754,46 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
             await proxy.update_wifi_device(dep, _WifiDeviceSpec.from_dict(dep.spec.to_dict()))
             assert len(runs) == 1
             if expect_repairs:
+                # The repair's own order write synced the activity: nothing more is sent.
                 assert repairs == [101]
-                assert engine.trace[-3:] == [("repair", 101), ("activity", 101), "resync"]
+                assert engine.trace[-2:] == [("repair", 101), ("activity", 101)]
             else:
-                assert repairs == [] and "resync" not in engine.trace
+                assert repairs == []
+            assert "resync" not in engine.trace and not any(t[0] == "sync" for t in engine.trace if isinstance(t, tuple))
+
+    asyncio.run(main())
+
+
+def test_deploy_wifi_device_applies_a_picked_icon_with_the_first_update(monkeypatch) -> None:
+    async def main():
+        engine, creates = _wifi_engine(monkeypatch)
+        picked = _WifiDeviceSpec(name="Server", icon=11)
+        bare = picked.normalized()
+        bare = wifi_device_mod.WifiDeviceSpec(name=bare.name, slots=bare.slots, brand=bare.brand)
+        created = wifi_device_mod.WifiDeployment(
+            device_id=12, spec=bare, target=wifi_device_mod.WifiTarget(_TARGET, 8060, "aabbccddeeff"),
+            labels=wifi_device_mod.labels_from_spec(bare), hub_version="X1S")
+        monkeypatch.setattr(engine, "backup_device", lambda dev_id, **kw: _live_device(created))
+        engine.state.activities = {101: {"name": "Watch"}}
+        engine._activities_catalog_ready = True
+        monkeypatch.setattr(engine, "backup_activity", lambda act_id, **kw: _live_activity(act_id, []))
+        captured: list = []
+        monkeypatch.setattr(engine, "run_wifi_inplace_plan", lambda plan, *, progress_callback=None: (
+            captured.append(plan) or {"status": "success", "completed_steps": len(plan.steps), "total_steps": len(plan.steps), "counters": {}}))
+        monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
+        proxy = aio.AsyncXProxy.wrap(engine)
+
+        # The create writes the hub's default icon; the first update's head commit writes the pick.
+        dep = await proxy.deploy_wifi_device(picked, host=_TARGET, port=8060)
+        assert len(creates) == 1 and creates[0]["send_remote_sync"] is False
+        head = [s for s in captured[0].steps if s.kind == "wifi_head_commit"]
+        assert len(head) == 1 and head[0].payload["icon"] == 11
+        assert dep.spec.icon == 11
+
+        # An icon the hub line lacks, or a color off the X2, is refused before the hub is touched.
+        for bad in (_WifiDeviceSpec(name="Server", icon=30), _WifiDeviceSpec(name="Server", color_id=2)):
+            with pytest.raises(ValueError):
+                await proxy.deploy_wifi_device(bad, host=_TARGET, port=8060)
+        assert len(creates) == 1
 
     asyncio.run(main())

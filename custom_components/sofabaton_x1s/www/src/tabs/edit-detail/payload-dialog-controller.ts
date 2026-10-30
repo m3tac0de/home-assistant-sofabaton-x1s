@@ -21,6 +21,14 @@ import {
 import type { IrPayloadForeignFormat } from "../../shared/ha-context";
 import { localizeBackendError } from "../../shared/utils/backend-state-localization";
 import {
+  buildWifiIpRecord,
+  wifiIpDraftsChanged,
+  wifiIpDraftsFromFields,
+  wifiIpDraftsWithScheme,
+  wifiIpRequestPreview,
+  type WifiIpRecord,
+} from "../../shared/wifi-ip-form";
+import {
   addBundleDeviceCommand,
   type BackupCommandDecodedBlock,
   type DecodableCommandClass,
@@ -28,6 +36,8 @@ import {
   bundleDeviceClass,
   commandDecodedBlock,
   commandRawPayloadHex,
+  decodedFieldPlaceholder,
+  decodedFormRows,
   normalizeCommandPayloadHex,
   setCommandRestoreData,
   updateCommandRawPayload,
@@ -36,8 +46,9 @@ import {
   deviceCommandItems,
   nextFreeDeviceCommandId,
   updateCommandDecodedFields,
+  wifiIpFormErrorText,
 } from "../backup-state";
-import type { FetchedCommandPayload } from "./host-types";
+import type { FetchedCommandPayload, PayloadSignal } from "./host-types";
 import { bundleIsX2, editorErrorMessage, sanitizeBundleName } from "./names";
 import { decodedSnapshotFromFetch, draftToFieldValue, fieldValueToDraft } from "./payload-drafts";
 import type { SofabatonEditDetailView } from "../edit-detail-view";
@@ -55,6 +66,11 @@ export type PayloadDialogHost = ReactiveControllerHost &
     | "mode"
     | "testCommandPayload"
   >;
+
+/** RF bands by device class and by a record's code type (0x1D / 0x1E). */
+const RF_BAND_BY_DEVICE_CLASS: Record<string, 433 | 315> = { rf_433mhz: 433, rf_315mhz: 315 };
+const RF_BAND_BY_CODE_TYPE: Record<number, 433 | 315> = { 0x1d: 433, 0x1e: 315 };
+const RF_CODE_TYPE_BY_BAND: Record<433 | 315, number> = { 433: 0x1d, 315: 0x1e };
 
 export class PayloadDialogController implements ReactiveController {
   // ── Payload dialog (structured decoded form OR raw hex) ────────────
@@ -309,7 +325,7 @@ export class PayloadDialogController implements ReactiveController {
                   </div>
                 `
               : nothing}
-            ${this.host._learn.view === "off" && this.liveDeviceIsIr()
+            ${this.host._learn.view === "off" && this.payloadSignal() != null
               ? html`
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
@@ -356,7 +372,7 @@ export class PayloadDialogController implements ReactiveController {
               ${this.host._learn.view !== "off"
                 ? this.host._learn.renderFooterActions()
                 : nothing}
-              ${this.host._learn.view === "off" && this.host.mode === "live" && this.liveDeviceIsIr() && this.host.testCommandPayload
+              ${this.host._learn.view === "off" && this.host.mode === "live" && this.payloadSignal() != null && this.host.testCommandPayload
                 ? html`
                     <button
                       class="dialog-btn payload-test-btn"
@@ -382,13 +398,18 @@ export class PayloadDialogController implements ReactiveController {
   }
 
   renderRawForm() {
+    // Learn sits beside the title: RF codes (and IR commands on an RF
+    // device) are edited as raw bytes, without the IR format tabs.
     return html`
       <div class="decoded-form">
-        <div class="decoded-form-head">
-          <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
-          <div class="decoded-form-sub">
-            ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+        <div class="payload-raw-head">
+          <div class="decoded-form-head">
+            <div class="decoded-form-title">${TOOLS_CARD_STRINGS.backup.rawPayload}</div>
+            <div class="decoded-form-sub">
+              ${TOOLS_CARD_STRINGS.backup.rawPayloadDescription}
+            </div>
           </div>
+          ${this.host._learn.renderEntryButton()}
         </div>
         <label class="decoded-field">
           <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.payloadHex}</span>
@@ -676,29 +697,59 @@ export class PayloadDialogController implements ReactiveController {
             ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
           </div>
         `;
+    const preview = className === "wifi_ip" ? wifiIpRequestPreview(this.decodedDrafts) : null;
     return html`
       <div class="decoded-form">
         ${head}
-        ${spec.fields.map((field) => this.renderDecodedField(field))}
+        ${preview
+          ? html`
+              <div class="decoded-request-preview">
+                ${preview.method ? html`<span class="decoded-request-method">${preview.method}</span>` : nothing}
+                <span class="decoded-request-url">${preview.url}</span>
+              </div>
+            `
+          : nothing}
+        ${decodedFormRows(className, bundleIsX2(this.host.bundle)).map((row) => this.renderDecodedRow(row))}
       </div>
     `;
   }
 
-  renderDecodedField(field: DecodedFieldSpec) {
+  renderDecodedRow(row: DecodedFieldSpec[]) {
+    if (row.length === 1) return this.renderDecodedField(row[0]);
+    // Under a side-by-side field a helper would push its input out of
+    // line with the others: the row's helpers go under the whole row.
+    return html`
+      <div class="decoded-row">
+        <div class="decoded-row-fields">${row.map((field) => this.renderDecodedField(field, false))}</div>
+        ${row.map((field) => field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing)}
+      </div>
+    `;
+  }
+
+  renderDecodedField(field: DecodedFieldSpec, withHelper = true) {
     const value = this.decodedDrafts[field.key] ?? "";
+    const placeholder = decodedFieldPlaceholder(field, this.decodedDrafts);
     const onInput = (event: Event) => this.handleDecodedFieldInput(event, field.key);
     const multilineClass = field.escapedDisplay
       ? "decoded-field-input--multiline decoded-field-input--escaped"
       : "decoded-field-input--multiline";
+    const suggestionsId = field.suggestions ? `decoded-suggestions-${field.key}` : "";
     return html`
-      <label class="decoded-field">
+      <label class="decoded-field ${field.narrow ? "decoded-field--narrow" : ""}" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline
+        ${field.options
+          ? html`
+              <select class="decoded-field-input" @change=${onInput}>
+                ${field.options.map((option) => html`<option value=${option} ?selected=${option === value}>${option}</option>`)}
+              </select>
+            `
+          : field.multiline
           ? html`
               <textarea
                 class="decoded-field-input ${multilineClass}"
-                rows="4"
+                rows=${field.rows ?? 4}
                 spellcheck="false"
+                placeholder=${placeholder}
                 .value=${value}
                 @input=${onInput}
                 @change=${onInput}
@@ -707,15 +758,22 @@ export class PayloadDialogController implements ReactiveController {
           : html`
               <input
                 class="decoded-field-input"
-                type=${field.numeric ? "number" : "text"}
+                type="text"
+                inputmode=${field.numeric ? "numeric" : "text"}
                 spellcheck="false"
+                autocomplete="off"
+                placeholder=${placeholder}
+                list=${suggestionsId || nothing}
                 .value=${value}
                 ?disabled=${Boolean(field.readonly)}
                 @input=${field.readonly ? null : onInput}
                 @change=${field.readonly ? null : onInput}
               />
+              ${field.suggestions
+                ? html`<datalist id=${suggestionsId}>${field.suggestions.map((option) => html`<option value=${option}></option>`)}</datalist>`
+                : nothing}
             `}
-        ${field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
+        ${withHelper && field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
       </label>
     `;
   }
@@ -744,7 +802,11 @@ export class PayloadDialogController implements ReactiveController {
   }
 
   handleDecodedFieldInput = (event: Event, fieldKey: string) => {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    if (fieldKey === "scheme" && this.decodedSnapshot?.className === "wifi_ip") {
+      this.decodedDrafts = wifiIpDraftsWithScheme(this.decodedDrafts, input.value);
+      return;
+    }
     // IR descriptor field: pasting hex flips the dialog to the hex tabs
     // (IR8 format auto-recognition). Complete blobs only, so typing a
     // descriptor with digits never gets hijacked.
@@ -775,9 +837,31 @@ export class PayloadDialogController implements ReactiveController {
   };
 
   /**
-   * True for IR devices. Live payload *editing* is offered for all classes
-   * (raw hex, or the structured form where a parser exists), but the Test
-   * button — `playIrBlob` — is IR-only, so it gates on this.
+   * The open command's signal: IR, RF on a band, or null for classes that
+   * neither play nor learn (Wifi, Bluetooth). Test and Learn gate on it.
+   * The type is per command (an RF device can hold IR commands next to
+   * its RF ones, and the reverse), so a live fetch's record code type
+   * wins; the device class decides when it is unknown and in add mode.
+   */
+  payloadSignal(): PayloadSignal | null {
+    if (this.host.entityId == null || !this.host.bundle) return null;
+    const deviceClass = String(bundleDeviceClass(this.host.bundle, Number(this.host.entityId)) || "")
+      .trim()
+      .toLowerCase();
+    const deviceBand = RF_BAND_BY_DEVICE_CLASS[deviceClass] ?? null;
+    if (deviceClass !== "ir" && deviceBand == null) return null;
+    const libraryType = this.addMode ? null : this.liveFetched?.libraryType;
+    if (libraryType != null) {
+      const band = RF_BAND_BY_CODE_TYPE[Number(libraryType)];
+      if (band) return band;
+      if (deviceBand != null) return "ir";
+    }
+    return deviceClass === "ir" ? "ir" : deviceBand;
+  }
+
+  /**
+   * True for IR devices: they get the IR hex tabs (Pronto / Sofabaton)
+   * and paste conversion. Test and Learn follow `payloadSignal()`.
    */
   liveDeviceIsIr(): boolean {
     if (this.host.entityId == null || !this.host.bundle) return false;
@@ -951,9 +1035,18 @@ export class PayloadDialogController implements ReactiveController {
     const snapshot = this.decodedSnapshot;
     if (snapshot) {
       const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-      const fields: Record<string, unknown> = {};
-      for (const field of spec.fields) {
-        fields[field.key] = draftToFieldValue(this.decodedDrafts[field.key] ?? "", field);
+      let fields: Record<string, unknown> = {};
+      let trailerHex = snapshot.trailerHex;
+      if (snapshot.className === "wifi_ip") {
+        // The template only seeds the form: the new command is request text
+        // unless it needs a URL record.
+        const record = this.wifiIpRecord(snapshot, false);
+        if (!record) return;
+        ({ fields, trailerHex } = record);
+      } else {
+        for (const field of spec.fields) {
+          fields[field.key] = draftToFieldValue(this.decodedDrafts[field.key] ?? "", field);
+        }
       }
       if (snapshot.className === "wifi_mqtt") {
         // Read-only ids: keep them equal to this device and the id the
@@ -972,7 +1065,7 @@ export class PayloadDialogController implements ReactiveController {
         transport: "hub_code_record",
         decoded: {
           class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
+          trailer_hex: trailerHex,
           fields,
           edited: true,
         },
@@ -984,6 +1077,10 @@ export class PayloadDialogController implements ReactiveController {
         return;
       }
       restoreData = { transport: "hub_code_record", data_hex: normalized };
+      // An RF code names its record type: the backend would otherwise copy
+      // the type of the device's first command, which may be IR.
+      const signal = this.payloadSignal();
+      if (signal != null && signal !== "ir") restoreData["library_type"] = RF_CODE_TYPE_BY_BAND[signal];
     }
     const newId = nextFreeDeviceCommandId(this.host.bundle, target.deviceId);
     if (newId == null) {
@@ -1006,18 +1103,31 @@ export class PayloadDialogController implements ReactiveController {
     if (!this.host.bundle) return;
     const snapshot = this.decodedSnapshot;
     if (snapshot) {
-      const changedFields = this.collectChangedDecodedFields(snapshot);
-      if (!changedFields) {
-        this.close();
-        return;
+      let fields: Record<string, unknown>;
+      let trailerHex = snapshot.trailerHex;
+      if (snapshot.className === "wifi_ip") {
+        if (!wifiIpDraftsChanged(snapshot.fields, this.decodedDrafts)) {
+          this.close();
+          return;
+        }
+        const record = this.wifiIpRecord(snapshot, true);
+        if (!record) return;
+        ({ fields, trailerHex } = record);
+      } else {
+        const changedFields = this.collectChangedDecodedFields(snapshot);
+        if (!changedFields) {
+          this.close();
+          return;
+        }
+        fields = { ...snapshot.fields, ...changedFields };
       }
       const restoreData = {
         transport: "hub_code_record",
         data_hex: this.liveFetched?.dataHex ?? "",
         decoded: {
           class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields: { ...snapshot.fields, ...changedFields },
+          trailer_hex: trailerHex,
+          fields,
           edited: true,
         },
       };
@@ -1065,7 +1175,8 @@ export class PayloadDialogController implements ReactiveController {
     this.testStatus = "testing";
     this.testError = "";
     try {
-      await this.host.testCommandPayload(value);
+      const signal = this.payloadSignal();
+      await this.host.testCommandPayload(value, signal === "ir" ? null : signal);
       this.testStatus = "success";
     } catch (error) {
       this.testStatus = "error";
@@ -1140,6 +1251,22 @@ export class PayloadDialogController implements ReactiveController {
       return;
     }
     const snapshot = this.decodedSnapshot;
+    if (snapshot?.className === "wifi_ip") {
+      // The whole field set is replaced: the edit may switch record kinds.
+      if (wifiIpDraftsChanged(snapshot.fields, this.decodedDrafts)) {
+        const record = this.wifiIpRecord(snapshot, true);
+        if (!record) return;
+        this.host._commitEditBundleEdit(updateCommandDecodedFields(
+          this.host.bundle,
+          target.deviceId,
+          target.commandId,
+          record.fields,
+          { trailerHex: record.trailerHex },
+        ));
+      }
+      this.close();
+      return;
+    }
     if (snapshot) {
       // Structured form: diff against the open-dialog snapshot and only
       // push a bundle update when something changed, so `edited: true`
@@ -1173,7 +1300,26 @@ export class PayloadDialogController implements ReactiveController {
     this.close();
   };
 
+  /**
+   * The wifi_ip record the drafts save as: an edit keeps the command's
+   * kind unless it needs a URL record (shared/wifi-ip-form.ts). Null when
+   * the drafts are refused; the reason is shown in the footer.
+   */
+  wifiIpRecord(snapshot: BackupCommandDecodedBlock, existing: boolean): WifiIpRecord | null {
+    try {
+      return buildWifiIpRecord(this.decodedDrafts, {
+        original: { fields: snapshot.fields, trailerHex: snapshot.trailerHex },
+        existing,
+        isX2: bundleIsX2(this.host.bundle),
+      });
+    } catch (error) {
+      this.error = wifiIpFormErrorText(error);
+      return null;
+    }
+  }
+
   initialDecodedDrafts(decoded: BackupCommandDecodedBlock): Record<string, string> {
+    if (decoded.className === "wifi_ip") return wifiIpDraftsFromFields(decoded.fields);
     const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
     if (!spec) return {};
     const drafts: Record<string, string> = {};

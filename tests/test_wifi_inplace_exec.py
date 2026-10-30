@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from custom_components.sofabaton_x1s.lib.proxy_activity_sync import ActivitySyncMixin
+from custom_components.sofabaton_x1s.lib.write_batch import WriteBatchMixin
 from custom_components.sofabaton_x1s.lib.wifi_inplace_plan import (
     ManagedWifiSnapshot,
     WifiActivityRefs,
@@ -23,9 +24,14 @@ DEV = 8
 
 
 class FakeProxy(ActivitySyncMixin):
-    def __init__(self, *, fail_kind: str | None = None) -> None:
+    _begin_item_sync_tracking = WriteBatchMixin._begin_item_sync_tracking
+
+    def __init__(self, *, fail_kind: str | None = None, self_syncing_kind: str | None = None) -> None:
         self._log = logging.getLogger("test.wifi_inplace_exec")
         self._fail_kind = fail_kind
+        # A step kind whose driver sends its activity's per-item sync itself.
+        self._self_syncing_kind = self_syncing_kind
+        self._entity_sync_marks: set[int] = {0x70}
         self.dispatched: list[str] = []
         self.can_issue = True
 
@@ -34,6 +40,8 @@ class FakeProxy(ActivitySyncMixin):
 
     def _dispatch_activity_sync_step(self, step) -> bool:
         self.dispatched.append(step.kind)
+        if step.kind == self._self_syncing_kind:
+            self._entity_sync_marks.add(int(step.payload["activity_id"]))
         return step.kind != self._fail_kind
 
 
@@ -81,6 +89,15 @@ def test_walker_runs_all_steps_in_order():
         "membership_remove", "wifi_head_commit",
     ]
     assert result["counters"]["command_add"] == 1
+
+
+def test_walker_reports_the_entities_its_steps_already_synced():
+    # The membership removal's driver synced activity 0x66 itself; the
+    # mark left from an earlier run (0x70) is forgotten at the start.
+    proxy = FakeProxy(self_syncing_kind="membership_remove")
+    result = proxy.run_wifi_inplace_plan(_multi_kind_plan())
+    assert result["status"] == "success"
+    assert result["item_synced"] == [0x66]
 
 
 def test_walker_stops_on_first_rejection_after_one_retry():

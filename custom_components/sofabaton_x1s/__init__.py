@@ -82,6 +82,7 @@ from .ws_ir import (  # noqa: F401
     _value_references_entity,
     build_ir_emitter_consumers,
     _ws_ir_emitter_consumers,
+    _ws_ir_emitters_status,
     _ws_ir_library_catalog,
     _ws_ir_library_commands,
     _ws_ir_payload_convert,
@@ -102,6 +103,10 @@ from .ws_wifi import (  # noqa: F401
     _ws_set_hub_event_actions,
     _ws_get_command_sync_progress,
     _ws_run_command_sync,
+    _ws_get_wifi_delivery,
+    _ws_test_wifi_delivery,
+    _ws_get_hub_mqtt_status,
+    _ws_set_hub_mqtt_broker,
     _hub_mqtt_available,
     _ws_list_command_devices,
     _ws_create_command_device,
@@ -178,6 +183,10 @@ from .services import (  # noqa: F401
     _async_handle_create_wifi_device,
     _async_handle_device_to_activity,
     _async_handle_delete_device,
+    _async_handle_create_activity,
+    _async_handle_delete_activity,
+    _async_handle_create_device,
+    _async_handle_set_wifi_command,
     _async_handle_command_to_favorite,
     _async_handle_get_favorites,
     _async_handle_reorder_favorites,
@@ -203,6 +212,10 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_command_transport)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_run_command_sync)
+    websocket_api.async_register_command(hass, _ws_get_wifi_delivery)
+    websocket_api.async_register_command(hass, _ws_test_wifi_delivery)
+    websocket_api.async_register_command(hass, _ws_get_hub_mqtt_status)
+    websocket_api.async_register_command(hass, _ws_set_hub_mqtt_broker)
     websocket_api.async_register_command(hass, _ws_list_command_devices)
     websocket_api.async_register_command(hass, _ws_create_command_device)
     websocket_api.async_register_command(hass, _ws_delete_command_device)
@@ -223,6 +236,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_ir_learn_subscribe)
     websocket_api.async_register_command(hass, _ws_ir_emissions_subscribe)
     websocket_api.async_register_command(hass, _ws_ir_emitter_consumers)
+    websocket_api.async_register_command(hass, _ws_ir_emitters_status)
     websocket_api.async_register_command(hass, _ws_ir_library_catalog)
     websocket_api.async_register_command(hass, _ws_ir_library_commands)
     websocket_api.async_register_command(hass, _ws_ir_payload_convert)

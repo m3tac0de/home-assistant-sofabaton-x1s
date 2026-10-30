@@ -1,7 +1,9 @@
 // The Wifi Commands tab's Wifi Devices subtab (docs/internal/server-panel-wifi-commands-plan.md,
 // section 3): the HA control panel card's Wifi Devices, over the server's
 // `/wifi-devices` routes. The roster, the create and delete dialogs, the
-// detail view with its ten command slots, Sync to Hub, and the press glow.
+// detail view with its ten command slots, Sync to Hub, the delivery pill
+// (the card's HTTP / MQTT pill whose dropdown tests how presses arrive), and
+// the press glow.
 // What the card has and this does not: Actions (the server relays a press
 // on the event stream, the client decides), so a slot tile has no action
 // button and is about half as tall. The slot dialog is the card's: name,
@@ -23,6 +25,7 @@ import {
   mdiArrowRightBold,
   mdiArrowULeftTop,
   mdiArrowUpBold,
+  mdiCheck,
   mdiCheckCircleOutline,
   mdiChevronDown,
   mdiChevronDownCircleOutline,
@@ -36,14 +39,16 @@ import {
   mdiHomeOutline,
   mdiMenu,
   mdiPauseCircleOutline,
-  mdiPencilOutline,
+  mdiPencil,
   mdiPlayCircleOutline,
   mdiPlus,
   mdiPower,
   mdiProgressClock,
   mdiRecordRec,
   mdiRewind,
+  mdiSync,
   mdiTelevisionGuide,
+  mdiTimerSand,
   mdiTimerSandFull,
   mdiTrashCanOutline,
   mdiVideoInputHdmi,
@@ -54,13 +59,21 @@ import {
 } from "@mdi/js";
 
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../remote-card/src/entity-icons/appearance-editor";
+import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
+import { formatCheckedAgo, formatLatency, targetPort } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery";
+import { anchoredListPosition } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import { Coalescer, FOLLOW_MAX_WAIT_MS, needsReload, versionAsLoaded, type LoadedVersion } from "../cache-follow";
 import type { HubContext } from "../panel-context";
 import type { PanelStream, StreamMessage } from "../panel-stream";
-import { firmwareFloor, type Gate } from "../panel-selectors";
+import { activeJob, firmwareFloor, type Gate } from "../panel-selectors";
+import { DELIVERY_PILL_CSS, renderDeliveryPill, renderReadOnlyDeliveryPill, type DeliveryStatusView, type PillTransport } from "../components/delivery-pill";
 import { FIRMWARE_BLOCK_CSS, renderFirmwareBlock } from "../components/firmware-block";
+import { OPERATION_PROGRESS_CSS, jobStepMessage, renderOperationProgress } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import {
@@ -71,6 +84,10 @@ import {
   buttonCleanups,
   configuredCount,
   defaultSlotLabel,
+  deliveryAttention,
+  deliveryOnHub,
+  deliveryTarget,
+  deliveryVerdict,
   deviceStatus,
   draftFromSpec,
   draftsEqual,
@@ -100,7 +117,9 @@ import {
 } from "./wifi-devices-state";
 
 const S = TOOLS_CARD_STRINGS.wifiCommands;
+const B = TOOLS_CARD_STRINGS.backup;
 const A = TOOLS_CARD_STRINGS.activities;
+const D = TOOLS_CARD_STRINGS.wifiDelivery;
 
 // Where the card speaks of Home Assistant Actions, the panel speaks of the event stream.
 const T = {
@@ -123,6 +142,21 @@ const T = {
   callsBack: (where: string) => `Presses call ${where} and arrive on the event stream.`,
   x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
   leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them.",
+  // The delivery pill's dropdown (the card's "How presses reach Home Assistant", for this server).
+  deliveryTitle: "How button presses reach the server",
+  pathListener: (target: string) => `The hub calls this server's callback listener at ${target}.`,
+  pathMqtt: (broker: string) => broker
+    ? `The hub publishes to its MQTT broker; this server listens on ${broker}.`
+    : "The hub publishes to its MQTT broker.",
+  notDelivered: "The test command did not reach the server.",
+  allowListener: (hubIp: string, port: string) =>
+    `Allow TCP from the hub (${hubIp}) to port ${port} on this server's host; with Docker, publish port ${port}.`,
+  allowMqtt: (broker: string) => `The hub must publish to the same broker this server uses${broker ? ` (${broker})` : ""}, and the broker must let it.`,
+  delivered: (seconds: string) => `Test command received (${seconds} s).`,
+  // A real press settles a check without a latency.
+  staleStatus: "The hub no longer has this device.",
+  staleHint: "Redeploy it, then test again.",
+  brokerSettings: "Broker settings",
 };
 
 const BUTTON_ICONS: Record<string, string> = {
@@ -139,6 +173,9 @@ const BUTTON_GROUP_TITLES = { navigation: S.navigationGroup, transport: S.transp
 export const WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
 
 interface CreateState { name: string; transport: string; busy: boolean; error: string }
+/** What a job this view started is for: a sync or a redeploy puts the progress view in the detail's place. */
+type WorkingKind = "create" | "sync" | "redeploy" | "test" | "delete";
+type Delivery = NonNullable<WifiDeviceView["delivery"]>;
 interface DeleteState { key: string; busy: boolean; error: string; referenced: boolean }
 interface SlotEditState { index: number; edit: SlotEdit; advanced: boolean; error: string }
 interface ActivityOption { id: number; name: string }
@@ -149,6 +186,10 @@ function icon(path: string, cls = ""): TemplateResult {
 
 function jobFailure(job: JobView | null): string | null {
   return jobOutcomeText(job);
+}
+
+function pillTransport(device: Pick<WifiDeviceView, "transport">): PillTransport {
+  return device.transport === "mqtt" ? "mqtt" : "http";
 }
 
 export class SbPanelWifiDevices extends LitElement {
@@ -171,6 +212,10 @@ export class SbPanelWifiDevices extends LitElement {
     _confirmClear: { state: true },
     _leave: { state: true },
     _working: { state: true },
+    _workingKind: { state: true },
+    _deletingKey: { state: true },
+    _deliveryOpen: { state: true },
+    _testError: { state: true },
     stream: { attribute: false },
     _syncError: { state: true },
     _flashTick: { state: true },
@@ -178,8 +223,13 @@ export class SbPanelWifiDevices extends LitElement {
 
   static styles = [
     PANEL_BASE_CSS,
+    entityTileStyles,
+    entityPickerStyles,
+    appearanceEditorStyles,
     EDITOR_CSS,
     FIRMWARE_BLOCK_CSS,
+    OPERATION_PROGRESS_CSS,
+    DELIVERY_PILL_CSS,
     css`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
@@ -203,8 +253,6 @@ export class SbPanelWifiDevices extends LitElement {
       .status-pill.sync-error { border-color: color-mix(in srgb, var(--sbp-err) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-err) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-err) 12%, var(--sbp-panel)); }
       .status-pill.sync-running { border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-accent) 12%, var(--sbp-panel)); }
       .status-pill.sync-pending { border-color: color-mix(in srgb, var(--sbp-warn) 40%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-warn) 30%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-warn) 12%, var(--sbp-panel)); }
-      .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; text-transform: uppercase; }
-      .transport-pill.mqtt { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-accent); }
       .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; color: var(--sbp-muted); cursor: pointer; flex: 0 0 auto; margin-left: 4px; }
       .device-delete-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
       .device-delete-btn:disabled { opacity: 0.42; cursor: default; }
@@ -219,7 +267,6 @@ export class SbPanelWifiDevices extends LitElement {
       .wifi-notice .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
       .wifi-notices { display: grid; gap: 8px; }
       .wifi-notices:empty { display: none; }
-
       /* -- the press glow (the card's .wifi-ir-flash, same 720 ms as the dock's sweep) ---------- */
       .wifi-ir-flash { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sbp-accent) 75%, transparent), inset 0 0 14px color-mix(in srgb, var(--sbp-accent) 22%, transparent), 0 0 14px color-mix(in srgb, var(--sbp-accent) 30%, transparent); opacity: 0; animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
       @keyframes wifiIrGlow { 0% { opacity: 0; } 18% { opacity: 1; } 80% { opacity: 0.7; } 100% { opacity: 0; } }
@@ -227,10 +274,6 @@ export class SbPanelWifiDevices extends LitElement {
 
       /* -- the detail view ---------------------------------------------------------------------- */
       .detail-scroll { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-      .detail-title-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; cursor: pointer; color: var(--sbp-text); }
-      .detail-title-btn .mdi { color: var(--sbp-muted); opacity: 0; transition: opacity 120ms ease; }
-      .detail-title-btn:hover .mdi, .detail-title-btn:focus-visible .mdi { opacity: 1; }
-      .detail-title-btn .detail-title { width: auto; }
       .device-power-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
       .hub-event-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--sbp-text); }
       .hub-event-icon { display: inline-flex; flex: 0 0 auto; align-self: center; color: var(--sbp-muted); }
@@ -331,7 +374,6 @@ export class SbPanelWifiDevices extends LitElement {
         .device-status-pill-label { display: none; }
         .slot-btn { min-height: 52px; }
         .slot-flag, .slot-clear { width: 32px; height: 32px; }
-        .detail-title-btn .mdi { opacity: 1; }
       }
     `,
   ];
@@ -354,13 +396,32 @@ export class SbPanelWifiDevices extends LitElement {
   private _create: CreateState | null = null;
   private _delete: DeleteState | null = null;
   private _slotEdit: SlotEditState | null = null;
-  private _rename: { name: string; error: string } | null = null;
+  /** The Edit device dialog: the name and, on a hub with icons, the icon / X2 color draft. */
+  private _rename: {
+    name: string;
+    error: string;
+    /** What the dialog opened with, so only a real pick lands in the draft. */
+    shown?: AppearanceDraft;
+    appearance?: AppearanceDraft;
+    pickerOpen?: boolean;
+    tab?: AppearanceTab;
+  } | null = null;
+  /** The hub's own icon and color per device id (the catalog rows), for a device whose draft names none. */
+  private _hubAppearance = new Map<number, AppearanceDraft>();
   private _powerPicker: "on" | "off" | null = null;
   private _confirmClear: number | null = null;
   /** The pending move behind the "Unsynced changes" dialog. */
   private _leave: (() => void) | null = null;
   /** A job this view started and follows: the text the header's button shows. */
   private _working: string | null = null;
+  private _workingKind: WorkingKind | null = null;
+  /** The device being deleted: the confirm is closed, its row says "Deleting…" (the card's way). */
+  private _deletingKey: string | null = null;
+  /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened). */
+  private _deliveryOpen = false;
+  private _deliveryStyle = "";
+  /** Why the last Test run from the dropdown could not run. */
+  private _testError: string | null = null;
   private _syncError: string | null = null;
   private _flashTick = 0;
 
@@ -402,6 +463,8 @@ export class SbPanelWifiDevices extends LitElement {
     this._offStream?.();
     this._offStream = null;
     this._follow.cancel();
+    document.removeEventListener("keydown", this._onDocumentKeydown);
+    this._deliveryOpen = false;
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -489,6 +552,8 @@ export class SbPanelWifiDevices extends LitElement {
         this._create = this._delete = this._slotEdit = this._rename = null;
         this._powerPicker = null;
         this._confirmClear = null;
+        this._deliveryOpen = false;
+        this._testError = null;
         this._follow.cancel();
         this._loadedVersion = null;
         if (hubId) void this._load();
@@ -507,11 +572,21 @@ export class SbPanelWifiDevices extends LitElement {
         if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
+    if (changed.has("deviceKey")) {
+      // Another device: its dropdown starts closed and clean.
+      this._deliveryOpen = false;
+      this._testError = null;
+    }
     if (changed.has("deviceKey") || changed.has("_list")) this._adoptDraft();
     this._scheduleFlashEnd();
   }
 
-  protected updated(): void {
+  protected updated(changed: PropertyValues): void {
+    // Escape closes the dropdown wherever focus is (a Test button that went disabled drops it to the page).
+    if (changed.has("_deliveryOpen")) {
+      if (this._deliveryOpen) document.addEventListener("keydown", this._onDocumentKeydown);
+      else document.removeEventListener("keydown", this._onDocumentKeydown);
+    }
     this._reportDirty(this.hasUnsyncedChanges());
     // A key the hub no longer has (deleted elsewhere, an old bookmark): back to the roster.
     if (this.deviceKey && this._list !== null && !this._device && !this._working) this._navigate(null);
@@ -543,7 +618,7 @@ export class SbPanelWifiDevices extends LitElement {
     this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
-      const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
+      const [list, activities, listener, mqtt, devices] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState(), this.api.devices(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
@@ -553,6 +628,7 @@ export class SbPanelWifiDevices extends LitElement {
       const dirty = this.hasUnsyncedChanges();
       this._list = list.body;
       if (activities.ok && activities.body) this._activities = activities.body.map((a) => ({ id: a.activity_id, name: a.name })).filter((a) => Number.isInteger(a.id) && a.name);
+      if (devices.ok && devices.body) this._hubAppearance = new Map(devices.body.map((d) => [d.device_id, { icon: d.icon ?? null, colorId: d.color_id ?? null }]));
       this._listener = listener.ok ? listener.body : this._listener;
       this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       // A clean working copy follows the server; unsynced edits stay the user's.
@@ -565,10 +641,11 @@ export class SbPanelWifiDevices extends LitElement {
   }
 
   /** Start a job, follow it, reload. Resolves with the finished job, or null with the error said. */
-  private async _runJob(label: string, start: () => Promise<ApiResponse<JobView>>): Promise<{ job: JobView | null; error: string | null }> {
+  private async _runJob(label: string, start: () => Promise<ApiResponse<JobView>>, kind: WorkingKind): Promise<{ job: JobView | null; error: string | null }> {
     const hubId = this._hubId;
     if (!hubId) return { job: null, error: "no hub" };
     this._working = label;
+    this._workingKind = kind;
     try {
       const started = await start();
       if (started.status !== 202 || !started.body) return { job: null, error: problemText(started) };
@@ -579,6 +656,7 @@ export class SbPanelWifiDevices extends LitElement {
       return { job: null, error: String(err) };
     } finally {
       this._working = null;
+      this._workingKind = null;
     }
   }
 
@@ -629,7 +707,7 @@ export class SbPanelWifiDevices extends LitElement {
       return;
     }
     this._create = { ...state, busy: true, error: "" };
-    const { job, error } = await this._runJob(S.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
+    const { job, error } = await this._runJob(S.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport), "create");
     if (error) {
       this._create = { ...state, busy: false, error: `${S.createDeviceFailed}: ${error}` };
       await this._load();
@@ -657,8 +735,12 @@ export class SbPanelWifiDevices extends LitElement {
     const state = this._delete;
     const hubId = this._hubId;
     if (!state || !hubId || state.busy) return;
-    this._delete = { ...state, busy: true, error: "" };
+    // The card's way: the confirm closes first and the row narrates; the dialog only
+    // comes back for a reference warning or an error.
+    this._delete = null;
+    this._deletingKey = state.key;
     this._working = S.deleteDeviceBusy;
+    this._workingKind = "delete";
     let error: string | null = null;
     try {
       const started = await this.api.removeWifiDevice(hubId, state.key, state.referenced);
@@ -679,6 +761,8 @@ export class SbPanelWifiDevices extends LitElement {
       error = String(err);
     } finally {
       this._working = null;
+      this._workingKind = null;
+      this._deletingKey = null;
     }
     if (error) {
       this._delete = { ...state, busy: false, error: `${S.deleteDeviceFailed}: ${error}` };
@@ -760,9 +844,18 @@ export class SbPanelWifiDevices extends LitElement {
 
   private _openRename = (): void => {
     if (!this._draft || this._locked) return;
-    this._rename = { name: this._draft.name, error: "" };
+    const shown = this._shownAppearance();
+    this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen: false, tab: "icon" };
     void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>("#wifi-rename")?.select());
   };
+
+  /** The icon and color the device shows: the draft's pick, else the hub record's. */
+  private _shownAppearance(): AppearanceDraft {
+    const draft = this._draft;
+    const id = this._device?.device_id;
+    const hub = id != null ? this._hubAppearance.get(id) : undefined;
+    return { icon: draft?.icon ?? hub?.icon ?? null, colorId: draft?.colorId ?? hub?.colorId ?? null };
+  }
 
   private _saveRename = (): void => {
     const state = this._rename;
@@ -773,9 +866,27 @@ export class SbPanelWifiDevices extends LitElement {
       this._rename = { ...state, error: problem };
       return;
     }
-    this._edit({ ...this._draft, name: name.trim() });
+    // Only a real pick joins the draft: an untouched icon or color stays the hub's.
+    const shown = state.shown ?? { icon: null, colorId: null };
+    const picked = state.appearance ?? shown;
+    this._edit({
+      ...this._draft,
+      name: name.trim(),
+      icon: picked.icon !== shown.icon ? picked.icon : this._draft.icon,
+      colorId: picked.colorId !== shown.colorId ? picked.colorId : this._draft.colorId,
+    });
     this._rename = null;
   };
+
+  /** The way into the Edit device dialog, as in the editors: the device's icon with a pencil badge, or a plain pencil without one. */
+  private _renderHeaderEdit(device: WifiDeviceView): TemplateResult {
+    const label = iconHubLine(this._hubVersion) != null ? B.editDevice : T.renameTitle;
+    const disabled = this._locked || device.stale;
+    const shown = this._shownAppearance();
+    const tile = entityTile(this._hubVersion, shown.icon, shown.colorId);
+    if (tile) return renderDetailEntityTile(tile, { id: "wifi-rename-open", label, disabled, onClick: this._openRename });
+    return html`<button class="icon-btn" id="wifi-rename-open" type="button" aria-label=${label} title=${label} ?disabled=${disabled} @click=${this._openRename}>${icon(mdiPencil)}</button>`;
+  }
 
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
 
@@ -794,7 +905,7 @@ export class SbPanelWifiDevices extends LitElement {
     // A button this draft took from another Wifi Device is cleared from that device's spec too (the
     // card does the same on save); left there, that device's next sync would take the button back.
     const cleanups = buttonCleanups(this._devices, device.key, draft);
-    const { error } = await this._runJob(S.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
+    const { error } = await this._runJob(S.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)), "sync");
     if (error) {
       this._syncError = error;
       await this._load();
@@ -803,7 +914,7 @@ export class SbPanelWifiDevices extends LitElement {
     // The server's record is the new baseline.
     this._draftFor = null;
     for (const cleanup of cleanups) {
-      const result = await this._runJob(S.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
+      const result = await this._runJob(S.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec), "sync");
       if (result.error) this._say(T.cleanupFailed(cleanup.device.spec.name, result.error), false);
     }
     await this._load();
@@ -815,9 +926,54 @@ export class SbPanelWifiDevices extends LitElement {
     const hubId = this._hubId;
     if (!device || !hubId || this._locked) return;
     this._syncError = null;
-    const { error } = await this._runJob(`${T.redeploy}…`, () => this.api.redeployWifiDevice(hubId, device.key));
+    const { error } = await this._runJob(`${T.redeploy}…`, () => this.api.redeployWifiDevice(hubId, device.key), "redeploy");
     if (error) this._syncError = error;
     await this._load();
+  };
+
+  /** Test: the deploy's test press on its own; the verdict lands on the record (and in the dock). */
+  private _testDelivery = async (): Promise<void> => {
+    const device = this._device;
+    const hubId = this._hubId;
+    if (!device || !hubId || this._locked || !deliveryOnHub(device)) return;
+    this._testError = null;
+    const { job, error } = await this._runJob(D.testing, () => this.api.testWifiDelivery(hubId, device.key), "test");
+    if (error) this._testError = error;
+    // The job's verdict shows at once; the reload brings the record (and the broker state) along.
+    const delivery = (job?.result as { delivery?: Delivery | null } | null)?.delivery ?? null;
+    if (delivery && this._list) {
+      this._list = { ...this._list, devices: this._list.devices.map((row) => (row.key === device.key ? { ...row, delivery } : row)) };
+    }
+    await this._load();
+  };
+
+  // -- the delivery pill's dropdown ------------------------------------------------------------------------
+
+  private _toggleDelivery = (trigger: HTMLElement): void => {
+    if (this._deliveryOpen) {
+      this._closeDelivery();
+      return;
+    }
+    this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true });
+    this._deliveryOpen = true;
+  };
+
+  private _closeDelivery = (): void => {
+    if (!this._deliveryOpen) return;
+    this._deliveryOpen = false;
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>("#wifi-delivery-pill")?.focus());
+  };
+
+  private _onDocumentKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || !this._deliveryOpen) return;
+    event.preventDefault();
+    this._closeDelivery();
+  };
+
+  /** The broker problem's button: the server's MQTT broker page (the card's "Set up"). */
+  private _openBrokerSettings = (): void => {
+    this._deliveryOpen = false;
+    this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { page: "server", sub: "mqtt" } }));
   };
 
   private _back = (): void => {
@@ -851,10 +1007,73 @@ export class SbPanelWifiDevices extends LitElement {
 
   // -- render: shared bits -----------------------------------------------------------------------------------------
 
-  private _renderTransportPill(device: WifiDeviceView): TemplateResult | typeof nothing {
-    // With one transport on offer every device is HTTP and the pill is noise (the card's rule).
-    if (this._transports.length < 2 && device.transport === "http") return nothing;
-    return html`<span class="transport-pill ${device.transport}" title=${S.transportPillDeployedTitle}>${device.transport}</span>`;
+  /** A roster row's pill: read-only (the row opens the device), amber when presses need attention. */
+  private _renderRowPill(device: WifiDeviceView): TemplateResult {
+    return renderReadOnlyDeliveryPill({ transport: pillTransport(device), attention: deliveryAttention(device, this._mqtt) });
+  }
+
+  /** The detail header's pill and its dropdown (the card's layout A, without the method switch). */
+  private _renderDeliveryPill(device: WifiDeviceView): TemplateResult {
+    const onHub = deliveryOnHub(device);
+    const problem = onHub ? mqttProblem(device, this._mqtt) : null;
+    const target = deliveryTarget(device, this._mqtt);
+    const testing = this._workingKind === "test";
+    return renderDeliveryPill({
+      idPrefix: "wifi",
+      transport: pillTransport(device),
+      attention: deliveryAttention(device, this._mqtt),
+      open: this._deliveryOpen,
+      menuStyle: this._deliveryStyle,
+      heading: T.deliveryTitle,
+      path: !onHub ? "" : device.transport === "mqtt" ? T.pathMqtt(target) : target ? T.pathListener(target) : "",
+      test: {
+        label: testing ? D.testing : device.delivery ? D.testAgain : D.test,
+        disabled: !onHub || this._locked,
+        onClick: () => void this._testDelivery(),
+      },
+      problem: problem
+        ? { text: problem, action: { label: this._mqtt?.configured ? T.brokerSettings : D.brokerSetUp, onClick: this._openBrokerSettings } }
+        : null,
+      status: this._deliveryStatus(device, testing, problem !== null),
+      error: this._testError,
+      onToggle: this._toggleDelivery,
+      onClose: this._closeDelivery,
+    });
+  }
+
+  /** The dropdown's result block; one line under a broker problem, which already says why. */
+  private _deliveryStatus(device: WifiDeviceView, testing: boolean, brief: boolean): DeliveryStatusView {
+    const delivery = device.delivery ?? null;
+    const kind = deliveryVerdict(device, testing);
+    switch (kind) {
+      case "testing":
+        return { kind, tone: "idle", title: D.testing };
+      case "stale":
+        return { kind, tone: "idle", title: T.staleStatus, meta: T.staleHint };
+      case "not_on_hub":
+        return { kind, tone: "idle", title: D.notOnHub };
+      case "delivered": {
+        const latency = delivery?.latency_s;
+        const title = delivery?.via === "press"
+          ? D.pressReceived
+          : T.delivered(formatLatency(latency));
+        return { kind, tone: "ok", title, meta: formatCheckedAgo(delivery?.checked_at) };
+      }
+      case "not_delivered":
+        return { kind, tone: "warn", title: T.notDelivered, meta: this._allowText(device), brief };
+      case "not_sent":
+        return { kind, tone: "warn", title: D.notSent, brief };
+      default:
+        return { kind, tone: "idle", title: D.notTested, meta: D.notTestedHint };
+    }
+  }
+
+  /** The flow to allow when the test press did not arrive, naming the actual addresses. */
+  private _allowText(device: WifiDeviceView): string {
+    const delivery = device.delivery ?? null;
+    if (device.transport === "mqtt") return T.allowMqtt(delivery?.target ?? "");
+    const hubIp = delivery?.hub_ip || this.ctx?.hub?.config?.host || "?";
+    return T.allowListener(hubIp, targetPort(delivery?.target ?? "") || String(device.target?.port ?? "8060"));
   }
 
   private _renderListenerNotice(): TemplateResult | typeof nothing {
@@ -886,7 +1105,7 @@ export class SbPanelWifiDevices extends LitElement {
           : devices.length
             ? html`<div class="device-list">
                 ${devices.map((device) => {
-                  const deleting = this._delete?.busy === true && this._delete.key === device.key;
+                  const deleting = this._deletingKey === device.key;
                   const status = deviceStatus(device, { deleting });
                   const statusIcon = status.tone === "sync-ok" ? mdiCheckCircleOutline : status.tone === "sync-error" ? mdiAlertCircleOutline : mdiProgressClock;
                   const open = (): void => { if (!deleting) this._navigate(device.key); };
@@ -901,7 +1120,7 @@ export class SbPanelWifiDevices extends LitElement {
                           <div class="device-card-count">${S.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
                         </div>
                         <div class="device-card-meta">
-                          ${this._renderTransportPill(device)}
+                          ${this._renderRowPill(device)}
                           <span class="status-pill device-status-pill ${status.tone}">${icon(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
                         </div>
                       </div>
@@ -921,13 +1140,18 @@ export class SbPanelWifiDevices extends LitElement {
   // -- render: the detail view -------------------------------------------------------------------------------------------
 
   private _renderSyncButton(device: WifiDeviceView): TemplateResult {
+    const button = (id: string, state: string, label: string, path: string, disabled: boolean, onClick?: () => void) =>
+      html`<button class="detail-sync-btn ${state}" id=${id} type="button" title=${label} aria-label=${label} ?disabled=${disabled} @click=${onClick}><span class="detail-sync-icon">${icon(path)}</span><span class="detail-sync-label">${label}</span></button>`;
+    // Another job holds the hub (another view, another client): the card's "Busy".
+    const externallyLocked = !this._working && (this.ctx ? !this.ctx.free : false);
     if (device.stale) {
-      return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? T.redeploy}</button>`;
+      return button("wifi-redeploy", "sync-btn-primary", this._working ?? (externallyLocked ? S.actionButtonBusy : T.redeploy), mdiSync, this._locked, this._redeploy);
     }
     const dirty = this.hasUnsyncedChanges();
-    if (this._working) return html`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
-    if (!dirty) return html`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S.actionButtonUpToDate}</button>`;
-    return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S.actionButtonSyncToHub}</button>`;
+    if (this._working) return button("wifi-sync", "", this._working, mdiSync, true);
+    if (externallyLocked) return button("wifi-sync", "", S.actionButtonBusy, mdiTimerSand, true);
+    if (!dirty) return button("wifi-sync", "detail-sync-btn--state-ok", S.actionButtonUpToDate, mdiCheck, true);
+    return button("wifi-sync", "sync-btn-primary", S.actionButtonSyncToHub, mdiSync, !this._canSync(device), () => void this._sync());
   }
 
   private _renderPowerLines(draft: WifiDraft): TemplateResult | typeof nothing {
@@ -1012,8 +1236,9 @@ export class SbPanelWifiDevices extends LitElement {
   private _renderDetail(device: WifiDeviceView, draft: WifiDraft): TemplateResult {
     const press = this._activePress();
     const target = device.target ? `${device.target.host}:${device.target.port}` : "";
-    const mqttNotice = mqttProblem(device, this._mqtt);
     const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
+    // This view's own sync or redeploy: the card's deploy animation stands in the detail's place.
+    const deploying = this._workingKind === "sync" || this._workingKind === "redeploy";
     return html`
       <div class="tab-panel--detail" id="wifi-device-detail" data-key=${device.key}>
         <div class="detail-view">
@@ -1021,19 +1246,40 @@ export class SbPanelWifiDevices extends LitElement {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon(mdiArrowLeft)}</button>
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon(mdiPencilOutline)}</button>
-                ${this._renderTransportPill(device)}
+                ${this._renderHeaderEdit(device)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${draft.name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(device)}</div>
+                </div>
               </div>
               <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
             </div>
           </div>
+          ${deploying
+            ? html`<div class="detail-scroll">${renderOperationProgress({
+                id: "wifi-syncing",
+                mode: "wifi-deploy",
+                title: S.deployingTitle,
+                message: jobStepMessage(activeJob(this.ctx?.hub)) || TOOLS_CARD_STRINGS.backendState.wifiSyncing,
+              })}</div>`
+            : this._renderDetailBody(device, draft, { press, target, now })}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderDetailBody(
+    device: WifiDeviceView,
+    draft: WifiDraft,
+    { press, target, now }: { press: ReturnType<SbPanelWifiDevices["_activePress"]>; target: string; now: string },
+  ): TemplateResult {
+    return html`
           <div class="detail-scroll">
             <div class="wifi-notices">
               ${this._syncError ? html`<div class="wifi-notice error" id="wifi-sync-error">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S.syncMessageFailed} ${this._syncError}</span></div>` : nothing}
               ${device.stale ? html`<div class="wifi-notice error" id="wifi-stale">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T.staleNotice}</span></div>` : nothing}
               ${device.pending && !device.stale ? html`<div class="wifi-notice" id="wifi-pending">${icon(mdiProgressClock)}<span class="wifi-notice-copy">${T.pendingNotice}</span></div>` : nothing}
               ${targetMoved(device) ? html`<div class="wifi-notice" id="wifi-moved">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T.movedNotice(target, now)}</span></div>` : nothing}
-              ${mqttNotice ? html`<div class="wifi-notice error" id="wifi-mqtt-notice">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${mqttNotice}</span></div>` : nothing}
               ${device.transport === "mqtt" ? nothing : this._renderListenerNotice()}
             </div>
             ${this._renderPowerLines(draft)}
@@ -1042,8 +1288,6 @@ export class SbPanelWifiDevices extends LitElement {
             </div>
             <div class="callback-line" id="wifi-callback-line">${device.transport === "mqtt" ? T.arrivesOverMqtt(device.mqtt_topic ?? "<MAC>/up") : T.callsBack(target)}${device.device_id != null ? html` DevID <code>${device.device_id}</code>.` : nothing}${supportsPowerInput(this._hubVersion) ? nothing : html` ${T.x1Note}`}</div>
           </div>
-        </div>
-      </div>
     `;
   }
 
@@ -1220,11 +1464,25 @@ export class SbPanelWifiDevices extends LitElement {
     const state = this._rename;
     if (!state) return nothing;
     const close = (): void => { this._rename = null; };
+    const appearance = iconHubLine(this._hubVersion) != null ? state.appearance ?? null : null;
+    const nameField = this._nameInput("wifi-rename", state.name, S.deviceName, false, (name) => { if (this._rename) this._rename = { ...this._rename, name, error: "" }; }, this._saveRename);
     return html`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${T.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S.createModalCancel} @click=${close}>${icon(mdiClose)}</button></div>
-          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S.deviceName, false, (name) => { this._rename = { name, error: "" }; }, this._saveRename)}</div>
+          <div class="dialog-header"><div class="dialog-title">${appearance ? B.editDevice : T.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S.createModalCancel} @click=${close}>${icon(mdiClose)}</button></div>
+          <div class="dialog-body">${appearance
+            ? renderAppearanceEditor({
+                hubVersion: this._hubVersion,
+                draft: appearance,
+                open: state.pickerOpen ?? false,
+                tab: state.tab ?? "icon",
+                nameField,
+                labels: appearanceLabelsFrom(B),
+                onToggle: () => { if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen }; },
+                onTab: (tab) => { if (this._rename) this._rename = { ...this._rename, tab }; },
+                onPick: (draft) => { if (this._rename) this._rename = { ...this._rename, appearance: draft }; },
+              })
+            : nameField}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${state.error}</div>
             <div class="dialog-footer-actions">

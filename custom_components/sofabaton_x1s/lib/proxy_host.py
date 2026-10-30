@@ -18,7 +18,7 @@ from __future__ import annotations
 import contextlib
 import threading
 from collections import deque
-from typing import Any, Callable, Dict, Mapping, Protocol, Sequence, TYPE_CHECKING
+from typing import Any, Callable, Collection, Dict, Iterable, Mapping, Protocol, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .ack import AckOutcome, InputsBurstResult, SendStepResult
@@ -86,6 +86,20 @@ class _WireHost(Protocol):
     ) -> tuple[int, bytes] | None: ...
     def can_issue_commands(self) -> bool: ...
     def clear_ack_queue(self) -> None: ...
+    def wait_for_ack_family_low(
+        self,
+        family_low: int,
+        *,
+        timeout: float = ...,
+        not_before: float | None = ...,
+    ) -> tuple[int, bytes] | None: ...
+    def wait_for_ack_families_low(
+        self,
+        families_low: Collection[int],
+        *,
+        timeout: float = ...,
+        not_before: float | None = ...,
+    ) -> tuple[int, bytes] | None: ...
     def enqueue_cmd(
         self,
         opcode: int,
@@ -236,6 +250,8 @@ class _OpsHost(Protocol):
     """The cross-mixin write helpers: builders, backup and restore, the Wifi
     sync steps and the persisted command records."""
 
+    _entity_sync_marks: set[int]
+
     def _apply_wifi_input_configuration(
         self,
         *,
@@ -247,7 +263,12 @@ class _OpsHost(Protocol):
         input_command_ids: list[int] | None,
     ) -> bool: ...
     def _build_activity_confirm_payload(
-        self, activity_id: int, *, name: str | None = ...
+        self,
+        activity_id: int,
+        *,
+        name: str | None = ...,
+        icon: int | None = ...,
+        color_id: int | None = ...,
     ) -> bytes | None: ...
     def _build_device_power_binding_payload(
         self, *, device_id: int, button_id: int, command_id: int | None
@@ -276,6 +297,8 @@ class _OpsHost(Protocol):
         ip_device: bool = ...,
         brand_name: str = ...,
         wifi_power_state: tuple[int, int, int] | None = ...,
+        icon: int = ...,
+        color_id: int = ...,
     ) -> bytes: ...
     @staticmethod
     def _descriptive_play_blob_text(blob: bytes) -> str | None: ...
@@ -372,6 +395,7 @@ class _OpsHost(Protocol):
         button_code: int,
         ack_timeout: float = ...,
     ) -> dict[str, Any] | None: ...
+    def _ensure_device_commands_cached(self, dev_lo: int, *, timeout: float = ...) -> bool: ...
     def persist_command_record(
         self,
         *,
@@ -417,7 +441,23 @@ class _OpsHost(Protocol):
         self, payload: dict[str, Any], *, wifi_commands_request_port: int = ...
     ) -> dict[str, Any] | None: ...
     def resync_remote(self, hub_version: str | None = ...) -> bool: ...
-    def _send_remote_sync_step(self, step_name: str, *, ack_first_byte: int | None = ...) -> bool: ...
+    def _note_remote_sync_sent(self) -> None: ...
+    def _note_step_refusal(self, status: int) -> None: ...
+    def refused_during_remote_sync(self, since: float) -> bool: ...
+    def _send_remote_sync_step(
+        self, step_name: str, *, ack_first_byte: int | None = ..., purpose: str = ...
+    ) -> bool: ...
+    def _send_entity_sync_step(self, entity_id: int, step_name: str) -> bool: ...
+    def sync_remotes_after_write(
+        self,
+        *,
+        created: Iterable[int] = ...,
+        touched: Iterable[int] = ...,
+        deleted: Iterable[int] = ...,
+        origin: str = ...,
+    ) -> bool: ...
+    def _begin_item_sync_tracking(self) -> None: ...
+    def _sync_remotes_after_edit(self, entity_id: int, steps: Iterable[Any], origin: str) -> bool: ...
     def _settle_order(self, kind: str, last_ids: Sequence[int]) -> str: ...
     def set_idle_behavior(self, device_id: int, mode: int) -> bool: ...
     @property

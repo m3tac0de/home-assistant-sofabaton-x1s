@@ -3,7 +3,7 @@
 // mdi path data for the web remote's icon shim: every "mdi:" name the card
 // references (a test fails when one is missing) plus a curated set a user
 // may pick for custom favourites and device shortcuts. Named imports keep
-// the bundle to just these 329 paths.
+// the bundle to just these 332 paths.
 
 import {
   mdiAccount,
@@ -158,6 +158,7 @@ import {
   mdiKodi,
   mdiLamp,
   mdiLaptop,
+  mdiLedOutline,
   mdiLedStrip,
   mdiLedStripVariant,
   mdiLightbulb,
@@ -200,6 +201,7 @@ import {
   mdiPause,
   mdiPauseCircle,
   mdiPauseCircleOutline,
+  mdiPencil,
   mdiPictureInPictureBottomRight,
   mdiPin,
   mdiPinOffOutline,
@@ -248,6 +250,7 @@ import {
   mdiSeat,
   mdiSeatOutline,
   mdiServer,
+  mdiShapeOutline,
   mdiShieldCheck,
   mdiShieldHome,
   mdiShieldHomeOutline,
@@ -491,6 +494,7 @@ export const MDI_ICON_PATHS: Record<string, string> = {
   "kodi": mdiKodi,
   "lamp": mdiLamp,
   "laptop": mdiLaptop,
+  "led-outline": mdiLedOutline,
   "led-strip": mdiLedStrip,
   "led-strip-variant": mdiLedStripVariant,
   "lightbulb": mdiLightbulb,
@@ -533,6 +537,7 @@ export const MDI_ICON_PATHS: Record<string, string> = {
   "pause": mdiPause,
   "pause-circle": mdiPauseCircle,
   "pause-circle-outline": mdiPauseCircleOutline,
+  "pencil": mdiPencil,
   "picture-in-picture-bottom-right": mdiPictureInPictureBottomRight,
   "pin": mdiPin,
   "pin-off-outline": mdiPinOffOutline,
@@ -581,6 +586,7 @@ export const MDI_ICON_PATHS: Record<string, string> = {
   "seat": mdiSeat,
   "seat-outline": mdiSeatOutline,
   "server": mdiServer,
+  "shape-outline": mdiShapeOutline,
   "shield-check": mdiShieldCheck,
   "shield-home": mdiShieldHome,
   "shield-home-outline": mdiShieldHomeOutline,
@@ -700,6 +706,7 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "home-outline",
   "information-outline",
   "kodi",
+  "led-outline",
   "lightbulb-outline",
   "magnify",
   "menu",
@@ -711,6 +718,7 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "palette",
   "palette-outline",
   "pause",
+  "pencil",
   "pin",
   "pin-off-outline",
   "pin-outline",
@@ -722,10 +730,12 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "plex",
   "plus",
   "power",
+  "radio-tower",
   "remote",
   "remote-tv",
   "rewind",
   "rewind-outline",
+  "shape-outline",
   "sleep",
   "sort",
   "spotify",

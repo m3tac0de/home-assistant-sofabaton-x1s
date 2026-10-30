@@ -1,7 +1,7 @@
 // The Wifi Commands tab (docs/internal/server-panel-wifi-commands-plan.md):
 // the view's pure helpers (the draft, the card's slot dialog rules, the hard
 // buttons, the tile's meta line, the cross-device button cleanup, the roster
-// status, the press matching behind the glow),
+// status, the delivery pill's verdict, the press matching behind the glow),
 // the route's fourth segment, the API client's wifi-devices calls and the
 // dock's unsynced line. No DOM.
 
@@ -21,6 +21,10 @@ import {
   buttonCleanups,
   configuredCount,
   defaultSlotLabel,
+  deliveryAttention,
+  deliveryOnHub,
+  deliveryTarget,
+  deliveryVerdict,
   deviceStatus,
   draftFromSpec,
   draftsEqual,
@@ -54,7 +58,7 @@ function spec(overrides: Partial<WifiDeviceSpec> = {}): WifiDeviceSpec {
   const slots = Array.from({ length: WIFI_SLOT_COUNT }, (_row, i) => ({ label: `Button ${i + 1}`, long_label: `Button ${i + 1} Long` }));
   slots[0] = { label: "Lights on", long_label: "Lights on Long", favorite: true, button: 182, long_press: true, activities: [102, 101], input_activity_id: null } as (typeof slots)[number];
   slots[1] = { label: "Lights off", long_label: "All off" };
-  return { name: "Lights", slots, power_on_slot: 1, power_off_slot: null, input_slots: [2], brand: "c0-a1b2c3d4", ...overrides };
+  return { name: "Lights", slots, power_on_slot: 1, power_off_slot: null, input_slots: [2], icon: null, color_id: null, brand: "c0-a1b2c3d4", ...overrides };
 }
 
 function device(overrides: Partial<WifiDeviceView> = {}): WifiDeviceView {
@@ -82,7 +86,7 @@ test("the draft round-trips the server's spec and keeps only long labels someone
   assert.deepEqual([body.name, body.power_on_slot, body.power_off_slot, body.input_slots], ["Lights", 1, null, [2]]);
   assert.equal("brand" in body, false);                                               // the server owns the brand
   // A record from before slots had references (the 0.2.0 callback device) reads as plain slots.
-  const old = draftFromSpec({ name: "Server", slots: [{ label: "Play", long_label: "Play Long" }], power_on_slot: null, power_off_slot: null, input_slots: [] });
+  const old = draftFromSpec({ name: "Server", slots: [{ label: "Play", long_label: "Play Long" }], power_on_slot: null, power_off_slot: null, input_slots: [], icon: null, color_id: null });
   assert.deepEqual(old.slots[0], { label: "Play", longLabel: null, favorite: false, button: null, longPress: false, activities: [], inputActivityId: null });
   // A short or empty spec (a brand-new device) pads to ten unnamed slots.
   const fresh = draftFromSpec(null);
@@ -249,6 +253,48 @@ test("an mqtt device calls no address; the panel says when the broker side canno
   assert.equal(mqttProblem(mqtt, null), null);                                        // not known yet: say nothing
 });
 
+test("the delivery pill: amber when presses do not arrive or the broker is down, a verdict for every state", () => {
+  const check = (status: "delivered" | "not_delivered" | "not_sent", extra: Record<string, unknown> = {}) =>
+    ({ status, transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: "", latency_s: 0.12, checked_at: "2026-10-27T10:00:00Z", via: "test", ...extra }) as WifiDeviceView["delivery"];
+  const up = { configured: true, connected: true, host: "broker.lan", port: 1883, last_error: null };
+  const down = { ...up, connected: false };
+  const mqtt = device({ transport: "mqtt", target: null, mqtt_topic: "E26A44861B45/up", effective_destination: null });
+
+  // On the hub: deployed and not missing.
+  assert.equal(deliveryOnHub(device()), true);
+  assert.equal(deliveryOnHub(device({ stale: true })), false);
+  assert.equal(deliveryOnHub(device({ device_id: null, pending: { op: "create", started_at: "t" } })), false);
+
+  // The pill warns on a failed check (either way) and on a broken broker under an mqtt device; never off the hub.
+  assert.equal(deliveryAttention(device(), up), false);                                 // never tested: quiet
+  assert.equal(deliveryAttention(device({ delivery: check("delivered") }), down), false);  // an http device does not care about the broker
+  assert.equal(deliveryAttention(device({ delivery: check("not_delivered") }), null), true);
+  assert.equal(deliveryAttention(device({ delivery: check("not_sent") }), null), true);
+  assert.equal(deliveryAttention(mqtt, up), false);
+  assert.equal(deliveryAttention(mqtt, down), true);
+  assert.equal(deliveryAttention({ ...mqtt, delivery: check("delivered", { transport: "mqtt" }) }, { ...up, configured: false }), true);
+  assert.equal(deliveryAttention(device({ stale: true, delivery: check("not_delivered") }), null), false);
+  assert.equal(deliveryAttention({ ...mqtt, device_id: null }, down), false);
+
+  // The result block: a test running here first, then the hub's record, then the stored check.
+  assert.equal(deliveryVerdict(device(), true), "testing");
+  assert.equal(deliveryVerdict(device({ stale: true, delivery: check("delivered") })), "stale");
+  assert.equal(deliveryVerdict(device({ device_id: null })), "not_on_hub");
+  assert.equal(deliveryVerdict(device()), "untested");
+  assert.equal(deliveryVerdict(device({ delivery: null })), "untested");
+  assert.equal(deliveryVerdict(device({ delivery: check("delivered") })), "delivered");
+  assert.equal(deliveryVerdict(device({ delivery: check("not_delivered") })), "not_delivered");
+  assert.equal(deliveryVerdict(device({ delivery: check("not_sent") })), "not_sent");
+
+  // What the hub calls: the listener's origin, or the broker this server uses.
+  assert.equal(deliveryTarget(device(), up), "http://192.168.1.10:8060");
+  assert.equal(deliveryTarget(device({ target: null, delivery: check("not_delivered") }), null), "http://192.168.1.10:8060");
+  assert.equal(deliveryTarget(device({ target: null }), null), "");
+  assert.equal(deliveryTarget(mqtt, up), "broker.lan:1883");
+  assert.equal(deliveryTarget({ ...mqtt, delivery: check("delivered", { transport: "mqtt", target: "10.0.0.2:1883" }) }, { ...up, configured: false, host: null }), "10.0.0.2:1883");
+  assert.equal(deliveryTarget(mqtt, null), "");
+});
+
 test("the glow: fresh for 720 ms, matched by key (or by device id), a long press lights its slot's tile", () => {
   assert.equal(PRESS_FLASH_MS, 720);
   assert.equal(pressIsFresh(press(), 1000), true);
@@ -312,4 +358,16 @@ test("the API client's wifi-devices calls and the job labels", async () => {
   assert.equal("transport" in JSON.parse(String(calls[2].init?.body)), false);         // a deployed device's transport is fixed
   assert.equal(jobLabel("deploy_wifi_device"), "Deploying the Wifi Device");
   assert.equal(jobLabel("update_wifi_device"), "Syncing the Wifi Device");
+});
+
+
+test("a Wifi Device's icon and color travel in the draft; null keeps the hub's", () => {
+  const draft = draftFromSpec(spec({ icon: 13, color_id: null }));
+  assert.deepEqual([draft.icon, draft.colorId], [13, null]);
+  const body = specFromDraft({ ...draft, colorId: 4 });
+  assert.deepEqual([body.icon, body.color_id], [13, 4]);
+  // A spec from before icons (no keys) reads as "keep the hub's", and an edit elsewhere leaves it so.
+  const legacy = draftFromSpec({ ...spec(), icon: undefined, color_id: undefined } as unknown as WifiDeviceSpec);
+  assert.deepEqual([legacy.icon, legacy.colorId], [null, null]);
+  assert.deepEqual([specFromDraft(withSlotLabel(legacy, 2, "Dim")).icon, specFromDraft(legacy).color_id], [null, null]);
 });

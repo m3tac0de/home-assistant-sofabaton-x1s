@@ -4,11 +4,16 @@ import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } 
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
 import { phraseNameStyles, phraseWithName } from "../components/phrase-name";
+import { DeliveryPillController, deliveryPillStyles, renderReadOnlyDeliveryPill } from "../components/delivery-pill";
+import { HubBrokerFormController, hubBrokerFormStyles } from "../components/hub-broker-form";
 import type {
+  BackupBundlePayload,
+  BackupProgressEvent,
   ControlPanelHubState,
   HassLike,
   HubEventFireEvent,
   WifiCommandSyncState,
+  WifiDelivery,
   WifiDeviceSummary,
   WifiEvent,
   WifiEventsListResponse,
@@ -18,6 +23,7 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import { localizeBackendProgress, localizeWifiSyncFailure } from "../shared/utils/backend-state-localization";
+import { deliveryFailed } from "../shared/utils/wifi-delivery";
 import {
   findRunningWifiDevice,
   selectedDeviceOwnsPendingSync,
@@ -26,6 +32,11 @@ import {
 import { sanitizeWifiName } from "../shared/hub-names";
 import { buttonTakeover, hubSupportsPowerInput } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../../../remote-card/src/entity-icons/appearance-editor";
+import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { bundleEntityAppearance, renameBundleDevice, setBundleEntityAppearance } from "./backup-state";
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
@@ -208,6 +219,23 @@ interface WifiCommandSlot {
 
 type SyncState = WifiCommandSyncState;
 
+/** The Edit device dialog of a deployed Wifi Device: its hub record's name,
+ *  icon and (X2) color, written by the editor's device sync. */
+interface WifiDeviceEditDialog {
+  deviceKey: string;
+  deviceId: number;
+  hubVersion: string;
+  /** The name the dialog opened with; an untouched name is not rewritten. */
+  initialName: string;
+  name: string;
+  appearance: AppearanceDraft;
+  /** The hub record is in the cache: without it there is nothing to sync against. */
+  cached: boolean;
+  pickerOpen: boolean;
+  tab: AppearanceTab;
+  error: string;
+}
+
 class SofabatonWifiCommandsTab extends LitElement {
   private static readonly _DEVICE_SESSION_KEY_PREFIX = "sofabaton_x1s:wifi_commands:selected_device:";
 
@@ -279,10 +307,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     _hubEventResetError: { state: true },
     _commandConfigLoadFailed: { state: true },
     _commandsSaveError: { state: true },
+    _editDeviceDialog: { state: true },
+    _deviceEditRunning: { state: true },
+    _deviceEditProgress: { state: true },
     lastHubEvent: { attribute: false },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, deliveryPillStyles, hubBrokerFormStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -299,13 +330,26 @@ class SofabatonWifiCommandsTab extends LitElement {
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
     .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .sticky-header, .sticky-footer { position: sticky; z-index: 2; background: var(--ha-card-background, var(--card-background-color)); }
-    .sticky-header { padding: 12px 16px; }
     .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); }
     .sticky-footer { bottom: 0; border-top: 1px solid var(--divider-color); padding: 0; }
     .detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+    .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px 16px; }
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    /* One row, as in the editors: back, the device, Sync. By the header's width Sync drops to its icon. */
+    .sticky-header { container: editor-header / inline-size; }
+    .detail-title-stack { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; }
+    .detail-title-meta { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; margin-top: 3px; }
+    .detail-title-meta:empty { display: none; }
+    .detail-sync-icon { display: none; }
+    @container editor-header (max-width: 440px) {
+      .detail-title-row .back-btn, .detail-title-main > .icon-btn { box-sizing: border-box; width: 44px; height: 44px; padding: 0; justify-content: center; }
+      .detail-title-main > .detail-entity-tile { padding: 4px; margin-inline: -4px; }
+      .detail-title-actions .detail-sync-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+      .detail-sync-icon { display: inline-flex; --mdc-icon-size: 20px; }
+      .detail-sync-label { display: none; }
+      .detail-title-meta .delivery-pill { min-height: 24px; box-sizing: border-box; }
+    }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
@@ -373,9 +417,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
-    .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
-    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
-    .transport-pill.pending { border-style: dashed; }
     .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
     .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
     .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
@@ -385,6 +426,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     .transport-option-name { font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
     .transport-option-hint { font-size: 12px; color: var(--secondary-text-color); }
     .transport-choice-note { font-size: 11px; color: var(--secondary-text-color); }
+    .transport-option-check { font-size: 12px; color: var(--secondary-text-color); margin-top: 4px; }
+    .transport-option-check.problem { color: var(--warning-color, #b58a00); }
+    .transport-option-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
     .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
@@ -409,6 +453,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     }
+    /* Pending: the one filled control in the header, so it reads as something to press.
+       Not the pure primary: white on it fails in most themes (2:1 on the iOS orange). The
+       accent-text mix turns with the theme and the card surface always reads on it. */
+    .detail-sync-btn.sync-btn-primary { --_sync-fill: var(--sb-accent-text, var(--primary-color)); --_sync-ink: var(--sb-popup-surface, var(--sb-card-surface, #fff)); border-color: var(--_sync-fill); background: var(--_sync-fill); color: var(--_sync-ink); }
+    .detail-sync-btn.sync-btn-primary:hover { border-color: var(--_sync-fill); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
     .detail-sync-btn.detail-sync-btn--state-ok {
       border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
       background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
@@ -667,6 +716,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       outline: none;
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
     }
+    .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
     .dialog-body {
       padding: 16px;
       display: flex;
@@ -854,7 +904,18 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _maxWifiDevices = 5;
   // The MQTT option shows only when the backend reports X2 + MQTT integration.
   private _mqttAvailable = false;
+  // New devices default to MQTT where it is offered (the faster path).
   private _newDeviceTransport: "mqtt" | "http" = "mqtt";
+  // The selected device's delivery pill: how its presses reach Home
+  // Assistant, Test, and on an X2 the method choice.
+  private readonly _delivery = new DeliveryPillController(this);
+  // The Edit device dialog (deployed devices only) and the device sync it starts.
+  private _editDeviceDialog: WifiDeviceEditDialog | null = null;
+  private _deviceEditRunning = false;
+  private _deviceEditProgress: BackupProgressEvent | null = null;
+  // The hub's MQTT broker link (the create dialog's MQTT option) and the
+  // form that points the hub at a broker.
+  private readonly _brokerForm = new HubBrokerFormController(this, () => this.hass);
   private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();
   private _activityEventActions: Record<string, ActivityEventEntry> = {};
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
@@ -1073,8 +1134,11 @@ class SofabatonWifiCommandsTab extends LitElement {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
-                <div class="detail-title">${selectedDevice.device_name}</div>
-                ${this._renderTransportPill(selectedDevice)}
+                ${this._renderDeviceEdit(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
+                <div class="detail-title-stack">
+                  <div class="detail-title">${selectedDevice.device_name}</div>
+                  <div class="detail-title-meta">${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}</div>
+                </div>
               </div>
               <div class="detail-title-actions">
                 ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
@@ -1084,6 +1148,12 @@ class SofabatonWifiCommandsTab extends LitElement {
           <div class="detail-scroll">
             ${remoteUnavailable
               ? nothing
+              : this._deviceEditRunning
+                ? renderOperationProgress({
+                    mode: "restore",
+                    title: TOOLS_CARD_STRINGS.activities.syncingTitle,
+                    message: localizeBackendProgress(this._deviceEditProgress, "entity_sync"),
+                  })
               : syncRunning
                 ? renderOperationProgress({
                     mode: "wifi-deploy",
@@ -1114,23 +1184,276 @@ class SofabatonWifiCommandsTab extends LitElement {
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
+        ${this._renderEditDeviceDialog()}
+        ${this._delivery.renderDialogs()}
       </div>
     `;
   }
 
-  /** The read-only pill of a device row and of the selected device's
-   *  header. X2-with-MQTT entries only — everywhere else every Wifi Device
-   *  is HTTP and the pill is noise. A device already deployed over MQTT
-   *  keeps its pill even if the MQTT integration goes away. */
+  /** The way into a deployed device's Edit dialog (name, icon and color of
+   *  its hub record), as in the editors: the hub icon with a pencil badge, or
+   *  a plain pencil until the remote entity publishes the record's icon
+   *  (persistent cache on). A device still waiting for its first Sync has no
+   *  record to edit yet. */
+  private _renderDeviceEdit(device: WifiDeviceSummary, locked: boolean) {
+    const deviceId = this._deployedHubDeviceId(device);
+    if (deviceId == null) return nothing;
+    const label = iconHubLine(this._hubVersion()) != null
+      ? TOOLS_CARD_STRINGS.backup.editDevice
+      : TOOLS_CARD_STRINGS.backup.renameDevice;
+    const disabled = locked || this._deviceEditRunning;
+    const appearance = this._hubDeviceAppearance(deviceId);
+    const tile = entityTile(this._hubVersion(), appearance.icon, appearance.colorId);
+    if (tile) return renderDetailEntityTile(tile, { label, disabled, onClick: this._openEditDeviceDialog });
+    return html`<button class="icon-btn" title=${label} aria-label=${label} ?disabled=${disabled} @click=${this._openEditDeviceDialog}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
+  }
+
+  /** The record's icon and color from the remote entity's `devices` rows. */
+  private _hubDeviceAppearance(deviceId: number): AppearanceDraft {
+    const devices = (this._remoteAttrs() as { devices?: unknown }).devices;
+    const row = Array.isArray(devices)
+      ? (devices.find((item) => Number((item as { id?: unknown })?.id) === deviceId) as Record<string, unknown> | undefined)
+      : undefined;
+    const icon = Number(row?.icon);
+    const colorId = Number(row?.color_id);
+    return {
+      icon: row?.icon != null && Number.isInteger(icon) ? icon : null,
+      colorId: row?.color_id != null && Number.isInteger(colorId) ? colorId : null,
+    };
+  }
+
+  private _deployedHubDeviceId(device: WifiDeviceSummary | null): number | null {
+    const id = Number(device?.deployed_device_id);
+    return Number.isInteger(id) && id >= 1 && id <= 255 ? id : null;
+  }
+
+  private async _captureStructuralBundle(entryId: string): Promise<BackupBundlePayload | null> {
+    try {
+      return (await this.api().getStructuralBundle(entryId))?.bundle ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private _bundleHasDevice(bundle: BackupBundlePayload | null, deviceId: number) {
+    return (bundle?.devices ?? []).some((entry) => Number(entry?.device?.device_id) === deviceId);
+  }
+
+  private _openEditDeviceDialog = async () => {
+    const device = this._selectedWifiDevice();
+    const deviceId = this._deployedHubDeviceId(device);
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!device || deviceId == null || !entryId || this._hubCommandLocked() || this._deviceEditRunning) return;
+    const bundle = await this._captureStructuralBundle(entryId);
+    if (entryId !== String(this.hub?.entry_id || "").trim() || this._selectedDeviceKey !== device.device_key) return;
+    const cached = this._bundleHasDevice(bundle, deviceId);
+    const name = this._sanitizeWifiDeviceName(device.device_name);
+    this._editDeviceDialog = {
+      deviceKey: device.device_key,
+      deviceId,
+      hubVersion: String(bundle?.hub?.version || this._hubVersion()),
+      initialName: name,
+      name,
+      appearance: cached ? bundleEntityAppearance(bundle, "device", deviceId) : { icon: null, colorId: null },
+      cached,
+      pickerOpen: false,
+      tab: "icon",
+      error: cached ? "" : TOOLS_CARD_STRINGS.activities.needsRefreshTitle,
+    };
+  };
+
+  private _patchEditDeviceDialog(patch: Partial<WifiDeviceEditDialog>) {
+    if (this._editDeviceDialog) this._editDeviceDialog = { ...this._editDeviceDialog, ...patch };
+  }
+
+  private _closeEditDeviceDialog = () => {
+    this._editDeviceDialog = null;
+  };
+
+  private _renderEditDeviceDialog() {
+    const dialog = this._editDeviceDialog;
+    if (!dialog) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const appearance = dialog.cached && iconHubLine(dialog.hubVersion) != null;
+    const nameField = this._renderEditDeviceNameField(dialog);
+    return html`
+      <div class="modal-backdrop" @click=${this._closeEditDeviceDialog}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${appearance ? S.editDevice : S.renameDevice}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditDeviceDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${appearance
+              ? renderAppearanceEditor({
+                  hubVersion: dialog.hubVersion,
+                  draft: dialog.appearance,
+                  open: dialog.pickerOpen,
+                  tab: dialog.tab,
+                  nameField,
+                  labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+                  onToggle: () => this._patchEditDeviceDialog({ pickerOpen: !dialog.pickerOpen }),
+                  onTab: (tab) => this._patchEditDeviceDialog({ tab }),
+                  onPick: (draft) => this._patchEditDeviceDialog({ appearance: draft }),
+                })
+              : nameField}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${dialog.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeEditDeviceDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${!dialog.cached} @click=${this._saveEditDeviceDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderEditDeviceNameField(dialog: WifiDeviceEditDialog) {
+    const onInput = (event: Event) => {
+      const input = event.currentTarget as HTMLElement & { value: string };
+      const value = this._sanitizeWifiDeviceName(input.value);
+      input.value = value;
+      this._patchEditDeviceDialog(dialog.cached ? { name: value, error: "" } : { name: value });
+    };
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Enter") { event.preventDefault(); void this._saveEditDeviceDialog(); }
+    };
+    return this._useLegacyTextField()
+      ? html`
+          <ha-textfield
+            id="sb-edit-device-name"
+            .label=${TOOLS_CARD_STRINGS.wifiCommands.deviceName}
+            .maxLength=${20}
+            .value=${dialog.name}
+            @input=${onInput}
+            @change=${onInput}
+            @keydown=${onKeydown}
+          ></ha-textfield>
+        `
+      : html`
+          <ha-input
+            id="sb-edit-device-name"
+            type="text"
+            .label=${TOOLS_CARD_STRINGS.wifiCommands.deviceName}
+            .maxlength=${20}
+            .value=${dialog.name}
+            @input=${onInput}
+            @change=${onInput}
+            @keydown=${onKeydown}
+          ></ha-input>
+        `;
+  }
+
+  private _saveEditDeviceDialog = async () => {
+    const dialog = this._editDeviceDialog;
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!dialog || !dialog.cached || !entryId) return;
+    const name = this._sanitizeWifiDeviceName(dialog.name).trim();
+    if (!name) {
+      this._patchEditDeviceDialog({ error: TOOLS_CARD_STRINGS.backup.enterName });
+      return;
+    }
+    if (this._hubCommandLocked() || this._deviceEditRunning) {
+      this._patchEditDeviceDialog({ error: TOOLS_CARD_STRINGS.errors.anotherOperation });
+      return;
+    }
+    // A fresh capture: the device sync checks its baseline against the cache.
+    const baseline = await this._captureStructuralBundle(entryId);
+    if (this._editDeviceDialog !== dialog) return;
+    if (!baseline || !this._bundleHasDevice(baseline, dialog.deviceId)) {
+      this._patchEditDeviceDialog({ cached: false, error: TOOLS_CARD_STRINGS.activities.needsRefreshTitle });
+      return;
+    }
+    // Only what the user changed: an untouched name or pick leaves the
+    // record's own bytes, a never-picked color 0 included.
+    const base = bundleEntityAppearance(baseline, "device", dialog.deviceId);
+    const picked = dialog.appearance;
+    const renamed = name !== dialog.initialName ? renameBundleDevice(baseline, dialog.deviceId, name) : baseline;
+    const edited = setBundleEntityAppearance(renamed, "device", dialog.deviceId, {
+      icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+      colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null,
+    });
+    this._editDeviceDialog = null;
+    if (JSON.stringify(edited) === JSON.stringify(baseline)) return;
+    await this._runDeviceEdit(entryId, dialog.deviceKey, dialog.deviceId, baseline, edited);
+  };
+
+  /** The editor's device sync, started from here: the hub record takes the
+   *  name, icon and color, and the store follows the name (a device that
+   *  was in sync stays in sync, entity_sync's managed Wifi rename). */
+  private async _runDeviceEdit(
+    entryId: string,
+    deviceKey: string,
+    deviceId: number,
+    baseline: BackupBundlePayload,
+    edited: BackupBundlePayload,
+  ) {
+    this._deviceEditRunning = true;
+    this._deviceEditProgress = null;
+    let ok = false;
+    try {
+      const start = await this.api().startDeviceSync(entryId, deviceId, baseline, edited);
+      await this._refreshControlPanelState();
+      const result = await this._awaitDeviceEdit(String(start?.operation_id || ""));
+      ok = result.status === "success";
+    } catch {
+      ok = false;
+    } finally {
+      this._deviceEditRunning = false;
+      this._deviceEditProgress = null;
+      this.showCompletion?.(
+        ok
+          ? { tone: "success", label: TOOLS_CARD_STRINGS.activities.syncSuccess }
+          : { tone: "error", label: TOOLS_CARD_STRINGS.errors.syncFailed },
+        entryId,
+      );
+      await this._loadWifiDevices(true);
+      if (this._selectedDeviceKey === deviceKey) await this._loadCommandSyncProgress(true);
+      await this._refreshControlPanelState();
+    }
+  }
+
+  /** Follow the device sync to its end; progress feeds the busy screen. */
+  private _awaitDeviceEdit(operationId: string): Promise<BackupProgressEvent> {
+    return new Promise((resolve, reject) => {
+      let unsub: (() => unknown) | null = null;
+      let settled = false;
+      const finish = (payload: BackupProgressEvent) => {
+        if (settled) return;
+        settled = true;
+        try { unsub?.(); } catch { /* ignore */ }
+        void this.api().clearBackupResult(operationId).catch(() => undefined);
+        resolve(payload);
+      };
+      this.api().subscribeBackupProgress(operationId, (payload) => {
+        if (payload.status === "success" || payload.status === "failed") {
+          finish(payload);
+          return;
+        }
+        this._deviceEditProgress = payload;
+      }).then((off) => {
+        unsub = off as () => unknown;
+        if (settled) {
+          try { unsub(); } catch { /* ignore */ }
+        }
+      }, reject);
+    });
+  }
+
+  /** The read-only pill of a device row, on every hub: the method on the
+   *  hub (or a pending switch, dashed), amber when its presses don't arrive. */
   private _renderTransportPill(device: WifiDeviceSummary) {
     const deployed = normalizeTransport(device.deployed_transport);
     const requested = normalizeTransport(device.requested_transport);
     const pending = Boolean(device.transport_switch_pending);
-    return this._renderTransportPillFor({
+    return renderReadOnlyDeliveryPill({
       transport: this._pillTransport(deployed, requested, pending),
-      deployed: deployed !== null,
       pending,
-      mqttAvailable: this._mqttAvailable,
+      attention: this._deployedHubDeviceId(device) != null && deliveryFailed(device.delivery),
     });
   }
 
@@ -1422,13 +1745,66 @@ class SofabatonWifiCommandsTab extends LitElement {
     this._wifiEventsRecordNeedsSync = Boolean(state?.record_needs_sync);
   }
 
-  // ── Delivery method pill (read-only) ───────────────────────────────────
+  // ── The delivery pill ───────────────────────────────────────────────────
   //
-  // The switch itself lives in the device editor (Hub → Devices → Edit);
-  // this tab only shows what is deployed, and previews a pending wish.
+  // The selected device's header pill: how its presses reach Home
+  // Assistant, Test, the failed test's guidance and, on an X2, the method
+  // choice. A pick is stored on the device and applied by this view's Sync
+  // (a switch replaces the device on the hub); before the first Sync it is
+  // the method the first Sync uses.
 
-  /** The transport a pill shows: the pending wish wins over the deployed
-   *  one, as an undeployed device shows its selection. */
+  private _renderDeliveryPill(device: WifiDeviceSummary, locked: boolean) {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    const onHub = this._deployedHubDeviceId(device) != null;
+    const deployed = normalizeTransport(device.deployed_transport);
+    const requested = normalizeTransport(device.requested_transport);
+    const transport = onHub ? deployed ?? "http" : requested ?? "http";
+    const pending = onHub && device.transport_switch_pending && requested && requested !== transport ? requested : null;
+    return this._delivery.renderPill({
+      hass: this.hass,
+      hubEntryId,
+      deviceKey: device.device_key,
+      onHub,
+      transport,
+      pending,
+      canSwitch: this.hub?.broker_setup_available === true,
+      mqttAvailable: this._mqttAvailable,
+      locked: locked || this._hubCommandLocked() || this._remoteUnavailable(),
+      onPick: (next) => this._setDeviceTransport(device.device_key, next),
+      onBusy: (busy, label) => this._setSharedHubCommandBusy(busy, label, hubEntryId),
+      onTested: () => { void this._loadWifiDevices(true); },
+    });
+  }
+
+  /** Store the device's delivery method: on a deployed device a method other
+   *  than the hub's makes the next Sync a switch, the hub's own cancels it. */
+  private async _setDeviceTransport(deviceKey: string, transport: "mqtt" | "http") {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass) return;
+    try {
+      await this.api().setWifiTransport(hubEntryId, deviceKey, transport);
+    } catch (error) {
+      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
+      return;
+    }
+    await this._loadWifiDevices(true);
+    if (deviceKey === this._selectedDeviceKey) await this._loadCommandSyncProgress(true);
+  }
+
+  /** The dock line after a deploy: as before when presses arrive; when the
+   *  test press did not, the deploy still landed and the dock says so (the
+   *  device's panel names what to allow). */
+  private _announceDeployResult(delivery: WifiDelivery | null | undefined, successLabel: string, hubEntryId: string) {
+    if (deliveryFailed(delivery)) {
+      const S = TOOLS_CARD_STRINGS.wifiDelivery;
+      this.showCompletion?.({ tone: "error", label: delivery?.status === "not_sent" ? S.syncedNotTestedDock : S.syncedNotDeliveredDock }, hubEntryId);
+      return;
+    }
+    this.showCompletion?.({ tone: "success", label: successLabel }, hubEntryId);
+  }
+
+  /** The transport a row's pill shows: the pending wish wins over the
+   *  deployed one, as an undeployed device shows its selection. */
   private _pillTransport(
     deployed: "mqtt" | "http" | null,
     requested: "mqtt" | "http" | null,
@@ -1436,18 +1812,6 @@ class SofabatonWifiCommandsTab extends LitElement {
   ): "mqtt" | "http" {
     if (pending && requested) return requested;
     return deployed ?? requested ?? "http";
-  }
-
-  private _renderTransportPillFor(opts: {
-    transport: "mqtt" | "http";
-    deployed: boolean;
-    pending: boolean;
-    mqttAvailable: boolean;
-  }) {
-    if (!opts.mqttAvailable && opts.transport !== "mqtt") return nothing;
-    const S = TOOLS_CARD_STRINGS.wifiCommands;
-    const title = opts.deployed && !opts.pending ? S.transportPillDeployedTitle : S.transportPillPreviewTitle;
-    return html`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? "MQTT" : "HTTP"}</span>`;
   }
 
   private async _loadWifiEventsRows(): Promise<void> {
@@ -1988,15 +2352,14 @@ class SofabatonWifiCommandsTab extends LitElement {
                             name="sb-new-device-transport"
                             .checked=${this._newDeviceTransport === option}
                             ?disabled=${this._creatingDevice}
-                            @change=${() => {
-                              this._newDeviceTransport = option;
-                            }}
+                            @change=${() => this._pickNewDeviceTransport(option)}
                           />
                           <span class="transport-option-copy">
                             <span class="transport-option-name">${option === "mqtt" ? "MQTT" : "HTTP"}</span>
                             <span class="transport-option-hint">${option === "mqtt"
                               ? TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint
                               : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                            ${option === "mqtt" && this._newDeviceTransport === "mqtt" ? this._renderMqttLinkCheck() : nothing}
                           </span>
                         </label>
                       `,
@@ -2010,11 +2373,63 @@ class SofabatonWifiCommandsTab extends LitElement {
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" ?disabled=${this._creatingDevice} @click=${this._closeCreateDeviceModal}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice} @click=${this._createWifiDevice}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCreate}</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice || this._mqttChoiceBlocked()} @click=${this._createWifiDevice}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCreate}</button>
             </div>
           </div>
         </div>
       </div>
+      ${this._brokerForm.render()}
+    `;
+  }
+
+  /** Pick the new device's delivery; MQTT reads both ends of the broker
+   *  link first (once per dialog), so a device that cannot work is never
+   *  created (docs/internal/wifi-webhook-transport-plan.md §4.4). */
+  private _pickNewDeviceTransport(option: "mqtt" | "http") {
+    this._newDeviceTransport = option;
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (option === "mqtt" && entryId && this._brokerForm.loadedFor !== entryId) {
+      void this._brokerForm.load(entryId);
+    }
+  }
+
+  /** MQTT is chosen but one end of the broker link is known to be down
+   *  (or is still being read). */
+  private _mqttChoiceBlocked(): boolean {
+    if (this._newDeviceTransport !== "mqtt") return false;
+    if (this._brokerForm.loading) return true;
+    const state = this._brokerForm.state;
+    return state?.ha_connected === false || state?.hub_connected === false;
+  }
+
+  private _renderMqttLinkCheck() {
+    const D = TOOLS_CARD_STRINGS.wifiDelivery;
+    const state = this._brokerForm.state;
+    if (this._brokerForm.loading) return html`<span class="transport-option-check">${D.mqttChecking}</span>`;
+    if (state?.ha_connected === false) {
+      return html`<span class="transport-option-check problem" role="alert">${D.mqttHaNotConnected}</span>`;
+    }
+    if (state?.hub_connected !== false) return nothing;
+    const entryId = String(this.hub?.entry_id || "").trim();
+    return html`
+      <span class="transport-option-check problem" role="alert">${D.mqttHubNotConnected}</span>
+      <span class="transport-option-actions">
+        <button
+          class="dialog-btn dialog-btn-primary transport-setup-btn"
+          ?disabled=${this._creatingDevice}
+          @click=${(event: Event) => {
+            event.preventDefault();
+            this._brokerForm.openFor(entryId, {
+              onUseHttp: () => { this._newDeviceTransport = "http"; },
+            });
+          }}
+        >${D.setUpNow}</button>
+        <button
+          class="dialog-btn transport-use-http-btn"
+          ?disabled=${this._creatingDevice}
+          @click=${(event: Event) => { event.preventDefault(); this._newDeviceTransport = "http"; }}
+        >${D.useHttpInstead}</button>
+      </span>
     `;
   }
 
@@ -2416,6 +2831,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._wifiEventsRecordNeedsSync = false;
       this._wifiEventsStaleConfirm = false;
       this._wifiEventsStaleError = "";
+      this._delivery.reset();
+      this._brokerForm.reset();
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const deviceListLoaded = await this._loadWifiDevices(true);
@@ -3461,9 +3878,20 @@ class SofabatonWifiCommandsTab extends LitElement {
           : this._syncState.sync_needed
             ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub
             : TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate;
+    const icon = remoteUnavailable
+      ? "mdi:sync-off"
+      : syncRunning
+        ? "mdi:sync"
+        : externallyLocked
+          ? "mdi:timer-sand"
+          : this._syncState.sync_needed
+            ? "mdi:sync"
+            : "mdi:check";
     const disabled = remoteUnavailable || syncRunning || externallyLocked || !this._syncState.sync_needed;
     const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}${!remoteUnavailable && !syncRunning && !externallyLocked && !this._syncState.sync_needed ? " detail-sync-btn--state-ok" : ""}`;
-    return html`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
+    return html`<button class=${classes} title=${label} aria-label=${label} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>
+      <ha-icon class="detail-sync-icon" icon=${icon}></ha-icon><span class="detail-sync-label">${label}</span>
+    </button>`;
   }
 
   private _selectWifiDevice(deviceKey: string) {
@@ -3498,8 +3926,13 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _openCreateDeviceModal = () => {
     if (this._hubCommandLocked()) return;
     this._newDeviceName = "";
-    this._newDeviceTransport = "mqtt";
     this._deviceMutationError = "";
+    // The broker link is read again for every dialog: it may have changed.
+    this._brokerForm.reset();
+    // MQTT is preselected where it is offered (its broker link is read
+    // as for a pick), HTTP elsewhere.
+    this._newDeviceTransport = "http";
+    if (this._mqttAvailable) this._pickNewDeviceTransport("mqtt");
     this._createDeviceModalOpen = true;
   };
 
@@ -3582,10 +4015,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     await this._startCommandConfigSync();
   };
 
+  /** Deploy the selected device; it ends with the deploy's test press. */
   private async _startCommandConfigSync() {
     const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!hubEntryId || !this.hass) return;
+    if (this._commandSyncRunning || this._hubCommandLocked()) return;
     this._syncState = {
       ...this._syncState,
       status: "running",
@@ -3614,11 +4049,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     const busyEntryId = String(this.hub?.entry_id || "").trim();
     this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
-      await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
-      this.showCompletion?.(
-        { tone: "success", label: TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully },
-        hubEntryId,
-      );
+      const result = await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
+      this._announceDeployResult(result?.delivery, TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully, hubEntryId);
       await this._refreshControlPanelState();
     } catch (error) {
       // The reason goes to the dock, in the user's language; the backend's
@@ -3642,6 +4074,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._commandSyncDeviceKey = null;
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
+      // The deploy ended with its own test press: the pill shows that one.
+      if (deviceKey === this._selectedDeviceKey) await this._delivery.reload();
       await this._refreshControlPanelState();
       this._setSharedHubCommandBusy(false, null, busyEntryId);
     }

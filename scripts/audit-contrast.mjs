@@ -120,6 +120,8 @@ const DEFAULT_SCENARIOS = [
   "17",                   // Version mismatch (stale cache) edge state
   "activities-capture",   // Activity editor open
   "payload-editor-ir",    // IR payload editor dialog: Pronto / Sofabaton tabs, hex textarea
+  "device-editor-ir-open", // X2 IR pill dropdown open: amber line, rows, choices, pending note
+  "hub-x2-ir-attention",  // Hub tab device row with the read-only amber IR pill
   "macro-add-step",       // Macro editor's Add step dialog: native selects + hold input
   "backup-compose",       // Backup composer
   "backup-edit",          // Backup edit view

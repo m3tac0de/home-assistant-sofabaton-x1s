@@ -114,8 +114,9 @@ class _FakeHub:
         self.calls.append(payload)
         return payload
 
-    async def async_delete_device(self, *, device_id: int):
+    async def async_delete_device(self, *, device_id: int, sync_remotes: bool = False):
         payload = {"device_id": device_id}
+        self.delete_syncs_remotes = sync_remotes
         self.calls.append(payload)
         return payload
 

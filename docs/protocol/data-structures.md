@@ -49,7 +49,14 @@ Observed device-class codes:
 | `0x0D` | `ir` | Learned or catalog IR devices |
 | `0x1A` | `wifi_hue` | Hue / WiFi rows |
 | `0x1C` | `wifi_ip` | Virtual IP / HTTP rows |
+| `0x1D` | `rf_433mhz` | RF 433 MHz devices (device type byte `0x11`); not yet seen in a capture |
+| `0x1E` | `rf_315mhz` | RF 315 MHz devices (device type byte `0x11`); not yet seen in a capture |
 | `0x20` | `wifi_mqtt` | MQTT-style rows |
+
+An RF command record carries the same `0x1D` / `0x1E` value in its own type byte,
+and its signal data after the record header is opaque. Commands carry their
+transport type individually, so an RF device can also hold learned IR (`0x0D`)
+commands; backup and restore replay each command record with its own type byte.
 
 The exact meaning of several surrounding control bytes is still incomplete, but
 the rows behave as fixed-position records rather than short TLV structures.
@@ -110,6 +117,13 @@ Observed tail-slot structure:
 - bytes `6..8`: optional poll-time marker + 2-byte value
 - bytes `9..17`: input/power/share/tail-marker control region
 - bytes `18..21`: optional vendor-extension block on some captures
+- byte `22` (X1S/X2 60-byte tail only): color id (X2 activities and devices:
+  palette ids `1..12`, `0` = never set; `0` on X1S records)
+- byte `23` (X1S/X2 60-byte tail only): Bluetooth link mode on Bluetooth devices
+  (`0` classic, `2` BLE); other classes can carry `0xFF`
+
+Rewrites must carry bytes `22..23` through unchanged: a record rebuilt with zeros
+there loses its color and can change how the hub links a Bluetooth device.
 
 The family-`0x37` activity-create body is layout-compatible with the family-`0x07`
 device-create body; the difference is the opcode family and the meaning of the

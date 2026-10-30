@@ -43,6 +43,7 @@ from sofabaton import (
     build_activity_sync_plan,
     build_device_sync_plan,
     edits,
+    validate_appearance,
 )
 
 from . import API_PREFIX
@@ -153,6 +154,17 @@ class IdleBehaviorRequest(BaseModel):
     mode: int = Field(ge=0, le=255)
 
 
+_ICON_FIELD = Field(
+    None, ge=1, le=45,
+    description="The record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, "
+                "X2 1-45); left out, the hub's default. An id the hub line lacks is a 422.",
+)
+_COLOR_FIELD = Field(
+    None, ge=0, le=12,
+    description="X2 only: the record's tile color, a palette id (0 = none picked); left out, none.",
+)
+
+
 class DeviceCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=30)
     device_class: str = Field(
@@ -161,10 +173,14 @@ class DeviceCreateRequest(BaseModel):
                     "X1S also supports wifi_ip; X2 also supports wifi_mqtt. "
                     "This is not an appliance category such as TV or receiver.",
     )
+    icon: Optional[int] = _ICON_FIELD
+    color_id: Optional[int] = _COLOR_FIELD
 
 
 class ActivityCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=30)
+    icon: Optional[int] = _ICON_FIELD
+    color_id: Optional[int] = _COLOR_FIELD
 
 
 class OrderRequest(BaseModel):
@@ -274,12 +290,46 @@ def _button_code(token: str, hub_id: str) -> int:
                      detail=f"{token!r} is neither a button code nor a ButtonName alias", hub_id=hub_id)
 
 
+def _hub_version(bundle: dict[str, Any]) -> str:
+    return str((bundle.get("hub") or {}).get("version") or "")
+
+
+def _invalid_appearance(err: ValueError, hub_id: str) -> ApiProblem:
+    return ApiProblem(422, "invalid_appearance", "The hub has no such icon or color", detail=str(err), hub_id=hub_id)
+
+
+def _entity_block(bundle: dict[str, Any], kind: str, entity_id: int) -> dict[str, Any]:
+    for row in bundle.get("devices" if kind == "device" else "activities") or []:
+        block = (row or {}).get("device") or {}
+        if int(block.get("device_id") or 0) == entity_id:
+            return block
+    return {}
+
+
+def _check_edited_appearance(
+    kind: str, baseline: dict[str, Any], edited: dict[str, Any], entity_id: int, hub_id: str,
+) -> None:
+    """A changed icon or color the hub line lacks is a 422, not a failed job."""
+
+    base, edit = _entity_block(baseline, kind, entity_id), _entity_block(edited, kind, entity_id)
+    changed = {key: edit[key] for key in ("icon", "color_id")
+               if edit.get(key) is not None and edit.get(key) != base.get(key)}
+    if not changed:
+        return
+    try:
+        validate_appearance(_hub_version(baseline), **changed)
+    except ValueError as err:
+        raise _invalid_appearance(err, hub_id) from err
+
+
 def _plan(kind: str, baseline: dict[str, Any], edited: dict[str, Any], entity_id: int, hub_id: str) -> SyncPlan:
+    _check_edited_appearance(kind, baseline, edited, entity_id, hub_id)
+    version = _hub_version(baseline) or None
     try:
         # A device edit may drop commands (the HA card's live editor does; the
         # hub cascades the references and the sort table is rewritten once).
-        steps = (build_device_sync_plan(baseline, edited, entity_id, allow_command_removal=True)
-                 if kind == "device" else build_activity_sync_plan(baseline, edited, entity_id))
+        steps = (build_device_sync_plan(baseline, edited, entity_id, allow_command_removal=True, hub_version=version)
+                 if kind == "device" else build_activity_sync_plan(baseline, edited, entity_id, hub_version=version))
     except ValueError as err:
         raise ApiProblem(422, "out_of_scope", "The edit touches more than the entity",
                          detail=str(err), hub_id=hub_id) from err
@@ -328,6 +378,21 @@ async def _row_edit(
     except ValueError as err:
         raise ApiProblem(422, "invalid_request", "Invalid edit", detail=str(err), hub_id=hub_id) from err
     return await _sync_job(request, hub_id, proxy, snap, kind, entity_id, edited, job_kind=job_kind)
+
+
+async def _check_create_appearance(
+    request: Request, hub_id: str, icon: Optional[int], color_id: Optional[int],
+) -> None:
+    """A create's icon or color the hub line lacks is a 422 before any job."""
+
+    if icon is None and color_id is None:
+        return
+    proxy = _proxy(request, hub_id)
+    await _require_control(proxy, hub_id)
+    try:
+        validate_appearance(_hub_version((await proxy.snapshot()).bundle), icon=icon, color_id=color_id)
+    except ValueError as err:
+        raise _invalid_appearance(err, hub_id) from err
 
 
 async def _intent_job(request: Request, hub_id: str, if_match: Optional[str], job_kind: str, body) -> JobView:
@@ -530,8 +595,11 @@ async def set_idle_behavior(request: Request, hub_id: str, device_id: int, body:
              responses=_WRITE_ERRORS)
 async def add_device(request: Request, hub_id: str, body: DeviceCreateRequest,
                      if_match: Optional[str] = IF_MATCH) -> JobView:
+    await _check_create_appearance(request, hub_id, body.icon, body.color_id)
+
     async def body_fn(proxy: AsyncXProxy):
-        return {"device_id": await proxy.add_device(body.name, body.device_class)}
+        return {"device_id": await proxy.add_device(
+            body.name, body.device_class, icon=body.icon, color_id=body.color_id)}
 
     return await _intent_job(request, hub_id, if_match, "add_device", body_fn)
 
@@ -570,8 +638,10 @@ async def remove_activity(request: Request, hub_id: str, activity_id: int,
              responses=_WRITE_ERRORS)
 async def add_activity(request: Request, hub_id: str, body: ActivityCreateRequest,
                        if_match: Optional[str] = IF_MATCH) -> JobView:
+    await _check_create_appearance(request, hub_id, body.icon, body.color_id)
+
     async def body_fn(proxy: AsyncXProxy):
-        return {"activity_id": await proxy.add_activity(body.name)}
+        return {"activity_id": await proxy.add_activity(body.name, icon=body.icon, color_id=body.color_id)}
 
     return await _intent_job(request, hub_id, if_match, "add_activity", body_fn)
 

@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import types
 
+import pytest
+
 # Minimal stubs to import the integration without Home Assistant installed
 if "homeassistant" not in sys.modules:
     ha = types.ModuleType("homeassistant")
@@ -385,17 +387,70 @@ def test_keymap_table_b_parses_x2_buttons_response() -> None:
 
 
 
-def test_x2_remote_list_row_caches_remote_id() -> None:
-    proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+def _x2_paired_row(*, index: int, count: int, row_type: int, slot: int, name: str) -> bytes:
+    """A 51-byte family-0x2F row (layout in remote_sync_frames)."""
+
+    slots = bytearray(3)
+    slots[{2: 0, 1: 1}.get(row_type, 2)] = slot
+    head = bytes([index, count]) + bytes(slots) + bytes([59, 0x03]) + bytes.fromhex("20250601")
+    head += bytes([0x0B, row_type, 1, 0]) + bytes.fromhex("aabbccddeeff")
+    return (head + name.encode("utf-8")).ljust(0x33, b"\x00")
+
+
+def _x2_proxy(hub_version: str = "X2") -> X1Proxy:
+    return X1Proxy(
+        "127.0.0.1", hub_version=hub_version, proxy_udp_port=0, proxy_enabled=False,
+        diag_dump=False, diag_parse=False,
     )
+
+
+# Live X2 capture (bench_333 C0, 2026-10-23): one paired remote, "Remote 1".
+_X2_REMOTE_ROW = bytes.fromhex(
+    "01 01 00 00 08 3b 04 20 25 06 10 08 00 01 00 fa ba 25 00 14 d5 52 65 6d 6f 74 65 20 31"
+).ljust(0x33, b"\x00")
+
+
+def test_x2_remote_list_row_caches_the_remote_target() -> None:
+    proxy = _x2_proxy()
+    X2RemoteListRowHandler().handle(
+        _build_payload_context(proxy, OP_X2_REMOTE_LIST_ROW, _X2_REMOTE_ROW, "X2_REMOTE_LIST_ROW")
+    )
+
+    # The slot sits in byte 2 for a remote; p[1:4] (count first) gave 01 00 00.
+    assert proxy.wait_for_x2_remote_sync_id(timeout=0.01) == bytes.fromhex("00 00 08")
+    [row] = proxy.x2_paired_devices()
+    assert (row.index, row.count, row.row_type, row.slot) == (1, 1, 0, 8)
+    assert (row.battery, row.hardware, row.firmware, row.online, row.name) == (59, 4, 8, True, "Remote 1")
+    assert row.mac == "faba250014d5" and row.batch == "20250610"
+
+
+def test_x2_remote_list_rows_restart_on_row_one_and_skip_non_remote_targets() -> None:
+    proxy = _x2_proxy()
     handler = X2RemoteListRowHandler()
+    for row in (
+        _x2_paired_row(index=1, count=2, row_type=2, slot=3, name="Button"),
+        _x2_paired_row(index=2, count=2, row_type=0, slot=8, name="Remote"),
+    ):
+        handler.handle(_build_payload_context(proxy, OP_X2_REMOTE_LIST_ROW, row, "X2_REMOTE_LIST_ROW"))
+    button, remote = proxy.x2_paired_devices()
+    # Type 2 (a single-button RF device) carries its bit in target byte 0.
+    assert button.target == bytes.fromhex("03 00 00") and not button.is_remote
+    assert proxy.wait_for_x2_remote_sync_id(timeout=0.01) == remote.target == bytes.fromhex("00 00 08")
 
-    payload = bytes.fromhex("01 00 08 5e 04 20 25 06")
-    frame = _build_payload_context(proxy, OP_X2_REMOTE_LIST_ROW, payload, "X2_REMOTE_LIST_ROW")
-    handler.handle(frame)
+    # A new list starts at row 1: the button is gone from it.
+    handler.handle(_build_payload_context(proxy, OP_X2_REMOTE_LIST_ROW, _X2_REMOTE_ROW, "X2_REMOTE_LIST_ROW"))
+    assert [row.name for row in proxy.x2_paired_devices()] == ["Remote 1"]
 
-    assert proxy.wait_for_x2_remote_sync_id(timeout=0.01) == bytes.fromhex("00 08 5e")
+
+def test_x2_remote_list_row_ignores_other_models_and_short_rows() -> None:
+    row = _X2_REMOTE_ROW
+    x1s = _x2_proxy("X1S")
+    X2RemoteListRowHandler().handle(_build_payload_context(x1s, 0x332F, row, "REMOTE_STATUS"))
+    assert x1s.x2_paired_devices() == []
+
+    x2 = _x2_proxy()
+    X2RemoteListRowHandler().handle(_build_payload_context(x2, 0x082F, bytes(8), "REMOTE_STATUS"))
+    assert x2.x2_paired_devices() == [] and x2.wait_for_x2_remote_sync_id(timeout=0.01) is None
 
 def test_req_buttons_parses_partial_final_record_example_one() -> None:
     proxy = X1Proxy(
@@ -1056,6 +1111,36 @@ def test_catalog_device_handler_decodes_shared_device_class_code() -> None:
         "device_class_code": 0x1A,
         "raw_body": bytes(payload[3:]),
     }
+
+
+@pytest.mark.parametrize(("code", "device_class"), [(0x1D, "rf_433mhz"), (0x1E, "rf_315mhz")])
+def test_catalog_device_handler_classifies_rf_devices(code: int, device_class: str) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy._begin_device_request()
+
+    payload = bytearray(218)
+    payload[0] = 0x01
+    payload[3] = 0x01
+    payload[6:8] = (0x0009).to_bytes(2, "big")
+    payload[10] = code
+    payload[11] = 0x11  # RF device type
+    raw = bytearray([0xA5, 0x5A, 0xD5, 0x0B]) + payload + bytearray([0x00])
+
+    CatalogDeviceHandler().handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=OP_CATALOG_ROW_DEVICE,
+            direction="H→A",
+            payload=bytes(payload),
+            raw=bytes(raw),
+            name="CATALOG_ROW_DEVICE",
+        )
+    )
+
+    assert proxy.state.devices[0x09]["device_class"] == device_class
+    assert proxy.state.devices[0x09]["device_class_code"] == code
 
 
 def test_catalog_device_handler_ingests_a_name_with_a_lone_surrogate() -> None:

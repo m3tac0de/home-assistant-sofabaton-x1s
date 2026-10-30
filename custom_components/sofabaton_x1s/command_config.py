@@ -6,6 +6,7 @@ import logging
 import re
 import secrets
 from copy import deepcopy
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -279,6 +280,11 @@ def count_configured_command_slots(
 #: Wifi-device transport values; see docs/protocol/wifi-commands.md.
 WIFI_TRANSPORT_HTTP = "http"
 WIFI_TRANSPORT_MQTT = "mqtt"
+#: A deployed value only: the X2 "Direct" mode of the 0.7.2 test releases
+#: (URL records calling a Home Assistant webhook), since removed. Such a
+#: device receives nothing any more; it reads as a pending transport
+#: switch, so its next Sync replaces it over the listener.
+WIFI_TRANSPORT_LEGACY_WEBHOOK = "webhook"
 
 
 def normalize_wifi_transport(value: Any) -> str:
@@ -293,6 +299,15 @@ def normalize_wifi_transport(value: Any) -> str:
         if str(value or "").strip().lower() == WIFI_TRANSPORT_MQTT
         else WIFI_TRANSPORT_HTTP
     )
+
+
+def normalize_deployed_transport(value: Any) -> str:
+    """Normalize a deployed transport value, keeping the legacy webhook one
+    (:data:`WIFI_TRANSPORT_LEGACY_WEBHOOK`) so that device asks for a Sync."""
+
+    if str(value or "").strip().lower() == WIFI_TRANSPORT_LEGACY_WEBHOOK:
+        return WIFI_TRANSPORT_LEGACY_WEBHOOK
+    return normalize_wifi_transport(value)
 
 
 def record_hash_listen_port(record: dict[str, Any], roku_listen_port: int) -> int:
@@ -370,7 +385,7 @@ def wifi_transport_switch_pending(
     deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "").strip()
     if not (isinstance(deployed_device_id, int) or bool(deployed_commands_hash)):
         return False
-    deployed = normalize_wifi_transport(config_payload.get("deployed_transport"))
+    deployed = normalize_deployed_transport(config_payload.get("deployed_transport"))
     requested = normalize_wifi_transport(config_payload.get("requested_transport"))
     if requested == deployed:
         return False
@@ -518,6 +533,11 @@ def _default_device_payload(
         # and legacy records both read back as HTTP via
         # normalize_wifi_transport). Never rewritten by an in-place sync.
         "deployed_transport": None,
+        # The last delivery check: did a press from the hub reach Home
+        # Assistant? Written by the deploy's test press and by "Test
+        # again"; a real press that arrives marks it delivered. None
+        # until first checked.
+        "delivery": None,
     }
 
 
@@ -555,8 +575,10 @@ def _normalize_device_payload(
     payload["requested_transport"] = normalize_wifi_transport(device.get("requested_transport"))
     deployed_transport = device.get("deployed_transport")
     payload["deployed_transport"] = (
-        normalize_wifi_transport(deployed_transport) if deployed_transport is not None else None
+        normalize_deployed_transport(deployed_transport) if deployed_transport is not None else None
     )
+    delivery = device.get("delivery")
+    payload["delivery"] = dict(delivery) if isinstance(delivery, dict) else None
     return payload
 
 
@@ -759,10 +781,11 @@ class CommandConfigStore:
             "deployed_request_port": device.get("deployed_request_port"),
             "requested_transport": normalize_wifi_transport(device.get("requested_transport")),
             "deployed_transport": (
-                normalize_wifi_transport(device.get("deployed_transport"))
+                normalize_deployed_transport(device.get("deployed_transport"))
                 if device.get("deployed_transport") is not None
                 else None
             ),
+            "delivery": deepcopy(device.get("delivery")) if isinstance(device.get("delivery"), dict) else None,
         }
 
     async def async_list_hub_devices(
@@ -932,7 +955,44 @@ class CommandConfigStore:
             # The record is back to undeployed (zero-slot teardown): clear
             # the transport stamp so the next first deploy chooses fresh.
             hub_device["deployed_transport"] = None
+            hub_device["delivery"] = None
         await self._save()
+
+    async def async_set_delivery(
+        self, entry_id: str, device_key: str, delivery: dict[str, Any] | None
+    ) -> None:
+        """Record the last delivery check of a Wifi Device (or clear it)."""
+
+        hub_device = self._find_hub_device_record(entry_id, device_key)
+        hub_device["delivery"] = deepcopy(delivery) if isinstance(delivery, dict) else None
+        await self._save()
+
+    async def async_mark_delivered(
+        self, entry_id: str, hub_device_id: int, *, transport: str, source_ip: str = ""
+    ) -> bool:
+        """A real press from ``hub_device_id`` arrived: the path works.
+
+        Writes only when the stored check says otherwise, so ordinary
+        presses never touch the store. Returns True when it wrote.
+        """
+
+        for device in self._hub_device_records(entry_id):
+            if device.get("deployed_device_id") != hub_device_id:
+                continue
+            current = device.get("delivery") if isinstance(device.get("delivery"), dict) else {}
+            if current.get("status") == "delivered":
+                return False
+            device["delivery"] = {
+                **current,
+                "status": "delivered",
+                "transport": normalize_wifi_transport(transport),
+                "source_ip": str(source_ip or ""),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "via": "press",
+            }
+            await self._save()
+            return True
+        return False
 
     async def async_set_requested_transport(
         self,
@@ -1466,6 +1526,7 @@ class CommandConfigStore:
                 "slot_count": WIFI_EVENTS_SLOT_COUNT,
                 "requested_transport": None,
                 "deployed_transport": None,
+                "delivery": None,
             }
         payload = self._payload_for_device(record, roku_listen_port=roku_listen_port)
         deployed_hash = str(payload.get("deployed_commands_hash") or "").strip()
@@ -1479,6 +1540,9 @@ class CommandConfigStore:
             # with wifi_transport_switch_pending().
             "requested_transport": payload.get("requested_transport"),
             "deployed_transport": payload.get("deployed_transport"),
+            # The last delivery check (the deploy's test press, Test again,
+            # or a real press).
+            "delivery": payload.get("delivery"),
             # The id offset of a long record from before the single-record
             # model: the card retargets references to one after the Sync
             # that retires them (wifi-events-single-record-plan §3.3).

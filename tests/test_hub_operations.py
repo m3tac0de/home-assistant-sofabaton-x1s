@@ -81,7 +81,7 @@ def test_an_immediate_ws_write_holds_the_hub_until_it_ends(monkeypatch):
         release = asyncio.Event()
         seen: dict = {}
 
-        async def _slow_delete(*, device_id):
+        async def _slow_delete(*, device_id, sync_remotes=False):
             seen["gate_during_write"] = hub.is_long_running_task_active()
             await release.wait()
             return {"status": "success"}

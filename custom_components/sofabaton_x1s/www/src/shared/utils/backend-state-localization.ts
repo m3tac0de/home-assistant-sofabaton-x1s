@@ -1,7 +1,7 @@
 import type { BackupProgressEvent } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
 
-type BackendOperation =
+export type BackendOperation =
   | "backup_export"
   | "backup_restore"
   | "cache_refresh"
@@ -26,7 +26,7 @@ function conversionDetail(value: unknown): string | null {
   return /^[A-Za-z0-9_ ()-]{1,40}$/.test(trimmed) ? trimmed : null;
 }
 
-type ProgressLike = Partial<BackupProgressEvent> & {
+export type ProgressLike = Partial<BackupProgressEvent> & {
   current_step?: number | null;
 };
 
@@ -77,7 +77,11 @@ export function localizeWifiSyncFailure(value: unknown): string {
     case "retarget_failed": return S.syncFailedRetarget;
     case "writes_refused": return S.syncFailedWritesRefused;
     case "inplace_failed": return S.syncFailedRejected;
+    case "redeploy_needed": return S.syncFailedRedeployNeeded;
+    case "mqtt_not_connected": return S.syncFailedMqttNotConnected;
+    case "hub_mqtt_not_connected": return S.syncFailedHubMqttNotConnected;
     case "not_found": return S.syncFailedNotFound;
+    case "remote_syncing": return S.syncFailedRemoteSyncing;
     default: return S.syncFailedGeneric;
   }
 }
@@ -94,6 +98,7 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
     if (code === "busy" || code === "another_operation") return E.anotherOperation;
     if (code === "not_found" && surface === "hub_request") return E.selectedHubUnavailable;
     if (surface === "hub_request") {
+      if (code === "rf_unsupported") return TOOLS_CARD_STRINGS.backup.learnRfUnsupported;
       if (code === "unavailable") return E.hubNotReady;
       if (code === "no_response") return E.hubNoResponse;
       if (code === "invalid_blob") return E.payloadInvalid;
@@ -160,6 +165,10 @@ export function localizeBackendError(value: unknown, surface: BackendErrorSurfac
   const event = value && typeof value === "object" ? value as Record<string, unknown> : null;
   const state = String(event?.state || "").trim().toLowerCase();
   const code = backendErrorCode(value);
+  // RF windows (a learn subscription with a band) carry their own codes.
+  if (code === "rf_unsupported") return S.learnRfUnsupported;
+  if (code === "rf_learn_refused") return S.learnRfRefused;
+  if (code === "rf_learn_failed") return S.learnRfFailed;
   if (
     state === "refused"
     || code === "ir_learn_refused"
@@ -192,7 +201,8 @@ type WifiPhaseKey =
   | "wifiStarting" | "wifiReadingDevice" | "wifiEnablingDevice" | "wifiDisablingDevice"
   | "wifiValidatingActivities" | "wifiCreatingDevice" | "wifiDeletingDevice"
   | "wifiAddingToActivities" | "wifiMovingReferences" | "wifiApplyingFavorites" | "wifiApplyingBindings"
-  | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiUpdatedInPlace"
+  | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiCheckingBroker"
+  | "wifiTestingDelivery" | "wifiUpdatedInPlace"
   | "wifiAlreadyCurrent" | "wifiDeviceRemoved" | "wifiComplete";
 
 /**
@@ -285,6 +295,8 @@ export const WIFI_DEPLOY_PHASES: Record<string, WifiPhaseKey> = {
   applying_bindings: "wifiApplyingBindings",
   refreshing_maps: "wifiRefreshingMaps",
   resyncing_remote: "wifiResyncingRemote",
+  checking_broker: "wifiCheckingBroker",
+  testing_delivery: "wifiTestingDelivery",
   updated_in_place: "wifiUpdatedInPlace",
   already_current: "wifiAlreadyCurrent",
   device_removed: "wifiDeviceRemoved",

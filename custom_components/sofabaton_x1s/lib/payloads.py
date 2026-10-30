@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Mapping, Optional, Sequence, Union
 
 from .blob_decoders import (
+    WIFI_HTTPS_METHODS,
     build_raw_ir_blob_body,
     encode_decoded_blob,
     descriptive_ir_descriptor,
@@ -32,6 +33,7 @@ from .protocol_const import (
     DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
+    WIFI_URL_RECORD_CODE,
     normalize_device_class,
 )
 
@@ -199,7 +201,8 @@ class NetworkCommand:
     """One network command as the hub stores it, in its structured form.
 
     The hub renders these itself at press time; the library stores the
-    request text (``wifi_ip``), the Roku ECP path (``wifi_roku``) or the
+    request text or, on the X2, a URL record (``wifi_ip``, see :meth:`url`),
+    the Roku ECP path (``wifi_roku``) or the
     path plus body block (``wifi_hue`` / ``wifi_sonos``). Build one with
     the constructors, then :meth:`to_command_row` for an ``add_command``
     or hand it to ``set_command_payload``. The row carries the structured
@@ -301,6 +304,42 @@ class NetworkCommand:
         )
 
     @classmethod
+    def url(
+        cls,
+        *,
+        url: str,
+        method: str = "POST",
+        headers: Sequence[Sequence[str]] = (),
+        body: str = "",
+    ) -> "NetworkCommand":
+        """A ``wifi_ip`` URL command (X2 only): the hub requests ``url``
+        itself, ``http`` or ``https`` (it checks no certificate), with
+        ``method`` (GET, POST or PUT), ``headers`` as ``(name, value)``
+        pairs in order, and ``body``. Stored as code type 0x21 on the same
+        device class as :meth:`http` commands.
+        """
+
+        method_value = str(method or "").strip().upper()
+        if method_value not in WIFI_HTTPS_METHODS:
+            raise ValueError(f"method {method!r} is not one of {', '.join(WIFI_HTTPS_METHODS)}")
+        pairs = []
+        for pair in headers:
+            pair = list(pair)
+            if len(pair) != 2:
+                raise ValueError(f"a header is a (name, value) pair, got {pair!r}")
+            pairs.append([str(pair[0]), str(pair[1])])
+        return cls(
+            DEVICE_CLASS_WIFI_IP,
+            {"url": str(url or "").strip(), "method": method_value, "headers": pairs, "body": str(body or "")},
+        )
+
+    @property
+    def is_url(self) -> bool:
+        """True for a URL command (:meth:`url`), False for every other kind."""
+
+        return self.device_class == DEVICE_CLASS_WIFI_IP and "url" in self.fields
+
+    @classmethod
     def roku(cls, path: str) -> "NetworkCommand":
         """A ``wifi_roku`` command: a Roku ECP path such as ``keypress/Home``.
 
@@ -371,6 +410,10 @@ class NetworkCommand:
 
     @property
     def library_type(self) -> int:
+        """The record's code type: the class code, or 0x21 for a URL command."""
+
+        if self.is_url:
+            return WIFI_URL_RECORD_CODE
         for code, name in DEVICE_CLASS_BY_CODE.items():
             if name == self.device_class:
                 return int(code) & 0xFF

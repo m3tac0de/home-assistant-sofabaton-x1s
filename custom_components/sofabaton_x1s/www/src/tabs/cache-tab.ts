@@ -14,10 +14,17 @@ import {
 import { sanitizeEntityName } from "../shared/hub-names";
 import { localizeBackendError } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
+import { appearanceLabelsFrom, renderAppearanceToggle, type AppearanceToggleState } from "../../../../../remote-card/src/entity-icons/appearance-editor";
+import { entityTile, entityTileBadge, renderEntityTile } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { irEmitterRowAttention, type PairedEmitter } from "../../../../../remote-card/src/ir-emitters/emitter-rules";
+import { renderReadOnlyIrPill } from "../components/ir-emitter-pill";
 
 function badge(type: string, value: string | number) {
   return html`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
 }
+
+/** The Add dialogs' icon / color draft and their picker's state; the host owns it. */
+export type AddAppearanceDraft = AppearanceToggleState;
 
 // The id badges name the remote.send_command parameters these values plug
 // into (device/command), so they are protocol identifiers and stay
@@ -86,6 +93,13 @@ export function renderCacheTab(params: {
   onCloseAddDevice: () => void;
   onSelectAddDeviceClass: (deviceClass: string) => void;
   onConfirmAddDevice: (name: string, deviceClass: string) => void;
+  // Both Add dialogs offer the icon (and on an X2 the color) up front.
+  addAppearance: AddAppearanceDraft;
+  onAddAppearanceChange: (next: AddAppearanceDraft) => void;
+  /** The X2's paired remotes and repeaters from the last IR pill read
+   *  (null before any): an IR device row whose routing needs attention
+   *  gets a read-only amber IR pill. */
+  irEmitterPaired?: readonly PairedEmitter[] | null;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -130,10 +144,12 @@ export function renderCacheTab(params: {
     @keydown=${rowsClickable ? activateOnKey(() => params.onItemClick(item)) : null}
   ><span class="inner-label">${label}</span><span class="inner-badges">${badges}</span></div>`;
 
-  const renderActivity = (activity: { id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }) => {
+  const renderActivity = (activity: { id: number; name?: string; sort?: number; icon?: number; color_id?: number; favorite_count?: number; macro_count?: number }) => {
     const id = Number(activity.id);
     const key = `act-${id}`;
     const reorder = params.reorderMode && params.reorderKind === "activity";
+    // The hub's own icon once the record is cached; the drag handle while reordering.
+    const tile = reorder ? null : entityTile(params.hubVersion, activity.icon, activity.color_id);
     const isOpen = !reorder && params.openEntity === key;
     const locked = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
@@ -152,8 +168,8 @@ export function renderCacheTab(params: {
           @keydown=${reorder ? null : activateOnKey(() => params.onToggleEntity(key))}
         >
           <span class="entity-name">
-            <span class="entity-name-icon">
-              <ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>
+            <span class="entity-name-icon${tile ? " entity-name-icon--tile" : ""}">
+              ${tile ? renderEntityTile(tile) : html`<ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>`}
             </span>
             <span class="entity-name-copy">
               <span class="entity-name-label">${activityName}</span>
@@ -198,18 +214,26 @@ export function renderCacheTab(params: {
   const renderDevice = (device: {
     id: number;
     name?: string;
+    icon?: number;
+    color_id?: number;
     command_count?: number;
     device_class?: string;
+    emitters?: number[];
   }) => {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const reorder = params.reorderMode && params.reorderKind === "device";
+    const tile = reorder ? null : entityTile(params.hubVersion, device.icon, device.color_id);
     const isOpen = !reorder && params.openEntity === key;
     const locked = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const commands = deviceCommands(params.hub, id);
     const icon = deviceClassIcon(device.device_class);
     const deviceName = String(device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id));
+    // Most devices are IR: the pill shows only on a row that needs attention.
+    const irAttention = !reorder
+      && String(device.device_class ?? "").toLowerCase() === "ir"
+      && irEmitterRowAttention(device.emitters, params.irEmitterPaired ?? null);
     return html`
       <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-device-id=${id}>
         <div
@@ -221,13 +245,17 @@ export function renderCacheTab(params: {
           @keydown=${reorder ? null : activateOnKey(() => params.onToggleEntity(key))}
         >
           <span class="entity-name">
-            <span class="entity-name-icon"><ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon></span>
+            <span class="entity-name-icon${tile ? " entity-name-icon--tile" : ""}">${tile
+              // The class glyph moves to a badge: Bluetooth, Wifi and RF stay visible.
+              ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) })
+              : html`<ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon>`}</span>
             <span class="entity-name-copy">
               <span class="entity-name-label">${deviceName}</span>
               <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
             </span>
           </span>
           <span class="entity-meta">
+            ${irAttention ? renderReadOnlyIrPill({ labels: TOOLS_CARD_STRINGS.irEmitters, attention: true }) : nothing}
             ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditDevice(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" title=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(deviceName)} aria-label=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(deviceName)} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
@@ -398,6 +426,16 @@ export function renderCacheTab(params: {
     if (clean !== input.value) input.value = clean;
   };
 
+  // The icon (and X2 color) picker of both Add dialogs, closed until asked
+  // for: a create without a pick writes the hub's default as before.
+  const appearancePicker = (busy: boolean) => renderAppearanceToggle({
+    hubVersion: params.hubVersion,
+    state: params.addAppearance,
+    labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+    disabled: busy,
+    onChange: params.onAddAppearanceChange,
+  });
+
   const confirmAddActivity = (event: Event) => {
     const dialog = (event.currentTarget as HTMLElement).closest(".cache-dialog");
     const input = dialog?.querySelector<HTMLInputElement>(".cache-dialog-input");
@@ -427,6 +465,7 @@ export function renderCacheTab(params: {
                 confirmAddActivity(event);
               }}
             />
+            ${appearancePicker(params.addActivityBusy)}
             <div class="cache-dialog-actions">
               <button
                 class="cache-footer-btn"
@@ -496,6 +535,7 @@ export function renderCacheTab(params: {
             ${wifiHintClasses.has(selectedDeviceClass)
               ? html`<div class="cache-dialog-hint cache-dialog-text">${S.addDeviceWifiHint}</div>`
               : null}
+            ${appearancePicker(params.addDeviceBusy)}
             <div class="cache-dialog-actions">
               <button
                 class="cache-footer-btn"

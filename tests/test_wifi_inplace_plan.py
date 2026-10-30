@@ -236,6 +236,18 @@ def test_head_commit_carries_name_and_brand():
     assert plan.steps[0].payload == {"device_id": DEV, "name": "New Name", "brand": "m3-key-bbbb"}
 
 
+def test_head_commit_writes_a_named_icon_and_color():
+    base = snapshot(icon=1, color_id=0)
+    plan = build_wifi_inplace_plan(base, snapshot(icon=29, color_id=10))
+    assert kinds(plan) == ["wifi_head_commit"]
+    assert plan.steps[0].payload == {"device_id": DEV, "name": "Wifi", "brand": "m3-key-aaaa", "icon": 29, "color_id": 10}
+    # Only what differs rides along, and None keeps the hub's (the Home Assistant path names neither).
+    plan = build_wifi_inplace_plan(base, snapshot(icon=1, color_id=4))
+    assert plan.steps[0].payload == {"device_id": DEV, "name": "Wifi", "brand": "m3-key-aaaa", "color_id": 4}
+    assert build_wifi_inplace_plan(base, snapshot()).steps == ()
+    assert build_wifi_inplace_plan(base, snapshot(icon=1)).steps == ()
+
+
 def test_head_commit_is_last():
     desired = snapshot(
         brand="m3-key-zzzz",

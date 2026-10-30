@@ -472,7 +472,7 @@ export class RemoteCardStore {
     return this._deviceId;
   }
 
-  devices(): Array<{ id: number; name: string; device_class?: string }> {
+  devices(): Array<{ id: number; name: string; device_class?: string; icon?: number; color_id?: number }> {
     return devicesFromRemote(this.remoteState());
   }
 
@@ -788,7 +788,7 @@ export class RemoteCardStore {
     return currentActivityIdFromRemote(this.remoteState());
   }
 
-  activities(): Array<{ id: number; name: string; state?: string }> {
+  activities(): Array<{ id: number; name: string; state?: string; icon?: number; color_id?: number }> {
     const { activities, nextHubActivitiesCache } = activitiesFromRemote(
       this.remoteState(),
       this.isHubIntegration(),

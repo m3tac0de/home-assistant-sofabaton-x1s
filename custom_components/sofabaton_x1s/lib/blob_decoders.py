@@ -33,6 +33,11 @@ Design rules (mirrors docs/protocol/command-blob-decoders.md):
   (raw learned-IR / database) blobs return ``None`` so the caller
   keeps the existing raw-hex behavior.
 
+A ``wifi_ip`` device on the X2 may also hold URL records (code type 0x21,
+``render_wifi_https_blob_body`` / ``parse_wifi_https_blob_body``); the
+``wifi_ip`` decoder reads both kinds, and decoded fields with a ``url``
+key are the URL kind.
+
 This module does not import anything from the rest of the integration
 and has no I/O. It is safe to import from both the device-backup path
 and the Fetch Blob result builder.
@@ -395,6 +400,163 @@ def _encode_wifi_ip(decoded: Dict[str, Any]) -> bytes:
     )
     trailer = bytes.fromhex(str(decoded.get("trailer_hex") or "").replace(" ", ""))
     return body_bytes + trailer
+
+
+# ---- wifi_https (code type 0x21, X2) ---------------------------------------
+#
+# Wire body layout, bench-validated on an X2 2026-10-24: a record written in
+# this layout is stored, read back unchanged and executed with the method,
+# headers and body as written (docs/internal/wifi-webhook-transport-plan.md,
+# W2-W4):
+#   [0..2]       = request-region length T (big-endian; counts these 2 bytes)
+#   [2..4]       = URL length U (big-endian)
+#   [4..4+U]     = URL (UTF-8): scheme, host, port, path and query
+#   [4+U]        = method: 0 GET, 1 POST, 2 PUT
+#   [5+U]        = header count
+#   per header   = key length (1) + key + value length (2, BE) + value (UTF-8)
+#   [..T]        = request body (UTF-8)
+#   [T..]        = opaque trailer
+#
+# Unlike ``wifi_ip`` there is no IPv4/port prefix and no request text: the
+# URL names the target, ``https`` included. These records live on an
+# ordinary ``wifi_ip`` device, so the ``wifi_ip`` decoder reads them too
+# (below) instead of a device class of their own.
+
+WIFI_HTTPS_METHODS: Tuple[str, ...] = ("GET", "POST", "PUT")
+_WIFI_HTTPS_SCHEMES = ("http://", "https://")
+
+
+def render_wifi_https_blob_body(
+    *,
+    url: str,
+    method: str,
+    headers: Sequence[Sequence[str]] = (),
+    body: str = "",
+) -> bytes:
+    """Render the request region of a ``wifi_https`` (0x21) command record.
+
+    ``headers`` is an ordered sequence of ``(key, value)`` pairs; order and
+    duplicates are kept. Returns the bytes that precede the record's
+    trailer; callers append their own checksum, as with
+    :func:`render_wifi_ip_blob_body`.
+    """
+
+    method_name = str(method or "").upper()
+    if method_name not in WIFI_HTTPS_METHODS:
+        raise ValueError(
+            f"wifi_https method must be one of {', '.join(WIFI_HTTPS_METHODS)}: {method!r}"
+        )
+    url_text = str(url or "")
+    if not url_text.lower().startswith(_WIFI_HTTPS_SCHEMES):
+        raise ValueError(f"wifi_https url needs an http:// or https:// scheme: {url!r}")
+    url_bytes = url_text.encode("utf-8")
+    header_pairs = [tuple(pair) for pair in headers]
+    if len(header_pairs) > 0xFF:
+        raise ValueError(f"wifi_https takes at most 255 headers, got {len(header_pairs)}")
+
+    out = bytearray()
+    out += len(url_bytes).to_bytes(2, "big")
+    out += url_bytes
+    out.append(WIFI_HTTPS_METHODS.index(method_name))
+    out.append(len(header_pairs))
+    for pair in header_pairs:
+        if len(pair) != 2:
+            raise ValueError(f"wifi_https header must be a (key, value) pair: {pair!r}")
+        key_bytes = str(pair[0]).encode("utf-8")
+        value_bytes = str(pair[1]).encode("utf-8")
+        if not key_bytes or len(key_bytes) > 0xFF:
+            raise ValueError(f"wifi_https header key must be 1..255 bytes: {pair[0]!r}")
+        out.append(len(key_bytes))
+        out += key_bytes
+        out += len(value_bytes).to_bytes(2, "big")
+        out += value_bytes
+    out += str(body or "").encode("utf-8")
+
+    total = len(out) + 2
+    if total > 0xFFFF:
+        raise ValueError(f"wifi_https request region is {total} bytes, the limit is 65535")
+    return total.to_bytes(2, "big") + bytes(out)
+
+
+def parse_wifi_https_blob_body(data: Any) -> Dict[str, Any]:
+    """Read a ``wifi_https`` (0x21) record body into its fields.
+
+    Returns ``{"url", "method", "headers", "body", "trailer_hex"}`` with
+    ``headers`` as a list of ``[key, value]`` pairs. Inverse of
+    :func:`render_wifi_https_blob_body` plus the trailer. Raises
+    ``ValueError`` for anything that does not follow the layout.
+    """
+
+    raw = _coerce_blob_bytes(data)
+    if len(raw) < 6:
+        raise ValueError("wifi_https blob too short for its length header")
+    total = int.from_bytes(raw[0:2], "big")
+    if total < 6 or total > len(raw):
+        raise ValueError(
+            f"wifi_https declared length {total} does not fit a {len(raw)}-byte blob"
+        )
+    url_len = int.from_bytes(raw[2:4], "big")
+    pos = 4 + url_len
+    if pos + 2 > total:
+        raise ValueError("wifi_https url runs past the declared length")
+    url = raw[4:pos].decode("utf-8")
+    method_code = raw[pos]
+    if method_code >= len(WIFI_HTTPS_METHODS):
+        raise ValueError(f"wifi_https method byte {method_code} is unknown")
+    header_count = raw[pos + 1]
+    pos += 2
+    headers: list = []
+    for _ in range(header_count):
+        if pos + 1 > total:
+            raise ValueError("wifi_https header runs past the declared length")
+        key_len = raw[pos]
+        pos += 1
+        if pos + key_len + 2 > total:
+            raise ValueError("wifi_https header key runs past the declared length")
+        key = raw[pos : pos + key_len].decode("utf-8")
+        pos += key_len
+        value_len = int.from_bytes(raw[pos : pos + 2], "big")
+        pos += 2
+        if pos + value_len > total:
+            raise ValueError("wifi_https header value runs past the declared length")
+        value = raw[pos : pos + value_len].decode("utf-8")
+        pos += value_len
+        headers.append([key, value])
+    body = raw[pos:total].decode("utf-8")
+    return {
+        "url": url,
+        "method": WIFI_HTTPS_METHODS[method_code],
+        "headers": headers,
+        "body": body,
+        "trailer_hex": _bytes_to_hex(raw[total:]),
+    }
+
+
+# A ``wifi_ip`` device holds either record kind: the request-text record
+# (code type 0x1C, X1S/X2) or the URL record (0x21, X2). The decoded fields
+# tell them apart: ``url`` names the URL kind.
+
+
+def _decode_wifi_ip_record(data: bytes) -> Dict[str, Any]:
+    try:
+        return _decode_wifi_ip(data)
+    except ValueError:
+        return parse_wifi_https_blob_body(data)
+
+
+def _encode_wifi_ip_record(decoded: Dict[str, Any]) -> bytes:
+    if "url" not in decoded:
+        return _encode_wifi_ip(decoded)
+    trailer = bytes.fromhex(str(decoded.get("trailer_hex") or "").replace(" ", ""))
+    return (
+        render_wifi_https_blob_body(
+            url=str(decoded["url"]),
+            method=str(decoded["method"]),
+            headers=[tuple(pair) for pair in decoded.get("headers") or ()],
+            body=str(decoded.get("body") or ""),
+        )
+        + trailer
+    )
 
 
 # ---- wifi_roku (class 0x0A) ----------------------------------------------
@@ -921,7 +1083,7 @@ def _encode_wifi_mqtt(decoded: Dict[str, Any]) -> bytes:
 
 
 _DECODERS: Dict[str, Callable[[bytes], Dict[str, Any]]] = {
-    DEVICE_CLASS_WIFI_IP: _decode_wifi_ip,
+    DEVICE_CLASS_WIFI_IP: _decode_wifi_ip_record,
     DEVICE_CLASS_WIFI_ROKU: _decode_wifi_roku,
     DEVICE_CLASS_WIFI_HUE: _decode_wifi_hue_like,
     DEVICE_CLASS_WIFI_SONOS: _decode_wifi_hue_like,
@@ -930,7 +1092,7 @@ _DECODERS: Dict[str, Callable[[bytes], Dict[str, Any]]] = {
 }
 
 _ENCODERS: Dict[str, Callable[[Dict[str, Any]], bytes]] = {
-    DEVICE_CLASS_WIFI_IP: _encode_wifi_ip,
+    DEVICE_CLASS_WIFI_IP: _encode_wifi_ip_record,
     DEVICE_CLASS_WIFI_ROKU: _encode_wifi_roku,
     DEVICE_CLASS_WIFI_HUE: _encode_wifi_hue_like,
     DEVICE_CLASS_WIFI_SONOS: _encode_wifi_hue_like,
@@ -1048,6 +1210,21 @@ def format_decoded_for_display(decoded_block: Dict[str, Any]) -> str:
     if not isinstance(fields, dict):
         return ""
 
+    if class_name == DEVICE_CLASS_WIFI_IP and "url" in fields:
+        lines = [
+            "url: {0}".format(fields.get("url", "")),
+            "method: {0}".format(fields.get("method", "")),
+        ]
+        for pair in fields.get("headers") or ():
+            key, value = (list(pair) + ["", ""])[:2]
+            lines.append("header: {0}: {1}".format(key, value))
+        body = str(fields.get("body") or "")
+        if body:
+            lines.append("body:")
+            for line in body.split("\n"):
+                lines.append("  {0}".format(line))
+        return "\n".join(lines)
+
     if class_name == DEVICE_CLASS_WIFI_IP:
         lines = [
             "host: {0}".format(fields.get("host", "")),
@@ -1093,10 +1270,13 @@ def format_decoded_for_display(decoded_block: Dict[str, Any]) -> str:
 
 __all__ = [
     "DECODABLE_CLASSES",
+    "WIFI_HTTPS_METHODS",
     "encode_decoded_blob",
     "format_decoded_for_display",
     "is_decodable_class",
+    "parse_wifi_https_blob_body",
     "render_ir_descriptive_blob_body",
+    "render_wifi_https_blob_body",
     "render_wifi_ip_blob_body",
     "render_wifi_ip_http_text",
     "render_wifi_roku_blob_body",

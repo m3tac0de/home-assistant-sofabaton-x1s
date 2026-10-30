@@ -20,7 +20,7 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
-from sofabaton import WIFI_SLOT_COUNT, AsyncXProxy
+from sofabaton import WIFI_SLOT_COUNT, AsyncXProxy, WifiDeviceSpec, validate_appearance
 
 from . import API_PREFIX
 from .callbacks import (
@@ -81,6 +81,8 @@ class CallbackDeviceRequest(BaseModel):
     current record's spec and change only the intended labels. Preserving
     device/command IDs and generic bindings does not preserve omitted fields.
     Hook slots are one-based (1..10); callback URL indexes are zero-based (0..9).
+    ``icon`` and ``color_id`` are the exception: left out (null), the device
+    keeps the icon and color the hub has.
     """
 
     name: str = Field("Server", min_length=1, max_length=30)
@@ -89,6 +91,13 @@ class CallbackDeviceRequest(BaseModel):
                                          description="slot the hub fires when an activity powers on (X1S/X2)")
     power_off_slot: Optional[int] = Field(None, ge=1, le=WIFI_SLOT_COUNT)
     input_slots: list[int] = Field(default_factory=list, description="slots offered as activity-start inputs (X1S/X2)")
+    icon: Optional[int] = Field(None, ge=1, le=45,
+                                description="the device record's icon, in the app's numbering for the hub line "
+                                            "(X1 1-25, X1S 1-16, X2 1-45); null keeps the hub's. An id the hub "
+                                            "line lacks is a 422")
+    color_id: Optional[int] = Field(None, ge=0, le=12,
+                                    description="X2 only: the device record's tile color, a palette id "
+                                                "(0 = none picked); null keeps the hub's")
 
 
 class CallbackTargetView(BaseModel):
@@ -115,6 +124,23 @@ class CallbackLastPress(BaseModel):
     received_at: str
 
 
+class DeliveryView(BaseModel):
+    """The last delivery check of a Wifi Device: did a press from the hub
+    reach this server? Every deploy, update and redeploy ends with a test
+    press (slot 1, short) that no client sees as a press event; ``POST
+    .../test-delivery`` runs it again, and a real press marks it delivered."""
+
+    status: Literal["delivered", "not_delivered", "not_sent"] = Field(
+        description="not_delivered: the hub sent the press, nothing arrived; not_sent: the hub did not take it")
+    transport: str = Field(description="http or mqtt")
+    target: str = Field("", description="what the hub calls: the listener's address, or the broker")
+    hub_ip: str = Field("", description="the hub's address, where the traffic starts")
+    source: str = Field("", description="where the press arrived from (empty over mqtt)")
+    latency_s: Optional[float] = Field(None, description="from the test press to its arrival")
+    checked_at: str
+    via: Literal["test", "press"] = Field(description="a test press, or a real press that arrived")
+
+
 class CallbackDeviceView(BaseModel):
     """The deployed record plus the destination a new deploy would use now.
 
@@ -135,6 +161,7 @@ class CallbackDeviceView(BaseModel):
     pending: Optional[CallbackPendingView] = None
     last_press: Optional[CallbackLastPress] = None
     effective_destination: Optional[EffectiveDestination] = None
+    delivery: Optional[DeliveryView] = Field(None, description="the last delivery check; null before the first")
     key: str = Field(DEFAULT_DEVICE_KEY, description="the record's key under /wifi-devices; the callback device is 'default'")
     transport: str = Field("http", description="how its presses reach the server: http or mqtt")
     mqtt_topic: Optional[str] = Field(None, description="an mqtt device's press topic on the broker, `<MAC>/up`")
@@ -299,7 +326,31 @@ def _listener_view(state: ListenerState) -> CallbackListenerView:
     return CallbackListenerView(**asdict(state))
 
 
+async def _test_delivery_quietly(service: CallbackService, hub_id: str, proxy: AsyncXProxy, key: str,
+                                 progress: Any) -> None:
+    """The delivery test at the end of a deploy: its verdict is stored on the
+    record, and a test that cannot run never fails the deploy (the device is
+    on the hub either way)."""
+
+    try:
+        await service.test_delivery(hub_id, proxy, key=key, progress=progress)
+    except Exception:  # noqa: BLE001
+        log.warning("hub %s: the delivery test of Wifi Device %s could not run", hub_id, key, exc_info=True)
+
+
 # -- the four operations, shared by /callback-device and /wifi-devices ---------------------
+
+
+def _check_appearance(spec: WifiDeviceSpec, hub_version: Optional[str], hub_id: str) -> None:
+    """An icon or color the hub line lacks is a 422 before any job."""
+
+    if spec.icon is None and spec.color_id is None:
+        return
+    try:
+        validate_appearance(str(hub_version or ""), icon=spec.icon, color_id=spec.color_id)
+    except ValueError as err:
+        raise ApiProblem(422, "invalid_appearance", "The hub has no such icon or color",
+                         detail=str(err), hub_id=hub_id) from err
 
 
 async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *, key: str, transport: str,
@@ -315,6 +366,7 @@ async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
             service.check_limit(hub_id)
         spec = service.spec_from_body(body.model_dump(), key=key)
         hub_version = (await proxy.status()).hub_version
+        _check_appearance(spec, hub_version, hub_id)
         if transport == TRANSPORT_MQTT:
             reason = service.mqtt_unavailable_reason(hub_id, hub_version)
             if reason is not None:
@@ -334,7 +386,11 @@ async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
 
     async def run(progress) -> dict[str, Any]:
         try:
-            record = await service.deploy(hub_id, proxy, spec, key=key, transport=transport)
+            # One batch: the test press runs before the batch's one remote
+            # sync, so no write lands mid-sync.
+            async with proxy.batch_writes():
+                record = await service.deploy(hub_id, proxy, spec, key=key, transport=transport)
+                await _test_delivery_quietly(service, hub_id, proxy, key, progress)
         except CallbackDeviceExists as err:
             raise ApiProblem(409, "callback_device_exists", "A callback device is already deployed",
                              detail=str(err), hub_id=hub_id) from err
@@ -344,7 +400,7 @@ async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
         except MqttUnavailable as err:
             raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
                              detail=str(err), hub_id=hub_id) from err
-        return _job_view(service, hub_id, record, proxy)
+        return _job_view(service, hub_id, service.record(hub_id, key) or record, proxy)
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -362,11 +418,14 @@ async def _update(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
         spec = service.spec_from_body(body.model_dump(), key=key)
     except ValueError as err:
         raise ApiProblem(422, "invalid_request", "Invalid callback device", detail=str(err), hub_id=hub_id) from err
+    _check_appearance(spec, (await proxy.status()).hub_version, hub_id)
     await _require_control(proxy, hub_id)
 
     async def run(progress) -> dict[str, Any]:
-        updated = await service.update(hub_id, proxy, spec, key=key, progress=progress)
-        return _job_view(service, hub_id, updated, proxy)
+        async with proxy.batch_writes():
+            updated = await service.update(hub_id, proxy, spec, key=key, progress=progress)
+            await _test_delivery_quietly(service, hub_id, proxy, key, progress)
+        return _job_view(service, hub_id, service.record(hub_id, key) or updated, proxy)
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -430,7 +489,9 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
 
     async def run(progress) -> dict[str, Any]:
         try:
-            fresh = await service.redeploy(hub_id, proxy, key=key)
+            async with proxy.batch_writes():
+                fresh = await service.redeploy(hub_id, proxy, key=key)
+                await _test_delivery_quietly(service, hub_id, proxy, key, progress)
         except MqttUnavailable as err:
             raise ApiProblem(409, "mqtt_unavailable", "The mqtt transport is not available for this hub",
                              detail=str(err), hub_id=hub_id) from err
@@ -442,7 +503,25 @@ async def _redeploy(request: Request, hub_id: str, *, key: str, kind: str) -> Jo
                              detail=str(err), hub_id=hub_id) from err
         except CallbackDeviceMissing as err:
             raise _not_found(hub_id, key) from err
-        return _job_view(service, hub_id, fresh, proxy)
+        return _job_view(service, hub_id, service.record(hub_id, key) or fresh, proxy)
+
+    return start_job(request, hub_id, kind, run, cancellable=False)
+
+
+async def _test(request: Request, hub_id: str, *, key: str, kind: str) -> JobView:
+    service = _service(request)
+    proxy = _proxy(request, hub_id)
+    record = service.record(hub_id, key)
+    if record is None or record.device_id is None:
+        raise _not_found(hub_id, key)
+    if record.stale:
+        raise ApiProblem(409, "callback_device_stale", "The callback device is stale",
+                         detail="the hub no longer has it; redeploy it", hub_id=hub_id)
+    await _require_control(proxy, hub_id)
+
+    async def run(progress) -> dict[str, Any]:
+        await service.test_delivery(hub_id, proxy, key=key, progress=progress)
+        return _job_view(service, hub_id, service.record(hub_id, key) or record, proxy)
 
     return start_job(request, hub_id, kind, run, cancellable=False)
 
@@ -543,6 +622,18 @@ async def remove_wifi_device(
              responses=_ERRORS)
 async def redeploy_wifi_device(request: Request, hub_id: str, key: str) -> JobView:
     return await _redeploy(request, hub_id, key=key, kind="redeploy_wifi_device")
+
+
+@router.post("/wifi-devices/{key}/test-delivery", operation_id="testWifiDeviceDelivery", response_model=JobView,
+             status_code=202, summary="Test that the Wifi Device's presses reach the server (a job); the result is the record",
+             responses=_ERRORS)
+async def test_wifi_device_delivery(request: Request, hub_id: str, key: str) -> JobView:
+    """Press slot 1 of the device over the hub session and wait for it at this
+    server's ingress. The press is not a press event. The verdict lands in the
+    record's ``delivery`` (``not_delivered``: a firewall, a VLAN, a wrong
+    address, or a broker the hub does not share)."""
+
+    return await _test(request, hub_id, key=key, kind="test_wifi_delivery")
 
 
 # -- presses -----------------------------------------------------------------------------

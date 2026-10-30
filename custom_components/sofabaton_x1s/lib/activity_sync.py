@@ -27,7 +27,9 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from .devices import validate_appearance
 from .entity_refs import iter_entity_references
+from .hub_versions import HUB_VERSION_X2
 
 # ── Wire constants (kept local so this module stays import-light/pure) ──
 POWER_ON_MACRO_BUTTON_ID = 198
@@ -327,9 +329,13 @@ def build_activity_sync_plan(
     baseline: Mapping[str, Any],
     edited: Mapping[str, Any],
     activity_id: int,
+    *,
+    hub_version: str | None = None,
 ) -> list[SyncStep]:
     """Compute the minimal ordered write plan. Raises ``ValueError`` with a
-    user-readable reason on an out-of-scope diff or a missing activity."""
+    user-readable reason on an out-of-scope diff or a missing activity.
+    ``hub_version``, when given, checks an icon or color change against
+    the icons and colors that hub line offers."""
 
     activity_id = _int(activity_id)
     base_activity = _find_activity(baseline, activity_id)
@@ -357,7 +363,7 @@ def build_activity_sync_plan(
     _plan_macros(base_activity, edit_activity, activity_id, macros, macro_pairing=pairing)
     _plan_bindings(base_activity, edit_activity, activity_id, bindings, macro_pairing=pairing)
     _plan_favorites(base_activity, edit_activity, activity_id, favorites, macro_pairing=pairing)
-    _plan_rename(base_activity, edit_activity, activity_id, rename)
+    _plan_rename(base_activity, edit_activity, activity_id, rename, hub_version=hub_version)
 
     plan = [*prereq, *members, *macros, *bindings, *favorites, *idle, *rename]
     if plan:
@@ -371,6 +377,7 @@ def build_device_sync_plan(
     device_id: int,
     *,
     allow_command_removal: bool = False,
+    hub_version: str | None = None,
 ) -> list[SyncStep]:
     """Device-scoped counterpart of :func:`build_activity_sync_plan`.
 
@@ -378,7 +385,7 @@ def build_device_sync_plan(
     including the power-on/off sequences — and button bindings), its
     idle/power byte, its input records, its command records (payload
     overwrites, renames, and additions flagged ``restore_data.new``),
-    its name and brand, and its head ``ip_address``. Everything else (other head
+    its name, brand, icon and color, and its head ``ip_address``. Everything else (other head
     config, other devices, every activity) must be byte-identical
     between the two bundles.
 
@@ -469,22 +476,31 @@ def build_device_sync_plan(
             )
         )
 
-    base_name = str((base_dev.get("device") or {}).get("name") or "")
-    edit_name = str((edit_dev.get("device") or {}).get("name") or "")
-    base_brand = str((base_dev.get("device") or {}).get("brand") or "")
-    edit_brand = str((edit_dev.get("device") or {}).get("brand") or "")
-    if base_name != edit_name or base_brand != edit_brand:
+    base_block = base_dev.get("device") or {}
+    edit_block = edit_dev.get("device") or {}
+    base_name = str(base_block.get("name") or "")
+    edit_name = str(edit_block.get("name") or "")
+    base_brand = str(base_block.get("brand") or "")
+    edit_brand = str(edit_block.get("brand") or "")
+    appearance = _appearance_changes(base_block, edit_block, hub_version)
+    emitters = _emitter_changes(base_block, edit_block, hub_version)
+    if base_name != edit_name or base_brand != edit_brand or appearance or emitters:
         # The brand slot rides along in the same record rewrite: for managed
         # Wifi Devices the HA layer stamps a refreshed m3-<key>-<hash> brand
         # into the edited bundle so a rename keeps the hub-side brand hash in
-        # step with the command-config store.
-        payload: dict[str, Any] = {"device_id": device_id, "name": edit_name}
+        # step with the command-config store. Icon, color and the X2's IR
+        # emitter routing ride it too. A routing change needs no remote sync
+        # of its own: the vendor app sends none and the hub updates the
+        # remotes itself (bench 2026-10-28), so the step stays remote-neutral.
+        payload: dict[str, Any] = {"device_id": device_id, "name": edit_name, **appearance}
         if base_brand != edit_brand:
             payload["brand"] = edit_brand
+        if emitters:
+            payload["emitters"] = emitters
         rename.append(
             SyncStep(
                 kind="device_rename",
-                label="Renaming the device…",
+                label="Renaming the device…" if base_name != edit_name else "Updating the device…",
                 target_device_id=device_id,
                 payload=payload,
             )
@@ -563,12 +579,12 @@ def _device_immutable_signature(
     block = dict(trimmed.get("device") or {})
     block.pop("idle_behavior", None)
     block.pop("power_mode", None)
-    # The name and brand (device_rename step) and head IP (device_ip step)
-    # are live-editable fields; exclude them from the signature so an edit
-    # to any of them stays in scope.
-    block.pop("name", None)
-    block.pop("brand", None)
-    block.pop("ip_address", None)
+    # The name, brand, icon, color and X2 emitter routing (device_rename
+    # step) and head IP (device_ip step) are live-editable fields; exclude
+    # them from the signature so an edit to any of them stays in scope
+    # (the planner checks the routing itself: X2 only, valid values).
+    for key in ("name", "brand", "icon", "color_id", "ip_address", "extras"):
+        block.pop(key, None)
     trimmed["device"] = block
     # A command's *payload* (command_payload step) and *name* (command_rename
     # step) are both live-editable, so normalize each command to its id alone
@@ -1309,19 +1325,92 @@ def _plan_favorites(
         )
 
 
+def _appearance_changes(
+    base_block: Mapping[str, Any],
+    edit_block: Mapping[str, Any],
+    hub_version: str | None,
+) -> dict[str, int]:
+    """The ``icon`` / ``color_id`` an edited ``device`` block changes, as
+    head-step payload fields. Checked against the hub line's icons and
+    colors when the line is known."""
+
+    changes = {
+        key: _int(edit_block[key])
+        for key in ("icon", "color_id")
+        if edit_block.get(key) is not None and edit_block.get(key) != base_block.get(key)
+    }
+    if changes and hub_version is not None:
+        validate_appearance(hub_version, **changes)
+    return changes
+
+
+# Hub emitter bits (tail[21] bits 0-2) the vendor app offers: none, the
+# built-in emitter, port 1, port 2, or all three. Another mix already on the
+# record is kept as it is; the editor cannot pick one.
+_HUB_EMITTER_CHOICES = frozenset({0x00, 0x01, 0x02, 0x04, 0x07})
+
+
+def _extras_triple(block: Mapping[str, Any]) -> tuple[int, int, int] | None:
+    extras = block.get("extras")
+    if not isinstance(extras, Mapping):
+        return None
+    return (_int(extras.get("a"), -1), _int(extras.get("b"), -1), _int(extras.get("c"), -1))
+
+
+def _emitter_changes(
+    base_block: Mapping[str, Any],
+    edit_block: Mapping[str, Any],
+    hub_version: str | None,
+) -> list[int] | None:
+    """The X2 IR emitter routing (``device.extras``) an edited ``device``
+    block changes, as ``[a, b, c]`` for the head step; None when unchanged.
+
+    X2 only (checked when the hub line is known). The RF-button byte ``a``
+    is carried, never changed; the hub bits take one of the vendor's
+    choices (or keep a mix already there); at least one emitter stays
+    picked. Anything else raises ``ValueError``.
+    """
+
+    base = _extras_triple(base_block)
+    edit = _extras_triple(edit_block)
+    if edit == base:
+        return None
+    if edit is None:
+        raise ValueError("the edited device drops its IR emitter routing (out-of-scope changes)")
+    if hub_version is not None and hub_version != HUB_VERSION_X2:
+        raise ValueError(f"IR emitter routing exists on the X2 only, not on the {hub_version} (out-of-scope changes)")
+    if any(not 0 <= value <= 0xFF for value in edit):
+        raise ValueError(f"IR emitter routing bytes must be 0-255, got {list(edit)}")
+    a, b, c = edit
+    base_a, _base_b, base_c = base if base is not None else (0, 0, 0)
+    if a != base_a:
+        raise ValueError("the RF-button byte of the IR emitter routing cannot be changed")
+    if (c & 0x07) not in _HUB_EMITTER_CHOICES and (c & 0x07) != (base_c & 0x07):
+        raise ValueError(f"hub emitters 0x{c & 0x07:02X} are not one of the choices (all, built-in, port 1, port 2)")
+    if b == 0 and c == 0:
+        raise ValueError("the IR emitter routing needs at least one emitter")
+    return [a, b, c]
+
+
 def _plan_rename(
     base_activity: Mapping[str, Any],
     edit_activity: Mapping[str, Any],
     activity_id: int,
     out: list[SyncStep],
+    *,
+    hub_version: str | None = None,
 ) -> None:
-    base_name = str((base_activity.get("device") or {}).get("name") or "")
-    edit_name = str((edit_activity.get("device") or {}).get("name") or "")
-    if base_name != edit_name:
+    base_block = base_activity.get("device") or {}
+    edit_block = edit_activity.get("device") or {}
+    base_name = str(base_block.get("name") or "")
+    edit_name = str(edit_block.get("name") or "")
+    # Icon and color live in the same row the rename rewrites: one write.
+    appearance = _appearance_changes(base_block, edit_block, hub_version)
+    if base_name != edit_name or appearance:
         out.append(
             SyncStep(
                 kind="activity_rename",
-                label="Renaming the activity…",
-                payload={"activity_id": activity_id, "name": edit_name},
+                label="Renaming the activity…" if base_name != edit_name else "Updating the activity…",
+                payload={"activity_id": activity_id, "name": edit_name, **appearance},
             )
         )

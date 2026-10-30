@@ -1,6 +1,9 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
+import { appearanceToggleStyles } from "../../../../remote-card/src/entity-icons/appearance-editor";
+import { entityPickerStyles } from "../../../../remote-card/src/entity-icons/entity-picker";
+import { entityTileStyles } from "../../../../remote-card/src/entity-icons/entity-tile";
 import { applyThemePolarity } from "./shared/styles/theme-polarity";
 import type {
   BackupSectionId,
@@ -39,6 +42,8 @@ import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderRenameDialog } from "./components/rename-dialog";
+import { HubBrokerFormController, hubBrokerFormStyles } from "./components/hub-broker-form";
+import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead } from "./components/ir-emitter-pill";
 import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
 import {
   normalizeSidebarPanelName,
@@ -46,7 +51,7 @@ import {
   SIDEBAR_PANEL_NAME_MAX,
 } from "./shared/sidebar-panel-name";
 import { phraseNameStyles } from "./components/phrase-name";
-import { renderCacheTab } from "./tabs/cache-tab";
+import { renderCacheTab, type AddAppearanceDraft } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
 import { DOC_URLS } from "./shared/doc-links";
 import { setToolsCardLanguage, TOOLS_CARD_STRINGS } from "./strings";
@@ -192,7 +197,7 @@ const previewStyles = css`
 `;
 
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles, previewStyles, phraseNameStyles];
+  static styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles, irEmitterStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so
@@ -229,6 +234,8 @@ class SofabatonControlPanelCard extends LitElement {
   private _reorderIds: number[] = [];
   private _reorderSyncing = false;
   private _reorderError: string | null = null;
+  // The Add dialogs' icon / color draft (null = the create's default).
+  private _addAppearance: AddAppearanceDraft = { icon: null, colorId: null, open: false, tab: "icon" };
   // "Add Activity" dialog state.
   private _addActivityOpen = false;
   private _addActivityBusy = false;
@@ -245,6 +252,8 @@ class SofabatonControlPanelCard extends LitElement {
   private _sidebarRenameDraft = "";
   private _sidebarRenameError = "";
   private _sidebarRenameBusy = false;
+  // Settings tab: an X2's MQTT broker line and its setup dialog.
+  private readonly _brokerForm = new HubBrokerFormController(this, () => this._snapshot?.hass ?? null);
   private _addDeviceBusy = false;
   private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
@@ -441,6 +450,36 @@ class SofabatonControlPanelCard extends LitElement {
     }
 
     this._lastRenderedTab = this._snapshot.selectedTab;
+    this.syncBrokerLine();
+    this.syncIrEmitterRead();
+  }
+
+  /** The Hub tab's device rows warn from an X2's last paired-device read:
+   *  asked of Home Assistant once per hub (no hub exchange); the editor's IR
+   *  pill reads the hub itself and keeps the result for the rows. */
+  private syncIrEmitterRead() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id ?? "");
+    if (this._snapshot.selectedTab !== "cache" || !entryId || irEmitterLastReadKnown(entryId)) return;
+    if (hubLineFor(this._snapshot.hass, hub) !== "X2") return;
+    void loadIrEmitterLastRead(this._snapshot.hass, entryId).then((read) => {
+      if (read?.paired) this.requestUpdate();
+    });
+  }
+
+  /** The Settings tab reads an X2's broker link once per hub it shows (one
+   *  hub exchange); other tabs and models never ask. */
+  private syncBrokerLine() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id ?? "");
+    const wanted = this._snapshot.selectedTab === "settings"
+      && hub?.broker_setup_available === true
+      && entryId !== "";
+    if (!wanted) {
+      if (this._brokerForm.loadedFor && this._brokerForm.loadedFor !== entryId) this._brokerForm.reset();
+      return;
+    }
+    if (this._brokerForm.loadedFor !== entryId) void this._brokerForm.load(entryId);
   }
 
   private handleDocumentPointerDown(event: PointerEvent) {
@@ -586,6 +625,7 @@ class SofabatonControlPanelCard extends LitElement {
     this._addActivityOpen = true;
     this._addActivityBusy = false;
     this._addActivityError = null;
+    this._addAppearance = { icon: null, colorId: null, open: false, tab: "icon" };
     this.requestUpdate();
   }
 
@@ -601,7 +641,10 @@ class SofabatonControlPanelCard extends LitElement {
     this._addActivityBusy = true;
     this._addActivityError = null;
     this.requestUpdate();
-    const result = await this._store.createActivity(name);
+    const result = await this._store.createActivity(name, {
+      icon: this._addAppearance.icon,
+      colorId: this._addAppearance.colorId,
+    });
     this._addActivityBusy = false;
     if ("error" in result) {
       this._addActivityError = result.error;
@@ -621,6 +664,7 @@ class SofabatonControlPanelCard extends LitElement {
     this._addDeviceOpen = true;
     this._addDeviceBusy = false;
     this._addDeviceError = null;
+    this._addAppearance = { icon: null, colorId: null, open: false, tab: "icon" };
     this._addDeviceClass = creatableDeviceClasses(
       hubLineFor(this._snapshot.hass, selectedHub(this._snapshot)),
     )[0] ?? "";
@@ -644,7 +688,10 @@ class SofabatonControlPanelCard extends LitElement {
     this._addDeviceBusy = true;
     this._addDeviceError = null;
     this.requestUpdate();
-    const result = await this._store.createDevice(name, deviceClass);
+    const result = await this._store.createDevice(name, deviceClass, {
+      icon: this._addAppearance.icon,
+      colorId: this._addAppearance.colorId,
+    });
     this._addDeviceBusy = false;
     if ("errorCode" in result) {
       this._addDeviceError = { error_code: result.errorCode };
@@ -1179,6 +1226,15 @@ class SofabatonControlPanelCard extends LitElement {
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
       onRenameSidebarPanel: () => this.openSidebarRename(),
+      broker: hub?.broker_setup_available === true
+        ? {
+            description: this._brokerForm.renderSettingDescription(),
+            connected: this._brokerForm.state?.hub_connected === true,
+            loading: this._brokerForm.loading,
+            // The setup answers with the link state after it: nothing to reload.
+            onOpen: () => this._brokerForm.openFor(hub.entry_id),
+          }
+        : null,
     });
 
     if (this._snapshot.selectedTab === "logs") {
@@ -1241,6 +1297,8 @@ class SofabatonControlPanelCard extends LitElement {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .mqttAvailable=${Boolean(hub?.mqtt_available)}
+            .hubCommandBusy=${sharedHubCommandBusy}
+            .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
             .cacheVersion=${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
@@ -1320,6 +1378,12 @@ class SofabatonControlPanelCard extends LitElement {
           onCloseAddDevice: () => this.closeAddDevice(),
           onSelectAddDeviceClass: (deviceClass) => this.selectAddDeviceClass(deviceClass),
           onConfirmAddDevice: (name, deviceClass) => void this.confirmAddDevice(name, deviceClass),
+          irEmitterPaired: hubEntryId ? irEmitterLastRead(hubEntryId)?.paired ?? null : null,
+          addAppearance: this._addAppearance,
+          onAddAppearanceChange: (next) => {
+            this._addAppearance = next;
+            this.requestUpdate();
+          },
         });
       }
     }
@@ -1328,6 +1392,7 @@ class SofabatonControlPanelCard extends LitElement {
       <ha-card>
         ${this.renderHubRenameDialog()}
         ${this.renderSidebarRenameDialog()}
+        ${this._brokerForm.render()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel()
             ? null

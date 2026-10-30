@@ -601,18 +601,139 @@ function findHandler(template: unknown, binding: string): (event: unknown) => vo
 
 // ── Delivery method pill on the selected Wifi Device (read-only) ────────
 
-test("the device pill previews a pending delivery wish and hides without MQTT", () => {
+test("a device row's pill is read-only, shows on every hub and warns when presses don't arrive", () => {
   const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1" };
-  const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 1, deployed_transport: "http", requested_transport: "http" };
-  element._mqttAvailable = true;
+  const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 1, deployed_device_id: 3, deployed_transport: "http", requested_transport: "http" };
+  // No MQTT for this hub (an X1 / X1S): the pill shows anyway.
+  element._mqttAvailable = false;
   const deployed = JSON.stringify(element._renderTransportPill(device));
+  assert.match(deployed, /"transport-pill http"/);
   assert.match(deployed, /HTTP/);
   assert.doesNotMatch(deployed, /<button|<select/);
   const pending = JSON.stringify(element._renderTransportPill({ ...device, requested_transport: "mqtt", transport_switch_pending: true }));
-  assert.match(pending, /MQTT/);
-  assert.match(pending, /pending/);
-  element._mqttAvailable = false;
-  assert.equal(JSON.stringify(element._renderTransportPill(device)), JSON.stringify(nothing));
-  assert.match(JSON.stringify(element._renderTransportPill({ ...device, deployed_transport: "mqtt", requested_transport: "mqtt" })), /MQTT/);
+  assert.match(pending, /transport-pill mqtt pending/);
+  const failed = JSON.stringify(element._renderTransportPill({ ...device, delivery: { status: "not_delivered" } }));
+  assert.match(failed, /transport-pill http attention/);
+  // Not on the hub yet: a stale result never warns.
+  const fresh = JSON.stringify(element._renderTransportPill({ ...device, deployed_device_id: null, delivery: { status: "not_delivered" } }));
+  assert.doesNotMatch(fresh, /attention"/);
+});
+
+// ── Edit device (name, icon, X2 color) on a deployed Wifi Device ────────
+
+function editDeviceHass(bundle: Record<string, unknown>) {
+  const calls: Array<Record<string, unknown>> = [];
+  const hass = {
+    states: {},
+    callWS: async (message: Record<string, unknown>) => {
+      calls.push(message);
+      const type = String(message.type).replace("sofabaton_x1s/", "");
+      if (type === "cache/structural_bundle") return { bundle: structuredClone(bundle), generation: 1 };
+      if (type === "device/sync") return { operation_id: "op-1" };
+      return {};
+    },
+    connection: {
+      subscribeMessage: async (onMessage: (payload: Record<string, unknown>) => void, message: Record<string, unknown>) => {
+        calls.push(message);
+        queueMicrotask(() => onMessage({ status: "running", message: "Updating the device…" }));
+        setTimeout(() => onMessage({ status: "success" }), 0);
+        return () => undefined;
+      },
+    },
+  };
+  return { hass, calls };
+}
+
+function editDeviceElement(bundle: Record<string, unknown>) {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  element._wifiDevices = [{ device_key: "dev-1", device_name: "TV", configured_slot_count: 1, deployed_device_id: 7 }];
+  element._selectedDeviceKey = "dev-1";
+  const { hass, calls } = editDeviceHass(bundle);
+  element.hass = hass;
+  const notices: Array<{ tone: string; label: string }> = [];
+  element.showCompletion = (notice: { tone: string; label: string }) => { notices.push(notice); };
+  return { element, calls, notices };
+}
+
+const EDIT_BUNDLE = {
+  hub: { version: "X2" },
+  activities: [],
+  devices: [{ device: { device_id: 7, name: "TV", brand: "m3-dev-1-abc", icon: 3, color_id: 0 }, commands: [] }],
+};
+
+test("the Edit device pencil shows only once the Wifi Device is on the hub", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 0 };
+  assert.equal(element._renderDeviceEdit({ ...device, deployed_device_id: null }, false), nothing);
+  const deployed = JSON.stringify(element._renderDeviceEdit({ ...device, deployed_device_id: 7 }, false));
+  assert.match(deployed, /mdi:pencil/);
+  assert.match(deployed, /Edit device/);
+});
+
+test("saving the Edit device dialog syncs only what changed and keeps the name", async () => {
+  const { element, calls, notices } = editDeviceElement(EDIT_BUNDLE);
+  await element._openEditDeviceDialog();
+  assert.equal(element._editDeviceDialog.cached, true);
+  assert.equal(element._editDeviceDialog.name, "TV");
+  assert.deepEqual(element._editDeviceDialog.appearance, { icon: 3, colorId: 0 });
+
+  element._patchEditDeviceDialog({ appearance: { icon: 12, colorId: 0 } });
+  await element._saveEditDeviceDialog();
+
+  const sync = calls.find((call) => call.type === "sofabaton_x1s/device/sync") as Record<string, any>;
+  assert.ok(sync, "device/sync was called");
+  assert.equal(sync.device_id, 7);
+  assert.equal(sync.baseline.devices[0].device.icon, 3);
+  assert.deepEqual(
+    { name: sync.edited.devices[0].device.name, icon: sync.edited.devices[0].device.icon, color_id: sync.edited.devices[0].device.color_id },
+    { name: "TV", icon: 12, color_id: 0 },
+  );
+  assert.ok(calls.some((call) => call.type === "sofabaton_x1s/backup/progress_subscribe" && call.operation_id === "op-1"));
+  assert.equal(element._editDeviceDialog, null);
+  assert.equal(element._deviceEditRunning, false);
+  assert.deepEqual(notices.map((notice) => notice.tone), ["success"]);
+});
+
+test("an untouched Edit device dialog writes nothing", async () => {
+  const { element, calls } = editDeviceElement(EDIT_BUNDLE);
+  await element._openEditDeviceDialog();
+  await element._saveEditDeviceDialog();
+  assert.equal(element._editDeviceDialog, null);
+  assert.equal(calls.some((call) => call.type === "sofabaton_x1s/device/sync"), false);
+});
+
+test("the Edit device dialog refuses to save a device the hub cache does not hold", async () => {
+  const { element, calls } = editDeviceElement({ ...EDIT_BUNDLE, devices: [] });
+  await element._openEditDeviceDialog();
+  assert.equal(element._editDeviceDialog.cached, false);
+  assert.ok(element._editDeviceDialog.error);
+  element._patchEditDeviceDialog({ name: "Telly" });
+  await element._saveEditDeviceDialog();
+  assert.ok(element._editDeviceDialog, "the dialog stays open");
+  assert.equal(calls.some((call) => call.type === "sofabaton_x1s/device/sync"), false);
+});
+
+test("the Wifi device header swaps its pencil for the record's tile once the remote entity publishes it", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 0, deployed_device_id: 7 };
+  const remote = (devices: unknown[]) => ({ states: { "remote.living": { state: "on", attributes: { entry_id: "hub-1", hub_version: "X2", devices } } } });
+  element.hass = remote([]);
+  const plain = JSON.stringify(element._renderDeviceEdit(device, false));
+  assert.match(plain, /mdi:pencil/);
+  assert.doesNotMatch(plain, /detail-entity-tile/);
+  element.hass = remote([{ id: 7, name: "TV", icon: 16, color_id: 2 }]);
+  const rendered = JSON.stringify(element._renderDeviceEdit(device, false));
+  assert.match(rendered, /detail-entity-tile/);
+  assert.match(rendered, /#F16161/);
+  assert.equal(element._renderDeviceEdit({ ...device, deployed_device_id: null }, false), nothing);
+});
+
+test("the header tile opens the Edit device dialog with the picker on demand", async () => {
+  const { element } = editDeviceElement(EDIT_BUNDLE);
+  await element._openEditDeviceDialog();
+  assert.equal(element._editDeviceDialog.pickerOpen, false);
 });

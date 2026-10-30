@@ -246,7 +246,11 @@ Confirmed on **both** X1 and X1S:
   all-`0xFF` sentinel with the pause length in the final byte; they
   round-trip through write → hub → re-read. Grow, truncating shrink,
   and zero-step writes all land exactly; the label slot (30 B ASCII on
-  X1, 60 B UTF-16BE on X1S) is preserved across rewrites.
+  X1, 60 B UTF-16BE on X1S) is preserved across rewrites. Since issue
+  #315, a macro past one page (18 rows on X1S/X2, 21 on X1) goes out
+  through the same builder as several pages (`build_macro_steps`, the
+  paged activity save's layout); that paged create-step form is not yet
+  benched.
 - **Idle / automatic-power byte** — `0x0241` per-device write, both
   directions.
 - **Multi-category plans** — one sync carrying macro + binding + idle
@@ -2739,3 +2743,108 @@ place and replace. Both hubs passed 28/28.
 - **Nothing else changes.** Every other activity reads the same before and
   after (read stamps aside), nothing points at the old device id, and the
   old device is gone.
+
+## ◇ Validated: X2 IR emitter routing (X2, 2026-10-28)
+
+`bench_339_ir_emitter_gates.py` on the production X2, sandbox IR device only
+(created in the vendor app, deleted after, real catalog compared clean), HA
+entry off for the run and re-enabled after. The vendor app was attached
+through the proxy for every change, so each write below is the app's own.
+
+- **Routing bytes.** X2 device record tail[18] = `FC`, tail[19..21] the
+  routing. Last byte: bit 0 built-in, bit 1 port 1, bit 2 port 2, bit 3
+  remote 1 (bits 3-7 remotes 1-5). The production devices read `00 00 02`
+  (port 1 only), `00 00 04` (port 2 only), `00 00 01` (built-in only);
+  Bluetooth and RF devices `00 00 07`; Wifi records `00 00 00` or no block.
+- **App create (IR database).** `0xD507` create with id `FF`, answered
+  `0x0107 [new id]`, then a `0xD508` update with the assigned id. Both carry
+  `00 00 07` (hub, all emitters). Also brand and code id from the database,
+  color 1, `bt_mode` FF, `power_style` 2, `share_mode` 0, `tail_marker` 1.
+- **App routing change.** One `0xD508` record update in which only tail[21]
+  changes (07 -> 04 -> 08 on the bench), acked `0x0103 [00]`, read back as
+  written. The app sends **no remote-sync frame** after it (none after a
+  create or a rename either). On a change to remote-only routing the remote
+  ran a short sync without its sync screen, started by the hub.
+- **What the app reads on its emitter screen.** `0x0032` (hub-name reply,
+  family `0x31`) and the stored paired list `0x012E [00]`, each time the
+  screen opens.
+- **`0x0032`'s first two bytes are not reliable cable flags.** They read
+  `00 00` or `01 01` (always both the same), flipping every 10-35 s with both
+  cables plugged in and untouched (two watches, 3 s apart). The app does use
+  them: on `00 00` it would not let a single port be picked, on `01 01` it
+  did.
+- **Sent commands follow the routing.** A TCP send (`send_command`, what HA's
+  `remote.send_command` uses): hub all -> built-in and the port 2 cable both
+  fire; port 2 only -> only the port 2 cable fires; remote 1 only -> only the
+  remote fires (the hub and the cable stay dark; one flash seen for two
+  sends 5 s apart).
+- **`0x0F` plays ignore the routing.** A one-shot play fires from the hub's
+  emitters (built-in and the port 2 cable seen) whatever the device's
+  routing. The three bytes after the play body's page count (`00 00 00`)
+  are not a target: `00 00 04` and `00 00 01` there fired the same emitters.
+- Not run: the learn-flow create, built-in only, a repeater (none paired),
+  port 1 on camera (its cable sits in a ceiling box).
+- **Routing writes through the library and through HA (2026-10-28).**
+  `bench_340_ir_emitters.py` (facade, HA entry off, sandbox "J IR Route")
+  29/29 and `bench_341_ir_pill_ha.py` (HA's own WS, sandbox "J IR Pill")
+  16/16. A new IR device gets `00 00 07`; built-in, port 1, port 2 and
+  remote-1-only each land as one record write (about 7.5 s with read-back)
+  and read back exactly, name kept; a routing sync started about 2 s after
+  a remote-only sync finished is accepted (the hub's own remote update does
+  not refuse it); a routing with no emitter is refused before any write;
+  HA's `ir_emitters/status` lists Remote 1 on refresh and the cache rows
+  carry `emitters`. Both sandbox devices deleted, real catalog unchanged.
+
+
+## ◇ Validated: RF learn and one-shot play (X1S + X2, 2026-10-29)
+
+The payload editor's Learn and Test for RF commands, on the X1S and the
+production X2 standing in one room, each learning what the other sends.
+`bench_342_rf_probe.py` (arm/exit probe), `bench_343_rf_loopback.py`
+(seed, loop, editor helpers) and `rf_bench_codec.py` (blob parse and bit
+decode). The X1S ran direct with its HA entry off per leg; the X2 only
+through HA's websocket, never disabled. Sandbox devices `J RF433` (both
+hubs) and `J RF315` (X1S) were restored from a bundle, used, and deleted;
+both catalogs read back as before. Source signal: a 32-bit fixed code at
+433.92 MHz that drives a real fan (a reporter's learned records, plus
+exact re-syntheses of them). Verdict = the decoded bit string, not the
+bytes: a learned blob always carries timing jitter.
+
+- **RF learn toggle.** `A5 5A 02 70 [flag, band]`, flag `01` arm, `00`
+  exit, band `00` = 433 MHz, `01` = 315 MHz. Every arm and exit is acked
+  `0x0103 [00]` on both hubs and both bands. Cancel (exit) and an
+  immediate re-arm work.
+- **No pushes inside a window.** Neither hub sent an expired or failed
+  push in any window (up to 75 s). The X1S still captured at +65 s of a
+  75 s window: unlike IR learn, no silent stop around 60 s.
+- **Capture.** Paged family `0x06`, like IR. The signal is
+  `record[72:-1]` on both models: every learned blob's BE16 length field
+  equals its length - 2. 433 learns came back as 135 B, count byte 65,
+  gap 7589-7669 us, unit 335-351 us (source 7656 / 348), max per-duration
+  delta 64-217 us, the same shape as a learn made by the vendor app.
+- **The record's type byte is not the code type.** The X1S writes `0x0E`
+  there, the X2 `0x1D`. The armed band names the code type (`0x1D` 433,
+  `0x1E` 315).
+- **One-shot play.** The family `0x0F` IR play body with the code type at
+  body[5] (`... 00 00 1d ...`) and the RF blob as library data emits on
+  both hubs; the other hub decodes it. Stored sends, one-shot plays,
+  replays of blobs the other hub learned and two further codes: 30/30
+  runs decode exactly.
+- **315 MHz.** A 315 learn never captured anything: not from a 315
+  one-shot, not from a stored 315 command (`library_type` 0x1E on an
+  `rf_315mhz` device), not from a 433 send. A 315 one-shot and a stored
+  315 command behave identically: both are decoded by the other hub
+  learning at 433. So Test reproduces the hub's own playback of a 315
+  command; whether these hubs put 315 codes on air at 433 MHz or the 433
+  receiver hears 315 cannot be told with two hubs (an SDR or a real 315
+  remote would). 315 learn is unproven.
+- **Restore.** A bundle with an `rf_433mhz` / `rf_315mhz` device restores
+  on both models (merge, about 30-45 s); `blobs/fetch` returns the
+  records byte-equal with `library_type` 29 / 30.
+- **Through HA and the editor.** `blobs/play` and `ir_learn/subscribe`
+  with `band` drive both hubs; the X1 answers `rf_unsupported` before any
+  hub traffic. In the Sofabaton X panel (live device editor): Test sent
+  the shown code; Learn opened the RF view directly, captured, and the
+  learned code tested fine; Save + Sync stored exactly the learned bytes
+  as `library_type` 29 (X1S and X2); Add command with Learn did the same
+  as a new command; cancel closed the hub's window.

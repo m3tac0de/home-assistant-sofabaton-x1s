@@ -175,10 +175,24 @@ def _make_hub(
     monkeypatch.setattr(hub, "async_delete_device", _delete)
     monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_fetch_device_commands", _noop)
-    monkeypatch.setattr(hub, "async_resync_remote", _noop)
+    resyncs: list[str] = []
+
+    async def _resync(*_args, **_kwargs):
+        resyncs.append("full")
+
+    item_syncs: list = []
+
+    async def _item_sync(*, created=(), touched=(), deleted=()):
+        item_syncs.append((tuple(created), tuple(touched), tuple(deleted)))
+        return True
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync)
+    monkeypatch.setattr(hub, "async_sync_remotes_after_write", _item_sync)
     monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _noop)
     hub._inplace_plans = plans
     hub._button_calls = button_calls
+    hub._resyncs = resyncs
+    hub._item_syncs = item_syncs
     return hub
 
 
@@ -210,6 +224,9 @@ def test_inplace_path_runs_and_skips_replace(monkeypatch):
     # the hash changed, so the plan is exactly the brand head commit
     assert [s.kind for s in hub._inplace_plans[0].steps] == ["wifi_head_commit"]
     assert calls == ["inplace_run"]  # no create, no delete
+    # A plan that only rewrites the device head (the version hash) changes
+    # nothing the remotes show: no sync at all, and never the full resync.
+    assert hub._item_syncs == [((), (), ())] and hub._resyncs == []
     assert store.saved and store.saved[0]["request_port"] == PORT
     assert store.saved[0]["deployed_device_id"] == DEV_ID
     loop.close()
@@ -394,6 +411,29 @@ def test_command_record_steps_rewarm_referencing_activities(monkeypatch):
     loop.close()
 
 
+@pytest.mark.parametrize(("item_synced", "expected"), [((), (DEV_ID,)), ((DEV_ID,), ())])
+def test_inplace_closing_sync_skips_entities_a_step_already_synced(monkeypatch, item_synced, expected):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store(deployed_slots=[{"name": "Old Name"}])
+    run_result = None
+    if item_synced:
+        run_result = {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {},
+                      "item_synced": list(item_synced)}
+    hub = _make_hub(
+        monkeypatch, loop, store=store, device_entry=_device_entry(label="Old Name"), run_result=run_result,
+    )
+    payload = _payload()
+    payload["commands"][0]["name"] = "New Name"
+
+    assert _run_sync(loop, hub, payload)["status"] == "success"
+
+    # The command renames change the device's remote copy: one per-item
+    # sync of it, unless the run reports a step already sent it.
+    assert hub._item_syncs == [((), expected, ())] and hub._resyncs == []
+    loop.close()
+
+
 def test_replace_deploy_writes_derived_device_page_bindings(monkeypatch):
     """A hard-button claim also lands as a device-page key row on the new
     device (role-group capability), addressed with the device's own id."""
@@ -526,4 +566,25 @@ def test_baseline_read_refreshes_the_activity_catalog_once(monkeypatch):
 
     assert refreshes == ["activities"]
     assert activity_reads == [{"refresh_catalog": False}] * 3
+    loop.close()
+
+
+def test_a_refusal_while_the_remote_updates_stops_with_remote_syncing(monkeypatch):
+    """A write the hub refused soon after this engine's remote-sync trigger
+    stops the Wifi sync with the code that tells the user to wait."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store()
+    failed = {"status": "failed", "failed_at": "wifi_head_commit", "completed_steps": 0, "total_steps": 1,
+              "counters": {}, "message": "rejected"}
+    hub = _make_hub(monkeypatch, loop, store=store, device_entry=_device_entry(), run_result=failed)
+    monkeypatch.setattr(hub._proxy, "refused_during_remote_sync", lambda since: True, raising=False)
+    with pytest.raises(wifi_deploy_module.WifiSyncError) as caught:
+        _run_sync(loop, hub, _payload())
+    assert caught.value.code == "remote_syncing"
+    # Without that verdict the same failure stays the plain in-place refusal.
+    monkeypatch.setattr(hub._proxy, "refused_during_remote_sync", lambda since: False, raising=False)
+    with pytest.raises(wifi_deploy_module.WifiSyncError) as caught:
+        _run_sync(loop, hub, _payload())
+    assert caught.value.code == "inplace_failed"
     loop.close()

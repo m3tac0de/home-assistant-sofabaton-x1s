@@ -113,6 +113,7 @@ def test_ws_wifi_event_list_empty(monkeypatch):
         "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
         "requested_transport": None, "deployed_transport": None,
         "transport_switch_pending": False, "mqtt_available": False,
+        "delivery": None,
     }
 
 
@@ -328,7 +329,7 @@ class _ListenerHub:
         self.disable_calls.append(enable)
         self.roku_server_enabled = enable
 
-    async def async_delete_device(self, _device_id):
+    async def async_delete_device(self, _device_id, **_kwargs):
         return {"status": "success"}
 
     async def async_update_wifi_mqtt_ingress(self):
@@ -551,6 +552,7 @@ def test_ws_wifi_event_clear_all_removes_orphaned_config(monkeypatch):
         "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
         "requested_transport": None, "deployed_transport": None,
         "transport_switch_pending": False, "mqtt_available": False,
+        "delivery": None,
     }
     assert hub.sync_calls == []
     assert store.wifi_events_record_state("entry-1", roku_listen_port=8060)["exists"] is False
@@ -599,4 +601,5 @@ def test_ws_wifi_event_clear_all_without_record_is_idempotent(monkeypatch):
         "events": [], "record_needs_sync": False, "device_id": None, "slot_count": 25,
         "requested_transport": None, "deployed_transport": None,
         "transport_switch_pending": False, "mqtt_available": False,
+        "delivery": None,
     }

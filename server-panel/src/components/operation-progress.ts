@@ -10,10 +10,11 @@ import { mdiServerNetwork } from "@mdi/js";
 import { hubIcon } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import type { JobView } from "../panel-api";
-import { jobProgress } from "../panel-selectors";
+import { jobStepText } from "../panel-selectors";
 
-/** "backup" flies hub to server; "restore" (every write) flies server to hub. */
-export type OperationProgressMode = "backup" | "restore";
+/** "backup" flies hub to server; "restore" (every write) and "wifi-deploy" (a Wifi
+ *  Device's sync, the card's own mode) fly server to hub. */
+export type OperationProgressMode = "backup" | "restore" | "wifi-deploy";
 
 export interface OperationProgressViewModel {
   mode: OperationProgressMode;
@@ -24,7 +25,8 @@ export interface OperationProgressViewModel {
 
 export const OPERATION_PROGRESS_CSS = css`
   .progress-shell { border: 1px solid var(--sbp-line); border-radius: 16px; padding: 18px; background: transparent; color: var(--sbp-text); }
-  .progress-shell[data-mode="restore"] .packet { animation-name: opProgressForward; }
+  .progress-shell[data-mode="restore"] .packet,
+  .progress-shell[data-mode="wifi-deploy"] .packet { animation-name: opProgressForward; }
   .progress-stage { position: relative; display: flex; flex-wrap: nowrap; justify-content: center; gap: 4px; align-items: center; min-height: 110px; min-width: 0; }
   .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
   .progress-disc { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 12px; color: var(--sbp-accent); background: color-mix(in srgb, var(--sbp-panel) 88%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-line) 80%, transparent); }
@@ -61,12 +63,7 @@ export function renderOperationProgress(view: OperationProgressViewModel): Templ
   `;
 }
 
-/** The running step as the card words it: the library's message with a "(n/total)" counter, the dock's own count; "" while there is none. */
+/** The running step as the card words it, with its "(n/total)" counter: the dock's own line; "" while there is none. */
 export function jobStepMessage(job: JobView | null): string {
-  const raw = (job?.progress as { message?: unknown } | null)?.message;
-  const message = typeof raw === "string" ? raw.trim() : "";
-  if (!message) return "";
-  const progress = jobProgress(job);
-  if (progress.indeterminate || /\d+\s*\/\s*\d+/u.test(message)) return message;
-  return `${message.replace(/(…|\.+)$/u, "")} (${progress.current ?? 0}/${progress.total})`;
+  return jobStepText(job);
 }

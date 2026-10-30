@@ -4,6 +4,10 @@ const DOCS_BASE = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob
 
 export const DOC_URLS = {
   wifiCommands: `${DOCS_BASE}/wifi_commands.md`,
+  // What to allow between the hub and Home Assistant for Wifi Commands
+  // (listener and direct delivery), and for MQTT delivery.
+  networkingWifi: `${DOCS_BASE}/networking.md#optional--wifi-commands-and-wifi-events`,
+  networkingMqtt: `${DOCS_BASE}/networking.md#optional--mqtt-delivery-x2`,
   backup: `${DOCS_BASE}/backup.md`,
   commandPayloads: `${DOCS_BASE}/command_payloads.md`,
 } as const;

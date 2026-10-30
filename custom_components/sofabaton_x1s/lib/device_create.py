@@ -36,7 +36,13 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Protocol, Sequence
 
 from .devices import DeviceConfig, build_device_create_payload
-from .wire_schema import PAGED_WRITE_WRAPPER_LEN, encode_label_slot, page_family_body, schema_for
+from .wire_schema import (
+    PAGED_WRITE_WRAPPER_LEN,
+    encode_label_slot,
+    page_family_body,
+    paged_write_total_pages,
+    schema_for,
+)
 
 
 #: Discriminant for :class:`DeviceCreateRequest.transport`. ``"ir"`` covers
@@ -695,7 +701,7 @@ def build_macro_step_record(
     duration: int = 0,
     delay: int = 0xFF,
 ) -> bytes:
-    """Build one 10-byte macro-step record for :func:`build_macro_step`."""
+    """Build one 10-byte macro-step record for :func:`build_macro_steps`."""
 
     if device_id < 0 or device_id > 0xFF:
         raise ValueError(f"device_id {device_id} out of byte range")
@@ -1091,27 +1097,38 @@ def build_set_idle_behavior_step(*, device_id: int, mode: int) -> CreateStep:
 MACRO_STEP_RECORD_SIZE = 10
 
 
-def build_macro_step(
+def build_macro_steps(
     *,
     hub_version: str,
     device_id: int,
     key_id: int,
     label: str,
     step_records: bytes = b"",
-) -> CreateStep:
-    """Build a macro write (``OP_3212``).
+) -> list[CreateStep]:
+    """Build a macro write (``OP_3212``), one :class:`CreateStep` per page.
 
-    Single-page write. The label slot width and encoding follow the
-    hub variant (30-byte ASCII on X1, 60-byte UTF-16BE on X1S/X2,
-    read from :func:`schema_for`)::
+    The label slot width and encoding follow the hub variant (30-byte
+    ASCII on X1, 60-byte UTF-16BE on X1S/X2, read from
+    :func:`schema_for`)::
 
-        body[0..2]      [01, 00, 01]                 page header (page 1 of 1)
+        body[0]         0x01                         page-header marker
+        body[1..2]      total_pages_be
         body[3]         device_id
         body[4]         key_id            (macro key id, e.g. 0xC6 POWER_ON)
         body[5]         step_count
         body[6 .. 6 + 10*step_count - 1]            step records (10 bytes each)
         body[next .. next + L - 1]                  label slot (L=30/60)
         body[next + L]                              body checksum
+
+    The family-frame opcode carries the payload length in ONE byte
+    (``_send_family_frame``: ``(len & 0xFF) << 8``), so the body goes
+    out in 247-byte chunks, each behind a fresh ``[0x01][page_no_be]``
+    wrapper: the layout the live editor's ``_send_paged_macro_save``
+    sends. One page holds 18 rows on X1S/X2 and 21 on X1. The vendor
+    app writes longer macros (issue #315: a 19-row activity POWER_ON
+    on X2), so restore has to page them too. Every page but the last
+    is acked by STATUS_ACK; the last by the macro ack echoing
+    ``key_id``.
 
     ``step_records`` is the concatenated step-bytes blob (size must be
     a multiple of :data:`MACRO_STEP_RECORD_SIZE`). Pass ``b""`` to
@@ -1135,45 +1152,90 @@ def build_macro_step(
             f"MACRO_STEP_RECORD_SIZE ({MACRO_STEP_RECORD_SIZE})"
         )
     step_count = len(step_records) // MACRO_STEP_RECORD_SIZE
+    if step_count > 0xFF:
+        raise ValueError(
+            f"too many steps ({step_count}) for one macro; the step count is one byte"
+        )
 
     schema = schema_for(hub_version)
     label_slot_len = schema.macro_label_slot_len
-    # The family-frame opcode carries the payload length in ONE byte
-    # (``_send_family_frame``: ``(len & 0xFF) << 8``), so this single-page
-    # write caps at 255 payload bytes: 10 bytes of wrapper/preamble/checksum
-    # plus the label slot leaves room for 18 rows on X1S/X2 and 21 on X1.
-    # Past that the length byte wraps and the frame goes out corrupt.
-    max_steps = (0xFF - 10 - label_slot_len) // MACRO_STEP_RECORD_SIZE
-    if step_count > max_steps:
-        raise ValueError(
-            f"too many steps ({step_count}) for a single-page macro write; "
-            f"max {max_steps} for hub_version={hub_version!r}"
-        )
     label_encoding = schema.macro_label_encoding
     label_slot = encode_label_slot(label, label_slot_len, label_encoding)
 
     # body layout: 6-byte preamble + steps + L-byte label slot + 1-byte checksum
     body_len = 6 + len(step_records) + label_slot_len + 1
     body = bytearray(body_len)
-    body[0:3] = bytes([0x01, 0x00, 0x01])
+    body[0] = 0x01
+    body[1:3] = paged_write_total_pages(body_len).to_bytes(2, "big")
     body[3] = device_id & 0xFF
     body[4] = key_id & 0xFF
     body[5] = step_count & 0xFF
     body[6 : 6 + len(step_records)] = step_records
     label_start = 6 + len(step_records)
     body[label_start : label_start + label_slot_len] = label_slot
-    body_bytes = _seal_body(body)
+    pages = page_family_body(_seal_body(body))
 
-    # Outer 3-byte page wrapper: [page_const=1, page_num_be=1].
-    payload = bytes([0x01, 0x00, 0x01]) + body_bytes
+    base_label = f"macro key=0x{key_id:02X} label={label!r} steps={step_count}"
+    steps: list[CreateStep] = []
+    for page_no, page_payload in enumerate(pages, start=1):
+        if page_no < len(pages):
+            steps.append(
+                CreateStep(
+                    label=f"{base_label} page={page_no}/{len(pages)}",
+                    family=FAMILY_MACRO,
+                    payload=page_payload,
+                    ack_opcode=ACK_OPCODE_STATUS,
+                    ack_first_byte=ACK_STATUS_BYTE_OK,
+                    ack_reject_first_bytes=(_REJECT_BYTE_BAD_SAVE,),
+                )
+            )
+            continue
+        steps.append(
+            CreateStep(
+                label=(
+                    base_label
+                    if len(pages) == 1
+                    else f"{base_label} page={page_no}/{len(pages)}"
+                ),
+                family=FAMILY_MACRO,
+                payload=page_payload,
+                ack_opcode=ACK_OPCODE_MACRO,
+                ack_first_byte=key_id & 0xFF,
+            )
+        )
+    return steps
 
-    return CreateStep(
-        label=f"macro key=0x{key_id:02X} label={label!r} steps={step_count}",
-        family=FAMILY_MACRO,
-        payload=payload,
-        ack_opcode=ACK_OPCODE_MACRO,
-        ack_first_byte=key_id & 0xFF,
+
+def build_macro_step(
+    *,
+    hub_version: str,
+    device_id: int,
+    key_id: int,
+    label: str,
+    step_records: bytes = b"",
+) -> CreateStep:
+    """The one step of a macro write that fits a single page.
+
+    :func:`build_macro_steps` with the page count pinned to one: raises
+    past 18 rows on X1S/X2 (21 on X1) instead of returning a write that
+    needs more pages. Callers that may meet longer macros use
+    :func:`build_macro_steps`.
+    """
+
+    steps = build_macro_steps(
+        hub_version=hub_version,
+        device_id=device_id,
+        key_id=key_id,
+        label=label,
+        step_records=step_records,
     )
+    if len(steps) > 1:
+        raise ValueError(
+            f"too many steps ({len(step_records) // MACRO_STEP_RECORD_SIZE}) "
+            f"for a single-page macro write; it needs {len(steps)} pages "
+            f"for hub_version={hub_version!r}"
+        )
+    return steps[0]
 
 
 def build_remote_sync_step() -> CreateStep:
@@ -1221,6 +1283,7 @@ __all__ = [
     "encode_command_sort_body",
     "build_macro_step_record",
     "build_macro_step",
+    "build_macro_steps",
     "build_remote_sync_step",
     "build_set_idle_behavior_step",
     "run_create_sequence",

@@ -53,6 +53,8 @@ export interface ControlPanelHubState {
   version?: string;
   /** MQTT delivery can be offered for this hub (X2 + MQTT integration). */
   mqtt_available?: boolean;
+  /** The hub has a broker link of its own to show and set (X2). */
+  broker_setup_available?: boolean;
   firmware_version?: number | string | null;
   /** Firmware gate, computed backend-side (the floor tables live in Python).
    *  "outdated" nags (newer firmware recommended); "unsupported" blocks the
@@ -71,14 +73,21 @@ export interface ControlPanelHubState {
   /** Backend-computed: the hub is connected and no app client holds it. */
   actions?: { can_find_remote?: boolean; can_sync_remote?: boolean };
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
-  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
+  // icon / color_id: the record's icon id and X2 palette id, absent until
+  // the record is cached (the row then keeps its class glyph).
+  activities?: Array<{ id: number; name?: string; sort?: number; icon?: number; color_id?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
     sort?: number;
+    icon?: number;
+    color_id?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
+    /** An X2 record's IR routing bytes [a, b, c] (its `device.extras`),
+     *  once the record is cached; absent off the X2. */
+    emitters?: number[];
   }>;
   buttons?: Record<string, number[]>;
   commands?: Record<string, Record<string, string>>;
@@ -155,14 +164,21 @@ export interface CacheHubState {
   /** The generation these rows were read at. */
   cache_generation?: number;
   cache_epoch?: number;
-  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
+  // icon / color_id: the record's icon id and X2 palette id, absent until
+  // the record is cached (the row then keeps its class glyph).
+  activities?: Array<{ id: number; name?: string; sort?: number; icon?: number; color_id?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
     sort?: number;
+    icon?: number;
+    color_id?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
+    /** An X2 record's IR routing bytes [a, b, c] (its `device.extras`),
+     *  once the record is cached; absent off the X2. */
+    emitters?: number[];
   }>;
   buttons?: Record<string, number[]>;
   commands?: Record<string, Record<string, string>>;
@@ -235,6 +251,53 @@ export interface WifiCommandSyncState {
    *  deployed now: the next sync replaces the device over the other
    *  transport (docs/internal/wifi-events-transport-plan.md §2). */
   transport_switch_pending?: boolean;
+  /** What the deploy's test press found (set when a deploy ends). */
+  delivery?: WifiDelivery | null;
+}
+
+/** Did a press from the hub reach Home Assistant? Written by the deploy's
+ *  test press and by Test again; a real press marks it delivered. */
+export interface WifiDelivery {
+  /** `not_sent`: the test command could not be sent; delivery is untested. */
+  status: "delivered" | "not_delivered" | "not_sent" | string;
+  /** `http` (the listener) or `mqtt`. */
+  transport?: string;
+  /** What the hub calls: the listener's origin or a broker. */
+  target?: string;
+  hub_ip?: string;
+  source_ip?: string;
+  latency_s?: number | null;
+  checked_at?: string;
+  via?: "test" | "press" | string;
+}
+
+/** command_config/delivery: how presses of one Wifi Device reach Home
+ *  Assistant. */
+export interface WifiDeliveryInfo {
+  device_key: string;
+  /** The deployed transport; null before the first deploy, and for a
+   *  device that needs a Sync before anything can arrive. */
+  transport: string | null;
+  /** The deployed destination. */
+  target: string;
+  hub_ip: string;
+  delivery: WifiDelivery | null;
+}
+
+/** hub_mqtt/status: both ends of an X2's MQTT broker link and what the
+ *  broker setup form prefills. Never a password. */
+export interface HubMqttLinkState {
+  available: boolean;
+  /** null: unknown (this Home Assistant cannot say). */
+  ha_connected: boolean | null;
+  ha_broker: { host: string; port: number; tls: boolean } | null;
+  /** null: the hub did not answer (another model, an older firmware). */
+  hub_connected: boolean | null;
+  /** The broker's IPv4 as the hub must reach it ("" when there is none). */
+  suggested_host: string;
+  suggested_port: number;
+  ha_username: string;
+  ha_login_available: boolean;
 }
 
 export interface WifiDeviceSummary extends WifiCommandSyncState {
@@ -287,6 +350,8 @@ export interface WifiEventsListResponse {
   deployed_transport?: string | null;
   transport_switch_pending?: boolean;
   mqtt_available?: boolean;
+  /** The events device's last delivery check. */
+  delivery?: WifiDelivery | null;
 }
 
 export interface WifiEventCreateResponse extends WifiEventsListResponse {
@@ -321,6 +386,8 @@ export interface BlobFetchCommandResult {
   device_id: number;
   command_id?: number | null;
   device_class?: string | null;
+  /** The record's code type (0x1D / 0x1E for RF); null when the command list is not cached. */
+  library_type?: number | null;
   blob_kind?: string | null;
   command_blob?: string | null;
   parsed_blob?: string | null;
@@ -341,6 +408,9 @@ export interface BlobFetchResponse {
 export interface BlobPlayResponse {
   ok: boolean;
 }
+
+/** The RF bands a hub learns and sends on (MHz). */
+export type RfBand = 433 | 315;
 
 /** Foreign IR code formats the backend can render to the canonical signal. */
 export type IrPayloadForeignFormat = "uc_hex";
@@ -392,6 +462,21 @@ export interface IrEmitterConsumersResponse {
   emitter_entity_id: string | null;
   consumers: IrEmitterConsumer[];
 }
+/** One paired remote or repeater an X2 device's IR can be routed to. */
+export interface IrEmitterPairedRow {
+  kind: "remote" | "repeater";
+  number: number;
+  name: string;
+  online: boolean;
+  port_cable: boolean | null;
+}
+/** `ir_emitters/status`: the paired remotes and repeaters (null before the
+ *  first read) and when they were read (epoch seconds). */
+export interface IrEmitterStatusResponse {
+  available: boolean;
+  paired: IrEmitterPairedRow[] | null;
+  read_at: number | null;
+}
 /** Events of one hub learn window (`ir_learn/subscribe`): `listening`, then one terminal state. */
 export type IrLearnState =
   | "listening"
@@ -407,6 +492,9 @@ export interface IrLearnEvent {
   payload_hex?: string | null;
   carrier_hz?: number;
   duration_count?: number;
+  /** RF windows: the band the code was learned on and its code type. */
+  band?: number;
+  code_type?: number;
   timeout_s?: number;
   interrupted_by?: string;
   /** Diagnostic fallback for old backends; cards must render `error_code`, not this text. */
@@ -439,6 +527,15 @@ export interface BackupBundleDeviceBlock {
   // The device record's tail byte. A different value from idle_behavior
   // (it sits at 1 on real hubs) and never stands in for it.
   power_mode?: number | null;
+  // The icon id (record byte 5, the app's numbering for the hub line) and
+  // the X2 palette id (tail byte 22, 0 = none picked). The sync writes both
+  // with the name in one record write.
+  icon?: number | null;
+  color_id?: number | null;
+  // The X2's IR emitter routing, the three bytes after the record's 0xFC
+  // marker (null / absent off the X2 or without the block). The IR pill
+  // edits b and c; a (single-button RF) is carried, never changed.
+  extras?: { a: number; b: number; c: number } | null;
 }
 
 export interface BackupBundleDevicePayload {

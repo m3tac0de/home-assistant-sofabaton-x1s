@@ -50,6 +50,12 @@ assert schema_for(HUB_VERSION_X1).device_slot_width == 30
 assert schema_for(HUB_VERSION_X1S).device_slot_width == 60
 assert schema_for(HUB_VERSION_X2).device_slot_width == 60
 
+#: Tail bytes 22-23 (color id, Bluetooth mode) exist on the 60-byte
+#: X1S/X2 tail only. X1 records leave them zero, so they are neither
+#: parsed nor written there: an X2 bundle restored onto an X1 must not
+#: put bytes into the X1 record that it never carries.
+_WIDE_TAIL_WIDTH: Final[int] = schema_for(HUB_VERSION_X1S).device_slot_width
+
 
 @dataclass(slots=True, frozen=True)
 class DeviceConfig:
@@ -188,11 +194,25 @@ class DeviceConfig:
 
     #: Optional vendor-extension triple. When ``extras_present`` is
     #: true, the tail region carries an additional ``0xFC`` marker
-    #: followed by these three bytes (seen on some X1S build variants).
+    #: followed by these three bytes. On the X2 they are the device's IR
+    #: emitter routing (:class:`emitter_routing.EmitterRouting`).
     extra_a: int = 0
     extra_b: int = 0
     extra_c: int = 0
     extras_present: bool = False
+
+    #: Color id at tail offset 22. The X2 app draws activities and
+    #: devices on a colored tile and offers a fixed palette (ids 1-12);
+    #: ``0`` means no color was ever picked. X1S records carry ``0``;
+    #: the X1 record has no such byte (see ``_WIDE_TAIL_WIDTH``).
+    #: Round-tripped so a rewrite keeps the user's color.
+    color_id: int = 0
+
+    #: Bluetooth link mode at tail offset 23 on Bluetooth devices
+    #: (``0`` classic, ``2`` BLE on the X2). Other device classes can
+    #: carry ``0xFF`` here. Not bench-validated; round-tripped so a
+    #: rewrite never changes how the hub links a Bluetooth device.
+    bt_mode: int = 0
 
     @property
     def is_input_configured(self) -> bool:
@@ -272,9 +292,10 @@ def _encode_ip(ip_address: str | None) -> bytes | None:
 def _build_tail_slot(config: DeviceConfig, *, width: int) -> bytes:
     """Build the tail-slot bytes (width 30 on X1, 60 on X1S/X2).
 
-    The first 18 bytes carry the structured device-state markers; the
-    remaining bytes are zero (or, when ``extras_present`` is true,
-    carry an extra 4-byte marker block in the X1S/X2 variant).
+    The first 18 bytes carry the structured device-state markers, bytes
+    18-21 an optional 4-byte marker block (when ``extras_present`` is
+    true), and, on the 60-byte tail only, bytes 22-23 the color id and
+    Bluetooth mode. The remaining bytes are zero.
     """
 
     tail = bytearray(width)
@@ -304,6 +325,10 @@ def _build_tail_slot(config: DeviceConfig, *, width: int) -> bytes:
         tail[19] = config.extra_a & 0xFF
         tail[20] = config.extra_b & 0xFF
         tail[21] = config.extra_c & 0xFF
+
+    if width >= _WIDE_TAIL_WIDTH:
+        tail[22] = config.color_id & 0xFF
+        tail[23] = config.bt_mode & 0xFF
 
     return bytes(tail)
 
@@ -463,6 +488,11 @@ def parse_device_record(
         extra_b = tail[20]
         extra_c = tail[21]
 
+    color_id = bt_mode = 0
+    if slot_width >= _WIDE_TAIL_WIDTH:
+        color_id = tail[22]
+        bt_mode = tail[23]
+
     return DeviceConfig(
         name=name,
         brand=brand,
@@ -489,7 +519,117 @@ def parse_device_record(
         extra_b=extra_b,
         extra_c=extra_c,
         extras_present=extras_present,
+        color_id=color_id,
+        bt_mode=bt_mode,
     )
+
+
+#: Icon ids the app offers on each hub line; ids run 1..count. The app
+#: shows icon 1 (a TV) for an id outside its line's set.
+ENTITY_ICON_COUNT: Final[Mapping[str, int]] = {
+    HUB_VERSION_X1: 25,
+    HUB_VERSION_X1S: 16,
+    HUB_VERSION_X2: 45,
+}
+
+#: Palette ids the X2 app offers (1..12). Only the X2 shows colors.
+ENTITY_COLOR_COUNT: Final[int] = 12
+
+
+def _color_offset(hub_version: str) -> int | None:
+    """Body offset of the color byte (tail[22]), None on the X1 record."""
+
+    try:
+        slot_width, _body_len, _encoding = _slot_widths_for(hub_version)
+    except ValueError:
+        return None
+    if slot_width < _WIDE_TAIL_WIDTH:
+        return None
+    # Same layout as parse_device_record: name and brand slots from 29,
+    # then the tail.
+    return 29 + 2 * slot_width + 22
+
+
+def record_appearance(body: bytes, *, hub_version: str) -> tuple[int | None, int | None]:
+    """Return ``(icon, color_id)`` of a device or activity record body.
+
+    Reads the two bytes :func:`parse_device_record` decodes as ``icon``
+    (body[5]) and ``color_id`` (tail[22]) without the full parse, so a
+    cached body of an unexpected length still yields what it holds.
+    ``color_id`` is None on the X1, whose record has no such byte. Either
+    is None when the body is too short to hold it.
+    """
+
+    icon = int(body[5]) if len(body) > 5 else None
+    color_offset = _color_offset(hub_version)
+    if color_offset is None or len(body) <= color_offset:
+        return icon, None
+    return icon, int(body[color_offset])
+
+
+def record_emitters(body: bytes, *, hub_version: str) -> tuple[int, int, int] | None:
+    """Return the X2 emitter-routing bytes ``(a, b, c)`` of a device record
+    body (tail[19..21], after the ``0xFC`` at tail[18]), without the full
+    parse. None on another hub line, without the marker, or when the body
+    is too short."""
+
+    if hub_version != HUB_VERSION_X2:
+        return None
+    color_offset = _color_offset(hub_version)
+    if color_offset is None:
+        return None
+    marker = color_offset - 4
+    if len(body) <= marker + 3 or body[marker] != 0xFC:
+        return None
+    return int(body[marker + 1]), int(body[marker + 2]), int(body[marker + 3])
+
+
+def patch_record_appearance(
+    body: bytes,
+    *,
+    hub_version: str,
+    icon: int | None = None,
+    color_id: int | None = None,
+) -> bytes:
+    """Return ``body`` with the bytes :func:`record_appearance` reads
+    replaced where a value is given, every other byte kept.
+
+    For bodies written as they are (an activity row) and for cached
+    copies; a checksummed record write goes through
+    :func:`build_device_create_payload` instead. A color is ignored on
+    the X1 record, which has no color byte.
+    """
+
+    out = bytearray(body)
+    if icon is not None and len(out) > 5:
+        out[5] = icon & 0xFF
+    color_offset = _color_offset(hub_version)
+    if color_id is not None and color_offset is not None and len(out) > color_offset:
+        out[color_offset] = color_id & 0xFF
+    return bytes(out)
+
+
+def validate_appearance(
+    hub_version: str,
+    *,
+    icon: int | None = None,
+    color_id: int | None = None,
+) -> None:
+    """Raise ``ValueError`` (a user-readable reason) unless ``icon`` is one
+    of the icons the hub line's app offers and ``color_id`` one of the
+    X2 palette ids (``0`` = no color). ``None`` skips a value."""
+
+    if icon is not None:
+        count = ENTITY_ICON_COUNT.get(hub_version)
+        if count is None:
+            raise ValueError(f"icons cannot be set on a {hub_version!r} hub")
+        if isinstance(icon, bool) or not isinstance(icon, int) or not 1 <= icon <= count:
+            raise ValueError(f"icon {icon!r} is not one of the {count} icons this hub offers")
+    if color_id is not None:
+        if hub_version != HUB_VERSION_X2:
+            raise ValueError("only an X2 hub stores activity and device colors")
+        if isinstance(color_id, bool) or not isinstance(color_id, int) or not 0 <= color_id <= ENTITY_COLOR_COUNT:
+            raise ValueError(f"color {color_id!r} is not one of the {ENTITY_COLOR_COUNT} colors")
 
 
 def device_config_from_backup(
@@ -563,6 +703,11 @@ def device_config_from_backup(
         extra_b=_extra("b"),
         extra_c=_extra("c"),
         extras_present=extras_present,
+        # Carried on create too: a restored entity keeps its color, and a
+        # Bluetooth device keeps its link mode. Bundles from before these
+        # fields existed restore with 0, as before.
+        color_id=_as_int("color_id", 0) & 0xFF,
+        bt_mode=_as_int("bt_mode", 0) & 0xFF,
     )
 
 
@@ -570,8 +715,13 @@ __all__ = [
     "DEVICE_BODY_LEN_X1",
     "DEVICE_BODY_LEN_X1S_X2",
     "DEVICE_CODE_ID_LEN",
+    "ENTITY_COLOR_COUNT",
+    "ENTITY_ICON_COUNT",
     "DeviceConfig",
     "build_device_create_payload",
     "device_config_from_backup",
     "parse_device_record",
+    "patch_record_appearance",
+    "record_appearance",
+    "validate_appearance",
 ]

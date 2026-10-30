@@ -976,10 +976,10 @@
       // control_panel/state surfaces the activity summary on the hub state;
       // the Activities tab reads it from here (enriched by cache counts).
       activities: [
-        { id: 101, name: "Watch TV",        favorite_count: 3, macro_count: 1 },
-        { id: 102, name: "Listen to Music", favorite_count: 2, macro_count: 0 },
-        { id: 103, name: "Game Mode",       favorite_count: 5, macro_count: 2 },
-        { id: 104, name: "Good Night",      favorite_count: 1, macro_count: 0 },
+        { id: 101, name: "Watch TV",        icon: 1,  favorite_count: 3, macro_count: 1 },
+        { id: 102, name: "Listen to Music", icon: 3,  favorite_count: 2, macro_count: 0 },
+        { id: 103, name: "Game Mode",       icon: 7,  favorite_count: 5, macro_count: 2 },
+        { id: 104, name: "Good Night",      icon: 12, favorite_count: 1, macro_count: 0 },
       ],
       settings: {
         proxy_enabled:       false,
@@ -1011,15 +1011,15 @@
         entry_id: "hub-1",
         name:     "Living Room",
         activities: [
-          { id: 101, name: "Watch TV",        favorite_count: 3, macro_count: 1 },
-          { id: 102, name: "Listen to Music", favorite_count: 2, macro_count: 0 },
-          { id: 103, name: "Game Mode",       favorite_count: 5, macro_count: 2 },
-          { id: 104, name: "Good Night",      favorite_count: 1, macro_count: 0 },
+          { id: 101, name: "Watch TV",        icon: 1,  favorite_count: 3, macro_count: 1 },
+          { id: 102, name: "Listen to Music", icon: 3,  favorite_count: 2, macro_count: 0 },
+          { id: 103, name: "Game Mode",       icon: 7,  favorite_count: 5, macro_count: 2 },
+          { id: 104, name: "Good Night",      icon: 12, favorite_count: 1, macro_count: 0 },
         ],
         devices_list: [
-          { id: 1, name: "Television",         command_count: 6,  device_class: "ir"   },
-          { id: 2, name: "Soundbar",           command_count: 4,  device_class: "ir"   },
-          { id: 7, name: "WiFi Remote Device", command_count: 12, device_class: "wifi" },
+          { id: 1, name: "Television",         icon: 1,  command_count: 6,  device_class: "ir"   },
+          { id: 2, name: "Soundbar",           icon: 11, command_count: 4,  device_class: "ir"   },
+          { id: 7, name: "WiFi Remote Device", icon: 8,  command_count: 12, device_class: "wifi" },
         ],
         commands: {
           "1": { "10": "Power Toggle", "11": "Volume Up",   "12": "Volume Down",
@@ -1061,6 +1061,23 @@
       ],
     };
 
+    // A synthesized 433 MHz fan code in the hub's RF record shape (byte
+    // count, duration count, gap, then on/off durations); harness data only.
+    const RF_FAN_OFF_HEX = "00 0d 05 e0 1e 5c 01 e4 03 5c 01 e4 03 5c 01";
+
+    /** The hub list and the structural bundle with the Television swapped
+     *  for a 433 MHz RF ceiling fan (device 1, same commands). */
+    function rfContents() {
+      const contents = clone(BASE_CONTENTS);
+      contents.hubs[0].devices_list[0] = { ...contents.hubs[0].devices_list[0], name: "Ceiling fan", icon: 14, device_class: "rf_433mhz" };
+      return contents;
+    }
+    function rfBundle() {
+      const bundle = clone(EDIT_BACKUP_BUNDLE);
+      bundle.devices[0].device = { ...bundle.devices[0].device, name: "Ceiling fan", icon: 14, device_class: "rf_433mhz" };
+      return bundle;
+    }
+
     // Rich bundle for exercising the Edit section: devices carry commands,
     // and activity 101 carries favorites, an editable macro, and the two
     // internal power macros (198 / 199) that must survive single deletes.
@@ -1069,7 +1086,7 @@
       schema_version: 5,
       hub: { entry_id: "hub-1", name: "Living Room", version: "X1S" },
       devices: [
-        { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1 },
+        { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1, icon: 1 },
           commands: [
             // Raw payload only (learned IR): exercises the raw-hex payload editor.
             { command_id: 10, name: "Power",
@@ -1090,7 +1107,7 @@
             ] },
           ],
           input_record: { entries: [{ command_id: 12, input_index: 1, name: "Input HDMI1" }] } },
-        { device: { device_id: 2, name: "Soundbar", device_class: "ir", sort: 2 },
+        { device: { device_id: 2, name: "Soundbar", device_class: "ir", sort: 2, icon: 11 },
           commands: [
             { command_id: 20, name: "Power" },
             { command_id: 21, name: "Volume Up" },
@@ -1127,7 +1144,7 @@
           ] },
       ],
       activities: [
-        { device: { device_id: 101, name: "Watch TV", entity_type: "activity", sort: 1 },
+        { device: { device_id: 101, name: "Watch TV", entity_type: "activity", sort: 1, icon: 1 },
           referenced_source_device_ids: [1, 2],
           favorite_slots: [
             { button_id: 1, device_id: 1, command_id: 10, name: "TV Power" },
@@ -1157,7 +1174,7 @@
             { button_id: 0xB0, button_name: "OK", device_id: 1, command_id: 10,
               long_press_device_id: 2, long_press_command_id: 20 },
           ] },
-        { device: { device_id: 102, name: "Listen to Music", entity_type: "activity", sort: 2 },
+        { device: { device_id: 102, name: "Listen to Music", entity_type: "activity", sort: 2, icon: 3 },
           referenced_source_device_ids: [2],
           favorite_slots: [],
           macros: [] },
@@ -1243,7 +1260,7 @@
     // WifiDeviceSummary objects — used in command_devices/list response
     const WIFI_DEVICE_LR = {
       device_key: "dev-lr", device_name: "Living Room Remote",
-      configured_slot_count: 3, deployed_device_id: 12345,
+      configured_slot_count: 3, deployed_device_id: 3,
       ...WIFI_SYNC_IDLE,
     };
     const WIFI_DEVICE_BR = {
@@ -1483,6 +1500,17 @@
         // Delivery method of the events device (wifi-events-transport-plan):
         // scenarios set `wifiEventsTransport: { requested, deployed }`.
         wifiEventsTransport: clone(scenario.wifiEventsTransport ?? { requested: "http", deployed: "http" }),
+        // An X2's broker link (hub_mqtt/status); hub_mqtt/setup connects it.
+        hubMqtt: clone(scenario.hubMqtt ?? {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: true,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        }),
         operationSequence: 1,
         wifiDeviceSequence: 1,
         activitySequence: 105,
@@ -1538,14 +1566,23 @@
             function learnModeSubscription() {
               if (type === "sofabaton_x1s/ir_learn/subscribe") {
               wsLog(type, "res");
+              // With a band the window is the hub's RF receiver.
+              const learned = message.band != null
+                ? {
+                    state: "learned",
+                    payload_hex: RF_FAN_OFF_HEX,
+                    band: Number(message.band),
+                    code_type: Number(message.band) === 315 ? 0x1e : 0x1d,
+                  }
+                : {
+                    state: "learned",
+                    payload_hex: "02 20 00 00 00 00 96 07 00 00 11 b4 00 00 11 71 00 00 02 64 00 00 06 66 00 00 02 64 00 03 0d 40 00 00 00 00",
+                    carrier_hz: 38407,
+                    duration_count: 136,
+                  };
               const timers = [
                 setTimeout(() => callback({ state: "listening", timeout_s: Number(message.timeout ?? 60) }), 100),
-                setTimeout(() => callback({
-                  state: "learned",
-                  payload_hex: "02 20 00 00 00 00 96 07 00 00 11 b4 00 00 11 71 00 00 02 64 00 00 06 66 00 00 02 64 00 03 0d 40 00 00 00 00",
-                  carrier_hz: 38407,
-                  duration_count: 136,
-                }), 2800),
+                setTimeout(() => callback(learned), 2800),
               ];
               return Promise.resolve(() => timers.forEach((timer) => clearTimeout(timer)));
             }
@@ -1778,6 +1815,28 @@
               wsLog(type, "err");
               return Promise.reject({ code: "uc_hex_unsupported_protocol", message: `protocol ${text.split(";")[0].trim()}` });
             }
+            case "sofabaton_x1s/ir_emitters/status": {
+              // The IR pill's read (docs/internal/ir-emitter-pill-plan.md):
+              // scenarios set `irEmitters: { last, fresh, refreshError, delayMs }`.
+              // Without refresh: the kept read (no hub exchange); with it, the
+              // paired list after the hub's poll, kept for the next ask.
+              const ir = scenario.irEmitters;
+              if (!ir) return Promise.reject({ code: "not_supported", message: "Only an X2 hub routes IR to its remotes and ports" });
+              if (mock.irEmittersLast === undefined) {
+                mock.irEmittersLast = ir.last ? { available: true, paired: ir.last, read_at: Date.now() / 1000 - 600 } : { available: true, paired: null, read_at: null };
+              }
+              if (!message.refresh) return respond(type, mock.irEmittersLast);
+              return new Promise((resolve, reject) => setTimeout(() => {
+                if (ir.refreshError) {
+                  wsLog(type, "err");
+                  reject({ code: ir.refreshError, message: "The hub can't be read right now" });
+                  return;
+                }
+                mock.irEmittersLast = { available: true, paired: ir.fresh ?? ir.last ?? [], read_at: Date.now() / 1000 };
+                wsLog(type, "res");
+                resolve(clone(mock.irEmittersLast));
+              }, ir.delayMs ?? 600));
+            }
             case "sofabaton_x1s/ir_emitter/consumers":
               return respond(type, scenario.irEmitterConsumers ?? {
                 available: true,
@@ -1811,6 +1870,35 @@
                 max_devices: scenario.maxWifiDevices ?? 5,
                 mqtt_available: scenario.mqttAvailable ?? false,
               });
+            case "sofabaton_x1s/command_config/delivery": {
+              // How presses reach Home Assistant, from what the device
+              // deployed (scenario.wifiDelivery overrides per device key).
+              const key = String(message.device_key ?? "");
+              const device = mock.wifiDevices.find((item) => item.device_key === key);
+              const transport = device?.deployed_device_id == null
+                ? (key === "haevents" ? "http" : null)
+                : (device.deployed_transport || "http");
+              return respond(type, {
+                device_key: key,
+                transport,
+                target: transport === "mqtt" ? "192.168.1.10:1883" : "http://192.168.1.10:8060",
+                hub_ip: HUB_1.ip_address,
+                delivery: device?.delivery ?? null,
+                ...(scenario.wifiDelivery?.[key] ?? {}),
+              });
+            }
+            case "sofabaton_x1s/command_config/test_delivery": {
+              const key = String(message.device_key ?? "");
+              const delivery = scenario.wifiTestResult ?? { status: "delivered", transport: "http", latency_s: 0.8, via: "test" };
+              mock.wifiDevices = mock.wifiDevices.map((item) => (item.device_key === key ? { ...item, delivery } : item));
+              if (scenario.wifiDelivery?.[key]) scenario.wifiDelivery[key] = { ...scenario.wifiDelivery[key], delivery };
+              return respond(type, delivery);
+            }
+            case "sofabaton_x1s/hub_mqtt/status":
+              return respond(type, mock.hubMqtt);
+            case "sofabaton_x1s/hub_mqtt/setup":
+              mock.hubMqtt = { ...mock.hubMqtt, hub_connected: true };
+              return respond(type, { connected: true, ...mock.hubMqtt });
             case "sofabaton_x1s/command_config/get": {
               const key = String(message.device_key ?? "");
               return respond(type, {
@@ -1902,7 +1990,15 @@
                 const pending = Boolean(device.deployed_transport) && (device.deployed_transport || "http") !== transport;
                 return { ...device, requested_transport: transport, transport_switch_pending: pending, sync_needed: pending || Boolean(device.sync_needed) };
               });
-              return respond(type, mock.wifiDevices.find((device) => device.device_key === key) ?? {});
+              const picked = mock.wifiDevices.find((device) => device.device_key === key);
+              if (picked) {
+                mock.wifiSyncByKey[key] = {
+                  ...(mock.wifiSyncByKey[key] ?? scenario.wifiSyncState ?? WIFI_SYNC_IDLE),
+                  sync_needed: Boolean(picked.sync_needed),
+                  transport_switch_pending: Boolean(picked.transport_switch_pending),
+                };
+              }
+              return respond(type, picked ?? {});
             }
             case "sofabaton_x1s/wifi_event/sync":
               mock.wifiEventsTransport = { ...mock.wifiEventsTransport, deployed: mock.wifiEventsTransport.requested };
@@ -2108,6 +2204,90 @@
 
     async function openActivityEditor(card, activityName) {
       return openLiveEditor(card, "Activities", activityName);
+    }
+
+    // ── The IR pill's fixtures (X2 only) ──────────────────────────────────────
+
+    const IR_REMOTE = { kind: "remote", number: 1, name: "X2 Remote", online: true, port_cable: null };
+    const IR_CABINET = { kind: "repeater", number: 1, name: "Cabinet", online: true, port_cable: true };
+    const IR_BEDROOM = { kind: "repeater", number: 2, name: "Bedroom", online: false, port_cable: null };
+    const STATES_X2 = {
+      "remote.living_room": {
+        ...STATES_CONNECTED["remote.living_room"],
+        attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
+      },
+    };
+
+    /** The Hub tab's rows with Television's routing bytes (the cache view's `emitters`). */
+    function irContents(extras) {
+      return {
+        ...BASE_CONTENTS,
+        hubs: [{
+          ...BASE_CONTENTS.hubs[0],
+          devices_list: BASE_CONTENTS.hubs[0].devices_list.map((row) => (
+            row.device_class === "ir" ? { ...row, emitters: row.id === 1 ? [extras.a, extras.b, extras.c] : [0, 0, 7] } : row
+          )),
+        }],
+      };
+    }
+
+    /** The X2 bundle with routing bytes on its IR devices (Television's as given). */
+    function irBundle(extras) {
+      const bundle = clone(EDIT_BACKUP_BUNDLE);
+      bundle.hub = { ...bundle.hub, version: "X2" };
+      bundle.devices = bundle.devices.map((entry) => ({
+        ...entry,
+        device: {
+          ...entry.device,
+          extras: entry.device.device_class === "ir" ? (entry.device.device_id === 1 ? { ...extras } : { a: 0, b: 0, c: 7 }) : null,
+        },
+      }));
+      return bundle;
+    }
+
+    /** Open the Television's IR pill and wait for the paired-list read. */
+    async function openIrPill(card) {
+      const editor = card.shadowRoot.querySelector("sofabaton-activities-tab");
+      const detail = editor?.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+      const pill = detail?.shadowRoot?.querySelector("button.ir-pill");
+      if (!pill) throw new Error("openIrPill: the IR pill is not in the header");
+      pill.click();
+      for (let attempt = 0; attempt < 80 && (detail._irPill.checking || !detail._irPill.open); attempt += 1) {
+        await new Promise(r => setTimeout(r, 25));
+      }
+      await detail.updateComplete;
+    }
+
+    /** One IR pill scenario: an X2 hub, the Television with `extras`, the
+     *  last read `last`; `baselineExtras` (when given) is what the hub has,
+     *  and `extras` is then a pick waiting for Sync. */
+    function irEditorScenario({ id, label, extras, baselineExtras, last = null, fresh, refreshError, open = false }) {
+      const onHub = baselineExtras ?? extras;
+      return {
+        id, label, group: "Activity Editor",
+        states: STATES_X2,
+        irEmitters: { last, fresh: fresh ?? last ?? [], refreshError },
+        contents: irContents(onHub),
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: irBundle(onHub), generation: 1 }),
+        },
+        async postLoad(card) {
+          await openLiveEditor(card, "Devices", "Television");
+          if (baselineExtras) {
+            const detail = card.shadowRoot.querySelector("sofabaton-activities-tab")?.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+            await detail?.updateComplete;
+            const bundle = detail?.bundle;
+            if (bundle) {
+              detail._commitEditBundleEdit({
+                ...bundle,
+                devices: bundle.devices.map((entry) => (entry.device?.device_id === 1 ? { ...entry, device: { ...entry.device, extras: { ...extras } } } : entry)),
+              });
+            }
+            await detail?.updateComplete;
+          }
+          if (open) await openIrPill(card);
+        },
+      };
     }
 
     // Click an ha-switch found near labelText inside the card's shadow root.
@@ -2523,8 +2703,19 @@
       },
       {
         id: "device-editor-wifi-transport", group: "Activity Editor",
-        label: "Device editor — Wifi Device with the HTTP/MQTT delivery select (X2 + MQTT)",
+        label: "Device editor — Wifi Device with the delivery pill and its method choice (X2 + MQTT)",
         states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        wifiDelivery: {
+          abc123: {
+            transport: "http",
+            target: "http://192.168.1.10:8060",
+            delivery: { status: "delivered", transport: "http", latency_s: 0.6, via: "test", checked_at: new Date(Date.now() - 5 * 60 * 1000).toISOString() },
+          },
+        },
         contents: {
           ...BASE_CONTENTS,
           hubs: [{
@@ -2572,6 +2763,90 @@
           await openLiveEditor(card, "Devices", "Home Assistant");
         },
       },
+      // The IR pill of an X2 IR device (docs/internal/ir-emitter-pill-plan.md, IR3):
+      // the mockup's scenarios, after the 2026-10-28 decisions (both ports
+      // always pickable, no cable state).
+      ...[
+        {
+          id: "device-editor-ir-hub", group: "Activity Editor", label: "Device editor — X2 IR device, IR pill: Hub, all ports (the default)",
+          extras: { a: 0, b: 0, c: 0x07 }, last: [IR_REMOTE],
+        },
+        {
+          id: "device-editor-ir-repeaters", group: "Activity Editor", label: "Device editor — X2 IR pill with two repeaters (Bedroom offline)",
+          extras: { a: 0, b: 0b11, c: 0x01 }, last: [IR_REMOTE, IR_CABINET, IR_BEDROOM],
+        },
+        {
+          id: "device-editor-ir-remote-only", group: "Activity Editor", label: "Device editor — X2 IR pill: only the remote sends (neutral note)",
+          extras: { a: 0, b: 0, c: 0x08 }, last: [IR_REMOTE],
+        },
+        {
+          id: "device-editor-ir-unpaired", group: "Activity Editor", label: "Device editor — X2 IR pill: routed to a remote that is no longer paired (amber)",
+          extras: { a: 0, b: 0, c: 0x07 | 0x10 }, last: [IR_REMOTE, IR_CABINET],
+        },
+        {
+          id: "device-editor-ir-custom", group: "Activity Editor", label: "Device editor — X2 IR pill: a hub mix the four choices cannot name",
+          extras: { a: 0, b: 0, c: 0x05 }, last: [IR_REMOTE],
+        },
+        {
+          id: "device-editor-ir-busy", group: "Activity Editor", label: "Device editor — X2 IR pill: the read is refused (hub busy)",
+          extras: { a: 0, b: 0, c: 0x07 }, last: [IR_REMOTE], refreshError: "busy",
+        },
+        {
+          id: "device-editor-ir-open", group: "Activity Editor", label: "Device editor — X2 IR pill open: a repeater offline, the pick pending",
+          extras: { a: 0, b: 0b1111, c: 0x07 }, baselineExtras: { a: 0, b: 0b11, c: 0x07 }, last: [IR_REMOTE, IR_CABINET, IR_BEDROOM], open: true,
+        },
+      ].map(irEditorScenario),
+      {
+        id: "hub-x2-ir-attention", group: "Hub Tab",
+        label: "Hub — an X2 IR device whose routing needs attention (read-only amber IR pill)",
+        states: STATES_X2,
+        irEmitters: { last: [IR_REMOTE, IR_CABINET, IR_BEDROOM] },
+        contents: irContents({ a: 0, b: 0b1100, c: 0x07 }),
+        postLoad: async (card) => {
+          await clickTab(card, "Hub");
+          await selectCacheSection(card, "devices");
+          for (let attempt = 0; attempt < 20 && !card.shadowRoot.querySelector(".ir-pill"); attempt += 1) {
+            await new Promise(r => setTimeout(r, 25));
+            await card.updateComplete;
+          }
+        },
+      },
+      {
+        id: "device-editor-wifi-x1s", group: "Activity Editor",
+        label: "Device editor — Wifi Device on an X1S: the delivery pill without the method choice",
+        states: STATES_CONNECTED,
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            devices_list: [
+              ...BASE_CONTENTS.hubs[0].devices_list,
+              { id: 4, name: "Home Assistant", command_count: 2, device_class: "wifi_ip" },
+            ],
+          }],
+        },
+        wifiDelivery: {
+          abc123: {
+            transport: "http",
+            target: "http://192.168.1.10:8060",
+            delivery: { status: "not_delivered", transport: "http", via: "test" },
+          },
+        },
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => {
+            const bundle = clone(EDIT_BACKUP_BUNDLE);
+            bundle.devices.push({
+              device: { device_id: 4, name: "Home Assistant", sort: 4, brand: "m3-abc123-deadbeef", device_class: "wifi_ip" },
+              commands: [{ command_id: 1, name: "Lights" }, { command_id: 2, name: "Curtains" }],
+              button_bindings: [], macros: [],
+            });
+            return { bundle, generation: 1 };
+          },
+        },
+        async postLoad(card) {
+          await openLiveEditor(card, "Devices", "Home Assistant");
+        },
+      },
       {
         id: "payload-editor-ir", group: "Activity Editor",
         label: "Device editor — IR payload dialog open",
@@ -2597,6 +2872,76 @@
         },
       },
       {
+        id: "payload-editor-rf", group: "Activity Editor",
+        label: "Device editor — RF payload dialog (433 MHz fan): Test and Learn",
+        states: STATES_CONNECTED,
+        contents: rfContents(),
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: rfBundle(), generation: 1 }),
+        },
+        async postLoad(card) {
+          const editor = await openLiveEditor(card, "Devices", "Ceiling fan");
+          const detail = editor.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+          if (!detail) throw new Error("payload-editor-rf: detail view did not open");
+          await detail.updateComplete;
+          // What the per-command pencil hands over for an RF command: the
+          // stored signal and its record code type (0x1D = 433 MHz).
+          detail._payload.openLive(1, 10, { dataHex: RF_FAN_OFF_HEX, decoded: null, libraryType: 0x1d });
+          detail.requestUpdate();
+          await detail.updateComplete;
+        },
+      },
+      ...[
+        {
+          id: "payload-editor-wifi-ip-x2", version: "X2",
+          label: "Device editor — X2 Wifi payload dialog (an app-made URL record)",
+          decoded: {
+            class: "wifi_ip", trailer_hex: "",
+            fields: { url: "http://192.168.1.161:8080/jsonrpc", method: "POST", headers: [["Content-Type", "application/json"]], body: "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Home\",\"id\":1}" },
+          },
+        },
+        {
+          id: "payload-editor-wifi-ip-x1s", version: "X1S",
+          label: "Device editor — X1S Wifi payload dialog (request text)",
+          decoded: {
+            class: "wifi_ip", trailer_hex: "f1",
+            fields: { host: "192.168.2.77", port: 8123, method: "POST", path: "/api/webhook/sofabaton", header: "", content_type: "application/json", body: "{\"key\":\"home\"}" },
+          },
+        },
+      ].map(({ id, version, label, decoded }) => ({
+        id, label, group: "Activity Editor",
+        states: STATES_CONNECTED,
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            devices_list: [...BASE_CONTENTS.hubs[0].devices_list, { id: 4, name: "Kodi", command_count: 1, device_class: "wifi_ip" }],
+          }],
+        },
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => {
+            const bundle = clone(EDIT_BACKUP_BUNDLE);
+            bundle.hub = { ...bundle.hub, version };
+            bundle.devices.push({
+              device: { device_id: 4, name: "Kodi", sort: 4, device_class: "wifi_ip" },
+              commands: [{ command_id: 1, name: "Home" }],
+              button_bindings: [], macros: [],
+            });
+            return { bundle, generation: 1 };
+          },
+        },
+        async postLoad(card) {
+          const editor = await openLiveEditor(card, "Devices", "Kodi");
+          const detail = editor.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+          if (!detail) throw new Error(`${id}: detail view did not open`);
+          await detail.updateComplete;
+          // Same entry point the per-command pencil uses once its blob fetch returns.
+          detail._payload.openLive(4, 1, { dataHex: "00 01", decoded });
+          detail.requestUpdate();
+          await detail.updateComplete;
+        },
+      })),
+      {
         id: "activities-needs-refresh", group: "Activity Editor",
         label: "Activity editor — needs cache refresh",
         states: STATES_CONNECTED,
@@ -2613,6 +2958,34 @@
         async postLoad(card) {
           await openActivityEditor(card, "Watch TV");
         },
+      },
+      {
+        id: "hub-x2-icons", group: "Hub Tab",
+        label: "Hub — an X2's activities on their colored icon tiles",
+        states: {
+          "remote.living_room": {
+            ...STATES_CONNECTED["remote.living_room"],
+            attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
+          },
+        },
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            activities: [
+              { id: 101, name: "Watch TV",        icon: 5,  color_id: 7, favorite_count: 3, macro_count: 1 },
+              { id: 102, name: "Listen to Music", icon: 3,  color_id: 4, favorite_count: 2, macro_count: 0 },
+              { id: 103, name: "Game Mode",       icon: 7,  color_id: 5, favorite_count: 5, macro_count: 2 },
+              { id: 104, name: "Good Night",      icon: 34, color_id: 3, favorite_count: 1, macro_count: 0 },
+            ],
+            devices_list: [
+              { id: 1, name: "Television",         icon: 18, color_id: 0,  command_count: 6,  device_class: "ir" },
+              { id: 2, name: "Soundbar",           icon: 11, color_id: 8,  command_count: 4,  device_class: "ir" },
+              { id: 7, name: "WiFi Remote Device", icon: 29, color_id: 10, command_count: 12, device_class: "wifi" },
+            ],
+          }],
+        },
+        postLoad: card => clickTab(card, "Hub"),
       },
       {
         id: "cache-refresh-all", group: "Hub Tab",
@@ -3017,6 +3390,139 @@
           await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
         },
+      },
+      {
+        id: "wifi-delivery-failed", group: "WiFi Commands",
+        label: "Wifi Device: the test press did not arrive",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        mqttAvailable: true,
+        wifiDevices: [
+          {
+            ...WIFI_DEVICE_LR,
+            deployed_transport: "http",
+            requested_transport: "http",
+            delivery: { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.110", via: "test" },
+          },
+          WIFI_DEVICE_BR,
+        ],
+        wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Living Room Remote");
+        },
+      },
+      {
+        id: "wifi-delivery-mqtt-no-broker", group: "WiFi Commands",
+        label: "Wifi Device over MQTT: the hub has no broker, so presses don't arrive",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        mqttAvailable: true,
+        hubMqtt: {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: false,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        },
+        wifiTestResult: { status: "not_delivered", transport: "mqtt", via: "test" },
+        wifiDevices: [
+          {
+            ...WIFI_DEVICE_LR,
+            deployed_transport: "mqtt",
+            requested_transport: "mqtt",
+            delivery: { status: "not_delivered", transport: "mqtt", target: "192.168.1.10:1883", hub_ip: "192.168.1.110", via: "test" },
+          },
+          WIFI_DEVICE_BR,
+        ],
+        wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Living Room Remote");
+        },
+      },
+      {
+        id: "wifi-create-mqtt-no-broker", group: "WiFi Commands",
+        label: "X2 create: MQTT while the hub has no broker",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        mqttAvailable: true,
+        hubMqtt: {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: false,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        },
+        wifiDevices: WIFI_DEVICES_HEALTHY,
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          const tab = card.shadowRoot.querySelector("sofabaton-wifi-commands-tab");
+          tab._openCreateDeviceModal();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: "settings-x2-broker", group: "Settings",
+        label: "X2 settings: the hub's MQTT broker line",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        hubMqtt: {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: false,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        },
+        postLoad: card => clickTab(card, "Settings"),
+      },
+      {
+        id: "settings-x2-broker-other-hub", group: "Settings",
+        label: "X1S settings with an X2 configured: the broker line stays on the X2's tab",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [
+            HUB_1,
+            { entry_id: "hub-x2", name: "Basement X2", version: "X2",
+              ip_address: "192.168.1.112", activity_count: 2, device_count: 1,
+              hub_connected: true, mqtt_available: true, broker_setup_available: true,
+              actions: { can_sync_remote: true },
+              settings: { proxy_enabled: false, hex_logging_enabled: false, wifi_device_enabled: false } },
+          ],
+        },
+        hubMqtt: {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: true,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        },
+        postLoad: card => clickTab(card, "Settings"),
       },
       {
         id: 24, group: "WiFi Commands",

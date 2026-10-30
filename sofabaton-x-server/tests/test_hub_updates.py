@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from sofabaton_server import API_PREFIX
+from sofabaton_server import API_PREFIX, hub_updates
 from sofabaton_server.app import create_app
 from sofabaton_server.config import Settings
 from sofabaton_server.hub_updates import HubUpdates
@@ -105,10 +106,14 @@ def test_projection_runs_only_when_the_generation_moved(tmp_path: Path) -> None:
         assert proxy.peeks == peeks + 1
 
 
-def test_a_running_job_projects_at_most_once_a_second(tmp_path: Path) -> None:
+def test_a_running_job_projects_at_most_once_a_second(tmp_path: Path, monkeypatch) -> None:
     # A whole-hub refresh moves the generation on every read: the id is
     # projected again at most once a second while the job runs, and at once
-    # when it has ended.
+    # when it has ended. The throttle reads its own clock, stepped here: a
+    # slow runner starting the job must not use up the second (asyncio keeps
+    # the real one).
+    now = [1000.0]
+    monkeypatch.setattr(hub_updates, "time", SimpleNamespace(time=time.time, monotonic=lambda: now[0]))
     client, factory = _rig(tmp_path)
     with client:
         client.post(HUBS, json={"host": HOST})
@@ -121,7 +126,7 @@ def test_a_running_job_projects_at_most_once_a_second(tmp_path: Path) -> None:
         proxy.move_cache()
         held = client.get(f"{HUBS}/{HOST}").json()["cache"]
         assert held == first
-        time.sleep(1.05)
+        now[0] += 1.05
         later = client.get(f"{HUBS}/{HOST}").json()["cache"]
         assert later["snapshot_id"] != first["snapshot_id"] and later["generation"] > first["generation"]
         proxy.hub_name = "Den 2"

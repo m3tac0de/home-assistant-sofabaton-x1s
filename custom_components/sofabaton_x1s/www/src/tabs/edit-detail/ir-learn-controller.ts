@@ -2,9 +2,11 @@
 //
 // It owns the learn state (the source menu, the hub learn window and its
 // countdown, the Home Assistant emission inbox) and its rendering. The
-// element keeps the two points where learning meets the payload dialog:
-// whether learning applies to the open command (_learnAvailable) and
-// dropping a learned blob into the editor (_adoptLearnedPayload).
+// element keeps the points where learning meets the payload dialog:
+// whether learning applies to the open command (_learnAvailable), what it
+// learns as (_learnSignal) and dropping a learned blob into the editor
+// (_adoptLearnedPayload). An RF command has one source only, the hub's RF
+// receiver, so it skips the menu and goes straight to the hub window.
 
 import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import type {
@@ -15,7 +17,7 @@ import type {
 } from "../../shared/ha-context";
 import { backendErrorCode, localizeBackendError } from "../../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../../strings";
-import type { IrLearnHost } from "./host-types";
+import type { IrLearnHost, PayloadSignal } from "./host-types";
 
 /** Seconds the hub keeps its receiver armed per learn attempt (hub exits at ~60 s anyway). */
 const LEARN_TIMEOUT_S = 60;
@@ -37,6 +39,7 @@ function formatCarrierKhz(carrierHz: number): string {
 export interface IrLearnControllerHost extends ReactiveControllerHost {
   readonly irLearn: IrLearnHost | null;
   _learnAvailable(): boolean;
+  _learnSignal(): PayloadSignal | null;
   _adoptLearnedPayload(hex: string, note: string): void;
 }
 
@@ -151,12 +154,13 @@ export class IrLearnController implements ReactiveController {
   renderEntryButton() {
     if (!this.host._learnAvailable()) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
+    const aria = this.rfBand() != null ? S.learnRfAria : S.learnAria;
     return html`
       <button
         class="payload-learn-btn"
         type="button"
-        title=${S.learnAria}
-        aria-label=${S.learnAria}
+        title=${aria}
+        aria-label=${aria}
         @click=${() => void this.enter()}
       >
         <ha-icon icon="mdi:import"></ha-icon>
@@ -220,10 +224,12 @@ export class IrLearnController implements ReactiveController {
         icon = "mdi:progress-clock";
         title = S.learnHubArming;
         break;
-      case "listening":
-        title = S.learnHubListening;
+      case "listening": {
+        const band = this.rfBand();
+        title = band != null ? S.learnRfListening(band) : S.learnHubListening;
         detail = S.learnHubCountdown(this.formatCountdown(this.secondsLeft));
         break;
+      }
       case "timed_out":
         icon = "mdi:timer-off-outline";
         title = S.learnHubTimedOut;
@@ -359,6 +365,13 @@ export class IrLearnController implements ReactiveController {
   async enter() {
     const host = this.host.irLearn;
     if (!host || !this.host._learnAvailable()) return;
+    if (this.rfBand() != null) {
+      // RF has no Home Assistant source: no menu, no inbox.
+      this.sourceNote = "";
+      this.startTicker();
+      void this.startHubLearn();
+      return;
+    }
     this.view = "menu";
     this.sourceNote = "";
     this.haAvailable = null;
@@ -379,6 +392,12 @@ export class IrLearnController implements ReactiveController {
   /** Re-read after an await (TypeScript narrows the field across awaits otherwise). */
   left(): boolean {
     return this.view === "off";
+  }
+
+  /** The RF band of the open command, or null when it learns as IR. */
+  rfBand(): 433 | 315 | null {
+    const signal = this.host._learnSignal();
+    return signal == null || signal === "ir" ? null : signal;
   }
 
   haOptionVisible(): boolean {
@@ -439,6 +458,11 @@ export class IrLearnController implements ReactiveController {
   }
 
   backToMenu() {
+    if (this.rfBand() != null) {
+      // RF never had a menu: going back leaves learn mode.
+      this.exit();
+      return;
+    }
     this.cancelHubLearn();
     this.view = "menu";
   }
@@ -479,7 +503,7 @@ export class IrLearnController implements ReactiveController {
       const cancel = await host.learnFromHub((event) => {
         if (attempt !== this.hubAttempt) return;
         this.handleHubLearnEvent(event);
-      }, LEARN_TIMEOUT_S);
+      }, LEARN_TIMEOUT_S, this.rfBand());
       if (attempt !== this.hubAttempt || this.view !== "hub") {
         // Superseded (Back/Cancel/close) while the subscribe was in flight.
         try { cancel(); } catch { /* ignore */ }
@@ -519,6 +543,11 @@ export class IrLearnController implements ReactiveController {
     if (!hex) {
       this.hubState = "error";
       this.hubEvent = { state: "error", error_code: "ir_learn_no_payload" };
+      return;
+    }
+    const band = this.rfBand();
+    if (band != null) {
+      this.host._adoptLearnedPayload(hex, S.learnRfLearned(Number(event.band) || band));
       return;
     }
     const timings = Number(event.duration_count) || 0;

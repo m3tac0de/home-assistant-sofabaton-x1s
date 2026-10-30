@@ -24,6 +24,8 @@ from .const import (
 from .lib.protocol_const import (
     ButtonName,
     DEVICE_CLASS_IR,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
 )
 from .lib.blob_decoders import (
     format_decoded_for_display as decoded_blob_display_text,
@@ -127,12 +129,23 @@ class HubOpsMixin:
                             blob_kind = "decoded"
                         parsed_blob = decoded_blob_display_text(candidate)
 
+            # The record's code type from the cached command list: an RF
+            # device can hold IR commands next to its RF ones, so the
+            # editor reads IR vs RF per command, not from the device.
+            library_type: int | None = None
+            command_meta = (
+                self._proxy.state.command_metadata.get(normalized_device_id & 0xFF) or {}
+            ).get(int(command.get("command_id") or 0) & 0xFF)
+            if isinstance(command_meta, dict) and command_meta.get("library_type") is not None:
+                library_type = int(command_meta["library_type"]) & 0xFF
+
             commands_out.append(
                 {
                     "command_label": command.get("label"),
                     "device_id": normalized_device_id,
                     "command_id": command.get("command_id"),
                     "device_class": cached_device_class,
+                    "library_type": library_type,
                     "blob_kind": blob_kind,
                     "command_blob": blob_body.hex(" ") if blob_body else None,
                     "parsed_blob": parsed_blob,
@@ -619,6 +632,39 @@ class HubOpsMixin:
             partial(self._proxy.ir_learn_command, timeout=timeout)
         )
 
+    @property
+    def rf_codes_supported(self) -> bool:
+        """True when the hub can learn and send RF codes (X1S and X2)."""
+
+        return bool(self._proxy.rf_codes_supported())
+
+    async def async_play_rf_blob(
+        self,
+        blob: bytes,
+        *,
+        band: int,
+        inter_frame_delay: float = 0.08,
+    ) -> bool:
+        """Send an RF code once from the hub (no persistence); ``band`` is 433 or 315."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.play_rf_blob,
+                blob,
+                band=band,
+                inter_frame_delay=inter_frame_delay,
+            )
+        )
+
+    async def async_rf_learn_command(
+        self, *, band: int, timeout: float = 60.0
+    ) -> dict[str, Any] | None:
+        """Arm RF learn mode on ``band`` and wait for one capture (or an ending)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.rf_learn_command, band=band, timeout=timeout)
+        )
+
     def cancel_ir_learn(self) -> bool:
         """Wake an in-flight ``async_ir_learn_command`` early (non-blocking).
 
@@ -640,7 +686,13 @@ class HubOpsMixin:
         """Persist a new IR command blob onto an existing device."""
 
         device_class = self._get_cached_device_class(device_id)
-        if device_class is not None and device_class != DEVICE_CLASS_IR:
+        # Each command record carries its own transport type, so an RF
+        # device can hold learned IR commands next to its RF ones.
+        if device_class is not None and device_class not in (
+            DEVICE_CLASS_IR,
+            DEVICE_CLASS_RF_433,
+            DEVICE_CLASS_RF_315,
+        ):
             raise HomeAssistantError(
                 f"persist_ir_blob only supports IR devices; device {device_id} is {device_class}"
             )
@@ -800,6 +852,7 @@ class HubOpsMixin:
         device_id: int,
         *,
         refresh_impacted_activities: bool = True,
+        sync_remotes: bool = False,
     ) -> dict[str, Any] | None:
         """Delete a device and confirm impacted activities on the selected hub.
 
@@ -811,6 +864,12 @@ class HubOpsMixin:
         their own re-warm pass afterwards (the wifi deploy pipeline) pass
         ``refresh_impacted_activities=False`` and fold the result's
         ``impacted_activities`` into that pass instead.
+
+        ``sync_remotes`` is for a delete the user asked for on its own: it
+        ends with the remote syncs a delete needs (the full sync on the
+        X1/X1S, per-item syncs of the impacted activities on the X2). Flows
+        that delete as one step of a larger write leave it off and sync once
+        at their own end.
         """
 
         result = await self.hass.async_add_executor_job(
@@ -843,6 +902,11 @@ class HubOpsMixin:
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             await self._async_persist_cache_if_enabled()
+            if sync_remotes:
+                impacted_ids = result.get("impacted_activities") or result.get("confirmed_activities") or []
+                await self.async_sync_remotes_after_write(
+                    deleted=(device_id & 0xFF,), touched=tuple(int(a) & 0xFF for a in impacted_ids)
+                )
         return result
 
     async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
@@ -871,16 +935,22 @@ class HubOpsMixin:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         return result
 
-    async def async_create_activity(self, name: str) -> dict[str, Any] | None:
+    async def async_create_activity(
+        self, name: str, *, icon: int | None = None, color_id: int | None = None
+    ) -> dict[str, Any] | None:
         """Create a fresh, empty activity named *name* on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.create_activity,
-            name,
+            partial(self._proxy.create_activity, name, icon=icon, color_id=color_id)
         )
 
     async def async_create_device(
-        self, name: str, *, device_class: str
+        self,
+        name: str,
+        *,
+        device_class: str,
+        icon: int | None = None,
+        color_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Create an empty device of *device_class* named *name* on the hub.
 
@@ -893,7 +963,13 @@ class HubOpsMixin:
         """
 
         result = await self.hass.async_add_executor_job(
-            partial(self._proxy.create_device, name, device_class=device_class)
+            partial(
+                self._proxy.create_device,
+                name,
+                device_class=device_class,
+                icon=icon,
+                color_id=color_id,
+            )
         )
         if isinstance(result, dict) and str(result.get("status")) == "success":
             self._devices_generation += 1
@@ -1070,6 +1146,33 @@ class HubOpsMixin:
     async def async_resync_remote(self) -> None:
         self._log.debug("[%s] Triggering remote resync", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
+
+    async def async_sync_remotes_after_write(
+        self,
+        *,
+        created: tuple[int, ...] | list[int] = (),
+        touched: tuple[int, ...] | list[int] = (),
+        deleted: tuple[int, ...] | list[int] = (),
+    ) -> bool:
+        """The remote syncs that bring a write to the remotes: per-item,
+        order-only or full, whichever covers it (proxy
+        ``sync_remotes_after_write``). True when nothing was needed."""
+
+        created, touched, deleted = tuple(created), tuple(touched), tuple(deleted)
+        if not (created or touched or deleted):
+            return True
+        self._log.debug(
+            "[%s] Remote sync after a write: created=%s touched=%s deleted=%s",
+            self.entry_id, created, touched, deleted,
+        )
+        return bool(
+            await self.hass.async_add_executor_job(
+                partial(
+                    self._proxy.sync_remotes_after_write,
+                    created=created, touched=touched, deleted=deleted, origin="ha",
+                )
+            )
+        )
 
     async def async_send_button(self, btn_code: int) -> None:
         if self.current_activity is None:

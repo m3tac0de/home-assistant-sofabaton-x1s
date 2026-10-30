@@ -60,11 +60,11 @@ Pick the way that fits where it will run:
   [Compose file](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docker-compose.yml)
   and Linux host networking. See [Docker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#docker).
 - **A computer (Windows, macOS, Linux):** install with
-  [pipx](https://pipx.pypa.io/stable/installation/), which keeps the
+  [pipx](https://pipx.pypa.io/latest/how-to/install-pipx.html), which keeps the
   server in its own Python environment and upgrades with one command:
 
   ```sh
-  pipx install "sofabaton-x-server>=0.2.6,<0.3"
+  pipx install "sofabaton-x-server>=0.2.7,<0.3"
   sofabaton-x-server --data-dir <a folder for its data>
   ```
 
@@ -182,13 +182,13 @@ For a bug report, [open an issue](https://github.com/m3tac0de/home-assistant-sof
 with your server version, hub model and firmware, installation method,
 relevant logs and steps to reproduce the problem.
 
-This README describes **0.2.6**, using **API 1** and
-**sofabaton-x >=0.2.5,<0.3**. Read the
+This README describes **0.2.7**, using **API 1** and
+**sofabaton-x >=0.2.6,<0.3**. Read the
 [changelog and upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/CHANGELOG.md)
-when updating. This release keeps the control panel current with changes
-made elsewhere (a new `hub_update` push on the event stream), lets two
-Wifi Devices share a button across activities, and keeps the display
-order through restores and creates. Existing access settings, hub
+when updating. This release edits activity and device icons (and X2
+colors) and X2 IR emitter routing, tests that Wifi Device presses reach
+the server, opens X2 Wifi commands made in the Sofabaton app in the HTTP
+form, and sends the cheapest remote sync after each write. Existing access settings, hub
 registrations, Wifi Devices and saved layouts carry forward without conversion.
 
 ## Development

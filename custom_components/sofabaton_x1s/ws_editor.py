@@ -28,6 +28,7 @@ from .command_config import (
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
 from .lib.bundle_validation import validate_new_entity_name
 from .lib.device_class_profiles import MAX_DEVICE_NAME_LEN, supported_create_classes
+from .lib.devices import validate_appearance
 from .lib.protocol_const import normalize_device_class
 from . import operations
 from . import runtime
@@ -46,6 +47,20 @@ def _new_entity_name_storable(hub: SofabatonHub, name: str) -> bool:
     try:
         validate_new_entity_name(name, hub_version=_hub_model_for_names(hub))
     except ValueError:
+        return False
+    return True
+
+
+def _appearance_storable(hub: SofabatonHub, connection, msg: dict[str, Any]) -> bool:
+    """A create's optional icon / color are ones the hub line offers; sends
+    the error and returns False otherwise."""
+
+    try:
+        validate_appearance(
+            str(hub.version or ""), icon=msg.get("icon"), color_id=msg.get("color_id")
+        )
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_appearance", str(err))
         return False
     return True
 
@@ -155,7 +170,7 @@ async def _handle_entity_delete_ws(
         return
 
     entity_id = int(msg["activity_id" if entity_kind == "activity" else "device_id"])
-    result = await hub.async_delete_device(device_id=entity_id)
+    result = await hub.async_delete_device(device_id=entity_id, sync_remotes=True)
     if not result or str(result.get("status")) != "success":
         connection.send_error(
             msg["id"],
@@ -315,6 +330,8 @@ async def _ws_hub_rename(hass: HomeAssistant, connection, msg: dict[str, Any]) -
         vol.Required("type"): f"{DOMAIN}/activity/create",
         vol.Required("entry_id"): str,
         vol.Required("name"): str,
+        vol.Optional("icon"): int,
+        vol.Optional("color_id"): int,
     }
 )
 @websocket_api.async_response
@@ -343,8 +360,12 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
             "The hub cannot store this activity name",
         )
         return
+    if not _appearance_storable(hub, connection, msg):
+        return
 
-    result = await hub.async_create_activity(name)
+    result = await hub.async_create_activity(
+        name, icon=msg.get("icon"), color_id=msg.get("color_id")
+    )
     if not result or str(result.get("status")) != "success":
         connection.send_error(
             msg["id"],
@@ -361,6 +382,8 @@ async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, An
         vol.Required("entry_id"): str,
         vol.Required("name"): str,
         vol.Required("device_class"): str,
+        vol.Optional("icon"): int,
+        vol.Optional("color_id"): int,
     }
 )
 @websocket_api.async_response
@@ -400,8 +423,15 @@ async def _ws_device_create(hass: HomeAssistant, connection, msg: dict[str, Any]
             f"{hub.version} hub",
         )
         return
+    if not _appearance_storable(hub, connection, msg):
+        return
 
-    result = await hub.async_create_device(name, device_class=device_class)
+    result = await hub.async_create_device(
+        name,
+        device_class=device_class,
+        icon=msg.get("icon"),
+        color_id=msg.get("color_id"),
+    )
     if not result or str(result.get("status")) != "success":
         connection.send_error(
             msg["id"],
@@ -440,9 +470,12 @@ async def _handle_entity_sync_plan_ws(
                 # Command removal is in scope for every device (the review
                 # preview must mirror the executor's rules).
                 allow_command_removal=True,
+                hub_version=getattr(hub, "version", None),
             )
         else:
-            plan = build_activity_sync_plan(baseline, edited, entity_id)
+            plan = build_activity_sync_plan(
+                baseline, edited, entity_id, hub_version=getattr(hub, "version", None)
+            )
     except (ValueError, TypeError, AttributeError) as err:
         connection.send_error(msg["id"], "invalid_payload", str(err))
         return

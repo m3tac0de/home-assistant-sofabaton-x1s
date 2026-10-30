@@ -13,6 +13,7 @@ import logging
 from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.lib.proxy_activity_sync import ActivitySyncMixin
+from custom_components.sofabaton_x1s.lib.write_batch import WriteBatchMixin
 from tests.test_activity_sync_plan import base_bundle, _activity, _device, ACTIVITY_ID
 from tests.test_device_sync_plan import base_bundle as device_base_bundle, DEVICE_ID
 
@@ -32,10 +33,20 @@ class FakeProxy(ActivitySyncMixin):
         self.command_labels: dict[int, str] = {}
         # The X1 quick-access order check a sync runs after its plan.
         self.quick_access_repairs: list[int] = []
+        # The remote syncs closing a run (WriteBatchMixin), kept apart from
+        # the write calls: (entity, plan step kinds, origin).
+        self.item_syncs: list[tuple] = []
 
     # Environment
     def can_issue_commands(self) -> bool:
         return self.can_issue
+
+    def _begin_item_sync_tracking(self) -> None:
+        self.item_syncs.append("begin")
+
+    def _sync_remotes_after_edit(self, entity_id, steps, origin) -> bool:
+        self.item_syncs.append((entity_id, tuple(step.kind for step in steps), origin))
+        return True
 
     def backup_activity(self, activity_id, **_kw):
         if isinstance(self._fresh_activity, list):
@@ -135,8 +146,11 @@ class FakeProxy(ActivitySyncMixin):
         return {"commands": [{"command_id": int(command_id), "ir_blob_hex": blob}]}
 
 
-class DeleteKeyProxy(ActivitySyncMixin):
+class DeleteKeyProxy(ActivitySyncMixin, WriteBatchMixin):
     def __init__(self) -> None:
+        self._init_write_batch()
+        self.hub_version = "X1S"
+        self._log = logging.getLogger("test.delete_key")
         self.reset_count = 0
         self.steps: list[dict] = []
 
@@ -181,6 +195,11 @@ def test_full_edit_dispatches_in_plan_order_and_reports_counters():
     assert kinds.index("favorite_add") < kinds.index("idle_behavior")
     assert kinds[-1] == "remote_sync"
     assert result["counters"]["favorite_add"] == 1
+    # The run tracks per-item syncs from its start and closes with the remote
+    # sync of what the plan changed, after the walk.
+    assert proxy.item_syncs[0] == "begin"
+    assert proxy.item_syncs[-1][0] == ACTIVITY_ID and proxy.item_syncs[-1][2] == "activity-sync"
+    assert "favorite_add" in proxy.item_syncs[-1][1]
 
 
 def test_member_replay_threads_input_cmd_id_to_add_device():
@@ -318,6 +337,7 @@ def test_activity_sync_delete_key_allows_slow_status_ack():
     assert delete_step["timeout"] >= 10.0
     commit_step = proxy.steps[1]
     assert commit_step["step_name"] == "activity-sync-delete-commit-65[act=0x65]"
+    assert (commit_step["family"], commit_step["payload"]) == (0x65, b"\x65")
     assert "timeout" not in commit_step
 
 
@@ -660,6 +680,8 @@ def test_device_sync_dispatches_with_device_entity_id_and_refreshes():
     # Tail refresh re-reads the device (blob-free) after the writes.
     assert kinds[-1] == "backup_device"
     assert proxy.calls[-1][2].get("include_blobs") is False
+    # Closed by the device's remote sync after the read-back.
+    assert proxy.item_syncs[-1][0] == DEVICE_ID and proxy.item_syncs[-1][2] == "device-sync"
 
 
 def test_device_macro_write_uses_the_single_page_device_builder():
@@ -697,6 +719,32 @@ def test_device_macro_write_uses_the_single_page_device_builder():
     assert step1[8] == 4 and step1[9] == 255
     step2 = payload[19:29]
     assert step2[:9] == b"\xff" * 9 and step2[9] == 3  # delay sentinel row
+
+
+def test_device_macro_write_pages_past_one_frame():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["macros"][0]["steps"] = [
+        {"command_id": 10, "duration": 0, "delay": 255} for _ in range(19)
+    ]
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    frames: list[tuple[int, bytes]] = []
+    proxy._send_family_frame = lambda family, payload: frames.append((family, payload))
+    # Answer each page with the ack it waits for: STATUS 0x00, then the key.
+    proxy.wait_for_ack_any = lambda candidates, **kw: (
+        candidates[0][0],
+        bytes([candidates[0][1] or 0]),
+    )
+    proxy.reset_ack_queues = lambda: None
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    assert [family for family, _payload in frames] == [0x12, 0x12]
+    assert frames[0][1][0:3] == b"\x01\x00\x01"
+    assert frames[1][1][0:3] == b"\x01\x00\x02"
+    assert frames[0][1][3:9] == bytes([0x01, 0x00, 0x02, DEVICE_ID, 198, 19])
 
 
 def test_device_sync_stale_preflight_blocks_before_any_write():
@@ -934,6 +982,26 @@ def test_command_add_raw_clones_library_type_and_registers_sort():
     assert sort_call[2]["new_command_id"] == 12
 
 
+def test_command_add_raw_uses_the_rows_own_library_type():
+    # An RF code added to a device whose first command is IR names its own
+    # record type; the cached IR type must not be cloned onto it.
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "00 09 03 e0 1e 5c 01", "library_type": 0x1D,
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_command_record")
+    assert call[2]["library_type"] == 0x1D
+    assert call[2]["command_data"] == bytes.fromhex("000903e01e5c01")
+
+
 def test_command_add_raw_refuses_without_metadata_to_clone():
     base = device_base_bundle()
     edited = copy.deepcopy(base)
@@ -1082,6 +1150,220 @@ def test_device_rename_step_without_brand_preserves_the_brand(monkeypatch):
     assert written.name == "Lampen"
     assert written.brand == original.brand
     assert cached["brand"] == original.brand
+
+
+def test_device_rename_step_keeps_color_and_bluetooth_mode(monkeypatch):
+    """A rename rebuilds the record from its parsed fields; the color id
+    (tail 22) and Bluetooth link mode (tail 23) must come through it, or
+    the rename resets the X2 color and can flip a BLE device to classic."""
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Shield", code_type=0x03, device_id=1, color_id=5, bt_mode=2)
+    raw_body = build_device_create_payload(original, hub_version="X2")[3:]
+    cached = {"raw_body": raw_body, "name": "Shield"}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X2"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+
+    def fake_run_create_sequence(proxy, steps):
+        captured.extend(steps)
+        return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(pas, "run_create_sequence", fake_run_create_sequence)
+
+    assert RenameProxy()._sync_step_device_rename({"device_id": 1, "name": "Living Shield"}) is True
+    written = parse_device_record(
+        bytes(captured[0].payload[3:]), hub_version="X2", entity_kind="device"
+    )
+    assert written.name == "Living Shield"
+    assert (written.color_id, written.bt_mode) == (5, 2)
+
+
+def test_activity_rename_step_writes_icon_and_color_into_the_row(monkeypatch):
+    """X1S/X2: icon and color are patched into the hub's own row next to
+    the name, and the cache follows once the hub acks."""
+    from custom_components.sofabaton_x1s.lib.ack import AckOutcome
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        record_appearance,
+    )
+    from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X2"
+    )
+    row = build_device_create_payload(
+        DeviceConfig(name="Watch TV", device_id=0x65, icon=5, color_id=7), hub_version="X2"
+    )
+    proxy.state.activities[0x65] = {"name": "Watch TV", "raw_body": row[3:]}
+    proxy._activity_row_payloads[0x65] = row
+    sent: list = []
+    monkeypatch.setattr(
+        proxy, "_status_exchange", lambda *args, **kw: sent.append(args[2]) or AckOutcome.acked
+    )
+
+    assert proxy._sync_step_activity_rename(
+        {"activity_id": 0x65, "name": "Watch TV", "icon": 34, "color_id": 3}
+    ) is True
+    assert record_appearance(sent[0][3:], hub_version="X2") == (34, 3)
+    # Only those two bytes and the cleared confirm flag may differ.
+    assert sum(a != b for a, b in zip(sent[0], row, strict=True)) <= 3
+    assert record_appearance(proxy.state.activities[0x65]["raw_body"], hub_version="X2") == (34, 3)
+    assert proxy._activity_row_payloads[0x65] == sent[0]
+
+
+def test_device_rename_step_writes_icon_and_color(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Shield", code_type=0x03, device_id=1, icon=1, color_id=5, bt_mode=2)
+    cached = {"raw_body": build_device_create_payload(original, hub_version="X2")[3:], "name": "Shield"}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X2"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+    monkeypatch.setattr(
+        pas, "run_create_sequence", lambda proxy, steps: captured.extend(steps) or SimpleNamespace(success=True)
+    )
+
+    assert RenameProxy()._sync_step_device_rename(
+        {"device_id": 1, "name": "Shield", "icon": 13, "color_id": 11}
+    ) is True
+    written = parse_device_record(bytes(captured[0].payload[3:]), hub_version="X2")
+    assert (written.name, written.icon, written.color_id, written.bt_mode) == ("Shield", 13, 11, 2)
+    assert parse_device_record(cached["raw_body"], hub_version="X2").icon == 13
+
+
+def test_device_rename_step_writes_the_emitter_routing(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+        record_emitters,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(
+        name="Projector", device_id=3, icon=4, color_id=2, extra_a=0, extra_b=0, extra_c=0x07, extras_present=True
+    )
+    cached = {"raw_body": build_device_create_payload(original, hub_version="X2")[3:], "name": "Projector"}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X2"
+            self.state = SimpleNamespace(entities=lambda kind: {3: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+    monkeypatch.setattr(
+        pas, "run_create_sequence", lambda proxy, steps: captured.extend(steps) or SimpleNamespace(success=True)
+    )
+
+    assert RenameProxy()._sync_step_device_rename(
+        {"device_id": 3, "name": "Projector", "emitters": [0, 0, 0x08]}
+    ) is True
+    written = parse_device_record(bytes(captured[0].payload[3:]), hub_version="X2")
+    assert (written.extra_a, written.extra_b, written.extra_c, written.extras_present) == (0, 0, 0x08, True)
+    assert (written.name, written.icon, written.color_id) == ("Projector", 4, 2)
+    # Only the routing byte (and the checksum) moved.
+    before = build_device_create_payload(original, hub_version="X2")
+    changed = [i for i, (x, y) in enumerate(zip(before, captured[0].payload, strict=True)) if x != y]
+    assert len(changed) == 2 and changed[-1] == len(before) - 1
+    assert record_emitters(cached["raw_body"], hub_version="X2") == (0, 0, 0x08)
+
+
+def test_wifi_head_commit_keeps_icon_and_color(monkeypatch):
+    """The Wifi Commands head rewrite rebuilds the callback head from
+    scratch; the icon and the X2 color must come through it, or every
+    deploy resets a managed Wifi Device to the grey TV."""
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X2"
+    )
+    head = DeviceConfig(
+        name="Lights", brand="m3-a1b2c3d4-ffee00", device_id=5, code_type=0x1C,
+        device_type=0x10, input_mode=2, icon=29, color_id=10,
+    )
+    proxy.state.devices[5] = {
+        "name": "Lights",
+        "device_class": "wifi",
+        "raw_body": build_device_create_payload(head, hub_version="X2")[3:],
+    }
+    sent: list = []
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.1.10")
+    monkeypatch.setattr(proxy, "_send_step", lambda **kw: sent.append(kw) or SimpleNamespace(ok=True))
+
+    assert proxy._sync_step_wifi_head_commit(
+        {"device_id": 5, "name": "Lights", "brand": "m3-a1b2c3d4-00ff11"}
+    ) is True
+    written = parse_device_record(bytes(sent[0]["payload"][3:]), hub_version="X2")
+    assert (written.icon, written.color_id) == (29, 10)
+
+
+def test_wifi_head_commit_writes_a_named_icon_and_color(monkeypatch):
+    """A spec that names an icon or color replaces the head's own; the rest of the head stays."""
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X2"
+    )
+    head = DeviceConfig(
+        name="Lights", brand="m3-a1b2c3d4-ffee00", device_id=5, code_type=0x1C,
+        device_type=0x10, input_mode=2, icon=29, color_id=10,
+    )
+    proxy.state.devices[5] = {
+        "name": "Lights",
+        "device_class": "wifi",
+        "raw_body": build_device_create_payload(head, hub_version="X2")[3:],
+    }
+    sent: list = []
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.1.10")
+    monkeypatch.setattr(proxy, "_send_step", lambda **kw: sent.append(kw) or SimpleNamespace(ok=True))
+
+    assert proxy._sync_step_wifi_head_commit(
+        {"device_id": 5, "name": "Lights", "brand": "m3-a1b2c3d4-ffee00", "icon": 41, "color_id": 3}
+    ) is True
+    written = parse_device_record(bytes(sent[0]["payload"][3:]), hub_version="X2")
+    assert (written.name, written.icon, written.color_id) == ("Lights", 41, 3)
 
 
 def test_command_rename_refuses_when_payload_unreadable():

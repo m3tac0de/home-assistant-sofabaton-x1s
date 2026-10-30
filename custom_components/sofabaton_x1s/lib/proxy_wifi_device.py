@@ -152,6 +152,8 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         ip_device: bool = False,
         brand_name: str = "m3tac0de",
         wifi_power_state: tuple[int, int, int] | None = None,
+        icon: int = 1,
+        color_id: int = 0,
     ) -> bytes:
         """Serialise a wifi-callback device record into the family-0x07 body.
 
@@ -178,6 +180,11 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
           at zero). ``wifi_power_state`` overrides both with an explicit
           ``(power_mode, power_style, tail_marker)`` triple, used when
           the caller is committing a fully-configured device record.
+
+        ``icon`` and ``color_id`` carry the icon and tile color of an
+        existing head through a rewrite (the app lets the user pick an
+        icon, and on the X2 a color); creates leave them at ``1`` (the TV)
+        and ``0``.
 
         ``device_class_byte`` is accepted for caller-shape parity but
         no longer affects the wire body; the body's sub-marker is
@@ -209,7 +216,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             brand=brand_name,
             device_id=device_id & 0xFF,
             record_kind=0,
-            icon=1,
+            icon=icon & 0xFF,
             sort=0,
             code_type=(0x1C if ip_device else 0x0A),
             device_type=0x10,
@@ -225,6 +232,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             power_style=power_style,
             share_mode=0,
             tail_marker=tail_marker,
+            color_id=color_id & 0xFF,
         )
         return build_device_create_payload(config, hub_version=self.hub_version)
 
@@ -977,7 +985,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         # pipeline sends its own single terminal trigger after all
         # writes.
         if profile.get("send_remote_sync", True):
-            if not self._send_remote_sync_step("save-tail-remote-sync"):
+            if not self.sync_remotes_after_write(created=(device_id,), origin="save-tail"):
                 return None
 
         self._cache_created_wifi_device(
@@ -1140,10 +1148,10 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
 
         # App-parity save tail: skipped when the deploy pipeline owns the
         # batch -- see the note in :meth:`_run_wifi_create_x1_roku`. This
-        # path also runs on the X2, so the trigger is the hub's own form
-        # (the all-remotes broadcast there), never a bare 0x0064.
+        # path also runs on the X2: the create gets the order-only sync and
+        # the new device's per-item sync there, the full sync elsewhere.
         if profile.get("send_remote_sync", True):
-            if not self._send_remote_sync_step("save-tail-remote-sync"):
+            if not self.sync_remotes_after_write(created=(device_id,), origin="save-tail"):
                 return None
 
         self._cache_created_wifi_device(

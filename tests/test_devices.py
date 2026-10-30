@@ -41,6 +41,7 @@ from custom_components.sofabaton_x1s.lib.devices import (
     DeviceConfig,
     build_device_create_payload,
     parse_device_record,
+    record_appearance,
 )
 
 
@@ -403,3 +404,82 @@ def test_parser_rejects_body_with_wrong_length() -> None:
     short_body = b"\x01" * (DEVICE_BODY_LEN_X1 - 1)
     with pytest.raises(ValueError):
         parse_device_record(short_body, hub_version=HUB_VERSION_X1)
+
+
+# ---------------------------------------------------------------------------
+# Color id + Bluetooth mode (tail 22-23, X1S/X2 only)
+# ---------------------------------------------------------------------------
+
+
+def test_stored_color_and_bt_mode_survive_parse_and_rebuild() -> None:
+    """A stored X2 record with tail 22-23 set rebuilds byte-identical, so
+    every parse -> replace -> build rewrite (rename, IP edit) keeps them."""
+
+    stored = bytearray(
+        build_device_create_payload(DeviceConfig(name="Shield", device_id=4), hub_version=HUB_VERSION_X2)[3:]
+    )
+    stored[149 + 22] = 0x09  # color id
+    stored[149 + 23] = 0xFF  # Bluetooth-mode byte as other classes carry it
+    stored[-1] = sum(stored[:-1]) & 0xFF
+
+    parsed = parse_device_record(bytes(stored), hub_version=HUB_VERSION_X2)
+    assert (parsed.color_id, parsed.bt_mode) == (0x09, 0xFF)
+    assert build_device_create_payload(parsed, hub_version=HUB_VERSION_X2)[3:] == bytes(stored)
+
+
+def test_x1_record_never_carries_color_or_bt_mode() -> None:
+    """An X2 bundle restored onto an X1 must not write tail 22-23 there."""
+
+    config = DeviceConfig(name="TV", device_id=3, color_id=6, bt_mode=2)
+    body = build_device_create_payload(config, hub_version=HUB_VERSION_X1)[3:]
+    assert body[89 + 22 : 89 + 24] == b"\x00\x00"
+    parsed = parse_device_record(body, hub_version=HUB_VERSION_X1)
+    assert (parsed.color_id, parsed.bt_mode) == (0, 0)
+
+
+@pytest.mark.parametrize("for_create", [False, True])
+def test_backup_block_round_trips_color_and_bt_mode(for_create: bool) -> None:
+    from custom_components.sofabaton_x1s.lib.backup_export import build_device_block
+    from custom_components.sofabaton_x1s.lib.devices import device_config_from_backup
+
+    config = DeviceConfig(name="Shield", device_id=4, code_type=0x03, color_id=5, bt_mode=2)
+    block = build_device_block(4, {"name": "Shield"}, config)
+    assert (block["color_id"], block["bt_mode"]) == (5, 2)
+
+    restored = device_config_from_backup(block, for_create=for_create)
+    assert (restored.color_id, restored.bt_mode) == (5, 2)
+    body = build_device_create_payload(restored, hub_version=HUB_VERSION_X2)[3:]
+    assert body[149 + 22 : 149 + 24] == bytes([5, 2])
+
+
+def test_backup_block_without_color_fields_restores_with_zero() -> None:
+    """Bundles written before these fields existed still restore."""
+
+    from custom_components.sofabaton_x1s.lib.devices import device_config_from_backup
+
+    restored = device_config_from_backup({"device_id": 4, "name": "Shield", "code_type": 3}, for_create=True)
+    assert (restored.color_id, restored.bt_mode) == (0, 0)
+
+
+# ---------------------------------------------------------------------------
+# record_appearance: the icon and color bytes without a full parse
+# ---------------------------------------------------------------------------
+
+
+def test_record_appearance_reads_icon_and_color_on_wide_records() -> None:
+    config = DeviceConfig(name="Shield", device_id=4, icon=13, color_id=7)
+    for hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+        body = build_device_create_payload(config, hub_version=hub_version)[3:]
+        assert record_appearance(body, hub_version=hub_version) == (13, 7)
+
+
+def test_record_appearance_has_no_color_on_the_x1() -> None:
+    body = build_device_create_payload(DeviceConfig(name="TV", device_id=3, icon=22), hub_version=HUB_VERSION_X1)[3:]
+    assert record_appearance(body, hub_version=HUB_VERSION_X1) == (22, None)
+
+
+def test_record_appearance_tolerates_short_bodies_and_unknown_hubs() -> None:
+    # A cached body of an odd length still yields what it holds.
+    assert record_appearance(bytes([0, 0, 0, 0, 0, 9, 1]), hub_version=HUB_VERSION_X2) == (9, None)
+    assert record_appearance(b"\x00\x00", hub_version=HUB_VERSION_X2) == (None, None)
+    assert record_appearance(bytes([0, 0, 0, 0, 0, 9]), hub_version="") == (9, None)

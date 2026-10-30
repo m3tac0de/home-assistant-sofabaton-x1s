@@ -111,6 +111,18 @@ OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites map
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_SET_HUB_NAME = 0x0030  # payload: GB2312-encoded hub name bytes
 FAMILY_HUB_NAME_REPLY = 0x31  # H→A variable-length hub-name reply family
+# X2: asks for the hub-name reply (family 0x31) without renaming. That reply
+# starts with two bytes the vendor app reads as IR port 1 and 2 cable
+# plugged, but they flip between 00 00 and 01 01 on their own with both
+# cables plugged (bench 2026-10-28): not used.
+OP_REQ_HUB_NAME = 0x0032
+# X2 hub's own MQTT broker link (not benched yet, see the Wifi webhook
+# transport plan, gates B5/B11). Setup payload: [len BE16] + broker IPv4 +
+# port BE16 + hub MAC + username and password, each a char count and
+# UTF-16BE text. The hub answers family 0x74 [1 connected | 0 failed].
+FAMILY_HUB_MQTT_SETUP = 0x73
+FAMILY_HUB_MQTT_STATUS = 0x74  # A→H empty: is the hub connected to a broker?
+OP_HUB_MQTT_STATUS_QUERY = 0x0074
 OP_FIND_REMOTE = 0x0023  # payload: empty; triggers the remote buzzer (X1/X1S)
 OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
 # Identical across X1, X1S, X2. The hub commonly disconnects after the ack; clients
@@ -125,6 +137,11 @@ OP_X2_REMOTE_LIST_ROW = 0x332F  # payload includes 3-byte remote id and remote m
 # accepted no-op. Kept for capture decoding only; senders must use
 # OP_X2_REMOTE_SYNC_ALL.
 OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; accepted no-op (see above)
+# The no-op target above was read from row bytes p[1:4], which start with the
+# row COUNT. With the device's own bit (remote 1 = 00 00 08, layout in
+# remote_sync_frames) the per-remote form starts a full sync of that remote
+# (bench_333 C1, 2026-10-24). [00 00 FF][00] is the order-only sync (C3).
+# Senders keep OP_X2_REMOTE_SYNC_ALL unless order_sync_form says otherwise.
 # The working X2 sync trigger (bench-validated live 2026-08-27): payload
 # FF FF FF = all paired remotes. Instant STATUS_ACK 0x00 means queued,
 # not completed; the hub SERIALIZES triggers (a second one runs after
@@ -252,6 +269,9 @@ OP_ACTIVITY_INPUTS_PAGE_A = 0xFA47  # H→A activity-input candidates page (X1S/
 OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page (X1S/X2)
 OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
 OP_ACTIVITY_ASSIGN_COMMIT = 0x0265  # A→H post-save commit marker (observed on X2)
+# Payload [entity_id][0x01]: the X2 per-entity remote sync (a 1/1 sync of
+# that device or activity), the X2 form of 0x0165 [entity_id]; both work on
+# the X2 (remote_sync_frames.entity_sync_frame; bench_333 C4, 2026-10-24).
 OP_ACTIVITY_CONFIRM = 0x7B38  # A→H activity confirmation row write (observed X1)
 OP_ACTIVITY_CREATE_ACK = 0x0137  # H→A assigned activity id after family-0x37 create write (X1)
 OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)
@@ -281,8 +301,16 @@ OP_IR_LEARN_EXIT = 0x0005  # A→H: exit/cancel IR learn mode (len 0)
 OP_IR_LEARN_FAILED = 0x0068  # H→A: learn-failure push per research; not observed live
 
 # RF learning is one two-byte command: payload [enter_flag, band] where
-# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz.
+# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz, 0x01 = 315 MHz
+# (RF_LEARN_BAND_BY_MHZ). A capture streams back as paged family-0x06
+# frames like an IR one. Bench-validated at 433 MHz on the X1S and X2
+# (2026-10-29): every toggle is acked 0x0103 [00]. The learner also
+# handles OP_LEARN_EXPIRED (the hub closed its own window; it arms again)
+# and OP_IR_LEARN_FAILED, but no bench window, up to 75 s, saw either.
 OP_RF_LEARN = 0x0270  # A→H payload: [enter_flag, band]
+# H→A: the hub's RF learn window closed. Same value as OP_IR_LEARN_EXIT in
+# the other direction, so it has no OPNAMES entry of its own.
+OP_LEARN_EXPIRED = 0x0005
 
 
 # Backward-compatible aliases retained for older call sites and docs.
@@ -301,7 +329,9 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
     OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_SET_HUB_NAME: "SET_HUB_NAME",
+    OP_REQ_HUB_NAME: "REQ_HUB_NAME",
     OP_FIND_REMOTE: "FIND_REMOTE",
+    OP_HUB_MQTT_STATUS_QUERY: "HUB_MQTT_STATUS_QUERY",
     OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_REMOTE_SYNC: "REMOTE_SYNC",
@@ -494,6 +524,8 @@ FAMILY_NAMES: Dict[int, str] = {
     FAMILY_DEVBTNS: "COMMANDS",
     FAMILY_FAV_ORDER_REQ: "FAV_ORDER_REQ",
     FAMILY_FAV_ORDER_RESP: "FAV_ORDER_RESP",
+    FAMILY_HUB_MQTT_SETUP: "HUB_MQTT_SETUP",
+    FAMILY_HUB_MQTT_STATUS: "HUB_MQTT_STATUS",
 }
 
 
@@ -513,7 +545,26 @@ DEVICE_CLASS_CODE_IR = 0x0D
 DEVICE_CLASS_CODE_WIFI_HUE = 0x1A
 DEVICE_CLASS_CODE_WIFI_SONOS = 0x1B
 DEVICE_CLASS_CODE_WIFI_IP = 0x1C
+# RF devices: the record's code-type byte names the band. Each command
+# record carries its own type byte too (0x1D / 0x1E for an RF command),
+# and its signal data after the record header is opaque.
+DEVICE_CLASS_CODE_RF_433 = 0x1D
+DEVICE_CLASS_CODE_RF_315 = 0x1E
+# RF bands as the hub addresses them, keyed by MHz: the band byte of an
+# OP_RF_LEARN frame, and the code type an RF command record and a one-shot
+# play body carry.
+RF_LEARN_BAND_BY_MHZ: Dict[int, int] = {433: 0x00, 315: 0x01}
+RF_CODE_TYPE_BY_MHZ: Dict[int, int] = {
+    433: DEVICE_CLASS_CODE_RF_433,
+    315: DEVICE_CLASS_CODE_RF_315,
+}
+RF_MHZ_BY_CODE_TYPE: Dict[int, int] = {
+    code: mhz for mhz, code in RF_CODE_TYPE_BY_MHZ.items()
+}
 DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
+# Not a device class: the code type of an X2 URL command record, stored on
+# an ordinary wifi_ip device (bench-validated 2026-10-24).
+WIFI_URL_RECORD_CODE = 0x21
 
 DEVICE_CLASS_BY_CODE: Dict[int, str] = {
     DEVICE_CLASS_CODE_BLUETOOTH: DEVICE_CLASS_BLUETOOTH,
@@ -522,6 +573,8 @@ DEVICE_CLASS_BY_CODE: Dict[int, str] = {
     DEVICE_CLASS_CODE_WIFI_HUE: DEVICE_CLASS_WIFI_HUE,
     DEVICE_CLASS_CODE_WIFI_SONOS: DEVICE_CLASS_WIFI_SONOS,
     DEVICE_CLASS_CODE_WIFI_IP: DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_CODE_RF_433: DEVICE_CLASS_RF_433,
+    DEVICE_CLASS_CODE_RF_315: DEVICE_CLASS_RF_315,
     DEVICE_CLASS_CODE_WIFI_MQTT: DEVICE_CLASS_WIFI_MQTT,
 }
 
@@ -626,7 +679,10 @@ __all__ = [
     "DEVICE_CLASS_CODE_WIFI_HUE",
     "DEVICE_CLASS_CODE_WIFI_SONOS",
     "DEVICE_CLASS_CODE_WIFI_IP",
+    "DEVICE_CLASS_CODE_RF_433",
+    "DEVICE_CLASS_CODE_RF_315",
     "DEVICE_CLASS_CODE_WIFI_MQTT",
+    "WIFI_URL_RECORD_CODE",
     "DEVICE_CLASS_BY_CODE",
     "DEVICE_CLASS_ALIASES",
     "PUBLIC_DEVICE_CLASSES",
@@ -643,6 +699,10 @@ __all__ = [
     "OP_REQ_ACTIVITY_MAP",
     "OP_DELETE_DEVICE",
     "OP_SET_HUB_NAME",
+    "OP_REQ_HUB_NAME",
+    "FAMILY_HUB_MQTT_SETUP",
+    "FAMILY_HUB_MQTT_STATUS",
+    "OP_HUB_MQTT_STATUS_QUERY",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
     "OP_REMOTE_SYNC",
@@ -725,6 +785,10 @@ __all__ = [
     "OP_IR_LEARN_EXIT",
     "OP_IR_LEARN_FAILED",
     "OP_RF_LEARN",
+    "OP_LEARN_EXPIRED",
+    "RF_LEARN_BAND_BY_MHZ",
+    "RF_CODE_TYPE_BY_MHZ",
+    "RF_MHZ_BY_CODE_TYPE",
     "OPNAMES",
     "opcode_hi",
     "opcode_lo",

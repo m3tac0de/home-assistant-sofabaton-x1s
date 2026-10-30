@@ -3,13 +3,14 @@
 // the card and the library enforce (mirrored so the view never sends what
 // the server would refuse), the hard buttons a slot can claim, what a saved
 // slot takes from its neighbours and from the hub's other Wifi Devices, the
-// tile's meta line, the roster's status pill and the press matching behind
-// the glow.
+// tile's meta line, the roster's status pill, the delivery pill's verdict
+// and the press matching behind the glow.
 
 import type { WifiDeviceSpec, WifiDeviceView, WifiSlot } from "../panel-api";
 import type { PressEvent } from "../panel-store";
 import { sanitizeWifiName } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-names";
 import { buttonTakeover, hubSupportsPowerInput } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
+import { deliveryFailed } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery";
 
 /** The library's `WIFI_SLOT_COUNT`: shorts are commands 1..10, longs 11..20. */
 export const WIFI_SLOT_COUNT = 10;
@@ -52,6 +53,13 @@ export interface WifiDraft {
   powerOn: number | null;
   powerOff: number | null;
   inputs: number[];
+  /** The record's icon and X2 color the Sync writes; null keeps what the hub has. */
+  icon: number | null;
+  colorId: number | null;
+}
+
+function appearanceNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
 function entityNumber(value: unknown): number | null {
@@ -93,6 +101,8 @@ export function draftFromSpec(spec: WifiDeviceSpec | null | undefined): WifiDraf
     powerOn: slotNumber(spec?.power_on_slot),
     powerOff: slotNumber(spec?.power_off_slot),
     inputs: [...new Set(inputs)].sort((a, b) => a - b),
+    icon: appearanceNumber(spec?.icon),
+    colorId: appearanceNumber(spec?.color_id),
   };
 }
 
@@ -116,6 +126,8 @@ export function specFromDraft(draft: WifiDraft): Omit<WifiDeviceSpec, "brand"> {
     power_on_slot: draft.powerOn,
     power_off_slot: draft.powerOff,
     input_slots: [...draft.inputs],
+    icon: draft.icon,
+    color_id: draft.colorId,
   };
 }
 
@@ -381,13 +393,51 @@ export function targetMoved(device: WifiDeviceView): boolean {
   return now.host !== device.target.host || Number(now.port) !== Number(device.target.port);
 }
 
+/** The server's broker connection as the delivery helpers read it (openapi `MqttState`). */
+export type MqttLink = { configured: boolean; connected: boolean; host: string | null; port: number | null; last_error: string | null };
+
 /** Why an mqtt device's presses cannot arrive right now, or null. The broker is the operator's to
  *  set up (the server's command line, the Sofabaton app); the panel only says what it sees. */
-export function mqttProblem(device: Pick<WifiDeviceView, "transport">, mqtt: { configured: boolean; connected: boolean; host: string | null; port: number | null; last_error: string | null } | null): string | null {
+export function mqttProblem(device: Pick<WifiDeviceView, "transport">, mqtt: MqttLink | null): string | null {
   if (device.transport !== "mqtt" || !mqtt) return null;
   if (!mqtt.configured) return "This device delivers its presses over MQTT, but the server has no broker (set one under Server settings > MQTT broker, or start it with --mqtt-host), so they cannot arrive.";
   if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
   return null;
+}
+
+// -- the delivery pill (the card's components/delivery-pill.ts) ---------------------------------
+
+/** The hub has the device: deployed, not missing. A pending create (no id yet) and a stale record are not. */
+export function deliveryOnHub(device: Pick<WifiDeviceView, "device_id" | "stale">): boolean {
+  return device.device_id != null && !device.stale;
+}
+
+/** The pill warns: the last check did not arrive or could not be sent, or the server's broker is
+ *  down under an mqtt device. A device the hub does not have says so elsewhere. */
+export function deliveryAttention(device: Pick<WifiDeviceView, "device_id" | "stale" | "transport" | "delivery">, mqtt: MqttLink | null): boolean {
+  if (!deliveryOnHub(device)) return false;
+  return deliveryFailed(device.delivery) || mqttProblem(device, mqtt) !== null;
+}
+
+export type DeliveryVerdict = "testing" | "stale" | "not_on_hub" | "delivered" | "not_delivered" | "not_sent" | "untested";
+
+/** What the dropdown's result block says: a test running here, a device the hub lacks, else the stored check. */
+export function deliveryVerdict(device: Pick<WifiDeviceView, "device_id" | "stale" | "delivery">, testing = false): DeliveryVerdict {
+  if (testing) return "testing";
+  if (device.stale) return "stale";
+  if (device.device_id == null) return "not_on_hub";
+  const status = String(device.delivery?.status ?? "");
+  return status === "delivered" || status === "not_delivered" || status === "not_sent" ? status : "untested";
+}
+
+/** What the hub calls: the listener's origin for an http device, the broker for an mqtt one ("" when unknown). */
+export function deliveryTarget(device: Pick<WifiDeviceView, "transport" | "target" | "delivery">, mqtt: MqttLink | null): string {
+  if (device.transport === "mqtt") {
+    if (mqtt?.configured && mqtt.host) return mqtt.port != null ? `${mqtt.host}:${mqtt.port}` : mqtt.host;
+    return device.delivery?.transport === "mqtt" ? String(device.delivery.target ?? "") : "";
+  }
+  if (device.target) return `http://${device.target.host}:${device.target.port}`;
+  return device.delivery?.transport === "http" ? String(device.delivery.target ?? "") : "";
 }
 
 // -- the press glow ----------------------------------------------------------------------------------

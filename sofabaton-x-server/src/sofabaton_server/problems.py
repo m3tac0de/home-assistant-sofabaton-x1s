@@ -10,6 +10,7 @@ section 7) lives here so every route uses the same table:
 | ``HubNotConnectedError``                   | 503    |
 | ``FetchTimeoutError``                      | 504    |
 | send refused (``False`` from the facade)   | 409    |
+| ``RemoteSyncInProgressError`` (refused while the hub updates its remote; wait, then retry) | 409 ``remote_syncing`` |
 | ``HubRejectedError`` (write refused)       | 502    |
 | ``SnapshotOutdatedError`` (stale If-Match) | 412    |
 | ``SnapshotIncompleteError``                | 409    |
@@ -43,6 +44,7 @@ from sofabaton import (
     HubNotConnectedError,
     HubRejectedError,
     IrLearnError,
+    RemoteSyncInProgressError,
     SnapshotIncompleteError,
     SnapshotOutdatedError,
     WifiUpdateDeclined,
@@ -50,6 +52,13 @@ from sofabaton import (
 )
 
 from .models import Problem
+
+
+def _remote_syncing(detail: str, hub_id: Optional[str]) -> "ApiProblem":
+    """The hub refused a write while it was updating its remote: nothing is
+    wrong with the edit; wait until the remote is done, then send it again."""
+
+    return ApiProblem(409, "remote_syncing", "The hub is updating its remote", detail=detail, hub_id=hub_id)
 
 
 class SyncFailed(RuntimeError):
@@ -194,6 +203,8 @@ def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
             detail = f"{err.reason}: {err.detail}"
         return ApiProblem(409, "callback_update_declined", "The callback device could not be updated in place",
                           detail=detail, hub_id=hub_id)
+    if isinstance(err, RemoteSyncInProgressError):
+        return _remote_syncing(str(err), hub_id)
     if isinstance(err, WifiUpdateFailed):
         return ApiProblem(502, "callback_update_failed", "The hub rejected an in-place update step",
                           detail=f"failed at {err.failed_at} after {err.completed_steps} step(s)", hub_id=hub_id)
@@ -227,6 +238,8 @@ def problem_for(err: BaseException, hub_id: str) -> Optional[ApiProblem]:
                                     if err.result.partial_device_ids else ""),
                           hub_id=hub_id)
     if isinstance(err, SyncFailed):
+        if err.result.reason == "remote_syncing":
+            return _remote_syncing(err.result.message or "the hub is updating its remote", hub_id)
         status = 409 if err.result.wrote_nothing else 502
         return ApiProblem(status, "sync_failed", "The hub did not take the edit",
                           detail=f"failed at {err.result.failed_at}: {err.result.message or 'no detail'}", hub_id=hub_id)

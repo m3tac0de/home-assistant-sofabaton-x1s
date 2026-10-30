@@ -94,10 +94,10 @@ function x1sState(active) {
       current_activity_id: active ? 101 : null,
       load_state: "idle",
       activities: [
-        { id: 101, name: "Watch a movie", state: active ? "on" : "off" },
-        { id: 102, name: "Watch TV", state: "off" },
-        { id: 103, name: "Listen to music", state: "off" },
-        { id: 104, name: "Play a game", state: "off" },
+        { id: 101, name: "Watch a movie", state: active ? "on" : "off", icon: 5 },
+        { id: 102, name: "Watch TV", state: "off", icon: 1 },
+        { id: 103, name: "Listen to music", state: "off", icon: 3 },
+        { id: 104, name: "Play a game", state: "off", icon: 7 },
       ],
       // 101 leaves menu (181), channel (183/186) and blue (193) unbound.
       assigned_keys: { 101: KEYS_ALL.filter((id) => ![181, 183, 186, 193].includes(id)), 102: KEYS_ALL },
@@ -115,10 +115,10 @@ function x1sState(active) {
         { command_id: 605, name: "Scene: Movie", device_id: 4 },
       ] },
       devices: [
-        { id: 1, name: "Television", device_class: "ir" },
-        { id: 2, name: "Soundbar", device_class: "ir" },
-        { id: 3, name: "Apple TV", device_class: "bluetooth" },
-        { id: 4, name: "Living room lights", device_class: "wifi" },
+        { id: 1, name: "Television", device_class: "ir", icon: 1 },
+        { id: 2, name: "Soundbar", device_class: "ir", icon: 11 },
+        { id: 3, name: "Apple TV", device_class: "bluetooth", icon: 13 },
+        { id: 4, name: "Living room lights", device_class: "wifi", icon: 12 },
       ],
       long_press_keys: { 101: { 182: { device_id: 2, command_id: 22 } } },
     },
@@ -134,13 +134,13 @@ function x2State() {
       current_activity_id: 201,
       load_state: "idle",
       activities: [
-        { id: 201, name: "Movie Time", state: "on" },
-        { id: 202, name: "Retro Gaming", state: "off" },
+        { id: 201, name: "Movie Time", state: "on", icon: 4, color_id: 6 },
+        { id: 202, name: "Retro Gaming", state: "off", icon: 6, color_id: 5 },
       ],
       assigned_keys: { 201: [...KEYS_ALL, ...X2_EXTRA].filter((id) => id !== 160) },
       macro_keys: { 201: [{ command_id: 701, name: "Cinema Mode", device_id: 201 }] },
       favorite_keys: { 201: [{ command_id: 801, name: "Plex", device_id: 8 }] },
-      devices: [{ id: 8, name: "Shield", device_class: "ir" }],
+      devices: [{ id: 8, name: "Shield", device_class: "ir", icon: 39, color_id: 8 }],
     },
   };
 }

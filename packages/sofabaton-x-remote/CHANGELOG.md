@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.1.4 (2026-10-28)
+
+Changes since `sofabaton-x-remote-v0.1.3`.
+
+- Update the shared Virtual Remote to 0.2.9. The shared state reads the
+  hub's activity and device icon and X2 color, and the bundled icon set
+  gains the few icons the Home Assistant sidebar uses for them; the
+  embedded remote's interface is unchanged.
+- The element's attributes, methods and events are unchanged. The minimum
+  server version remains 0.2.2; server 0.2.7 ships the corresponding
+  server-hosted bundle.
+
 ## 0.1.3 (2026-10-17)
 
 Changes since `sofabaton-x-remote-v0.1.2`.

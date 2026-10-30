@@ -109,6 +109,8 @@ class SofabatonRemote(RemoteEntity):
                 "id": row["id"],
                 "name": row["name"],
                 "state": "on" if activity_id == row["id"] else "off",
+                # The hub's icon id and (X2) palette id, when the record is cached.
+                **{key: row[key] for key in ("icon", "color_id") if key in row},
             }
             for row in self._hub.get_ui_activity_list()
         ]

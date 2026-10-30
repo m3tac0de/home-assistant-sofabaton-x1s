@@ -39,6 +39,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable, Literal, Optional
@@ -55,6 +56,7 @@ from sofabaton import (
     WifiDeviceSpec,
     WifiSlotSpec,
     WifiTarget,
+    WriteProgress,
 )
 from sofabaton.wifi_device import DEFAULT_WIFI_BRAND
 
@@ -88,6 +90,10 @@ PRESS_RING_SIZE = 100
 #: Bind-failure retry: exponential from the first to the second value.
 RETRY_MIN_SECONDS = 5.0
 RETRY_MAX_SECONDS = 300.0
+#: The delivery test: how long its press may take to arrive, and how long
+#: after it arrived a repeat of it is still the test's (never a press event).
+PROBE_TIMEOUT_SECONDS = 10.0
+PROBE_REPEAT_WINDOW_SECONDS = 3.0
 
 Resolution = Literal["deployed", "stale", "unknown_slot", "unknown_device"]
 PendingOp = Literal["create", "update", "delete"]
@@ -144,6 +150,10 @@ class CallbackRecord:
     last_press: Optional[dict[str, Any]] = None
     key: str = DEFAULT_DEVICE_KEY
     transport: str = "http"
+    #: The last delivery check: did a press from the hub reach the server?
+    #: Written by the delivery test after every deploy and by a test on
+    #: request; a real press that arrives marks it delivered.
+    delivery: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -159,6 +169,7 @@ class CallbackRecord:
             "stale": self.stale,
             "pending": dict(self.pending) if self.pending else None,
             "last_press": dict(self.last_press) if self.last_press else None,
+            "delivery": dict(self.delivery) if self.delivery else None,
         }
 
     @classmethod
@@ -178,6 +189,7 @@ class CallbackRecord:
             last_press=dict(data["last_press"]) if isinstance(data.get("last_press"), dict) else None,
             key=str(data.get("key") or DEFAULT_DEVICE_KEY),
             transport=str(data.get("transport") or "http"),
+            delivery=dict(data["delivery"]) if isinstance(data.get("delivery"), dict) else None,
         )
 
     @classmethod
@@ -635,6 +647,10 @@ class CallbackService:
         # ensure_listener runs started by server events, kept so they are not
         # collected mid-run and are cancelled at stop (CR-S2-11).
         self._ensure_tasks: set[asyncio.Task] = set()
+        # Delivery tests waiting for their press, and the window after one
+        # arrived, per (hub, device id).
+        self._probes: dict[tuple[str, int], asyncio.Future] = {}
+        self._probe_tails: dict[tuple[str, int], float] = {}
         self.listener = listener_factory(settings.callback_port, self.handle_callback, on_state=self._on_listener_state)
         # The broker: the command line / environment when they set any of it,
         # else what the control panel stored in mqtt.json (mqtt_config.py).
@@ -1031,7 +1047,29 @@ class CallbackService:
                 return forwarded.split(",", 1)[0].strip()
         return source_ip
 
-    def _record_press(self, hub_id: str, parsed: ParsedPath, source: str, *, transport: str = TRANSPORT_HTTP) -> Press:
+    def _claim_probe(self, hub_id: str, parsed: ParsedPath, source: str, transport: str) -> bool:
+        """True when this press is the delivery test's own (slot 1 short of the
+        device a test waits on): the test has its answer and the press goes no
+        further, so no client acts on it. A repeat of it that lands just after
+        the test ended is swallowed too."""
+
+        if parsed.slot_index != 0 or parsed.press_type != "short":
+            return False
+        key = (hub_id, int(parsed.device_id))
+        future = self._probes.get(key)
+        if future is None or future.done():
+            if time.monotonic() < self._probe_tails.get(key, 0.0):
+                log.debug("hub %s: repeat of the test press of device %s ignored", hub_id, parsed.device_id)
+                return True
+            return False
+        self._probe_tails[key] = time.monotonic() + PROBE_REPEAT_WINDOW_SECONDS
+        future.set_result({"source": source, "transport": transport})
+        log.info("%s test press: hub %s device %s arrived from %s", transport, hub_id, parsed.device_id, source or "the broker")
+        return True
+
+    def _record_press(self, hub_id: str, parsed: ParsedPath, source: str, *, transport: str = TRANSPORT_HTTP) -> Optional[Press]:
+        if self._claim_probe(hub_id, parsed, source, transport):
+            return None
         record = next((row for row in self.records(hub_id) if row.device_id == parsed.device_id), None)
         slot = parsed.slot_index + 1
         command_id: Optional[int] = None
@@ -1056,8 +1094,18 @@ class CallbackService:
         )
         if record is not None:
             record.last_press = {"seq": press.seq, "received_at": press.received_at}
-            # In memory only: a press must not cost a hubs.json write.
-            self._store(hub_id, record, record.key)
+            if resolution == "deployed" and (record.delivery or {}).get("status") != "delivered":
+                # A real press proves the path: a failed (or never run) test is
+                # settled. Written once per device, not once per press.
+                record.delivery = {
+                    **(record.delivery or {}),
+                    "status": "delivered", "transport": transport, "source": source,
+                    "latency_s": None, "checked_at": press.received_at, "via": "press",
+                }
+                self.save(hub_id, record)
+            else:
+                # In memory only: a press must not cost a hubs.json write.
+                self._store(hub_id, record, record.key)
         log.info("%s press: hub %s device %s slot %s %s -> %s", transport, hub_id, parsed.device_id, slot,
                  parsed.press_type, resolution)
         for listener in list(self._press_listeners):
@@ -1081,6 +1129,8 @@ class CallbackService:
             power_off_slot=body.get("power_off_slot"),
             input_slots=tuple(body.get("input_slots") or ()),
             brand=brand_for_key(key),
+            icon=body.get("icon"),
+            color_id=body.get("color_id"),
         ).normalized()
 
     def check_port(self, hub_version: Optional[str]) -> None:
@@ -1169,6 +1219,62 @@ class CallbackService:
         updated.last_press = (latest or record).last_press
         self.save(hub_id, updated)
         return updated
+
+    def _delivery_target(self, record: CallbackRecord) -> str:
+        """What the hub calls for a record, safe to show: the listener's
+        address, or the server's broker for an mqtt device."""
+
+        if record.transport == TRANSPORT_MQTT:
+            config = self.mqtt_config
+            return f"{config.host}:{config.effective_port}" if config.host else ""
+        host, port = record.target.get("host"), record.target.get("port")
+        return f"http://{host}:{port}" if host and port else ""
+
+    async def test_delivery(self, hub_id: str, proxy: AsyncXProxy, *, key: str = DEFAULT_DEVICE_KEY,
+                            progress: Optional[Callable[..., Any]] = None) -> dict[str, Any]:
+        """The delivery test (the Home Assistant integration's, wifi webhook
+        transport plan 4.4): press slot 1 of the deployed device over the hub
+        session and wait for that press to arrive at this server's own
+        ingress (the listener, or the broker). The press runs no client's
+        logic: it is claimed before it becomes a press event. The verdict is
+        stored on the record and returned; a press that does not arrive is a
+        network problem the verdict describes, never an exception."""
+
+        record = self.record(hub_id, key)
+        if record is None or record.device_id is None:
+            raise CallbackDeviceMissing(hub_id)
+        if record.stale:
+            raise CallbackDeviceStale("the callback device is stale; redeploy it")
+        if progress is not None:
+            progress(WriteProgress(phase="testing_delivery", message="Testing that button presses reach the server",
+                                   completed_steps=0, total_steps=0))
+        await self.ensure_listener()
+        probe_key = (hub_id, int(record.device_id))
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._probes[probe_key] = future
+        try:
+            result = await proxy.probe_wifi_delivery(record.deployment(), arrived=future, timeout=PROBE_TIMEOUT_SECONDS)
+        finally:
+            if self._probes.get(probe_key) is future:
+                del self._probes[probe_key]
+            if not future.done():
+                future.cancel()
+        arrival = future.result() if future.done() and not future.cancelled() else {}
+        delivery = {
+            "status": "delivered" if result.delivered else "not_delivered" if result.sent else "not_sent",
+            "transport": record.transport,
+            "target": self._delivery_target(record),
+            "hub_ip": self._hub_address(hub_id) or "",
+            "source": str(arrival.get("source") or ""),
+            "latency_s": result.latency_s,
+            "checked_at": now_iso(),
+            "via": "test",
+        }
+        log.info("hub %s: delivery test of Wifi Device %s (%s): %s", hub_id, key, record.transport, delivery["status"])
+        fresh = self.record(hub_id, key) or record
+        fresh.delivery = delivery
+        self.save(hub_id, fresh)
+        return delivery
 
     @staticmethod
     def owned_references(spec: Optional[WifiDeviceSpec]) -> dict[int, dict[str, set[int]]]:

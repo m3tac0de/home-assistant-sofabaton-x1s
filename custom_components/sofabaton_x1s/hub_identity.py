@@ -197,16 +197,22 @@ class HubIdentityMixin:
         hub_mac = str(
             self.mac or (entry.data.get(CONF_MAC) if entry is not None else "") or ""
         ).strip()
-        if (
-            not hub_mac
-            or not hasattr(device_registry, "async_get_device")
-            or not hasattr(device_registry, "async_update_device")
-        ):
+        if not hub_mac or not hasattr(device_registry, "async_update_device"):
             return None
-        return device_registry.async_get_device(
-            identifiers={(DOMAIN, hub_mac)},
-            connections=set(),
-        )
+        identifier = (DOMAIN, hub_mac)
+        # HA 2026.8 added the lookup scoped to a config entry; the unscoped
+        # async_get_device logs a deprecation from 2026.10 and stops working
+        # in 2027.8 (issue #316). Older HA only has the unscoped call.
+        if hasattr(device_registry, "async_get_device_by_identifier"):
+            return device_registry.async_get_device_by_identifier(
+                identifier, self.entry_id
+            )
+        if hasattr(device_registry, "async_get_device"):
+            return device_registry.async_get_device(
+                identifiers={identifier},
+                connections=set(),
+            )
+        return None
 
     async def _async_update_firmware_state(self) -> None:
         """Publish the hub firmware version and raise/clear the outdated-firmware repair.

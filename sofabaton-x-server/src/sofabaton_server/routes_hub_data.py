@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
 from sofabaton import (
+    HUB_VERSION_X2,
     Activity,
     AsyncXProxy,
     Button,
@@ -26,6 +27,7 @@ from sofabaton import (
     Favorite,
     HubInfo,
     HubStatus,
+    IrEmitterDevice,
     Macro,
     RunningActivity,
 )
@@ -39,7 +41,9 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix=f"{API_PREFIX}/hubs/{{hub_id}}", tags=["hub"])
 
-_HUB_ERRORS = {404: {"model": Problem}, 409: {"model": Problem}, 503: {"model": Problem}, 504: {"model": Problem}}
+_HUB_ERRORS: dict[int | str, dict[str, Any]] = {
+    404: {"model": Problem}, 409: {"model": Problem}, 503: {"model": Problem}, 504: {"model": Problem},
+}
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,21 @@ class DevicePowerState:
 
     device_id: int
     power_state: Optional[int]
+
+
+@dataclass(frozen=True)
+class IrEmitterStatusView:
+    """``GET /hubs/{id}/ir-emitters``: the paired remotes and repeaters an X2
+    can send a device's IR from.
+
+    ``paired`` lists them (single-button RF devices left out), null when
+    the hub did not answer the read or when there was no read yet.
+    ``read_at`` is when the list was read (epoch seconds), null when there
+    was no read yet. The hub's own emitter and both IR ports are always
+    available to route to, so they are not listed."""
+
+    paired: Optional[list[IrEmitterDevice]]
+    read_at: Optional[float]
 
 
 class SendCommand(BaseModel):
@@ -196,6 +215,36 @@ async def get_device_power_state(request: Request, hub_id: str, device_id: int) 
         raise entity_not_found(hub_id, "device", device_id)
     state = row.power_state
     return DevicePowerState(device_id=device_id, power_state=state if state in (0, 1) else None)
+
+
+@router.get("/ir-emitters", operation_id="getIrEmitters", response_model=IrEmitterStatusView,
+            summary="The remotes and repeaters an X2 can send a device's IR from",
+            description="X2 only (409 `not_x2` on another hub). Without `refresh` this returns the last read "
+                        "without asking the hub (both fields null before the first one); `refresh=true` reads "
+                        "the hub's paired-device list now, which takes a few seconds and needs control mode. "
+                        "A device's routing is its `emitters` in the device list and `device.extras` in the "
+                        "snapshot; change it with `PUT .../devices/{did}`. The routing applies to commands "
+                        "sent to the device; a payload play always fires from the hub's own emitters.",
+            responses=_HUB_ERRORS)
+async def get_ir_emitters(request: Request, hub_id: str,
+                          refresh: bool = Query(False, description="read the paired-device list from the hub now "
+                                                                   "(a few seconds; needs control mode)")) -> IrEmitterStatusView:
+    proxy = _proxy(request, hub_id)
+    st = await proxy.status()
+    if not st.hub_version:
+        # The model comes with the connect banner: before it, the facade
+        # cannot tell an X2 from another hub.
+        raise ApiProblem(503, "hub_not_connected", "Hub is not connected",
+                         detail="the hub's model is not known until it connects", hub_id=hub_id, mode=st.mode)
+    if st.hub_version != HUB_VERSION_X2:
+        raise ApiProblem(409, "not_x2", "IR emitter routing exists on the X2 only",
+                         detail=f"this hub is an {st.hub_version}", hub_id=hub_id, mode=st.mode)
+    async with hub_errors(hub_id):
+        status = await proxy.ir_emitter_status(refresh=refresh)
+    if status is None:
+        return IrEmitterStatusView(paired=None, read_at=None)
+    return IrEmitterStatusView(paired=list(status.paired) if status.paired is not None else None,
+                               read_at=status.read_at)
 
 
 @router.get("/entities/{entity_id}/buttons", operation_id="listEntityButtons", response_model=list[Button],

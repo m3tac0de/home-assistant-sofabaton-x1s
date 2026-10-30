@@ -37,6 +37,8 @@ const OFFICE = {
   active_job: null,
   last_job: null,
 };
+// A second hub that passes its gates (OFFICE is disabled: the shell blocks its views).
+const BEDROOM = { ...LIVING, hub_id: "cb383539684b", config: { host: "192.168.1.70", name: "Bedroom", hub_version: "X1S", mac: "CB:38:35:39:68:4B" } };
 const SEEN_NEW = {
   key: "cb383539684b",
   config: {
@@ -797,8 +799,8 @@ test.describe("control panel, shell", () => {
     const { sockets } = await mockServer(page, state);
     await page.goto(PAGE);
     // The HA card's way: nothing dims or covers the view; its write controls are disabled and the dock tells why.
-    await expect(page.locator("#dock-status")).toHaveText("Writing device 8 · 3/12");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#dock-status")).toHaveText("Writing device 8 (3/12)");
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
     expect(await page.locator("#stage-wrap").evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     await expect(page.locator("#catalog-refresh-all")).toBeDisabled();
@@ -809,15 +811,15 @@ test.describe("control panel, shell", () => {
 
     // The other hub is not blocked by this hub's job.
     await pickHub(page, "192.168.1.60");
-    await expect(page.locator("#blocked-scrim")).toContainText("Hub unavailable");
-    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
+    await expect(page.locator("#blocked-state")).toContainText("Hub unavailable");
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
     await pickHub(page, "e26a44861b45");
 
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
     state.hubs[0].last_job = job({ status: "done", finished_at: new Date().toISOString() });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#add-entity")).toBeEnabled();
     await expect(page.locator("#dock-status")).toHaveText("Restore completed.");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
@@ -856,20 +858,20 @@ test.describe("control panel, shell", () => {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(running.active_job) });
     });
     await page.goto(PAGE);
-    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12");
+    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub (3/12)");
     await expect(page.locator("#dock-progress")).toHaveAttribute("data-indeterminate", "false");
     await expect(page.locator("#dock-progress")).toHaveAttribute("style", /width: 25%/);
     await expect(page.locator("#dock-cancel")).toHaveCount(0);
     await page.evaluate((hubId) => document.querySelector("sofabaton-server-panel").store.cancelActiveJob(hubId), LIVING.hub_id);
     await expect.poll(() => calls.some((c) => c.key === `DELETE /hubs/${LIVING.hub_id}/jobs/j1`)).toBe(true);
-    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12 · cancelling");
+    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub (3/12) · cancelling");
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
     state.hubs[0].last_job = job({ kind: "refresh", cancellable: true, status: "cancelled", finished_at: "2026-09-17T10:00:09Z" });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
     await expect(page.locator("#dock-status")).toHaveText("Operation cancelled.");
     await expect(page.locator("#dock-progress")).toHaveCount(0);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
   });
 
   test("a stopped apply is offered for resume or discard in the dock", async ({ page }) => {
@@ -898,7 +900,7 @@ test.describe("control panel, shell", () => {
     await page.click("#dock-resume");
     await expect.poll(() => calls.some((c) => c.key === `POST /hubs/${LIVING.hub_id}/applies/ap1/resume`)).toBe(true);
     await expect(page.locator("#dock-status")).toHaveText("Resuming the apply");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#add-entity")).toBeDisabled();
   });
 
@@ -913,12 +915,12 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-flash")).toHaveAttribute("title", "short press: Lights");
     sockets[0].send(JSON.stringify({ type: "press", seq: 8, hub_id: LIVING.hub_id, device_id: 61, command_id: 4, slot: 3, label: "Curtains", press_type: "long", resolution: "deployed", transport: "http", source: "hub", received_at: "t" }));
     await expect(page.locator("#dock-flash")).toHaveAttribute("data-seq", "8");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
 
     sockets[0].close();
     await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Live updates paused, reconnecting");
     await expect(page.locator("#stream-state")).toHaveClass(/lost/);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect.poll(() => sockets.length).toBeGreaterThan(1);
     await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Event stream live");
   });
@@ -932,6 +934,9 @@ test.describe("control panel, shell", () => {
     }) }));
     await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
     await expect(page.locator("#dock-link")).toBeVisible();
+    // The route's docs link renders before the hub list arrives. Wait for its
+    // runtime before injecting a draft: setDraft ignores an unknown hub.
+    await expect(chip(page)).toContainText("Living room");
     // The stub editor: the store's own draft slot, as an editor view would use it.
     await page.evaluate(() => document.querySelector("sofabaton-server-panel").store.setDraft("e26a44861b45", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } }));
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
@@ -990,7 +995,7 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#view-hub")).toBeVisible();
     await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
     await page.route(`**${API}/hubs`, (route) => route.abort("connectionrefused"));
-    await expect(page.locator("#blocked-scrim")).toContainText("The server is not answering", { timeout: 15_000 });
+    await expect(page.locator("#blocked-state")).toContainText("The server is not answering", { timeout: 15_000 });
     await expect(page.locator("#dock-status")).toHaveText("The server is not answering");
     // The picker and dock agree that connection status is unknown while the server is unreachable.
     await expect(chip(page).locator(".dot")).toHaveClass(/off/);
@@ -1004,7 +1009,7 @@ test.describe("control panel, shell", () => {
     await expect(options(page).nth(0).locator(".dot")).toHaveClass(/off/);
     await page.keyboard.press("Escape");
     await page.unroute(`**${API}/hubs`);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator("#blocked-state")).toHaveCount(0, { timeout: 15_000 });
     await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
     await expect(page.locator("#dock-pill .dock-pill-half").nth(0)).toHaveAttribute("title", "hub connected");
     await expect(page.locator("#dock-pill .dock-pill-half").nth(1)).toHaveAttribute("title", "the app is not connected");
@@ -1093,7 +1098,7 @@ test.describe("control panel, views", () => {
   });
 
   test("the remote tab mounts the card for the selected hub; the layout subtab edits its document live", async ({ page }, testInfo) => {
-    const state = { hubs: [LIVING, OFFICE], seen: [], document: { show_dpad: false } };
+    const state = { hubs: [LIVING, OFFICE, BEDROOM], seen: [], document: { show_dpad: false } };
     const { calls } = await mockServer(page, state);
     await page.goto(`${PAGE}#/e26a44861b45/remote/card`);
     await expect(page.locator("#view-remote")).toBeVisible();
@@ -1149,10 +1154,14 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-doc")).toHaveValue("");
 
     // Picking another hub re-targets the card and the editor.
-    await pickHub(page, "192.168.1.60");
+    await pickHub(page, BEDROOM.hub_id);
     await page.click('#subtabs button[data-sub="card"]');
-    await expect.poll(() => calls.some((c) => c.key === "GET /hubs/192.168.1.60/ui/remote-card")).toBe(true);
-    await expect(page.locator("#remote-banner")).toBeVisible();
+    await expect.poll(() => calls.some((c) => c.key === `GET /hubs/${BEDROOM.hub_id}/ui/remote-card`)).toBe(true);
+    // A disabled hub: the shell's blocked state stands in the tab's place, and the card reads nothing.
+    await pickHub(page, OFFICE.hub_id);
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
+    await expect(page.locator("#view-remote sofabaton-virtual-remote")).toHaveCount(0);
+    expect(calls.some((c) => c.key === `GET /hubs/${OFFICE.hub_id}/ui/remote-card`)).toBe(false);
   });
 
   test("the remote card scales to fit between the docks, whatever the viewport's height", async ({ page }, testInfo) => {
@@ -1528,7 +1537,7 @@ test.describe("control panel, views", () => {
   });
 
   test("remote editor retains failed saves and ignores responses after switching hubs", async ({ page }) => {
-    const state = { hubs: [LIVING, OFFICE], seen: [], document: { show_dpad: false } };
+    const state = { hubs: [LIVING, BEDROOM], seen: [], document: { show_dpad: false } };
     await mockServer(page, state);
     await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
     await page.locator("sb-panel-remote-editor summary").filter({ hasText: "Layout options" }).click();
@@ -1551,7 +1560,7 @@ test.describe("control panel, views", () => {
     const pending = page.waitForRequest((r) => r.method() === "PUT");
     await page.click("#remote-save");
     await pending;
-    await pickHub(page, OFFICE.hub_id);
+    await pickHub(page, BEDROOM.hub_id);
     // The save has not landed, so the layout is still unsaved: leaving asks (CR-F5a-4).
     await page.click("#leave-go");
     await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
@@ -1742,10 +1751,15 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-managed-warning")).toHaveCount(0);
     await expect(page.locator('#subtabs button[data-sub="devices"]')).toHaveClass(/active/);
 
-    // Rename the device: a draft edit; the Sync button carries the dirty signal; the dock says it the card's way.
+    // Rename the device and pick its icon: one draft edit (dialog B, the picker on demand); the Sync button carries the
+    // dirty signal; the dock says it the card's way.
     await editor.locator("#editor-rename").click();
-    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename device");
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Edit device");
     await editor.locator("#rename-input").fill("Living TV!");
+    await expect(editor.locator("#rename-dialog .appearance-pane")).toHaveCount(0);
+    await editor.locator("#rename-dialog .appearance-reveal").click();
+    await editor.locator('#rename-dialog .appearance-pane button[aria-label="Music"]').click();
+    await page.screenshot({ path: shot(testInfo, "device-edit-dialog") });
     await editor.locator("#rename-save").click();
     await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
     await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
@@ -1890,6 +1904,7 @@ test.describe("control panel, views", () => {
     expect(puts[0].method).toBe("PUT");
     expect(puts[0].ifMatch).toBe('"snap-1"');
     expect(puts[0].body.device.name).toBe("Living TV!");
+    expect(puts[0].body.device.icon).toBe(3);
     expect(puts[0].body.device.idle_behavior).toBe(4);
     expect(puts[0].body.commands.map((c) => c.command_id)).toEqual([1, 2]);
     expect(puts[0].body.commands[0].restore_data).toEqual({ transport: "hub_code_record", data_hex: RAW_HEX.replace("02 30 00 00 00 00", "02 58 00 00 00 00"), edited: true });
@@ -2187,7 +2202,7 @@ test.describe("control panel, views", () => {
 
     // Rename: a draft edit with the card's dock banner.
     await editor.locator("#editor-rename").click();
-    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename activity");
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Edit activity");
     await editor.locator("#rename-input").fill("Movie night");
     await editor.locator("#rename-save").click();
     await expect(editor.locator("#editor-title")).toHaveText("Movie night");
@@ -2319,6 +2334,11 @@ test.describe("control panel, views", () => {
     // Roles: the menu lists the devices, one without a mapping is disabled; a pick copies the device's own buttons.
     const volume = editor.locator('[data-role="volume"]');
     await expect(volume.locator(".role-trigger")).toHaveText("Not used");
+    // Bring the trigger below the sticky header before clicking. Playwright's
+    // automatic scroll only checks the viewport, not sticky occlusion; the
+    // resulting late scroll would close this deliberately scroll-dismissed menu.
+    await volume.locator(".role-trigger").evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await volume.locator(".role-trigger").click();
     await expect(volume.locator(".member-add-option")).toHaveText(["Not used", "TV", "Roku — no button mapping", "Server — no button mapping", "Amp — no button mapping"]);
     await expect(volume.locator('.member-add-option[data-device="2"]')).toBeDisabled();
@@ -2431,8 +2451,10 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#exit-dialog .dialog-text")).toContainText("This activity has changes");
     await editor.locator("#exit-keep").click();
 
-    // Delete activity is immediate: a job, then back to the list.
+    // Delete activity is immediate: a job, then back to the list. It lives in the edit dialog.
+    await editor.locator("#editor-rename").click();
     await editor.locator("#editor-delete").click();
+    await expect(editor.locator("#rename-dialog")).toHaveCount(0);
     await expect(editor.locator("#delete-dialog .dialog-title")).toHaveText('Delete activity "Movies"?');
     await expect(editor.locator("#delete-dialog .delete-replace-note")).toContainText("applied to the hub immediately");
     await editor.locator("#delete-confirm").click();
@@ -2534,11 +2556,55 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#add-class option")).toHaveText(["Infrared", "Roku", "Hue", "Sonos", "Generic HTTP"]);
     await page.locator("#add-name").fill("Soundbar");
     await page.locator("#add-class").selectOption("wifi_roku");
+    // The icon picker opens on demand; the pick rides the create (the activity above sent none).
+    await page.locator("#add-dialog .cache-dialog-appearance-toggle").click();
+    await page.locator('#add-dialog .cache-dialog-appearance-pane button[aria-label="Music"]').click();
     await page.locator("#add-confirm").click();
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/2$/);
-    expect(calls.find((c) => c.key === "add_device").body).toEqual({ name: "Soundbar", device_class: "wifi_roku" });
+    expect(calls.find((c) => c.key === "add_device").body).toEqual({ name: "Soundbar", device_class: "wifi_roku", icon: 3 });
     await expect(page.locator("sb-panel-device-editor #editor-title")).toHaveText("Soundbar");
   });
+  test("catalog rows show the hub's own icon on a tile, a device's link as a corner badge", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const H = `**${API}/hubs/${LIVING.hub_id}`;
+    await page.route(`${H}/devices`, (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+        { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2, icon: 1, color_id: null },
+        { device_id: 2, name: "Streamer", brand: "Roku", device_class: "wifi_roku", device_class_code: 10, power_state: 0, idle_behavior: null, icon: 13, color_id: null },
+        { device_id: 3, name: "Not read yet", brand: null, device_class: "ir", device_class_code: 1, power_state: null, idle_behavior: null, icon: null, color_id: null },
+      ]) });
+    });
+    await page.route(`${H}/activities`, (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+        { activity_id: 101, name: "Watch TV", active: true, needs_confirm: false, icon: 4, color_id: null },
+      ]) });
+    });
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(3);
+    // An X1S tile is neutral; the class glyph moves to the badge (IR and Wifi), and a row without a cached record keeps it.
+    await expect(rows.nth(0).locator(".entity-name-icon--tile .entity-tile--neutral")).toHaveCount(1);
+    await expect(rows.nth(0).locator(".entity-tile__badge svg")).toHaveCount(1);
+    await expect(rows.nth(1).locator(".entity-tile__badge svg")).toHaveCount(1);
+    await expect(rows.nth(2).locator(".entity-tile")).toHaveCount(0);
+    // The badge hangs below the tile and is not clipped by the row's name.
+    const clipped = await rows.nth(0).evaluate((row) => {
+      const badge = row.querySelector(".entity-tile__badge").getBoundingClientRect();
+      const name = row.querySelector(".entity-name");
+      return getComputedStyle(name).overflowY !== "visible" && badge.bottom > name.getBoundingClientRect().bottom;
+    });
+    expect(clipped).toBe(false);
+    await page.screenshot({ path: shot(testInfo, "catalog-tiles") });
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/activities`);
+    await expect(page.locator("#catalog-rows .entity-block").nth(0).locator(".entity-name-icon--tile .entity-tile")).toHaveCount(1);
+    await expect(page.locator("#catalog-rows .entity-block").nth(0).locator(".entity-tile__badge")).toHaveCount(0);
+  });
+
   test("busy states are the card's: Add keeps its dialog whole with no scrim, Delete and Sync swap the editor for the progress view, a failed delete comes back as a banner", async ({ page }, testInfo) => {
     const state = { hubs: [LIVING], seen: [] };
     const { sockets } = await mockServer(page, state);
@@ -2590,7 +2656,7 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#add-confirm")).toHaveText("Creating…");
     await expect(page.locator("#add-confirm")).toBeDisabled();
     await expect(page.locator("#add-name")).toBeDisabled();
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
     const cover = await page.locator(".cache-modal-backdrop").evaluate((el) => {
       const r = el.getBoundingClientRect();
@@ -2606,13 +2672,14 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-title")).toHaveText("Gaming");
 
     // Delete: the confirm closes at once and the progress view stands in for the editor. A failure re-opens it under a banner.
+    await editor.locator("#editor-rename").click();
     await editor.locator("#editor-delete").click();
     await editor.locator("#delete-confirm").click();
     await expect(editor.locator("#editor-deleting .progress-title")).toHaveText("Deleting activity");
     await expect(editor.locator("#editor-deleting .progress-message")).toHaveText("Removing this activity from the hub…");
     await expect(editor.locator("#delete-dialog")).toHaveCount(0);
     await expect(editor.locator("#activity-editor")).toHaveCount(0);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await page.screenshot({ path: shot(testInfo, "busy-deleting") });
     end("del1", { status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     await expect(editor.locator("#editor-delete-error")).toContainText("Delete failed: the hub went away");
@@ -2627,7 +2694,7 @@ test.describe("control panel, views", () => {
     await editor.locator("#editor-sync").click();
     await expect(editor.locator("#editor-syncing .progress-title")).toHaveText("Syncing to your hub");
     await expect(editor.locator("#editor-syncing .progress-message")).toHaveText("Writing the name (1/4)");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await page.screenshot({ path: shot(testInfo, "busy-syncing") });
     snapshot.activities[1].device.name = "Games";
     end("sync1");
@@ -2635,6 +2702,7 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-delete-error")).toHaveCount(0);
 
     // A delete that lands goes back to the list.
+    await editor.locator("#editor-rename").click();
     await editor.locator("#editor-delete").click();
     await editor.locator("#delete-confirm").click();
     await expect(editor.locator("#editor-deleting")).toBeVisible();
@@ -2705,15 +2773,16 @@ test.describe("control panel, integrated picker", () => {
       await chip(page).click();
       await page.getByRole("button", { name: "Manage Living room", exact: true }).click();
       await page.getByRole("group", { name: "Actions for Living room", exact: true }).getByRole("button", { name: "Enable", exact: true }).click();
-      await expect(page.locator("#blocked-scrim")).toContainText("Waiting for the hub to connect");
+      await expect(page.locator("#blocked-state")).toContainText("Waiting for the hub to connect");
       hub().status = { ...CONTROL };
       for (const ws of sockets) ws.send(JSON.stringify({ type: "hub_event", hub_id: LIVING.hub_id, event: { kind: "catalog_ready", seq: 1 } }));
-      await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+      await expect(page.locator("#blocked-state")).toHaveCount(0);
     };
 
     await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/activities`);
-    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
-    await expect(page.locator("#catalog-notice")).toContainText("hub_disabled");
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
+    // The blocked state stands in the view's place: the view has not read anything yet.
+    await expect(page.locator("#catalog-notice")).toHaveCount(0);
     await enable();
     await expect(page.locator("#catalog-rows .entity-block")).toHaveCount(1);
     await expect(page.locator("#catalog-rows .entity-name-label")).toHaveText("Watch TV");
@@ -2724,7 +2793,7 @@ test.describe("control panel, integrated picker", () => {
     hub().status = null;
     await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/devices/1`);
     await page.reload();
-    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
     await enable();
     await expect(page.locator("#editor-refresh")).toBeVisible();
   });
@@ -3007,9 +3076,9 @@ test.describe("control panel, backup", () => {
     await expect(view.locator("#backup-progress")).toContainText("Creating backup");
     await expect(view.locator("#backup-progress")).toContainText("Backing up device 1");
     await expect(view.locator(".backup-drawer-sub")).toHaveText("The hub is creating your backup.");
-    await expect(page.locator("#dock-status")).toHaveText("Backing up device 1 · 0/1");
+    await expect(page.locator("#dock-status")).toHaveText("Backing up device 1 (0/1)");
     // The progress card is the busy state; nothing is layered over it.
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
 
     push({ status: "done", finished_at: new Date().toISOString(), result: result() });
     await expect(view.locator("#backup-complete")).toContainText("Backup completed");
@@ -3435,7 +3504,7 @@ test.describe("control panel, wifi commands", () => {
     await expect(block).toContainText("Automation unavailable");
     await expect(block).toContainText("running firmware version 2. Version 5 or newer is required");
     await expect(view(page).locator("#wifi-add")).toHaveCount(0);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);         // not a gate: the shell does not scrim
+    await expect(page.locator("#blocked-state")).toHaveCount(0);         // not a gate: the shell does not scrim
     await page.screenshot({ path: shot(testInfo, "wifi-firmware-block") });
 
     // The hub row says the firmware is fine now: the roster takes the block's place.
@@ -3491,7 +3560,10 @@ test.describe("control panel, wifi commands", () => {
     await expect(card.locator(".device-card-name")).toHaveText("Lights");
     await expect(card.locator(".device-card-count")).toHaveText("2 slots");
     await expect(card.locator(".status-pill")).toHaveClass(/sync-ok/);
-    await expect(card.locator(".transport-pill")).toHaveCount(0);
+    // Every device names its delivery method, even with one on offer; the row's pill opens nothing.
+    await expect(card.locator(".transport-pill")).toHaveText("HTTP");
+    await expect(card.locator(".transport-pill")).not.toHaveClass(/attention/);
+    await expect(card.locator("button.transport-pill")).toHaveCount(0);
     await card.click();
     await expect(page).toHaveURL(/wifi\/devices\/a1b2c3d4$/);
 
@@ -3565,11 +3637,16 @@ test.describe("control panel, wifi commands", () => {
     await expect(tile(1)).toHaveClass(/slot-empty/);
     await expect(detail.locator('.hub-event-action-link[data-power="on"]')).toHaveText("do nothing");
 
-    // Rename the device; it is part of the same draft.
+    // Rename the device and pick its icon (the picker on demand): both are part of the same draft,
+    // and the tile beside the name shows the pick.
     await detail.locator("#wifi-rename-open").click();
+    await expect(view(page).locator("#wifi-rename-dialog .dialog-title")).toHaveText("Edit device");
     await view(page).locator("#wifi-rename").fill("Lamps");
+    await view(page).locator("#wifi-rename-dialog .appearance-reveal").click();
+    await view(page).locator('#wifi-rename-dialog .appearance-pane button[aria-label="Music"]').click();
     await view(page).locator("#wifi-rename-save").click();
     await expect(detail.locator(".detail-title")).toHaveText("Lamps");
+    await expect(detail.locator(".detail-entity-tile .entity-tile")).toHaveCount(1);
     await page.screenshot({ path: shot(testInfo, "wifi-detail-dirty") });
 
     // Leaving asks with the card's dialog; Keep editing stays.
@@ -3591,6 +3668,7 @@ test.describe("control panel, wifi commands", () => {
     await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
     const body = calls.find((c) => c.key === "update").body;
     expect(body.name).toBe("Lamps");
+    expect([body.icon, body.color_id]).toEqual([3, null]);
     expect(body.slots).toHaveLength(10);
     expect(body.slots[0]).toEqual({ label: "Button 1", long_label: null, ...plain });
     expect(body.slots[1]).toEqual({ label: "Lights off", long_label: null, ...plain });
@@ -3729,6 +3807,116 @@ test.describe("control panel, wifi commands", () => {
     expect(calls.filter((c) => c.key === "delete").map((c) => c.force)).toEqual([false, true]);
   });
 
+  test("the delivery pill: a failed test turns it amber and its dropdown names the flow to allow, Test again passes it, a sync runs in place and another job reads Busy", async ({ page }, testInfo) => {
+    const failed = { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: null, latency_s: null, checked_at: "t", via: "test" };
+    const { calls, world, sockets } = await wifiServer(page, [wifiDevice({ delivery: failed })]);
+    await page.route(`${H}/wifi-devices/*/test-delivery`, (route) => {
+      const key = route.request().url().split("/").slice(-2)[0];
+      calls.push({ key: "test", device: key });
+      const delivery = { ...failed, status: "delivered", source: "192.168.1.50", latency_s: 0.05 };
+      world.devices = world.devices.map((d) => (d.key === key ? { ...d, delivery } : d));
+      world.results.test_wifi_delivery = { delivery };
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "test_wifi_delivery", kind: "test_wifi_delivery", status: "queued" })) });
+    });
+    // The roster row warns too, read-only.
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    await expect(view(page).locator('.device-card[data-key="a1b2c3d4"] .transport-pill')).toHaveClass(/attention/);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    const pill = detail.locator("#wifi-delivery-pill");
+    const delivery = detail.locator("#wifi-delivery");
+    const status = delivery.locator("#wifi-delivery-status");
+    // No banner in the body: the pill is amber and its dropdown says why.
+    await expect(pill).toHaveText("HTTP");
+    await expect(pill).toHaveClass(/attention/);
+    await expect(pill).toHaveAttribute("aria-label", "Delivery method: HTTP. Button presses need attention.");
+    await expect(delivery).toHaveCount(0);
+    await pill.click();
+    await expect(pill).toHaveAttribute("aria-expanded", "true");
+    await expect(delivery.locator(".delivery-title")).toHaveText("How button presses reach the server");
+    await expect(delivery.locator("#wifi-delivery-path")).toHaveText("The hub calls this server's callback listener at http://192.168.1.10:8060.");
+    await expect(status).toHaveAttribute("data-status", "not_delivered");
+    await expect(status).toContainText("The test command did not reach the server.");
+    await expect(status).toContainText("Allow TCP from the hub (192.168.1.50) to port 8060 on this server's host");
+    await expect(delivery.locator("#wifi-test-delivery")).toHaveText("Test again");
+    // Fixed under the pill, at least 320 wide, and kept inside the view.
+    const box = await delivery.boundingBox();
+    const viewBox = await detail.locator(".detail-view").boundingBox();
+    const pillBox = await pill.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(320);
+    expect(box.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height);
+    expect(box.x).toBeGreaterThanOrEqual(viewBox.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewBox.x + viewBox.width + 1);
+    await page.screenshot({ path: shot(testInfo, "wifi-delivery-failed") });
+
+    await delivery.locator("#wifi-test-delivery").click();
+    await expect(status).toHaveAttribute("data-status", "delivered");
+    await expect(status).toContainText("Test command received (0.1 s).");
+    await expect(pill).not.toHaveClass(/attention/);
+    expect(calls.filter((c) => c.key === "test")).toEqual([{ key: "test", device: "a1b2c3d4" }]);
+    // Escape closes it and hands focus back to the pill; the backdrop closes it too.
+    await page.keyboard.press("Escape");
+    await expect(delivery).toHaveCount(0);
+    await expect(pill).toBeFocused();
+    await pill.click();
+    await expect(delivery).toBeVisible();
+    const reopened = await delivery.boundingBox();
+    await page.mouse.click(viewBox.x + 12, reopened.y + reopened.height + 24);
+    await expect(delivery).toHaveCount(0);
+
+    // A sync: the card's deploy animation stands in the detail's place while the job runs.
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    await page.route(`${H}/jobs/update_wifi_device`, async (route) => {
+      if (await Promise.race([held.then(() => true), new Promise((r) => setTimeout(() => r(false), 50))])) return route.fallback();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "update_wifi_device", kind: "update_wifi_device", status: "running" })) });
+    });
+    await detail.locator('.slot-btn[data-slot="3"]').click();
+    await view(page).locator("#wifi-slot-name").fill("Scene");
+    await view(page).locator("#wifi-slot-name").press("Enter");
+    await detail.locator("#wifi-sync").click();
+    await expect(detail.locator("#wifi-syncing .progress-title")).toHaveText("Deploying Wifi Commands");
+    await expect(detail.locator("#wifi-syncing .progress-message")).toHaveText("Syncing Wifi Commands…");
+    await expect(detail.locator("#wifi-slots")).toHaveCount(0);
+    await page.screenshot({ path: shot(testInfo, "wifi-syncing") });
+    release();
+    await expect(detail.locator("#wifi-slots")).toBeVisible();
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+
+    // Another job holds the hub: the header button reads Busy, as on the card.
+    await expect.poll(() => sockets.length).toBe(1);
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: job({ job_id: "other", kind: "refresh" }) }));
+    await expect(detail.locator("#wifi-sync")).toHaveText("Busy");
+    await expect(detail.locator("#wifi-sync")).toBeDisabled();
+    // The dropdown still opens to read; Test waits for the hub.
+    await pill.click();
+    await expect(delivery.locator("#wifi-test-delivery")).toBeDisabled();
+  });
+
+  test("a sync whose test press does not arrive says so in the dock; a passed test is a plain success", async ({ page }) => {
+    const failed = { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: null, latency_s: null, checked_at: "t", via: "test" };
+    const { calls, sockets } = await wifiServer(page, [wifiDevice({ delivery: failed })]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    await detail.locator('.slot-btn[data-slot="3"]').click();
+    await view(page).locator("#wifi-slot-name").fill("Scene");
+    await view(page).locator("#wifi-slot-name").press("Enter");
+    await expect(detail.locator('.slot-btn[data-slot="3"] .slot-name')).toHaveText("Scene");
+    await detail.locator("#wifi-sync").click();
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    await expect(detail.locator("#wifi-delivery-pill")).toHaveClass(/attention/);
+    // The job's end reaches the dock over the event stream.
+    await expect.poll(() => sockets.length).toBe(1);
+    const finished = (kind, status) => job({ job_id: kind, kind, status: "done", finished_at: new Date().toISOString(), result: { delivery: { ...failed, status } } });
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: finished("update_wifi_device", "not_delivered") }));
+    await expect(page.locator("#dock-status")).toHaveText("Synced, but the test command did not reach the server.");
+    await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: finished("test_wifi_delivery", "delivered") }));
+    await expect(page.locator("#dock-status")).toHaveText("Delivery tested.");
+    await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
+  });
+
   test("a pending create offers no Sync: neither in the header nor in the leave dialog", async ({ page }) => {
     const pending = wifiDevice({ key: "0badf00d", device_id: null, deployed: false, pending: { op: "create", started_at: "t" }, spec: { name: "Blinds", slots: slots({ 1: "Up" }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
     const { calls } = await wifiServer(page, [pending]);
@@ -3767,18 +3955,40 @@ test.describe("control panel, wifi commands", () => {
     expect(calls.find((c) => c.key === "create").body.transport).toBe("mqtt");
 
     const detail = view(page).locator("#wifi-device-detail");
-    await expect(detail.locator(".transport-pill")).toHaveText("mqtt");
-    await expect(detail.locator(".transport-pill")).toHaveClass(/mqtt/);
+    const pill = detail.locator("#wifi-delivery-pill");
+    const delivery = detail.locator("#wifi-delivery");
+    await expect(pill).toHaveText("MQTT");
+    await expect(pill).toHaveClass(/mqtt/);
+    await expect(pill).not.toHaveClass(/attention/);
     await expect(detail.locator("#wifi-callback-line")).toContainText("MQTT topic E26A44861B45/up");
-    await expect(detail.locator("#wifi-mqtt-notice")).toHaveCount(0);
     await expect(detail.locator("#wifi-moved")).toHaveCount(0);
-    // The broker goes away: the device's view says so, with the server's own words for why.
+    // Never tested: the dropdown names the broker and says what Test does.
+    await pill.click();
+    await expect(delivery.locator("#wifi-delivery-path")).toHaveText("The hub publishes to its MQTT broker; this server listens on broker.lan:1883.");
+    await expect(delivery.locator("#wifi-delivery-broker")).toHaveCount(0);
+    await expect(delivery.locator("#wifi-delivery-status")).toHaveAttribute("data-status", "untested");
+    await expect(delivery.locator("#wifi-delivery-status")).toContainText("Not tested yet.");
+    await expect(delivery.locator("#wifi-test-delivery")).toHaveText("Test");
+    await page.keyboard.press("Escape");
+    await expect(delivery).toHaveCount(0);
+    // The broker goes away: the pill turns amber and its dropdown says why, in the server's own words.
     world.mqtt = { ...broker, connected: false, last_error: "the broker closed the connection" };
+    world.devices = world.devices.map((d) => ({ ...d, delivery: { status: "not_delivered", transport: "mqtt", target: "broker.lan:1883", hub_ip: "192.168.1.50", source: "", latency_s: null, checked_at: "t", via: "test" } }));
     await page.reload();
-    await expect(detail.locator("#wifi-mqtt-notice")).toContainText("broker.lan:1883 (the broker closed the connection)");
+    await expect(pill).toHaveClass(/attention/);
     await expect(detail.locator("#wifi-listener-notice")).toHaveCount(0);           // the HTTP listener is not this device's business
+    await pill.click();
+    await expect(delivery.locator("#wifi-delivery-broker")).toContainText("broker.lan:1883 (the broker closed the connection)");
+    // The failed test shrinks to one line under it.
+    await expect(delivery.locator("#wifi-delivery-status")).toHaveClass(/brief/);
+    await expect(delivery.locator("#wifi-delivery-status")).toHaveText("The test command did not reach the server.");
     await page.screenshot({ path: shot(testInfo, "wifi-mqtt-broker-down") });
+    // Its button opens the server's broker page.
+    await expect(delivery.locator("#wifi-delivery-broker-settings")).toHaveText("Broker settings");
+    await delivery.locator("#wifi-delivery-broker-settings").click();
+    await expect(page).toHaveURL(/#\/server\/mqtt$/);
     // Choosing HTTP instead is one click.
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/0badf00d`);
     await detail.locator("#wifi-back").click();
     await view(page).locator("#wifi-add").click();
     await dialog.locator(".transport-option").nth(1).click();
@@ -3795,8 +4005,8 @@ test.describe("control panel, wifi commands", () => {
     await expect(view(page).locator("#wifi-add")).toBeDisabled();
     await expect(view(page).locator("#wifi-listener-notice")).toContainText("port 8060");
     await expect(view(page).locator("#wifi-listener-notice")).toContainText("address already in use");
-    // With a choice of transports every device says which one it uses.
-    await expect(view(page).locator(".device-card .transport-pill")).toHaveText("http");
+    // Every device says which delivery method it uses.
+    await expect(view(page).locator(".device-card .transport-pill")).toHaveText("HTTP");
     // An unknown key (deleted elsewhere, an old bookmark) lands on the roster.
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/ffffffff`);
     await expect(page).toHaveURL(/wifi\/devices$/);
@@ -3961,5 +4171,147 @@ test.describe("control panel, MQTT broker", () => {
     await expect(page.locator("#mqtt-startup")).toContainText("read-only");
     await expect(page.locator("#mqtt-startup")).toContainText("startup.lan");
     await expect(page.locator("#mqtt-form")).toHaveCount(0);
+  });
+});
+
+test.describe("control panel, IR pill", () => {
+  // An X2 IR device's emitters (IR emitter pill plan, IR5): the card's pill on the shared template.
+  const X2 = { ...LIVING, config: { ...LIVING.config, hub_version: "X2" }, status: { ...CONTROL, hub_version: "X2" } };
+  const PAIRED = [
+    { kind: "remote", number: 1, name: "X2 Remote", online: true, port_cable: null },
+    { kind: "repeater", number: 1, name: "Cabinet", online: true, port_cable: true },
+    { kind: "repeater", number: 2, name: "Bedroom", online: false, port_cable: null },
+  ];
+
+  test("a catalog row warns, the editor's pill reads the paired list on open, and a pick goes out with the device's PUT", async ({ page }, testInfo) => {
+    const state = { hubs: [X2], seen: [] };
+    await mockServer(page, state);
+    const element = (id, name, extras) => ({
+      kind: "device_backup", complete: true, editable: true, fetched_at: "2026-10-28T00:00:00Z",
+      device: { device_id: id, name, brand: "Sony", device_class: "ir", idle_behavior: 1, extras },
+      commands: [{ command_id: 1, name: "Power" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+    });
+    const snapshot = {
+      snapshot_id: "snap-1", captured_at: "2026-10-28T00:00:00Z", engine_generation: 1, complete: true, payload_profile: "structural",
+      hub: { name: "Living room", version: "X2" },
+      // The TV routes to the built-in emitter and the offline Bedroom repeater.
+      devices: [element(1, "TV", { a: 0, b: 0b1100, c: 0x01 }), element(2, "Soundbar", { a: 0, b: 0, c: 0x07 })],
+      activities: [],
+    };
+    const reads = [];
+    const puts = [];
+    let polls = 0;
+    await page.route(`**${API}/hubs/${X2.hub_id}/ir-emitters*`, async (route) => {
+      const refresh = new URL(route.request().url()).searchParams.get("refresh");
+      reads.push(refresh);
+      if (refresh === "true") await new Promise((resolve) => setTimeout(resolve, 400));
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ paired: PAIRED, read_at: 1793000000 }) });
+    });
+    await page.route(`**${API}/hubs/${X2.hub_id}/devices`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+      { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 1, emitters: [0, 0b1100, 0x01] },
+      { device_id: 2, name: "Soundbar", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 1, emitters: [0, 0, 0x07] },
+    ]) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X2", name: "Living room", mac: "E2:6A:44:86:1B:45", firmware_version: 5, production_batch: null }) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/devices/1`, (route) => {
+      const request = route.request();
+      puts.push({ ifMatch: request.headers()["if-match"], body: request.postDataJSON() });
+      snapshot.devices[0] = { ...snapshot.devices[0], ...request.postDataJSON() };
+      snapshot.snapshot_id = "snap-2";
+      polls = 0;
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: "queued" })) });
+    });
+    await page.route(`**${API}/hubs/${X2.hub_id}/jobs/j1`, (route) => {
+      polls++;
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: polls < 2 ? "running" : "done", progress: { completed_steps: polls, total_steps: 1 } })) });
+    });
+
+    // The catalog: only the row that needs attention carries the read-only amber pill.
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator(".ir-pill")).toHaveClass(/attention/);
+    await expect(rows.nth(0).locator(".ir-pill")).toHaveAttribute("title", "An emitter of this device needs attention.");
+    await expect(rows.nth(1).locator(".ir-pill")).toHaveCount(0);
+    expect(reads).toEqual(["false"]);
+
+    // The editor: the pill in the header, amber at rest from the last read.
+    await rows.nth(0).locator(".entity-edit").click();
+    const editor = page.locator("sb-panel-device-editor");
+    const pill = editor.locator("#editor-ir-pill");
+    const pop = editor.locator("#editor-ir-pop");
+    await expect(pill).toHaveClass(/attention/);
+    await expect(pill).toHaveText("IR");
+    await pill.click();
+    await expect(pop).toContainText("Checking the paired remotes and repeaters…");
+    await expect(pop.locator('[data-status="checking"]')).toHaveCount(0);
+    expect(reads).toEqual(["false", "true"]);
+    await expect(pop.locator('.ir-row[data-row="repeater:2"]')).toContainText("Repeater 2 · offline");
+    await expect(pop.locator(".ir-status.warn")).toContainText("Bedroom is offline");
+    const box = await pop.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    await page.screenshot({ path: shot(testInfo, "ir-pill") });
+    // Untick Bedroom and pick port 2: a pending edit, Sync on.
+    await pop.locator('.ir-row[data-row="repeater:2"] .ir-row-head').click();
+    await expect(pill).not.toHaveClass(/attention/);
+    await expect(pill).toHaveClass(/pending/);
+    await pop.locator('.ir-row[data-row="hub"] [data-choice="port2"]').click();
+    await expect(editor.locator("#editor-sync")).toBeEnabled();
+    // Undo, then the pick again.
+    await pop.locator(".ir-undo").click();
+    await expect(pill).toHaveClass(/attention/);
+    await expect(pill).not.toHaveClass(/pending/);
+    await expect(editor.locator("#editor-sync")).toBeDisabled();
+    await pop.locator('.ir-row[data-row="repeater:2"] .ir-row-head').click();
+    await pop.locator('.ir-row[data-row="hub"] [data-choice="port2"]').click();
+    // Escape closes it and gives the focus back to the pill.
+    await page.keyboard.press("Escape");
+    await expect(pop).toHaveCount(0);
+    await expect(pill).toBeFocused();
+    // One row at any width: the edit tile, the title over its pill, and Sync at the end.
+    const [pillBox, titleBox, renameBox, syncBox] = await Promise.all([pill.boundingBox(), editor.locator("#editor-title").boundingBox(), editor.locator("#editor-rename").boundingBox(), editor.locator("#editor-sync").boundingBox()]);
+    expect(renameBox.x + renameBox.width).toBeLessThanOrEqual(titleBox.x + 4);
+    expect(pillBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
+    expect(syncBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width - 1);
+    expect(syncBox.y).toBeLessThan(titleBox.y + titleBox.height);
+    if (testInfo.project.name.includes("phone")) {
+      expect(titleBox.width).toBeGreaterThan(120);
+      expect(renameBox.height).toBeGreaterThanOrEqual(44);
+      expect(syncBox.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.screenshot({ path: shot(testInfo, "ir-pill-header") });
+    await editor.locator("#editor-sync").click();
+    await expect.poll(() => puts.length).toBe(1);
+    expect(puts[0].ifMatch).toBe('"snap-1"');
+    expect(puts[0].body.device.extras).toEqual({ a: 0, b: 0, c: 0x04 });
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(pill).not.toHaveClass(/pending|attention/);
+    // The pill read the hub once, when it opened.
+    expect(reads.filter((refresh) => refresh === "true")).toHaveLength(1);
+  });
+
+  test("an X1S device editor has no IR pill and never asks for the paired list", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const reads = [];
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/ir-emitters*`, (route) => {
+      reads.push(route.request().url());
+      route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ type: "not_x2", title: "IR emitter routing exists on the X2 only", status: 409 }) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural", hub: { name: "Living room", version: "X1S" },
+      devices: [{ kind: "device_backup", complete: true, editable: true, fetched_at: "t", device: { device_id: 1, name: "TV", device_class: "ir", idle_behavior: 1 }, commands: [], button_bindings: [], macros: [] }],
+      activities: [],
+    }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/1`);
+    const editor = page.locator("sb-panel-device-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+    await expect(editor.locator(".ir-pill")).toHaveCount(0);
+    await expect(page.locator("#catalog-rows .ir-pill")).toHaveCount(0);
+    expect(reads).toEqual([]);
   });
 });

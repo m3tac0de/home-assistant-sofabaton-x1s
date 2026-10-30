@@ -65,6 +65,7 @@ class _Step:
 def test_uses_raw_command_dump_for_bt_rf_wifi_not_ir() -> None:
     assert bx.uses_raw_command_dump("bluetooth") is True
     assert bx.uses_raw_command_dump("rf_433mhz") is True
+    assert bx.uses_raw_command_dump("rf_315mhz") is True
     assert bx.uses_raw_command_dump("wifi_sonos") is True
     assert bx.uses_raw_command_dump("IR") is False
     assert bx.uses_raw_command_dump(None) is False

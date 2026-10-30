@@ -15,7 +15,8 @@ import importlib
 from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.hub import SofabatonHub
-from custom_components.sofabaton_x1s.lib.hub_versions import HUB_VERSION_X1S
+from custom_components.sofabaton_x1s.lib.devices import DeviceConfig, build_device_create_payload
+from custom_components.sofabaton_x1s.lib.hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
@@ -24,13 +25,13 @@ runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtim
 FETCHED_DEVICE = "2026-08-17T08:00:00+00:00"
 
 
-def _proxy() -> X1Proxy:
+def _proxy(hub_version: str = HUB_VERSION_X1S) -> X1Proxy:
     return X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
         diag_dump=False,
         diag_parse=False,
-        hub_version=HUB_VERSION_X1S,
+        hub_version=hub_version,
     )
 
 
@@ -150,6 +151,39 @@ def test_ui_activity_list_skips_non_dict_rows() -> None:
     rows = hub.get_ui_activity_list()
 
     assert rows == [{"id": 101, "name": "A", "sort": 0}]
+
+
+def _record(hub_version: str, *, icon: int, color_id: int = 0) -> bytes:
+    config = DeviceConfig(name="Row", device_id=1, icon=icon, color_id=color_id)
+    return build_device_create_payload(config, hub_version=hub_version)[3:]
+
+
+def test_ui_lists_carry_icon_and_x2_color() -> None:
+    proxy = _proxy(HUB_VERSION_X2)
+    hub = _hub(proxy)
+    hub.activities = {101: {"name": "Watch TV"}}
+    hub.devices = {3: {"name": "TV", "device_class": "ir"}, 4: {"name": "Amp"}}
+    proxy.state.activities[101] = {"name": "Watch TV", "raw_body": _record(HUB_VERSION_X2, icon=5, color_id=7)}
+    proxy.state.devices[3] = {"name": "TV", "raw_body": _record(HUB_VERSION_X2, icon=18, color_id=0)}
+
+    [activity] = hub.get_ui_activity_list()
+    assert (activity["icon"], activity["color_id"]) == (5, 7)
+    rows = {row["id"]: row for row in hub.get_ui_device_list()}
+    # Color 0 (never picked) is passed on raw; the frontend draws it grey.
+    assert (rows[3]["icon"], rows[3]["color_id"]) == (18, 0)
+    # No cached record: neither field, so the UI keeps its fallback glyph.
+    assert "icon" not in rows[4] and "color_id" not in rows[4]
+
+
+def test_ui_lists_carry_no_color_on_an_x1s() -> None:
+    proxy = _proxy(HUB_VERSION_X1S)
+    hub = _hub(proxy)
+    hub.devices = {3: {"name": "TV"}}
+    # The X1S record holds the byte, but nothing on an X1S shows it.
+    proxy.state.devices[3] = {"name": "TV", "raw_body": _record(HUB_VERSION_X1S, icon=9, color_id=4)}
+
+    [row] = hub.get_ui_device_list()
+    assert row["icon"] == 9 and "color_id" not in row
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +482,7 @@ class _AttrHub:
     def get_ui_activity_list(self):
         # Hub order (sort byte) already applied; deliberately not id order.
         return [
-            {"id": 103, "name": "Play", "sort": 1},
+            {"id": 103, "name": "Play", "sort": 1, "icon": 7, "color_id": 5},
             {"id": 101, "name": "Watch TV", "sort": 2},
             {"id": 102, "name": "Listen", "sort": 0},
         ]
@@ -476,6 +510,17 @@ def test_remote_attributes_publish_activities_in_hub_order():
     assert [row["id"] for row in attrs["activities"]] == [103, 101, 102]
     assert [row["state"] for row in attrs["activities"]] == ["off", "off", "off"]
     assert "sort" not in attrs["activities"][0]
+
+
+def test_remote_attributes_pass_the_activity_icon_and_color_on():
+    entity = _remote_entity()
+    entity.hass = SimpleNamespace(data={})
+
+    rows = {row["id"]: row for row in entity.extra_state_attributes["activities"]}
+
+    assert (rows[103]["icon"], rows[103]["color_id"]) == (7, 5)
+    # A row without a cached record carries neither.
+    assert "icon" not in rows[101] and "color_id" not in rows[101]
 
 
 def test_remote_attributes_publish_devices_when_cache_enabled():

@@ -637,6 +637,7 @@ def _make_mqtt_ingress_fake(dispatched):
         devices={11: {"name": "Lights"}},
     )
     fake._get_cached_device_name = lambda device_id: None
+    fake._claim_wifi_probe = lambda *args, **kwargs: SofabatonHub._claim_wifi_probe(fake, *args, **kwargs)
 
     async def fake_dispatch(**kwargs):
         dispatched.append(kwargs)

@@ -1,13 +1,14 @@
 """Wifi Commands ingress for SofabatonHub (R6, CR-H1-13).
 
 Presses arriving over the Roku HTTP listener or MQTT, their action
-dispatch, the MQTT activity-state ingress, and the IP-command and IR
-emission records the sensors read.
+dispatch, the delivery test's arrivals, the MQTT activity-state
+ingress, and the IP-command and IR emission records the sensors read.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import unquote
@@ -17,6 +18,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .const import (
     CONF_BANNER_MAC,
     HUB_VERSION_X2,
+    signal_command_sync,
     signal_ip_commands,
     signal_ir_intercept,
 )
@@ -25,10 +27,15 @@ from .command_config import (
     DEFAULT_WIFI_DEVICE_KEY,
     map_wifi_mqtt_key,
     normalize_command_name,
+    WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
     wifi_device_requires_listener,
 )
 from .hub_identity import real_hub_mac
+
+#: How long after a delivery test's press arrived a repeat of it (a hub
+#: re-sending a request it saw no answer to) is still the test's.
+WIFI_PROBE_REPEAT_WINDOW_S = 3.0
 
 
 class WifiIngressMixin:
@@ -83,6 +90,11 @@ class WifiIngressMixin:
                 command_index = int(parts[3])
                 if len(parts) >= 5 and parts[4] in ("short", "long"):
                     press_type = parts[4]
+                if self._claim_wifi_probe(
+                    device_id, command_index, press_type,
+                    transport=WIFI_TRANSPORT_HTTP, source_ip=source_ip,
+                ):
+                    return
                 store = await async_get_command_config_store(self.hass)
                 deployed = store.get_deployed_wifi_commands(self.entry_id, hub_device_id=device_id)
                 if 0 <= command_index < len(deployed):
@@ -140,6 +152,42 @@ class WifiIngressMixin:
             press_type=press_type,
         )
 
+    def _claim_wifi_probe(
+        self,
+        device_id: int,
+        command_index: int | None,
+        press_type: str,
+        *,
+        transport: str,
+        source_ip: str,
+    ) -> bool:
+        """True when this press is the delivery test's own: slot 1 short of
+        the device a test is waiting on. The test then has its answer and
+        the press goes no further (no Action, no sensor record). A repeat
+        of it that lands just after the test ended is swallowed too."""
+
+        if command_index != 0 or press_type != "short":
+            return False
+        probes = getattr(self, "_wifi_probes", None)
+        future = probes.get(int(device_id)) if probes else None
+        if future is None or future.done():
+            tail = self.__dict__.setdefault("_wifi_probe_tails", {})
+            if time.monotonic() < tail.get(int(device_id), 0.0):
+                self._log.debug("[WIFI_TEST] repeat of the test press of device %s ignored", device_id)
+                return True
+            return False
+        self.__dict__.setdefault("_wifi_probe_tails", {})[int(device_id)] = (
+            time.monotonic() + WIFI_PROBE_REPEAT_WINDOW_S
+        )
+        future.set_result({"transport": transport, "source_ip": str(source_ip or "")})
+        self._log.info(
+            "[WIFI_TEST] test press of device %s arrived over %s from %s",
+            device_id,
+            transport,
+            source_ip or "the broker",
+        )
+        return True
+
     async def _async_dispatch_wifi_press(
         self,
         *,
@@ -177,6 +225,8 @@ class WifiIngressMixin:
                 command_label=command_label,
                 press_type=press_type,
             )
+            if device_id >= 0:
+                await self._async_note_wifi_delivery(device_id, record)
         elif command_index is not None:
             # An indexed press carries no name, so the by-name lookup below
             # has nothing to match; it used to raise KeyError (issue #307).
@@ -188,6 +238,24 @@ class WifiIngressMixin:
             )
         else:
             await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
+
+    async def _async_note_wifi_delivery(self, device_id: int, record: dict[str, Any]) -> None:
+        """A real press proves the path works: a failed delivery test on
+        that device is cleared (a store write only when it says otherwise)."""
+
+        try:
+            store = await async_get_command_config_store(self.hass)
+            changed = await store.async_mark_delivered(
+                self.entry_id,
+                device_id,
+                transport=str(record.get("transport") or ""),
+                source_ip=str(record.get("source_ip") or ""),
+            )
+        except Exception:  # noqa: BLE001 - bookkeeping never fails a press
+            self._log.debug("[%s] delivery bookkeeping failed", self.entry_id, exc_info=True)
+            return
+        if changed:
+            async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
 
     async def _async_execute_action_config(self, action_config: dict[str, Any]) -> None:
         self._log.debug("[WIFI_ACTION] action_config=%r", action_config)
@@ -471,6 +539,11 @@ class WifiIngressMixin:
             )
             return
         command_index, press_type = mapped
+        if self._claim_wifi_probe(
+            device_id, command_index, press_type,
+            transport=WIFI_TRANSPORT_MQTT, source_ip="",
+        ):
+            return
         resolved_slot = (
             deployed[command_index] if 0 <= command_index < len(deployed) else None
         )

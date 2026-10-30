@@ -209,3 +209,60 @@ def test_ws_play_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
         "unavailable",
         "Hub is not ready to play IR blob (proxy client connected?)",
     )
+
+
+class _RfHub(_Hub):
+    def __init__(self, *, rf_codes_supported: bool = True):
+        super().__init__()
+        self.rf_codes_supported = rf_codes_supported
+        self.rf_play_calls = []
+
+    async def async_play_rf_blob(self, blob: bytes, *, band: int, inter_frame_delay: float = 0.08):
+        self.rf_play_calls.append((blob, band))
+        return self.play_return
+
+
+def _play(monkeypatch, hub, msg):
+    conn = _Conn()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_play_ir_blob(SimpleNamespace(data={}), conn, msg)
+        )
+    finally:
+        loop.close()
+    return conn
+
+
+def test_ws_play_with_band_sends_an_rf_play(monkeypatch):
+    hub = _RfHub()
+    conn = _play(monkeypatch, hub, {"id": 9, "entry_id": "entry-1", "blob": "00 09 03 e0 1e 5c 01", "band": 433})
+
+    assert conn.error is None
+    assert conn.result == (9, {"ok": True})
+    assert hub.rf_play_calls == [(bytes.fromhex("0009 03 e01e 5c01".replace(" ", "")), 433)]
+    assert hub.play_calls == []
+
+
+def test_ws_play_with_band_refuses_descriptors_and_short_codes(monkeypatch):
+    hub = _RfHub()
+    conn = _play(monkeypatch, hub, {"id": 1, "entry_id": "entry-1", "blob": "P:NEC1 D:4 F:8", "band": 433})
+    assert conn.error is not None and conn.error[1] == "invalid_blob"
+
+    conn = _play(monkeypatch, hub, {"id": 2, "entry_id": "entry-1", "blob": "00 02", "band": 315})
+    assert conn.error is not None and conn.error[1] == "invalid_blob"
+    assert hub.rf_play_calls == []
+
+
+def test_ws_play_with_band_refuses_a_hub_without_rf(monkeypatch):
+    hub = _RfHub(rf_codes_supported=False)
+    conn = _play(monkeypatch, hub, {"id": 3, "entry_id": "entry-1", "blob": "00 09 03 e0 1e 5c 01", "band": 433})
+
+    assert conn.error is not None and conn.error[1] == "rf_unsupported"
+    assert hub.rf_play_calls == []
