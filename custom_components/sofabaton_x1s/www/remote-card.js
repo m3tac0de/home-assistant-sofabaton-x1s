@@ -8752,7 +8752,7 @@ function renderAssistModal(params) {
           </label>
           <a
             class="sb-modal__link"
-            href=${`https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`}
+            href="https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/automation_triggers.md"
             target="_blank"
             rel="noopener noreferrer"
           >

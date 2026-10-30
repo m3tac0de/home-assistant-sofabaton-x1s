@@ -4,7 +4,6 @@
 import { html, type TemplateResult } from "lit";
 import type { AutomationAssistController } from "../state/automation-assist-controller";
 import { str } from "../remote-card-strings";
-import { CARD_VERSION } from "../remote-card-shared";
 import { primaryActionRef } from "./wire";
 
 export interface AssistParams {
@@ -73,7 +72,7 @@ export function renderAssistModal(params: AssistParams): TemplateResult {
           </label>
           <a
             class="sb-modal__link"
-            href=${`https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`}
+            href="https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/automation_triggers.md"
             target="_blank"
             rel="noopener noreferrer"
           >

@@ -60,7 +60,7 @@ Pick the way that fits where it will run:
   [Compose file](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docker-compose.yml)
   and Linux host networking. See [Docker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x-server/docs/running-server.md#docker).
 - **A computer (Windows, macOS, Linux):** install with
-  [pipx](https://pipx.pypa.io/stable/installation/), which keeps the
+  [pipx](https://pipx.pypa.io/latest/how-to/install-pipx.html), which keeps the
   server in its own Python environment and upgrades with one command:
 
   ```sh
