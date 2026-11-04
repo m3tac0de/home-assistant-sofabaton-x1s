@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { anchoredListStyle, overlayMenuPosition, type Box } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { AnchoredListFollower, anchoredListStyle, followMenuAnchor, overlayMenuPosition, pillPopoverOptions, type Box, type MenuAnchor } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 
 const box = (left: number, top: number, width: number, height: number): Box =>
   ({ left, top, width, height, right: left + width, bottom: top + height });
@@ -64,4 +64,133 @@ test("anchoredListStyle: in RTL a menu hangs from the trigger's left edge, still
   // The trigger sits at the row's end, which is the left in RTL: LTR math would clamp to 208.
   assert.equal(anchoredListStyle(box(220, 100, 36, 36), viewport, within, { minWidth: 260, rtl: true }), "position: fixed; top: 140px; bottom: auto; left: 220px; right: auto; width: 260px; max-height: 320px;");
   assert.equal(anchoredListStyle(box(1100, 100, 36, 36), viewport, within, { minWidth: 260, rtl: true }), "position: fixed; top: 140px; bottom: auto; left: 892px; right: auto; width: 260px; max-height: 320px;");
+});
+
+// -- AnchoredListFollower: an open popup follows its trigger ------------------------------------
+// A fake trigger and frame queue stand in for the DOM: the follower only reads
+// rects, `closest`, the window size and the direction.
+
+interface FakeTrigger {
+  rect: Box;
+  isConnected: boolean;
+  hidden: boolean;
+}
+
+function fakeDom() {
+  const frames: Array<() => void> = [];
+  const g = globalThis as Record<string, unknown>;
+  const saved = ["window", "requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "ShadowRoot", "document"].map((key) => [key, g[key]] as const);
+  const win = { innerWidth: 1200, innerHeight: 900 };
+  g.window = win;
+  g.requestAnimationFrame = (fn: () => void) => frames.push(fn);
+  g.cancelAnimationFrame = (id: number) => { frames[id - 1] = () => {}; };
+  g.getComputedStyle = () => ({ direction: "ltr" });
+  g.ShadowRoot ??= class {};
+  g.document ??= { documentElement: {} };
+  const view = { rect: box(0, 0, 1200, 900) };
+  const make = (rect: Box): FakeTrigger & HTMLElement => {
+    const trigger = {
+      rect,
+      isConnected: true,
+      hidden: false,
+      parentElement: null,
+      getRootNode: () => ({}),
+      getBoundingClientRect() { return this.rect; },
+      getClientRects() { return this.hidden ? [] : [this.rect]; },
+      closest: () => ({ getBoundingClientRect: () => view.rect }),
+    };
+    return trigger as unknown as FakeTrigger & HTMLElement;
+  };
+  return {
+    win,
+    view,
+    make,
+    /** Run the frames queued so far (each queues the next while following). */
+    frame() {
+      const pending = frames.splice(0);
+      pending.forEach((fn) => fn());
+      return frames.length;
+    },
+    restore() {
+      for (const [key, value] of saved) g[key] = value;
+    },
+  };
+}
+
+test("AnchoredListFollower: the open popup moves with its trigger and stops when told", () => {
+  const dom = fakeDom();
+  try {
+    const applied: string[] = [];
+    const trigger = dom.make(box(800, 100, 60, 22));
+    const follower = new AnchoredListFollower(pillPopoverOptions, (style) => applied.push(style));
+    const first = follower.start(trigger);
+    assert.match(first, /top: 126px;/);
+    assert.equal(follower.following, true);
+    // Nothing moved: no re-render.
+    assert.equal(dom.frame(), 1);
+    assert.deepEqual(applied, []);
+    // The page moved underneath (a resize reflowed the header).
+    trigger.rect = box(500, 180, 60, 22);
+    dom.win.innerWidth = 900;
+    dom.frame();
+    assert.equal(applied.length, 1);
+    assert.match(applied[0], /top: 206px;/);
+    assert.notEqual(applied[0], first);
+    // A narrower view (a sidebar opened) clamps the popup again.
+    dom.view.rect = box(400, 0, 400, 900);
+    dom.frame();
+    assert.equal(applied.length, 2);
+    assert.match(applied[1], /left: 408px;/);
+    follower.stop();
+    assert.equal(follower.following, false);
+    assert.equal(dom.frame(), 0, "no frame is left queued once stopped");
+  } finally {
+    dom.restore();
+  }
+});
+
+test("AnchoredListFollower: a hidden trigger keeps the last spot; a replaced one is found again", () => {
+  const dom = fakeDom();
+  try {
+    const applied: string[] = [];
+    const first = dom.make(box(800, 100, 60, 22));
+    const second = dom.make(box(800, 300, 60, 22));
+    const follower = new AnchoredListFollower(pillPopoverOptions, (style) => applied.push(style), () => second);
+    follower.start(first);
+    first.hidden = true;
+    first.rect = box(0, 0, 0, 0);
+    dom.frame();
+    assert.deepEqual(applied, []);
+    // A render replaced the pill: the follower picks the new element up.
+    first.isConnected = false;
+    dom.frame();
+    assert.equal(applied.length, 1);
+    assert.match(applied[0], /top: 326px;/);
+    follower.stop();
+  } finally {
+    dom.restore();
+  }
+});
+
+test("followMenuAnchor: a role menu's anchor follows the trigger; a move that lands it in the same spot does not re-render", () => {
+  const dom = fakeDom();
+  try {
+    const applied: MenuAnchor[] = [];
+    const trigger = dom.make(box(800, 400, 100, 30));
+    const follower = followMenuAnchor("end", (anchor) => applied.push(anchor));
+    const first = follower.start(trigger);
+    assert.equal(overlayMenuPosition(first, "end"), "position: fixed; top: 434px; bottom: auto; right: 300px; left: auto;");
+    // Wider to the left, same right edge and bottom: the menu stays where it is.
+    trigger.rect = box(760, 400, 140, 30);
+    dom.frame();
+    assert.deepEqual(applied, []);
+    // The header moved down: the menu goes with it.
+    trigger.rect = box(760, 520, 140, 30);
+    dom.frame();
+    assert.equal(applied.length, 1);
+    assert.equal(overlayMenuPosition(applied[0], "end"), "position: fixed; top: 554px; bottom: auto; right: 300px; left: auto;");
+    follower.stop();
+  } finally {
+    dom.restore();
+  }
 });

@@ -7525,10 +7525,12 @@ function overlayMenuPosition(anchor, align) {
   const horizontal = align === "end" !== Boolean(anchor.rtl) ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
+function menuAnchorOf(trigger) {
+  return { rect: trigger.getBoundingClientRect(), frame: fixedFrameBox(trigger), rtl: isRtl(trigger) };
+}
 function menuAnchorRect(event) {
   const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
+  return target instanceof HTMLElement ? menuAnchorOf(target) : null;
 }
 function anchoredListPosition(trigger, menu = null) {
   return anchoredListStyle(
@@ -7537,6 +7539,87 @@ function anchoredListPosition(trigger, menu = null) {
     menu?.within?.getBoundingClientRect() ?? null,
     menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null
   );
+}
+function pillPopoverOptions(trigger) {
+  return { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true };
+}
+var boxKey = (box) => box ? `${Math.round(box.left)},${Math.round(box.top)},${Math.round(box.width)},${Math.round(box.height)}` : "-";
+var TriggerFollower = class {
+  constructor(_opts) {
+    this._opts = _opts;
+    this._trigger = null;
+    this._frame = null;
+    this._key = "";
+    this._tick = () => {
+      this._frame = null;
+      if (!this._trigger) return;
+      if (!this._trigger.isConnected) this._trigger = this._opts.find?.() ?? this._trigger;
+      const trigger = this._trigger;
+      if (trigger.isConnected && trigger.getClientRects().length) {
+        const key = this._keyOf(trigger);
+        if (key !== this._key) {
+          this._key = key;
+          const placement = this._opts.measure(trigger);
+          const last = this._placement;
+          if (!(this._opts.same ? this._opts.same(placement, last) : placement === last)) {
+            this._placement = placement;
+            this._opts.apply(placement);
+          }
+        }
+      }
+      if (this._trigger) this._schedule();
+    };
+  }
+  get following() {
+    return this._trigger !== null;
+  }
+  /** Measure the placement for `trigger` and follow it from here on. */
+  start(trigger) {
+    this.stop();
+    this._trigger = trigger;
+    this._key = this._keyOf(trigger);
+    const placement = this._opts.measure(trigger);
+    this._placement = placement;
+    this._schedule();
+    return placement;
+  }
+  stop() {
+    this._trigger = null;
+    this._placement = void 0;
+    if (this._frame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(this._frame);
+    this._frame = null;
+  }
+  _keyOf(trigger) {
+    const within = this._opts.within?.(trigger);
+    return `${boxKey(trigger.getBoundingClientRect())}|${boxKey(within?.getBoundingClientRect())}|${window.innerWidth}x${window.innerHeight}`;
+  }
+  _schedule() {
+    if (typeof requestAnimationFrame !== "function") return;
+    this._frame = requestAnimationFrame(this._tick);
+  }
+};
+var AnchoredListFollower = class extends TriggerFollower {
+  /**
+   * `options` is anchoredListPosition's for the trigger (null: as wide as
+   * the trigger); `apply` stores a re-measured style; `find` gives the
+   * trigger again when a render replaced it.
+   */
+  constructor(options, apply, find) {
+    super({
+      measure: (trigger) => anchoredListPosition(trigger, options(trigger)),
+      within: (trigger) => options(trigger)?.within,
+      apply,
+      find
+    });
+  }
+};
+function followMenuAnchor(align, apply, find) {
+  return new TriggerFollower({
+    measure: menuAnchorOf,
+    apply,
+    find,
+    same: (a3, b3) => overlayMenuPosition(a3, align) === overlayMenuPosition(b3, align)
+  });
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
   const room = inner ?? bounds;
@@ -8149,17 +8232,21 @@ var IrEmitterPillController = class {
     this._menuStyle = "";
     this._escapeBound = false;
     this._readSeq = 0;
+    /** Keeps the open dropdown on the pill when the page moves underneath. */
+    this._anchor = new AnchoredListFollower(
+      pillPopoverOptions,
+      (style) => {
+        this._menuStyle = style;
+        this.host.requestUpdate();
+      },
+      () => this.host.shadowRoot?.querySelector("button.ir-pill") ?? null
+    );
     this._toggle = (trigger) => {
       if (this.open) {
         this.close();
         return;
       }
-      this._menuStyle = anchoredListPosition(trigger, {
-        minWidth: 320,
-        maxHeight: 560,
-        within: trigger.closest(".detail-view"),
-        widthOnly: true
-      });
+      this._menuStyle = this._anchor.start(trigger);
       this.open = true;
       this._listenForEscape(true);
       this.host.requestUpdate();
@@ -8211,8 +8298,13 @@ var IrEmitterPillController = class {
   }
   hostConnected() {
   }
+  /** Every way the dropdown closes (another device too) ends in a render. */
+  hostUpdated() {
+    if (!this.open && this._anchor.following) this._anchor.stop();
+  }
   hostDisconnected() {
     this.open = false;
+    this._anchor.stop();
     this._listenForEscape(false);
   }
   /** Escape closes it wherever focus went; the window is only touched
@@ -10580,7 +10672,7 @@ function renderRoleRow(role, params) {
           aria-haspopup="listbox"
           aria-expanded=${open ? "true" : "false"}
           aria-label=${S3.roleMenuAria(label)}
-          @click=${(event) => params.onToggleMenu(open ? null : role.group, menuAnchorRect(event))}
+          @click=${(event) => params.onToggleMenu(open ? null : role.group, menuAnchorRect(event), event.currentTarget)}
         >
           <span>${roleTriggerLabel(role)}</span>
           <ha-icon icon="mdi:chevron-down"></ha-icon>
@@ -13540,6 +13632,15 @@ var DeliveryPillController = class {
     /** The broker link was read for this device's dropdown (not at rest). */
     this._linkRead = false;
     this._escapeBound = false;
+    /** Keeps the open dropdown on the pill when the page moves underneath. */
+    this._anchor = new AnchoredListFollower(
+      pillPopoverOptions,
+      (style) => {
+        this._menuStyle = style;
+        this.host.requestUpdate();
+      },
+      () => this.host.shadowRoot?.querySelector("button.delivery-pill") ?? null
+    );
     this._toggle = (event) => {
       if (this.open) {
         this.close();
@@ -13548,12 +13649,7 @@ var DeliveryPillController = class {
       const device = this._device;
       const trigger = event.currentTarget;
       if (!device || !trigger) return;
-      this._menuStyle = anchoredListPosition(trigger, {
-        minWidth: 320,
-        maxHeight: 560,
-        within: trigger.closest(".detail-view"),
-        widthOnly: true
-      });
+      this._menuStyle = this._anchor.start(trigger);
       this.open = true;
       this._listenForEscape(true);
       this.host.requestUpdate();
@@ -13608,8 +13704,13 @@ var DeliveryPillController = class {
   }
   hostConnected() {
   }
+  /** Every way the dropdown closes (reset, another device) ends in a render. */
+  hostUpdated() {
+    if (!this.open && this._anchor.following) this._anchor.stop();
+  }
   hostDisconnected() {
     this.open = false;
+    this._anchor.stop();
     this._listenForEscape(false);
   }
   /** Escape closes it wherever focus went (Test disables itself while it
@@ -16459,6 +16560,19 @@ var BindingDialogController = class {
     };
     /** The open picker (one at a time, macro or Wifi Event): its trigger id and the list's fixed position. */
     this.macroPicker = null;
+    /** Keeps the open picker's list on its trigger when the dialog moves (a resize re-centers it). */
+    this._pickerAnchor = new AnchoredListFollower(
+      () => null,
+      (style) => {
+        if (!this.macroPicker) return this._pickerAnchor.stop();
+        this.macroPicker = { ...this.macroPicker, style };
+        this.host.requestUpdate();
+      },
+      () => {
+        const picker = this.macroPicker;
+        return picker ? picker.root.querySelector(`#${picker.id}`) : null;
+      }
+    );
     this.closeMacroPicker = () => {
       const picker = this.macroPicker;
       if (!picker) return;
@@ -16613,6 +16727,14 @@ var BindingDialogController = class {
     this.host.requestUpdate();
   }
   hostConnected() {
+  }
+  // Every way the picker closes (a pick, the backdrop, the dialog, the host
+  // clearing it) ends in a render: stop following it there.
+  hostUpdated() {
+    if (!this.macroPicker && this._pickerAnchor.following) this._pickerAnchor.stop();
+  }
+  hostDisconnected() {
+    this._pickerAnchor.stop();
   }
   // ── Button bindings (add / edit picker) ─────────────────────────────
   commandDeviceOptions() {
@@ -16851,7 +16973,7 @@ var BindingDialogController = class {
     if (this.macroPicker?.id === id) {
       this.macroPicker = null;
     } else {
-      this.macroPicker = { id, style: anchoredListPosition(trigger), root };
+      this.macroPicker = { id, style: this._pickerAnchor.start(trigger), root };
       requestAnimationFrame(() => (root.querySelector('.macro-picker-option[aria-selected="true"]') ?? root.querySelector(".macro-picker-option"))?.focus());
     }
     this.host.requestUpdate();
@@ -17702,9 +17824,27 @@ var SofabatonEditDetailView = class extends i4 {
     // The open "Copy shortcuts from" menu: its fixed position (anchoredListPosition), null when closed.
     this._shortcutCopyMenu = null;
     // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
-    // Captured at click time; not reactive — they change only together with
-    // the open-state fields above/below.
+    // Captured at click time, then again by _roleAnchor when the trigger moves
+    // (a resize, a layout shift); not reactive: the follower re-renders.
     this._roleMenuAnchor = null;
+    // Keep the open role menu and "Copy shortcuts from" menu on their trigger.
+    this._roleAnchor = followMenuAnchor(
+      "end",
+      (anchor) => {
+        if (this._roleMenuOpen === null) return this._roleAnchor.stop();
+        this._roleMenuAnchor = anchor;
+        this.requestUpdate();
+      },
+      () => this.renderRoot.querySelector('.role-menu-anchor[data-open="true"] .role-trigger')
+    );
+    this._copyAnchor = new AnchoredListFollower(
+      (trigger) => ({ minWidth: 260, within: trigger.closest(".detail-scroll") }),
+      (style) => {
+        if (this._shortcutCopyMenu === null) return this._copyAnchor.stop();
+        this._shortcutCopyMenu = style;
+      },
+      () => this.renderRoot.querySelector("#sb-copy-shortcuts")
+    );
     this._roleConfirm = null;
     // Full sub-view for individual button bindings (never an accordion).
     this._bindingsView = false;
@@ -18039,7 +18179,7 @@ var SofabatonEditDetailView = class extends i4 {
       }
       const root = this.renderRoot;
       const trigger = event.currentTarget;
-      this._shortcutCopyMenu = anchoredListPosition(trigger, { minWidth: 260, within: trigger.closest(".detail-scroll") });
+      this._shortcutCopyMenu = this._copyAnchor.start(trigger);
       requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
     };
     this._closeShortcutCopyMenu = () => {
@@ -18135,6 +18275,15 @@ var SofabatonEditDetailView = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._learn.exit();
+    this._roleAnchor.stop();
+    this._copyAnchor.stop();
+  }
+  // Every way a menu closes (a pick, the backdrop, a scroll, another entity)
+  // ends in a render: stop following it there.
+  updated(changed) {
+    super.updated(changed);
+    if (this._roleMenuOpen === null && this._roleAnchor.following) this._roleAnchor.stop();
+    if (this._shortcutCopyMenu === null && this._copyAnchor.following) this._copyAnchor.stop();
   }
   // Lit reuses the element instance when the host re-renders with a
   // different entity, so all transient view state must reset exactly the
@@ -18559,8 +18708,8 @@ var SofabatonEditDetailView = class extends i4 {
       })),
       openGroup: this._roleMenuOpen,
       menuAnchor: this._roleMenuAnchor,
-      onToggleMenu: (group, anchor) => {
-        this._roleMenuAnchor = group == null ? null : anchor ?? null;
+      onToggleMenu: (group, anchor, trigger) => {
+        this._roleMenuAnchor = group == null ? null : trigger ? this._roleAnchor.start(trigger) : anchor ?? null;
         this._roleMenuOpen = group;
       },
       onAssign: this._handleRoleAssign,

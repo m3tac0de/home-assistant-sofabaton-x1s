@@ -64,7 +64,7 @@ import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons"
 import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
 import { formatCheckedAgo, formatLatency, targetPort } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery";
-import { anchoredListPosition } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { AnchoredListFollower, pillPopoverOptions } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import { Coalescer, FOLLOW_MAX_WAIT_MS, needsReload, versionAsLoaded, type LoadedVersion } from "../cache-follow";
@@ -417,9 +417,14 @@ export class SbPanelWifiDevices extends LitElement {
   private _workingKind: WorkingKind | null = null;
   /** The device being deleted: the confirm is closed, its row says "Deleting…" (the card's way). */
   private _deletingKey: string | null = null;
-  /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened). */
+  /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened, then kept on the pill by `_deliveryAnchor`). */
   private _deliveryOpen = false;
   private _deliveryStyle = "";
+  private readonly _deliveryAnchor = new AnchoredListFollower(
+    pillPopoverOptions,
+    (style) => { this._deliveryStyle = style; this.requestUpdate(); },
+    () => this.renderRoot.querySelector<HTMLElement>("#wifi-delivery-pill"),
+  );
   /** Why the last Test run from the dropdown could not run. */
   private _testError: string | null = null;
   private _syncError: string | null = null;
@@ -465,6 +470,7 @@ export class SbPanelWifiDevices extends LitElement {
     this._follow.cancel();
     document.removeEventListener("keydown", this._onDocumentKeydown);
     this._deliveryOpen = false;
+    this._deliveryAnchor.stop();
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -585,7 +591,11 @@ export class SbPanelWifiDevices extends LitElement {
     // Escape closes the dropdown wherever focus is (a Test button that went disabled drops it to the page).
     if (changed.has("_deliveryOpen")) {
       if (this._deliveryOpen) document.addEventListener("keydown", this._onDocumentKeydown);
-      else document.removeEventListener("keydown", this._onDocumentKeydown);
+      else {
+        document.removeEventListener("keydown", this._onDocumentKeydown);
+        // Every way the dropdown closes (another device, Escape, the backdrop) ends here.
+        this._deliveryAnchor.stop();
+      }
     }
     this._reportDirty(this.hasUnsyncedChanges());
     // A key the hub no longer has (deleted elsewhere, an old bookmark): back to the roster.
@@ -954,7 +964,7 @@ export class SbPanelWifiDevices extends LitElement {
       this._closeDelivery();
       return;
     }
-    this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true });
+    this._deliveryStyle = this._deliveryAnchor.start(trigger);
     this._deliveryOpen = true;
   };
 

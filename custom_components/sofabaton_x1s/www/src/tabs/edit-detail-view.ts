@@ -116,7 +116,7 @@ import { hubBrokerFormStyles } from "../components/hub-broker-form";
 import { IrEmitterPillController, irEmitterStyles } from "../components/ir-emitter-pill";
 import { extrasOfRouting, routingFromExtras, sameRouting, type EmitterRouting } from "../../../../../remote-card/src/ir-emitters/emitter-routing";
 import { renderKindSegments } from "./edit-detail/kind-segments";
-import { anchoredListPosition, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
+import { AnchoredListFollower, followMenuAnchor, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
 import { bundleIsX2, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
@@ -195,9 +195,27 @@ export class SofabatonEditDetailView extends LitElement {
   // The open "Copy shortcuts from" menu: its fixed position (anchoredListPosition), null when closed.
   private _shortcutCopyMenu: string | null = null;
   // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
-  // Captured at click time; not reactive — they change only together with
-  // the open-state fields above/below.
+  // Captured at click time, then again by _roleAnchor when the trigger moves
+  // (a resize, a layout shift); not reactive: the follower re-renders.
   private _roleMenuAnchor: MenuAnchor | null = null;
+  // Keep the open role menu and "Copy shortcuts from" menu on their trigger.
+  private readonly _roleAnchor = followMenuAnchor(
+    "end",
+    (anchor) => {
+      if (this._roleMenuOpen === null) return this._roleAnchor.stop();
+      this._roleMenuAnchor = anchor;
+      this.requestUpdate();
+    },
+    () => this.renderRoot.querySelector<HTMLElement>('.role-menu-anchor[data-open="true"] .role-trigger'),
+  );
+  private readonly _copyAnchor = new AnchoredListFollower(
+    (trigger) => ({ minWidth: 260, within: trigger.closest<HTMLElement>(".detail-scroll") }),
+    (style) => {
+      if (this._shortcutCopyMenu === null) return this._copyAnchor.stop();
+      this._shortcutCopyMenu = style;
+    },
+    () => this.renderRoot.querySelector<HTMLElement>("#sb-copy-shortcuts"),
+  );
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
   _bindingsView = false;
@@ -282,6 +300,16 @@ export class SofabatonEditDetailView extends LitElement {
     // Leaving the editor (Back, sidebar, tab switch) ends learn mode: the
     // hub window is released and the inbox and ticker stop (CR-F2-4).
     this._learn.exit();
+    this._roleAnchor.stop();
+    this._copyAnchor.stop();
+  }
+
+  // Every way a menu closes (a pick, the backdrop, a scroll, another entity)
+  // ends in a render: stop following it there.
+  protected updated(changed: Map<string, unknown>) {
+    super.updated(changed);
+    if (this._roleMenuOpen === null && this._roleAnchor.following) this._roleAnchor.stop();
+    if (this._shortcutCopyMenu === null && this._copyAnchor.following) this._copyAnchor.stop();
   }
 
   // Lit reuses the element instance when the host re-renders with a
@@ -851,8 +879,8 @@ export class SofabatonEditDetailView extends LitElement {
       })),
       openGroup: this._roleMenuOpen,
       menuAnchor: this._roleMenuAnchor,
-      onToggleMenu: (group, anchor) => {
-        this._roleMenuAnchor = group == null ? null : anchor ?? null;
+      onToggleMenu: (group, anchor, trigger) => {
+        this._roleMenuAnchor = group == null ? null : trigger ? this._roleAnchor.start(trigger) : anchor ?? null;
         this._roleMenuOpen = group;
       },
       onAssign: this._handleRoleAssign,
@@ -1899,7 +1927,7 @@ export class SofabatonEditDetailView extends LitElement {
     const root = this.renderRoot as ParentNode;
     const trigger = event.currentTarget as HTMLElement;
     // Kept inside the editor's own scroll area: never over the page beside the card or under the dock.
-    this._shortcutCopyMenu = anchoredListPosition(trigger, { minWidth: 260, within: trigger.closest<HTMLElement>(".detail-scroll") });
+    this._shortcutCopyMenu = this._copyAnchor.start(trigger);
     requestAnimationFrame(() => root.querySelector<HTMLElement>(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
   };
 

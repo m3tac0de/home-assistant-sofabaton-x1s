@@ -81,7 +81,8 @@ export interface ActivityRolesBlockParams {
   optionsFor(group: ActivityRoleGroupId): ActivityRoleOption[];
   openGroup: ActivityRoleGroupId | null;
   menuAnchor: MenuAnchor | null;
-  onToggleMenu(group: ActivityRoleGroupId | null, anchor?: MenuAnchor | null): void;
+  /** `trigger` is the role's button, for a host that keeps the open menu on it (followMenuAnchor). */
+  onToggleMenu(group: ActivityRoleGroupId | null, anchor?: MenuAnchor | null, trigger?: HTMLElement | null): void;
   onAssign(group: ActivityRoleGroupId, deviceId: number | null): void;
   /** Per-button customization — the advanced mode for the role rows above. */
   customize: {
@@ -139,7 +140,7 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
           aria-expanded=${open ? "true" : "false"}
           aria-label=${S.roleMenuAria(label)}
           @click=${(event: Event) =>
-            params.onToggleMenu(open ? null : role.group, menuAnchorRect(event))}
+            params.onToggleMenu(open ? null : role.group, menuAnchorRect(event), event.currentTarget as HTMLElement)}
         >
           <span>${roleTriggerLabel(role)}</span>
           <ha-icon icon="mdi:chevron-down"></ha-icon>

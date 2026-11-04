@@ -299,6 +299,46 @@ const actions = (page) => page.locator("#hub-actions");
 const msg = (page) => page.locator("#hubs-msg");
 const shot = (testInfo, name) => `test-results/server-panel-${name}-${testInfo.project.name}.png`;
 
+/** An open dropdown is fixed: when the page moves underneath (a layout shift,
+ *  a resize) it re-measures and stays on its trigger, under it or above it.
+ *  Scroll anchoring is off meanwhile: these menus close on a window scroll by
+ *  design, and the shift must move the trigger, not scroll the page. Puts the
+ *  page back. */
+async function expectPopFollowsPill(page, pill, pop, { shift = true } = {}) {
+  const rect = (locator) => locator.evaluate((el) => {
+    const b = el.getBoundingClientRect();
+    return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+  });
+  // Under or above the trigger, lined up with the edges it was lined up with when it opened.
+  const fitOf = (p, d) => ({
+    side: Math.abs(d.top - (p.bottom + 4)) <= 1 || Math.abs(d.bottom - (p.top - 4)) <= 1,
+    left: Math.abs(d.left - p.left) <= 1,
+    right: Math.abs(d.right - p.right) <= 1,
+    overlap: d.left < p.right && d.right > p.left,
+  });
+  const opened = fitOf(await rect(pill), await rect(pop));
+  const under = async () => {
+    await expect.poll(async () => {
+      const fit = fitOf(await rect(pill), await rect(pop));
+      return fit.side && fit.overlap && (!opened.left || fit.left) && (!opened.right || fit.right);
+    }).toBe(true);
+  };
+  const viewport = page.viewportSize();
+  const before = await rect(pill);
+  await under();
+  if (shift) {
+    await page.evaluate(() => { document.documentElement.style.overflowAnchor = "none"; document.body.style.paddingTop = "120px"; });
+    await expect.poll(async () => (await rect(pill)).top).toBeGreaterThan(before.top + 80);
+    await under();
+  }
+  // Wider, not narrower: a narrower window may rightly clamp a menu off its trigger's edge.
+  await page.setViewportSize({ width: viewport.width + 60, height: viewport.height });
+  await under();
+  await page.evaluate(() => { document.body.style.paddingTop = ""; document.documentElement.style.overflowAnchor = ""; });
+  await page.setViewportSize(viewport);
+  await under();
+}
+
 async function selectRemoteLayout(select, value) {
   await select.locator(".trigger").click();
   await select.locator(`.option[data-value="${value}"]`).click();
@@ -2248,6 +2288,7 @@ test.describe("control panel, views", () => {
     // Its own macros are never offered here; another activity's macro can be copied.
     await editor.locator("#sb-add-macro-target").click();
     await expect(editor.locator(".macro-picker-option .macro-picker-name")).toHaveText(["Create new macro", "Party", "Chill"]);
+    await expectPopFollowsPill(page, editor.locator("#sb-add-macro-target"), editor.locator(".macro-picker-menu"), { shift: false });
     await expect(editor.locator(".macro-picker-group")).toHaveText("Copy from another activity");
     await expect(editor.locator(".macro-picker-option .macro-picker-chip")).toHaveText(["Music", "Music"]);
     await page.screenshot({ path: shot(testInfo, "activity-macro-picker") });
@@ -2394,6 +2435,7 @@ test.describe("control panel, views", () => {
     await editor.locator("#bindings-back").click();
     await expect(volume.locator(".role-trigger")).toHaveText("TV (customized)");
     await volume.locator(".role-trigger").click();
+    await expectPopFollowsPill(page, volume.locator(".role-trigger"), volume.locator(".role-menu"));
     await volume.locator('.member-add-option[data-device=""]').click();
     await expect(editor.locator("#role-confirm-dialog .dialog-title")).toHaveText("Replace custom button setup?");
     await editor.locator("#role-confirm").click();
@@ -2414,6 +2456,7 @@ test.describe("control panel, views", () => {
     await expect(editor.locator('[data-edit-section="quick_access"]')).toContainText("Vol up");
     await editor.locator("#copy-shortcuts").click();
     await expect(copyRow).toBeDisabled();
+    await expectPopFollowsPill(page, editor.locator("#copy-shortcuts"), editor.locator("#copy-shortcuts-menu"));
     await expect(copyRow.locator(".macro-picker-chip")).toHaveText("Nothing new");
     await page.keyboard.press("Escape");
     await expect(editor.locator("#copy-shortcuts-menu")).toHaveCount(0);
@@ -3848,6 +3891,8 @@ test.describe("control panel, wifi commands", () => {
     expect(box.x).toBeGreaterThanOrEqual(viewBox.x);
     expect(box.x + box.width).toBeLessThanOrEqual(viewBox.x + viewBox.width + 1);
     await page.screenshot({ path: shot(testInfo, "wifi-delivery-failed") });
+    // The page moves underneath: the open dropdown re-measures and stays on the pill.
+    await expectPopFollowsPill(page, pill, delivery);
 
     await delivery.locator("#wifi-test-delivery").click();
     await expect(status).toHaveAttribute("data-status", "delivered");
@@ -4254,6 +4299,7 @@ test.describe("control panel, IR pill", () => {
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
     await page.screenshot({ path: shot(testInfo, "ir-pill") });
+    await expectPopFollowsPill(page, pill, pop);
     // Untick Bedroom and pick port 2: a pending edit, Sync on.
     await pop.locator('.ir-row[data-row="repeater:2"] .ir-row-head').click();
     await expect(pill).not.toHaveClass(/attention/);

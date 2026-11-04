@@ -76,8 +76,8 @@ export function fixedFrameBox(el: Element | null): Box {
  * container (overflow-y: auto) can't clip it — absolute positioning always
  * clips at a scroll ancestor, whatever the overflow of the list in between.
  * The anchor is captured from the trigger at click time (menuAnchorRect);
- * the host tab closes any open menu on scroll so a fixed menu never drifts
- * away from its trigger. Flips above the anchor when the space below is too
+ * a TriggerFollower captures it again when the trigger moves (a resize, a
+ * layout shift), and the host tab closes any open menu on scroll. Flips above the anchor when the space below is too
  * tight. Coordinates are relative to the anchor's frame (fixedFrameBox).
  * `align` names the trigger edge the menu lines up with, in the anchor's
  * writing direction: "end" is the right edge, or the left one in RTL.
@@ -97,11 +97,15 @@ export function overlayMenuPosition(anchor: MenuAnchor | null, align: "start" | 
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 
+/** The trigger's rect and frame for overlayMenuPosition, read now. */
+export function menuAnchorOf(trigger: HTMLElement): MenuAnchor {
+  return { rect: trigger.getBoundingClientRect(), frame: fixedFrameBox(trigger), rtl: isRtl(trigger) };
+}
+
 /** The trigger's rect and frame for overlayMenuPosition, read at click time. */
 export function menuAnchorRect(event: Event): MenuAnchor | null {
   const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
+  return target instanceof HTMLElement ? menuAnchorOf(target) : null;
 }
 
 export interface AnchoredMenuOptions {
@@ -134,6 +138,133 @@ export function anchoredListPosition(trigger: HTMLElement, menu: AnchoredMenuOpt
     menu?.within?.getBoundingClientRect() ?? null,
     menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null,
   );
+}
+
+/** A header pill's popover (the delivery and IR pills): at least 320 px
+ *  wide, up to 560 px tall, kept to the width of the view it sits in. */
+export function pillPopoverOptions(trigger: HTMLElement): AnchoredMenuOptions {
+  return { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true };
+}
+
+const boxKey = (box: DOMRect | null | undefined) =>
+  box ? `${Math.round(box.left)},${Math.round(box.top)},${Math.round(box.width)},${Math.round(box.height)}` : "-";
+
+export interface TriggerFollowOptions<T> {
+  /** Where the popup goes for the trigger where it is now. */
+  measure: (trigger: HTMLElement) => T;
+  /** A new placement: the host stores it and re-renders. */
+  apply: (placement: T) => void;
+  /** The trigger again, when a render replaced the element it opened from. */
+  find?: () => HTMLElement | null;
+  /** The box the popup is kept inside: it moving or resizing counts too. */
+  within?: (trigger: HTMLElement) => HTMLElement | null | undefined;
+  /** Two placements land in the same spot (no re-render); `===` when absent. */
+  same?: (a: T, b: T) => boolean;
+}
+
+/**
+ * Keeps an open fixed popup on its trigger. The placement is measured when
+ * the popup opens, so a window resize or a layout change underneath moves
+ * the trigger and leaves the popup where it opened. While following, every
+ * animation frame compares the trigger's box, the `within` box and the
+ * window size with the last frame and measures again when one changed: two
+ * rect reads a frame, and only while a popup is open.
+ */
+export class TriggerFollower<T> {
+  private _trigger: HTMLElement | null = null;
+  private _frame: number | null = null;
+  private _key = "";
+  private _placement: T | undefined;
+
+  constructor(private readonly _opts: TriggerFollowOptions<T>) {}
+
+  get following(): boolean {
+    return this._trigger !== null;
+  }
+
+  /** Measure the placement for `trigger` and follow it from here on. */
+  start(trigger: HTMLElement): T {
+    this.stop();
+    this._trigger = trigger;
+    this._key = this._keyOf(trigger);
+    const placement = this._opts.measure(trigger);
+    this._placement = placement;
+    this._schedule();
+    return placement;
+  }
+
+  stop(): void {
+    this._trigger = null;
+    this._placement = undefined;
+    if (this._frame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(this._frame);
+    this._frame = null;
+  }
+
+  private _keyOf(trigger: HTMLElement): string {
+    const within = this._opts.within?.(trigger);
+    return `${boxKey(trigger.getBoundingClientRect())}|${boxKey(within?.getBoundingClientRect())}|${window.innerWidth}x${window.innerHeight}`;
+  }
+
+  private _schedule(): void {
+    if (typeof requestAnimationFrame !== "function") return;
+    this._frame = requestAnimationFrame(this._tick);
+  }
+
+  private _tick = (): void => {
+    this._frame = null;
+    if (!this._trigger) return;
+    if (!this._trigger.isConnected) this._trigger = this._opts.find?.() ?? this._trigger;
+    const trigger = this._trigger;
+    // A trigger out of the document, or hidden, keeps the last placement.
+    if (trigger.isConnected && trigger.getClientRects().length) {
+      const key = this._keyOf(trigger);
+      if (key !== this._key) {
+        this._key = key;
+        const placement = this._opts.measure(trigger);
+        const last = this._placement as T;
+        if (!(this._opts.same ? this._opts.same(placement, last) : placement === last)) {
+          this._placement = placement;
+          this._opts.apply(placement);
+        }
+      }
+    }
+    if (this._trigger) this._schedule();
+  };
+}
+
+/** A TriggerFollower for an anchoredListPosition popup: the placement is its inline style. */
+export class AnchoredListFollower extends TriggerFollower<string> {
+  /**
+   * `options` is anchoredListPosition's for the trigger (null: as wide as
+   * the trigger); `apply` stores a re-measured style; `find` gives the
+   * trigger again when a render replaced it.
+   */
+  constructor(
+    options: (trigger: HTMLElement) => AnchoredMenuOptions | null,
+    apply: (style: string) => void,
+    find?: () => HTMLElement | null,
+  ) {
+    super({
+      measure: (trigger) => anchoredListPosition(trigger, options(trigger)),
+      within: (trigger) => options(trigger)?.within,
+      apply,
+      find,
+    });
+  }
+}
+
+/** A TriggerFollower for an overlayMenuPosition menu: the placement is the trigger's anchor. */
+export function followMenuAnchor(
+  align: "start" | "end",
+  apply: (anchor: MenuAnchor) => void,
+  find?: () => HTMLElement | null,
+): TriggerFollower<MenuAnchor> {
+  return new TriggerFollower<MenuAnchor>({
+    measure: menuAnchorOf,
+    apply,
+    find,
+    same: (a, b) => overlayMenuPosition(a, align) === overlayMenuPosition(b, align),
+  });
 }
 
 /** The pure math behind anchoredListPosition: `anchor` and `inner` in the same coordinates as `bounds`. */

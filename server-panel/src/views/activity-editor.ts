@@ -19,7 +19,7 @@
 // its slots are reached through the "Wifi Event" type and the device leaves
 // the pickers, as the card does with its Wifi Events device.
 
-import { html, nothing, type PropertyDeclarations, type TemplateResult } from "lit";
+import { html, nothing, type PropertyDeclarations, type PropertyValues, type TemplateResult } from "lit";
 import {
   mdiArrowLeft,
   mdiCheck,
@@ -56,7 +56,7 @@ import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons"
 import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
 import { isHubOwnedDeviceClass } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
-import { anchoredListPosition, moveListFocus, overlayMenuPosition, menuAnchorRect, type MenuAnchor } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { AnchoredListFollower, followMenuAnchor, moveListFocus, overlayMenuPosition, type MenuAnchor } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
@@ -303,6 +303,31 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     (from, to) => (this._macroEditor ? this._moveStep(from, to - from) : this._moveShortcut(from, to - from)),
     () => this._stickyOffset(),
   );
+  /** Keep the open role menu, macro picker and "Copy shortcuts from" menu on their trigger when the page moves underneath. */
+  private readonly _roleAnchor = followMenuAnchor(
+    "end",
+    (anchor) => {
+      if (!this._roleMenu) return this._roleAnchor.stop();
+      this._roleMenu = { ...this._roleMenu, anchor };
+    },
+    () => this.renderRoot.querySelector<HTMLElement>('.role-menu-anchor[data-open="true"] .role-trigger'),
+  );
+  private readonly _pickerAnchor = new AnchoredListFollower(
+    () => null,
+    (style) => {
+      if (!this._macroPicker) return this._pickerAnchor.stop();
+      this._macroPicker = { ...this._macroPicker, style };
+    },
+    () => (this._macroPicker ? this.renderRoot.querySelector<HTMLElement>(`#${this._macroPicker.id}`) : null),
+  );
+  private readonly _copyAnchor = new AnchoredListFollower(
+    () => ({ minWidth: 260, within: this }),
+    (style) => {
+      if (this._shortcutCopyMenu === null) return this._copyAnchor.stop();
+      this._shortcutCopyMenu = style;
+    },
+    () => this.renderRoot.querySelector<HTMLElement>("#copy-shortcuts"),
+  );
   /** The role menus are fixed to the viewport, so a scroll closes them (the card's rule). */
   private readonly _onWindowScroll = () => {
     if (this._roleMenu) this._roleMenu = null;
@@ -318,6 +343,17 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     super.disconnectedCallback();
     this._sorter.cancel();
     window.removeEventListener("scroll", this._onWindowScroll);
+    this._roleAnchor.stop();
+    this._pickerAnchor.stop();
+    this._copyAnchor.stop();
+  }
+
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    // Every way a menu closes (a pick, the backdrop, a scroll, a reset) ends here: stop following it.
+    if (!this._roleMenu && this._roleAnchor.following) this._roleAnchor.stop();
+    if (!this._macroPicker && this._pickerAnchor.following) this._pickerAnchor.stop();
+    if (this._shortcutCopyMenu === null && this._copyAnchor.following) this._copyAnchor.stop();
   }
 
   protected _resetView(): void {
@@ -1054,7 +1090,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
               return;
             }
             const root = this.renderRoot;
-            this._shortcutCopyMenu = anchoredListPosition(event.currentTarget as HTMLElement, { minWidth: 260, within: this });
+            this._shortcutCopyMenu = this._copyAnchor.start(event.currentTarget as HTMLElement);
             requestAnimationFrame(() => root.querySelector<HTMLElement>(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
           }}>${icon(mdiContentCopy)}<span>${B.copyShortcutsButton}</span></button>
         ${open
@@ -1078,7 +1114,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       this._macroPicker = null;
       return;
     }
-    this._macroPicker = { id, style: anchoredListPosition(trigger) };
+    this._macroPicker = { id, style: this._pickerAnchor.start(trigger) };
     const root = this.renderRoot;
     requestAnimationFrame(() => (root.querySelector<HTMLElement>('.macro-picker-option[aria-selected="true"]') ?? root.querySelector<HTMLElement>(".macro-picker-option"))?.focus());
   }
@@ -1317,7 +1353,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
           </div>
           <span class="member-add role-menu-anchor" data-open=${open ? "true" : "false"}>
             <button class="role-trigger" type="button" data-state=${role.state} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"} aria-label=${B.roleMenuAria(label)}
-              @click=${(event: Event) => { this._roleMenu = open ? null : { group: role.group, anchor: menuAnchorRect(event) }; }}>
+              @click=${(event: Event) => { this._roleMenu = open ? null : { group: role.group, anchor: this._roleAnchor.start(event.currentTarget as HTMLElement) }; }}>
               <span>${roleTriggerLabel(role)}</span>${icon(mdiChevronDown)}
             </button>
             ${open

@@ -14,7 +14,7 @@
 import { css, html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import type { HassLike, HubMqttLinkState, WifiDelivery, WifiDeliveryInfo } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { anchoredListPosition } from "../shared/utils/overlay-menu";
+import { AnchoredListFollower, pillPopoverOptions } from "../shared/utils/overlay-menu";
 import { localizeWifiSyncFailure } from "../shared/utils/backend-state-localization";
 import {
   deliveryAllowText,
@@ -165,6 +165,12 @@ export class DeliveryPillController implements ReactiveController {
   /** The broker link was read for this device's dropdown (not at rest). */
   private _linkRead = false;
   private _escapeBound = false;
+  /** Keeps the open dropdown on the pill when the page moves underneath. */
+  private readonly _anchor = new AnchoredListFollower(
+    pillPopoverOptions,
+    (style) => { this._menuStyle = style; this.host.requestUpdate(); },
+    () => this.host.shadowRoot?.querySelector<HTMLElement>("button.delivery-pill") ?? null,
+  );
 
   constructor(private readonly host: ReactiveControllerHost & HTMLElement) {
     host.addController(this);
@@ -173,8 +179,14 @@ export class DeliveryPillController implements ReactiveController {
 
   hostConnected(): void {}
 
+  /** Every way the dropdown closes (reset, another device) ends in a render. */
+  hostUpdated(): void {
+    if (!this.open && this._anchor.following) this._anchor.stop();
+  }
+
   hostDisconnected(): void {
     this.open = false;
+    this._anchor.stop();
     this._listenForEscape(false);
   }
 
@@ -286,12 +298,7 @@ export class DeliveryPillController implements ReactiveController {
     const device = this._device;
     const trigger = event.currentTarget as HTMLElement | null;
     if (!device || !trigger) return;
-    this._menuStyle = anchoredListPosition(trigger, {
-      minWidth: 320,
-      maxHeight: 560,
-      within: trigger.closest<HTMLElement>(".detail-view"),
-      widthOnly: true,
-    });
+    this._menuStyle = this._anchor.start(trigger);
     this.open = true;
     this._listenForEscape(true);
     this.host.requestUpdate();

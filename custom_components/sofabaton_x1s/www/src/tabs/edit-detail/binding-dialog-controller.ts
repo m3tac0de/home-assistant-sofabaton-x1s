@@ -11,7 +11,7 @@
 
 import { html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import { TOOLS_CARD_STRINGS } from "../../strings";
-import { anchoredListPosition, moveListFocus } from "../../shared/utils/overlay-menu";
+import { AnchoredListFollower, moveListFocus } from "../../shared/utils/overlay-menu";
 import type { BackupBundlePayload } from "../../shared/ha-context";
 import {
   activityButtonBindingItems,
@@ -231,6 +231,16 @@ export class BindingDialogController implements ReactiveController {
   }
 
   hostConnected(): void {}
+
+  // Every way the picker closes (a pick, the backdrop, the dialog, the host
+  // clearing it) ends in a render: stop following it there.
+  hostUpdated(): void {
+    if (!this.macroPicker && this._pickerAnchor.following) this._pickerAnchor.stop();
+  }
+
+  hostDisconnected(): void {
+    this._pickerAnchor.stop();
+  }
 
   // ── Button bindings (add / edit picker) ─────────────────────────────
   commandDeviceOptions(): Array<{ value: number; label: string }> {
@@ -710,13 +720,27 @@ export class BindingDialogController implements ReactiveController {
   /** The open picker (one at a time, macro or Wifi Event): its trigger id and the list's fixed position. */
   macroPicker: { id: string; style: string; root: ParentNode } | null = null;
 
+  /** Keeps the open picker's list on its trigger when the dialog moves (a resize re-centers it). */
+  private readonly _pickerAnchor = new AnchoredListFollower(
+    () => null,
+    (style) => {
+      if (!this.macroPicker) return this._pickerAnchor.stop();
+      this.macroPicker = { ...this.macroPicker, style };
+      this.host.requestUpdate();
+    },
+    () => {
+      const picker = this.macroPicker;
+      return picker ? picker.root.querySelector<HTMLElement>(`#${picker.id}`) : null;
+    },
+  );
+
   private toggleMacroPicker(id: string, event: Event) {
     const trigger = event.currentTarget as HTMLElement;
     const root = trigger.getRootNode() as ParentNode;
     if (this.macroPicker?.id === id) {
       this.macroPicker = null;
     } else {
-      this.macroPicker = { id, style: anchoredListPosition(trigger), root };
+      this.macroPicker = { id, style: this._pickerAnchor.start(trigger), root };
       requestAnimationFrame(() => (
         root.querySelector<HTMLElement>('.macro-picker-option[aria-selected="true"]')
         ?? root.querySelector<HTMLElement>(".macro-picker-option")

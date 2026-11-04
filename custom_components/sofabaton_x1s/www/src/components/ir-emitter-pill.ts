@@ -16,7 +16,7 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { HassLike, IrEmitterStatusResponse } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { anchoredListPosition } from "../shared/utils/overlay-menu";
+import { AnchoredListFollower, pillPopoverOptions } from "../shared/utils/overlay-menu";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import { renderIrEmitterPill } from "../../../../../remote-card/src/ir-emitters/emitter-dropdown";
 import { irEmitterAttention, normalizePaired, type PairedEmitter } from "../../../../../remote-card/src/ir-emitters/emitter-rules";
@@ -118,6 +118,12 @@ export class IrEmitterPillController implements ReactiveController {
   private _menuStyle = "";
   private _escapeBound = false;
   private _readSeq = 0;
+  /** Keeps the open dropdown on the pill when the page moves underneath. */
+  private readonly _anchor = new AnchoredListFollower(
+    pillPopoverOptions,
+    (style) => { this._menuStyle = style; this.host.requestUpdate(); },
+    () => this.host.shadowRoot?.querySelector<HTMLElement>("button.ir-pill") ?? null,
+  );
 
   constructor(private readonly host: ReactiveControllerHost & HTMLElement) {
     host.addController(this);
@@ -125,8 +131,14 @@ export class IrEmitterPillController implements ReactiveController {
 
   hostConnected(): void {}
 
+  /** Every way the dropdown closes (another device too) ends in a render. */
+  hostUpdated(): void {
+    if (!this.open && this._anchor.following) this._anchor.stop();
+  }
+
   hostDisconnected(): void {
     this.open = false;
+    this._anchor.stop();
     this._listenForEscape(false);
   }
 
@@ -175,12 +187,7 @@ export class IrEmitterPillController implements ReactiveController {
       this.close();
       return;
     }
-    this._menuStyle = anchoredListPosition(trigger, {
-      minWidth: 320,
-      maxHeight: 560,
-      within: trigger.closest<HTMLElement>(".detail-view"),
-      widthOnly: true,
-    });
+    this._menuStyle = this._anchor.start(trigger);
     this.open = true;
     this._listenForEscape(true);
     this.host.requestUpdate();

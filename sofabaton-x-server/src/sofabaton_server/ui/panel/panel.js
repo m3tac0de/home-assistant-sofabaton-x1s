@@ -23026,10 +23026,8 @@ function overlayMenuPosition(anchor, align) {
   const horizontal = align === "end" !== Boolean(anchor.rtl) ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
-function menuAnchorRect(event) {
-  const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
+function menuAnchorOf(trigger) {
+  return { rect: trigger.getBoundingClientRect(), frame: fixedFrameBox(trigger), rtl: isRtl(trigger) };
 }
 function anchoredListPosition(trigger, menu = null) {
   return anchoredListStyle(
@@ -23038,6 +23036,87 @@ function anchoredListPosition(trigger, menu = null) {
     menu?.within?.getBoundingClientRect() ?? null,
     menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight, widthOnly: menu.widthOnly } : null
   );
+}
+function pillPopoverOptions(trigger) {
+  return { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true };
+}
+var boxKey = (box) => box ? `${Math.round(box.left)},${Math.round(box.top)},${Math.round(box.width)},${Math.round(box.height)}` : "-";
+var TriggerFollower = class {
+  constructor(_opts) {
+    this._opts = _opts;
+    this._trigger = null;
+    this._frame = null;
+    this._key = "";
+    this._tick = () => {
+      this._frame = null;
+      if (!this._trigger) return;
+      if (!this._trigger.isConnected) this._trigger = this._opts.find?.() ?? this._trigger;
+      const trigger = this._trigger;
+      if (trigger.isConnected && trigger.getClientRects().length) {
+        const key = this._keyOf(trigger);
+        if (key !== this._key) {
+          this._key = key;
+          const placement = this._opts.measure(trigger);
+          const last = this._placement;
+          if (!(this._opts.same ? this._opts.same(placement, last) : placement === last)) {
+            this._placement = placement;
+            this._opts.apply(placement);
+          }
+        }
+      }
+      if (this._trigger) this._schedule();
+    };
+  }
+  get following() {
+    return this._trigger !== null;
+  }
+  /** Measure the placement for `trigger` and follow it from here on. */
+  start(trigger) {
+    this.stop();
+    this._trigger = trigger;
+    this._key = this._keyOf(trigger);
+    const placement = this._opts.measure(trigger);
+    this._placement = placement;
+    this._schedule();
+    return placement;
+  }
+  stop() {
+    this._trigger = null;
+    this._placement = void 0;
+    if (this._frame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(this._frame);
+    this._frame = null;
+  }
+  _keyOf(trigger) {
+    const within = this._opts.within?.(trigger);
+    return `${boxKey(trigger.getBoundingClientRect())}|${boxKey(within?.getBoundingClientRect())}|${window.innerWidth}x${window.innerHeight}`;
+  }
+  _schedule() {
+    if (typeof requestAnimationFrame !== "function") return;
+    this._frame = requestAnimationFrame(this._tick);
+  }
+};
+var AnchoredListFollower = class extends TriggerFollower {
+  /**
+   * `options` is anchoredListPosition's for the trigger (null: as wide as
+   * the trigger); `apply` stores a re-measured style; `find` gives the
+   * trigger again when a render replaced it.
+   */
+  constructor(options, apply, find) {
+    super({
+      measure: (trigger) => anchoredListPosition(trigger, options(trigger)),
+      within: (trigger) => options(trigger)?.within,
+      apply,
+      find
+    });
+  }
+};
+function followMenuAnchor(align, apply, find) {
+  return new TriggerFollower({
+    measure: menuAnchorOf,
+    apply,
+    find,
+    same: (a4, b3) => overlayMenuPosition(a4, align) === overlayMenuPosition(b3, align)
+  });
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
   const room = inner ?? bounds;
@@ -24120,6 +24199,31 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       (from, to) => this._macroEditor ? this._moveStep(from, to - from) : this._moveShortcut(from, to - from),
       () => this._stickyOffset()
     );
+    /** Keep the open role menu, macro picker and "Copy shortcuts from" menu on their trigger when the page moves underneath. */
+    this._roleAnchor = followMenuAnchor(
+      "end",
+      (anchor) => {
+        if (!this._roleMenu) return this._roleAnchor.stop();
+        this._roleMenu = { ...this._roleMenu, anchor };
+      },
+      () => this.renderRoot.querySelector('.role-menu-anchor[data-open="true"] .role-trigger')
+    );
+    this._pickerAnchor = new AnchoredListFollower(
+      () => null,
+      (style) => {
+        if (!this._macroPicker) return this._pickerAnchor.stop();
+        this._macroPicker = { ...this._macroPicker, style };
+      },
+      () => this._macroPicker ? this.renderRoot.querySelector(`#${this._macroPicker.id}`) : null
+    );
+    this._copyAnchor = new AnchoredListFollower(
+      () => ({ minWidth: 260, within: this }),
+      (style) => {
+        if (this._shortcutCopyMenu === null) return this._copyAnchor.stop();
+        this._shortcutCopyMenu = style;
+      },
+      () => this.renderRoot.querySelector("#copy-shortcuts")
+    );
     /** The role menus are fixed to the viewport, so a scroll closes them (the card's rule). */
     this._onWindowScroll = () => {
       if (this._roleMenu) this._roleMenu = null;
@@ -24398,6 +24502,15 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     super.disconnectedCallback();
     this._sorter.cancel();
     window.removeEventListener("scroll", this._onWindowScroll);
+    this._roleAnchor.stop();
+    this._pickerAnchor.stop();
+    this._copyAnchor.stop();
+  }
+  updated(changed) {
+    super.updated(changed);
+    if (!this._roleMenu && this._roleAnchor.following) this._roleAnchor.stop();
+    if (!this._macroPicker && this._pickerAnchor.following) this._pickerAnchor.stop();
+    if (this._shortcutCopyMenu === null && this._copyAnchor.following) this._copyAnchor.stop();
   }
   _resetView() {
     this._rename = null;
@@ -24794,7 +24907,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         return;
       }
       const root = this.renderRoot;
-      this._shortcutCopyMenu = anchoredListPosition(event.currentTarget, { minWidth: 260, within: this });
+      this._shortcutCopyMenu = this._copyAnchor.start(event.currentTarget);
       requestAnimationFrame(() => root.querySelector(".shortcut-copy .macro-picker-option:not(:disabled)")?.focus());
     }}>${icon4(mdiContentCopy)}<span>${B2.copyShortcutsButton}</span></button>
         ${open ? b2`<button class="macro-picker-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${this._closeShortcutCopyMenu} @wheel=${(event) => event.preventDefault()}></button>
@@ -24818,7 +24931,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       this._macroPicker = null;
       return;
     }
-    this._macroPicker = { id, style: anchoredListPosition(trigger) };
+    this._macroPicker = { id, style: this._pickerAnchor.start(trigger) };
     const root = this.renderRoot;
     requestAnimationFrame(() => (root.querySelector('.macro-picker-option[aria-selected="true"]') ?? root.querySelector(".macro-picker-option"))?.focus());
   }
@@ -25021,7 +25134,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
           <span class="member-add role-menu-anchor" data-open=${open ? "true" : "false"}>
             <button class="role-trigger" type="button" data-state=${role.state} aria-haspopup="listbox" aria-expanded=${open ? "true" : "false"} aria-label=${B2.roleMenuAria(label)}
               @click=${(event) => {
-      this._roleMenu = open ? null : { group: role.group, anchor: menuAnchorRect(event) };
+      this._roleMenu = open ? null : { group: role.group, anchor: this._roleAnchor.start(event.currentTarget) };
     }}>
               <span>${roleTriggerLabel(role)}</span>${icon4(mdiChevronDown)}
             </button>
@@ -25601,6 +25714,15 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     /** The IR pill's dropdown: open, where, the read running, a refused read's line. */
     this._irOpen = false;
     this._irStyle = "";
+    /** Keeps the open IR dropdown on its pill when the page moves underneath. */
+    this._irAnchor = new AnchoredListFollower(
+      pillPopoverOptions,
+      (style) => {
+        this._irStyle = style;
+        this.requestUpdate();
+      },
+      () => this.renderRoot.querySelector("#editor-ir-pill")
+    );
     this._irChecking = false;
     this._irError = null;
     this._irEscapeBound = false;
@@ -25629,13 +25751,14 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._closeIr();
         return;
       }
-      this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true });
+      this._irStyle = this._irAnchor.start(trigger);
       this._irOpen = true;
       this._irListen(true);
       void this._readIr();
     };
     this._closeIr = () => {
       this._irListen(false);
+      this._irAnchor.stop();
       if (!this._irOpen) return;
       this._irOpen = false;
       void this.updateComplete.then(() => this.renderRoot.querySelector("#editor-ir-pill")?.focus());
@@ -25788,6 +25911,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._clearSectionScroll();
     this._irOpen = false;
     this._irListen(false);
+    this._irAnchor.stop();
   }
   _resetView() {
     this._clearSectionScroll();
@@ -25804,6 +25928,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._activeSection = "power";
     this._irOpen = false;
     this._irListen(false);
+    this._irAnchor.stop();
     this._irChecking = false;
     this._irError = null;
   }
@@ -30207,9 +30332,17 @@ var SbPanelWifiDevices = class extends i4 {
     this._workingKind = null;
     /** The device being deleted: the confirm is closed, its row says "Deleting…" (the card's way). */
     this._deletingKey = null;
-    /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened). */
+    /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened, then kept on the pill by `_deliveryAnchor`). */
     this._deliveryOpen = false;
     this._deliveryStyle = "";
+    this._deliveryAnchor = new AnchoredListFollower(
+      pillPopoverOptions,
+      (style) => {
+        this._deliveryStyle = style;
+        this.requestUpdate();
+      },
+      () => this.renderRoot.querySelector("#wifi-delivery-pill")
+    );
     /** Why the last Test run from the dropdown could not run. */
     this._testError = null;
     this._syncError = null;
@@ -30401,7 +30534,7 @@ var SbPanelWifiDevices = class extends i4 {
         this._closeDelivery();
         return;
       }
-      this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view"), widthOnly: true });
+      this._deliveryStyle = this._deliveryAnchor.start(trigger);
       this._deliveryOpen = true;
     };
     this._closeDelivery = () => {
@@ -30462,6 +30595,7 @@ var SbPanelWifiDevices = class extends i4 {
     this._follow.cancel();
     document.removeEventListener("keydown", this._onDocumentKeydown);
     this._deliveryOpen = false;
+    this._deliveryAnchor.stop();
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -30556,7 +30690,10 @@ var SbPanelWifiDevices = class extends i4 {
   updated(changed) {
     if (changed.has("_deliveryOpen")) {
       if (this._deliveryOpen) document.addEventListener("keydown", this._onDocumentKeydown);
-      else document.removeEventListener("keydown", this._onDocumentKeydown);
+      else {
+        document.removeEventListener("keydown", this._onDocumentKeydown);
+        this._deliveryAnchor.stop();
+      }
     }
     this._reportDirty(this.hasUnsyncedChanges());
     if (this.deviceKey && this._list !== null && !this._device && !this._working) this._navigate(null);

@@ -98,7 +98,7 @@ import {
 import { problemText, type ApiResponse, type JobView, type PayloadView, type SnapshotEntity } from "../panel-api";
 import { OPERATION_PROGRESS_CSS } from "../components/operation-progress";
 import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead, readIrEmitters, renderPanelIrPill } from "../components/ir-emitter-pill";
-import { anchoredListPosition } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { AnchoredListFollower, pillPopoverOptions } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import { extrasOfRouting, routingFromExtras, sameRouting, type EmitterRouting } from "../../../remote-card/src/ir-emitters/emitter-routing";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
@@ -356,6 +356,12 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   /** The IR pill's dropdown: open, where, the read running, a refused read's line. */
   private _irOpen = false;
   private _irStyle = "";
+  /** Keeps the open IR dropdown on its pill when the page moves underneath. */
+  private readonly _irAnchor = new AnchoredListFollower(
+    pillPopoverOptions,
+    (style) => { this._irStyle = style; this.requestUpdate(); },
+    () => this.renderRoot.querySelector<HTMLElement>("#editor-ir-pill"),
+  );
   private _irChecking = false;
   private _irError: string | null = null;
   private _irEscapeBound = false;
@@ -398,6 +404,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     this._clearSectionScroll();
     this._irOpen = false;
     this._irListen(false);
+    this._irAnchor.stop();
   }
 
   protected _resetView(): void {
@@ -415,6 +422,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     this._activeSection = "power";
     this._irOpen = false;
     this._irListen(false);
+    this._irAnchor.stop();
     this._irChecking = false;
     this._irError = null;
   }
@@ -616,7 +624,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
       this._closeIr();
       return;
     }
-    this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view"), widthOnly: true });
+    this._irStyle = this._irAnchor.start(trigger);
     this._irOpen = true;
     this._irListen(true);
     void this._readIr();
@@ -624,6 +632,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   private _closeIr = (): void => {
     this._irListen(false);
+    this._irAnchor.stop();
     if (!this._irOpen) return;
     this._irOpen = false;
     void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>("#editor-ir-pill")?.focus());

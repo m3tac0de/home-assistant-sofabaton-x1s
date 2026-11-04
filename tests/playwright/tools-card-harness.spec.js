@@ -836,6 +836,82 @@ test.describe("tools-card browser harness", () => {
     return { cls: String(el?.className ?? ""), row: el?.closest?.(".ir-row")?.dataset?.row ?? null, choice: el?.dataset?.choice ?? null };
   });
 
+  // An open dropdown is fixed: it re-measures when its trigger moves (a
+  // resize, a layout shift above the card), instead of staying where it opened.
+  // Under or above the trigger, and lined up with the edges it was lined up
+  // with when it opened (the end edge, or both for a list as wide as its trigger).
+  const fitOf = (p, d) => ({
+    side: Math.abs(d.top - (p.bottom + 4)) <= 1 || Math.abs(d.bottom - (p.top - 4)) <= 1,
+    left: Math.abs(d.left - p.left) <= 1,
+    right: Math.abs(d.right - p.right) <= 1,
+    overlap: d.left < p.right && d.right > p.left,
+  });
+  const followsPill = async (pill, pop, opened) => {
+    await expect.poll(async () => {
+      const fit = fitOf(await irBox(pill), await irBox(pop));
+      return fit.side && fit.overlap && (!opened?.left || fit.left) && (!opened?.right || fit.right);
+    }).toBe(true);
+  };
+  const movePage = async (page, pill, pop, { shift = true, width = 900, height = 1200 } = {}) => {
+    await followsPill(pill, pop);
+    const opened = fitOf(await irBox(pill), await irBox(pop));
+    const before = await irBox(pill);
+    if (shift) {
+      await page.evaluate(() => { document.body.style.paddingTop = "140px"; });
+      await expect.poll(async () => (await irBox(pill)).top).toBeGreaterThan(before.top + 100);
+      await followsPill(pill, pop, opened);
+    }
+    await page.setViewportSize({ width, height });
+    await expect.poll(async () => (await irBox(pill)).left).not.toBe(before.left);
+    await followsPill(pill, pop, opened);
+  };
+
+  test("the role menu and the macro picker follow their trigger when the page moves underneath", async ({ page }) => {
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto("/tests/tools-card-harness.html?scenario=macro-add-step&width=900");
+    const detail = page.locator("sofabaton-control-panel sofabaton-backup-tab sofabaton-edit-detail-view");
+    await expect(detail.locator(".dialog")).toBeVisible();
+    await detail.locator(".dialog button", { hasText: "Cancel" }).click();
+    await detail.locator(".back-btn").click();
+    // The role menu in the activity editor: a layout shift, then a narrower window.
+    const roleTrigger = detail.locator(".role-trigger").first();
+    await roleTrigger.click();
+    const roleMenu = detail.locator(".role-menu");
+    await expect(roleMenu).toBeVisible();
+    await movePage(page, roleTrigger, roleMenu, { width: 800, height: 900 });
+    await detail.locator(".member-add-backdrop").click();
+    await expect(roleMenu).toHaveCount(0);
+    await page.evaluate(() => { document.body.style.paddingTop = ""; });
+    await page.setViewportSize({ width: 1100, height: 900 });
+    // The macro picker in the assignment dialog: a resize re-centers the dialog.
+    await detail.locator(".edit-selection-row--footer").click();
+    await detail.locator(".quick-access-add-btn").first().click();
+    await expect(detail.locator(".dialog")).toBeVisible();
+    await detail.locator(".kind-seg-btn", { hasText: "Macro" }).first().click();
+    const pickerTrigger = detail.locator(".macro-picker-trigger").first();
+    await pickerTrigger.click();
+    const picker = detail.locator(".macro-picker-menu");
+    await expect(picker).toBeVisible();
+    await movePage(page, pickerTrigger, picker, { shift: false, width: 800, height: 900 });
+  });
+
+  test("an open IR dropdown follows its pill when the page moves underneath", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-repeaters"));
+    await irPill(page).click();
+    await expect(irPop(page).locator('[data-status="checking"]')).toHaveCount(0);
+    await movePage(page, irPill(page), irPop(page));
+    await page.screenshot({ path: test.info().outputPath("ir-pop-follows.png") });
+  });
+
+  test("an open delivery dropdown follows its pill when the page moves underneath", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-delivery-failed"));
+    await wifiPill(page).click();
+    await expect(wifiPop(page)).toContainText("The test command did not reach Home Assistant.");
+    await movePage(page, wifiPill(page), wifiPop(page));
+  });
+
   test("the IR pill reads the paired list when it opens; a pick waits for Sync and Undo takes it back", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-repeaters"));
