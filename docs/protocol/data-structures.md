@@ -51,6 +51,7 @@ Observed device-class codes:
 | `0x1C` | `wifi_ip` | Virtual IP / HTTP rows |
 | `0x1D` | `rf_433mhz` | RF 433 MHz devices (device type byte `0x11`); not yet seen in a capture |
 | `0x1E` | `rf_315mhz` | RF 315 MHz devices (device type byte `0x11`); not yet seen in a capture |
+| `0x1F` | `matter` | The X2's own Matter device, always id 51 (bench 2026-11-01, firmware 9): the hub creates it, one command per Matter button ("Button 1".. "Button 8"). Hidden from `REQ_DEVICES` while the hub is not linked to a Matter controller; `REQ_COMMANDS [51, 0xFF]` lists its buttons either way. Hub-owned: the library never creates, edits, deletes or restores it |
 | `0x20` | `wifi_mqtt` | MQTT-style rows |
 
 An RF command record carries the same `0x1D` / `0x1E` value in its own type byte,

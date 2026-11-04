@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 # Frame markers used by the hub protocol
 SYNC0, SYNC1 = 0xA5, 0x5A
@@ -123,6 +123,14 @@ OP_REQ_HUB_NAME = 0x0032
 FAMILY_HUB_MQTT_SETUP = 0x73
 FAMILY_HUB_MQTT_STATUS = 0x74  # A→H empty: is the hub connected to a broker?
 OP_HUB_MQTT_STATUS_QUERY = 0x0074
+# X2 Matter link (bench 2026-11-01, firmware 9, read-only). The hub keeps a
+# Matter device of its own at MATTER_DEVICE_ID; 0x0072 (empty) answers with
+# its device row once the hub is linked to a Matter controller, ack 7 while
+# it is not. Family 0x81 (empty request) answers with the pairing data: a
+# length byte, the QR text, CR, the manual pairing code. That reply is a
+# credential: wire dumps mask it (redact_wire_hex) and nothing stores it.
+OP_REQ_MATTER_DEVICE = 0x0072
+FAMILY_MATTER_PAIRING = 0x81
 OP_FIND_REMOTE = 0x0023  # payload: empty; triggers the remote buzzer (X1/X1S)
 OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
 # Identical across X1, X1S, X2. The hub commonly disconnects after the ack; clients
@@ -332,6 +340,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_HUB_NAME: "REQ_HUB_NAME",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_HUB_MQTT_STATUS_QUERY: "HUB_MQTT_STATUS_QUERY",
+    OP_REQ_MATTER_DEVICE: "REQ_MATTER_DEVICE",
     OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_REMOTE_SYNC: "REMOTE_SYNC",
@@ -526,6 +535,7 @@ FAMILY_NAMES: Dict[int, str] = {
     FAMILY_FAV_ORDER_RESP: "FAV_ORDER_RESP",
     FAMILY_HUB_MQTT_SETUP: "HUB_MQTT_SETUP",
     FAMILY_HUB_MQTT_STATUS: "HUB_MQTT_STATUS",
+    FAMILY_MATTER_PAIRING: "MATTER_PAIRING",
 }
 
 
@@ -538,6 +548,7 @@ DEVICE_CLASS_WIFI_MQTT = "wifi_mqtt"
 DEVICE_CLASS_WIFI_SONOS = "wifi_sonos"
 DEVICE_CLASS_RF_315 = "rf_315mhz"
 DEVICE_CLASS_RF_433 = "rf_433mhz"
+DEVICE_CLASS_MATTER = "matter"
 
 DEVICE_CLASS_CODE_BLUETOOTH = 0x03
 DEVICE_CLASS_CODE_WIFI_ROKU = 0x0A
@@ -561,6 +572,11 @@ RF_CODE_TYPE_BY_MHZ: Dict[int, int] = {
 RF_MHZ_BY_CODE_TYPE: Dict[int, int] = {
     code: mhz for mhz, code in RF_CODE_TYPE_BY_MHZ.items()
 }
+# The X2's own Matter device (bench 2026-11-01): the hub creates it at
+# MATTER_DEVICE_ID, past the 50 ordinary device slots, with one command per
+# Matter button. It is hidden from the device list until the hub is linked.
+DEVICE_CLASS_CODE_MATTER = 0x1F
+MATTER_DEVICE_ID = 51
 DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
 # Not a device class: the code type of an X2 URL command record, stored on
 # an ordinary wifi_ip device (bench-validated 2026-10-24).
@@ -576,6 +592,7 @@ DEVICE_CLASS_BY_CODE: Dict[int, str] = {
     DEVICE_CLASS_CODE_RF_433: DEVICE_CLASS_RF_433,
     DEVICE_CLASS_CODE_RF_315: DEVICE_CLASS_RF_315,
     DEVICE_CLASS_CODE_WIFI_MQTT: DEVICE_CLASS_WIFI_MQTT,
+    DEVICE_CLASS_CODE_MATTER: DEVICE_CLASS_MATTER,
 }
 
 DEVICE_CLASS_ALIASES: Dict[str, str] = {
@@ -599,6 +616,7 @@ DEVICE_CLASS_ALIASES: Dict[str, str] = {
     "roku": DEVICE_CLASS_WIFI_ROKU,
     "sonos": DEVICE_CLASS_WIFI_SONOS,
     "mqtt": DEVICE_CLASS_WIFI_MQTT,
+    "matter": DEVICE_CLASS_MATTER,
     "315": DEVICE_CLASS_RF_315,
     "315mhz": DEVICE_CLASS_RF_315,
     "433": DEVICE_CLASS_RF_433,
@@ -626,7 +644,13 @@ PUBLIC_DEVICE_CLASSES: tuple[str, ...] = (
     DEVICE_CLASS_WIFI_SONOS,
     DEVICE_CLASS_RF_315,
     DEVICE_CLASS_RF_433,
+    DEVICE_CLASS_MATTER,
 )
+
+#: Classes the hub owns: it creates and removes these devices itself, so a
+#: client never creates, deletes, edits or restores one. Activities may
+#: still bind their commands.
+HUB_OWNED_DEVICE_CLASSES: frozenset[str] = frozenset({DEVICE_CLASS_MATTER})
 
 
 def classify_device_class_code(device_class_code: Any) -> str | None:
@@ -652,6 +676,22 @@ def known_public_device_classes() -> tuple[str, ...]:
     return PUBLIC_DEVICE_CLASSES
 
 
+def is_hub_owned_device(device: Any) -> bool:
+    """Whether a device row or ``device`` block belongs to the hub.
+
+    Takes the cached catalog row, a backup's ``device`` block, or a whole
+    ``device_backup`` payload; the class name wins over the class code.
+    """
+
+    if not isinstance(device, Mapping):
+        return False
+    block = device.get("device") if isinstance(device.get("device"), Mapping) else device
+    device_class = normalize_device_class(block.get("device_class"))
+    if device_class is None:
+        device_class = classify_device_class_code(block.get("device_class_code"))
+    return device_class in HUB_OWNED_DEVICE_CLASSES
+
+
 def opcode_family_name(opcode: int) -> str | None:
     """Return a human-friendly name for an opcode family, if known."""
 
@@ -673,6 +713,7 @@ __all__ = [
     "DEVICE_CLASS_WIFI_SONOS",
     "DEVICE_CLASS_RF_315",
     "DEVICE_CLASS_RF_433",
+    "DEVICE_CLASS_MATTER",
     "DEVICE_CLASS_CODE_BLUETOOTH",
     "DEVICE_CLASS_CODE_WIFI_ROKU",
     "DEVICE_CLASS_CODE_IR",
@@ -682,11 +723,15 @@ __all__ = [
     "DEVICE_CLASS_CODE_RF_433",
     "DEVICE_CLASS_CODE_RF_315",
     "DEVICE_CLASS_CODE_WIFI_MQTT",
+    "DEVICE_CLASS_CODE_MATTER",
+    "MATTER_DEVICE_ID",
     "WIFI_URL_RECORD_CODE",
     "DEVICE_CLASS_BY_CODE",
     "DEVICE_CLASS_ALIASES",
     "PUBLIC_DEVICE_CLASSES",
+    "HUB_OWNED_DEVICE_CLASSES",
     "classify_device_class_code",
+    "is_hub_owned_device",
     "known_public_device_classes",
     "normalize_device_class",
     "OP_REQ_BANNER",
@@ -703,6 +748,8 @@ __all__ = [
     "FAMILY_HUB_MQTT_SETUP",
     "FAMILY_HUB_MQTT_STATUS",
     "OP_HUB_MQTT_STATUS_QUERY",
+    "OP_REQ_MATTER_DEVICE",
+    "FAMILY_MATTER_PAIRING",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
     "OP_REMOTE_SYNC",

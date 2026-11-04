@@ -126,7 +126,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     addDeviceTitle: "Apparaat toevoegen", addDeviceBody: "Kies een naam en apparaattype. Het apparaat wordt zonder commando's op de hub aangemaakt en daarna in de editor geopend, zodat je commando's kunt toevoegen.",
     addDevicePlaceholder: "Apparaatnaam", addDeviceClass: "Apparaattype", addDeviceCancel: "Annuleren", addDeviceConfirm: "Aanmaken", addDeviceCreating: "Aanmaken…",
     addDeviceWifiHint: "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.", creatingDevice: "Apparaat aanmaken…",
-    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz" },
+    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz", matter: "Matter" },
     reorderingActivities: "Activiteiten opnieuw ordenen…", reorderingDevices: "Apparaten opnieuw ordenen…", creatingActivity: "Activiteit aanmaken…",
   },
   hubClick: {
@@ -354,7 +354,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     wifiEventNameRequired: "Voer een naam in voor het nieuwe Wifi-event.",
     macroTargetNoExisting: "Nog geen macro's. Maak er hieronder een.", addShortcutActionName: "Naam", addShortcutActionHelper: "Hierna kies je de stappen.", addShortcutCommandHelper: "De snelkoppeling wordt onder de naam van het commando weergegeven.",
     unsaved: "Niet opgeslagen", unsavedTooltip: "Je hebt niet-opgeslagen wijzigingen. Download de back-up om ze op te slaan.", renameKind: (kind: "activity" | "device") => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} hernoemen`,
-    managedWifiTitle: "Beheerd door Wifi Commands", managedWifiIntro: "Dit apparaat is vanuit het tabblad Wifi Commands uitgerold.",
+    hubOwnedTitle: "Beheerd door de hub", hubOwnedIntro: "Dit is het eigen Matter-apparaat van de hub, met een commando voor elke Matter-knop.", hubOwnedBody: "De hub maakt en beheert het, dus je kunt het hier niet hernoemen, bewerken of verwijderen, en een herstel houdt de kopie van de hub aan. Activiteiten kunnen de knoppen wel gebruiken.", managedWifiTitle: "Beheerd door Wifi Commands", managedWifiIntro: "Dit apparaat is vanuit het tabblad Wifi Commands uitgerold.",
     managedWifiBody: "De commando's, aan/uit-instellingen, ingang en knoptoewijzingen worden daar geconfigureerd — wijzigingen hier worden bij de volgende synchronisatie overschreven.",
     managedWifiRename: "Je kunt het hier wel hernoemen; de nieuwe naam blijft gesynchroniseerd met je Wifi Commands-configuratie.",
     detailPower: "Aan/uit", detailNetwork: "Netwerk", detailCommands: "Commando's", detailButtons: "Knoppen", detailSectionsAria: "Detailsecties", editBindingAria: "Toewijzing bewerken", editIpAria: "IP-adres bewerken",

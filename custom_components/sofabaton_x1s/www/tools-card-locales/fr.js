@@ -239,7 +239,7 @@ var TOOLS_CARD_STRINGS_FR = {
     addDeviceCreating: "Cr\xE9ation\u2026",
     addDeviceWifiHint: "Pour les commandes que Home Assistant doit ex\xE9cuter, utilisez plut\xF4t l\u2019onglet Wifi Commands.",
     creatingDevice: "Cr\xE9ation de l\u2019appareil\u2026",
-    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP g\xE9n\xE9rique", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz" },
+    deviceClassLabels: { ir: "Infrarouge", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP g\xE9n\xE9rique", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz", matter: "Matter" },
     reorderingActivities: "R\xE9organisation des activit\xE9s\u2026",
     reorderingDevices: "R\xE9organisation des appareils\u2026",
     creatingActivity: "Cr\xE9ation de l\u2019activit\xE9\u2026"
@@ -657,6 +657,9 @@ var TOOLS_CARD_STRINGS_FR = {
     unsaved: "Non enregistr\xE9",
     unsavedTooltip: "Vous avez des modifications non enregistr\xE9es. T\xE9l\xE9chargez la sauvegarde pour les conserver.",
     renameKind: (kind) => `Renommer ${kind === "activity" ? "l\u2019activit\xE9" : "l\u2019appareil"}`,
+    hubOwnedTitle: "G\xE9r\xE9 par le hub",
+    hubOwnedIntro: "Il s\u2019agit de l\u2019appareil Matter propre au hub, avec une commande pour chaque bouton Matter.",
+    hubOwnedBody: "Le hub le cr\xE9e et le g\xE8re\u202F: il ne peut donc pas \xEAtre renomm\xE9, modifi\xE9 ni supprim\xE9 ici, et une restauration conserve la copie du hub. Les activit\xE9s peuvent toujours utiliser ses boutons.",
     managedWifiTitle: "G\xE9r\xE9 par Wifi Commands",
     managedWifiIntro: "Cet appareil a \xE9t\xE9 d\xE9ploy\xE9 depuis l\u2019onglet Wifi Commands.",
     managedWifiBody: "Ses commandes, son marche/arr\xEAt, son entr\xE9e et ses attributions de touches sont configur\xE9s dans cet onglet \u2014 toute modification ici serait \xE9cras\xE9e lors de la prochaine synchronisation.",

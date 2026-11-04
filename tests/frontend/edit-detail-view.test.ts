@@ -675,6 +675,47 @@ test("the offline backup editor never locks a managed Wifi Device", () => {
   assert.ok(element._editDetailSectionItems("device").length > 0);
 });
 
+function matterBundle(): BackupBundlePayload {
+  const bundle = editorBundle("X2");
+  bundle.devices = [
+    ...(bundle.devices ?? []),
+    {
+      device: { device_id: 51, name: "matter", device_class: "matter", device_class_code: 0x1f },
+      commands: Array.from({ length: 8 }, (_, i) => ({ command_id: i + 1, name: `Button ${i + 1}` })),
+    },
+  ];
+  return bundle;
+}
+
+for (const mode of ["live", "backup"] as const) {
+  test(`the ${mode} editor shows the hub's Matter device read-only (no edit, sections or delete)`, () => {
+    const element = new EditDetailViewElement() as EditorElement;
+    element.bundle = matterBundle();
+    element.kind = "device";
+    element.entityId = 51;
+    element.mode = mode;
+
+    assert.equal(element._isHubOwnedDevice(), true);
+    assert.deepEqual(element._editDetailSectionItems("device"), []);
+    assert.ok(templateText(element._renderHubOwnedLockNotice()).includes("Managed by the hub"));
+    assert.ok(!templateText(element._renderDetailEdit("device")).includes("<button"));
+    element._openDetailRenameDialog();
+    assert.ok(!templateText(element._renderEditRenameDialog()).includes("dialog-footer-delete"));
+  });
+}
+
+test("an activity never offers the hub's Matter device as a member", () => {
+  const element = new EditDetailViewElement() as EditorElement;
+  element.bundle = matterBundle();
+  element.kind = "activity";
+  element.entityId = 101;
+  element.mode = "live";
+
+  const ids = element._addableMemberDevices().map((option: { id: number }) => option.id);
+  assert.ok(ids.length > 0);
+  assert.ok(!ids.includes(51));
+});
+
 // ── Live command removal on every device ──────────────────────────────
 
 test("live editor offers command delete on a regular device", () => {

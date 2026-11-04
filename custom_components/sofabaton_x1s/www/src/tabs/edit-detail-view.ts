@@ -24,7 +24,7 @@
  * (_binding) and the macro step editor (_steps).
  */
 import { LitElement, html, nothing } from "lit";
-import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN } from "../shared/hub-rules";
+import { IP_HEAD_DEVICE_CLASSES, IPV4_PATTERN, isHubOwnedDeviceClass } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   activityEditorStyles,
@@ -122,7 +122,8 @@ import { editDetailViewStyles } from "./edit-detail/styles";
 import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
 import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../../../remote-card/src/entity-icons/appearance-editor";
-import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { entityTile, entityTileStyles, renderEntityTile } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { renderMatterGlyph } from "../../../../../remote-card/src/entity-icons/matter-icon";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
 import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
 import { WifiEventTargets } from "./edit-detail/wifi-event-targets";
@@ -359,6 +360,12 @@ export class SofabatonEditDetailView extends LitElement {
   // the normal Sync (a bundle mutation → dirty → Sync).
   private _renderDetailEdit(kind: BackupEditTargetKind) {
     if (this.entityId == null) return nothing;
+    if (this._isHubOwnedDevice()) {
+      // Nothing to edit: the tile (or the class glyph) without its button.
+      const own = bundleEntityAppearance(this.bundle, kind, this.entityId);
+      const ownTile = entityTile(this.bundle?.hub?.version, own.icon, own.colorId);
+      return ownTile ? renderEntityTile(ownTile) : renderMatterGlyph();
+    }
     const S = TOOLS_CARD_STRINGS.backup;
     const label = iconHubLine(this.bundle?.hub?.version) != null
       ? (kind === "activity" ? S.editActivity : S.editDevice)
@@ -382,6 +389,19 @@ export class SofabatonEditDetailView extends LitElement {
           ? pill
           : html`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${this._entityKindCrumbLabel(kind)}</button></div>`}
         ${this._renderDirtyChip()}
+      </div>
+    `;
+  }
+
+  private _renderHubOwnedLockNotice() {
+    const S = TOOLS_CARD_STRINGS.backup;
+    return html`
+      <div class="managed-wifi-lock">
+        <div class="managed-wifi-lock-chip">
+          ${renderMatterGlyph()}
+          <span>${S.hubOwnedTitle}</span>
+        </div>
+        <p class="managed-wifi-lock-copy">${S.hubOwnedIntro} ${S.hubOwnedBody}</p>
       </div>
     `;
   }
@@ -454,7 +474,9 @@ export class SofabatonEditDetailView extends LitElement {
                   ${this._renderButtonBindingsSection("activity")}
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
                 `
-              : this._isManagedWifiLiveDevice()
+              : this._isHubOwnedDevice()
+                ? this._renderHubOwnedLockNotice()
+                : this._isManagedWifiLiveDevice()
                 ? this._renderManagedWifiLockNotice()
                 : html`
                     ${this._renderPowerSetupSection("device", Number(this.entityId))}
@@ -558,6 +580,18 @@ export class SofabatonEditDetailView extends LitElement {
     this._commitEditBundleEdit(setBundleDeviceExtras(this.bundle, deviceId, extras));
   }
 
+  /** The hub's own device (the X2's Matter device): the hub creates and
+   *  removes it, and no write to it has been benched, so every editor shows
+   *  it read-only, live and offline alike. Activities still bind its
+   *  buttons. */
+  private _isHubOwnedDevice(): boolean {
+    return (
+      this.kind === "device" &&
+      this.entityId != null &&
+      isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, Number(this.entityId)))
+    );
+  }
+
   private _isManagedWifiLiveDevice(): boolean {
     // The reserved Wifi Events device is carved out: this editor is its
     // ONLY hub-side editing UI (it never appears in the Wifi Commands
@@ -598,7 +632,7 @@ export class SofabatonEditDetailView extends LitElement {
     if (kind === "activity") {
       return [];
     }
-    if (this._isManagedWifiLiveDevice()) {
+    if (this._isManagedWifiLiveDevice() || this._isHubOwnedDevice()) {
       // Locked: no editable sections, so no section nav.
       return [];
     }
@@ -1261,7 +1295,7 @@ export class SofabatonEditDetailView extends LitElement {
   // none: removing it belongs in the Wifi Commands tab, which also clears its
   // stored configuration.
   private _renderEditDialogDelete() {
-    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice()) return nothing;
+    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice() || this._isHubOwnedDevice()) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
     const label = this._editRenameDialogTarget.entityKind === "activity" ? S.deleteActivityAria : S.deleteDeviceAria;
     return html`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" aria-label=${label} title=${label} @click=${this._deleteFromEditDialog}>${S.deleteConfirm}</button>`;
@@ -1711,7 +1745,8 @@ export class SofabatonEditDetailView extends LitElement {
    */
   private _addableMemberDevices() {
     if (!this.bundle || this.entityId == null) return [];
-    const options = activityAddableDevices(this.bundle, Number(this.entityId));
+    const options = activityAddableDevices(this.bundle, Number(this.entityId))
+      .filter((option) => !isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, option.id)));
     if (this.mode !== "live") return options;
     return options.filter(
       (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id)),

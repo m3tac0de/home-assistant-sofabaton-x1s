@@ -7,6 +7,7 @@ import { mdiBluetooth, mdiLedOutline, mdiRadioTower, mdiWifi } from "@mdi/js";
 import { css, html, nothing, type TemplateResult } from "lit";
 import { entityColor } from "./entity-colors";
 import { entityIconName, entityIconPath } from "./entity-icons";
+import { MATTER_ICON_PATH, isMatterClass } from "./matter-icon";
 
 export interface EntityTile {
   /** The icon's 24x24 path. */
@@ -44,12 +45,14 @@ const BADGE_IR: EntityTileBadge = { icon: "mdi:led-outline", path: mdiLedOutline
 const BADGE_BLUETOOTH: EntityTileBadge = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
 const BADGE_WIFI: EntityTileBadge = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
 const BADGE_RF: EntityTileBadge = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+const BADGE_MATTER: EntityTileBadge = { icon: "matter", path: MATTER_ICON_PATH, nudge: [0, 0] };
 
 /** The corner badge that keeps a device's link visible once its tile shows
  *  the hub icon instead of a class glyph. */
 export function entityTileBadge(deviceClass: unknown): EntityTileBadge | null {
   const cls = String(deviceClass ?? "").toLowerCase();
   if (cls === "ir") return BADGE_IR;
+  if (isMatterClass(cls)) return BADGE_MATTER;
   if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
   if (cls.includes("wifi")) return BADGE_WIFI;
   if (cls.startsWith("rf")) return BADGE_RF;

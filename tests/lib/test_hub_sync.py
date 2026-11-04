@@ -701,3 +701,34 @@ def test_a_mirror_only_change_is_not_a_member_change() -> None:
     desired = _pkg.edits.bind_button(desired, 101, VOL_UP, 7, 3)  # a real edit so the activity is planned
     plan = build(base, desired)
     assert not any("member devices change" in note for note in plan.notes)
+
+
+def _with_matter_device(document: dict) -> dict:
+    matter = _device(51, "matter", {key: f"Button {key}" for key in range(1, 9)})
+    matter["device"]["device_class"] = "matter"
+    document["devices"].append(matter)
+    document["activities"][0]["button_bindings"].append(_binding(VOL_UP, 51, 1))
+    return document
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d["devices"][-1]["commands"][0].update(name="Doorbell"),
+        lambda d: d["devices"].pop(),
+    ],
+    ids=["edit", "delete"],
+)
+def test_the_hubs_matter_device_is_never_written(mutate) -> None:
+    base = _with_matter_device(_bundle())
+    desired = copy.deepcopy(base)
+    mutate(desired)
+    with pytest.raises(hub_sync.InvalidDocumentError, match="belongs to the hub"):
+        build(base, desired)
+
+
+def test_activities_may_bind_the_hubs_matter_device() -> None:
+    base = _with_matter_device(_bundle())
+    desired = copy.deepcopy(base)
+    desired["activities"][0]["button_bindings"][-1]["command_id"] = 2
+    assert _kinds(build(base, desired)) == [("sync_activity", 101)]

@@ -242,7 +242,7 @@ var TOOLS_CARD_STRINGS_NL = {
     addDeviceCreating: "Aanmaken\u2026",
     addDeviceWifiHint: "Gebruik voor commando's die Home Assistant moet uitvoeren het tabblad Wifi Commands.",
     creatingDevice: "Apparaat aanmaken\u2026",
-    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz" },
+    deviceClassLabels: { ir: "Infrarood", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generiek HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz", matter: "Matter" },
     reorderingActivities: "Activiteiten opnieuw ordenen\u2026",
     reorderingDevices: "Apparaten opnieuw ordenen\u2026",
     creatingActivity: "Activiteit aanmaken\u2026"
@@ -660,6 +660,9 @@ var TOOLS_CARD_STRINGS_NL = {
     unsaved: "Niet opgeslagen",
     unsavedTooltip: "Je hebt niet-opgeslagen wijzigingen. Download de back-up om ze op te slaan.",
     renameKind: (kind) => `${soort(kind) === "activiteit" ? "Activiteit" : "Apparaat"} hernoemen`,
+    hubOwnedTitle: "Beheerd door de hub",
+    hubOwnedIntro: "Dit is het eigen Matter-apparaat van de hub, met een commando voor elke Matter-knop.",
+    hubOwnedBody: "De hub maakt en beheert het, dus je kunt het hier niet hernoemen, bewerken of verwijderen, en een herstel houdt de kopie van de hub aan. Activiteiten kunnen de knoppen wel gebruiken.",
     managedWifiTitle: "Beheerd door Wifi Commands",
     managedWifiIntro: "Dit apparaat is vanuit het tabblad Wifi Commands uitgerold.",
     managedWifiBody: "De commando's, aan/uit-instellingen, ingang en knoptoewijzingen worden daar geconfigureerd \u2014 wijzigingen hier worden bij de volgende synchronisatie overschreven.",

@@ -24,6 +24,7 @@ from .protocol_const import (
     DEVICE_CLASS_IR,
     DEVICE_CLASS_RF_315,
     DEVICE_CLASS_RF_433,
+    is_hub_owned_device,
     normalize_device_class,
 )
 from .state_helpers import reads_live_state
@@ -247,11 +248,17 @@ class BackupExportMixin(_ProxyHost if TYPE_CHECKING else object):
         device_meta = dict(device_snapshot.get(dev_lo) or {})
         if not device_meta:
             return None
+        # The hub's own device (the X2's Matter device) is captured for its
+        # command names and key bindings only: restore never writes it, so
+        # its code bytes, power macros and inputs are not read.
+        hub_owned = is_hub_owned_device(device_meta)
+        if hub_owned:
+            include_blobs = False
 
         device_config = self._parse_config(
             device_meta.get("raw_body"), hub_version=self.hub_version
         )
-        skip_inputs = device_config is not None and not device_config.is_input_configured
+        skip_inputs = hub_owned or (device_config is not None and not device_config.is_input_configured)
 
         reuse_commands = bool(reuse_commands) and dev_lo in self._commands_complete
         self.clear_entity_cache(
@@ -273,8 +280,9 @@ class BackupExportMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         # The idle byte is one of the two power signals the macro read
         # depends on (see _device_power_set_up): read it first.
-        self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
-        skip_macros = not self._device_power_set_up(dev_lo, device_config)
+        if not hub_owned:
+            self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
+        skip_macros = hub_owned or not self._device_power_set_up(dev_lo, device_config)
         if not skip_macros:
             self._fetch_and_wait(
                 f"macros:{dev_lo}",
@@ -316,14 +324,15 @@ class BackupExportMixin(_ProxyHost if TYPE_CHECKING else object):
         # ``state.device_key_sorts``; the explicit write also captures the
         # STATUS_ACK "no key-sort configured" empty row so a later
         # from-state assembly sees the same value this capture did.
-        key_sort_row = _key_sort_row_or_fallback(
-            dev_lo,
-            normalized_device_class,
-            self.fetch_device_key_sort(dev_lo, timeout=wait_timeout),
-            log=self._log,
-        )
-        if key_sort_row is not None:
-            self.state.device_key_sorts[dev_lo] = dict(key_sort_row)
+        if not hub_owned:
+            key_sort_row = _key_sort_row_or_fallback(
+                dev_lo,
+                normalized_device_class,
+                self.fetch_device_key_sort(dev_lo, timeout=wait_timeout),
+                log=self._log,
+            )
+            if key_sort_row is not None:
+                self.state.device_key_sorts[dev_lo] = dict(key_sort_row)
 
         # Idle / automatic-power behavior lives in its own hub query
         # (OP_IDLE_BEHAVIOR, 0x0242), not the device record; it was fetched

@@ -10,7 +10,17 @@
  *  editable via the per-command structured-payload form. */
 export const IP_HEAD_DEVICE_CLASSES: ReadonlySet<string> = new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 
-export const IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+/** Device classes the hub owns (mirrors HUB_OWNED_DEVICE_CLASSES in
+ *  lib/protocol_const.py): the X2's own Matter device. The hub creates and
+ *  removes it; editors show it read-only and never offer it as an activity
+ *  member, while activities may still bind its buttons. */
+export const HUB_OWNED_DEVICE_CLASSES: ReadonlySet<string> = new Set(["matter"]);
+
+export function isHubOwnedDeviceClass(deviceClass: unknown): boolean {
+  return HUB_OWNED_DEVICE_CLASSES.has(String(deviceClass ?? "").trim().toLowerCase());
+}
+
+export const IPV4_PATTERN =/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 
 // Macro time bytes are in 0.5-second units (a hold byte of 4 = 2.0 s),
 // matching the Sofabaton app. 0 = a single click / no wait.

@@ -109,6 +109,8 @@ import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, r
 import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
+import { MATTER_ICON_PATH } from "../../../remote-card/src/entity-icons/matter-icon";
+import { isHubOwnedDeviceClass } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 import { PointerReorder } from "../pointer-reorder";
 import type { PayloadSaveDetail } from "./payload-dialog";
 import {
@@ -130,6 +132,9 @@ const C = TOOLS_CARD_STRINGS.common;
 
 const S = {
   crumbDevices: B.crumbDevices,
+  hubOwnedTitle: B.hubOwnedTitle,
+  hubOwnedIntro: B.hubOwnedIntro,
+  hubOwnedBody: B.hubOwnedBody,
   renameDevice: B.renameDevice,
   deleteDeviceAria: B.deleteDeviceAria,
   syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
@@ -830,6 +835,11 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     return this.deviceId != null ? bundleDeviceBrand(this._working, this.deviceId) : "";
   }
 
+  /** The hub's own device (the X2's Matter device): read-only here, as in the card. */
+  private get _hubOwned(): boolean {
+    return isHubOwnedDeviceClass(this._deviceClass);
+  }
+
   /** A Wifi Commands device deployed by Home Assistant: editable with a warning (plan decision 11). */
   private get _managedByHa(): boolean {
     if (this._offline) return false;
@@ -1171,7 +1181,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   private _renderEditor(): TemplateResult {
     const deviceId = this.deviceId!;
-    const sections = this._sectionItems();
+    const hubOwned = this._hubOwned;
+    const sections = hubOwned ? [] : this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
     const irPill = this._renderIrPill();
@@ -1182,7 +1193,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S.back} @click=${this._requestClose}>${icon(mdiArrowLeft)}</button>
-                ${callback ? nothing : this._renderHeaderEdit()}
+                ${callback || hubOwned ? nothing : this._renderHeaderEdit()}
                 <div class="detail-title-stack">
                   <div class="detail-title" id="editor-title">${this._title}</div>
                   <div class="detail-title-meta">
@@ -1193,7 +1204,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   </div>
                 </div>
               </div>
-              ${this._offline
+              ${this._offline || hubOwned
                 ? nothing
                 : html`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S.syncToHub : S.syncUpToDate} aria-label=${dirty ? S.syncToHub : S.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S.syncToHub : S.syncUpToDate}</span></button></div>`}
             </div>
@@ -1207,10 +1218,14 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             ${this._renderEditorBanners()}
             ${this._managedByHa ? html`<div class="notice-banner" id="editor-managed-warning">${icon(mdiWifiCog)}<span>${S.managedWifiWarning}</span></div>` : nothing}
             ${callback ? html`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S.serverWifiDeviceNote : S.callbackDeviceNote}</span></div>` : nothing}
-            ${this._renderPowerSection(deviceId)}
-            ${this._renderNetworkSection(deviceId)}
-            ${this._renderCommandsSection(deviceId)}
-            ${this._renderBindingsSection(deviceId)}
+            ${hubOwned
+              ? html`<div class="notice-banner notice-banner--info" id="editor-hub-owned-note">${icon(MATTER_ICON_PATH)}<span><strong>${S.hubOwnedTitle}</strong> ${S.hubOwnedIntro} ${S.hubOwnedBody}</span></div>`
+              : html`
+                ${this._renderPowerSection(deviceId)}
+                ${this._renderNetworkSection(deviceId)}
+                ${this._renderCommandsSection(deviceId)}
+                ${this._renderBindingsSection(deviceId)}
+              `}
           </div>
         </div>
         ${this._renderRenameDialog()}

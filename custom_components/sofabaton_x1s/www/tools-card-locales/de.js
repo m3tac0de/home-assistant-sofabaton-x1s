@@ -239,7 +239,7 @@ var TOOLS_CARD_STRINGS_DE = {
     addDeviceCreating: "Wird erstellt\u2026",
     addDeviceWifiHint: "Verwende f\xFCr Befehle, die Home Assistant ausf\xFChren soll, stattdessen den Tab Wifi Commands.",
     creatingDevice: "Ger\xE4t wird erstellt\u2026",
-    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz" },
+    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz", matter: "Matter" },
     reorderingActivities: "Aktivit\xE4ten werden neu geordnet\u2026",
     reorderingDevices: "Ger\xE4te werden neu geordnet\u2026",
     creatingActivity: "Aktivit\xE4t wird erstellt\u2026"
@@ -657,6 +657,9 @@ var TOOLS_CARD_STRINGS_DE = {
     unsaved: "Nicht gespeichert",
     unsavedTooltip: "Du hast nicht gespeicherte \xC4nderungen. Lade das Backup herunter, um sie zu speichern.",
     renameKind: (kind) => `${art(kind)} umbenennen`,
+    hubOwnedTitle: "Vom Hub verwaltet",
+    hubOwnedIntro: "Dies ist das eigene Matter-Ger\xE4t des Hubs, mit einem Befehl f\xFCr jede Matter-Taste.",
+    hubOwnedBody: "Der Hub legt es an und verwaltet es, daher kann es hier nicht umbenannt, bearbeitet oder gel\xF6scht werden, und eine Wiederherstellung beh\xE4lt die Kopie des Hubs. Aktivit\xE4ten k\xF6nnen seine Tasten weiterhin nutzen.",
     managedWifiTitle: "Von Wifi Commands verwaltet",
     managedWifiIntro: "Dieses Ger\xE4t wurde \xFCber den Tab Wifi Commands bereitgestellt.",
     managedWifiBody: "Seine Befehle, Ein/Aus-Einstellungen, Eing\xE4nge und Tastenbelegungen werden dort konfiguriert \u2014 \xC4nderungen hier w\xFCrden bei der n\xE4chsten Synchronisierung \xFCberschrieben.",

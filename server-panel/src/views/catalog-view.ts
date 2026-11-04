@@ -18,6 +18,7 @@ import { mdiBluetooth, mdiDragVerticalVariant, mdiPlayCircleOutline, mdiPlus, md
 import { appearanceLabelsFrom, appearanceToggleStyles, renderAppearanceToggle, type AppearanceToggleState } from "../../../remote-card/src/entity-icons/appearance-editor";
 import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileBadge, entityTileStyles, renderEntityTile } from "../../../remote-card/src/entity-icons/entity-tile";
+import { MATTER_ICON_PATH } from "../../../remote-card/src/entity-icons/matter-icon";
 import { creatableDeviceClasses } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
@@ -218,6 +219,8 @@ export function deviceClassIconPath(deviceClass: string | null | undefined): str
     case "wifi_ip":
     case "wifi_sonos":
       return mdiWifi;
+    case "matter":
+      return MATTER_ICON_PATH;
     default:
       return mdiRadioTower;
   }

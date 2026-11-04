@@ -238,7 +238,7 @@ var TOOLS_CARD_STRINGS_ES = {
     addDeviceCreating: "Creando\u2026",
     addDeviceWifiHint: "Para los comandos que deba gestionar Home Assistant, usa la pesta\xF1a Wifi Commands.",
     creatingDevice: "Creando dispositivo\u2026",
-    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP gen\xE9rico", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz" },
+    deviceClassLabels: { ir: "Infrarrojos", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "HTTP gen\xE9rico", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz", matter: "Matter" },
     reorderingActivities: "Reordenando actividades\u2026",
     reorderingDevices: "Reordenando dispositivos\u2026",
     creatingActivity: "Creando actividad\u2026"
@@ -656,6 +656,9 @@ var TOOLS_CARD_STRINGS_ES = {
     unsaved: "Sin guardar",
     unsavedTooltip: "Tienes cambios sin guardar. Descarga la copia de seguridad para conservarlos.",
     renameKind: (kind) => `Cambiar nombre ${kind === "activity" ? "de la actividad" : "del dispositivo"}`,
+    hubOwnedTitle: "Gestionado por el hub",
+    hubOwnedIntro: "Este es el dispositivo Matter propio del hub, con un comando para cada bot\xF3n Matter.",
+    hubOwnedBody: "El hub lo crea y lo gestiona, as\xED que aqu\xED no se puede renombrar, editar ni eliminar, y una restauraci\xF3n conserva la copia del hub. Las actividades pueden seguir usando sus botones.",
     managedWifiTitle: "Gestionado por Wifi Commands",
     managedWifiIntro: "Este dispositivo se despleg\xF3 desde la pesta\xF1a Wifi Commands.",
     managedWifiBody: "Sus comandos, encendido y apagado, entrada y asignaciones de botones se configuran all\xED \u2014 si los editas aqu\xED, se sobrescribir\xE1n en la pr\xF3xima sincronizaci\xF3n.",

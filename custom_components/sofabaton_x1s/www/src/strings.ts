@@ -291,6 +291,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       wifi_mqtt: "MQTT",
       rf_433mhz: "RF 433 MHz",
       rf_315mhz: "RF 315 MHz",
+      // A brand name: the locales inherit it.
+      matter: "Matter",
     } as Record<string, string>,
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
@@ -731,6 +733,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     unsaved: "Unsaved",
     unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
     renameKind: (kind: "activity" | "device") => `Rename ${kind}`,
+    hubOwnedTitle: "Managed by the hub",
+    hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
+    hubOwnedBody:
+      "The hub creates and manages it, so it can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. Activities can still use its buttons.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
     managedWifiBody:

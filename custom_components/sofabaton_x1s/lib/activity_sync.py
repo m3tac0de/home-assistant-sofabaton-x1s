@@ -30,6 +30,7 @@ from typing import Any, Mapping
 from .devices import validate_appearance
 from .entity_refs import iter_entity_references
 from .hub_versions import HUB_VERSION_X2
+from .protocol_const import is_hub_owned_device
 
 # ── Wire constants (kept local so this module stays import-light/pure) ──
 POWER_ON_MACRO_BUTTON_ID = 198
@@ -408,6 +409,13 @@ def build_device_sync_plan(
     edit_dev = _devices_by_id(edited).get(device_id)
     if base_dev is None or edit_dev is None:
         raise ValueError("the edited device is missing from one of the bundles")
+    if is_hub_owned_device(base_dev) or is_hub_owned_device(edit_dev):
+        # No write to the hub's own device (the X2's Matter device) has been
+        # benched; activities still bind its buttons through their own sync.
+        raise ValueError(
+            "this device belongs to the hub (its Matter buttons) and cannot be "
+            "edited; activities can still use its buttons"
+        )
 
     _assert_device_sync_in_scope(
         baseline, edited, device_id, allow_command_removal=allow_command_removal

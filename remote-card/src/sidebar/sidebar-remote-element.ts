@@ -23,6 +23,7 @@ import { SidebarPressController } from "./sidebar-press";
 import { wantsLandscape } from "./sidebar-layout";
 import { sidebarRemoteStyles } from "./sidebar-remote-styles";
 import { entityTile, entityTileBadge, entityTileStyles, renderEntityTile } from "../entity-icons/entity-tile";
+import { isMatterClass, renderMatterGlyph } from "../entity-icons/matter-icon";
 import { applySidebarTheme } from "./sidebar-remote-theme";
 
 export const SIDEBAR_REMOTE_TAG = "sofabaton-sidebar-remote";
@@ -1039,7 +1040,7 @@ export class SofabatonSidebarRemote extends LitElement {
           <button class=${classMap({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             ${tile
               ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) })
-              : html`<span class="ic">${icon(deviceClassIcon(device.device_class))}</span>`}
+              : html`<span class="ic">${isMatterClass(device.device_class) ? renderMatterGlyph() : icon(deviceClassIcon(device.device_class))}</span>`}
             <span class="name">${device.name}</span>
             <span class="st"></span>
           </button>`;

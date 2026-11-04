@@ -97,7 +97,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     addDeviceTitle: "Gerät hinzufügen", addDeviceBody: "Wähle einen Namen und Gerätetyp. Das Gerät wird ohne Befehle auf dem Hub erstellt und anschließend im Editor geöffnet, wo du Befehle hinzufügen kannst.",
     addDevicePlaceholder: "Gerätename", addDeviceClass: "Gerätetyp", addDeviceCancel: "Abbrechen", addDeviceConfirm: "Erstellen", addDeviceCreating: "Wird erstellt…",
     addDeviceWifiHint: "Verwende für Befehle, die Home Assistant ausführen soll, stattdessen den Tab Wifi Commands.", creatingDevice: "Gerät wird erstellt…",
-    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz" }, reorderingActivities: "Aktivitäten werden neu geordnet…",
+    deviceClassLabels: { ir: "Infrarot", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "Generisches HTTP", wifi_mqtt: "MQTT", rf_433mhz: "RF 433 MHz", rf_315mhz: "RF 315 MHz", matter: "Matter" }, reorderingActivities: "Aktivitäten werden neu geordnet…",
     reorderingDevices: "Geräte werden neu geordnet…", creatingActivity: "Aktivität wird erstellt…",
   },
   hubClick: {
@@ -315,7 +315,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     macroTargetCreateNew: "Neues Makro erstellen", macroTargetNoExisting: "Noch keine Makros. Erstelle unten eines.", addShortcutActionName: "Name", addShortcutActionHelper: "Als Nächstes wählst du die Schritte aus.",
     bindingOneNewNote: "Für die Tastenbelegungen für kurzes und langes Drücken zusammen kannst du nur ein neues Makro oder Wifi-Event erstellen. Wähle hier ein vorhandenes Makro oder Wifi-Event.",
     addShortcutCommandHelper: "Die Verknüpfung wird unter dem Namen des Befehls angezeigt.", unsaved: "Nicht gespeichert", unsavedTooltip: "Du hast nicht gespeicherte Änderungen. Lade das Backup herunter, um sie zu speichern.",
-    renameKind: (kind: "activity" | "device") => `${art(kind)} umbenennen`, managedWifiTitle: "Von Wifi Commands verwaltet", managedWifiIntro: "Dieses Gerät wurde über den Tab Wifi Commands bereitgestellt.",
+    renameKind: (kind: "activity" | "device") => `${art(kind)} umbenennen`, hubOwnedTitle: "Vom Hub verwaltet", hubOwnedIntro: "Dies ist das eigene Matter-Gerät des Hubs, mit einem Befehl für jede Matter-Taste.", hubOwnedBody: "Der Hub legt es an und verwaltet es, daher kann es hier nicht umbenannt, bearbeitet oder gelöscht werden, und eine Wiederherstellung behält die Kopie des Hubs. Aktivitäten können seine Tasten weiterhin nutzen.", managedWifiTitle: "Von Wifi Commands verwaltet", managedWifiIntro: "Dieses Gerät wurde über den Tab Wifi Commands bereitgestellt.",
     managedWifiBody: "Seine Befehle, Ein/Aus-Einstellungen, Eingänge und Tastenbelegungen werden dort konfiguriert — Änderungen hier würden bei der nächsten Synchronisierung überschrieben.",
     managedWifiRename: "Du kannst es hier weiterhin umbenennen; der neue Name bleibt mit deiner Wifi-Commands-Konfiguration synchronisiert.", detailPower: "Ein/Aus", detailNetwork: "Netzwerk", detailCommands: "Befehle", detailButtons: "Tasten",
     detailSectionsAria: "Detailbereiche", editBindingAria: "Belegung bearbeiten", editIpAria: "IP-Adresse bearbeiten", networkDescription: "Die IP-Adresse des Geräts befindet sich im Gerätedatensatz. Der Hub verwendet sie bei der Wiedergabe zur Adressierung des Geräts (Host-Header für Hue/Sonos, Basis-URL für Roku).",

@@ -473,7 +473,8 @@ def test_device_class_registry_normalizes_public_sonos_and_rf_aliases() -> None:
     assert normalize_device_class("wifi/sonos") == DEVICE_CLASS_WIFI_SONOS
     assert normalize_device_class("315") == DEVICE_CLASS_RF_315
     assert normalize_device_class("rf_433") == DEVICE_CLASS_RF_433
-    assert "matter" not in known_public_device_classes()
+    # The X2's own Matter device (class 0x1F, bench 2026-11-01) is modelled.
+    assert "matter" in known_public_device_classes()
 
 
 def test_import_cache_state_preserves_known_public_class_without_code_mapping() -> None:

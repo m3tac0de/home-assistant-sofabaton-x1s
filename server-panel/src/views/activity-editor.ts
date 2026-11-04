@@ -55,6 +55,7 @@ import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, r
 import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
+import { isHubOwnedDeviceClass } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 import { anchoredListPosition, moveListFocus, overlayMenuPosition, menuAnchorRect, type MenuAnchor } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
@@ -80,6 +81,7 @@ import {
   applyBundleDelete,
   backupDeleteHasCascade,
   bundleDeleteImpact,
+  bundleDeviceClass,
   bundleDeviceOptions,
   buttonName,
   clearActivityDeviceInput,
@@ -375,7 +377,10 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
 
   private _addableMembers(): Array<{ id: number; label: string }> {
     if (!this._working || this.activityId == null) return [];
-    return activityAddableDevices(this._working, this.activityId).filter((option) => this._pickable(option));
+    // The hub's own device (the X2's Matter device) is never a member: it has no power rows.
+    return activityAddableDevices(this._working, this.activityId).filter(
+      (option) => this._pickable(option) && !isHubOwnedDeviceClass(bundleDeviceClass(this._working, option.id)),
+    );
   }
 
   private _macroOptions(): Array<{ value: number; label: string }> {

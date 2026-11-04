@@ -16,6 +16,7 @@ import { localizeBackendError } from "../shared/utils/backend-state-localization
 import { TOOLS_CARD_STRINGS } from "../strings";
 import { appearanceLabelsFrom, renderAppearanceToggle, type AppearanceToggleState } from "../../../../../remote-card/src/entity-icons/appearance-editor";
 import { entityTile, entityTileBadge, renderEntityTile } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { isMatterClass, renderMatterGlyph } from "../../../../../remote-card/src/entity-icons/matter-icon";
 import { irEmitterRowAttention, type PairedEmitter } from "../../../../../remote-card/src/ir-emitters/emitter-rules";
 import { renderReadOnlyIrPill } from "../components/ir-emitter-pill";
 
@@ -248,7 +249,9 @@ export function renderCacheTab(params: {
             <span class="entity-name-icon${tile ? " entity-name-icon--tile" : ""}">${tile
               // The class glyph moves to a badge: Bluetooth, Wifi and RF stay visible.
               ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) })
-              : html`<ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon>`}</span>
+              : !reorder && isMatterClass(device.device_class)
+                ? renderMatterGlyph()
+                : html`<ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon>`}</span>
             <span class="entity-name-copy">
               <span class="entity-name-label">${deviceName}</span>
               <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>

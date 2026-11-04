@@ -2004,6 +2004,17 @@ function entityColor(hubVersion, colorId) {
   return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
 }
 
+// remote-card/src/entity-icons/matter-icon.ts
+var MATTER_ICON_PATH = "M8.925 9.888Q7.5 9.275 6.4 8.2l1.8-1.075q.6.5 1.3.825t1.5.45V3.1l1-.6l1 .6v5.3q.8-.125 1.5-.45t1.3-.825L17.6 8.2q-1.1 1.075-2.525 1.688T12 10.5t-3.075-.612m1.85 9.987l-1.85-.975q.05-.225.063-.45T9 18q0-.575-.1-1.137T8.6 15.8l-4.575 2.75L3 18v-1.175L7.55 14.1q-.5-.575-1.15-1.025T5 12.35v-2.1q2.6.675 4.3 2.813T11 18q0 .5-.05.963t-.175.912m2.45 0q-.125-.45-.175-.913T13 18q0-2.8 1.7-4.937T19 10.25v2.1q-.75.275-1.4.725T16.45 14.1L21 16.825V18l-1.025.55L15.4 15.8q-.2.5-.3 1.063T15 18q0 .225.013.45t.062.45z";
+function isMatterClass(deviceClass) {
+  return String(deviceClass ?? "").trim().toLowerCase() === "matter";
+}
+function renderMatterGlyph() {
+  return b2`<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+    style="width: var(--mdc-icon-size, 24px); height: var(--mdc-icon-size, 24px); fill: currentColor; display: block"
+    ><path d=${MATTER_ICON_PATH}></path></svg>`;
+}
+
 // remote-card/src/entity-icons/entity-tile.ts
 function entityTile(hubVersion, icon, colorId) {
   if (typeof icon !== "number") return null;
@@ -2015,9 +2026,11 @@ var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] 
 var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
 var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
 var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+var BADGE_MATTER = { icon: "matter", path: MATTER_ICON_PATH, nudge: [0, 0] };
 function entityTileBadge(deviceClass) {
   const cls = String(deviceClass ?? "").toLowerCase();
   if (cls === "ir") return BADGE_IR;
+  if (isMatterClass(cls)) return BADGE_MATTER;
   if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
   if (cls.includes("wifi")) return BADGE_WIFI;
   if (cls.startsWith("rf")) return BADGE_RF;
@@ -2756,7 +2769,9 @@ var TOOLS_CARD_STRINGS_EN = {
       wifi_ip: "Generic HTTP",
       wifi_mqtt: "MQTT",
       rf_433mhz: "RF 433 MHz",
-      rf_315mhz: "RF 315 MHz"
+      rf_315mhz: "RF 315 MHz",
+      // A brand name: the locales inherit it.
+      matter: "Matter"
     }
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
@@ -3171,6 +3186,9 @@ var TOOLS_CARD_STRINGS_EN = {
     unsaved: "Unsaved",
     unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
     renameKind: (kind) => `Rename ${kind}`,
+    hubOwnedTitle: "Managed by the hub",
+    hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
+    hubOwnedBody: "The hub creates and manages it, so it can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. Activities can still use its buttons.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
     managedWifiBody: "Its commands, power, input, and button assignments are configured there \u2014 editing them here would be overwritten on the next sync.",
@@ -8405,7 +8423,7 @@ function renderCacheTab(params) {
           @keydown=${reorder ? null : activateOnKey(() => params.onToggleEntity(key))}
         >
           <span class="entity-name">
-            <span class="entity-name-icon${tile ? " entity-name-icon--tile" : ""}">${tile ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) }) : b2`<ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon>`}</span>
+            <span class="entity-name-icon${tile ? " entity-name-icon--tile" : ""}">${tile ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) }) : !reorder && isMatterClass(device.device_class) ? renderMatterGlyph() : b2`<ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon>`}</span>
             <span class="entity-name-copy">
               <span class="entity-name-label">${deviceName}</span>
               <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
@@ -10459,6 +10477,10 @@ var backupTabStyles = i`
 
 // custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var HUB_OWNED_DEVICE_CLASSES = /* @__PURE__ */ new Set(["matter"]);
+function isHubOwnedDeviceClass(deviceClass) {
+  return HUB_OWNED_DEVICE_CLASSES.has(String(deviceClass ?? "").trim().toLowerCase());
+}
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function byteToSeconds(byteValue) {
   return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
@@ -18170,6 +18192,11 @@ var SofabatonEditDetailView = class extends i4 {
   // the normal Sync (a bundle mutation → dirty → Sync).
   _renderDetailEdit(kind) {
     if (this.entityId == null) return A;
+    if (this._isHubOwnedDevice()) {
+      const own = bundleEntityAppearance(this.bundle, kind, this.entityId);
+      const ownTile = entityTile(this.bundle?.hub?.version, own.icon, own.colorId);
+      return ownTile ? renderEntityTile(ownTile) : renderMatterGlyph();
+    }
     const S5 = TOOLS_CARD_STRINGS.backup;
     const label = iconHubLine(this.bundle?.hub?.version) != null ? kind === "activity" ? S5.editActivity : S5.editDevice : S5.renameKind(kind);
     const appearance = bundleEntityAppearance(this.bundle, kind, this.entityId);
@@ -18188,6 +18215,18 @@ var SofabatonEditDetailView = class extends i4 {
       <div class="detail-title-meta">
         ${pill !== A ? pill : b2`<div class="detail-crumbs"><button class="detail-crumb" type="button" @click=${this._requestClose}>${this._entityKindCrumbLabel(kind)}</button></div>`}
         ${this._renderDirtyChip()}
+      </div>
+    `;
+  }
+  _renderHubOwnedLockNotice() {
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    return b2`
+      <div class="managed-wifi-lock">
+        <div class="managed-wifi-lock-chip">
+          ${renderMatterGlyph()}
+          <span>${S5.hubOwnedTitle}</span>
+        </div>
+        <p class="managed-wifi-lock-copy">${S5.hubOwnedIntro} ${S5.hubOwnedBody}</p>
       </div>
     `;
   }
@@ -18248,7 +18287,7 @@ var SofabatonEditDetailView = class extends i4 {
                   ${this._renderPowerSetupSection("activity", Number(this.entityId))}
                   ${this._renderButtonBindingsSection("activity")}
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
-                ` : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
+                ` : this._isHubOwnedDevice() ? this._renderHubOwnedLockNotice() : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
                     ${this._renderPowerSetupSection("device", Number(this.entityId))}
                     ${this._renderDeviceNetworkSection()}
                     ${this._renderDeviceCommandsSection(deviceCommands2)}
@@ -18341,6 +18380,13 @@ var SofabatonEditDetailView = class extends i4 {
     const extras = sameRouting(next, baseline) ? baselineExtras : extrasOfRouting(next);
     this._commitEditBundleEdit(setBundleDeviceExtras(this.bundle, deviceId, extras));
   }
+  /** The hub's own device (the X2's Matter device): the hub creates and
+   *  removes it, and no write to it has been benched, so every editor shows
+   *  it read-only, live and offline alike. Activities still bind its
+   *  buttons. */
+  _isHubOwnedDevice() {
+    return this.kind === "device" && this.entityId != null && isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, Number(this.entityId)));
+  }
   _isManagedWifiLiveDevice() {
     const brand = this.entityId != null ? bundleDeviceBrand(this.bundle, Number(this.entityId)) : "";
     return this.mode === "live" && this.kind === "device" && this.entityId != null && isManagedWifiBrand(brand) && !isWifiEventsBrand(brand);
@@ -18362,7 +18408,7 @@ var SofabatonEditDetailView = class extends i4 {
     if (kind === "activity") {
       return [];
     }
-    if (this._isManagedWifiLiveDevice()) {
+    if (this._isManagedWifiLiveDevice() || this._isHubOwnedDevice()) {
       return [];
     }
     const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
@@ -18882,7 +18928,7 @@ var SofabatonEditDetailView = class extends i4 {
   // none: removing it belongs in the Wifi Commands tab, which also clears its
   // stored configuration.
   _renderEditDialogDelete() {
-    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice()) return A;
+    if (this._editRenameDialogTarget?.kind !== "detail" || this._isManagedWifiLiveDevice() || this._isHubOwnedDevice()) return A;
     const S5 = TOOLS_CARD_STRINGS.backup;
     const label = this._editRenameDialogTarget.entityKind === "activity" ? S5.deleteActivityAria : S5.deleteDeviceAria;
     return b2`<button class="dialog-btn dialog-btn-danger dialog-footer-delete" aria-label=${label} title=${label} @click=${this._deleteFromEditDialog}>${S5.deleteConfirm}</button>`;
@@ -19137,7 +19183,7 @@ var SofabatonEditDetailView = class extends i4 {
    */
   _addableMemberDevices() {
     if (!this.bundle || this.entityId == null) return [];
-    const options = activityAddableDevices(this.bundle, Number(this.entityId));
+    const options = activityAddableDevices(this.bundle, Number(this.entityId)).filter((option) => !isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, option.id)));
     if (this.mode !== "live") return options;
     return options.filter(
       (option) => !isManagedWifiBrand(bundleDeviceBrand(this.bundle, option.id))

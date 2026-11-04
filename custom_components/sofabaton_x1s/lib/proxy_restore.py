@@ -56,11 +56,15 @@ from .protocol_const import (
     DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
+    HUB_OWNED_DEVICE_CLASSES,
+    MATTER_DEVICE_ID,
     ButtonName,
     classify_device_class_code,
+    is_hub_owned_device,
     known_public_device_classes,
     normalize_device_class,
 )
+from .hub_versions import HUB_VERSION_X2
 
 if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
@@ -72,6 +76,12 @@ if TYPE_CHECKING:
 # activity, which restore refuses: one activity never links to another
 # (L-B25).
 ACTIVITY_ENTITY_ID_MIN = 0x65
+
+# Device ids the hub keeps for itself (the X2's Matter device). A restore
+# never creates one; an activity's reference to it is written as-is when the
+# destination hub has the device and skipped like any unmapped row when it
+# does not.
+HUB_OWNED_DEVICE_IDS = frozenset({MATTER_DEVICE_ID})
 
 
 def _idle_behavior_mode(device_block: dict[str, Any]) -> int | None:
@@ -296,6 +306,13 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         """Fail fast when the current restore path lacks a required writer."""
 
         known_public_classes = set(known_public_device_classes())
+
+        if device_class in HUB_OWNED_DEVICE_CLASSES:
+            raise ValueError(
+                f"the {device_class} device belongs to the hub: the hub creates "
+                "it itself, so it is never restored on its own (a whole-hub "
+                "restore keeps the one the hub has)"
+            )
 
         if device_class is not None and device_class not in known_public_classes:
             raise ValueError(
@@ -894,6 +911,58 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         devices_done.wait(timeout)
         activities_done.wait(timeout)
 
+    def _hub_owned_device_present(self, device_id: int, *, timeout: float = 5.0) -> bool:
+        """Whether the destination hub answers with the commands of its own
+        device ``device_id`` right now.
+
+        Read fresh, not from the cache: on a replacing restore the erase
+        ran after the cache was filled, and no capture yet shows whether
+        the hub keeps its Matter device through an erase.
+        """
+
+        dev_lo = device_id & 0xFF
+        if self.hub_version != HUB_VERSION_X2 or not self.can_issue_commands():
+            return False
+        self.clear_entity_cache(dev_lo, clear_commands=True)
+        self._fetch_and_wait(
+            f"commands:{dev_lo}",
+            lambda: self.get_commands_for_entity(dev_lo, fetch_if_missing=True),
+            lambda: dev_lo in self._commands_complete,
+            timeout=timeout,
+        )
+        commands, _complete = self.get_commands_for_entity(dev_lo, fetch_if_missing=False)
+        return bool(commands)
+
+    def _map_hub_owned_devices(
+        self, activities: list[Any], device_id_map: dict[int, int]
+    ) -> dict[int, str]:
+        """Point the activities' references to the hub's own devices at the
+        destination hub's copy, when it has one.
+
+        Returns ``{device_id: "kept" | "skipped"}`` for every hub-owned id
+        an activity references. ``kept`` maps the id to itself (the hub
+        numbers it the same everywhere); ``skipped`` leaves it out of the
+        map, so restore drops those rows and counts them as skipped.
+        """
+
+        referenced: set[int] = set()
+        for activity_payload in activities:
+            if isinstance(activity_payload, dict):
+                referenced |= self._collect_referenced_source_device_ids(activity_payload) & HUB_OWNED_DEVICE_IDS
+        outcome: dict[int, str] = {}
+        for hub_owned_id in sorted(referenced - set(device_id_map)):
+            if self._hub_owned_device_present(hub_owned_id):
+                device_id_map[hub_owned_id] = hub_owned_id
+                outcome[hub_owned_id] = "kept"
+            else:
+                self._log.warning(
+                    "[RESTORE] the hub has no device 0x%02X of its own: "
+                    "skipping the activity rows that reference it",
+                    hub_owned_id,
+                )
+                outcome[hub_owned_id] = "skipped"
+        return outcome
+
     def _allocate_restore_device_id(self, preferred_device_id: int) -> int:
         """Pick a free destination id for restore replay."""
 
@@ -1399,6 +1468,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         bundle_devices_by_source_id: dict[int, dict[str, Any]] | None = None,
         command_id_maps_by_source_device_id: dict[int, dict[int, int]] | None = None,
         send_remote_sync: bool = True,
+        probe_hub_owned_devices: bool = True,
     ) -> dict[str, Any] | None:
         """Restore an activity from a backup payload.
 
@@ -1427,6 +1497,11 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
           steps, and favourites; missing keys raise ``ValueError``.
         - No row may reference another activity (L-B25): that raises
           ``ValueError`` too.
+
+        References to the hub's own devices (the X2's Matter device) need
+        no map entry: unless ``probe_hub_owned_devices`` is off (a bundle
+        restore resolved them once already), the hub is asked whether it
+        has the device, and the rows are kept as-is or skipped.
         """
 
         try:
@@ -1436,11 +1511,14 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             activity_block = self._validate_activity_restore_payload(
                 payload,
                 known_device_ids={int(k) & 0xFF for k in device_id_map.keys()},
+                optional_device_ids=HUB_OWNED_DEVICE_IDS,
             )
 
             remap_lookup = {
                 int(k) & 0xFF: int(v) & 0xFF for k, v in device_id_map.items()
             }
+            if probe_hub_owned_devices:
+                self._map_hub_owned_devices([payload], remap_lookup)
             bundle_devices = {
                 int(k) & 0xFF: v
                 for k, v in (bundle_devices_by_source_id or {}).items()
@@ -1529,7 +1607,15 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 "structural cache bundles carry no command payloads and "
                 "cannot be restored -- export a full backup instead"
             )
-        devices = list(payload.get("devices") or [])
+        devices = []
+        for device_payload in list(payload.get("devices") or []):
+            # The hub's own devices (the X2's Matter device) are never
+            # created or restored: the hub keeps the one it has, and the
+            # activities' references to it are resolved at restore time
+            # (_hub_owned_device_ids).
+            if isinstance(device_payload, dict) and is_hub_owned_device(device_payload):
+                continue
+            devices.append(device_payload)
         for device_payload in devices:
             if not isinstance(device_payload, dict):
                 continue
@@ -1565,7 +1651,11 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             if isinstance(d, dict) and isinstance(d.get("device"), dict)
         } - {0}
         for activity_payload in activities:
-            self._validate_activity_restore_payload(activity_payload, known_device_ids=bundle_device_ids)
+            self._validate_activity_restore_payload(
+                activity_payload,
+                known_device_ids=bundle_device_ids,
+                optional_device_ids=HUB_OWNED_DEVICE_IDS,
+            )
         return devices, activities
 
     def _preflight_device_content(self, device_payload: dict[str, Any], device_class: str) -> None:
@@ -1785,6 +1875,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 current_device_id=src_id,
             )
 
+        hub_owned_devices = self._map_hub_owned_devices(activities, device_id_map)
+
         for activity_payload in activities:
             if not isinstance(activity_payload, dict):
                 continue
@@ -1808,6 +1900,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                     # per-activity triggers kept aborting/restarting the
                     # remote's multi-minute full sync (bench 2026-08-27).
                     send_remote_sync=False,
+                    probe_hub_owned_devices=False,
                 )
             except Exception:
                 self._log.exception(
@@ -1871,6 +1964,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             "restored_devices": restored_devices,
             "restored_activities": restored_activities,
             "display_order": display_order,
+            "hub_owned_devices": {str(k): v for k, v in hub_owned_devices.items()},
         }
 
     def _restore_display_order(self, kind: str, source_order: list[int], id_map: dict[int, int]) -> str:
@@ -2342,14 +2436,16 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         payload: Any,
         *,
         known_device_ids: set[int],
+        optional_device_ids: frozenset[int] = frozenset(),
     ) -> dict[str, Any]:
         """Every check ``restore_activity`` makes before its first write.
 
         Shape, kind, schema version, the ``entity_type='activity'``
         marker, and reference coverage: every source device id the
         payload's bindings, macro steps and favourites reference must be
-        in ``known_device_ids``, and no row may reference another activity
-        (L-B25). Pure and in-memory; the bundle preflight
+        in ``known_device_ids`` or ``optional_device_ids`` (the hub's own
+        devices, whose rows are skipped when unmapped), and no row may
+        reference another activity (L-B25). Pure and in-memory; the bundle preflight
         runs it against the bundle's own ids before a replacing restore
         erases the hub, ``restore_activity`` against the id maps it was
         handed. Raises ``ValueError``; returns the activity block.
@@ -2375,7 +2471,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             )
 
         referenced = RestoreMixin._collect_referenced_source_device_ids(payload)
-        missing = referenced - known_device_ids
+        missing = referenced - known_device_ids - optional_device_ids
         if missing:
             missing_list = ", ".join(f"0x{m:02X}" for m in sorted(missing))
             raise ValueError(

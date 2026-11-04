@@ -123,7 +123,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     addDeviceTitle: "添加设备", addDeviceBody: "选择设备名称和类型。设备将在 Hub 上创建，初始不含任何命令，随后会在编辑器中打开，以便你添加命令。",
     addDevicePlaceholder: "设备名称", addDeviceClass: "设备类型", addDeviceCancel: "取消", addDeviceConfirm: "创建", addDeviceCreating: "正在创建…",
     addDeviceWifiHint: "需要由 Home Assistant 执行的命令，请改用 Wifi Commands 标签页。", creatingDevice: "正在创建设备…",
-    deviceClassLabels: { ir: "红外", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "通用 HTTP", wifi_mqtt: "MQTT", rf_433mhz: "射频 433 MHz", rf_315mhz: "射频 315 MHz" },
+    deviceClassLabels: { ir: "红外", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "通用 HTTP", wifi_mqtt: "MQTT", rf_433mhz: "射频 433 MHz", rf_315mhz: "射频 315 MHz", matter: "Matter" },
     reorderingActivities: "正在调整活动顺序…", reorderingDevices: "正在调整设备顺序…", creatingActivity: "正在创建活动…",
   },
   hubClick: {
@@ -352,7 +352,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiEventNameRequired: "请输入新 Wifi 事件的名称。",
     macroTargetNoExisting: "暂无宏。请在下方新建。", addShortcutActionName: "名称", addShortcutActionHelper: "接下来选择步骤。", addShortcutCommandHelper: "快捷项将以命令名称显示。",
     unsaved: "未保存", unsavedTooltip: "有未保存的更改。请下载备份以保存。", renameKind: (kind: "activity" | "device") => `重命名${kindLabel(kind)}`,
-    managedWifiTitle: "由 Wifi Commands 管理", managedWifiIntro: "此设备从“Wifi Commands”选项卡部署。",
+    hubOwnedTitle: "由 Hub 管理", hubOwnedIntro: "这是 Hub 自带的 Matter 设备，每个 Matter 按钮对应一条命令。", hubOwnedBody: "该设备由 Hub 创建和管理，因此无法在此重命名、编辑或删除，恢复时也会保留 Hub 自身的副本。活动仍可使用它的按钮。", managedWifiTitle: "由 Wifi Commands 管理", managedWifiIntro: "此设备从“Wifi Commands”选项卡部署。",
     managedWifiBody: "命令、电源设置、信源和按键分配均在该处配置；此处的更改会在下次同步时被覆盖。",
     managedWifiRename: "你仍可在此重命名；新名称会与 Wifi Commands 配置保持同步。",
     detailPower: "电源", detailNetwork: "网络", detailCommands: "命令", detailButtons: "按键", detailSectionsAria: "详细信息分区", editBindingAria: "编辑分配", editIpAria: "编辑 IP 地址",

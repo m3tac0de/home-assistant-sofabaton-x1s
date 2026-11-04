@@ -2848,3 +2848,28 @@ bytes: a learned blob always carries timing jitter.
   learned code tested fine; Save + Sync stored exactly the learned bytes
   as `library_type` 29 (X1S and X2); Add command with Learn did the same
   as a new command; cancel closed the hub's window.
+
+## ◇ Measured: the X2's Matter device and pairing reads (X2, 2026-11-01)
+
+`bench_344_matter_probe.py`, read-only, on the production X2 (firmware 9)
+with its HA entry off for under a minute per run, run twice. One request at
+a time, each waited out before the next. The pairing reply is never printed
+or logged by the bench; only its shape is.
+
+- **Not linked.** `0x0072` (empty) is answered `0x0103 07`.
+- **Device 51 exists but is hidden.** `REQ_DEVICES` lists 9 devices, not
+  51. `REQ_COMMANDS [51, 0xFF]` still returns its rows: three `0x5D` frames
+  holding "Button 1".. "Button 8", class byte `0x1F`.
+- **Pairing data.** `0x0081` (empty) is answered `0x2581`, 37 bytes: a
+  length byte `0x16`, the 22-character `MT:` QR text, CR, a 13-character
+  manual code with 11 digits. Decoded: vendor 5590, product `0x1234`,
+  standard commissioning flow, discovery capability Bluetooth only. The
+  passcode is not a test value, the manual code's check digit is valid, and
+  both forms carry the same passcode.
+- **No advertising.** No Matter mDNS record from the hub, IPv4 or IPv6,
+  including 30 s after the `0x0081` read. A power cycle brought up no
+  Bluetooth advert either (owner's phone scan). So on firmware 9 the hub
+  holds Matter identity data but cannot be paired yet.
+- **Not tested.** Anything on a linked hub: the `0x0072` row, writes to
+  device 51, whether an erase keeps the link. The library treats device 51
+  as hub-owned until then (data-structures.md, class `0x1F`).

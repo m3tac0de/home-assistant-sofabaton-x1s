@@ -24,7 +24,7 @@ import time
 from typing import TYPE_CHECKING, Any, Optional
 
 from .hub_versions import HUB_VERSION_X2
-from .protocol_const import FAMILY_HUB_MQTT_SETUP, FAMILY_HUB_MQTT_STATUS
+from .protocol_const import FAMILY_HUB_MQTT_SETUP, FAMILY_HUB_MQTT_STATUS, FAMILY_MATTER_PAIRING
 
 if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
@@ -109,13 +109,18 @@ def parse_hub_mqtt_status(payload: bytes) -> Optional[bool]:
     return data[0] == 1
 
 
-def redact_wire_hex(data: bytes) -> str:
-    """Hex of raw wire bytes with every broker-setup payload masked.
+#: Families whose payload is a secret: the broker setup (a password) and the
+#: X2's Matter pairing data, which the vendor app reads through the proxy.
+REDACTED_FAMILIES = frozenset({FAMILY_HUB_MQTT_SETUP, FAMILY_MATTER_PAIRING})
 
-    Frames are found by their ``A5 5A <len> <family>`` header; a
-    family-``0x73`` frame keeps its header and shows ``**`` for each
-    payload and checksum byte. Everything else is plain hex. Works on a
-    single frame or a socket chunk holding several.
+
+def redact_wire_hex(data: bytes) -> str:
+    """Hex of raw wire bytes with every secret payload masked.
+
+    Frames are found by their ``A5 5A <len> <family>`` header; a frame of
+    one of the :data:`REDACTED_FAMILIES` keeps its header and shows ``**``
+    for each payload and checksum byte. Everything else is plain hex.
+    Works on a single frame or a socket chunk holding several.
     """
 
     raw = bytes(data or b"")
@@ -124,7 +129,7 @@ def redact_wire_hex(data: bytes) -> str:
     while index + 3 < len(raw):
         if raw[index] == 0xA5 and raw[index + 1] == 0x5A:
             length = raw[index + 2]
-            if raw[index + 3] == FAMILY_HUB_MQTT_SETUP:
+            if raw[index + 3] in REDACTED_FAMILIES:
                 for masked in range(index + 4, min(len(raw), index + 4 + length + 1)):
                     tokens[masked] = "**"
             index += 4 + length + 1

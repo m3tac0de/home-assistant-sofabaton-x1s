@@ -4243,6 +4243,17 @@ function entityColor(hubVersion, colorId) {
   return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
 }
 
+// remote-card/src/entity-icons/matter-icon.ts
+var MATTER_ICON_PATH = "M8.925 9.888Q7.5 9.275 6.4 8.2l1.8-1.075q.6.5 1.3.825t1.5.45V3.1l1-.6l1 .6v5.3q.8-.125 1.5-.45t1.3-.825L17.6 8.2q-1.1 1.075-2.525 1.688T12 10.5t-3.075-.612m1.85 9.987l-1.85-.975q.05-.225.063-.45T9 18q0-.575-.1-1.137T8.6 15.8l-4.575 2.75L3 18v-1.175L7.55 14.1q-.5-.575-1.15-1.025T5 12.35v-2.1q2.6.675 4.3 2.813T11 18q0 .5-.05.963t-.175.912m2.45 0q-.125-.45-.175-.913T13 18q0-2.8 1.7-4.937T19 10.25v2.1q-.75.275-1.4.725T16.45 14.1L21 16.825V18l-1.025.55L15.4 15.8q-.2.5-.3 1.063T15 18q0 .225.013.45t.062.45z";
+function isMatterClass(deviceClass) {
+  return String(deviceClass ?? "").trim().toLowerCase() === "matter";
+}
+function renderMatterGlyph() {
+  return b2`<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+    style="width: var(--mdc-icon-size, 24px); height: var(--mdc-icon-size, 24px); fill: currentColor; display: block"
+    ><path d=${MATTER_ICON_PATH}></path></svg>`;
+}
+
 // remote-card/src/entity-icons/entity-tile.ts
 function entityTile(hubVersion, icon, colorId) {
   if (typeof icon !== "number") return null;
@@ -4254,9 +4265,11 @@ var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] 
 var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
 var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
 var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+var BADGE_MATTER = { icon: "matter", path: MATTER_ICON_PATH, nudge: [0, 0] };
 function entityTileBadge(deviceClass) {
   const cls = String(deviceClass ?? "").toLowerCase();
   if (cls === "ir") return BADGE_IR;
+  if (isMatterClass(cls)) return BADGE_MATTER;
   if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
   if (cls.includes("wifi")) return BADGE_WIFI;
   if (cls.startsWith("rf")) return BADGE_RF;
@@ -5343,7 +5356,7 @@ var SofabatonSidebarRemote = class extends i4 {
         const tile = entityTile(hubVersion, device.icon, device.color_id);
         return b2`
           <button class=${e5({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
-            ${tile ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) }) : b2`<span class="ic">${icon(deviceClassIcon(device.device_class))}</span>`}
+            ${tile ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) }) : b2`<span class="ic">${isMatterClass(device.device_class) ? renderMatterGlyph() : icon(deviceClassIcon(device.device_class))}</span>`}
             <span class="name">${device.name}</span>
             <span class="st"></span>
           </button>`;

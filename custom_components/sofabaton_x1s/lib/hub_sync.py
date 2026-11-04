@@ -54,6 +54,7 @@ from .bundle_validation import _validate_name
 from .device_class_profiles import supported_create_classes
 from .entity_refs import is_entity_ref, iter_entity_references
 from .errors import SnapshotIncompleteError
+from .protocol_const import is_hub_owned_device
 
 __all__ = [
     "DocumentError",
@@ -636,6 +637,14 @@ def _validate(diff: _Diff, hub_version: Optional[str]) -> None:
     for placeholder in diff.created_activities:
         _clean_name(_name_of(diff.want_activities[placeholder]), "a new activity", ("activity", placeholder), **names)
 
+    # The hub's own device (the X2's Matter device) is never written; the
+    # document may keep it and reference its buttons.
+    for eid in (*diff.edited_devices, *diff.removed_devices):
+        if is_hub_owned_device(diff.base_devices.get(eid)):
+            raise InvalidDocumentError(
+                f"device {eid} belongs to the hub (its Matter buttons) and cannot be edited or deleted",
+                entity=("device", eid),
+            )
     for eid in diff.edited_devices:
         _clean_name(_name_of(diff.want_devices[eid]), "a device", ("device", eid), **names)
     for eid in diff.edited_activities:

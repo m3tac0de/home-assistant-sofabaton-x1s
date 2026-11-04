@@ -41,6 +41,8 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x0064` | `REMOTE_SYNC` | none observed | X1, X1S | Force remote/hub sync |
 | `0x012E` | `X2_REMOTE_LIST` | `[type]` (0 remotes, 1 RF emitters) | X2 observed | Request remote/emitter status rows (family 0x2F replies carry id, battery, firmware, online flag, name) |
 | `0x0364` | `X2_REMOTE_SYNC_ALL` | `[0xFF, 0xFF, 0xFF]` | X2 bench-validated 2026-08-27 | Sync all paired remotes. Instant STATUS_ACK 0x00 = queued, not completed; the hub serializes triggers (a second one runs after the current pass ends, ~5 min full sync observed); no TCP-visible completion or busy signal |
+| `0x0072` | `REQ_MATTER_DEVICE` | none | X2 bench 2026-11-01 (firmware 9) | The hub's own Matter device row (id 51). An unlinked hub answers `0x0103 07`; the linked answer is not captured yet |
+| `0x0081` | `MATTER_PAIRING` | none | X2 bench 2026-11-01 (firmware 9) | Answered by `0x2581`: a length byte, the Matter QR text (`MT:` + 19 characters), CR, the 11-digit manual pairing code with separators. A credential: wire dumps mask family `0x81`, and nothing stores it. On firmware 9 the read does not start Matter advertising (no mDNS record within 30 s) |
 | `0x0464` | `X2_REMOTE_SYNC` | `[remote_id:3][0x01]` | X2 observed | Historical per-remote form: ACKed 0x00 but starts NO sync (accepted no-op, bench 2026-08-27). Use `0x0364` instead |
 
 ### Device / activity create and update writes

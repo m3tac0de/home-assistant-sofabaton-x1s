@@ -239,7 +239,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     addDeviceCreating: "\u6B63\u5728\u521B\u5EFA\u2026",
     addDeviceWifiHint: "\u9700\u8981\u7531 Home Assistant \u6267\u884C\u7684\u547D\u4EE4\uFF0C\u8BF7\u6539\u7528 Wifi Commands \u6807\u7B7E\u9875\u3002",
     creatingDevice: "\u6B63\u5728\u521B\u5EFA\u8BBE\u5907\u2026",
-    deviceClassLabels: { ir: "\u7EA2\u5916", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "\u901A\u7528 HTTP", wifi_mqtt: "MQTT", rf_433mhz: "\u5C04\u9891 433 MHz", rf_315mhz: "\u5C04\u9891 315 MHz" },
+    deviceClassLabels: { ir: "\u7EA2\u5916", wifi_roku: "Roku", wifi_hue: "Hue", wifi_sonos: "Sonos", wifi_ip: "\u901A\u7528 HTTP", wifi_mqtt: "MQTT", rf_433mhz: "\u5C04\u9891 433 MHz", rf_315mhz: "\u5C04\u9891 315 MHz", matter: "Matter" },
     reorderingActivities: "\u6B63\u5728\u8C03\u6574\u6D3B\u52A8\u987A\u5E8F\u2026",
     reorderingDevices: "\u6B63\u5728\u8C03\u6574\u8BBE\u5907\u987A\u5E8F\u2026",
     creatingActivity: "\u6B63\u5728\u521B\u5EFA\u6D3B\u52A8\u2026"
@@ -657,6 +657,9 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     unsaved: "\u672A\u4FDD\u5B58",
     unsavedTooltip: "\u6709\u672A\u4FDD\u5B58\u7684\u66F4\u6539\u3002\u8BF7\u4E0B\u8F7D\u5907\u4EFD\u4EE5\u4FDD\u5B58\u3002",
     renameKind: (kind) => `\u91CD\u547D\u540D${kindLabel(kind)}`,
+    hubOwnedTitle: "\u7531 Hub \u7BA1\u7406",
+    hubOwnedIntro: "\u8FD9\u662F Hub \u81EA\u5E26\u7684 Matter \u8BBE\u5907\uFF0C\u6BCF\u4E2A Matter \u6309\u94AE\u5BF9\u5E94\u4E00\u6761\u547D\u4EE4\u3002",
+    hubOwnedBody: "\u8BE5\u8BBE\u5907\u7531 Hub \u521B\u5EFA\u548C\u7BA1\u7406\uFF0C\u56E0\u6B64\u65E0\u6CD5\u5728\u6B64\u91CD\u547D\u540D\u3001\u7F16\u8F91\u6216\u5220\u9664\uFF0C\u6062\u590D\u65F6\u4E5F\u4F1A\u4FDD\u7559 Hub \u81EA\u8EAB\u7684\u526F\u672C\u3002\u6D3B\u52A8\u4ECD\u53EF\u4F7F\u7528\u5B83\u7684\u6309\u94AE\u3002",
     managedWifiTitle: "\u7531 Wifi Commands \u7BA1\u7406",
     managedWifiIntro: "\u6B64\u8BBE\u5907\u4ECE\u201CWifi Commands\u201D\u9009\u9879\u5361\u90E8\u7F72\u3002",
     managedWifiBody: "\u547D\u4EE4\u3001\u7535\u6E90\u8BBE\u7F6E\u3001\u4FE1\u6E90\u548C\u6309\u952E\u5206\u914D\u5747\u5728\u8BE5\u5904\u914D\u7F6E\uFF1B\u6B64\u5904\u7684\u66F4\u6539\u4F1A\u5728\u4E0B\u6B21\u540C\u6B65\u65F6\u88AB\u8986\u76D6\u3002",

@@ -14,6 +14,8 @@ import {
   entityColorsSupported,
 } from "../../remote-card/src/entity-icons/entity-colors";
 import { entityTile, entityTileBadge } from "../../remote-card/src/entity-icons/entity-tile";
+import { MATTER_ICON_PATH, isMatterClass } from "../../remote-card/src/entity-icons/matter-icon";
+import { isHubOwnedDeviceClass } from "../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 import { X1S_ICON_PATHS, X1_ICON_PATHS, X2_ICON_PATHS } from "../../remote-card/src/entity-icons/x2-icons";
 
 test("iconHubLine reads the line out of a hub version", () => {
@@ -86,6 +88,7 @@ test("a tile needs a known icon; a neutral one on hubs without colors", () => {
   assert.equal(entityTileBadge("bluetooth")?.icon, "mdi:bluetooth");
   assert.equal(entityTileBadge("wifi_mqtt")?.icon, "mdi:wifi");
   assert.equal(entityTileBadge("rf_433mhz")?.icon, "mdi:radio-tower");
+  assert.equal(entityTileBadge("matter")?.path, MATTER_ICON_PATH);
 });
 
 test("every X1 id resolves: its own drawing, else the mapped X2 one", () => {
@@ -108,4 +111,12 @@ test("ids outside a line's set show icon 1, as the app does", () => {
   assert.equal(entityIconPath("X2", 2.5), X2_ICON_PATHS[1]);
   assert.equal(entityIconPath("X1", 26), X2_ICON_PATHS[1]);
   assert.equal(entityIconPath("U2", 3), null);
+});
+
+test("the Matter class is hub-owned and has its own glyph", () => {
+  assert.equal(isMatterClass(" Matter "), true);
+  assert.equal(isMatterClass("wifi_mqtt"), false);
+  assert.equal(isHubOwnedDeviceClass("matter"), true);
+  assert.equal(isHubOwnedDeviceClass("ir"), false);
+  assert.match(MATTER_ICON_PATH, /^M[\d.]/);
 });

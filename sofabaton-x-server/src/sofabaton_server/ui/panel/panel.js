@@ -12841,7 +12841,9 @@ var TOOLS_CARD_STRINGS_EN = {
       wifi_ip: "Generic HTTP",
       wifi_mqtt: "MQTT",
       rf_433mhz: "RF 433 MHz",
-      rf_315mhz: "RF 315 MHz"
+      rf_315mhz: "RF 315 MHz",
+      // A brand name: the locales inherit it.
+      matter: "Matter"
     }
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).
@@ -13256,6 +13258,9 @@ var TOOLS_CARD_STRINGS_EN = {
     unsaved: "Unsaved",
     unsavedTooltip: "You have unsaved changes. Download the backup to save them.",
     renameKind: (kind) => `Rename ${kind}`,
+    hubOwnedTitle: "Managed by the hub",
+    hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
+    hubOwnedBody: "The hub creates and manages it, so it can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. Activities can still use its buttons.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
     managedWifiBody: "Its commands, power, input, and button assignments are configured there \u2014 editing them here would be overwritten on the next sync.",
@@ -19857,6 +19862,10 @@ function rebaseBundle(base, mine, theirs) {
 
 // custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var HUB_OWNED_DEVICE_CLASSES = /* @__PURE__ */ new Set(["matter"]);
+function isHubOwnedDeviceClass(deviceClass) {
+  return HUB_OWNED_DEVICE_CLASSES.has(String(deviceClass ?? "").trim().toLowerCase());
+}
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 function byteToSeconds(byteValue) {
   return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
@@ -21163,6 +21172,12 @@ function entityColor(hubVersion, colorId) {
   return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
 }
 
+// remote-card/src/entity-icons/matter-icon.ts
+var MATTER_ICON_PATH = "M8.925 9.888Q7.5 9.275 6.4 8.2l1.8-1.075q.6.5 1.3.825t1.5.45V3.1l1-.6l1 .6v5.3q.8-.125 1.5-.45t1.3-.825L17.6 8.2q-1.1 1.075-2.525 1.688T12 10.5t-3.075-.612m1.85 9.987l-1.85-.975q.05-.225.063-.45T9 18q0-.575-.1-1.137T8.6 15.8l-4.575 2.75L3 18v-1.175L7.55 14.1q-.5-.575-1.15-1.025T5 12.35v-2.1q2.6.675 4.3 2.813T11 18q0 .5-.05.963t-.175.912m2.45 0q-.125-.45-.175-.913T13 18q0-2.8 1.7-4.937T19 10.25v2.1q-.75.275-1.4.725T16.45 14.1L21 16.825V18l-1.025.55L15.4 15.8q-.2.5-.3 1.063T15 18q0 .225.013.45t.062.45z";
+function isMatterClass(deviceClass) {
+  return String(deviceClass ?? "").trim().toLowerCase() === "matter";
+}
+
 // remote-card/src/entity-icons/entity-tile.ts
 function entityTile(hubVersion, icon8, colorId) {
   if (typeof icon8 !== "number") return null;
@@ -21174,9 +21189,11 @@ var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] 
 var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
 var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
 var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+var BADGE_MATTER = { icon: "matter", path: MATTER_ICON_PATH, nudge: [0, 0] };
 function entityTileBadge(deviceClass) {
   const cls = String(deviceClass ?? "").toLowerCase();
   if (cls === "ir") return BADGE_IR;
+  if (isMatterClass(cls)) return BADGE_MATTER;
   if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
   if (cls.includes("wifi")) return BADGE_WIFI;
   if (cls.startsWith("rf")) return BADGE_RF;
@@ -22236,6 +22253,8 @@ function deviceClassIconPath(deviceClass) {
     case "wifi_ip":
     case "wifi_sonos":
       return mdiWifi;
+    case "matter":
+      return MATTER_ICON_PATH;
     default:
       return mdiRadioTower;
   }
@@ -24426,7 +24445,9 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   }
   _addableMembers() {
     if (!this._working || this.activityId == null) return [];
-    return activityAddableDevices(this._working, this.activityId).filter((option) => this._pickable(option));
+    return activityAddableDevices(this._working, this.activityId).filter(
+      (option) => this._pickable(option) && !isHubOwnedDeviceClass(bundleDeviceClass(this._working, option.id))
+    );
   }
   _macroOptions() {
     if (!this._working || this.activityId == null) return [];
@@ -25411,6 +25432,9 @@ var A3 = TOOLS_CARD_STRINGS.activities;
 var C4 = TOOLS_CARD_STRINGS.common;
 var S5 = {
   crumbDevices: B3.crumbDevices,
+  hubOwnedTitle: B3.hubOwnedTitle,
+  hubOwnedIntro: B3.hubOwnedIntro,
+  hubOwnedBody: B3.hubOwnedBody,
   renameDevice: B3.renameDevice,
   deleteDeviceAria: B3.deleteDeviceAria,
   syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
@@ -26112,6 +26136,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   get _brand() {
     return this.deviceId != null ? bundleDeviceBrand(this._working, this.deviceId) : "";
   }
+  /** The hub's own device (the X2's Matter device): read-only here, as in the card. */
+  get _hubOwned() {
+    return isHubOwnedDeviceClass(this._deviceClass);
+  }
   /** A Wifi Commands device deployed by Home Assistant: editable with a warning (plan decision 11). */
   get _managedByHa() {
     if (this._offline) return false;
@@ -26333,7 +26361,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
   }
   _renderEditor() {
     const deviceId = this.deviceId;
-    const sections = this._sectionItems();
+    const hubOwned = this._hubOwned;
+    const sections = hubOwned ? [] : this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
     const irPill = this._renderIrPill();
@@ -26344,7 +26373,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
-                ${callback ? A : this._renderHeaderEdit()}
+                ${callback || hubOwned ? A : this._renderHeaderEdit()}
                 <div class="detail-title-stack">
                   <div class="detail-title" id="editor-title">${this._title}</div>
                   <div class="detail-title-meta">
@@ -26353,7 +26382,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                   </div>
                 </div>
               </div>
-              ${this._offline ? A : b2`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S5.syncToHub : S5.syncUpToDate} aria-label=${dirty ? S5.syncToHub : S5.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon4(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S5.syncToHub : S5.syncUpToDate}</span></button></div>`}
+              ${this._offline || hubOwned ? A : b2`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S5.syncToHub : S5.syncUpToDate} aria-label=${dirty ? S5.syncToHub : S5.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon4(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S5.syncToHub : S5.syncUpToDate}</span></button></div>`}
             </div>
             ${sections.length > 1 ? b2`<div class="detail-section-nav" role="tablist" aria-label=${S5.detailSectionsAria}>
                   ${sections.map((item) => b2`<button class="detail-section-nav-btn ${item.id === this._activeSection ? "active" : ""}" type="button" role="tab" data-section=${item.id} aria-selected=${String(item.id === this._activeSection)} @click=${() => this._scrollToSection(item.id)}>${icon4(item.icon)}<span class="detail-section-nav-label">${item.label}</span></button>`)}
@@ -26363,10 +26392,12 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
             ${this._renderEditorBanners()}
             ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S5.managedWifiWarning}</span></div>` : A}
             ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S5.serverWifiDeviceNote : S5.callbackDeviceNote}</span></div>` : A}
-            ${this._renderPowerSection(deviceId)}
-            ${this._renderNetworkSection(deviceId)}
-            ${this._renderCommandsSection(deviceId)}
-            ${this._renderBindingsSection(deviceId)}
+            ${hubOwned ? b2`<div class="notice-banner notice-banner--info" id="editor-hub-owned-note">${icon4(MATTER_ICON_PATH)}<span><strong>${S5.hubOwnedTitle}</strong> ${S5.hubOwnedIntro} ${S5.hubOwnedBody}</span></div>` : b2`
+                ${this._renderPowerSection(deviceId)}
+                ${this._renderNetworkSection(deviceId)}
+                ${this._renderCommandsSection(deviceId)}
+                ${this._renderBindingsSection(deviceId)}
+              `}
           </div>
         </div>
         ${this._renderRenameDialog()}

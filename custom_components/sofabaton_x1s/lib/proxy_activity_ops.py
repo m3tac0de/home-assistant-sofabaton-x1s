@@ -45,6 +45,7 @@ from .protocol_const import (
     OP_ACTIVITY_CONFIRM,
     OP_ACTIVITY_DEVICE_CONFIRM,
     OP_REQ_MACRO_LABELS,
+    is_hub_owned_device,
 )
 
 if TYPE_CHECKING:
@@ -209,6 +210,11 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         dev_lo = device_id & 0xFF
+        if is_hub_owned_device(self.state.devices.get(dev_lo)):
+            # The hub creates and removes its own device (the X2's Matter
+            # device) itself; a delete from here is never sent.
+            self._log.warning("[DELETE] dev=0x%02X belongs to the hub; not deleting it", dev_lo)
+            return None
         self.reset_ack_queues()
 
         # Snapshot which activities the cache shows referencing the device
