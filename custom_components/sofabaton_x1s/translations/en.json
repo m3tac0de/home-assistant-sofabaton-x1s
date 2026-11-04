@@ -1,7 +1,28 @@
 {
   "config": {
     "flow_title": "{name}",
+    "progress": {
+      "scan": "Searching your network for Sofabaton hubs. This takes a few seconds."
+    },
     "step": {
+      "user": {
+        "title": "Find your hub"
+      },
+      "pick_hub": {
+        "title": "Choose your hub",
+        "description": "Home Assistant found these Sofabaton hubs on your network. Setup adds one hub at a time, so choose the one to add now. Hubs that are already set up are not listed. A hub on another network or VLAN cannot be found: choose the last option to enter its IP address.",
+        "data": {
+          "hub": "Hub to add"
+        }
+      },
+      "no_hubs": {
+        "title": "No hub found",
+        "description": "Home Assistant could not find a Sofabaton hub that is not set up yet.\n\n- Close the Sofabaton app on every phone and tablet. A hub stops announcing itself while the app is connected.\n- A hub on another network or VLAN cannot be found automatically. Enter its IP address instead.",
+        "menu_options": {
+          "rescan": "Search again",
+          "manual": "Enter the hub's IP address"
+        }
+      },
       "manual": {
         "title": "Manual hub setup",
         "description": "Enter the IP address of your Sofabaton hub. The integration learns its name and model after connecting.",
@@ -9,9 +30,13 @@
           "host": "Hub IP address"
         }
       },
+      "zeroconf_confirm": {
+        "title": "Discovered Sofabaton hub",
+        "description": "Home Assistant found the Sofabaton hub **{name}** at **{host}**. Submit to configure it."
+      },
       "ports": {
-        "title": "Integration ports",
-        "description": "These ports are shared by all Sofabaton hubs configured in Home Assistant. Most users can keep the defaults.",
+        "title": "Some ports are in use",
+        "description": "Another program on this Home Assistant host already uses a port the integration needs. Each port in use is marked below, with a free port filled in instead.\n\nThese ports are shared by all your Sofabaton hubs. You can change them later with the cogwheel on the integration page. [What each port is for, and what changing it means]({docs_url})",
         "data": {
           "hub_listen_base": "Hub TCP listener port",
           "proxy_udp_port": "App UDP listener port",
@@ -22,10 +47,6 @@
           "proxy_udp_port": "UDP port used for official app discovery and connections. Keep port 8102 for iOS compatibility unless another service already uses it.",
           "roku_listen_port": "HTTP port used to receive Wifi device button presses. Changing it breaks X1 compatibility and requires existing Wifi devices and commands to be synchronized again."
         }
-      },
-      "zeroconf_confirm": {
-        "title": "Discovered Sofabaton hub",
-        "description": "Home Assistant found the Sofabaton hub **{name}** at **{host}**. Submit to configure it."
       }
     },
     "abort": {
@@ -35,7 +56,22 @@
       "x2_disabled": "Sofabaton X2 discovery is disabled in `configuration.yaml`. To enable it, remove `enable_x2_discovery: false` from the `sofabaton_x1s:` section (or set it to `true`) and restart Home Assistant."
     },
     "error": {
-      "invalid_host": "Enter the hub's IPv4 address, for example 192.168.1.20."
+      "invalid_host": "Enter the hub's IPv4 address, for example 192.168.1.20.",
+      "hub_port_in_use": "Port {hub_busy} is in use, so the free port {hub_free} is filled in.",
+      "app_port_in_use": "Port {app_busy} is in use, so the free port {app_free} is filled in. The iOS app only finds Home Assistant on port 8102.",
+      "wifi_port_in_use": "Port {wifi_busy} is in use, for example by Emulated Roku, so the free port {wifi_free} is filled in. An X1 hub only sends Wifi commands to port 8060.",
+      "port_in_use_no_free": "This port is in use, and no nearby port is free. Enter another port.",
+      "same_port": "The hub listener and the Wifi command listener need different ports."
+    },
+    "create_entry": {
+      "more_hubs_found": "Also found on your network: **{others}**. Setup adds one hub at a time. To add the next one, select **Add hub** on the Sofabaton X integration page."
+    }
+  },
+  "selector": {
+    "hub_choice": {
+      "options": {
+        "manual": "A hub that is not listed (enter its IP address)"
+      }
     }
   },
   "options": {

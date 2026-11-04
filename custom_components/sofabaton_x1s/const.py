@@ -55,6 +55,11 @@ DEFAULT_ROKU_LISTEN_PORT = 8060
 WIFI_DEVICE_ENABLE_DOCS_URL = (
     "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md"
 )
+# The port table: what each port is for and what moving it off its default breaks.
+PORTS_DOCS_URL = (
+    "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md"
+    "#-complete-port-reference"
+)
 
 PLATFORMS = [
     "select",

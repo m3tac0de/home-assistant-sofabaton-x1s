@@ -24,8 +24,15 @@ def _install_homeassistant_stubs() -> None:
     class _Required(_Marker):  # pragma: no cover - only used as stub
         required = True
 
+    def _required(key, default=None):
+        if not isinstance(key, str):
+            return key
+        marker = _Required(key)
+        marker.default = default  # what a form preselects
+        return marker
+
     vol.Schema = _Schema
-    vol.Required = lambda key, default=None: _Required(key) if isinstance(key, str) else key  # type: ignore[assignment]
+    vol.Required = _required  # type: ignore[assignment]
     vol.Optional = lambda key, default=None: _Marker(key) if isinstance(key, str) else key  # type: ignore[assignment]
     vol.All = lambda *args, **kwargs: args  # type: ignore[assignment]
     vol.Range = lambda **kwargs: kwargs  # type: ignore[assignment]
@@ -60,7 +67,16 @@ def _install_homeassistant_stubs() -> None:
         def async_create_entry(self, *args, **kwargs):
             return {"type": "create_entry", **kwargs}
 
-        def _async_current_entries(self):
+        def async_show_progress(self, *args, **kwargs):
+            return {"type": "progress", **kwargs}
+
+        def async_show_progress_done(self, *args, **kwargs):
+            return {"type": "progress_done", **kwargs}
+
+        def async_show_menu(self, *args, **kwargs):
+            return {"type": "menu", **kwargs}
+
+        def _async_current_entries(self, include_ignore=None):
             return []
 
     class OptionsFlow:  # pragma: no cover - only used as stub
@@ -132,6 +148,26 @@ def _install_homeassistant_stubs() -> None:
 
     zeroconf_service_info.ZeroconfServiceInfo = ZeroconfServiceInfo
     sys.modules.setdefault("homeassistant.helpers.service_info.zeroconf", zeroconf_service_info)
+
+    selector = types.ModuleType("homeassistant.helpers.selector")
+
+    class SelectSelectorConfig(dict):  # pragma: no cover - only used as stub
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+
+    class SelectSelector:  # pragma: no cover - only used as stub
+        def __init__(self, config) -> None:
+            self.config = config
+
+    class SelectSelectorMode:  # pragma: no cover - only used as stub
+        DROPDOWN = "dropdown"
+        LIST = "list"
+
+    selector.SelectOptionDict = dict
+    selector.SelectSelector = SelectSelector
+    selector.SelectSelectorConfig = SelectSelectorConfig
+    selector.SelectSelectorMode = SelectSelectorMode
+    sys.modules.setdefault("homeassistant.helpers.selector", selector)
 
     dispatcher = types.ModuleType("homeassistant.helpers.dispatcher")
     dispatcher.async_dispatcher_send = lambda hass=None, signal=None, *args, **kwargs: None

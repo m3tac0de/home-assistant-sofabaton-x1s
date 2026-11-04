@@ -13,6 +13,17 @@ from custom_components.sofabaton_x1s.const import (
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 
+@pytest.fixture(autouse=True)
+def _default_ports_free(monkeypatch):
+    """Every default port is free unless a test says otherwise (the real
+    check would bind ports on the test machine)."""
+
+    async def _none_in_use(self, ports):
+        return {}
+
+    monkeypatch.setattr(ConfigFlow, "_async_ports_in_use", _none_in_use)
+
+
 def _service_info(service_type: str, **kwargs) -> ZeroconfServiceInfo:
     return ZeroconfServiceInfo(
         host=kwargs.get("host", "1.2.3.4"),
@@ -100,15 +111,14 @@ def test_manual_flow_prompts_for_host_only() -> None:
 def test_manual_flow_bootstraps_default_identity_from_host() -> None:
     flow = _flow_with_x2_enabled(False)
 
-    _run(flow.async_step_manual({"host": "1.2.3.4"}))
-
-    result = _run(flow.async_step_ports({
-        "proxy_udp_port": 8000,
-        "hub_listen_base": 8200,
-    }))
+    # No ports step: the IP is the whole setup.
+    result = _run(flow.async_step_manual({"host": "1.2.3.4"}))
 
     assert result["type"] == "create_entry"
     assert result["data"]["name"] == "1.2.3.4"
+    assert result["options"]["proxy_udp_port"] == 8102
+    assert result["options"]["hub_listen_base"] == 8200
+    assert result["options"]["roku_listen_port"] == 8060
     # Manual entry has no mDNS advertisement; the variant is resolved
     # by the post-connect banner, not by config-flow defaults.
     assert result["data"]["mdns_version"] is None
@@ -184,13 +194,8 @@ def test_zeroconf_x2_prompts_by_default() -> None:
 def test_manual_flow_formats_entry_title_with_version_host_and_mac() -> None:
     flow = _flow_with_x2_enabled(False)
 
-    _run(flow.async_step_manual({
+    result = _run(flow.async_step_manual({
         "host": "192.168.2.181",
-    }))
-
-    result = _run(flow.async_step_ports({
-        "proxy_udp_port": 8000,
-        "hub_listen_base": 8200,
     }))
 
     assert result["type"] == "create_entry"
@@ -218,7 +223,7 @@ def test_zeroconf_existing_entry_updates_host_only() -> None:
     )
     updated: dict[str, dict] = {}
 
-    flow._async_current_entries = lambda: [existing_entry]  # type: ignore[assignment]
+    flow._async_current_entries = lambda **_: [existing_entry]  # type: ignore[assignment]
     flow.async_set_unique_id = lambda *_args, **_kwargs: asyncio.sleep(0)  # type: ignore[assignment]
     flow.hass.config_entries = SimpleNamespace(
         async_update_entry=lambda entry, *, data=None, options=None: updated.update(
@@ -348,11 +353,11 @@ def test_the_same_hub_is_never_configured_twice() -> None:
     updated: list = []
 
     flow = _flow_with_x2_enabled(True)
-    flow._async_current_entries = lambda: [existing]  # type: ignore[assignment]
+    flow._async_current_entries = lambda **_: [existing]  # type: ignore[assignment]
     assert _run(flow.async_step_manual({"host": "192.168.2.40"}))["reason"] == "already_configured"
 
     flow = _flow_with_x2_enabled(True)
-    flow._async_current_entries = lambda: [existing]  # type: ignore[assignment]
+    flow._async_current_entries = lambda **_: [existing]  # type: ignore[assignment]
     flow.hass.config_entries = SimpleNamespace(
         async_update_entry=lambda entry, *, data=None: updated.append(data["host"])
     )
@@ -369,24 +374,52 @@ def test_the_same_hub_is_never_configured_twice() -> None:
     assert updated == ["192.168.2.77"]
 
 
-def test_an_aborted_add_leaves_the_other_hubs_ports_alone() -> None:
-    """CR-H3-11: the duplicate check runs before the shared ports are
-    pushed to every entry."""
-    existing = SimpleNamespace(unique_id="x", data={"host": "10.0.0.9"}, options={"proxy_udp_port": 8102})
+def test_a_new_hub_shares_the_existing_ports_and_rewrites_no_other_hub() -> None:
+    """The setup flow has no ports step (CR-H3-11 is moot): a new hub takes
+    the shared ports the other hubs use and never touches their options;
+    only the cogwheel (options flow) changes ports, for every hub."""
+    existing = SimpleNamespace(
+        unique_id="x",
+        data={"host": "10.0.0.9"},
+        options={"proxy_udp_port": 9102, "hub_listen_base": 9200, "roku_listen_port": 9060},
+    )
     updated: list = []
     flow = _flow_with_x2_enabled(False)
-    flow._async_current_entries = lambda: [existing]  # type: ignore[assignment]
+    flow._async_current_entries = lambda **_: [existing]  # type: ignore[assignment]
     flow.hass.config_entries = SimpleNamespace(
         async_update_entry=lambda entry, *, options=None: updated.append(options)
     )
 
-    def _already(*_args, **_kwargs):
-        raise RuntimeError("already_configured")
+    result = _run(flow.async_step_manual({"host": "10.0.0.10"}))
 
-    flow._abort_if_unique_id_configured = _already  # type: ignore[assignment]
-    _run(flow.async_step_manual({"host": "10.0.0.10"}))
-    try:
-        _run(flow.async_step_ports({"proxy_udp_port": 9000, "hub_listen_base": 8200}))
-    except RuntimeError:
-        pass
+    assert result["type"] == "create_entry"
+    assert result["options"] == {
+        "proxy_udp_port": 9102,
+        "hub_listen_base": 9200,
+        "roku_listen_port": 9060,
+        "mdns_version": None,
+    }
     assert updated == []
+
+
+def test_a_discovered_card_is_one_confirm_away_from_done() -> None:
+    """Confirming a Discovered card creates the hub; ports stay behind the
+    entry's cogwheel."""
+    flow = _flow_with_x2_enabled(True)
+    form = _run(
+        flow.async_step_zeroconf(
+            _service_info(
+                MDNS_SERVICE_TYPES[0],
+                host="192.168.2.50",
+                properties={"NAME": b"Den", "MAC": b"aa:bb:cc:dd:ee:50", "HVER": b"2"},
+            )
+        )
+    )
+    assert form["step_id"] == "zeroconf_confirm"
+
+    result = _run(flow.async_step_zeroconf_confirm({}))
+
+    assert result["type"] == "create_entry"
+    assert result["data"]["mac"] == "aa:bb:cc:dd:ee:50"
+    assert result["data"]["mdns_version"] == "X1S"
+    assert result["options"]["hub_listen_base"] == 8200

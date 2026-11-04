@@ -48,14 +48,25 @@ def test_custom_translation_file_is_flat() -> None:
 
 
 def test_config_flow_steps_and_abort_reasons_are_translated() -> None:
-    source = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
-    translations = _english()["config"]
+    # The setup flow and the options flow (the entry's cogwheel) share the
+    # file but not the translation section.
+    config_source, options_source = (
+        (INTEGRATION / "config_flow.py")
+        .read_text(encoding="utf-8")
+        .split("class SofabatonOptionsFlowHandler", 1)
+    )
+    english = _english()
 
-    steps = set(re.findall(r'step_id="([a-z0-9_]+)"', source))
-    aborts = set(re.findall(r'async_abort\(reason="([a-z0-9_]+)"', source))
+    def steps(source: str) -> set[str]:
+        return set(re.findall(r'step_id="([a-z0-9_]+)"', source))
 
-    assert steps <= translations["step"].keys()
-    assert aborts <= translations["abort"].keys()
+    aborts = set(re.findall(r'async_abort\(reason="([a-z0-9_]+)"', config_source))
+
+    assert steps(config_source) <= english["config"]["step"].keys()
+    assert aborts <= english["config"]["abort"].keys()
+    assert steps(options_source) <= english["options"]["step"].keys()
+    # No leftovers: every translated setup step is still a step.
+    assert english["config"]["step"].keys() <= steps(config_source)
 
 
 def test_service_schema_and_translations_match() -> None:
