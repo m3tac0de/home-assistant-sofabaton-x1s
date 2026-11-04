@@ -2,7 +2,7 @@
 
 Local, bidirectional control of Sofabaton **X1**, **X1S**, and **X2** hubs from Home Assistant.
 
-[![HACS Default](https://img.shields.io/badge/HACS-Default-green.svg)](#-installation)
+[![Marketplace / HACS](https://img.shields.io/badge/Marketplace%20%2F%20HACS-Available-green.svg)](#-installation)
 [![Latest release](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s)](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/total)](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/releases)
 
@@ -44,7 +44,7 @@ Requirements:
 - Permission for Home Assistant to accept inbound TCP connections from the hub
 - Inbound UDP access if you want to use the official app through the proxy
 
-For ports, firewall rules, containers, VLANs, and iOS discovery behavior, see the [networking guide](docs/networking.md).
+For ports, firewall rules, containers, VLANs, and iOS discovery behavior, see the [networking guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md).
 
 ## ◇ Installation
 
@@ -52,12 +52,15 @@ For ports, firewall rules, containers, VLANs, and iOS discovery behavior, see th
 > Disconnect or fully close the Sofabaton app before installing the integration and adding the hub.
 > While the app is connected directly to the hub, the hub stops advertising and cannot be discovered. Keep the app closed through initial setup.
 
-### HACS (recommended)
+### Marketplace (Home Assistant 2026.11 and newer, recommended)
 
-1. Open **HACS**.
-2. Search for **Sofabaton X**.
-3. Select **Download**.
-4. Restart Home Assistant.
+1. Go to **Settings → Marketplace**, find **Sofabaton X**, and install it.
+2. Follow [Add a hub](#add-a-hub) below. Restart Home Assistant first if it asks you to.
+
+### HACS (older Home Assistant versions)
+
+1. Open **HACS**, search for **Sofabaton X**, and select **Download**.
+2. Restart Home Assistant, then follow [Add a hub](#add-a-hub) below.
 
 ### Manual installation
 
@@ -68,15 +71,22 @@ For ports, firewall rules, containers, VLANs, and iOS discovery behavior, see th
 
 Installing files directly from a source branch may give you unreleased code. Use the release archive unless you are intentionally testing a development version.
 
+After **updating** Sofabaton X, restart Home Assistant to load the new version.
+
 ### Add a hub
 
-After Home Assistant has restarted:
+Keep the official Sofabaton app closed throughout setup.
 
-1. Go to **Settings → Devices & services**.
-2. Home Assistant begins discovery only after it has **fully started**. Then, allow up to one minute for hubs to appear. Select the discovered Sofabaton hub and follow the configuration flow.
-3. If discovery does not find it, confirm the official app is fully closed on all phones/tablets and try again. For manual entry, select **Add integration**, search for **Sofabaton X**, and enter the hub IP address; keep the app closed during setup.
+1. Go to **Settings → Devices & services → Add integration** and search for **Sofabaton X**, unless setup already opened after installing.
+2. Wait a few seconds while setup searches your network, then choose the hub to add. Hubs that are already set up are not listed.
+3. If your hub is not listed, choose the last option and enter its IP address. If no hub is found, close the app and search again, or enter the IP address.
+4. Choose the device name and area when Home Assistant offers them.
 
-If the hub is on another VLAN or subnet, see the [networking guide](docs/networking.md).
+Setup adds one hub at a time. To add another, select **Add hub** on the Sofabaton X integration page. A hub that Home Assistant shows under **Discovered** can also be added from there.
+
+If a default port is already in use on the Home Assistant host, setup asks for another one; see the [port reference](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md#-complete-port-reference).
+
+For a hub on another VLAN or subnet, enter its IP address or forward mDNS; see the [networking guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md).
 
 Open **Sofabaton X** in the sidebar after setup to [start using the remote and Control Panel](#-sofabaton-x-sidebar).
 
@@ -105,7 +115,7 @@ Use `binary_sensor.<hub>_app_connected` to check whether the app owns the connec
 
 Open **Sofabaton X** in Home Assistant's sidebar to control your Activities and Devices with a full-page remote designed for your mobile screens. Administrators can also open the **Control Panel** to configure the hub, set up automations, and manage backups.
 
-The sidebar is enabled by default; no dashboard setup is needed. See the [sidebar guide](docs/sidebar.md) for controls and visibility settings.
+The sidebar is enabled by default; no dashboard setup is needed. See the [sidebar guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/sidebar.md) for controls and visibility settings.
 
 ## ◇ Dashboard cards
 
@@ -128,7 +138,7 @@ entity: remote.<hub>_remote
 
 <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-01.png" width="220" alt="Sofabaton Virtual Remote showing Activity controls"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-02.png" width="220" alt="Sofabaton Virtual Remote showing remote buttons"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-03.png" width="220" alt="Sofabaton Virtual Remote configuration editor">
 
-The card is also available as a separate HACS frontend plugin. If the integration detects that HACS manages the card, it stops deploying its bundled copy after the next Home Assistant restart.
+The card is also available as a separate install through Marketplace or HACS. You don't need it: Sofabaton X already includes the card. A separately installed card takes over from the bundled one after a Home Assistant restart, and is updated on its own, not with the integration. See the [card installation guide](https://github.com/m3tac0de/sofabaton-virtual-remote#-installation).
 
 ### Sofabaton Control Panel
 
@@ -163,7 +173,7 @@ Sofabaton X works in both directions: Home Assistant can control the hub, and ac
 
 Use the integration's entities and actions in your own dashboards or custom UIs, automations, and scripts. Each configured hub provides a `remote` entity for starting or switching Activities, powering off the hub, and sending one or more commands. Named buttons target the current Activity; numeric IDs can target a Device or Activity directly. Optional delays are supported for command sequences.
 
-For action examples, supported button names, numeric-ID targeting, and ways to find IDs, see the [remote entity guide](docs/remote_entity.md).
+For action examples, supported button names, numeric-ID targeting, and ways to find IDs, see the [remote entity guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/remote_entity.md).
 
 The sending entities are unavailable while the official Sofabaton app is connected to the proxy.
 
@@ -201,25 +211,25 @@ Under **Automation → Events**, Actions can also respond to:
 
 These Actions run entirely in Home Assistant and are never synchronized to the hub.
 
-For configuration, delivery choices, limits, and automation examples, see the [remote and hub trigger guide](docs/wifi_commands.md).
+For configuration, delivery choices, limits, and automation examples, see the [remote and hub trigger guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md).
 
 ## ◇ Entities
 
 The integration provides entities for both automation directions: remotes, selects, and buttons control the hub, while sensors expose Activity changes, Wifi Command presses, and connection state as automation inputs. On recent Home Assistant releases, `infrared.<hub>_ir_emitter` lets compatible infrared integrations send commands through the hub. Additional entities manage the proxy, listener, diagnostics, and maintenance tasks.
 
-See the [entity reference](docs/entities.md) for default entity IDs, purposes, and availability behavior.
+See the [entity reference](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/entities.md) for example entity IDs, purposes, and availability behavior. Your own entity IDs can differ from the examples.
 
 ## ◇ Advanced features
 
 | Feature                                                             | Documentation                                                                                                                                     |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Control, automation, configuration, and diagnostic entities         | [Entity reference](docs/entities.md)                                                                                                              |
-| Remote entity actions, button names, and numeric-ID targeting       | [Remote entity guide](docs/remote_entity.md)                                                                                                      |
-| Wifi Commands, Wifi Events, Hub Events, and Activity Events         | [Remote and hub trigger guide](docs/wifi_commands.md)                                                                                             |
-| Whole-hub and selective backup and restore                          | [Backup guide](docs/backup.md)                                                                                                                    |
-| Retrieve, test, edit, generate, save, and share IR/RF/etc command payloads | [Command payload guide](docs/command_payloads.md)                                                                                                 |
-| VLANs, ports, containers, firewalls, and app discovery              | [Networking guide](docs/networking.md)                                                                                                            |
-| Diagnostic logging and issue-report information                     | [Logging guide](docs/logging.md)                                                                                                                  |
+| Control, automation, configuration, and diagnostic entities         | [Entity reference](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/entities.md)                                                                                                              |
+| Remote entity actions, button names, and numeric-ID targeting       | [Remote entity guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/remote_entity.md)                                                                                                      |
+| Wifi Commands, Wifi Events, Hub Events, and Activity Events         | [Remote and hub trigger guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md)                                                                                             |
+| Whole-hub and selective backup and restore                          | [Backup guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md)                                                                                                                    |
+| Retrieve, test, edit, generate, save, and share IR/RF/etc command payloads | [Command payload guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/command_payloads.md)                                                                                                 |
+| VLANs, ports, containers, firewalls, and app discovery              | [Networking guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md)                                                                                                            |
+| Diagnostic logging and issue-report information                     | [Logging guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/logging.md)                                                                                                                  |
 | Standalone Python protocol library                                  | [`sofabaton-x`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x) and [PyPI](https://pypi.org/project/sofabaton-x/) |
 
 ## ◇ Frequently asked questions
@@ -290,8 +300,8 @@ Check `binary_sensor.<hub>_app_connected` and `binary_sensor.<hub>_hub_connected
 
 ## ◇ Troubleshooting
 
-- **Discovery, VLAN, firewall, container, or iOS proxy problem:** read the [networking guide](docs/networking.md).
-- **Need useful logs for an issue report:** follow the [logging guide](docs/logging.md).
+- **Discovery, VLAN, firewall, container, or iOS proxy problem:** read the [networking guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md).
+- **Need useful logs for an issue report:** follow the [logging guide](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/logging.md).
 - **Found a bug or need help:** [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues).
 
 When reporting a problem, include your Home Assistant version, integration version, hub model and firmware, installation method, relevant diagnostics, and the smallest reproducible example.

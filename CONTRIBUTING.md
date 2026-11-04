@@ -210,7 +210,7 @@ The integration, Virtual Remote card, library, server and npm remote package are
 
 | Component             | Version lives in                                                                | Released by                                                                                                                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HA integration        | `custom_components/sofabaton_x1s/manifest.json` | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). The README release badge updates automatically. |
+| HA integration        | `custom_components/sofabaton_x1s/manifest.json` | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which Marketplace or HACS installs (`hacs.json` uses `zip_release`). The README release badge updates automatically. |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
 | `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.6,<0.3` in its `pyproject.toml`) must be on PyPI first. |
 
@@ -224,9 +224,11 @@ The Virtual Remote has its own `CARD_VERSION` in
 `remote-card/src/remote-card-shared.ts`. When an integration release includes
 card changes, coordinate a release in the separate card repository: rebuild
 and copy the HA bundle, update the card README's version badge and guides, and
-publish the matching card release. Home Assistant installations with the HACS
-card use that copy instead of the integration's bundled card, so updating the
-integration alone does not update their remote.
+publish the matching card release. Home Assistant installations with the card
+installed separately through Marketplace or HACS use that copy instead of the
+integration's bundled card after a restart, so updating the integration alone
+does not update their remote. Keep the installation instructions (Marketplace,
+HACS, manual) aligned in both repositories.
 
 For the coordinated 0.7.2 release, prepare the integration release body
 from [docs/releases/0.7.2.md](docs/releases/0.7.2.md). The companion versions
@@ -292,7 +294,8 @@ CI (`sofabaton-x-ci.yml`) runs on PRs and pushes to `main`/`dev` that touch
 the library, the packaging metadata, or the tests: boundary lint, lib tests
 across supported Python versions, the full suite, and a wheel
 build-and-install smoke test. `hassfest.yaml` and `hacs.yaml` validate the
-integration side. `frontend-ci.yml` runs on changes under `www/`, `remote-card/` or the
+integration side. Marketplace still reads `hacs.json`; keep that filename and
+the `hacs/action` validation workflow. `frontend-ci.yml` runs on changes under `www/`, `remote-card/` or the
 frontend test/build files: typecheck, both card builds with a
 committed-bundle drift check, the node test suite, and Playwright on a
 Windows runner (the committed screenshot baselines are `*-win32.png`).

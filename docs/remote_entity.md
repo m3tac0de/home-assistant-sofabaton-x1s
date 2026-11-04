@@ -1,6 +1,6 @@
 # Remote entity guide
 
-Each configured Sofabaton hub provides a `remote` entity for controlling it from your own dashboards or custom UIs, automations, and scripts. In the examples below, replace `remote.<hub>_remote` with the entity created for your hub, such as `remote.living_room_remote`.
+Each configured Sofabaton hub provides a `remote` entity for controlling it from your own dashboards or custom UIs, automations, and scripts. In the examples below, replace `remote.<hub>_remote` with your hub's actual entity ID, such as `remote.living_room_remote`; see [names and entity IDs](entities.md#-names-and-entity-ids).
 
 To go in the other direction and trigger Home Assistant from remote or hub activity, see the [remote and hub trigger guide](wifi_commands.md).
 

@@ -39,7 +39,7 @@ body:
     attributes:
       label: Versions
       description: Share any versions you know. Examples include integration version, Home Assistant version, sofabaton-x version, Python version, hub firmware, or install method.
-      placeholder: "Example: HA 2026.6.1, integration v1.2.3, sofabaton-x 0.4.0, Python 3.12, HACS install"
+      placeholder: "Example: Home Assistant and integration versions, install method (Marketplace, HACS or manual), hub firmware"
     validations:
       required: false
   - type: textarea

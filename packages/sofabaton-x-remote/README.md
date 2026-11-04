@@ -8,7 +8,9 @@ favourites and device mode, and follows the server's event stream, so a
 key pressed on the physical remote shows up on your page.
 
 It is the same card the Home Assistant integration ships. If your
-dashboard *is* Home Assistant, use the HACS card instead.
+dashboard *is* Home Assistant, use the card that comes with the
+**Sofabaton X** integration, or install it on its own; see the
+[Home Assistant card installation guide](https://github.com/m3tac0de/sofabaton-virtual-remote#-installation).
 
 Version **0.1.4** contains the shared Virtual Remote **0.2.9**.
 See the [release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/packages/sofabaton-x-remote/CHANGELOG.md).

@@ -128,6 +128,8 @@ The state is `<device>/<command>` (or `<device>/<command>/longpress` for a long 
 
 ### Sensor automation example
 
+Replace `sensor.living_room_wifi_commands` and the scene IDs with your own entity IDs; see [names and entity IDs](entities.md#-names-and-entity-ids).
+
 ```yaml
 triggers:
   - trigger: state
@@ -178,7 +180,7 @@ The choice is made when a Wifi Device is created and applied at its first deploy
 
 HTTP is available on every supported hub and selected automatically when MQTT is unavailable. HTTP Wifi Commands and HTTP-delivered Wifi Events share one callback listener, using port `8060` by default.
 
-Emulated Roku commonly uses the same port. If `8060` is already bound, change the Sofabaton listener port in the integration's global options on X1S or X2. X1 cannot use a different port.
+Emulated Roku commonly uses the same port. On X1S or X2, use another port: setup offers one when it finds `8060` in use while adding your first hub, and the integration's cogwheel changes it later. X1 cannot use a different port, so for X1 HTTP Wifi Commands free `8060` by moving or stopping the other service. After changing the listener port, synchronize existing HTTP Wifi Devices and Wifi Commands again.
 
 See the [networking and listener security model](networking.md#-security--listener-model) for listener lifecycle, validation, security, and firewall guidance.
 

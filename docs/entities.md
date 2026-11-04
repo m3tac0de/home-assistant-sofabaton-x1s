@@ -1,12 +1,18 @@
 # Entity reference
 
-Each configured hub provides entities for controlling Sofabaton from Home Assistant, using remote and hub activity in automations, and managing the integration. Home Assistant generates default entity IDs from the hub name; the tables use `<hub>` as a placeholder. Entity IDs can be renamed in Home Assistant.
+Each configured hub provides entities for controlling Sofabaton from Home Assistant, using remote and hub activity in automations, and managing the integration.
+
+## ◇ Names and entity IDs
+
+The tables show **example entity IDs**, with `<hub>` as a placeholder. Home Assistant generates the actual IDs, and yours can differ from these examples, for instance by including an area. Copy your own from **Settings → Devices & services → Entities** when adapting YAML. How Home Assistant names and displays entities is described in its [entity customization docs](https://www.home-assistant.io/docs/configuration/customizing-entities/).
+
+The Sofabaton X sidebar and Control Panel show the hub's own name, which can differ from a device name you have changed in Home Assistant.
 
 ## ◇ Control the hub from Home Assistant
 
 Use these entities in dashboards or custom UIs, automations, and scripts.
 
-| Platform | Default entity                                   | Purpose                                                                                                                     |
+| Platform | Example entity                                   | Purpose                                                                                                                     |
 | -------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | Remote   | `remote.<hub>_remote`                            | Send commands and control Activities                                                                                        |
 | Infrared | `infrared.<hub>_ir_emitter`                      | Let compatible Home Assistant infrared integrations send commands through the hub; requires a recent Home Assistant release |
@@ -19,7 +25,7 @@ For `remote.send_command`, `remote.turn_on`, and `remote.turn_off` examples, see
 
 These entities expose state changes and received commands to Home Assistant.
 
-| Platform      | Default entity                      | Purpose                                                |
+| Platform      | Example entity                      | Purpose                                                |
 | ------------- | ----------------------------------- | ------------------------------------------------------ |
 | Sensor        | `sensor.<hub>_activity`             | Current Activity, including while the app is connected |
 | Sensor        | `sensor.<hub>_wifi_commands`        | Latest Wifi Command or Wifi Event press                |
@@ -30,7 +36,7 @@ For Wifi Commands, Wifi Events, Hub Events, Activity Events, and a sensor automa
 
 ## ◇ Configuration, maintenance, and diagnostics
 
-| Platform | Default entity                         | Purpose                                                                                                                             |
+| Platform | Example entity                         | Purpose                                                                                                                             |
 | -------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Sensor   | `sensor.<hub>_index`                   | Diagnostic Activity, Device, command, macro, and favorite index                                                                     |
 | Switch   | `switch.<hub>_proxy_enabled`           | Enable or disable proxy discovery and listening                                                                                     |
