@@ -685,7 +685,8 @@ def is_hub_owned_device(device: Any) -> bool:
 
     if not isinstance(device, Mapping):
         return False
-    block = device.get("device") if isinstance(device.get("device"), Mapping) else device
+    nested = device.get("device")
+    block = nested if isinstance(nested, Mapping) else device
     device_class = normalize_device_class(block.get("device_class"))
     if device_class is None:
         device_class = classify_device_class_code(block.get("device_class_code"))
