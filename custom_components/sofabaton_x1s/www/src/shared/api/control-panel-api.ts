@@ -20,6 +20,8 @@ import type {
   IrLearnEvent,
   IrPayloadConvertResponse,
   IrPayloadForeignFormat,
+  ListenerPorts,
+  ListenerPortsResult,
   LogsResponse,
   RefreshKind,
   RfBand,
@@ -113,6 +115,17 @@ export class ControlPanelApi {
       entry_id: entryId,
       setting: "sidebar_panel_title",
       title,
+    });
+  }
+
+  // Global setting: the listener ports every hub shares. Hubs whose
+  // listeners move reconnect before this answers.
+  setListenerPorts(ports: ListenerPorts) {
+    return this.hass.callWS<ListenerPortsResult>({
+      type: "sofabaton_x1s/control_panel/set_listener_ports",
+      hub_listen_base: ports.hub_listen_base,
+      proxy_udp_port: ports.proxy_udp_port,
+      roku_listen_port: ports.roku_listen_port,
     });
   }
 

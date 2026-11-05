@@ -7,6 +7,7 @@ hub logs, the persistent cache commands and the catalog refresh.
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 from typing import Any
 
 import voluptuous as vol
@@ -16,6 +17,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
+    CONF_ROKU_LISTEN_PORT,
     DOMAIN,
     HUB_VERSION_X2,
     MIN_RECOMMENDED_FIRMWARE,
@@ -35,6 +37,13 @@ from .diagnostics import (
     async_subscribe_hub_log_lines,
 )
 from .hub import SofabatonHub, get_hub_model
+from .listener_ports import (
+    DEFAULT_LISTENER_PORTS,
+    PORT_KEYS,
+    async_apply_listener_ports,
+    configured_listener_ports,
+    ports_in_use,
+)
 from .ui_settings_store import HUB_CLICK_ACTIONS, SIDEBAR_PANEL_MODES
 from . import operations
 from . import runtime
@@ -286,6 +295,9 @@ async def _ws_get_control_panel_state(
         # The command-config store's revision (Wifi Commands, Wifi Events,
         # hub event actions): open lists reload when it moves.
         "config_revision": (await runtime._async_get_command_config_store(hass)).revision,
+        # The listener ports every hub shares (Settings tab, Global).
+        "listener_ports": configured_listener_ports(hass),
+        "listener_port_defaults": dict(DEFAULT_LISTENER_PORTS),
         "hubs": hubs,
     }
     connection.send_result(msg["id"], payload)
@@ -435,6 +447,55 @@ async def _ws_control_panel_set_setting(
         await hub.async_set_roku_server_enabled(enabled)
 
     connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
+
+
+_PORT_NUMBER = vol.All(int, vol.Range(min=1, max=65535))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control_panel/set_listener_ports",
+        vol.Required("hub_listen_base"): _PORT_NUMBER,
+        vol.Required("proxy_udp_port"): _PORT_NUMBER,
+        vol.Required(CONF_ROKU_LISTEN_PORT): _PORT_NUMBER,
+    }
+)
+@websocket_api.async_response
+async def _ws_control_panel_set_listener_ports(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Change the listener ports every hub shares (the cogwheel's ports).
+
+    Every hub whose listeners move restarts its connection, so this waits
+    for idle hubs. A moved port another program holds is answered with
+    ``ok: false`` and ``in_use`` ({port key: a free stand-in or null});
+    nothing is changed then.
+    """
+
+    ports = {key: int(msg[key]) for key in PORT_KEYS}
+    if ports["hub_listen_base"] == ports[CONF_ROKU_LISTEN_PORT]:
+        connection.send_error(
+            msg["id"],
+            "same_port",
+            "The hub listener and the Wifi Commands listener need different ports",
+        )
+        return
+    hubs = runtime._get_hubs(hass.data.get(DOMAIN, {}))
+    if any(runtime._hub_is_busy(hass, hub) for hub in hubs):
+        connection.send_error(msg["id"], "busy", runtime._HUB_BUSY_MESSAGE)
+        return
+    current = configured_listener_ports(hass)
+    moved = [key for key in PORT_KEYS if ports[key] != current[key]]
+    in_use = await hass.async_add_executor_job(partial(ports_in_use, ports, moved)) if moved else {}
+    if in_use:
+        connection.send_result(
+            msg["id"], {"ok": False, "in_use": in_use, "listener_ports": current}
+        )
+        return
+    await async_apply_listener_ports(hass, ports)
+    connection.send_result(
+        msg["id"], {"ok": True, "listener_ports": configured_listener_ports(hass)}
+    )
 
 
 @websocket_api.websocket_command(

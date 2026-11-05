@@ -304,8 +304,71 @@ test("selectHub and selectTab persist the updated view state", async () => {
       selectedCacheSection: "activities",
       selectedBackupSection: "make",
       selectedWifiSection: "wifi",
+      selectedSettingsSection: "hub",
     },
   );
+});
+
+test("the Settings subtab is persisted and restored; an unknown one falls back to Hub", async () => {
+  globalThis.localStorage?.setItem(VIEW_STATE_STORAGE_KEY, JSON.stringify({ selectedSettingsSection: "global" }));
+  assert.equal(createStore().store.snapshot.selectedSettingsSection, "global");
+
+  globalThis.localStorage?.setItem(VIEW_STATE_STORAGE_KEY, JSON.stringify({ selectedSettingsSection: "bogus" }));
+  const { store } = createStore();
+  assert.equal(store.snapshot.selectedSettingsSection, "hub");
+
+  store.setSelectedSettingsSection("global");
+  assert.equal(
+    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY) || "{}").selectedSettingsSection,
+    "global",
+  );
+});
+
+test("setListenerPorts sends all three ports and reports saved, in use, or the backend's error", async () => {
+  const PORTS = { hub_listen_base: 8200, proxy_udp_port: 8102, roku_listen_port: 8060 };
+  const sent: Record<string, unknown>[] = [];
+  let answer: (message: Record<string, unknown>) => unknown = () => ({ ok: true });
+  let stored = { ...PORTS };
+  const { store } = createStore();
+  store.connected();
+  store.setHass(createHass({
+    handlers: {
+      "sofabaton_x1s/control_panel/state": () => ({ ...baseState, listener_ports: stored }),
+      "sofabaton_x1s/control_panel/set_listener_ports": (message) => {
+        sent.push(message);
+        return answer(message);
+      },
+    },
+  }));
+  await store.loadState();
+
+  answer = () => ({ ok: false, in_use: { hub_listen_base: 8202 }, listener_ports: stored });
+  assert.deepEqual(
+    await store.setListenerPorts({ ...PORTS, hub_listen_base: 8201 }),
+    { kind: "in_use", inUse: { hub_listen_base: 8202 } },
+  );
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.listener_ports?.hub_listen_base, 8200);
+
+  answer = () => {
+    throw { code: "busy", message: "Another backup, restore, sync or hub write is already running for this hub" };
+  };
+  const refused = await store.setListenerPorts({ ...PORTS, hub_listen_base: 8300 });
+  assert.equal(refused.kind, "error");
+  assert.equal(refused.kind === "error" ? refused.code : null, "busy");
+
+  answer = (message) => {
+    stored = { hub_listen_base: 8300, proxy_udp_port: 8102, roku_listen_port: 8061 };
+    return { ok: true, listener_ports: stored, echoed: message };
+  };
+  assert.deepEqual(await store.setListenerPorts({ ...PORTS, hub_listen_base: 8300, roku_listen_port: 8061 }), { kind: "saved" });
+  assert.deepEqual(store.snapshot.state?.listener_ports, stored);
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.deepEqual(sent.map(({ type: _type, ...ports }) => ports), [
+    { hub_listen_base: 8201, proxy_udp_port: 8102, roku_listen_port: 8060 },
+    { hub_listen_base: 8300, proxy_udp_port: 8102, roku_listen_port: 8060 },
+    { hub_listen_base: 8300, proxy_udp_port: 8102, roku_listen_port: 8061 },
+  ]);
 });
 
 test("loadState keeps tools card unblocked when frontend version matches backend", async () => {

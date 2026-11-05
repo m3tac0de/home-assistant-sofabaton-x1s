@@ -2,6 +2,18 @@ export type TabId = "settings" | "wifi_commands" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type BackupSectionId = "make" | "edit" | "restore";
 export type WifiSectionId = "wifi" | "hub_events";
+/** The Settings tab's subtabs: this hub's settings, and the integration-wide ones. */
+export type SettingsSectionId = "hub" | "global";
+/** The listener ports every hub shares (the config entries' option keys). */
+export type ListenerPortKey = "hub_listen_base" | "proxy_udp_port" | "roku_listen_port";
+export type ListenerPorts = Record<ListenerPortKey, number>;
+/** control_panel/set_listener_ports: `in_use` holds a free stand-in (or
+ *  null) per moved port another program holds; nothing changed then. */
+export interface ListenerPortsResult {
+  ok: boolean;
+  listener_ports?: ListenerPorts;
+  in_use?: Partial<Record<ListenerPortKey, number | null>>;
+}
 export type SettingKey =
   | "persistent_cache"
   | "hex_logging_enabled"
@@ -13,7 +25,7 @@ export type HubClickAction = "none" | "send" | "copy";
  *  every user, or to Home Assistant administrators only. */
 export type SidebarPanelMode = "off" | "all" | "admin";
 /** Keys the settings tab can hold pending while the backend persists them. */
-export type PendingSettingKey = SettingKey | "hub_click_action" | "sidebar_panel";
+export type PendingSettingKey = SettingKey | "hub_click_action" | "sidebar_panel" | "listener_ports";
 export type HubAction = "find_remote" | "sync_remote";
 export type RefreshKind = "activity" | "device";
 
@@ -124,6 +136,9 @@ export interface ControlPanelStateResponse {
   /** The command-config store's revision (Wifi Commands, Wifi Events, hub
    *  event actions); moves on every save. */
   config_revision?: number;
+  /** The listener ports every hub shares, and their defaults. */
+  listener_ports?: ListenerPorts;
+  listener_port_defaults?: ListenerPorts;
   hubs: ControlPanelHubState[];
 }
 
@@ -764,6 +779,7 @@ export interface ControlPanelSnapshot {
   selectedCacheSection: SectionId;
   selectedBackupSection: BackupSectionId;
   selectedWifiSection: WifiSectionId;
+  selectedSettingsSection: SettingsSectionId;
   openEntity: string | null;
   // Long-running/busy UI state is keyed by hub entry_id so an operation on
   // one hub never surfaces in the dock (or locks the UI) while another hub

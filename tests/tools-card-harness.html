@@ -996,10 +996,14 @@
       window.location.href,
     ).searchParams.get("v") || "harness";
 
+    const DEFAULT_LISTENER_PORTS = { hub_listen_base: 8200, proxy_udp_port: 8102, roku_listen_port: 8060 };
+
     const BASE_STATE = {
       persistent_cache_enabled: true,
       sidebar_panel: "off",
       tools_frontend_version: TOOLS_FRONTEND_VERSION,
+      listener_ports: { ...DEFAULT_LISTENER_PORTS },
+      listener_port_defaults: { ...DEFAULT_LISTENER_PORTS },
       hubs: [HUB_1],
     };
 
@@ -1692,6 +1696,27 @@
                 if (hub?.settings) hub.settings[message.setting] = Boolean(message.enabled);
               }
               return respond(type, { ok: true });
+            }
+            case "sofabaton_x1s/control_panel/set_listener_ports": {
+              // scenario.portsInUse: {port number: free stand-in or null}
+              // for ports another program holds on the HA host.
+              const keys = ["hub_listen_base", "proxy_udp_port", "roku_listen_port"];
+              if (message.hub_listen_base === message.roku_listen_port) {
+                return Promise.reject({ code: "same_port", message: "The hub listener and the Wifi Commands listener need different ports" });
+              }
+              const current = mock.state.listener_ports;
+              const inUse = {};
+              for (const key of keys) {
+                const port = message[key];
+                if (port !== current[key] && scenario.portsInUse && port in scenario.portsInUse) {
+                  inUse[key] = scenario.portsInUse[port];
+                }
+              }
+              if (Object.keys(inUse).length) {
+                return respond(type, { ok: false, in_use: inUse, listener_ports: { ...current } });
+              }
+              mock.state.listener_ports = Object.fromEntries(keys.map((key) => [key, Number(message[key])]));
+              return respond(type, { ok: true, listener_ports: { ...mock.state.listener_ports } });
             }
             case "sofabaton_x1s/control_panel/run_action":
               return respond(type, { ok: true });
@@ -3475,6 +3500,17 @@
           const tab = card.shadowRoot.querySelector("sofabaton-wifi-commands-tab");
           tab._openCreateDeviceModal();
           await tab.updateComplete;
+        },
+      },
+      {
+        id: "settings-global-ports", group: "Settings",
+        label: "Global settings: network ports (8201 in use)",
+        states: STATES_CONNECTED,
+        portsInUse: { 8201: 8202 },
+        postLoad: async (card) => {
+          await clickTab(card, "Settings");
+          card._store.setSelectedSettingsSection("global");
+          await card.updateComplete;
         },
       },
       {

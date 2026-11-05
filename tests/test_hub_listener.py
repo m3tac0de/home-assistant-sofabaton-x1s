@@ -190,8 +190,30 @@ def test_get_hub_listener_singleton_is_shared():
 
 def test_get_hub_listener_warns_on_port_mismatch(caplog):
     first = get_hub_listener(_pick_free_port())
+    first.register_hub(proxy_id="p1", real_hub_ip="10.9.9.1", on_socket=lambda *_: None)
+    port = first.listen_port
     other_port = _pick_free_port()
     with caplog.at_level("WARNING", logger="x1proxy.listener"):
         second = get_hub_listener(other_port)
     assert first is second
+    # A registered hub keeps the port it was told to dial back to.
+    assert second.listen_port == port
     assert any("existing listener" in rec.getMessage() for rec in caplog.records)
+
+
+def test_get_hub_listener_moves_an_idle_listener_to_the_requested_port(caplog):
+    """A port change applies once every hub has stopped (Settings tab and
+    cogwheel), instead of at the next Home Assistant restart."""
+    first = get_hub_listener(_pick_free_port())
+    first.register_hub(proxy_id="p1", real_hub_ip="10.9.9.1", on_socket=lambda *_: None)
+    first.unregister_hub("p1")
+    new_port = _pick_free_port()
+    with caplog.at_level("WARNING", logger="x1proxy.listener"):
+        second = get_hub_listener(new_port)
+    assert first is second
+    assert second.listen_port == new_port
+    assert not any("existing listener" in rec.getMessage() for rec in caplog.records)
+    # The next registration opens the new port.
+    assert second.register_hub(proxy_id="p2", real_hub_ip="10.9.9.2", on_socket=lambda *_: None) == new_port
+    with socket.create_connection(("127.0.0.1", new_port), timeout=1.0):
+        pass

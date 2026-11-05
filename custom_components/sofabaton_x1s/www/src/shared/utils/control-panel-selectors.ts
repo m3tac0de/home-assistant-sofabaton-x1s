@@ -6,6 +6,7 @@ import type {
   ControlPanelSnapshot,
   HassLike,
   HubClickAction,
+  ListenerPorts,
   SidebarPanelMode,
   TabId,
 } from "../ha-context";
@@ -59,6 +60,23 @@ export function sidebarPanelTitle(snapshot: ControlPanelSnapshot): string {
 export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {
   const action = snapshot.state?.hub_click_action;
   return action === "send" || action === "copy" ? action : "none";
+}
+
+/** The integration's own defaults, for a state without them. */
+export const DEFAULT_LISTENER_PORTS: ListenerPorts = {
+  hub_listen_base: 8200,
+  proxy_udp_port: 8102,
+  roku_listen_port: 8060,
+};
+
+/** The listener ports every hub shares, or null when the backend does not
+ *  report them (the Settings tab then has no ports line). */
+export function listenerPorts(snapshot: ControlPanelSnapshot): ListenerPorts | null {
+  return snapshot.state?.listener_ports ?? null;
+}
+
+export function listenerPortDefaults(snapshot: ControlPanelSnapshot): ListenerPorts {
+  return snapshot.state?.listener_port_defaults ?? DEFAULT_LISTENER_PORTS;
 }
 
 export function sortById<T extends { id?: number; button_id?: number }>(items: T[] = []): T[] {

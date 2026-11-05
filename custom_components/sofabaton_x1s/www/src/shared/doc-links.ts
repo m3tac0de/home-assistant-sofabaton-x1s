@@ -8,6 +8,8 @@ export const DOC_URLS = {
   // (listener and direct delivery), and for MQTT delivery.
   networkingWifi: `${DOCS_BASE}/networking.md#optional--wifi-commands-and-wifi-events`,
   networkingMqtt: `${DOCS_BASE}/networking.md#optional--mqtt-delivery-x2`,
+  // What each listener port is for, and what moving it off its default breaks.
+  networkingPorts: `${DOCS_BASE}/networking.md#-complete-port-reference`,
   backup: `${DOCS_BASE}/backup.md`,
   commandPayloads: `${DOCS_BASE}/command_payloads.md`,
 } as const;

@@ -403,8 +403,6 @@ export const cardStyles = [secondaryTabStyles, css`
   .log-line-level--error, .log-line-level--critical { color: #ff8d8d; }
   .log-line-msg { color: #e7edf6; }
   .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
-  .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .hub-tab-layout > .tab-panel { flex: 1; }
   .bottom-dock-status { width: 100%; display: flex; align-items: stretch; justify-content: center; }
   .card-bottom-dock-right {
     position: absolute;
@@ -492,7 +490,8 @@ export const cardStyles = [secondaryTabStyles, css`
   .setting-tile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .setting-tile-control { flex-shrink: 0; display: flex; align-items: center; }
   .setting-title { font-size: 14px; font-weight: 700; color: var(--primary-text-color); display: flex; align-items: center; gap: 7px; }
-  .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 14%, var(--ha-card-background, var(--card-background-color))); color: var(--sb-accent-text); flex-shrink: 0; }
+  /* A tile whose whole row opens a dialog: its action reads as a button. */
+  .setting-action-chip { padding: 6px 12px; border: 1px solid var(--primary-color); border-radius: 8px; background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-text-color); font-size: 13px; font-weight: 700; white-space: nowrap; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
@@ -672,8 +671,9 @@ export const cardStyles = [secondaryTabStyles, css`
   .backend-unavailable-icon ha-icon { --mdc-icon-size: 40px; }
   .backend-unavailable-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .backend-unavailable-copy { font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); max-width: 320px; }
-  .settings-hub-header { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 0; }
-  .settings-content { flex-shrink: 0; display: flex; flex-direction: column; }
+  /* The Settings subtabs (Hub, Global): the hub card and the lists scroll together. */
+  .settings-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .settings-body > .hub-compact-card, .settings-body > .settings-list { flex-shrink: 0; }
   .hub-compact-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: var(--ha-card-background, var(--card-background-color, #fff)); }
   .hub-compact-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .hub-compact-icon-wrap { position: relative; flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px; background: white; border: 1.5px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); display: flex; align-items: center; justify-content: center; transition: color 250ms ease, border-color 250ms ease; }

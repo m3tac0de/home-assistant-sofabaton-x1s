@@ -155,7 +155,7 @@ test.describe("tools-card browser harness", () => {
       () => window.__toolsCardHarness.supportedLanguages,
     );
     const scenarios = ["1", "add-device", "activities-capture", "backup-edit", "automation-events", "18", "21", "24",
-      "wifi-delivery-failed", "wifi-create-mqtt-no-broker", "settings-x2-broker"];
+      "wifi-delivery-failed", "wifi-create-mqtt-no-broker", "settings-x2-broker", "settings-global-ports"];
     const failures = [];
 
     for (const language of languages) {
@@ -174,6 +174,12 @@ test.describe("tools-card browser harness", () => {
             await card._brokerForm.load("hub-1");
             await card.updateComplete;
             card.shadowRoot.querySelector(".setting-broker").click();
+            await card.updateComplete;
+          }
+          if (scenarioId === "settings-global-ports") {
+            // The ports dialog, open: three labelled fields and Save.
+            const card = window.__toolsCardHarness.getCard();
+            card.shadowRoot.querySelector(".setting-ports").click();
             await card.updateComplete;
           }
           if (scenarioId === "wifi-delivery-failed") {
@@ -745,6 +751,86 @@ test.describe("tools-card browser harness", () => {
     });
   });
 
+  test("Settings splits into a Hub and a Global subtab, and remembers the choice", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("1"));
+    const view = () => page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot;
+      return {
+        tabs: [...root.querySelectorAll(".settings-panel .secondary-tab-btn")].map((tab) => ({
+          label: tab.textContent.replace(/\s+/g, " ").trim(),
+          active: tab.classList.contains("active"),
+        })),
+        hubCard: Boolean(root.querySelector(".settings-body .hub-compact-card")),
+        rows: [...root.querySelectorAll(".settings-list .setting-title")].map((title) => title.textContent.trim()),
+        pills: root.querySelectorAll(".setting-global-tag").length,
+      };
+    });
+    await expect.poll(async () => (await view()).rows.length).toBeGreaterThan(0);
+    // The hub's own settings, under its card, on the left subtab.
+    expect(await view()).toEqual({
+      tabs: [{ label: "Hub", active: true }, { label: "Global", active: false }],
+      hubCard: true,
+      rows: ["Hex Logging", "Proxy", "Wifi Device", "Find Remote", "Sync Remote"],
+      pills: 0,
+    });
+    await page.locator(".settings-panel .secondary-tab-btn", { hasText: "Global" }).click();
+    expect(await view()).toEqual({
+      tabs: [{ label: "Hub", active: false }, { label: "Global", active: true }],
+      hubCard: false,
+      rows: ["Persistent Cache", "Hub Tab Clicks", "Sidebar Panel", "Network Ports"],
+      pills: 0,
+    });
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("sofabaton_x1s:tools_card:view_state:v1") || "{}").selectedSettingsSection);
+    expect(saved).toBe("global");
+  });
+
+  test("Network Ports: the dialog checks the ports, shows one in use, and saves all three", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("settings-global-ports"));
+    const tile = page.locator(".setting-ports");
+    await expect(tile).toContainText("Hubs connect on TCP 8200, the Sofabaton app finds Home Assistant on UDP 8102, and Wifi Commands arrive on TCP 8060.");
+    await tile.click();
+    const dialog = page.locator(".ports-dialog");
+    await expect(dialog).toBeVisible();
+    const field = (key) => dialog.locator(`#sb-ports-${key} input`);
+    const setPort = async (key, value) => {
+      await field(key).fill(value);
+      await field(key).dispatchEvent("change");
+    };
+    const portCalls = () => page.evaluate(() => window.__toolsCardHarness.getCalls()
+      .filter((call) => call.message?.type === "sofabaton_x1s/control_panel/set_listener_ports")
+      .map(({ message: { type: _type, ...ports } }) => ports));
+
+    // Checked here: a number in range, and two TCP listeners on one port.
+    await setPort("hub_listen_base", "70000");
+    await dialog.locator(".ports-save").click();
+    await expect(dialog.locator("#sb-ports-hub_listen_base-error")).toHaveText("Enter a port number from 1 to 65535.");
+    await setPort("hub_listen_base", "8060");
+    await dialog.locator(".ports-save").click();
+    await expect(dialog.locator("#sb-ports-hub_listen_base-error")).toHaveText("The hub port and the Wifi Commands port need to differ.");
+    expect(await portCalls()).toEqual([]);
+
+    // Checked by Home Assistant: a port another program holds.
+    await setPort("hub_listen_base", "8201");
+    await dialog.locator(".ports-save").click();
+    await expect(dialog.locator("#sb-ports-hub_listen_base-error"))
+      .toHaveText("Port 8201 is already in use on the Home Assistant host. Port 8202 is free.");
+    await expect(dialog).toBeVisible();
+
+    await setPort("hub_listen_base", "8300");
+    await setPort("roku_listen_port", "8061");
+    await dialog.locator(".ports-save").click();
+    await expect(dialog).toBeHidden();
+    expect(await portCalls()).toEqual([
+      { hub_listen_base: 8201, proxy_udp_port: 8102, roku_listen_port: 8060 },
+      { hub_listen_base: 8300, proxy_udp_port: 8102, roku_listen_port: 8061 },
+    ]);
+    await expect(tile).toContainText("TCP 8300");
+    await expect(tile).toContainText("TCP 8061");
+  });
+
   test("the X2 Settings tab shows the hub's broker, and Change warns before replacing it", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("settings-x2-broker"));
@@ -800,7 +886,6 @@ test.describe("tools-card browser harness", () => {
     const rows = () => page.evaluate(() =>
       [...window.__toolsCardHarness.getCard().shadowRoot.querySelectorAll(".settings-list .setting-tile")].map((row) => ({
         broker: row.classList.contains("setting-broker"),
-        global: Boolean(row.querySelector(".setting-global-tag")),
         text: row.textContent.replace(/\s+/g, " ").trim(),
       })));
     await expect.poll(async () => (await rows()).length).toBeGreaterThan(0);
@@ -813,7 +898,10 @@ test.describe("tools-card browser harness", () => {
     await expect.poll(async () => (await rows()).find((row) => row.broker)?.text ?? "")
       .toContain("The hub is connected to an MQTT broker.");
     const tile = (await rows()).find((row) => row.broker);
-    expect(tile.global).toBe(false);
+    // A hub row: on the Hub subtab, next to the hub's own settings.
+    expect(await page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot.querySelector(".settings-panel .secondary-tab-btn.active")?.textContent.trim()))
+      .toBe("Hub");
     expect(tile.text).not.toContain("Basement X2");
     expect(tile.text).toContain("Change");
   });

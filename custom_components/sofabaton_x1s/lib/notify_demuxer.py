@@ -153,6 +153,23 @@ class NotifyDemuxer:
             )
             self._ensure_running_locked()
 
+    def retarget_if_idle(self, listen_port: int) -> bool:
+        """Take ``listen_port`` for the next start, if no proxy is registered.
+
+        A registered proxy keeps the port its hub and app were told, so a
+        busy demuxer refuses. An idle one has closed its socket already,
+        so the next registration opens the new port.
+        """
+
+        port = int(listen_port)
+        with self._lock:
+            if self._registrations:
+                return False
+            if port != self.listen_port:
+                log.info("[DEMUX] idle listener moves from %d to %d", self.listen_port, port)
+                self.listen_port = port
+            return True
+
     def unregister_proxy(self, proxy_id: str) -> None:
         with self._lock:
             if proxy_id in self._registrations:
@@ -493,10 +510,22 @@ _GLOBAL_DEMUXER: Optional[NotifyDemuxer] = None
 
 
 def get_notify_demuxer(listen_port: Optional[int] = None) -> NotifyDemuxer:
+    """Return the process-wide :class:`NotifyDemuxer` singleton.
+
+    The first caller fixes the listen port. A later caller requesting a
+    different port moves an idle demuxer (no proxy registered) to it, so
+    a port change applies once every proxy has stopped; a busy one keeps
+    its port, with a warning.
+    """
+
     global _GLOBAL_DEMUXER
     if _GLOBAL_DEMUXER is None:
         _GLOBAL_DEMUXER = NotifyDemuxer(listen_port or 8102)
-    elif listen_port is not None and listen_port != _GLOBAL_DEMUXER.listen_port:
+    elif (
+        listen_port is not None
+        and listen_port != _GLOBAL_DEMUXER.listen_port
+        and not _GLOBAL_DEMUXER.retarget_if_idle(listen_port)
+    ):
         log.warning(
             "[DEMUX] existing listener on %d (ignoring requested %d)",
             _GLOBAL_DEMUXER.listen_port,

@@ -303,10 +303,11 @@ def test_options_flow_syncs_shared_ports_to_all_hubs() -> None:
             entry.data = data
 
     flow.hass = SimpleNamespace(
+        data={},
         config_entries=SimpleNamespace(
             async_entries=lambda domain: [entry_one, entry_two],
             async_update_entry=_update_entry,
-        )
+        ),
     )
 
     result = _run(

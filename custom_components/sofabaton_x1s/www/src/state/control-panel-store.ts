@@ -12,10 +12,13 @@ import type {
   SidebarPanelMode,
   HubClickItem,
   HubEventFireEvent,
+  ListenerPortKey,
+  ListenerPorts,
   RefreshKind,
   RuntimeCompletionNotice,
   SectionId,
   SettingKey,
+  SettingsSectionId,
   TabId,
   WifiPressEvent,
   WifiSectionId,
@@ -59,11 +62,18 @@ const RUNTIME_POLL_PUSHED_MS = 10_000;
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache", "logs"]);
 
+/** How a listener ports change ended, for the Settings tab's ports dialog. */
+export type ListenerPortsOutcome =
+  | { kind: "saved" }
+  | { kind: "in_use"; inUse: Partial<Record<ListenerPortKey, number | null>> }
+  | { kind: "error"; code: string | null; message: string };
+
 /** activeRefreshLabel sentinel for the whole-hub "Refresh all" operation. */
 export const REFRESH_ALL_KEY = "__refresh_all__";
 const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
 const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "edit", "restore"]);
 const VALID_WIFI_SECTIONS = new Set<WifiSectionId>(["wifi", "hub_events"]);
+const VALID_SETTINGS_SECTIONS = new Set<SettingsSectionId>(["hub", "global"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
@@ -71,6 +81,7 @@ interface PersistedViewState {
   selectedCacheSection?: SectionId;
   selectedBackupSection?: BackupSectionId;
   selectedWifiSection?: WifiSectionId;
+  selectedSettingsSection?: SettingsSectionId;
   openSection?: SectionId | null;
   openBackupSection?: BackupSectionId;
 }
@@ -109,12 +120,16 @@ function readPersistedViewState(): PersistedViewState {
     const selectedWifiSection = VALID_WIFI_SECTIONS.has(parsed?.selectedWifiSection as WifiSectionId)
       ? (parsed.selectedWifiSection as WifiSectionId)
       : "wifi";
+    const selectedSettingsSection = VALID_SETTINGS_SECTIONS.has(parsed?.selectedSettingsSection as SettingsSectionId)
+      ? (parsed.selectedSettingsSection as SettingsSectionId)
+      : "hub";
     return {
       selectedHubEntryId,
       ...(selectedTab ? { selectedTab } : {}),
       selectedCacheSection,
       selectedBackupSection,
       selectedWifiSection,
+      selectedSettingsSection,
     };
   } catch (_error) {
     return {};
@@ -164,6 +179,7 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
   selectedWifiSection: "wifi",
+  selectedSettingsSection: "hub",
   openEntity: null,
   refreshBusyByHub: {},
   externalHubCommandByHub: {},
@@ -491,6 +507,13 @@ export class ControlPanelStore {
   setSelectedWifiSection(sectionId: WifiSectionId) {
     if (this._snapshot.selectedWifiSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedWifiSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+
+  setSelectedSettingsSection(sectionId: SettingsSectionId) {
+    if (this._snapshot.selectedSettingsSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedSettingsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -839,6 +862,39 @@ export class ControlPanelStore {
     } catch (error) {
       this._applyOptimisticHubClickAction(previous);
       this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+
+  /**
+   * Change the listener ports every hub shares. Each hub whose listeners
+   * move reconnects, so the backend refuses while any hub is busy. A port
+   * another program holds comes back as `in_use` (nothing changed); the
+   * dialog shows it on its field.
+   */
+  async setListenerPorts(ports: ListenerPorts): Promise<ListenerPortsOutcome> {
+    if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
+      return { kind: "error", code: "busy", message: TOOLS_CARD_STRINGS.errors.anotherOperation };
+    }
+    const entryId = selectedHub(this._snapshot)?.entry_id ?? null;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "listener_ports" };
+    this.emit();
+    try {
+      const result = await this.api().setListenerPorts(ports);
+      if (!result?.ok) return { kind: "in_use", inUse: result?.in_use ?? {} };
+      if (this._snapshot.state && result.listener_ports) {
+        this._snapshot = {
+          ...this._snapshot,
+          state: { ...this._snapshot.state, listener_ports: result.listener_ports },
+        };
+      }
+      this.showRuntimeCompletion({ tone: "success", label: TOOLS_CARD_STRINGS.settings.portsSaved }, entryId);
+      await this.loadControlPanelState();
+      return { kind: "saved" };
+    } catch (error) {
+      return { kind: "error", code: backendErrorCode(error), message: formatError(error) };
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
@@ -1601,6 +1657,7 @@ export class ControlPanelStore {
           selectedCacheSection: this._snapshot.selectedCacheSection,
           selectedBackupSection: this._snapshot.selectedBackupSection,
           selectedWifiSection: this._snapshot.selectedWifiSection,
+          selectedSettingsSection: this._snapshot.selectedSettingsSection,
         } satisfies PersistedViewState),
       );
     } catch (_error) {

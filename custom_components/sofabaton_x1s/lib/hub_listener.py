@@ -29,8 +29,9 @@ log = logging.getLogger("x1proxy.listener")
 
 # Default TCP port for the shared hub-side listener. Matches the
 # original ``hub_listen_base`` default; user-configured values still
-# work — the first registration's port wins (subsequent differing
-# values log a warning, mirroring NotifyDemuxer).
+# work. While a hub is registered its port wins (a differing request
+# logs a warning, mirroring NotifyDemuxer); an idle listener takes the
+# requested port, so a port change applies once every hub has stopped.
 DEFAULT_HUB_LISTEN_PORT = 8200
 
 # How long the shared listener stays down during a bounce. A disabled hub
@@ -132,6 +133,24 @@ class HubListener:
                 self.listen_port,
             )
             return self.listen_port
+
+    def retarget_if_idle(self, listen_port: int) -> bool:
+        """Take ``listen_port`` for the next start, if no hub is registered.
+
+        The port is shared: while a hub is registered it keeps the port it
+        was told to dial back to, so a busy listener refuses. An idle one
+        has closed its socket already (the last unregister stopped it), so
+        the next registration opens the new port.
+        """
+
+        port = int(listen_port)
+        with self._lock:
+            if self._by_proxy:
+                return False
+            if port != self.listen_port:
+                log.info("[LISTEN] idle listener moves from %d to %d", self.listen_port, port)
+                self.listen_port = port
+            return True
 
     def unregister_hub(self, proxy_id: str) -> None:
         with self._lock:
@@ -413,16 +432,21 @@ _GLOBAL_LOCK = threading.Lock()
 def get_hub_listener(listen_port: Optional[int] = None) -> HubListener:
     """Return the process-wide :class:`HubListener` singleton.
 
-    The first caller fixes the listen port. Later callers requesting a
-    different port get a warning and the existing instance — matching
-    the lifecycle behaviour of :func:`get_notify_demuxer`.
+    The first caller fixes the listen port. A later caller requesting a
+    different port moves an idle listener (no hub registered) to it; a
+    busy one keeps its port, with a warning — matching the lifecycle
+    behaviour of :func:`get_notify_demuxer`.
     """
 
     global _GLOBAL_LISTENER
     with _GLOBAL_LOCK:
         if _GLOBAL_LISTENER is None:
             _GLOBAL_LISTENER = HubListener(listen_port or DEFAULT_HUB_LISTEN_PORT)
-        elif listen_port is not None and listen_port != _GLOBAL_LISTENER.listen_port:
+        elif (
+            listen_port is not None
+            and listen_port != _GLOBAL_LISTENER.listen_port
+            and not _GLOBAL_LISTENER.retarget_if_idle(listen_port)
+        ):
             log.warning(
                 "[LISTEN] existing listener on %d (ignoring requested %d)",
                 _GLOBAL_LISTENER.listen_port,

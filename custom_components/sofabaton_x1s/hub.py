@@ -190,6 +190,13 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         return getattr(self, "_cache_epoch", 0)
 
     @property
+    def listener_ports(self) -> tuple[str, str]:
+        """The app UDP and hub TCP listener ports this hub's proxy was made
+        with, as strings (options may hold either type)."""
+
+        return (str(self._proxy_udp_port), str(self._hub_listen_base))
+
+    @property
     def bridge_stats(self) -> dict[str, Any] | None:
         """Bridge-loop health counters for diagnostics (issue #279)."""
 

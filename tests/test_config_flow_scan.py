@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from custom_components.sofabaton_x1s import config_flow as cf
+from custom_components.sofabaton_x1s import listener_ports as lp
 from custom_components.sofabaton_x1s.config_flow import ConfigFlow
 from custom_components.sofabaton_x1s.const import (
     CONF_ENABLE_X2_DISCOVERY,
@@ -435,17 +436,20 @@ def test_every_ports_step_error_is_translated() -> None:
 def test_ports_in_use_finds_a_stand_in_per_protocol(monkeypatch) -> None:
     taken = {("tcp", 8200), ("tcp", 8201), ("udp", 8102), ("tcp", 8060)}
     monkeypatch.setattr(
-        cf, "_port_is_free", lambda port, *, udp: ("udp" if udp else "tcp", port) not in taken
+        lp, "port_is_free", lambda port, *, udp: ("udp" if udp else "tcp", port) not in taken
     )
 
-    assert cf._ports_in_use(dict(_DEFAULT_PORTS)) == {
+    assert lp.ports_in_use(dict(_DEFAULT_PORTS)) == {
         "hub_listen_base": 8202,
         "proxy_udp_port": 8103,
         "roku_listen_port": 8061,
     }
     # Two TCP listeners never get the same stand-in.
     clash = {"hub_listen_base": 8200, "proxy_udp_port": 8102, "roku_listen_port": 8202}
-    assert cf._ports_in_use(clash)["hub_listen_base"] == 8203
+    assert lp.ports_in_use(clash)["hub_listen_base"] == 8203
+    # A change checks only the ports it moves (ours hold the others).
+    assert lp.ports_in_use(dict(_DEFAULT_PORTS), ["proxy_udp_port"]) == {"proxy_udp_port": 8103}
+    assert lp.ports_in_use(dict(_DEFAULT_PORTS), []) == {}
 
 
 def test_port_is_free_sees_a_real_listener() -> None:
@@ -454,9 +458,9 @@ def test_port_is_free_sees_a_real_listener() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
         tcp.bind(("0.0.0.0", 0))
         tcp.listen(1)
-        assert cf._port_is_free(tcp.getsockname()[1], udp=False) is False
+        assert lp.port_is_free(tcp.getsockname()[1], udp=False) is False
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
         udp.bind(("0.0.0.0", 0))
         port = udp.getsockname()[1]
-        assert cf._port_is_free(port, udp=True) is False
-    assert cf._port_is_free(port, udp=True) is True
+        assert lp.port_is_free(port, udp=True) is False
+    assert lp.port_is_free(port, udp=True) is True

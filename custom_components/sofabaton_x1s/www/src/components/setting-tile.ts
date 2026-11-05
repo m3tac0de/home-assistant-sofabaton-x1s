@@ -6,7 +6,6 @@ export function renderSettingTile(params: {
   description: unknown;
   classes?: string;
   control: unknown;
-  footerLabel?: string;
   onClick?: () => void;
   /** The whole tile is the control (no switch or select inside it). */
   button?: boolean;
@@ -40,12 +39,7 @@ export function renderSettingTile(params: {
       @click=${params.onClick ?? nothing}
     >
       <div class="setting-tile-body">
-        <div class="setting-title">
-          ${params.title}
-          ${params.footerLabel
-            ? html`<span class="setting-global-tag">${params.footerLabel}</span>`
-            : nothing}
-        </div>
+        <div class="setting-title">${params.title}</div>
         <div class="setting-description">${params.description}</div>
       </div>
       <div class="setting-tile-control">${params.control}</div>

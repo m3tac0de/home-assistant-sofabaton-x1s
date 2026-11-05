@@ -188,16 +188,17 @@ export const TOOLS_CARD_STRINGS_EN = {
     loading: "Loading…",
     noHubsFound: "No hubs found.",
     unknownHubName: "Unknown",
+    // The Settings tab's subtabs: the selected hub's settings, and the
+    // ones shared by every hub.
+    sectionHub: "Hub",
+    sectionGlobal: "Global",
     activities: "Activities",
     devices: "Devices",
     persistentCacheTitle: "Persistent Cache",
     persistentCacheDescription: "Store activity and device data locally for faster access.",
-    persistentCacheFooter: "GLOBAL",
-    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
     hubClickActionTitle: "Hub Tab Clicks",
     hubClickActionDescription:
       "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
-    hubClickActionFooter: "GLOBAL",
     hubClickActionOptionNone: "Do nothing",
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
@@ -205,7 +206,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     // The name is the panel's sidebar name (renameable while it is shown).
     sidebarPanelDescription: (name: string) =>
       `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
-    sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
@@ -226,6 +226,33 @@ export const TOOLS_CARD_STRINGS_EN = {
     findRemoteDescription: "Make the remote beep so you can locate it.",
     syncRemoteTitle: "Sync Remote",
     syncRemoteDescription: "Push the latest configuration to the physical remote.",
+    // The listener ports every hub shares (Global subtab, and its dialog).
+    portsTitle: "Network Ports",
+    portsDescription: (hub: number, app: number, wifi: number) =>
+      `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and Wifi Commands arrive on TCP ${wifi}.`,
+    portsChange: "Change",
+    portsDialogTitle: "Network ports",
+    portsIntro: "These ports are shared by all your hubs. Saving reconnects every hub whose port changes.",
+    portsDocsLink: "What each port is for",
+    portsHubLabel: "Hub port (TCP)",
+    portsHubHelper: (defaultPort: number) =>
+      `Your hubs connect to Home Assistant on this port. The default is ${defaultPort}.`,
+    portsAppLabel: "App port (UDP)",
+    portsAppHelper: (defaultPort: number) =>
+      `The Sofabaton app finds Home Assistant on this port. The iOS app only looks on ${defaultPort}.`,
+    portsWifiLabel: "Wifi Commands port (TCP)",
+    portsWifiHelper: (defaultPort: number) =>
+      `Your hubs send Wifi Commands and Wifi Events here. An X1 hub only uses ${defaultPort}, and after a change your Wifi devices need to be synced again.`,
+    portsInvalid: "Enter a port number from 1 to 65535.",
+    portsSamePort: "The hub port and the Wifi Commands port need to differ.",
+    portsInUse: (port: number, free: number | null) => free != null
+      ? `Port ${port} is already in use on the Home Assistant host. Port ${free} is free.`
+      : `Port ${port} is already in use on the Home Assistant host. Enter another port.`,
+    portsSave: "Save",
+    portsSaving: "Saving…",
+    portsSavingNote: "Hubs reconnect on the new ports, which takes a few seconds.",
+    portsSaved: "Network ports saved.",
+    portsFailed: "The ports could not be saved.",
   },
   cache: {
     loading: "Loading…",

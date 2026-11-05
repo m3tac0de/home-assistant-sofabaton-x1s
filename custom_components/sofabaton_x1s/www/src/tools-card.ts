@@ -11,6 +11,7 @@ import type {
   HubAction,
   HubClickItem,
   SettingKey,
+  SettingsSectionId,
   TabId,
   WifiPressEvent,
   WifiSectionId,
@@ -22,6 +23,8 @@ import {
   hubClickAction,
   hubConnected,
   hubIcon,
+  listenerPortDefaults,
+  listenerPorts,
   persistentCacheEnabled,
   sidebarPanelMode,
   sidebarPanelTitle,
@@ -43,6 +46,7 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderRenameDialog } from "./components/rename-dialog";
 import { HubBrokerFormController, hubBrokerFormStyles } from "./components/hub-broker-form";
+import { ListenerPortsFormController, listenerPortsFormStyles } from "./components/listener-ports-form";
 import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead } from "./components/ir-emitter-pill";
 import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
 import {
@@ -197,7 +201,7 @@ const previewStyles = css`
 `;
 
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles, irEmitterStyles];
+  static styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles, listenerPortsFormStyles, irEmitterStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so
@@ -254,6 +258,7 @@ class SofabatonControlPanelCard extends LitElement {
   private _sidebarRenameBusy = false;
   // Settings tab: an X2's MQTT broker line and its setup dialog.
   private readonly _brokerForm = new HubBrokerFormController(this, () => this._snapshot?.hass ?? null);
+  private readonly _portsForm = new ListenerPortsFormController(this, (ports) => this._store.setListenerPorts(ports));
   private _addDeviceBusy = false;
   private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
@@ -1226,6 +1231,13 @@ class SofabatonControlPanelCard extends LitElement {
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
       onRenameSidebarPanel: () => this.openSidebarRename(),
+      section: this._snapshot.selectedSettingsSection,
+      onSelectSection: (section: SettingsSectionId) => this._store.setSelectedSettingsSection(section),
+      listenerPorts: listenerPorts(this._snapshot),
+      onChangePorts: () => {
+        const ports = listenerPorts(this._snapshot);
+        if (ports) this._portsForm.openWith(ports, listenerPortDefaults(this._snapshot));
+      },
       broker: hub?.broker_setup_available === true
         ? {
             description: this._brokerForm.renderSettingDescription(),
@@ -1393,6 +1405,7 @@ class SofabatonControlPanelCard extends LitElement {
         ${this.renderHubRenameDialog()}
         ${this.renderSidebarRenameDialog()}
         ${this._brokerForm.render()}
+        ${this._portsForm.render()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel()
             ? null

@@ -1312,8 +1312,6 @@ var cardStyles = [secondaryTabStyles, i`
   .log-line-level--error, .log-line-level--critical { color: #ff8d8d; }
   .log-line-msg { color: #e7edf6; }
   .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
-  .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .hub-tab-layout > .tab-panel { flex: 1; }
   .bottom-dock-status { width: 100%; display: flex; align-items: stretch; justify-content: center; }
   .card-bottom-dock-right {
     position: absolute;
@@ -1401,7 +1399,8 @@ var cardStyles = [secondaryTabStyles, i`
   .setting-tile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .setting-tile-control { flex-shrink: 0; display: flex; align-items: center; }
   .setting-title { font-size: 14px; font-weight: 700; color: var(--primary-text-color); display: flex; align-items: center; gap: 7px; }
-  .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent); background: color-mix(in srgb, var(--primary-color) 14%, var(--ha-card-background, var(--card-background-color))); color: var(--sb-accent-text); flex-shrink: 0; }
+  /* A tile whose whole row opens a dialog: its action reads as a button. */
+  .setting-action-chip { padding: 6px 12px; border: 1px solid var(--primary-color); border-radius: 8px; background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-text-color); font-size: 13px; font-weight: 700; white-space: nowrap; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
   .setting-select {
@@ -1581,8 +1580,9 @@ var cardStyles = [secondaryTabStyles, i`
   .backend-unavailable-icon ha-icon { --mdc-icon-size: 40px; }
   .backend-unavailable-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .backend-unavailable-copy { font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); max-width: 320px; }
-  .settings-hub-header { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 0; }
-  .settings-content { flex-shrink: 0; display: flex; flex-direction: column; }
+  /* The Settings subtabs (Hub, Global): the hub card and the lists scroll together. */
+  .settings-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .settings-body > .hub-compact-card, .settings-body > .settings-list { flex-shrink: 0; }
   .hub-compact-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: var(--ha-card-background, var(--card-background-color, #fff)); }
   .hub-compact-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .hub-compact-icon-wrap { position: relative; flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px; background: white; border: 1.5px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); display: flex; align-items: center; justify-content: center; transition: color 250ms ease, border-color 250ms ease; }
@@ -2672,22 +2672,22 @@ var TOOLS_CARD_STRINGS_EN = {
     loading: "Loading\u2026",
     noHubsFound: "No hubs found.",
     unknownHubName: "Unknown",
+    // The Settings tab's subtabs: the selected hub's settings, and the
+    // ones shared by every hub.
+    sectionHub: "Hub",
+    sectionGlobal: "Global",
     activities: "Activities",
     devices: "Devices",
     persistentCacheTitle: "Persistent Cache",
     persistentCacheDescription: "Store activity and device data locally for faster access.",
-    persistentCacheFooter: "GLOBAL",
-    // Draft copy — tweak freely. Shown directly under the Persistent Cache row.
     hubClickActionTitle: "Hub Tab Clicks",
     hubClickActionDescription: "Choose what happens when you click a command, favorite, macro, or button in the Hub tab lists.",
-    hubClickActionFooter: "GLOBAL",
     hubClickActionOptionNone: "Do nothing",
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
     // The name is the panel's sidebar name (renameable while it is shown).
     sidebarPanelDescription: (name) => `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
-    sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
@@ -2707,7 +2707,28 @@ var TOOLS_CARD_STRINGS_EN = {
     findRemoteTitle: "Find Remote",
     findRemoteDescription: "Make the remote beep so you can locate it.",
     syncRemoteTitle: "Sync Remote",
-    syncRemoteDescription: "Push the latest configuration to the physical remote."
+    syncRemoteDescription: "Push the latest configuration to the physical remote.",
+    // The listener ports every hub shares (Global subtab, and its dialog).
+    portsTitle: "Network Ports",
+    portsDescription: (hub, app, wifi) => `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and Wifi Commands arrive on TCP ${wifi}.`,
+    portsChange: "Change",
+    portsDialogTitle: "Network ports",
+    portsIntro: "These ports are shared by all your hubs. Saving reconnects every hub whose port changes.",
+    portsDocsLink: "What each port is for",
+    portsHubLabel: "Hub port (TCP)",
+    portsHubHelper: (defaultPort) => `Your hubs connect to Home Assistant on this port. The default is ${defaultPort}.`,
+    portsAppLabel: "App port (UDP)",
+    portsAppHelper: (defaultPort) => `The Sofabaton app finds Home Assistant on this port. The iOS app only looks on ${defaultPort}.`,
+    portsWifiLabel: "Wifi Commands port (TCP)",
+    portsWifiHelper: (defaultPort) => `Your hubs send Wifi Commands and Wifi Events here. An X1 hub only uses ${defaultPort}, and after a change your Wifi devices need to be synced again.`,
+    portsInvalid: "Enter a port number from 1 to 65535.",
+    portsSamePort: "The hub port and the Wifi Commands port need to differ.",
+    portsInUse: (port, free) => free != null ? `Port ${port} is already in use on the Home Assistant host. Port ${free} is free.` : `Port ${port} is already in use on the Home Assistant host. Enter another port.`,
+    portsSave: "Save",
+    portsSaving: "Saving\u2026",
+    portsSavingNote: "Hubs reconnect on the new ports, which takes a few seconds.",
+    portsSaved: "Network ports saved.",
+    portsFailed: "The ports could not be saved."
   },
   cache: {
     loading: "Loading\u2026",
@@ -3953,6 +3974,16 @@ var ControlPanelApi = class {
       title
     });
   }
+  // Global setting: the listener ports every hub shares. Hubs whose
+  // listeners move reconnect before this answers.
+  setListenerPorts(ports) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_listener_ports",
+      hub_listen_base: ports.hub_listen_base,
+      proxy_udp_port: ports.proxy_udp_port,
+      roku_listen_port: ports.roku_listen_port
+    });
+  }
   runAction(entryId, action) {
     return this.hass.callWS({
       type: "sofabaton_x1s/control_panel/run_action",
@@ -4755,6 +4786,17 @@ function hubClickAction(snapshot) {
   const action = snapshot.state?.hub_click_action;
   return action === "send" || action === "copy" ? action : "none";
 }
+var DEFAULT_LISTENER_PORTS = {
+  hub_listen_base: 8200,
+  proxy_udp_port: 8102,
+  roku_listen_port: 8060
+};
+function listenerPorts(snapshot) {
+  return snapshot.state?.listener_ports ?? null;
+}
+function listenerPortDefaults(snapshot) {
+  return snapshot.state?.listener_port_defaults ?? DEFAULT_LISTENER_PORTS;
+}
 function sortById(items = []) {
   return [...items].sort(
     (left, right) => Number(left?.id ?? left?.button_id ?? 0) - Number(right?.id ?? right?.button_id ?? 0)
@@ -5134,6 +5176,7 @@ var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
 var VALID_WIFI_SECTIONS = /* @__PURE__ */ new Set(["wifi", "hub_events"]);
+var VALID_SETTINGS_SECTIONS = /* @__PURE__ */ new Set(["hub", "global"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -5151,12 +5194,14 @@ function readPersistedViewState() {
     const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection) ? parsed.selectedCacheSection : VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : "activities";
     const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection) ? parsed.selectedBackupSection : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : "make";
     const selectedWifiSection = VALID_WIFI_SECTIONS.has(parsed?.selectedWifiSection) ? parsed.selectedWifiSection : "wifi";
+    const selectedSettingsSection = VALID_SETTINGS_SECTIONS.has(parsed?.selectedSettingsSection) ? parsed.selectedSettingsSection : "hub";
     return {
       selectedHubEntryId,
       ...selectedTab ? { selectedTab } : {},
       selectedCacheSection,
       selectedBackupSection,
-      selectedWifiSection
+      selectedWifiSection,
+      selectedSettingsSection
     };
   } catch (_error) {
     return {};
@@ -5195,6 +5240,7 @@ var INITIAL_SNAPSHOT = {
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
   selectedWifiSection: "wifi",
+  selectedSettingsSection: "hub",
   openEntity: null,
   refreshBusyByHub: {},
   externalHubCommandByHub: {},
@@ -5475,6 +5521,12 @@ var ControlPanelStore = class {
   setSelectedWifiSection(sectionId) {
     if (this._snapshot.selectedWifiSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedWifiSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+  setSelectedSettingsSection(sectionId) {
+    if (this._snapshot.selectedSettingsSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedSettingsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -5787,6 +5839,38 @@ var ControlPanelStore = class {
     } catch (error) {
       this._applyOptimisticHubClickAction(previous);
       this.showRuntimeCompletion({ tone: "error", label: formatError(error) }, hub.entry_id);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+  /**
+   * Change the listener ports every hub shares. Each hub whose listeners
+   * move reconnects, so the backend refuses while any hub is busy. A port
+   * another program holds comes back as `in_use` (nothing changed); the
+   * dialog shows it on its field.
+   */
+  async setListenerPorts(ports) {
+    if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
+      return { kind: "error", code: "busy", message: TOOLS_CARD_STRINGS.errors.anotherOperation };
+    }
+    const entryId = selectedHub(this._snapshot)?.entry_id ?? null;
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "listener_ports" };
+    this.emit();
+    try {
+      const result = await this.api().setListenerPorts(ports);
+      if (!result?.ok) return { kind: "in_use", inUse: result?.in_use ?? {} };
+      if (this._snapshot.state && result.listener_ports) {
+        this._snapshot = {
+          ...this._snapshot,
+          state: { ...this._snapshot.state, listener_ports: result.listener_ports }
+        };
+      }
+      this.showRuntimeCompletion({ tone: "success", label: TOOLS_CARD_STRINGS.settings.portsSaved }, entryId);
+      await this.loadControlPanelState();
+      return { kind: "saved" };
+    } catch (error) {
+      return { kind: "error", code: backendErrorCode(error), message: formatError(error) };
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
@@ -6443,7 +6527,8 @@ var ControlPanelStore = class {
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
           selectedBackupSection: this._snapshot.selectedBackupSection,
-          selectedWifiSection: this._snapshot.selectedWifiSection
+          selectedWifiSection: this._snapshot.selectedWifiSection,
+          selectedSettingsSection: this._snapshot.selectedSettingsSection
         })
       );
     } catch (_error) {
@@ -6823,10 +6908,7 @@ function renderSettingTile(params) {
       @click=${params.onClick ?? A}
     >
       <div class="setting-tile-body">
-        <div class="setting-title">
-          ${params.title}
-          ${params.footerLabel ? b2`<span class="setting-global-tag">${params.footerLabel}</span>` : A}
-        </div>
+        <div class="setting-title">${params.title}</div>
         <div class="setting-description">${params.description}</div>
       </div>
       <div class="setting-tile-control">${params.control}</div>
@@ -6845,6 +6927,12 @@ var phraseNameStyles = i`
 `;
 
 // custom_components/sofabaton_x1s/www/src/tabs/settings-tab.ts
+function settingsSectionItems() {
+  return [
+    { id: "hub", label: TOOLS_CARD_STRINGS.settings.sectionHub, icon: "mdi:router-wireless" },
+    { id: "global", label: TOOLS_CARD_STRINGS.settings.sectionGlobal, icon: "mdi:earth" }
+  ];
+}
 function renderSettingsTab(params) {
   if (params.loading) return b2`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
   if (params.error) return b2`<div class="cache-state error">${params.error}</div>`;
@@ -6876,120 +6964,58 @@ function renderSettingsTab(params) {
     }}
       ><ha-icon icon="mdi:pencil"></ha-icon></button>`
   );
-  return b2`
-    <div class="hub-tab-layout">
-      <div class="settings-hub-header">
-        <div class="hub-compact-card">
-          <div class="hub-compact-left">
-            <div class="hub-compact-icon-wrap ${connected ? "hub-compact-icon-wrap--on" : "hub-compact-icon-wrap--off"}">
-              ${hubIcon("hero", "hub-compact-icon")}
-              <div class="hub-compact-badge ${proxyOn ? "hub-compact-badge--on" : "hub-compact-badge--off"}">
-                <ha-icon icon="mdi:cellphone"></ha-icon>
-              </div>
-            </div>
-            <div class="hub-compact-text">
-              <div class="hub-compact-name-row">
-                <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
-                <button
-                  class="icon-btn hub-rename-btn"
-                  ?disabled=${!canAct}
-                  aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
-                  title=${TOOLS_CARD_STRINGS.settings.renameHub}
-                  @click=${params.onRenameHub}
-                ><ha-icon icon="mdi:pencil"></ha-icon></button>
-              </div>
-              ${versionLine ? b2`<div class="hub-compact-meta">${versionLine}</div>` : A}
-              ${firmwareOutdated(hub) ? b2`<div class="hub-compact-meta"><span
-                class="hub-fw-chip"
-                title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(
+  const hubSection = b2`
+    <div class="hub-compact-card">
+      <div class="hub-compact-left">
+        <div class="hub-compact-icon-wrap ${connected ? "hub-compact-icon-wrap--on" : "hub-compact-icon-wrap--off"}">
+          ${hubIcon("hero", "hub-compact-icon")}
+          <div class="hub-compact-badge ${proxyOn ? "hub-compact-badge--on" : "hub-compact-badge--off"}">
+            <ha-icon icon="mdi:cellphone"></ha-icon>
+          </div>
+        </div>
+        <div class="hub-compact-text">
+          <div class="hub-compact-name-row">
+            <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+            <button
+              class="icon-btn hub-rename-btn"
+              ?disabled=${!canAct}
+              aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
+              title=${TOOLS_CARD_STRINGS.settings.renameHub}
+              @click=${params.onRenameHub}
+            ><ha-icon icon="mdi:pencil"></ha-icon></button>
+          </div>
+          ${versionLine ? b2`<div class="hub-compact-meta">${versionLine}</div>` : A}
+          ${firmwareOutdated(hub) ? b2`<div class="hub-compact-meta"><span
+            class="hub-fw-chip"
+            title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(
     hub.firmware_min_recommended ?? "?",
     hub.firmware_min_supported ?? "?",
     firmwareUnsupported(hub)
   )}
-              ><ha-icon icon="mdi:update"></ha-icon>${firmwareUnsupported(hub) ? TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired : TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended}</span></div>` : A}
-              ${hub.ip_address ? b2`<div class="hub-compact-meta">${hub.ip_address}</div>` : A}
-            </div>
+          ><ha-icon icon="mdi:update"></ha-icon>${firmwareUnsupported(hub) ? TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired : TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended}</span></div>` : A}
+          ${hub.ip_address ? b2`<div class="hub-compact-meta">${hub.ip_address}</div>` : A}
+        </div>
+      </div>
+      <div class="hub-compact-stats">
+        <div class="hub-compact-stat">
+          <span class="hub-compact-stat-icon">${hubIcon("activities", "hub-compact-stat-svg")}</span>
+          <div class="hub-compact-stat-text">
+            <div class="hub-compact-stat-value">${Number(hub.activity_count || 0)}</div>
+            <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.activities}</div>
           </div>
-          <div class="hub-compact-stats">
-            <div class="hub-compact-stat">
-              <span class="hub-compact-stat-icon">${hubIcon("activities", "hub-compact-stat-svg")}</span>
-              <div class="hub-compact-stat-text">
-                <div class="hub-compact-stat-value">${Number(hub.activity_count || 0)}</div>
-                <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.activities}</div>
-              </div>
-            </div>
-            <div class="hub-compact-divider"></div>
-            <div class="hub-compact-stat">
-              <span class="hub-compact-stat-icon">${hubIcon("devices", "hub-compact-stat-svg")}</span>
-              <div class="hub-compact-stat-text">
-                <div class="hub-compact-stat-value">${Number(hub.device_count || 0)}</div>
-                <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.devices}</div>
-              </div>
-            </div>
+        </div>
+        <div class="hub-compact-divider"></div>
+        <div class="hub-compact-stat">
+          <span class="hub-compact-stat-icon">${hubIcon("devices", "hub-compact-stat-svg")}</span>
+          <div class="hub-compact-stat-text">
+            <div class="hub-compact-stat-value">${Number(hub.device_count || 0)}</div>
+            <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.devices}</div>
           </div>
         </div>
       </div>
-      <div class="tab-panel scrollable">
-        <div class="settings-content">
-          <div class="settings-list">
-            ${renderSettingTile({
-    title: TOOLS_CARD_STRINGS.settings.persistentCacheTitle,
-    description: TOOLS_CARD_STRINGS.settings.persistentCacheDescription,
-    classes: `toggle${busy ? " disabled" : ""}`,
-    footerLabel: TOOLS_CARD_STRINGS.settings.persistentCacheFooter,
-    control: b2`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event) => {
-      event.stopPropagation();
-      params.onToggleSetting("persistent_cache", !!event.currentTarget.checked);
-    }}></ha-switch>`,
-    onClick: busy ? void 0 : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled)
-  })}
-            ${renderSettingTile({
-    title: TOOLS_CARD_STRINGS.settings.hubClickActionTitle,
-    description: TOOLS_CARD_STRINGS.settings.hubClickActionDescription,
-    classes: busy ? "disabled" : "",
-    footerLabel: TOOLS_CARD_STRINGS.settings.hubClickActionFooter,
-    control: b2`<select
-                class="setting-select"
-                .value=${params.hubClickAction}
-                ?disabled=${busy}
-                @click=${(event) => event.stopPropagation()}
-                @change=${(event) => {
-      event.stopPropagation();
-      const value = event.currentTarget.value;
-      params.onSelectHubClickAction(
-        value === "send" || value === "copy" ? value : "none"
-      );
-    }}
-              >
-                <option value="none" ?selected=${params.hubClickAction === "none"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionNone}</option>
-                <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
-                <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
-              </select>`
-  })}
-            ${renderSettingTile({
-    title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
-    description: sidebarPanelDescription,
-    classes: busy ? "disabled" : "",
-    footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
-    control: b2`<select
-                class="setting-select"
-                .value=${params.sidebarPanelMode}
-                ?disabled=${busy}
-                @click=${(event) => event.stopPropagation()}
-                @change=${(event) => {
-      event.stopPropagation();
-      const value = event.currentTarget.value;
-      params.onSelectSidebarPanelMode(
-        value === "all" || value === "admin" ? value : "off"
-      );
-    }}
-              >
-                <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
-                <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
-                <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
-              </select>`
-  })}
-            ${renderSettingTile({
+    </div>
+    <div class="settings-list">
+      ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
     description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
     classes: `toggle${busy ? " disabled" : ""}`,
@@ -6999,7 +7025,7 @@ function renderSettingsTab(params) {
     }}></ha-switch>`,
     onClick: busy ? void 0 : () => params.onToggleSetting("hex_logging_enabled", !settingValue("hex_logging_enabled"))
   })}
-            ${renderSettingTile({
+      ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.proxyTitle,
     description: TOOLS_CARD_STRINGS.settings.proxyDescription,
     classes: `toggle${busy ? " disabled" : ""}`,
@@ -7009,7 +7035,7 @@ function renderSettingsTab(params) {
     }}></ha-switch>`,
     onClick: busy ? void 0 : () => params.onToggleSetting("proxy_enabled", !settingValue("proxy_enabled"))
   })}
-            ${renderSettingTile({
+      ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.wifiDeviceTitle,
     description: TOOLS_CARD_STRINGS.settings.wifiDeviceDescription,
     classes: `toggle${busy ? " disabled" : ""}`,
@@ -7019,19 +7045,19 @@ function renderSettingsTab(params) {
     }}></ha-switch>`,
     onClick: busy ? void 0 : () => params.onToggleSetting("wifi_device_enabled", !settingValue("wifi_device_enabled"))
   })}
-            ${params.broker ? (() => {
+      ${params.broker ? (() => {
     const broker = params.broker;
     const canOpen = canAct && !broker.loading;
     return renderSettingTile({
       title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
       description: broker.description,
       classes: `action setting-broker${canOpen ? "" : " disabled"}`,
-      control: b2`<span class="setting-broker-action">${broker.connected ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
+      control: b2`<span class="setting-action-chip">${broker.connected ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
       onClick: canOpen ? broker.onOpen : void 0,
       button: true
     });
   })() : A}
-            ${renderSettingTile({
+      ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.findRemoteTitle,
     description: TOOLS_CARD_STRINGS.settings.findRemoteDescription,
     classes: `action${canAct ? "" : " disabled"}`,
@@ -7039,7 +7065,7 @@ function renderSettingsTab(params) {
     onClick: canAct ? () => params.onRunAction("find_remote") : void 0,
     button: true
   })}
-            ${renderSettingTile({
+      ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.syncRemoteTitle,
     description: TOOLS_CARD_STRINGS.settings.syncRemoteDescription,
     classes: `action${canAct ? "" : " disabled"}`,
@@ -7047,9 +7073,93 @@ function renderSettingsTab(params) {
     onClick: canAct ? () => params.onRunAction("sync_remote") : void 0,
     button: true
   })}
-          </div>
-        </div>
-      </div>
+    </div>
+  `;
+  const ports = params.listenerPorts;
+  const globalSection = b2`
+    <div class="settings-list">
+      ${renderSettingTile({
+    title: TOOLS_CARD_STRINGS.settings.persistentCacheTitle,
+    description: TOOLS_CARD_STRINGS.settings.persistentCacheDescription,
+    classes: `toggle${busy ? " disabled" : ""}`,
+    control: b2`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event) => {
+      event.stopPropagation();
+      params.onToggleSetting("persistent_cache", !!event.currentTarget.checked);
+    }}></ha-switch>`,
+    onClick: busy ? void 0 : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled)
+  })}
+      ${renderSettingTile({
+    title: TOOLS_CARD_STRINGS.settings.hubClickActionTitle,
+    description: TOOLS_CARD_STRINGS.settings.hubClickActionDescription,
+    classes: busy ? "disabled" : "",
+    control: b2`<select
+          class="setting-select"
+          .value=${params.hubClickAction}
+          ?disabled=${busy}
+          @click=${(event) => event.stopPropagation()}
+          @change=${(event) => {
+      event.stopPropagation();
+      const value = event.currentTarget.value;
+      params.onSelectHubClickAction(
+        value === "send" || value === "copy" ? value : "none"
+      );
+    }}
+        >
+          <option value="none" ?selected=${params.hubClickAction === "none"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionNone}</option>
+          <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
+          <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
+        </select>`
+  })}
+      ${renderSettingTile({
+    title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
+    description: sidebarPanelDescription,
+    classes: busy ? "disabled" : "",
+    control: b2`<select
+          class="setting-select"
+          .value=${params.sidebarPanelMode}
+          ?disabled=${busy}
+          @click=${(event) => event.stopPropagation()}
+          @change=${(event) => {
+      event.stopPropagation();
+      const value = event.currentTarget.value;
+      params.onSelectSidebarPanelMode(
+        value === "all" || value === "admin" ? value : "off"
+      );
+    }}
+        >
+          <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
+          <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
+          <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
+        </select>`
+  })}
+      ${ports ? renderSettingTile({
+    title: TOOLS_CARD_STRINGS.settings.portsTitle,
+    description: TOOLS_CARD_STRINGS.settings.portsDescription(
+      ports.hub_listen_base,
+      ports.proxy_udp_port,
+      ports.roku_listen_port
+    ),
+    classes: `action setting-ports${busy ? " disabled" : ""}`,
+    control: b2`<span class="setting-action-chip">${TOOLS_CARD_STRINGS.settings.portsChange}</span>`,
+    onClick: busy ? void 0 : params.onChangePorts,
+    button: true
+  }) : A}
+    </div>
+  `;
+  return b2`
+    <div class="tab-panel">
+      ${renderSecondaryTabShell({
+    connected: true,
+    shellClassName: "settings-panel secondary-view-shell--edge",
+    items: settingsSectionItems(),
+    selectedId: params.section,
+    onSelect: params.onSelectSection,
+    content: renderSecondaryTabContent({
+      connected: true,
+      contentClassName: "settings-body",
+      content: params.section === "global" ? globalSection : hubSection
+    })
+  })}
     </div>
   `;
 }
@@ -7172,16 +7282,6 @@ var hubBrokerFormStyles = i`
     font-size: 13px;
     line-height: 1.45;
     color: var(--primary-text-color);
-  }
-  .setting-broker-action {
-    padding: 6px 12px;
-    border: 1px solid var(--primary-color);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--primary-color) 14%, transparent);
-    color: var(--primary-text-color);
-    font-size: 13px;
-    font-weight: 700;
-    white-space: nowrap;
   }
   .broker-result { font-size: 13px; line-height: 1.45; }
   .broker-result.ok { color: var(--success-color, #43a047); }
@@ -7476,6 +7576,212 @@ var HubBrokerFormController = class {
     const hub = state.hub_connected === true ? S5.brokerConnected : state.hub_connected === false ? S5.brokerNotConnected : S5.brokerUnknown;
     const ha = state.ha_connected === false ? S5.brokerHaNotConnected : state.ha_broker?.host ? S5.brokerHa(`${state.ha_broker.host}:${state.ha_broker.port}`) : "";
     return [hub, ha].filter(Boolean).join(" ");
+  }
+};
+
+// custom_components/sofabaton_x1s/www/src/shared/doc-links.ts
+var DOCS_BASE = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs";
+var DOC_URLS = {
+  wifiCommands: `${DOCS_BASE}/wifi_commands.md`,
+  // What to allow between the hub and Home Assistant for Wifi Commands
+  // (listener and direct delivery), and for MQTT delivery.
+  networkingWifi: `${DOCS_BASE}/networking.md#optional--wifi-commands-and-wifi-events`,
+  networkingMqtt: `${DOCS_BASE}/networking.md#optional--mqtt-delivery-x2`,
+  // What each listener port is for, and what moving it off its default breaks.
+  networkingPorts: `${DOCS_BASE}/networking.md#-complete-port-reference`,
+  backup: `${DOCS_BASE}/backup.md`,
+  commandPayloads: `${DOCS_BASE}/command_payloads.md`
+};
+
+// custom_components/sofabaton_x1s/www/src/components/listener-ports-form.ts
+var FIELDS = ["hub_listen_base", "proxy_udp_port", "roku_listen_port"];
+var listenerPortsFormStyles = i`
+  .ports-fields { display: flex; flex-direction: column; gap: 14px; }
+  .ports-field ha-input, .ports-field ha-textfield { width: 100%; }
+  .ports-field .dialog-field-helper { margin-top: 4px; }
+  .ports-field-error { color: var(--error-color, #db4437); font-size: 12px; margin-top: 4px; }
+  .ports-docs-link { color: var(--primary-color); font-size: 13px; }
+  .ports-saving { font-size: 13px; line-height: 1.45; color: var(--secondary-text-color); }
+`;
+function fieldText(key, defaults) {
+  const S5 = TOOLS_CARD_STRINGS.settings;
+  switch (key) {
+    case "hub_listen_base":
+      return { label: S5.portsHubLabel, helper: S5.portsHubHelper(defaults.hub_listen_base) };
+    case "proxy_udp_port":
+      return { label: S5.portsAppLabel, helper: S5.portsAppHelper(defaults.proxy_udp_port) };
+    default:
+      return { label: S5.portsWifiLabel, helper: S5.portsWifiHelper(defaults.roku_listen_port) };
+  }
+}
+var ListenerPortsFormController = class {
+  constructor(host, save) {
+    this.host = host;
+    this.save = save;
+    this.open = false;
+    this._values = { hub_listen_base: "", proxy_udp_port: "", roku_listen_port: "" };
+    this._current = DEFAULT_LISTENER_PORTS;
+    this._defaults = DEFAULT_LISTENER_PORTS;
+    this._busy = false;
+    this._error = "";
+    this._fieldErrors = {};
+    this.close = () => {
+      if (this._busy) return;
+      this.open = false;
+      this.host.requestUpdate();
+    };
+    this.submit = async () => {
+      if (this._busy) return;
+      this._error = "";
+      const ports = this._parse();
+      if (!ports) {
+        this.host.requestUpdate();
+        return;
+      }
+      if (FIELDS.every((key) => ports[key] === this._current[key])) {
+        this.open = false;
+        this.host.requestUpdate();
+        return;
+      }
+      this._busy = true;
+      this.host.requestUpdate();
+      let outcome;
+      try {
+        outcome = await this.save(ports);
+      } catch (error) {
+        outcome = { kind: "error", code: null, message: String(error?.message ?? "") };
+      } finally {
+        this._busy = false;
+      }
+      const S5 = TOOLS_CARD_STRINGS.settings;
+      if (outcome.kind === "saved") {
+        this.open = false;
+      } else if (outcome.kind === "in_use") {
+        const errors = {};
+        for (const key of FIELDS) {
+          if (key in outcome.inUse) errors[key] = S5.portsInUse(ports[key], outcome.inUse[key] ?? null);
+        }
+        this._fieldErrors = errors;
+        if (!Object.keys(errors).length) this._error = S5.portsFailed;
+      } else if (outcome.code === "same_port") {
+        this._fieldErrors = { [this._sameTcpPortField(ports)]: S5.portsSamePort };
+      } else {
+        this._error = outcome.message || S5.portsFailed;
+      }
+      this.host.requestUpdate();
+    };
+    host.addController(this);
+  }
+  hostConnected() {
+  }
+  get busy() {
+    return this._busy;
+  }
+  openWith(current, defaults) {
+    this._current = current;
+    this._defaults = defaults;
+    this._values = {
+      hub_listen_base: String(current.hub_listen_base),
+      proxy_udp_port: String(current.proxy_udp_port),
+      roku_listen_port: String(current.roku_listen_port)
+    };
+    this._busy = false;
+    this._error = "";
+    this._fieldErrors = {};
+    this.open = true;
+    this.host.requestUpdate();
+  }
+  _sameTcpPortField(ports) {
+    return ports.hub_listen_base !== this._current.hub_listen_base ? "hub_listen_base" : "roku_listen_port";
+  }
+  /** The typed ports, or null with every bad field marked. */
+  _parse() {
+    const S5 = TOOLS_CARD_STRINGS.settings;
+    const errors = {};
+    const ports = { ...this._current };
+    for (const key of FIELDS) {
+      const text = this._values[key].trim();
+      const port = Number(text);
+      if (!/^\d+$/.test(text) || port < 1 || port > 65535) errors[key] = S5.portsInvalid;
+      else ports[key] = port;
+    }
+    if (!errors.hub_listen_base && !errors.roku_listen_port && ports.hub_listen_base === ports.roku_listen_port) {
+      errors[this._sameTcpPortField(ports)] = S5.portsSamePort;
+    }
+    this._fieldErrors = errors;
+    return Object.keys(errors).length ? null : ports;
+  }
+  _field(key) {
+    const { label, helper } = fieldText(key, this._defaults);
+    const id = `sb-ports-${key}`;
+    const error = this._fieldErrors[key] ?? "";
+    const handle = (event) => {
+      this._values = { ...this._values, [key]: String(event.currentTarget.value ?? "") };
+      if (this._fieldErrors[key]) {
+        const { [key]: _cleared, ...rest } = this._fieldErrors;
+        this._fieldErrors = rest;
+      }
+      this._error = "";
+      this.host.requestUpdate();
+    };
+    const input = useLegacyTextField() ? b2`<ha-textfield
+          id=${id}
+          aria-invalid=${error ? "true" : "false"}
+          aria-describedby=${error ? `${id}-error` : A}
+          .label=${label}
+          type="number"
+          min="1"
+          max="65535"
+          .value=${this._values[key]}
+          ?disabled=${this._busy}
+          @input=${handle}
+          @change=${handle}
+        ></ha-textfield>` : b2`<ha-input
+          id=${id}
+          aria-invalid=${error ? "true" : "false"}
+          aria-describedby=${error ? `${id}-error` : A}
+          type="number"
+          .label=${label}
+          .value=${this._values[key]}
+          ?disabled=${this._busy}
+          @input=${handle}
+          @change=${handle}
+        ></ha-input>`;
+    return b2`<div class="ports-field" data-port=${key}>
+      ${input}
+      ${error ? b2`<div class="ports-field-error" id=${`${id}-error`} role="alert">${error}</div>` : b2`<div class="dialog-field-helper">${helper}</div>`}
+    </div>`;
+  }
+  render() {
+    if (!this.open) return A;
+    const S5 = TOOLS_CARD_STRINGS.settings;
+    return b2`
+      <div class="modal-backdrop ports-backdrop" @click=${this.close}>
+        <div class="dialog small ports-dialog" role="dialog" aria-modal="true" aria-labelledby="sb-ports-title" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title" id="sb-ports-title">${S5.portsDialogTitle}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} ?disabled=${this._busy} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-field-helper">
+              ${S5.portsIntro}
+              <a class="ports-docs-link" href=${DOC_URLS.networkingPorts} target="_blank" rel="noreferrer noopener">${S5.portsDocsLink}</a>
+            </div>
+            <div class="ports-fields">${FIELDS.map((key) => this._field(key))}</div>
+            ${this._busy ? b2`<div class="ports-saving" role="status">${S5.portsSavingNote}</div>` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note" role="alert">${this._error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" ?disabled=${this._busy} @click=${this.close}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary ports-save" ?disabled=${this._busy} @click=${this.submit}>
+                ${this._busy ? S5.portsSaving : S5.portsSave}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 };
 
@@ -8843,18 +9149,6 @@ function renderLogsTab(params) {
     error: params.error
   });
 }
-
-// custom_components/sofabaton_x1s/www/src/shared/doc-links.ts
-var DOCS_BASE = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs";
-var DOC_URLS = {
-  wifiCommands: `${DOCS_BASE}/wifi_commands.md`,
-  // What to allow between the hub and Home Assistant for Wifi Commands
-  // (listener and direct delivery), and for MQTT delivery.
-  networkingWifi: `${DOCS_BASE}/networking.md#optional--wifi-commands-and-wifi-events`,
-  networkingMqtt: `${DOCS_BASE}/networking.md#optional--mqtt-delivery-x2`,
-  backup: `${DOCS_BASE}/backup.md`,
-  commandPayloads: `${DOCS_BASE}/command_payloads.md`
-};
 
 // custom_components/sofabaton_x1s/www/src/control-panel-language-loader.ts
 var TOOLS_CARD_LOCALES = [
@@ -10893,7 +11187,7 @@ var WifiIpFormError = class extends Error {
 function wifiIpRecordKind(fields) {
   return "url" in fields ? "url" : "text";
 }
-function fieldText(value) {
+function fieldText2(value) {
   return value == null ? "" : String(value);
 }
 function methodOf(draft) {
@@ -10918,7 +11212,7 @@ function headerDrafts(pairs) {
   let contentType = null;
   const lines = [];
   for (const pair of Array.isArray(pairs) ? pairs : []) {
-    const [name, value] = Array.isArray(pair) ? [fieldText(pair[0]), fieldText(pair[1])] : ["", ""];
+    const [name, value] = Array.isArray(pair) ? [fieldText2(pair[0]), fieldText2(pair[1])] : ["", ""];
     if (contentType === null && name.toLowerCase() === "content-type") {
       contentType = value;
       continue;
@@ -10929,28 +11223,28 @@ function headerDrafts(pairs) {
 }
 function wifiIpDraftsFromFields(fields) {
   if (wifiIpRecordKind(fields) === "url") {
-    const { scheme, host, port, path } = splitUrl(fieldText(fields.url));
+    const { scheme, host, port, path } = splitUrl(fieldText2(fields.url));
     const { header, contentType } = headerDrafts(fields.headers);
     return {
       scheme,
       host,
       port,
-      method: fieldText(fields.method),
+      method: fieldText2(fields.method),
       path,
       header,
       content_type: contentType,
-      body: fieldText(fields.body)
+      body: fieldText2(fields.body)
     };
   }
   return {
     scheme: "http",
-    host: fieldText(fields.host),
+    host: fieldText2(fields.host),
     port: fields.port == null ? "" : String(Number(fields.port) || 0),
-    method: fieldText(fields.method),
-    path: fieldText(fields.path),
-    header: fieldText(fields.header),
-    content_type: fieldText(fields.content_type),
-    body: fieldText(fields.body)
+    method: fieldText2(fields.method),
+    path: fieldText2(fields.path),
+    header: fieldText2(fields.header),
+    content_type: fieldText2(fields.content_type),
+    body: fieldText2(fields.body)
   };
 }
 function wifiIpDraftsChanged(fields, drafts) {
@@ -11042,7 +11336,7 @@ function buildWifiIpRecord(drafts, options) {
   }
   const method = methodOf(drafts.method);
   if (!WIFI_IP_URL_METHODS.includes(method)) throw new WifiIpFormError("method_unsupported");
-  const url = same2 && untouched("scheme", "host", "port", "path") ? fieldText(same2.fields.url) : `${scheme}://${ipv4 ?? urlHost(host)}${port === null ? "" : `:${port}`}${urlPath(String(drafts.path ?? ""))}`;
+  const url = same2 && untouched("scheme", "host", "port", "path") ? fieldText2(same2.fields.url) : `${scheme}://${ipv4 ?? urlHost(host)}${port === null ? "" : `:${port}`}${urlPath(String(drafts.path ?? ""))}`;
   const headers = same2 && untouched("header", "content_type") ? (Array.isArray(same2.fields.headers) ? same2.fields.headers : []).map((pair) => [...pair]) : headerPairs(String(drafts.header ?? ""), String(drafts.content_type ?? ""));
   return {
     trailerHex,
@@ -26586,6 +26880,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._sidebarRenameBusy = false;
     // Settings tab: an X2's MQTT broker line and its setup dialog.
     this._brokerForm = new HubBrokerFormController(this, () => this._snapshot?.hass ?? null);
+    this._portsForm = new ListenerPortsFormController(this, (ports) => this._store.setListenerPorts(ports));
     this._addDeviceBusy = false;
     this._addDeviceError = null;
     this._addDeviceClass = "";
@@ -27407,6 +27702,13 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
       onRenameSidebarPanel: () => this.openSidebarRename(),
+      section: this._snapshot.selectedSettingsSection,
+      onSelectSection: (section) => this._store.setSelectedSettingsSection(section),
+      listenerPorts: listenerPorts(this._snapshot),
+      onChangePorts: () => {
+        const ports = listenerPorts(this._snapshot);
+        if (ports) this._portsForm.openWith(ports, listenerPortDefaults(this._snapshot));
+      },
       broker: hub?.broker_setup_available === true ? {
         description: this._brokerForm.renderSettingDescription(),
         connected: this._brokerForm.state?.hub_connected === true,
@@ -27565,6 +27867,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
         ${this.renderHubRenameDialog()}
         ${this.renderSidebarRenameDialog()}
         ${this._brokerForm.render()}
+        ${this._portsForm.render()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel() ? null : b2`<div class="card-topbar">
             ${this.renderBrandLabel()}
@@ -27603,7 +27906,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     `;
   }
 };
-_SofabatonControlPanelCard.styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles, irEmitterStyles];
+_SofabatonControlPanelCard.styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles, listenerPortsFormStyles, irEmitterStyles];
 // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
 // drop the overlay nodes so they don't sit in the DOM forever and so
 // the next animation cleanly restarts via Lit's keyed remount.

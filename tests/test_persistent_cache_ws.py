@@ -285,7 +285,10 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
         config_entries=SimpleNamespace(
             # _resolve_roku_listen_port reads entry.options; provide an empty
             # mapping so it falls through to DEFAULT_ROKU_LISTEN_PORT.
-            async_get_entry=lambda _entry_id: SimpleNamespace(options={})
+            async_get_entry=lambda _entry_id: SimpleNamespace(options={}),
+            # The shared listener ports come from the first hub entry; this
+            # one moved the hub port off its default.
+            async_entries=lambda _domain: [SimpleNamespace(options={"hub_listen_base": 8300})],
         ),
     )
 
@@ -316,6 +319,9 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
             # The command-config store's revision: open lists reload when
             # it moves.
             "config_revision": 0,
+            # The listener ports every hub shares (Settings tab, Global).
+            "listener_ports": {"hub_listen_base": 8300, "proxy_udp_port": 8102, "roku_listen_port": 8060},
+            "listener_port_defaults": {"hub_listen_base": 8200, "proxy_udp_port": 8102, "roku_listen_port": 8060},
             "hubs": [
                 {
                     "entry_id": "entry-1",
@@ -393,7 +399,8 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
         config_entries=SimpleNamespace(
             # _resolve_roku_listen_port reads entry.options; provide an empty
             # mapping so it falls through to DEFAULT_ROKU_LISTEN_PORT.
-            async_get_entry=lambda _entry_id: SimpleNamespace(options={})
+            async_get_entry=lambda _entry_id: SimpleNamespace(options={}),
+            async_entries=lambda _domain: [],
         ),
     )
 

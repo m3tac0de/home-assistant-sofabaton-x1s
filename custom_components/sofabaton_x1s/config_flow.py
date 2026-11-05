@@ -5,9 +5,7 @@ import functools
 import hashlib
 import ipaddress
 import logging
-import os
 import re
-import socket
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
@@ -44,6 +42,13 @@ from .const import (
     format_hub_entry_title,
 )
 from .lib.discovery import DiscoveredHub, discover_hubs
+from .listener_ports import (
+    DEFAULT_LISTENER_PORTS,
+    PORT_FIELDS,
+    PORT_KEYS,
+    async_apply_listener_ports,
+    ports_in_use,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,57 +59,9 @@ _SCAN_SECONDS = 4.0
 # The pick list's last row; never a valid host, so it cannot collide.
 _MANUAL_CHOICE = "manual"
 
-# The listener ports every hub shares: (option key, UDP?, where a free
-# stand-in is looked for, the field's "in use" error, its placeholder
-# prefix). The hub range is the one the official app listens in.
-_PORT_FIELDS = (
-    ("hub_listen_base", False, range(8201, 8264), "hub_port_in_use", "hub"),
-    ("proxy_udp_port", True, range(8103, 8121), "app_port_in_use", "app"),
-    (CONF_ROKU_LISTEN_PORT, False, range(8061, 8081), "wifi_port_in_use", "wifi"),
-)
-
-
-def _port_is_free(port: int, *, udp: bool) -> bool:
-    """Whether this host could open the port right now.
-
-    Stricter than the listeners themselves (they share with SO_REUSEPORT,
-    and UDP with SO_REUSEADDR), so a program that shares the port is
-    found as well. TCP keeps SO_REUSEADDR off Windows only: elsewhere it
-    just lets a closed listener's lingering connections pass, but on
-    Windows it would bind over a live listener.
-    """
-
-    kind = socket.SOCK_DGRAM if udp else socket.SOCK_STREAM
-    with socket.socket(socket.AF_INET, kind) as sock:
-        if not udp and os.name != "nt":
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("0.0.0.0", port))
-        except OSError:
-            return False
-    return True
-
-
-def _ports_in_use(ports: Dict[str, int]) -> Dict[str, Optional[int]]:
-    """{option key: a free stand-in, or None} for every port in use."""
-
-    busy: Dict[str, Optional[int]] = {}
-    tcp_taken = {ports[key] for key, udp, *_ in _PORT_FIELDS if not udp}
-    for key, udp, stand_ins, *_ in _PORT_FIELDS:
-        if _port_is_free(ports[key], udp=udp):
-            continue
-        stand_in = next(
-            (
-                port
-                for port in stand_ins
-                if (udp or port not in tcp_taken) and _port_is_free(port, udp=udp)
-            ),
-            None,
-        )
-        if stand_in is not None and not udp:
-            tcp_taken.add(stand_in)
-        busy[key] = stand_in
-    return busy
+# The listener ports every hub shares, and the check for ports in use,
+# live in listener_ports (the control panel's Settings tab uses them too).
+_PORT_FIELDS = PORT_FIELDS
 
 
 def generate_static_mac(host: str, port: int) -> str:
@@ -432,7 +389,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
     async def _async_ports_in_use(self, ports: Dict[str, int]) -> Dict[str, Optional[int]]:
-        return await self.hass.async_add_executor_job(_ports_in_use, ports)
+        return await self.hass.async_add_executor_job(ports_in_use, ports)
 
     async def async_step_ports(self, user_input: Dict[str, Any] | None = None):
         """The first hub, with a default port already taken on this host.
@@ -670,7 +627,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_ports(self, user_input: Dict[str, Any] | None = None):
         PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
-        shared_option_keys = ("proxy_udp_port", "hub_listen_base", CONF_ROKU_LISTEN_PORT)
 
         if user_input is not None:
             new_options = {
@@ -678,22 +634,12 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 **user_input,
             }
 
-            shared_options = {
-                key: new_options[key] for key in shared_option_keys if key in new_options
-            }
-
-            for existing_entry in self.hass.config_entries.async_entries(DOMAIN):
-                merged_options = {
-                    **existing_entry.options,
-                    **shared_options,
-                }
-                if merged_options == existing_entry.options:
-                    continue
-
-                self.hass.config_entries.async_update_entry(
-                    existing_entry,
-                    options=merged_options,
-                )
+            # Every hub entry gets the ports, and the shared listeners move
+            # now rather than at the next Home Assistant restart.
+            await async_apply_listener_ports(
+                self.hass,
+                {key: new_options.get(key, DEFAULT_LISTENER_PORTS[key]) for key in PORT_KEYS},
+            )
 
             return self.async_create_entry(title="", data=new_options)
 

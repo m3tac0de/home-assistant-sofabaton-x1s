@@ -4,9 +4,11 @@ import type {
   HassLike,
   HubAction,
   HubClickAction,
+  ListenerPorts,
   SidebarPanelMode,
   PendingSettingKey,
   SettingKey,
+  SettingsSectionId,
 } from "../shared/ha-context";
 import {
   canRunHubActions,
@@ -17,8 +19,16 @@ import {
   proxyClientConnected,
 } from "../shared/utils/control-panel-selectors";
 import { renderSettingTile } from "../components/setting-tile";
+import { renderSecondaryTabContent, renderSecondaryTabShell, type SecondaryTabItem } from "../components/secondary-tab";
 import { phraseWithName } from "../components/phrase-name";
 import { TOOLS_CARD_STRINGS } from "../strings";
+
+export function settingsSectionItems(): SecondaryTabItem<SettingsSectionId>[] {
+  return [
+    { id: "hub", label: TOOLS_CARD_STRINGS.settings.sectionHub, icon: "mdi:router-wireless" },
+    { id: "global", label: TOOLS_CARD_STRINGS.settings.sectionGlobal, icon: "mdi:earth" },
+  ];
+}
 
 export function renderSettingsTab(params: {
   loading: boolean;
@@ -41,6 +51,13 @@ export function renderSettingsTab(params: {
   onRenameHub: () => void;
   /** Opens the sidebar panel rename dialog (the card owns the dialog state). */
   onRenameSidebarPanel: () => void;
+  /** Hub (the selected hub's settings, left) or Global (every hub's). */
+  section: SettingsSectionId;
+  onSelectSection: (section: SettingsSectionId) => void;
+  /** The listener ports every hub shares; null hides the line. */
+  listenerPorts: ListenerPorts | null;
+  /** Opens the ports dialog (the card owns it). */
+  onChangePorts: () => void;
   /** The X2's MQTT broker line (decision 9): per hub, absent for other models. */
   broker?: {
     description: string;
@@ -89,174 +106,200 @@ export function renderSettingsTab(params: {
       ><ha-icon icon="mdi:pencil"></ha-icon></button>`,
     );
 
+  const hubSection = html`
+    <div class="hub-compact-card">
+      <div class="hub-compact-left">
+        <div class="hub-compact-icon-wrap ${connected ? "hub-compact-icon-wrap--on" : "hub-compact-icon-wrap--off"}">
+          ${hubIcon("hero", "hub-compact-icon")}
+          <div class="hub-compact-badge ${proxyOn ? "hub-compact-badge--on" : "hub-compact-badge--off"}">
+            <ha-icon icon="mdi:cellphone"></ha-icon>
+          </div>
+        </div>
+        <div class="hub-compact-text">
+          <div class="hub-compact-name-row">
+            <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
+            <button
+              class="icon-btn hub-rename-btn"
+              ?disabled=${!canAct}
+              aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
+              title=${TOOLS_CARD_STRINGS.settings.renameHub}
+              @click=${params.onRenameHub}
+            ><ha-icon icon="mdi:pencil"></ha-icon></button>
+          </div>
+          ${versionLine ? html`<div class="hub-compact-meta">${versionLine}</div>` : nothing}
+          ${firmwareOutdated(hub) ? html`<div class="hub-compact-meta"><span
+            class="hub-fw-chip"
+            title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(
+              hub.firmware_min_recommended ?? "?",
+              hub.firmware_min_supported ?? "?",
+              firmwareUnsupported(hub),
+            )}
+          ><ha-icon icon="mdi:update"></ha-icon>${firmwareUnsupported(hub)
+            ? TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired
+            : TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended}</span></div>` : nothing}
+          ${hub.ip_address ? html`<div class="hub-compact-meta">${hub.ip_address}</div>` : nothing}
+        </div>
+      </div>
+      <div class="hub-compact-stats">
+        <div class="hub-compact-stat">
+          <span class="hub-compact-stat-icon">${hubIcon("activities", "hub-compact-stat-svg")}</span>
+          <div class="hub-compact-stat-text">
+            <div class="hub-compact-stat-value">${Number(hub.activity_count || 0)}</div>
+            <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.activities}</div>
+          </div>
+        </div>
+        <div class="hub-compact-divider"></div>
+        <div class="hub-compact-stat">
+          <span class="hub-compact-stat-icon">${hubIcon("devices", "hub-compact-stat-svg")}</span>
+          <div class="hub-compact-stat-text">
+            <div class="hub-compact-stat-value">${Number(hub.device_count || 0)}</div>
+            <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.devices}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="settings-list">
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
+        description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
+        classes: `toggle${busy ? " disabled" : ""}`,
+        control: html`<ha-switch .checked=${settingValue("hex_logging_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("hex_logging_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
+        onClick: busy ? undefined : () => params.onToggleSetting("hex_logging_enabled", !settingValue("hex_logging_enabled")),
+      })}
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.proxyTitle,
+        description: TOOLS_CARD_STRINGS.settings.proxyDescription,
+        classes: `toggle${busy ? " disabled" : ""}`,
+        control: html`<ha-switch .checked=${settingValue("proxy_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("proxy_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
+        onClick: busy ? undefined : () => params.onToggleSetting("proxy_enabled", !settingValue("proxy_enabled")),
+      })}
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.wifiDeviceTitle,
+        description: TOOLS_CARD_STRINGS.settings.wifiDeviceDescription,
+        classes: `toggle${busy ? " disabled" : ""}`,
+        control: html`<ha-switch .checked=${settingValue("wifi_device_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("wifi_device_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
+        onClick: busy ? undefined : () => params.onToggleSetting("wifi_device_enabled", !settingValue("wifi_device_enabled")),
+      })}
+      ${params.broker
+        ? (() => {
+            const broker = params.broker;
+            const canOpen = canAct && !broker.loading;
+            return renderSettingTile({
+              title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
+              description: broker.description,
+              classes: `action setting-broker${canOpen ? "" : " disabled"}`,
+              control: html`<span class="setting-action-chip">${broker.connected
+                ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange
+                : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
+              onClick: canOpen ? broker.onOpen : undefined,
+              button: true,
+            });
+          })()
+        : nothing}
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.findRemoteTitle,
+        description: TOOLS_CARD_STRINGS.settings.findRemoteDescription,
+        classes: `action${canAct ? "" : " disabled"}`,
+        control: html`<ha-icon class="setting-icon" icon="mdi:bell-ring-outline"></ha-icon>`,
+        onClick: canAct ? () => params.onRunAction("find_remote") : undefined,
+        button: true,
+      })}
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.syncRemoteTitle,
+        description: TOOLS_CARD_STRINGS.settings.syncRemoteDescription,
+        classes: `action${canAct ? "" : " disabled"}`,
+        control: html`<ha-icon class="setting-icon" icon="mdi:sync"></ha-icon>`,
+        onClick: canAct ? () => params.onRunAction("sync_remote") : undefined,
+        button: true,
+      })}
+    </div>
+  `;
+
+  const ports = params.listenerPorts;
+  const globalSection = html`
+    <div class="settings-list">
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.persistentCacheTitle,
+        description: TOOLS_CARD_STRINGS.settings.persistentCacheDescription,
+        classes: `toggle${busy ? " disabled" : ""}`,
+        control: html`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("persistent_cache", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
+        onClick: busy ? undefined : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled),
+      })}
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.hubClickActionTitle,
+        description: TOOLS_CARD_STRINGS.settings.hubClickActionDescription,
+        classes: busy ? "disabled" : "",
+        control: html`<select
+          class="setting-select"
+          .value=${params.hubClickAction}
+          ?disabled=${busy}
+          @click=${(event: Event) => event.stopPropagation()}
+          @change=${(event: Event) => {
+            event.stopPropagation();
+            const value = (event.currentTarget as HTMLSelectElement).value;
+            params.onSelectHubClickAction(
+              value === "send" || value === "copy" ? value : "none",
+            );
+          }}
+        >
+          <option value="none" ?selected=${params.hubClickAction === "none"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionNone}</option>
+          <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
+          <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
+        </select>`,
+      })}
+      ${renderSettingTile({
+        title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
+        description: sidebarPanelDescription,
+        classes: busy ? "disabled" : "",
+        control: html`<select
+          class="setting-select"
+          .value=${params.sidebarPanelMode}
+          ?disabled=${busy}
+          @click=${(event: Event) => event.stopPropagation()}
+          @change=${(event: Event) => {
+            event.stopPropagation();
+            const value = (event.currentTarget as HTMLSelectElement).value;
+            params.onSelectSidebarPanelMode(
+              value === "all" || value === "admin" ? value : "off",
+            );
+          }}
+        >
+          <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
+          <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
+          <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
+        </select>`,
+      })}
+      ${ports
+        ? renderSettingTile({
+            title: TOOLS_CARD_STRINGS.settings.portsTitle,
+            description: TOOLS_CARD_STRINGS.settings.portsDescription(
+              ports.hub_listen_base,
+              ports.proxy_udp_port,
+              ports.roku_listen_port,
+            ),
+            classes: `action setting-ports${busy ? " disabled" : ""}`,
+            control: html`<span class="setting-action-chip">${TOOLS_CARD_STRINGS.settings.portsChange}</span>`,
+            onClick: busy ? undefined : params.onChangePorts,
+            button: true,
+          })
+        : nothing}
+    </div>
+  `;
+
   return html`
-    <div class="hub-tab-layout">
-      <div class="settings-hub-header">
-        <div class="hub-compact-card">
-          <div class="hub-compact-left">
-            <div class="hub-compact-icon-wrap ${connected ? "hub-compact-icon-wrap--on" : "hub-compact-icon-wrap--off"}">
-              ${hubIcon("hero", "hub-compact-icon")}
-              <div class="hub-compact-badge ${proxyOn ? "hub-compact-badge--on" : "hub-compact-badge--off"}">
-                <ha-icon icon="mdi:cellphone"></ha-icon>
-              </div>
-            </div>
-            <div class="hub-compact-text">
-              <div class="hub-compact-name-row">
-                <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
-                <button
-                  class="icon-btn hub-rename-btn"
-                  ?disabled=${!canAct}
-                  aria-label=${TOOLS_CARD_STRINGS.settings.renameHub}
-                  title=${TOOLS_CARD_STRINGS.settings.renameHub}
-                  @click=${params.onRenameHub}
-                ><ha-icon icon="mdi:pencil"></ha-icon></button>
-              </div>
-              ${versionLine ? html`<div class="hub-compact-meta">${versionLine}</div>` : nothing}
-              ${firmwareOutdated(hub) ? html`<div class="hub-compact-meta"><span
-                class="hub-fw-chip"
-                title=${TOOLS_CARD_STRINGS.hub.firmwareUpdateTooltip(
-                  hub.firmware_min_recommended ?? "?",
-                  hub.firmware_min_supported ?? "?",
-                  firmwareUnsupported(hub),
-                )}
-              ><ha-icon icon="mdi:update"></ha-icon>${firmwareUnsupported(hub)
-                ? TOOLS_CARD_STRINGS.hub.firmwareUpdateRequired
-                : TOOLS_CARD_STRINGS.hub.firmwareUpdateRecommended}</span></div>` : nothing}
-              ${hub.ip_address ? html`<div class="hub-compact-meta">${hub.ip_address}</div>` : nothing}
-            </div>
-          </div>
-          <div class="hub-compact-stats">
-            <div class="hub-compact-stat">
-              <span class="hub-compact-stat-icon">${hubIcon("activities", "hub-compact-stat-svg")}</span>
-              <div class="hub-compact-stat-text">
-                <div class="hub-compact-stat-value">${Number(hub.activity_count || 0)}</div>
-                <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.activities}</div>
-              </div>
-            </div>
-            <div class="hub-compact-divider"></div>
-            <div class="hub-compact-stat">
-              <span class="hub-compact-stat-icon">${hubIcon("devices", "hub-compact-stat-svg")}</span>
-              <div class="hub-compact-stat-text">
-                <div class="hub-compact-stat-value">${Number(hub.device_count || 0)}</div>
-                <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.devices}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="tab-panel scrollable">
-        <div class="settings-content">
-          <div class="settings-list">
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.persistentCacheTitle,
-              description: TOOLS_CARD_STRINGS.settings.persistentCacheDescription,
-              classes: `toggle${busy ? " disabled" : ""}`,
-              footerLabel: TOOLS_CARD_STRINGS.settings.persistentCacheFooter,
-              control: html`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("persistent_cache", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
-              onClick: busy ? undefined : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled),
-            })}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.hubClickActionTitle,
-              description: TOOLS_CARD_STRINGS.settings.hubClickActionDescription,
-              classes: busy ? "disabled" : "",
-              footerLabel: TOOLS_CARD_STRINGS.settings.hubClickActionFooter,
-              control: html`<select
-                class="setting-select"
-                .value=${params.hubClickAction}
-                ?disabled=${busy}
-                @click=${(event: Event) => event.stopPropagation()}
-                @change=${(event: Event) => {
-                  event.stopPropagation();
-                  const value = (event.currentTarget as HTMLSelectElement).value;
-                  params.onSelectHubClickAction(
-                    value === "send" || value === "copy" ? value : "none",
-                  );
-                }}
-              >
-                <option value="none" ?selected=${params.hubClickAction === "none"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionNone}</option>
-                <option value="send" ?selected=${params.hubClickAction === "send"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionSend}</option>
-                <option value="copy" ?selected=${params.hubClickAction === "copy"}>${TOOLS_CARD_STRINGS.settings.hubClickActionOptionCopy}</option>
-              </select>`,
-            })}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
-              description: sidebarPanelDescription,
-              classes: busy ? "disabled" : "",
-              footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
-              control: html`<select
-                class="setting-select"
-                .value=${params.sidebarPanelMode}
-                ?disabled=${busy}
-                @click=${(event: Event) => event.stopPropagation()}
-                @change=${(event: Event) => {
-                  event.stopPropagation();
-                  const value = (event.currentTarget as HTMLSelectElement).value;
-                  params.onSelectSidebarPanelMode(
-                    value === "all" || value === "admin" ? value : "off",
-                  );
-                }}
-              >
-                <option value="off" ?selected=${params.sidebarPanelMode === "off"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionOff}</option>
-                <option value="all" ?selected=${params.sidebarPanelMode === "all"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAll}</option>
-                <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
-              </select>`,
-            })}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
-              description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
-              classes: `toggle${busy ? " disabled" : ""}`,
-              control: html`<ha-switch .checked=${settingValue("hex_logging_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("hex_logging_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
-              onClick: busy ? undefined : () => params.onToggleSetting("hex_logging_enabled", !settingValue("hex_logging_enabled")),
-            })}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.proxyTitle,
-              description: TOOLS_CARD_STRINGS.settings.proxyDescription,
-              classes: `toggle${busy ? " disabled" : ""}`,
-              control: html`<ha-switch .checked=${settingValue("proxy_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("proxy_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
-              onClick: busy ? undefined : () => params.onToggleSetting("proxy_enabled", !settingValue("proxy_enabled")),
-            })}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.wifiDeviceTitle,
-              description: TOOLS_CARD_STRINGS.settings.wifiDeviceDescription,
-              classes: `toggle${busy ? " disabled" : ""}`,
-              control: html`<ha-switch .checked=${settingValue("wifi_device_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("wifi_device_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
-              onClick: busy ? undefined : () => params.onToggleSetting("wifi_device_enabled", !settingValue("wifi_device_enabled")),
-            })}
-            ${params.broker
-              ? (() => {
-                  const broker = params.broker;
-                  const canOpen = canAct && !broker.loading;
-                  return renderSettingTile({
-                    title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
-                    description: broker.description,
-                    classes: `action setting-broker${canOpen ? "" : " disabled"}`,
-                    control: html`<span class="setting-broker-action">${broker.connected
-                      ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange
-                      : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
-                    onClick: canOpen ? broker.onOpen : undefined,
-                    button: true,
-                  });
-                })()
-              : nothing}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.findRemoteTitle,
-              description: TOOLS_CARD_STRINGS.settings.findRemoteDescription,
-              classes: `action${canAct ? "" : " disabled"}`,
-              control: html`<ha-icon class="setting-icon" icon="mdi:bell-ring-outline"></ha-icon>`,
-              onClick: canAct ? () => params.onRunAction("find_remote") : undefined,
-              button: true,
-            })}
-            ${renderSettingTile({
-              title: TOOLS_CARD_STRINGS.settings.syncRemoteTitle,
-              description: TOOLS_CARD_STRINGS.settings.syncRemoteDescription,
-              classes: `action${canAct ? "" : " disabled"}`,
-              control: html`<ha-icon class="setting-icon" icon="mdi:sync"></ha-icon>`,
-              onClick: canAct ? () => params.onRunAction("sync_remote") : undefined,
-              button: true,
-            })}
-          </div>
-        </div>
-      </div>
+    <div class="tab-panel">
+      ${renderSecondaryTabShell({
+        connected: true,
+        shellClassName: "settings-panel secondary-view-shell--edge",
+        items: settingsSectionItems(),
+        selectedId: params.section,
+        onSelect: params.onSelectSection,
+        content: renderSecondaryTabContent({
+          connected: true,
+          contentClassName: "settings-body",
+          content: params.section === "global" ? globalSection : hubSection,
+        }),
+      })}
     </div>
   `;
 }

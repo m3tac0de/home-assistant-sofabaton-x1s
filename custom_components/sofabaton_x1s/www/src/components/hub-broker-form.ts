@@ -35,16 +35,6 @@ export const hubBrokerFormStyles = css`
     line-height: 1.45;
     color: var(--primary-text-color);
   }
-  .setting-broker-action {
-    padding: 6px 12px;
-    border: 1px solid var(--primary-color);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--primary-color) 14%, transparent);
-    color: var(--primary-text-color);
-    font-size: 13px;
-    font-weight: 700;
-    white-space: nowrap;
-  }
   .broker-result { font-size: 13px; line-height: 1.45; }
   .broker-result.ok { color: var(--success-color, #43a047); }
   .broker-result.bad { color: var(--error-color, #db4437); }
