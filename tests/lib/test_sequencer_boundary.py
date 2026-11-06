@@ -56,6 +56,7 @@ ALLOWED: set[tuple[str, str]] = {
     ("proxy_activity_ops.py", "command_to_favorite"),
     ("proxy_activity_sync.py", "_sync_step_membership_remove"),
     ("proxy_backup.py", "erase_configuration"),
+    ("proxy_catalog.py", "refresh_matter_device"),
     ("proxy_exchange.py", "_execute_exchange_attempt"),
     ("proxy_exchange.py", "_status_exchange"),
     ("proxy_hub_mqtt.py", "query_hub_mqtt_status"),

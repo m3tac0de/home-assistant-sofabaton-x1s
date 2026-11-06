@@ -544,6 +544,8 @@ class AsyncXProxy:
             "fetch_banner_info",
             "get_banner_info",
             "get_proxy_status",
+            # the X2's own Matter device, after every devices read
+            "refresh_matter_device",
             # the X2's IR emitter routing targets (ir_emitter_status)
             "read_ir_emitter_status",
             "last_ir_emitter_status",
@@ -989,6 +991,8 @@ class AsyncXProxy:
         await self._catalog_rows(
             self._proxy.get_devices, "devices", refresh=refresh, timeout=timeout
         )
+        if refresh:
+            await self._refresh_matter_device()
         # The getter returns the JSON export view, which strips the stored
         # record body on purpose; the power-state byte lives in that body,
         # so project from the engine's own state rows instead.
@@ -1359,6 +1363,7 @@ class AsyncXProxy:
                 self._proxy.get_devices, "devices",
                 timeout=DEFAULT_FETCH_TIMEOUT, fetch_kw="force_refresh",
             )
+            await self._refresh_matter_device()
             await self._await_fetch(
                 self._proxy.get_activities, "activities",
                 timeout=DEFAULT_FETCH_TIMEOUT, fetch_kw="force_refresh",
@@ -1367,6 +1372,19 @@ class AsyncXProxy:
             return
         if session_gen == self._session_gen and self._proxy.transport.is_hub_connected:
             self._set_catalog_ready(True)
+
+    async def _refresh_matter_device(self) -> None:
+        """Follow a devices read with REQ_MATTER_DEVICE (X2 only).
+
+        The hub's device list never holds its own Matter device; this puts
+        it in the catalog when a controller has linked the hub and takes it
+        out when none has. Best effort: no answer leaves the catalog alone.
+        """
+
+        refresh = getattr(self._proxy, "refresh_matter_device", None)
+        if getattr(self._proxy, "hub_version", None) != HUB_VERSION_X2 or not callable(refresh):
+            return
+        await self.run(refresh)
 
     def _set_catalog_ready(self, ready: bool) -> None:
         if ready == self._catalog_ready:
@@ -1456,7 +1474,11 @@ class AsyncXProxy:
         pause = getattr(getattr(self._proxy, "transport", None), "pause_for_ota", None)
         if not callable(pause):
             return
-        _LOG.warning("hub announced a firmware update; pausing reconnects for %.0fs", OTA_PAUSE_S)
+        _LOG.warning(
+            "hub closed the session (firmware update or Bluetooth setup); "
+            "pausing CALL_ME for up to %.0fs, a hub reconnect is still accepted",
+            OTA_PAUSE_S,
+        )
         try:
             pause(OTA_PAUSE_S)
         except Exception:  # noqa: BLE001  (never let the pause break the loop)
@@ -3652,6 +3674,7 @@ ENGINE_ONLY: dict[str, str] = {
             "notify_ota_in_progress",
             "note_ack_ready_refresh",
             "note_catalog_status_ack",
+            "note_matter_device",
             "ingest_activity_row",
             "ingest_device_row",
             "record_app_activation",

@@ -6,7 +6,7 @@
 import { mdiBluetooth, mdiLedOutline, mdiRadioTower, mdiWifi } from "@mdi/js";
 import { css, html, nothing, type TemplateResult } from "lit";
 import { entityColor } from "./entity-colors";
-import { entityIconName, entityIconPath } from "./entity-icons";
+import { entityIconName, entityIconPath, iconHubLine } from "./entity-icons";
 import { MATTER_ICON_PATH, isMatterClass } from "./matter-icon";
 
 export interface EntityTile {
@@ -20,12 +20,18 @@ export interface EntityTile {
 
 /** The tile for a record's icon and color, or null when the icon is unknown
  *  (no record cached yet) or the hub line is: the caller keeps its own
- *  glyph then. */
+ *  glyph then. A device passes its class: the X2's own Matter device always
+ *  shows the Matter logo, as the app draws it (its record stores icon 46,
+ *  past the selectable set, and nobody can change it). */
 export function entityTile(
   hubVersion: string | null | undefined,
   icon: number | null | undefined,
   colorId: number | null | undefined,
+  deviceClass?: unknown,
 ): EntityTile | null {
+  if (isMatterClass(deviceClass) && iconHubLine(hubVersion)) {
+    return { path: MATTER_ICON_PATH, color: entityColor(hubVersion, colorId), name: "Matter" };
+  }
   if (typeof icon !== "number") return null;
   const path = entityIconPath(hubVersion, icon);
   if (!path) return null;

@@ -45,6 +45,7 @@ class _WireHost(Protocol):
     _frame_thread_ident: int | None
     _handler_failures_seen: set[tuple[str, str]]
     _log: HubLogger
+    _matter_device: dict[str, Any] | None
     diag_dump: bool
     diag_parse: bool
     hub_version: str

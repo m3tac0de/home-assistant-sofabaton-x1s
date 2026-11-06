@@ -637,12 +637,14 @@ def _validate(diff: _Diff, hub_version: Optional[str]) -> None:
     for placeholder in diff.created_activities:
         _clean_name(_name_of(diff.want_activities[placeholder]), "a new activity", ("activity", placeholder), **names)
 
-    # The hub's own device (the X2's Matter device) is never written; the
-    # document may keep it and reference its buttons.
-    for eid in (*diff.edited_devices, *diff.removed_devices):
+    # The hub's own device (the X2's Matter device) is never deleted; the
+    # document may keep it and reference its buttons. An edit is planned like
+    # any device's, and build_device_sync_plan admits only its button names
+    # and button bindings.
+    for eid in diff.removed_devices:
         if is_hub_owned_device(diff.base_devices.get(eid)):
             raise InvalidDocumentError(
-                f"device {eid} belongs to the hub (its Matter buttons) and cannot be edited or deleted",
+                f"device {eid} belongs to the hub (its Matter buttons) and cannot be deleted",
                 entity=("device", eid),
             )
     for eid in diff.edited_devices:

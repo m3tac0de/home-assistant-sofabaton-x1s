@@ -2016,7 +2016,10 @@ function renderMatterGlyph() {
 }
 
 // remote-card/src/entity-icons/entity-tile.ts
-function entityTile(hubVersion, icon, colorId) {
+function entityTile(hubVersion, icon, colorId, deviceClass) {
+  if (isMatterClass(deviceClass) && iconHubLine(hubVersion)) {
+    return { path: MATTER_ICON_PATH, color: entityColor(hubVersion, colorId), name: "Matter" };
+  }
   if (typeof icon !== "number") return null;
   const path = entityIconPath(hubVersion, icon);
   if (!path) return null;
@@ -3209,7 +3212,9 @@ var TOOLS_CARD_STRINGS_EN = {
     renameKind: (kind) => `Rename ${kind}`,
     hubOwnedTitle: "Managed by the hub",
     hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
-    hubOwnedBody: "The hub creates and manages it, so it can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. Activities can still use its buttons.",
+    hubOwnedBody: "The hub creates and manages it: you can rename its buttons and assign remote buttons to them, but the device itself can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. It can't be used in activities.",
+    matterCommandsHelp: "Use the pencil to rename a Matter button. Names can't be empty or repeat.",
+    matterButtonNameTaken: "Another Matter button already has this name.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
     managedWifiBody: "Its commands, power, input, and button assignments are configured there \u2014 editing them here would be overwritten on the next sync.",
@@ -8672,6 +8677,32 @@ var IrEmitterPillController = class {
   }
 };
 
+// custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var HUB_OWNED_DEVICE_CLASSES = /* @__PURE__ */ new Set(["matter"]);
+function isHubOwnedDeviceClass(deviceClass) {
+  return HUB_OWNED_DEVICE_CLASSES.has(String(deviceClass ?? "").trim().toLowerCase());
+}
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function byteToSeconds(byteValue) {
+  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+}
+function secondsToByte(value) {
+  const seconds = parseFloat(String(value));
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function buttonTakeover(held, taking) {
+  const wanted = new Set(taking.map(String));
+  const shared = held.activities.filter((id) => wanted.has(String(id)));
+  if (!shared.length) return null;
+  return { shared, whole: held.favorite || shared.length === held.activities.length };
+}
+function hubSupportsPowerInput(hubVersion) {
+  const version = String(hubVersion ?? "").toUpperCase();
+  return !(version.includes("X1") && !version.includes("X1S"));
+}
+
 // custom_components/sofabaton_x1s/www/src/shared/sidebar-panel-name.ts
 var SIDEBAR_PANEL_NAME_MAX = 30;
 var CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]+/g;
@@ -8802,7 +8833,7 @@ function renderCacheTab(params) {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const reorder = params.reorderMode && params.reorderKind === "device";
-    const tile = reorder ? null : entityTile(params.hubVersion, device.icon, device.color_id);
+    const tile = reorder ? null : entityTile(params.hubVersion, device.icon, device.color_id, device.device_class);
     const isOpen = !reorder && params.openEntity === key;
     const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
@@ -8861,7 +8892,7 @@ function renderCacheTab(params) {
     ...rows.filter((row) => !params.reorderIds.includes(Number(row.id)))
   ];
   const orderedActivities = activityReorder ? workingOrder(activities) : activities;
-  const orderedDevices = deviceReorder ? workingOrder(devices) : devices;
+  const orderedDevices = deviceReorder ? workingOrder(devices.filter((device) => !isHubOwnedDeviceClass(device.device_class))) : devices;
   const containSortableEvent = (event) => {
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -10861,32 +10892,6 @@ var backupTabStyles = i`
     }
 `;
 
-// custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
-var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-var HUB_OWNED_DEVICE_CLASSES = /* @__PURE__ */ new Set(["matter"]);
-function isHubOwnedDeviceClass(deviceClass) {
-  return HUB_OWNED_DEVICE_CLASSES.has(String(deviceClass ?? "").trim().toLowerCase());
-}
-var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function byteToSeconds(byteValue) {
-  return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
-}
-function secondsToByte(value) {
-  const seconds = parseFloat(String(value));
-  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
-  return Math.min(255, Math.max(0, Math.round(seconds * 2)));
-}
-function buttonTakeover(held, taking) {
-  const wanted = new Set(taking.map(String));
-  const shared = held.activities.filter((id) => wanted.has(String(id)));
-  if (!shared.length) return null;
-  return { shared, whole: held.favorite || shared.length === held.activities.length };
-}
-function hubSupportsPowerInput(hubVersion) {
-  const version = String(hubVersion ?? "").toUpperCase();
-  return !(version.includes("X1") && !version.includes("X1S"));
-}
-
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
 var S3 = TOOLS_CARD_STRINGS.backup;
 function renderDrillInRow(params) {
@@ -12625,10 +12630,10 @@ function activityUsageDeviceIds(activity) {
   }
   return ids;
 }
-function activityMemberDeviceIds(activity) {
+function activityMemberDeviceIds(activity, bundle = null) {
   const ids = activityPowerDeviceIds(activity);
   for (const id of activityUsageDeviceIds(activity)) ids.add(id);
-  return [...ids].sort((left, right) => left - right);
+  return [...ids].filter((id) => !bundle || !isHubOwnedDeviceClass(bundleDeviceClass(bundle, id))).sort((left, right) => left - right);
 }
 function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   const memberSet = new Set(members);
@@ -12678,7 +12683,7 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
 function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
   return updateActivity(bundle, activityId, (activity) => {
     const selfId = Number(activity?.device?.device_id || 0);
-    const memberSet = new Set(activityMemberDeviceIds(activity));
+    const memberSet = new Set(activityMemberDeviceIds(activity, bundle));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
       if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
@@ -12759,7 +12764,7 @@ function findBundleActivity(bundle, activityId) {
 function activityMemberViews(bundle, activityId) {
   const activity = findBundleActivity(bundle, activityId);
   if (!bundle || !activity) return [];
-  const members = activityMemberDeviceIds(activity);
+  const members = activityMemberDeviceIds(activity, bundle);
   const memberSet = new Set(members);
   const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
   const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
@@ -12805,7 +12810,7 @@ function activityMemberViews(bundle, activityId) {
 function activityAddableDevices(bundle, activityId) {
   const activity = findBundleActivity(bundle, activityId);
   if (!bundle || !activity) return [];
-  const members = new Set(activityMemberDeviceIds(activity));
+  const members = new Set(activityMemberDeviceIds(activity, bundle));
   return bundleDeviceOptions(bundle).filter(
     (option) => !members.has(option.id)
   );
@@ -12816,7 +12821,7 @@ function addActivityMemberDevice(bundle, activityId, deviceId) {
   if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
   const activity = findBundleActivity(bundle, aId);
   if (!activity) return bundle;
-  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  if (activityMemberDeviceIds(activity, bundle).includes(dId)) return bundle;
   return reconcileActivityPowerMacros(bundle, aId, [dId]);
 }
 function removeActivityMemberDevice(bundle, activityId, deviceId) {
@@ -18519,6 +18524,12 @@ var SofabatonEditDetailView = class extends i4 {
         return;
       }
       if (target.kind === "command") {
+        if (isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, target.deviceId)) && deviceCommandItems(this.bundle, target.deviceId).some(
+          (item) => item.commandId !== target.commandId && item.label.trim() === next.trim()
+        )) {
+          this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.matterButtonNameTaken;
+          return;
+        }
         this._commitEditBundleEdit(
           renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next)
         );
@@ -18637,7 +18648,12 @@ var SofabatonEditDetailView = class extends i4 {
     if (this.entityId == null) return A;
     if (this._isHubOwnedDevice()) {
       const own = bundleEntityAppearance(this.bundle, kind, this.entityId);
-      const ownTile = entityTile(this.bundle?.hub?.version, own.icon, own.colorId);
+      const ownTile = entityTile(
+        this.bundle?.hub?.version,
+        own.icon,
+        own.colorId,
+        bundleDeviceClass(this.bundle, Number(this.entityId))
+      );
       return ownTile ? renderEntityTile(ownTile) : renderMatterGlyph();
     }
     const S5 = TOOLS_CARD_STRINGS.backup;
@@ -18730,7 +18746,11 @@ var SofabatonEditDetailView = class extends i4 {
                   ${this._renderPowerSetupSection("activity", Number(this.entityId))}
                   ${this._renderButtonBindingsSection("activity")}
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
-                ` : this._isHubOwnedDevice() ? this._renderHubOwnedLockNotice() : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
+                ` : this._isHubOwnedDevice() ? b2`
+                    ${this._renderHubOwnedLockNotice()}
+                    ${this._renderDeviceCommandsSection(deviceCommands2)}
+                    ${this._renderButtonBindingsSection("device")}
+                  ` : this._isManagedWifiLiveDevice() ? this._renderManagedWifiLockNotice() : b2`
                     ${this._renderPowerSetupSection("device", Number(this.entityId))}
                     ${this._renderDeviceNetworkSection()}
                     ${this._renderDeviceCommandsSection(deviceCommands2)}
@@ -18824,9 +18844,10 @@ var SofabatonEditDetailView = class extends i4 {
     this._commitEditBundleEdit(setBundleDeviceExtras(this.bundle, deviceId, extras));
   }
   /** The hub's own device (the X2's Matter device): the hub creates and
-   *  removes it, and no write to it has been benched, so every editor shows
-   *  it read-only, live and offline alike. Activities still bind its
-   *  buttons. */
+   *  removes it. Like the vendor app, every editor offers only its button
+   *  names and its button assignments, live and offline alike; the device
+   *  itself (name, icon, commands, power) stays the hub's. Activities still
+   *  bind its buttons. */
   _isHubOwnedDevice() {
     return this.kind === "device" && this.entityId != null && isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, Number(this.entityId)));
   }
@@ -18835,13 +18856,15 @@ var SofabatonEditDetailView = class extends i4 {
     return this.mode === "live" && this.kind === "device" && this.entityId != null && isManagedWifiBrand(brand) && !isWifiEventsBrand(brand);
   }
   /**
-   * Device options for pickers/dialogs. In LIVE mode the reserved Wifi
-   * Events device is filtered out — its commands are offered through the
-   * dedicated "Wifi Event" kind, so listing the device too would present
-   * every event twice. The offline Backup editor keeps showing everything.
+   * Device options for the activity pickers (bindings, shortcuts, macro
+   * steps, button roles). The hub's own Matter device never appears: as in
+   * the vendor app, its buttons are not for activities. In LIVE mode the
+   * reserved Wifi Events device is filtered out too — its commands are
+   * offered through the dedicated "Wifi Event" kind, so listing the device
+   * would present every event twice. The offline Backup editor keeps it.
    */
   _editableDeviceOptions() {
-    const options = bundleDeviceOptions(this.bundle);
+    const options = bundleDeviceOptions(this.bundle).filter((option) => !isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, option.id)));
     if (this.mode !== "live") return options;
     return options.filter(
       (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id))
@@ -18851,8 +18874,14 @@ var SofabatonEditDetailView = class extends i4 {
     if (kind === "activity") {
       return [];
     }
-    if (this._isManagedWifiLiveDevice() || this._isHubOwnedDevice()) {
+    if (this._isManagedWifiLiveDevice()) {
       return [];
+    }
+    if (this._isHubOwnedDevice()) {
+      return [
+        { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
+        { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons }
+      ];
     }
     const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
     return [
@@ -19136,10 +19165,10 @@ var SofabatonEditDetailView = class extends i4 {
           <div class="quick-access-head-main">
             <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
             <div class="quick-access-sub">
-              ${this.mode === "live" ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
+              ${this._isHubOwnedDevice() ? TOOLS_CARD_STRINGS.backup.matterCommandsHelp : this.mode === "live" ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
             </div>
           </div>
-          ${this.mode === "live" ? b2`
+          ${this.mode === "live" && !this._isHubOwnedDevice() ? b2`
                 <div class="quick-access-head-actions">
                   <button
                     class="quick-access-add-btn"
@@ -19173,6 +19202,7 @@ var SofabatonEditDetailView = class extends i4 {
   }
   _renderDeviceCommandRow(item) {
     const pendingAdd = this._commandIsPendingAdd(item.commandId);
+    const nameOnly = this._isHubOwnedDevice();
     return b2`
       <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
         <div class="quick-access-row quick-access-row--no-drag">
@@ -19193,7 +19223,7 @@ var SofabatonEditDetailView = class extends i4 {
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
-            ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId) ? b2`
+            ${!nameOnly && this.mode !== "live" && this._commandHasEditablePayload(item.commandId) ? b2`
                   <button
                     class="icon-btn"
                     @click=${() => this._payload.openFromBundle(item.commandId)}
@@ -19203,7 +19233,7 @@ var SofabatonEditDetailView = class extends i4 {
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
                 ` : A}
-            ${this.mode === "live" && !pendingAdd ? b2`
+            ${!nameOnly && this.mode === "live" && !pendingAdd ? b2`
                   <button
                     class="icon-btn"
                     @click=${() => void this._payload.liveFetchAndOpen(item.commandId)}
@@ -19217,13 +19247,15 @@ var SofabatonEditDetailView = class extends i4 {
                     ></ha-icon>
                   </button>
                 ` : A}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
+            ${nameOnly ? A : b2`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                `}
           </div>
         </div>
       </div>
@@ -27146,7 +27178,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     const openEntity = this._snapshot.openEntity;
     if (openEntity) this._store.toggleEntity(openEntity);
     const cacheHub = selectedHubCache(this._snapshot);
-    this._reorderIds = (kind === "activity" ? hubActivities(cacheHub) : hubDevices(cacheHub)).map((row) => Number(row.id));
+    this._reorderIds = (kind === "activity" ? hubActivities(cacheHub) : hubDevices(cacheHub).filter((row) => !isHubOwnedDeviceClass(row.device_class))).map((row) => Number(row.id));
     this._reorderMode = true;
     this._reorderKind = kind;
     this._reorderSyncing = false;

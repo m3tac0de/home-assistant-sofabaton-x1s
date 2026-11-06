@@ -1009,3 +1009,45 @@ def test_replacing_hub_socket_under_a_running_bridge_keeps_the_new_socket():
                     sock.close()
                 except OSError:
                     pass
+
+
+def test_a_hub_that_dials_back_in_during_the_ota_pause_is_accepted():
+    """The 0x67 session-close also comes on the back-button Bluetooth setup,
+    when the hub reconnects at once: the pause only stops our CALL_ME pings,
+    it never turns the hub away (live X2 2026-11-06: 2,958 refused dials)."""
+
+    bridge = _make_bridge()
+
+    class FakeSocket:
+        def __init__(self):
+            self.closed = False
+
+        def settimeout(self, *_):
+            pass
+
+        def setsockopt(self, *_):
+            pass
+
+        def shutdown(self, *_):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    states = []
+    bridge.on_hub_state(lambda c: states.append(c))
+    first = FakeSocket()
+    bridge._install_hub_socket(first, ("192.168.2.10", 51234))
+
+    bridge.pause_for_ota(300)
+    assert first.closed is True
+    assert bridge.is_hub_connected is False
+    assert bridge._ota_pause_active() is True
+
+    second = FakeSocket()
+    bridge._install_hub_socket(second, ("192.168.2.10", 51235))
+
+    assert second.closed is False
+    assert bridge.is_hub_connected is True
+    assert bridge._ota_pause_active() is False
+    assert states[-3:] == [True, False, True]

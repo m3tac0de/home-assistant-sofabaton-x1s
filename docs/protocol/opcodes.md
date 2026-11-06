@@ -41,7 +41,7 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x0064` | `REMOTE_SYNC` | none observed | X1, X1S | Force remote/hub sync |
 | `0x012E` | `X2_REMOTE_LIST` | `[type]` (0 remotes, 1 RF emitters) | X2 observed | Request remote/emitter status rows (family 0x2F replies carry id, battery, firmware, online flag, name) |
 | `0x0364` | `X2_REMOTE_SYNC_ALL` | `[0xFF, 0xFF, 0xFF]` | X2 bench-validated 2026-08-27 | Sync all paired remotes. Instant STATUS_ACK 0x00 = queued, not completed; the hub serializes triggers (a second one runs after the current pass ends, ~5 min full sync observed); no TCP-visible completion or busy signal |
-| `0x0072` | `REQ_MATTER_DEVICE` | none | X2 bench 2026-11-01 (firmware 9) | The hub's own Matter device row (id 51). An unlinked hub answers `0x0103 07`; the linked answer is not captured yet |
+| `0x0072` | `REQ_MATTER_DEVICE` | none | X2 bench 2026-11-01, linked reply live 2026-11-06 (firmware 9) | The hub's own Matter device (id 51). An unlinked hub answers `0x0103 07`; a linked hub answers `0xD572`, one row in the device-row layout. REQ_DEVICES never lists this device, linked or not, so the library asks `0x0072` after every X2 devices read and merges the row into the catalog by its class. The hub reports linked as soon as any Matter controller has commissioned it |
 | `0x0081` | `MATTER_PAIRING` | none | X2 bench 2026-11-01 (firmware 9) | Answered by `0x2581`: a length byte, the Matter QR text (`MT:` + 19 characters), CR, the 11-digit manual pairing code with separators. A credential: wire dumps mask family `0x81`, and nothing stores it. On firmware 9 the read does not start Matter advertising (no mDNS record within 30 s) |
 | `0x0464` | `X2_REMOTE_SYNC` | `[remote_id:3][0x01]` | X2 observed | Historical per-remote form: ACKed 0x00 but starts NO sync (accepted no-op, bench 2026-08-27). Use `0x0364` instead |
 
@@ -141,6 +141,7 @@ Behavioral notes (bench-observed on X1 + X1S, 2026-07-11):
 |----------|------|-------|
 | `0xD50B` | `CATALOG_ROW_DEVICE` | One device per frame on X1S/X2 |
 | `0x7B0B` | `X1_DEVICE` | One device per frame on X1 |
+| `0xD572` | `MATTER_DEVICE_ROW` | X2 linked reply to `0x0072`: one row, page 1 of 1, in the `0xD50B` layout. Captured: device `0x33` (51), icon 46, class `0x1F`, name and brand "Matter". Merged into the catalog outside the devices snapshot and carried across commits; never part of the device order write |
 | `0xD53B` | `CATALOG_ROW_ACTIVITY` | One activity per frame on X1S/X2 |
 | `0x7B3B` | `X1_ACTIVITY` | One activity per frame on X1 |
 
@@ -392,6 +393,7 @@ Observed page families:
 |----------|------|-----------|-------|
 | `0x0301` | `ACK_SUCCESS` | `H->A` | General acknowledgment |
 | `0x0160` | `ACK_READY` | `H->A` | Hub ready for next command |
+| family `0x67` | `OTA_UPDATE` (session close) | `H->A` | The hub ends the client session. Seen live on the X2 as a bare `0x0067` when its back button starts Bluetooth setup (2026-11-06); the hub then dials straight back in. Assumed to come before a firmware update too, when the hub stays away for minutes. Receivers stop CALL_ME for up to 300 s but accept the hub's own reconnect |
 | `0x0242` | `IDLE_BEHAVIOR` | `H->A` | `[dev_lo, mode]` reply to `REQ_IDLE_BEHAVIOR`: the device's idle/automatic-power mode (1 auto-off, 2 always-on, 3 stay-on, 4 no power key, 0 never configured) |
 | family `0x02` | `BANNER` | `H->A` | Hub identity/banner; observed full opcodes include `0x1A02` (X1), `0x1D02` (X1S), `0x1502` (X2) |
 | family `0x31` | `HUB_NAME_REPLY` | `H->A` | Variable-length hub-name reply family, observed after both `0x0030` and `0x0032` |

@@ -1035,7 +1035,7 @@ export class SofabatonSidebarRemote extends LitElement {
     if (pane === "devices") {
       return html`<div class="rows">
         ${devices.map((device) => {
-          const tile = entityTile(hubVersion, device.icon, device.color_id);
+          const tile = entityTile(hubVersion, device.icon, device.color_id, device.device_class);
           return html`
           <button class=${classMap({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             ${tile

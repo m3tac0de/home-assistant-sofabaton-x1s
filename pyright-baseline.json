@@ -1,6 +1,6 @@
 {
   "pyright": "1.1.414",
-  "errors": 203,
+  "errors": 205,
   "entries": [
     {
       "file": "custom_components/sofabaton_x1s/lib/activity_sync.py",
@@ -162,13 +162,13 @@
       "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
       "rule": "reportCallIssue",
       "message": "Expected 0 positional arguments",
-      "count": 33
+      "count": 34
     },
     {
       "file": "custom_components/sofabaton_x1s/lib/opcode_handlers.py",
       "rule": "reportCallIssue",
       "message": "Object of type \"FrameHandler\" is not callable",
-      "count": 33
+      "count": 34
     },
     {
       "file": "custom_components/sofabaton_x1s/lib/proxy_activity_sync.py",

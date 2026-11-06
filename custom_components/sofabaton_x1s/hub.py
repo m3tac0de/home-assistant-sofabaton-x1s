@@ -111,13 +111,19 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         self.production_batch: str | None = None
         self.activities_ready: bool = False
         self.devices_ready: bool = False
-        # Set while the hub is doing a firmware OTA (opcode 0x0167); we
-        # suppress reconnect attempts and post a persistent notification
-        # so the user knows to come back in a few minutes. Cleared on the
-        # next successful hub connection.
+        # Set after the hub's session-close push (family 0x67), sent before
+        # a firmware update and on the back-button Bluetooth setup. The
+        # transport stops soliciting the hub; the notification waits
+        # _ota_notice_delay_s, so a hub that comes straight back never
+        # shows one. Cleared on the next successful hub connection.
         self._ota_in_progress: bool = False
         self._ota_notification_id = f"sofabaton_x1s_ota_{entry_id}"
         self._ota_pause_seconds: float = 300.0
+        self._ota_notice_delay_s: float = 60.0
+        self._ota_notice_unsub: Any = None
+        # One REQ_MATTER_DEVICE exchange at a time (X2 only, after each
+        # committed devices read; see _async_refresh_matter_device).
+        self._matter_refresh_running: bool = False
         self._devices_generation: int = 0
         self._activities_generation: int = 0
         self._cache_generation: int = 0
@@ -258,6 +264,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
 
     async def async_stop(self) -> None:
         self._log.debug("[%s] Stopping proxy", self.entry_id)
+        self._cancel_ota_notice()
         await self.hass.async_add_executor_job(self._proxy.stop)
 
     async def async_apply_new_settings(

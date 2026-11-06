@@ -711,20 +711,24 @@ def _with_matter_device(document: dict) -> dict:
     return document
 
 
-@pytest.mark.parametrize(
-    "mutate",
-    [
-        lambda d: d["devices"][-1]["commands"][0].update(name="Doorbell"),
-        lambda d: d["devices"].pop(),
-    ],
-    ids=["edit", "delete"],
-)
-def test_the_hubs_matter_device_is_never_written(mutate) -> None:
+def test_the_hubs_matter_device_is_never_deleted() -> None:
     base = _with_matter_device(_bundle())
     desired = copy.deepcopy(base)
-    mutate(desired)
-    with pytest.raises(hub_sync.InvalidDocumentError, match="belongs to the hub"):
+    desired["devices"].pop()
+    with pytest.raises(hub_sync.InvalidDocumentError, match="cannot be deleted"):
         build(base, desired)
+
+
+def test_the_hubs_matter_device_takes_button_renames_only() -> None:
+    base = _with_matter_device(_bundle())
+    renamed = copy.deepcopy(base)
+    renamed["devices"][-1]["commands"][0].update(name="Doorbell")
+    assert _kinds(build(base, renamed)) == [("sync_device", 51)]
+
+    moved = copy.deepcopy(base)
+    moved["devices"][-1]["device"].update(name="Doorbell hub")
+    with pytest.raises(hub_sync.OutOfScopeError, match="belongs to the hub"):
+        build(base, moved)
 
 
 def test_activities_may_bind_the_hubs_matter_device() -> None:

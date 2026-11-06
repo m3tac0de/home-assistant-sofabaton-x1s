@@ -47,6 +47,7 @@ import { PointerReorder } from "../pointer-reorder";
 import { sanitizeName } from "./device-editor-state";
 import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead, renderReadOnlyIrPill } from "../components/ir-emitter-pill";
 import { irEmitterRowAttention } from "../../../remote-card/src/ir-emitters/emitter-rules";
+import { isHubOwnedDeviceClass } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 
 const S = TOOLS_CARD_STRINGS.cache;
 
@@ -117,6 +118,11 @@ interface AddDialogState {
 }
 
 /** The rows in their working order; ids that vanished are dropped, new ones appended (the card's rule). */
+/** The X2's Matter device: the hub's own, with no stored order to change. */
+function isHubOwnedEntry(e: { kind: string; device?: { device_class?: unknown } | null }): boolean {
+  return e.kind === "device" && isHubOwnedDeviceClass(e.device?.device_class);
+}
+
 export function workingOrder<T extends { id: number }>(rows: T[], ids: number[]): T[] {
   return [
     ...ids.map((id) => rows.find((row) => row.id === id)).filter((row): row is T => Boolean(row)),
@@ -662,7 +668,7 @@ export class SbPanelCatalog extends LitElement {
     if (this._locked) return;
     this._open = null;
     this._detailNotice = null;
-    this._reorder = { kind, ids: this._entries.filter((e) => e.kind === kind).map((e) => e.id), syncing: false, error: null };
+    this._reorder = { kind, ids: this._entries.filter((e) => e.kind === kind && !isHubOwnedEntry(e)).map((e) => e.id), syncing: false, error: null };
   }
 
   private _cancelReorder = (): void => {
@@ -763,7 +769,7 @@ export class SbPanelCatalog extends LitElement {
     const kind: CatalogKind = this.kind ?? "activity";
     const listed = this._entries.filter((e) => e.kind === kind);
     const reordering = this._reorder?.kind === kind;
-    const rows = reordering ? workingOrder(listed, this._reorder!.ids) : listed;
+    const rows = reordering ? workingOrder(listed.filter((e) => !isHubOwnedEntry(e)), this._reorder!.ids) : listed;
     const snap = this._snapshot;
     const locked = this._locked;
     const allSpinning = this._refresh?.key === REFRESH_ALL_KEY;
@@ -848,7 +854,7 @@ export class SbPanelCatalog extends LitElement {
    *  corner badge on devices); the card's glyph before that. */
   private _renderEntryIcon(e: CatalogEntry): TemplateResult {
     const row = e.kind === "device" ? e.device : e.activity;
-    const tile = entityTile(this._hubVersion, row?.icon, row?.color_id);
+    const tile = entityTile(this._hubVersion, row?.icon, row?.color_id, e.kind === "device" ? e.device?.device_class : undefined);
     if (tile) {
       return html`<span class="entity-name-icon entity-name-icon--tile">${renderEntityTile(tile, { badge: e.kind === "device" ? entityTileBadge(e.device?.device_class) : null })}</span>`;
     }

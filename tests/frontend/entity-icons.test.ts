@@ -120,3 +120,16 @@ test("the Matter class is hub-owned and has its own glyph", () => {
   assert.equal(isHubOwnedDeviceClass("ir"), false);
   assert.match(MATTER_ICON_PATH, /^M[\d.]/);
 });
+
+test("the X2's Matter device tile shows the Matter logo, never its stored icon", () => {
+  // Its record stores icon 46, past the X2 set, which would fall back to icon 1 (TV).
+  const tile = entityTile("X2", 46, 7, "matter");
+  assert.equal(tile?.path, MATTER_ICON_PATH);
+  assert.equal(tile?.name, "Matter");
+  assert.equal(tile?.color, entityTile("X2", 1, 7)?.color);
+  // No record cached yet: the class alone is enough.
+  assert.equal(entityTile("X2", null, null, "matter")?.path, MATTER_ICON_PATH);
+  // Any other device keeps the record's icon, and no hub line means no tile.
+  assert.equal(entityTile("X2", 46, 7, "ir")?.path, X2_ICON_PATHS[1]);
+  assert.equal(entityTile(null, 46, 7, "matter"), null);
+});

@@ -407,16 +407,18 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return !WIFI_EVENTS_ENABLED || option.id !== this._callbackDeviceId;
   }
 
+  /** The hub's own Matter device is never offered in an activity (as in the vendor app). */
+  private _activityDevice(option: { id: number }): boolean {
+    return this._pickable(option) && !isHubOwnedDeviceClass(bundleDeviceClass(this._working, option.id));
+  }
+
   private _deviceOptions(): Array<{ id: number; label: string }> {
-    return bundleDeviceOptions(this._working).filter((option) => this._pickable(option));
+    return bundleDeviceOptions(this._working).filter((option) => this._activityDevice(option));
   }
 
   private _addableMembers(): Array<{ id: number; label: string }> {
     if (!this._working || this.activityId == null) return [];
-    // The hub's own device (the X2's Matter device) is never a member: it has no power rows.
-    return activityAddableDevices(this._working, this.activityId).filter(
-      (option) => this._pickable(option) && !isHubOwnedDeviceClass(bundleDeviceClass(this._working, option.id)),
-    );
+    return activityAddableDevices(this._working, this.activityId).filter((option) => this._activityDevice(option));
   }
 
   private _macroOptions(): Array<{ value: number; label: string }> {

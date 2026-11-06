@@ -763,7 +763,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubOwnedTitle: "Managed by the hub",
     hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
     hubOwnedBody:
-      "The hub creates and manages it, so it can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. Activities can still use its buttons.",
+      "The hub creates and manages it: you can rename its buttons and assign remote buttons to them, but the device itself can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. It can't be used in activities.",
+    matterCommandsHelp:
+      "Use the pencil to rename a Matter button. Names can't be empty or repeat.",
+    matterButtonNameTaken: "Another Matter button already has this name.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
     managedWifiBody:

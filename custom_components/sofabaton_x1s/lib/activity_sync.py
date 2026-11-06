@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .devices import validate_appearance
 from .entity_refs import iter_entity_references
@@ -359,6 +359,7 @@ def build_activity_sync_plan(
     # and share the pairing with every planner that references macro ids.
     pairing = MacroPairing(base_activity, edit_activity)
 
+    _assert_no_new_hub_owned_refs(base_activity, edit_activity, _devices_by_id(edited))
     _plan_device_side(baseline, edited, activity_id, prereq, idle)
     _plan_membership(base_activity, edit_activity, _devices_by_id(edited), members)
     _plan_macros(base_activity, edit_activity, activity_id, macros, macro_pairing=pairing)
@@ -409,13 +410,7 @@ def build_device_sync_plan(
     edit_dev = _devices_by_id(edited).get(device_id)
     if base_dev is None or edit_dev is None:
         raise ValueError("the edited device is missing from one of the bundles")
-    if is_hub_owned_device(base_dev) or is_hub_owned_device(edit_dev):
-        # No write to the hub's own device (the X2's Matter device) has been
-        # benched; activities still bind its buttons through their own sync.
-        raise ValueError(
-            "this device belongs to the hub (its Matter buttons) and cannot be "
-            "edited; activities can still use its buttons"
-        )
+    hub_owned = is_hub_owned_device(base_dev) or is_hub_owned_device(edit_dev)
 
     _assert_device_sync_in_scope(
         baseline, edited, device_id, allow_command_removal=allow_command_removal
@@ -534,7 +529,37 @@ def build_device_sync_plan(
     # Deletes go LAST: every other write lands on records that still exist,
     # and the hub's delete-time cascade sweeps refs after the final state of
     # the surviving rows is already written.
-    return [*prereq, *macros, *bindings, *idle, *rename, *deletes]
+    steps = [*prereq, *macros, *bindings, *idle, *rename, *deletes]
+    if hub_owned:
+        _assert_hub_owned_device_steps(steps, edit_dev)
+    return steps
+
+
+# The hub's own device (the X2's Matter device) takes only what the vendor
+# app lets a user change: its button names and its device-level button
+# bindings. Its name, icon, commands, power and inputs belong to the hub.
+HUB_OWNED_DEVICE_STEP_KINDS = frozenset({"command_rename", "binding_write", "binding_delete"})
+
+
+def _assert_hub_owned_device_steps(steps: Sequence[SyncStep], edit_dev: Mapping[str, Any]) -> None:
+    refused = sorted({step.kind for step in steps if step.kind not in HUB_OWNED_DEVICE_STEP_KINDS})
+    if refused:
+        raise ValueError(
+            "this device belongs to the hub (its Matter buttons): only its button "
+            f"names and button bindings can change, not {', '.join(refused)}"
+        )
+    if any(step.kind == "command_rename" for step in steps):
+        _assert_matter_button_names(edit_dev)
+
+
+def _assert_matter_button_names(device: Mapping[str, Any]) -> None:
+    """Matter button names are never empty and never repeat, as in the app."""
+
+    names = [str(name).strip() for name in _command_names(device).values()]
+    if any(not name for name in names):
+        raise ValueError("a Matter button needs a name")
+    if len(set(names)) != len(names):
+        raise ValueError("Matter button names must all differ")
 
 
 # ── Scope guard ────────────────────────────────────────────────────────
@@ -782,11 +807,14 @@ def _plan_device_side(
     for dev_id in sorted(edit_devs):
         edited_dev = edit_devs[dev_id]
         base_dev = base_devs.get(dev_id)
+        hub_owned = is_hub_owned_device(base_dev) or is_hub_owned_device(edited_dev)
         # Command renames (device-global; a favorite "rename" rewrites the
         # device command). Prereq — command records first.
         base_names = _command_names(base_dev) if base_dev else {}
         for cmd_id, name in _command_names(edited_dev).items():
             if base_dev is not None and base_names.get(cmd_id, name) != name:
+                if hub_owned:
+                    _assert_matter_button_names(edited_dev)
                 prereq.append(
                     SyncStep(
                         kind="command_rename",
@@ -799,6 +827,8 @@ def _plan_device_side(
         base_inputs = _input_entries(base_dev) if base_dev else None
         edit_inputs = _input_entries(edited_dev)
         if edit_inputs is not None and _canonical(edit_inputs) != _canonical(base_inputs):
+            if hub_owned:
+                raise ValueError("the hub's own Matter device has no inputs to change")
             prereq.append(
                 SyncStep(
                     kind="inputs_write",
@@ -811,6 +841,8 @@ def _plan_device_side(
         base_idle = _idle_mode(base_dev) if base_dev else None
         edit_idle = _idle_mode(edited_dev)
         if edit_idle is not None and edit_idle != base_idle:
+            if hub_owned:
+                raise ValueError("the hub's own Matter device has no idle behaviour to change")
             idle.append(
                 SyncStep(
                     kind="idle_behavior",
@@ -965,6 +997,30 @@ def _member_input_cmd_id(
             command_id = _int(entry.get("command_id"))
             return command_id if command_id > 0 else None
     return None
+
+
+def _assert_no_new_hub_owned_refs(
+    base_activity: Mapping[str, Any],
+    edit_activity: Mapping[str, Any],
+    devices_by_id: Mapping[int, Mapping[str, Any]],
+) -> None:
+    """The hub's own Matter device is not for activities: the vendor app never
+    offers it there, and the hub refuses it as a member (0x024F answered
+    0x06, live X2 2026-11-06). Any reference the edit adds (a binding,
+    shortcut, macro step or power step) is refused; one the hub already
+    holds is hub truth and passes through."""
+
+    def _refs(activity: Mapping[str, Any]) -> set[int]:
+        return {
+            target
+            for _referrer, _site, target in iter_entity_references(
+                {"activities": [activity]}, exclude_sites=("referenced_source",)
+            )
+        }
+
+    added = _refs(edit_activity) - _refs(base_activity)
+    if any(is_hub_owned_device(devices_by_id.get(dev_id)) for dev_id in added):
+        raise ValueError("the hub's own Matter device can't be used in an activity")
 
 
 def _plan_membership(

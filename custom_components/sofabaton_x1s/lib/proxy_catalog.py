@@ -22,14 +22,23 @@ from typing import Any, TYPE_CHECKING
 from .hub_versions import HUB_VERSION_X2
 from .commands import extract_ir_dump_blob, extract_ir_dump_label_field
 from .protocol_const import (
+    FAMILY_MATTER_DEVICE,
+    MATTER_DEVICE_ID,
     OP_REQ_ACTIVITY_MAP,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_DEVICES,
     OP_REQ_MACRO_LABELS,
+    OP_REQ_MATTER_DEVICE,
+    OP_STATUS_ACK,
+    is_hub_owned_device,
 )
 from .entity_tables import WRITE_GROUPS, cached_detail_ids, forget_entity
 from .state_helpers import normalize_device_entry
+
+# STATUS_ACK status for REQ_MATTER_DEVICE on an X2 no controller has
+# commissioned (bench 2026-11-01).
+_MATTER_STATUS_UNLINKED = 0x07
 
 if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
@@ -46,6 +55,127 @@ def _to_export_view():
 
 class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing catalog request, snapshot ingest, and cache reads."""
+
+    def note_matter_device(self, row: dict[str, Any]) -> None:
+        """Record the X2's Matter device from a linked REQ_MATTER_DEVICE
+        reply and put it in the device catalog.
+
+        REQ_DEVICES never lists this device, so it is merged here and
+        carried across every committed devices snapshot (see
+        :meth:`_carry_matter_device`) until a 0x0072 answer says the hub is
+        unlinked (:meth:`_forget_matter_device`). Its class keeps it the
+        hub's own: read-only, never a member, never reordered or written.
+        """
+
+        dev_id = int(row.get("device_id", MATTER_DEVICE_ID)) & 0xFF
+        self._matter_device = dict(row, device_id=dev_id, seen_at=time.time())
+        self.state.devices[dev_id] = self._matter_catalog_entry(self._matter_device)
+        self._log.info(
+            "[MATTER] hub is linked: device %d '%s' class=%s/0x%02X icon=%d",
+            dev_id,
+            row.get("name", ""),
+            row.get("device_class") or "?",
+            row.get("device_class_code") or 0,
+            row.get("icon") or 0,
+        )
+
+    def _matter_catalog_entry(self, row: dict[str, Any]) -> dict[str, Any]:
+        entry = normalize_device_entry(
+            {
+                "brand": row.get("brand"),
+                "name": row.get("name"),
+                "device_class": row.get("device_class"),
+                "device_class_code": row.get("device_class_code"),
+            }
+        )
+        raw_body = row.get("raw_body")
+        if isinstance(raw_body, (bytes, bytearray)) and raw_body:
+            entry["raw_body"] = bytes(raw_body)
+        mode = self._idle_behavior_values.get(int(row.get("device_id", MATTER_DEVICE_ID)) & 0xFF)
+        if mode is not None:
+            entry["idle_behavior"] = mode
+        return entry
+
+    def _carry_matter_device(self, committed: dict[int, dict[str, Any]]) -> None:
+        """Keep the Matter device in a committed devices snapshot.
+
+        From the last linked reply when one landed this session, else the
+        hub-owned entry the catalog already held (a persisted cache after
+        a restart). The next 0x0072 answer confirms or removes it.
+        """
+
+        if self.hub_version != HUB_VERSION_X2:
+            return
+        row = self._matter_device
+        if row is not None:
+            dev_id = int(row["device_id"]) & 0xFF
+            committed.setdefault(dev_id, self._matter_catalog_entry(row))
+            return
+        prior = self.state.entities("device").get(MATTER_DEVICE_ID)
+        if prior is not None and is_hub_owned_device(prior):
+            committed.setdefault(MATTER_DEVICE_ID, dict(prior))
+
+    def _forget_matter_device(self) -> None:
+        """The hub answered 0x0072 as unlinked: drop its Matter device."""
+
+        self._matter_device = None
+        entry = self.state.entities("device").get(MATTER_DEVICE_ID)
+        if not is_hub_owned_device(entry):
+            return
+        self.state.devices.pop(MATTER_DEVICE_ID, None)
+        self.forget_idle_behavior(MATTER_DEVICE_ID)
+        self._prune_vanished_entities(
+            "device",
+            {MATTER_DEVICE_ID},
+            set(self.state.entities("device")),
+            other_kind_ids=set(self.state.entities("activity")),
+        )
+        self._log.info("[MATTER] hub is not linked: Matter device removed from the catalog")
+
+    def refresh_matter_device(self, *, timeout: float = 3.0) -> bool | None:
+        """Ask the X2 for its Matter device (REQ_MATTER_DEVICE, 0x0072).
+
+        True when the hub is linked (the row handler has merged the device
+        into the catalog), False when it is not (the device is removed),
+        None on another model, when the hub cannot be asked, or when it
+        gives no recognised answer (an older firmware). One exchange: the
+        reply is either the row or a STATUS_ACK, 0x07 meaning unlinked.
+        """
+
+        if self.hub_version != HUB_VERSION_X2 or not self.can_issue_commands():
+            return None
+        status_family = OP_STATUS_ACK & 0xFF
+        with self.exchange("matter_device"):
+            self.clear_ack_queue()
+            send_ts = time.monotonic()
+            self._send_cmd_frame(OP_REQ_MATTER_DEVICE, b"")
+            matched = self.wait_for_ack_families_low(
+                (FAMILY_MATTER_DEVICE, status_family), timeout=timeout, not_before=send_ts
+            )
+        if matched is None:
+            self._log.info("[MATTER] the hub did not answer the Matter device query")
+            return None
+        opcode, payload = matched
+        if opcode & 0xFF == FAMILY_MATTER_DEVICE:
+            return True
+        status = payload[0] if payload else None
+        if status == _MATTER_STATUS_UNLINKED:
+            self._forget_matter_device()
+            return False
+        self._log.info("[MATTER] unexpected answer to the Matter device query: status=%s", status)
+        return None
+
+    @property
+    def matter_device(self) -> dict[str, Any] | None:
+        """The X2's Matter device as last seen in a linked 0x0072 reply.
+
+        ``None`` until a linked reply lands, and again after an unlinked
+        one. Either the vendor app's request or :meth:`refresh_matter_device`
+        fills it.
+        """
+
+        row = self._matter_device
+        return dict(row) if row is not None else None
 
     def request_activity_mapping(self, act_id: int) -> bool:
         if not self.can_issue_commands():
@@ -717,6 +847,7 @@ class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
             if cached_mode is not None:
                 merged["idle_behavior"] = cached_mode
             committed[dev_id] = merged
+        self._carry_matter_device(committed)
         with self._idle_behavior_lock:
             gone = (set(self._idle_behavior_values) | self._idle_behavior_absent) - set(committed)
         for dev_id in gone:

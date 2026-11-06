@@ -391,7 +391,9 @@ export class SofabatonEditDetailView extends LitElement {
     if (this._isHubOwnedDevice()) {
       // Nothing to edit: the tile (or the class glyph) without its button.
       const own = bundleEntityAppearance(this.bundle, kind, this.entityId);
-      const ownTile = entityTile(this.bundle?.hub?.version, own.icon, own.colorId);
+      const ownTile = entityTile(
+        this.bundle?.hub?.version, own.icon, own.colorId, bundleDeviceClass(this.bundle, Number(this.entityId)),
+      );
       return ownTile ? renderEntityTile(ownTile) : renderMatterGlyph();
     }
     const S = TOOLS_CARD_STRINGS.backup;
@@ -503,7 +505,11 @@ export class SofabatonEditDetailView extends LitElement {
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
                 `
               : this._isHubOwnedDevice()
-                ? this._renderHubOwnedLockNotice()
+                ? html`
+                    ${this._renderHubOwnedLockNotice()}
+                    ${this._renderDeviceCommandsSection(deviceCommands)}
+                    ${this._renderButtonBindingsSection("device")}
+                  `
                 : this._isManagedWifiLiveDevice()
                 ? this._renderManagedWifiLockNotice()
                 : html`
@@ -609,9 +615,10 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /** The hub's own device (the X2's Matter device): the hub creates and
-   *  removes it, and no write to it has been benched, so every editor shows
-   *  it read-only, live and offline alike. Activities still bind its
-   *  buttons. */
+   *  removes it. Like the vendor app, every editor offers only its button
+   *  names and its button assignments, live and offline alike; the device
+   *  itself (name, icon, commands, power) stays the hub's. Activities still
+   *  bind its buttons. */
   private _isHubOwnedDevice(): boolean {
     return (
       this.kind === "device" &&
@@ -639,13 +646,16 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /**
-   * Device options for pickers/dialogs. In LIVE mode the reserved Wifi
-   * Events device is filtered out — its commands are offered through the
-   * dedicated "Wifi Event" kind, so listing the device too would present
-   * every event twice. The offline Backup editor keeps showing everything.
+   * Device options for the activity pickers (bindings, shortcuts, macro
+   * steps, button roles). The hub's own Matter device never appears: as in
+   * the vendor app, its buttons are not for activities. In LIVE mode the
+   * reserved Wifi Events device is filtered out too — its commands are
+   * offered through the dedicated "Wifi Event" kind, so listing the device
+   * would present every event twice. The offline Backup editor keeps it.
    */
   _editableDeviceOptions() {
-    const options = bundleDeviceOptions(this.bundle);
+    const options = bundleDeviceOptions(this.bundle)
+      .filter((option) => !isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, option.id)));
     if (this.mode !== "live") return options;
     return options.filter(
       (option) => !isWifiEventsBrand(bundleDeviceBrand(this.bundle, option.id)),
@@ -660,9 +670,15 @@ export class SofabatonEditDetailView extends LitElement {
     if (kind === "activity") {
       return [];
     }
-    if (this._isManagedWifiLiveDevice() || this._isHubOwnedDevice()) {
+    if (this._isManagedWifiLiveDevice()) {
       // Locked: no editable sections, so no section nav.
       return [];
+    }
+    if (this._isHubOwnedDevice()) {
+      return [
+        { id: "commands", icon: "mdi:format-list-bulleted", label: TOOLS_CARD_STRINGS.backup.detailCommands },
+        { id: "bindings", icon: "mdi:gesture-tap-button", label: TOOLS_CARD_STRINGS.backup.detailButtons },
+      ];
     }
 
     const hasNetworkSection = this.entityId != null && this.bundle
@@ -1045,12 +1061,14 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-head-main">
             <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.detailCommands}</div>
             <div class="quick-access-sub">
-              ${this.mode === "live"
+              ${this._isHubOwnedDevice()
+                ? TOOLS_CARD_STRINGS.backup.matterCommandsHelp
+                : this.mode === "live"
                 ? TOOLS_CARD_STRINGS.backup.commandsLiveHelp
                 : TOOLS_CARD_STRINGS.backup.commandsBackupHelp}
             </div>
           </div>
-          ${this.mode === "live"
+          ${this.mode === "live" && !this._isHubOwnedDevice()
             ? html`
                 <div class="quick-access-head-actions">
                   <button
@@ -1091,6 +1109,8 @@ export class SofabatonEditDetailView extends LitElement {
 
   private _renderDeviceCommandRow(item: BackupDeviceCommandItem) {
     const pendingAdd = this._commandIsPendingAdd(item.commandId);
+    // The hub's own Matter buttons: a name is all a user may change.
+    const nameOnly = this._isHubOwnedDevice();
     return html`
       <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
         <div class="quick-access-row quick-access-row--no-drag">
@@ -1113,7 +1133,7 @@ export class SofabatonEditDetailView extends LitElement {
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
-            ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId)
+            ${!nameOnly && this.mode !== "live" && this._commandHasEditablePayload(item.commandId)
               ? html`
                   <button
                     class="icon-btn"
@@ -1125,7 +1145,7 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            ${this.mode === "live" && !pendingAdd
+            ${!nameOnly && this.mode === "live" && !pendingAdd
               ? html`
                   <button
                     class="icon-btn"
@@ -1141,13 +1161,17 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
+            ${nameOnly
+              ? nothing
+              : html`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                `}
           </div>
         </div>
       </div>
@@ -2209,6 +2233,16 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     if (target.kind === "command") {
+      // The hub's own Matter buttons never share a name (as in the app).
+      if (
+        isHubOwnedDeviceClass(bundleDeviceClass(this.bundle, target.deviceId)) &&
+        deviceCommandItems(this.bundle, target.deviceId).some(
+          (item) => item.commandId !== target.commandId && item.label.trim() === next.trim(),
+        )
+      ) {
+        this._editRenameDialogError = TOOLS_CARD_STRINGS.backup.matterButtonNameTaken;
+        return;
+      }
       // Name only (both modes): payload edits live in the dedicated payload
       // dialog. In live mode this flows through a command_rename sync step.
       this._commitEditBundleEdit(

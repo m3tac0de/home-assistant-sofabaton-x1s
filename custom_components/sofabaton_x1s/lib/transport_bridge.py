@@ -192,10 +192,10 @@ class TransportBridge:
         self._chunk_id = 0
         self._proxy_enabled = True
         self._busy_gate: Optional[Callable[[], bool]] = None
-        # When set in the future, suppress CALL_ME pings and refuse hub-
-        # initiated reconnects until the deadline passes. Used to honour
-        # the hub's OTA-update push (opcode 0x0167): stay disconnected
-        # for several minutes while the firmware update runs.
+        # When set in the future, suppress CALL_ME pings until the deadline
+        # passes or the hub dials back in. Armed by the hub's session-close
+        # push (family 0x67), which it sends before a firmware update and
+        # also when its back button starts Bluetooth setup.
         self._ota_pause_until: float = 0.0
 
     # ------------------------------------------------------------------
@@ -248,12 +248,14 @@ class TransportBridge:
         }
 
     def pause_for_ota(self, seconds: float) -> None:
-        """Drop the hub session and refuse reconnects for ``seconds`` seconds.
+        """Drop the hub session and stop CALL_ME pings for ``seconds`` seconds.
 
-        Invoked when the hub announces a firmware OTA update. The hub may
-        still dial us back during this window; we silently drop those
-        connections and stop sending CALL_ME pings until the pause
-        expires.
+        Invoked when the hub pushes its session-close frame (family 0x67).
+        The hub sends it before a firmware update, when it may stay away
+        for minutes, so we don't solicit it during that window. It sends
+        the same frame when its back button starts Bluetooth setup, and
+        then it dials back in within milliseconds: a hub that connects on
+        its own is accepted and ends the pause (see _install_hub_socket).
         """
 
         deadline = time.time() + max(0.0, float(seconds))
@@ -544,22 +546,18 @@ class TransportBridge:
         """Callback invoked by :class:`HubListener` when the hub TCP-connects."""
 
         if self._ota_pause_active():
+            # The pause only stops us soliciting the hub. A hub that dials
+            # in by itself is ready for a session: refusing it made the
+            # hub retry about ten times a second for the whole window.
             self._log.info(
-                "%s rejecting hub TCP from %s:%d during OTA pause (%.0fs left)",
+                "%s hub dialled back in from %s:%d during the OTA pause (%.0fs left); "
+                "accepting it and ending the pause",
                 LogTag.TRANSPORT,
                 hub_addr[0],
                 hub_addr[1],
                 self._ota_pause_until - time.time(),
             )
-            try:
-                hub_sock.shutdown(socket.SHUT_RDWR)
-            except Exception:
-                pass
-            try:
-                hub_sock.close()
-            except Exception:
-                pass
-            return
+            self._ota_pause_until = 0.0
 
         try:
             hub_sock.settimeout(0.0)

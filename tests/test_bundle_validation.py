@@ -632,6 +632,53 @@ def test_only_new_direct_refs_require_power_linkage_when_power_unchanged():
         validate_hub_bundle_for_model(edited, hub_version="X1S", grandfather_baseline=baseline)
 
 
+def _with_matter_device(bundle: dict) -> None:
+    bundle["devices"].append(
+        {
+            "device": {"device_id": 51, "name": "Matter", "device_class": "matter", "idle_behavior": 0},
+            "commands": [{"command_id": key, "name": f"Button {key}"} for key in range(1, 9)],
+            "macros": [],
+            "button_bindings": [],
+        }
+    )
+
+
+@pytest.mark.parametrize("site", ["favorite", "binding"])
+def test_an_edit_cannot_add_the_matter_device_to_an_activity(site):
+    """As in the vendor app, the hub's own Matter device is not for
+    activities: the edit is refused by name, not as missing power rows."""
+
+    baseline = valid_bundle("X2")
+    _with_matter_device(baseline)
+    validate_hub_bundle_for_model(baseline, hub_version="X2", grandfather_baseline=baseline)
+
+    edited = copy.deepcopy(baseline)
+    if site == "favorite":
+        edited["activities"][0]["favorite_slots"].append({"button_id": 5, "device_id": 51, "command_id": 1, "name": ""})
+    else:
+        edited["activities"][0]["button_bindings"] = [
+            {"button_id": 0xB1, "device_id": 51, "command_id": 1, "long_press_device_id": None, "long_press_command_id": None}
+        ]
+    with pytest.raises(ValueError, match="Matter device can't be used in an activity"):
+        validate_hub_bundle_for_model(edited, hub_version="X2", grandfather_baseline=baseline)
+
+
+def test_a_matter_reference_the_hub_holds_needs_no_power_rows():
+    """Hub truth: an activity that already uses a Matter button stays
+    editable, and a power edit never asks for Matter power rows."""
+
+    baseline = valid_bundle("X2")
+    _with_matter_device(baseline)
+    baseline["activities"][0]["favorite_slots"].append({"button_id": 5, "device_id": 51, "command_id": 1, "name": ""})
+    validate_hub_bundle_for_model(baseline, hub_version="X2", grandfather_baseline=baseline)
+
+    edited = copy.deepcopy(baseline)
+    edited["activities"][0]["macros"][1]["steps"].append(
+        {"device_id": 0xFF, "command_id": 0xFF, "button_code": 0, "duration": 0, "delay": 1}
+    )
+    validate_hub_bundle_for_model(edited, hub_version="X2", grandfather_baseline=baseline)
+
+
 def test_collect_missing_command_refs_covers_all_reference_sites():
     bundle = valid_bundle()
     device = bundle["devices"][0]

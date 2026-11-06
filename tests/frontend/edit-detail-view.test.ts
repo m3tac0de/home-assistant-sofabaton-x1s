@@ -688,7 +688,7 @@ function matterBundle(): BackupBundlePayload {
 }
 
 for (const mode of ["live", "backup"] as const) {
-  test(`the ${mode} editor shows the hub's Matter device read-only (no edit, sections or delete)`, () => {
+  test(`the ${mode} editor offers only button names and assignments on the hub's Matter device`, () => {
     const element = new EditDetailViewElement() as EditorElement;
     element.bundle = matterBundle();
     element.kind = "device";
@@ -696,25 +696,64 @@ for (const mode of ["live", "backup"] as const) {
     element.mode = mode;
 
     assert.equal(element._isHubOwnedDevice(), true);
-    assert.deepEqual(element._editDetailSectionItems("device"), []);
+    assert.deepEqual(
+      element._editDetailSectionItems("device").map((item: { id: string }) => item.id),
+      ["commands", "bindings"],
+    );
     assert.ok(templateText(element._renderHubOwnedLockNotice()).includes("Managed by the hub"));
+    // The device itself: no rename/icon dialog, no delete.
     assert.ok(!templateText(element._renderDetailEdit("device")).includes("<button"));
     element._openDetailRenameDialog();
     assert.ok(!templateText(element._renderEditRenameDialog()).includes("dialog-footer-delete"));
+    // A button row: the rename pencil only, no payload or delete button.
+    const row = templateText(element._renderDeviceCommandRow({ commandId: 1, label: "Button 1" }));
+    assert.ok(row.includes("mdi:pencil"));
+    assert.ok(!row.includes("mdi:code-braces"));
+    assert.ok(!row.includes("mdi:trash-can-outline"));
+    // No command can be added.
+    assert.ok(!templateText(element._renderDeviceCommandsSection([])).includes("mdi:plus"));
   });
 }
 
-test("an activity never offers the hub's Matter device as a member", () => {
+test("a Matter button rename refuses a name another button has", () => {
   const element = new EditDetailViewElement() as EditorElement;
   element.bundle = matterBundle();
-  element.kind = "activity";
-  element.entityId = 101;
+  element.kind = "device";
+  element.entityId = 51;
   element.mode = "live";
 
-  const ids = element._addableMemberDevices().map((option: { id: number }) => option.id);
-  assert.ok(ids.length > 0);
-  assert.ok(!ids.includes(51));
+  element._openDeviceCommandRenameDialog(1);
+  element._editRenameDialogDraft = "Button 2";
+  element._applyEditRenameDialog();
+  assert.equal(element._editRenameDialogError, "Another Matter button already has this name.");
+
+  element._editRenameDialogDraft = "Doorbell";
+  element._applyEditRenameDialog();
+  const matter = (element.bundle.devices ?? []).find((d: any) => d.device.device_id === 51);
+  assert.equal(matter.commands[0].name, "Doorbell");
 });
+
+for (const mode of ["live", "backup"] as const) {
+  test(`the ${mode} activity editor never offers the hub's Matter device`, () => {
+    // As in the vendor app: no member, binding, shortcut, macro step or role.
+    const element = new EditDetailViewElement() as EditorElement;
+    element.bundle = matterBundle();
+    element.kind = "activity";
+    element.entityId = 101;
+    element.mode = mode;
+
+    const pickers: Array<[string, number[]]> = [
+      ["members", element._addableMemberDevices().map((option: { id: number }) => option.id)],
+      ["activity pickers", element._editableDeviceOptions().map((option: { id: number }) => option.id)],
+      ["shortcuts", element._shortcutDeviceOptions().map((option: { id: number }) => option.id)],
+      ["bindings", element._binding.commandDeviceOptions().map((option: { value: number }) => option.value)],
+    ];
+    for (const [name, ids] of pickers) {
+      assert.ok(ids.length > 0, `${name} offers the ordinary devices`);
+      assert.ok(!ids.includes(51), `${name} leaves the Matter device out`);
+    }
+  });
+}
 
 // ── Live command removal on every device ──────────────────────────────
 

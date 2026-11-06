@@ -17,6 +17,7 @@ import { TOOLS_CARD_STRINGS } from "../strings";
 import { appearanceLabelsFrom, renderAppearanceToggle, type AppearanceToggleState } from "../../../../../remote-card/src/entity-icons/appearance-editor";
 import { entityTile, entityTileBadge, renderEntityTile } from "../../../../../remote-card/src/entity-icons/entity-tile";
 import { isMatterClass, renderMatterGlyph } from "../../../../../remote-card/src/entity-icons/matter-icon";
+import { isHubOwnedDeviceClass } from "../shared/hub-rules";
 import { irEmitterRowAttention, type PairedEmitter } from "../../../../../remote-card/src/ir-emitters/emitter-rules";
 import { renderReadOnlyIrPill } from "../components/ir-emitter-pill";
 
@@ -224,7 +225,7 @@ export function renderCacheTab(params: {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const reorder = params.reorderMode && params.reorderKind === "device";
-    const tile = reorder ? null : entityTile(params.hubVersion, device.icon, device.color_id);
+    const tile = reorder ? null : entityTile(params.hubVersion, device.icon, device.color_id, device.device_class);
     const isOpen = !reorder && params.openEntity === key;
     const locked = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
@@ -293,7 +294,10 @@ export function renderCacheTab(params: {
     ...rows.filter((row) => !params.reorderIds.includes(Number(row.id))),
   ];
   const orderedActivities = activityReorder ? workingOrder(activities) : activities;
-  const orderedDevices = deviceReorder ? workingOrder(devices) : devices;
+  // The hub's own Matter device has no stored order: hidden while reordering.
+  const orderedDevices = deviceReorder
+    ? workingOrder(devices.filter((device) => !isHubOwnedDeviceClass(device.device_class)))
+    : devices;
 
   // ha-sortable fires its events bubbling AND composed, and this card sits
   // inside the dashboard section's own <ha-sortable> grid. Anything we let

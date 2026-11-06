@@ -4255,7 +4255,10 @@ function renderMatterGlyph() {
 }
 
 // remote-card/src/entity-icons/entity-tile.ts
-function entityTile(hubVersion, icon, colorId) {
+function entityTile(hubVersion, icon, colorId, deviceClass) {
+  if (isMatterClass(deviceClass) && iconHubLine(hubVersion)) {
+    return { path: MATTER_ICON_PATH, color: entityColor(hubVersion, colorId), name: "Matter" };
+  }
   if (typeof icon !== "number") return null;
   const path = entityIconPath(hubVersion, icon);
   if (!path) return null;
@@ -5353,7 +5356,7 @@ var SofabatonSidebarRemote = class extends i4 {
     if (pane === "devices") {
       return b2`<div class="rows">
         ${devices.map((device) => {
-        const tile = entityTile(hubVersion, device.icon, device.color_id);
+        const tile = entityTile(hubVersion, device.icon, device.color_id, device.device_class);
         return b2`
           <button class=${e5({ row: true, current: deviceMode && device.id === derived.deviceId })} type="button" data-press @click=${() => this._pickDevice(device.id)}>
             ${tile ? renderEntityTile(tile, { badge: entityTileBadge(device.device_class) }) : b2`<span class="ic">${isMatterClass(device.device_class) ? renderMatterGlyph() : icon(deviceClassIcon(device.device_class))}</span>`}

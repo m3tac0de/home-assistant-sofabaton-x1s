@@ -135,6 +135,8 @@ const S = {
   hubOwnedTitle: B.hubOwnedTitle,
   hubOwnedIntro: B.hubOwnedIntro,
   hubOwnedBody: B.hubOwnedBody,
+  matterCommandsHelp: B.matterCommandsHelp,
+  matterButtonNameTaken: B.matterButtonNameTaken,
   renameDevice: B.renameDevice,
   deleteDeviceAria: B.deleteDeviceAria,
   syncToHub: TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub,
@@ -789,6 +791,13 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   private _sectionItems(): Array<{ id: SectionId; icon: string; label: string }> {
     const deviceClass = this.deviceId != null ? bundleDeviceClass(this._working, this.deviceId) ?? "" : "";
     const hasNetwork = IP_HEAD_DEVICE_CLASSES.has(deviceClass);
+    if (this._hubOwned) {
+      // The hub's own Matter device: its button names and assignments only.
+      return [
+        { id: "commands", icon: mdiFormatListBulleted, label: S.detailCommands },
+        { id: "bindings", icon: mdiGestureTapButton, label: S.detailButtons },
+      ];
+    }
     return [
       { id: "power", icon: mdiPowerPlugOutline, label: S.detailPower },
       ...(hasNetwork ? [{ id: "network" as const, icon: mdiLanConnect, label: S.detailNetwork }] : []),
@@ -952,7 +961,15 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
         colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null,
       }));
     }
-    else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
+    else {
+      const commandId = dialog.target.commandId;
+      // The hub's own Matter buttons never share a name (as in the app).
+      if (this._hubOwned && deviceCommandItems(this._working, deviceId).some((item) => item.commandId !== commandId && item.label.trim() === next.trim())) {
+        this._rename = { ...dialog, error: S.matterButtonNameTaken };
+        return;
+      }
+      this._commit(renameBundleDeviceCommand(this._working, deviceId, commandId, next));
+    }
     this._rename = null;
   };
 
@@ -1191,7 +1208,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   private _renderEditor(): TemplateResult {
     const deviceId = this.deviceId!;
     const hubOwned = this._hubOwned;
-    const sections = hubOwned ? [] : this._sectionItems();
+    const sections = this._sectionItems();
     const dirty = this._dirty;
     const callback = this._isCallbackDevice;
     const irPill = this._renderIrPill();
@@ -1213,7 +1230,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   </div>
                 </div>
               </div>
-              ${this._offline || hubOwned
+              ${this._offline
                 ? nothing
                 : html`<div class="detail-title-actions"><button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" title=${dirty ? S.syncToHub : S.syncUpToDate} aria-label=${dirty ? S.syncToHub : S.syncUpToDate} ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}><span class="detail-sync-icon">${icon(dirty ? mdiSync : mdiCheck)}</span><span class="detail-sync-label">${dirty ? S.syncToHub : S.syncUpToDate}</span></button></div>`}
             </div>
@@ -1228,7 +1245,9 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             ${this._managedByHa ? html`<div class="notice-banner" id="editor-managed-warning">${icon(mdiWifiCog)}<span>${S.managedWifiWarning}</span></div>` : nothing}
             ${callback ? html`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S.serverWifiDeviceNote : S.callbackDeviceNote}</span></div>` : nothing}
             ${hubOwned
-              ? html`<div class="notice-banner notice-banner--info" id="editor-hub-owned-note">${icon(MATTER_ICON_PATH)}<span><strong>${S.hubOwnedTitle}</strong> ${S.hubOwnedIntro} ${S.hubOwnedBody}</span></div>`
+              ? html`<div class="notice-banner notice-banner--info" id="editor-hub-owned-note">${icon(MATTER_ICON_PATH)}<span><strong>${S.hubOwnedTitle}</strong> ${S.hubOwnedIntro} ${S.hubOwnedBody}</span></div>
+                ${this._renderCommandsSection(deviceId)}
+                ${this._renderBindingsSection(deviceId)}`
               : html`
                 ${this._renderPowerSection(deviceId)}
                 ${this._renderNetworkSection(deviceId)}
@@ -1320,12 +1339,14 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const items = deviceCommandItems(this._working, deviceId);
     const element = this._workingElement;
     const callback = this._isCallbackDevice;
+    // The hub's own Matter buttons: a name is all a user may change.
+    const nameOnly = this._hubOwned;
     const pendingAdd = (commandId: number) => Boolean((element?.commands ?? []).find((row) => Number(row?.command_id) === commandId)?.restore_data?.new);
     return html`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-head-main"><div class="quick-access-title">${S.detailCommands}</div><div class="quick-access-sub">${this._offline ? S.commandsBackupHelp : S.commandsLiveHelp}</div></div>
-          ${callback || this._offline
+          <div class="quick-access-head-main"><div class="quick-access-title">${S.detailCommands}</div><div class="quick-access-sub">${nameOnly ? S.matterCommandsHelp : this._offline ? S.commandsBackupHelp : S.commandsLiveHelp}</div></div>
+          ${callback || this._offline || nameOnly
             ? nothing
             : html`<div class="quick-access-head-actions"><button class="quick-access-add-btn" id="editor-add-command" type="button" ?disabled=${this._addCommandPreparing} @click=${() => void this._openAddCommand()}>${icon(this._addCommandPreparing ? mdiLoading : mdiPlus, this._addCommandPreparing ? "sb-spin" : "")}<span>${S.addCommand}</span></button></div>`}
         </div>
@@ -1341,10 +1362,10 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                     ${callback
                       ? nothing
                       : html`<button class="icon-btn command-rename" type="button" aria-label=${S.renameCommandAria} title=${S.renameCommandAria} @click=${() => this._openRename({ kind: "command", commandId: item.commandId })}>${icon(mdiPencil)}</button>
-                          ${pendingAdd(item.commandId) || (this._offline && !this._commandHasEditablePayload(item.commandId))
+                          ${nameOnly || pendingAdd(item.commandId) || (this._offline && !this._commandHasEditablePayload(item.commandId))
                             ? nothing
                             : html`<button class="icon-btn command-payload ${this._payloadFetching === item.commandId ? "is-fetching" : ""}" type="button" aria-label=${S.editPayloadAria} title=${S.fetchEditCommandAria} ?disabled=${this._payloadFetching != null} @click=${() => void this._fetchAndEditPayload(item.commandId)}>${icon(this._payloadFetching === item.commandId ? mdiLoading : mdiCodeBraces, this._payloadFetching === item.commandId ? "sb-spin" : "")}</button>`}
-                          ${isLongRecord(this._pairedRecords ? (this._baselineEntity as BackupBundleDevicePayload | null) : null, item.commandId)
+                          ${nameOnly || isLongRecord(this._pairedRecords ? (this._baselineEntity as BackupBundleDevicePayload | null) : null, item.commandId)
                             ? nothing
                             : html`<button class="icon-btn icon-btn--danger command-delete" type="button" aria-label=${S.deleteCommandAria} title=${S.deleteCommandAria} @click=${() => this._openDeleteConfirm({ kind: "command", deviceId, commandId: item.commandId }, item.label)}>${icon(mdiTrashCanOutline)}</button>`}`}
                   </div>

@@ -364,7 +364,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiEventNameRequired: "请输入新 Wifi 事件的名称。",
     macroTargetNoExisting: "暂无宏。请在下方新建。", addShortcutActionName: "名称", addShortcutActionHelper: "接下来选择步骤。", addShortcutCommandHelper: "快捷项将以命令名称显示。",
     unsaved: "未保存", unsavedTooltip: "有未保存的更改。请下载备份以保存。", renameKind: (kind: "activity" | "device") => `重命名${kindLabel(kind)}`,
-    hubOwnedTitle: "由 Hub 管理", hubOwnedIntro: "这是 Hub 自带的 Matter 设备，每个 Matter 按钮对应一条命令。", hubOwnedBody: "该设备由 Hub 创建和管理，因此无法在此重命名、编辑或删除，恢复时也会保留 Hub 自身的副本。活动仍可使用它的按钮。", managedWifiTitle: "由 Wifi Commands 管理", managedWifiIntro: "此设备从“Wifi Commands”选项卡部署。",
+    hubOwnedTitle: "由 Hub 管理", hubOwnedIntro: "这是 Hub 自带的 Matter 设备，每个 Matter 按钮对应一条命令。", hubOwnedBody: "该设备由 Hub 创建和管理：你可以重命名它的按钮，并为其分配遥控器按键，但设备本身无法在此重命名、编辑或删除，恢复时也会保留 Hub 自身的副本。该设备不能在活动中使用。", matterCommandsHelp: "使用铅笔图标重命名 Matter 按钮。名称不能为空，也不能重复。", matterButtonNameTaken: "已有另一个 Matter 按钮使用此名称。", managedWifiTitle: "由 Wifi Commands 管理", managedWifiIntro: "此设备从“Wifi Commands”选项卡部署。",
     managedWifiBody: "命令、电源设置、信源和按键分配均在该处配置；此处的更改会在下次同步时被覆盖。",
     managedWifiRename: "你仍可在此重命名；新名称会与 Wifi Commands 配置保持同步。",
     detailPower: "电源", detailNetwork: "网络", detailCommands: "命令", detailButtons: "按键", detailSectionsAria: "详细信息分区", editBindingAria: "编辑分配", editIpAria: "编辑 IP 地址",

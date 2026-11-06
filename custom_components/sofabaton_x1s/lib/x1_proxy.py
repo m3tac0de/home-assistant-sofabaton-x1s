@@ -361,6 +361,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
         self._ota_update_listeners: list[callable] = []
+        self._matter_device: dict[str, Any] | None = None  # CatalogMixin.note_matter_device
         self._activation_listeners: list[callable] = []
         self._redundant_off_listeners: list[Callable[[], None]] = []
         # Set when ACK_READY arrives while the hub is already powered off;
@@ -779,12 +780,20 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         cb(self._client_connected)
 
     def on_ota_update(self, cb) -> None:
-        """cb()  Fired when the hub announces an OTA firmware update (opcode 0x0167)."""
+        """cb()  Fired when the hub pushes its session-close frame (family 0x67).
+
+        The hub sends it before a firmware update and when its back button
+        starts Bluetooth setup; it may come straight back or stay away for
+        minutes.
+        """
         self._ota_update_listeners.append(cb)
 
     def notify_ota_in_progress(self) -> None:
         """Dispatch the OTA-in-progress event to registered listeners."""
-        self._log.warning("[OTA] hub announced firmware update — pausing reconnects")
+        self._log.warning(
+            "[OTA] hub closed the session (firmware update or Bluetooth setup); "
+            "pausing CALL_ME, a hub reconnect is still accepted"
+        )
         for cb in self._ota_update_listeners:
             try:
                 cb()
@@ -1075,9 +1084,15 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
             self._idle_behavior_absent.discard(dev_lo)
             event = self._idle_behavior_events.get(dev_lo)
 
-        existing = dict(self.state.entities("device").get(dev_lo, {}))
-        existing["idle_behavior"] = normalized_mode
-        self.state.devices[dev_lo] = normalize_device_entry(existing)
+        # Annotate a catalog device only: a reply for an id the catalog
+        # lacks (the app asking the X2's Matter device) made a nameless
+        # phantom device. The cached mode joins the row when a committed
+        # snapshot lists the device (_commit_pending_device_snapshot).
+        listed = self.state.entities("device").get(dev_lo)
+        if isinstance(listed, dict):
+            existing = dict(listed)
+            existing["idle_behavior"] = normalized_mode
+            self.state.devices[dev_lo] = normalize_device_entry(existing)
 
         self._log.info(
             "%s idle %s dev=0x%02X mode=%d",

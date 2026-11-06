@@ -130,6 +130,11 @@ OP_HUB_MQTT_STATUS_QUERY = 0x0074
 # length byte, the QR text, CR, the manual pairing code. That reply is a
 # credential: wire dumps mask it (redact_wire_hex) and nothing stores it.
 OP_REQ_MATTER_DEVICE = 0x0072
+# The linked reply to 0x0072: one paged row in the X2 device-row layout
+# (OP_CATALOG_ROW_DEVICE), MATTER_DEVICE_ID with class 0x1F (live X2
+# 2026-11-06). REQ_DEVICES never lists this device, linked or not.
+OP_MATTER_DEVICE_ROW = 0xD572
+FAMILY_MATTER_DEVICE = 0x72
 FAMILY_MATTER_PAIRING = 0x81
 OP_FIND_REMOTE = 0x0023  # payload: empty; triggers the remote buzzer (X1/X1S)
 OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
@@ -182,7 +187,8 @@ OP_SAVE_COMMIT = 0x6501
 #   0x45  one-shot status return (status byte at payload offset 1)
 #   0x57  one-shot status return (status byte at payload offset 2)
 #   0x60  ACK_READY family — posts "activity_update" event globally
-#   0x67  OTA-update push event from hub
+#   0x67  session-close push from hub (before a firmware update, and on the
+#         back-button hold that starts Bluetooth setup)
 #
 # `ACK_SUCCESS = 0x0301` is NOT a status frame: its low byte is 0x01, so it is
 # its own family-0x01 save ack (3-byte payload; handled by SaveCommitHandler).
@@ -202,10 +208,11 @@ OP_IPCMD_ROW_D = 0x0DAE
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY = 0x0160
-# H→A push emitted when the hub begins a firmware OTA update. The hub goes
-# silent for a few minutes while the update runs and does not actively
-# manage the connection during that window, so receivers are expected to
-# tear down the session and stay disconnected until the hub comes back.
+# H→A session-close push (family 0x67; the X2 sends it bare as 0x0067). The
+# hub ends the client session with it before a firmware update, when it then
+# stays away for a few minutes, and when its back button starts Bluetooth
+# setup, when it dials straight back in. Receivers drop the session and stop
+# soliciting the hub for a while, but accept the hub's own reconnect.
 OP_OTA_UPDATE = 0x0167
 OP_MARKER = 0x0C3D  # segment marker before continuation
 
@@ -341,6 +348,7 @@ OPNAMES: Dict[int, str] = {
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_HUB_MQTT_STATUS_QUERY: "HUB_MQTT_STATUS_QUERY",
     OP_REQ_MATTER_DEVICE: "REQ_MATTER_DEVICE",
+    OP_MATTER_DEVICE_ROW: "MATTER_DEVICE_ROW",
     OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_REMOTE_SYNC: "REMOTE_SYNC",
@@ -750,6 +758,8 @@ __all__ = [
     "FAMILY_HUB_MQTT_STATUS",
     "OP_HUB_MQTT_STATUS_QUERY",
     "OP_REQ_MATTER_DEVICE",
+    "OP_MATTER_DEVICE_ROW",
+    "FAMILY_MATTER_DEVICE",
     "FAMILY_MATTER_PAIRING",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",

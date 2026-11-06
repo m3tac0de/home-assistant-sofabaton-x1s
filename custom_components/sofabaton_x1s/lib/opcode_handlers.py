@@ -24,6 +24,7 @@ from .protocol_const import (
     FAMILY_HUB_MQTT_STATUS,
     FAMILY_HUB_NAME_REPLY,
     FAMILY_MACROS,
+    FAMILY_MATTER_DEVICE,
     FAMILY_KEYMAP,
     FAMILY_REMOTE_STATUS,
     OP_ACK_READY,
@@ -631,18 +632,20 @@ class ActivateRequestHandler(BaseFrameHandler):
 
 @register_handler(opcode_families_low=(0x67,), directions=("H→A",))
 class OtaUpdatePushHandler(BaseFrameHandler):
-    """Handle the hub's OTA-in-progress push (opcode-lo 0x67).
+    """Handle the hub's session-close push (opcode-lo 0x67).
 
-    The hub emits this frame when it begins a firmware update and then
-    goes silent for several minutes. We notify listeners so the
-    integration can tear down the session, back off reconnects, and
-    surface a notification to the user.
+    The hub ends the client session with this frame. It does so before a
+    firmware update, then stays away for minutes, and also when its back
+    button starts Bluetooth setup, when it dials straight back in (X2,
+    bare 0x0067, live 2026-11-06). Listeners tear the session down and
+    stop soliciting the hub for a while; the transport still accepts the
+    hub's own reconnect, which ends that pause.
     """
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         proxy._log.warning(
-            "[OTA] H→A OTA-update push (opcode=0x%04X len=%d)",
+            "[OTA] H→A session-close push (opcode=0x%04X len=%d)",
             frame.opcode,
             len(frame.payload),
         )
@@ -765,17 +768,57 @@ class _CatalogDeviceRowHandler(BaseFrameHandler):
         proxy.try_finish_devices_burst()
 
 
+def _x2_row_labels(raw: bytes) -> tuple[str, str]:
+    """``(name, brand)`` from an X1S/X2 device row's 60-byte UTF-16BE slots."""
+
+    # Lenient like every other label decode: a lone surrogate (a name cut
+    # mid code unit by any writer) must not drop the row, or the devices
+    # snapshot never completes.
+    name = raw[36 : 36 + 60].decode("utf-16be", errors="ignore").strip("\x00")
+    brand = raw[96 : 96 + 60].decode("utf-16be", errors="ignore").strip("\x00")
+    return name, brand
+
+
 @register_handler(opcodes=(OP_CATALOG_ROW_DEVICE,), directions=("H→A",))
 class CatalogDeviceHandler(_CatalogDeviceRowHandler):
     """X1S/X2 device rows: 60-byte UTF-16BE name and brand slots."""
 
     def _labels(self, payload: bytes, raw: bytes) -> tuple[str, str]:
-        # Lenient like every other label decode: a lone surrogate (a name
-        # cut mid code unit by any writer) must not drop the row, or the
-        # devices snapshot never completes.
-        name = raw[36 : 36 + 60].decode("utf-16be", errors="ignore").strip("\x00")
-        brand = raw[96 : 96 + 60].decode("utf-16be", errors="ignore").strip("\x00")
-        return name, brand
+        return _x2_row_labels(raw)
+
+
+@register_handler(opcode_families_low=(FAMILY_MATTER_DEVICE,), directions=("H→A",))
+class MatterDeviceRowHandler(BaseFrameHandler):
+    """The X2's linked reply to REQ_MATTER_DEVICE (0x0072): its Matter device.
+
+    One paged row in the device-row layout. Merged into the catalog by
+    ``note_matter_device``, never through the devices snapshot:
+    REQ_DEVICES doesn't list this device, so feeding it there would break
+    the snapshot's row count. Queued as an ack for refresh_matter_device.
+    """
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        if len(payload) < 11:
+            proxy._log.debug("[MATTER] short Matter device row (len=%d)", len(payload))
+            return
+        dev_id = int.from_bytes(payload[6:8], "big")
+        device_class_code = payload[10]
+        name, brand = _x2_row_labels(frame.raw)
+        proxy.note_matter_device(
+            {
+                "device_id": dev_id,
+                "name": name,
+                "brand": brand,
+                "icon": payload[8],
+                "device_class": classify_device_class_code(device_class_code),
+                "device_class_code": device_class_code,
+                # The record body, as for catalog rows (raw_body there).
+                "raw_body": bytes(payload[3:]),
+            }
+        )
+        proxy.notify_ack(frame.opcode, frame.payload)
 
 
 @register_handler(opcodes=(OP_X1_DEVICE,), directions=("H→A",))

@@ -2019,3 +2019,26 @@ test("an entity's icon and color are read from and written to its block, untouch
   assert.equal(iconed.activities?.[0].device?.icon, 34);
   assert.equal("color_id" in (iconed.activities?.[0].device ?? {}), false);
 });
+
+test("binding a Matter button in an activity makes no member and no power steps", () => {
+  // The hub refuses its own Matter device as an activity member (live X2,
+  // 2026-11-06): the binding alone runs the button.
+  const bundle = bindingBundle() as unknown as BackupBundlePayload;
+  bundle.devices = [
+    ...(bundle.devices ?? []),
+    {
+      device: { device_id: 51, name: "Matter", device_class: "matter", device_class_code: 0x1f },
+      commands: Array.from({ length: 8 }, (_, i) => ({ command_id: i + 1, name: `Button ${i + 1}` })),
+    },
+  ] as BackupBundlePayload["devices"];
+
+  const next = upsertActivityButtonBinding(bundle, 101, { buttonId: 0xAE, deviceId: 51, commandId: 2 });
+  const activity = (next.activities ?? []).find((a) => Number(a?.device?.device_id) === 101)!;
+
+  assert.ok((activity.button_bindings ?? []).some((row) => row.button_id === 0xAE && row.device_id === 51));
+  assert.ok(!(activity.referenced_source_device_ids ?? []).includes(51));
+  for (const macro of activity.macros ?? []) {
+    assert.ok(!(macro.steps ?? []).some((step) => Number(step?.device_id) === 51), `macro ${macro.button_id}`);
+  }
+  assert.ok(!activityMemberViews(next, 101).some((view) => Number(view.deviceId) === 51));
+});

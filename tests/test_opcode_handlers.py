@@ -2290,3 +2290,60 @@ def test_record_banner_payload_reads_the_gb2312_name_the_hub_stores() -> None:
         proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
         info = proxy.record_banner_payload((len(payload) << 8) | 0x02, payload)
         assert info["name"] == want
+
+
+# The X2's linked reply to REQ_MATTER_DEVICE (0x0072), captured through the
+# proxy on 2026-11-06 (fw 9): one paged row in the device-row layout.
+_MATTER_DEVICE_ROW_HEX = (
+    "a55ad57201000101000100332e001f000000000000000000000000000000000000000000"
+    "004d00610074007400650072000000000000000000000000000000000000000000000000"
+    "000000000000000000000000000000000000000000000000004d00610074007400650072"
+    "000000000000000000000000000000000000000000000000000000000000000000000000"
+    "000000000000000000000000000000000000000000000000000000000000fc0000000800"
+    "000000000000000000000000000000000000000000000000000000000000000000000000"
+    "00a8"
+)
+
+
+def test_matter_device_row_joins_the_catalog_as_the_hubs_own_device() -> None:
+    from custom_components.sofabaton_x1s.lib.frame_handlers import frame_handler_registry
+    from custom_components.sofabaton_x1s.lib.opcode_handlers import MatterDeviceRowHandler
+    from custom_components.sofabaton_x1s.lib.protocol_const import (
+        OP_MATTER_DEVICE_ROW,
+        is_hub_owned_device,
+    )
+
+    proxy = _x2_proxy()
+    assert proxy.matter_device is None
+    handlers = list(frame_handler_registry.iter_for(OP_MATTER_DEVICE_ROW, "H→A"))
+    assert [type(h) for h in handlers] == [MatterDeviceRowHandler]
+    # The app's request (A→H 0x0072) shares the family but not the handler.
+    assert not any(
+        isinstance(h, MatterDeviceRowHandler)
+        for h in frame_handler_registry.iter_for(0x0072, "A→H")
+    )
+
+    ctx = _build_context(proxy, _MATTER_DEVICE_ROW_HEX, OP_MATTER_DEVICE_ROW, "MATTER_DEVICE_ROW")
+    for handler in handlers:
+        handler.handle(ctx)
+
+    row = proxy.matter_device
+    assert row is not None
+    assert row.pop("seen_at") > 0
+    assert row.pop("raw_body") == ctx.payload[3:]
+    assert row == {
+        "device_id": 51,
+        "name": "Matter",
+        "brand": "Matter",
+        "icon": 0x2E,
+        "device_class": "matter",
+        "device_class_code": 0x1F,
+    }
+    # REQ_DEVICES never lists it, so the row puts it in the catalog itself,
+    # as the hub's own device (read-only by its class).
+    entry = proxy.state.devices[51]
+    assert entry["name"] == "Matter" and entry["device_class"] == "matter"
+    assert entry["raw_body"] == ctx.payload[3:]
+    assert is_hub_owned_device(entry)
+    # Queued for refresh_matter_device, which waits on the same exchange.
+    assert any(op == OP_MATTER_DEVICE_ROW for op, _payload, _ts in proxy._ack_queue)

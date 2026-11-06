@@ -11,6 +11,45 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Fixed
+
+- A hub that closes its session (family `0x67`) is no longer locked out for
+  five minutes. The X2 sends this frame when its back button starts
+  Bluetooth setup and dials straight back in; the transport refused every
+  one of those connections until the pause ran out (about ten a second).
+  The pause now only stops CALL_ME, and the hub's own reconnect ends it.
+
+- An idle-mode reply for a device the catalog doesn't list no longer adds
+  a nameless device to it. The vendor app asks the X2's Matter device for
+  its idle mode, which put a "Device 51" without a class in the catalog,
+  where the hub-owned guards didn't recognise it.
+
+### Added
+
+- The X2's Matter device joins the device catalog once a Matter controller
+  has linked the hub. REQ_DEVICES never lists it, so every devices read on
+  an X2 is followed by `REQ_MATTER_DEVICE` (`0x0072`, the new
+  `X1Proxy.refresh_matter_device`): the linked reply (`0xD572`, one row in
+  the device-row layout) puts device 51 in the catalog by its Matter class,
+  which keeps it read-only, out of activities and out of the device order;
+  an unlinked reply (`0x0103 07`) removes it. Committed devices snapshots
+  carry it over. `X1Proxy.matter_device` holds the last linked row.
+- The Matter device's button names and device-level button bindings can be
+  edited, the two things the vendor app allows: `build_device_sync_plan`
+  admits only `command_rename`, `binding_write` and `binding_delete` steps
+  on it and refuses everything else (its name, icon, commands, power and
+  inputs stay the hub's). Button names must be non-empty and unique.
+  Binding rows that target a Matter button carry the button's own code.
+  A read of the device counts as complete without the key sort, idle byte
+  and macros it skips, so a snapshot of it is editable.
+- Activities can't use the Matter device, as in the vendor app. An activity
+  edit that adds a Matter button as a binding, long press, shortcut, macro
+  step or power step is refused, both by `build_activity_sync_plan` and by
+  `validate_hub_bundle_for_model` ("the hub's own Matter device can't be
+  used in an activity"). The hub refuses the device as an activity member.
+  A Matter reference the hub already holds passes through untouched and
+  never asks for power rows.
+
 ## 0.2.6 (2026-10-28)
 
 Changes since `sofabaton-x-v0.2.5`. Backward-compatible additions and

@@ -20,7 +20,7 @@ from .hub_versions import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
 )
-from .protocol_const import X2_NUMPAD_BUTTON_CODES, ButtonName
+from .protocol_const import X2_NUMPAD_BUTTON_CODES, ButtonName, is_hub_owned_device
 
 ACTIVITY_ID_BASE = 0x65
 POWER_ON_MACRO_BUTTON_ID = 0xC6
@@ -549,6 +549,15 @@ def _validate_activity(
     if not strict:
         return
 
+    # The hub's own Matter device is not for activities (the vendor app never
+    # offers it there, and the hub refuses it as a member). A reference the
+    # hub already holds is hub truth; an edit may not add one.
+    hub_owned = {device_id for device_id, device in devices.items() if is_hub_owned_device(device)}
+    if hub_owned:
+        added_hub_owned = (_activity_device_refs(activity) & hub_owned) - _activity_device_refs(baseline_activity)
+        if added_hub_owned:
+            raise _error(path, "the hub's own Matter device can't be used in an activity")
+
     def _power_counts(macro_id: int, commands_to_count: set[int]) -> Counter[tuple[int, int]]:
         counts: Counter[tuple[int, int]] = Counter()
         macro = macros.get(macro_id)
@@ -586,7 +595,7 @@ def _validate_activity(
             f"{path}.referenced_source_device_ids",
             "must be the sorted device set represented in the power macros",
         )
-    unlinked_direct = direct_refs - power_members
+    unlinked_direct = direct_refs - power_members - hub_owned
     if power_unchanged:
         unlinked_direct -= _activity_direct_refs(baseline_activity)
     if unlinked_direct:
@@ -926,6 +935,23 @@ def _activity_direct_refs(activity: Any) -> set[int]:
             if device_id == MACRO_DELAY_SENTINEL or command_id in _POWER_REF_COMMANDS | {MACRO_DELAY_SENTINEL}:
                 continue
             if 0 < device_id < ACTIVITY_ID_BASE:
+                refs.add(device_id)
+    return refs
+
+
+def _activity_device_refs(activity: Any) -> set[int]:
+    """Every device-range id an activity names: direct references plus the
+    devices in its power macros."""
+
+    refs = _activity_direct_refs(activity)
+    if not isinstance(activity, Mapping):
+        return refs
+    for macro in activity.get("macros") or []:
+        if not isinstance(macro, Mapping) or macro.get("button_id") not in _POWER_MACRO_IDS:
+            continue
+        for step in macro.get("steps") or []:
+            device_id = step.get("device_id") if isinstance(step, Mapping) else None
+            if isinstance(device_id, int) and 0 < device_id < ACTIVITY_ID_BASE:
                 refs.add(device_id)
     return refs
 

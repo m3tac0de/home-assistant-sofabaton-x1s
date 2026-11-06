@@ -449,6 +449,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         for dev_id, details in self.state.entities("device").items():
             if not isinstance(details, dict):
                 continue
+            if is_hub_owned_device(details):
+                # The X2's Matter device sits outside the hub's device
+                # list, so it has no place in the stored order.
+                continue
             raw_body = details.get("raw_body")
             if not isinstance(raw_body, (bytes, bytearray)) or len(raw_body) <= 3:
                 return None
@@ -459,6 +463,24 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         """Kick a devices refresh and block until it is committed."""
 
         return self._request_catalog_and_wait("devices", timeout=timeout)
+
+    def _binding_button_code(self, dev_lo: int, cmd_lo: int) -> int:
+        """The 48-bit code a binding row carries for ``dev_lo``'s command.
+
+        The synthetic ``0x4E20 + cmd`` code is bench-proven for ordinary
+        devices. The X2's own Matter device gets its command's real code
+        from the cached command list (Button N carries N), as the vendor
+        app writes it: nothing shows the hub ignoring it for a Matter press.
+        """
+
+        if not cmd_lo:
+            return 0
+        if is_hub_owned_device(self.state.entities("device").get(dev_lo)):
+            meta = (getattr(self.state, "command_metadata", None) or {}).get(dev_lo, {}).get(cmd_lo) or {}
+            code = meta.get("button_code")
+            if isinstance(code, int) and code > 0:
+                return code
+        return synthesize_command_code(cmd_lo)
 
     def reorder_devices(self, ordered_ids: list[int], *, remote_sync: bool = True) -> dict[str, Any] | None:
         """Write *ordered_ids* as the hub's stored device display order
@@ -496,6 +518,8 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         for raw_id in ordered_ids:
             dev_lo = int(raw_id) & 0xFF
             if dev_lo not in known:
+                if is_hub_owned_device(self.state.entities("device").get(dev_lo)):
+                    continue  # listed by a UI that shows it; never written
                 self._log.warning("[DEV_REORDER] unknown device id=0x%02X", dev_lo)
                 return None
             if dev_lo not in ordered:
@@ -1666,8 +1690,8 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if long_press_device_id is not None and long_press_command_id is not None:
             long_press_kwargs = dict(
                 long_press_device_id=long_press_device_id & 0xFF,
-                long_press_button_code=synthesize_command_code(
-                    long_press_command_id & 0xFF
+                long_press_button_code=self._binding_button_code(
+                    long_press_device_id & 0xFF, long_press_command_id & 0xFF
                 ),
                 long_press_button_id=long_press_command_id & 0xFF,
             )
@@ -1677,7 +1701,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             device_id=act_lo,
             button_id=btn_lo,
             short_press_device_id=dev_lo,
-            short_press_button_code=synthesize_command_code(cmd_lo) if cmd_lo else 0,
+            short_press_button_code=self._binding_button_code(dev_lo, cmd_lo),
             short_press_button_id=cmd_lo,
             **long_press_kwargs,
         )

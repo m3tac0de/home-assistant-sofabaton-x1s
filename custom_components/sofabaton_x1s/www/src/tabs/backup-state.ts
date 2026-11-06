@@ -13,6 +13,7 @@ import type {
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
 import { hubDevices } from "../shared/utils/control-panel-selectors";
+import { isHubOwnedDeviceClass } from "../shared/hub-rules";
 import { WIFI_IP_SCHEMES, WIFI_IP_URL_METHODS, WifiIpFormError, wifiIpDefaultPort } from "../shared/wifi-ip-form";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
@@ -2184,10 +2185,20 @@ function activityUsageDeviceIds(activity: BackupBundleActivityPayload): Set<numb
  * macros is canonical, while direct editable references are included so
  * reconciliation can repair a missing power row.
  */
-function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+/** An activity's member devices: those in its power macros or used by its
+ *  bindings, favorites and macros. With the bundle, the hub's own Matter
+ *  device is left out: an activity binds its buttons, but the hub refuses
+ *  it as a member (0x024F answered 0x06, live X2 2026-11-06), so it never
+ *  gets power steps or an assignment. */
+function activityMemberDeviceIds(
+  activity: BackupBundleActivityPayload,
+  bundle: BackupBundlePayload | null = null,
+): number[] {
   const ids = activityPowerDeviceIds(activity);
   for (const id of activityUsageDeviceIds(activity)) ids.add(id);
-  return [...ids].sort((left, right) => left - right);
+  return [...ids]
+    .filter((id) => !bundle || !isHubOwnedDeviceClass(bundleDeviceClass(bundle, id)))
+    .sort((left, right) => left - right);
 }
 
 /**
@@ -2265,7 +2276,7 @@ export function reconcileActivityPowerMacros(
 ): BackupBundlePayload {
   return updateActivity(bundle, activityId, (activity) => {
     const selfId = Number(activity?.device?.device_id || 0);
-    const memberSet = new Set(activityMemberDeviceIds(activity));
+    const memberSet = new Set(activityMemberDeviceIds(activity, bundle));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
       if (extraId > 0 && extraId < ACTIVITY_ENTITY_ID_MIN && extraId !== selfId) memberSet.add(extraId);
@@ -2400,7 +2411,7 @@ export function activityMemberViews(
 ): BackupActivityMemberView[] {
   const activity = findBundleActivity(bundle, activityId);
   if (!bundle || !activity) return [];
-  const members = activityMemberDeviceIds(activity);
+  const members = activityMemberDeviceIds(activity, bundle);
   const memberSet = new Set(members);
   const macroFor = (buttonId: number) =>
     (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
@@ -2453,7 +2464,7 @@ export function activityAddableDevices(
 ): BackupSelectionOption[] {
   const activity = findBundleActivity(bundle, activityId);
   if (!bundle || !activity) return [];
-  const members = new Set(activityMemberDeviceIds(activity));
+  const members = new Set(activityMemberDeviceIds(activity, bundle));
   return bundleDeviceOptions(bundle).filter(
     (option) => !members.has(option.id),
   );
@@ -2475,7 +2486,7 @@ export function addActivityMemberDevice(
   if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
   const activity = findBundleActivity(bundle, aId);
   if (!activity) return bundle;
-  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  if (activityMemberDeviceIds(activity, bundle).includes(dId)) return bundle;
   return reconcileActivityPowerMacros(bundle, aId, [dId]);
 }
 

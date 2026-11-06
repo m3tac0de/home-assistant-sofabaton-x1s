@@ -49,6 +49,7 @@ import { HubBrokerFormController, hubBrokerFormStyles } from "./components/hub-b
 import { ListenerPortsFormController, listenerPortsFormStyles } from "./components/listener-ports-form";
 import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead } from "./components/ir-emitter-pill";
 import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
+import { isHubOwnedDeviceClass } from "./shared/hub-rules";
 import {
   normalizeSidebarPanelName,
   sanitizeSidebarPanelName,
@@ -583,7 +584,10 @@ class SofabatonControlPanelCard extends LitElement {
     const openEntity = this._snapshot.openEntity;
     if (openEntity) this._store.toggleEntity(openEntity);
     const cacheHub = selectedHubCache(this._snapshot);
-    this._reorderIds = (kind === "activity" ? hubActivities(cacheHub) : hubDevices(cacheHub))
+    // The X2's Matter device is the hub's own and has no stored order.
+    this._reorderIds = (kind === "activity"
+      ? hubActivities(cacheHub)
+      : hubDevices(cacheHub).filter((row) => !isHubOwnedDeviceClass(row.device_class)))
       .map((row) => Number(row.id));
     this._reorderMode = true;
     this._reorderKind = kind;

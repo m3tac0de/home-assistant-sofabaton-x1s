@@ -127,30 +127,83 @@ def test_a_client_disconnect_reprimes_the_current_activitys_buttons(monkeypatch)
         loop.close()
 
 
-def test_an_ota_announcement_pauses_reconnects_once_and_notifies(monkeypatch):
-    """CR-H1-7: the hub's OTA push arms the transport pause and one notice."""
+def _patch_ota_side_effects(monkeypatch, hub):
+    """Record the transport pause, the delayed-notice timer and notifications."""
 
     import custom_components.sofabaton_x1s.hub_proxy_events as hub_proxy_events_module
+
+    seen: dict = {"pauses": [], "timers": [], "cancelled": [], "notices": [], "dismissed": []}
+    monkeypatch.setattr(
+        hub._proxy.transport, "pause_for_ota", lambda seconds: seen["pauses"].append(seconds)
+    )
+
+    def fake_call_later(_hass, delay, action):
+        seen["timers"].append((delay, action))
+        return lambda: seen["cancelled"].append(delay)
+
+    monkeypatch.setattr(hub_proxy_events_module, "async_call_later", fake_call_later)
+    monkeypatch.setattr(
+        hub_proxy_events_module.persistent_notification,
+        "async_create",
+        lambda _hass, message, *, title, notification_id: seen["notices"].append(notification_id),
+    )
+    monkeypatch.setattr(
+        hub_proxy_events_module.persistent_notification,
+        "async_dismiss",
+        lambda _hass, notification_id: seen["dismissed"].append(notification_id),
+    )
+    monkeypatch.setattr(hub, "_async_initial_sync", AsyncMock())
+    monkeypatch.setattr(hub, "async_update_activity_state_ingress", AsyncMock())
+    return seen
+
+
+def test_a_session_close_pauses_call_me_once_and_delays_the_notice(monkeypatch):
+    """CR-H1-7: the hub's 0x67 push arms the transport pause once; the notice
+    waits, so a hub that comes straight back (Bluetooth setup) shows none."""
 
     loop = asyncio.new_event_loop()
     try:
         hub = _hub(loop)
-        pauses: list = []
-        notices: list = []
-        monkeypatch.setattr(hub._proxy.transport, "pause_for_ota", lambda seconds: pauses.append(seconds))
-        monkeypatch.setattr(
-            hub_proxy_events_module.persistent_notification,
-            "async_create",
-            lambda _hass, message, *, title, notification_id: notices.append(notification_id),
-        )
+        seen = _patch_ota_side_effects(monkeypatch, hub)
 
         hub._on_ota_update()
         hub._on_ota_update()
         loop.run_until_complete(asyncio.sleep(0))
 
-        assert pauses == [hub._ota_pause_seconds]
-        assert notices == ["sofabaton_x1s_ota_entry-id"]
+        assert seen["pauses"] == [hub._ota_pause_seconds]
+        assert [delay for delay, _ in seen["timers"]] == [hub._ota_notice_delay_s]
+        assert seen["notices"] == []
         assert hub._ota_in_progress is True
+
+        # The hub dials straight back in: no notice, the timer is cancelled.
+        hub._on_hub_state_change(True)
+        loop.run_until_complete(asyncio.sleep(0))
+        assert hub._ota_in_progress is False
+        assert seen["cancelled"] == [hub._ota_notice_delay_s]
+        assert seen["notices"] == []
+    finally:
+        loop.close()
+
+
+def test_a_hub_that_stays_away_after_a_session_close_gets_the_notice(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+        seen = _patch_ota_side_effects(monkeypatch, hub)
+        hub.hub_connected = False
+
+        hub._on_ota_update()
+        loop.run_until_complete(asyncio.sleep(0))
+        (_, fire), = seen["timers"]
+        fire(None)
+
+        assert seen["notices"] == ["sofabaton_x1s_ota_entry-id"]
+
+        # The hub returns later: the notice is dismissed.
+        hub._on_hub_state_change(True)
+        loop.run_until_complete(asyncio.sleep(0))
+        assert seen["dismissed"] == ["sofabaton_x1s_ota_entry-id"]
+        assert hub._ota_in_progress is False
     finally:
         loop.close()
 
@@ -194,5 +247,54 @@ def test_a_wifi_press_action_does_not_hold_the_hubs_callback(monkeypatch):
             hub._async_execute_action_config({"action": "perform-action", "perform_action": "script.movie_night"})
         )
         assert calls == [("script", "movie_night", False)]
+    finally:
+        loop.close()
+
+
+def test_a_committed_devices_read_on_an_x2_asks_for_its_matter_device(monkeypatch):
+    """REQ_DEVICES never lists the X2's Matter device: every committed
+    devices read is followed by REQ_MATTER_DEVICE, and a catalog change is
+    published and persisted."""
+
+    from custom_components.sofabaton_x1s.const import HUB_VERSION_X2
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+        hub.version = HUB_VERSION_X2
+        matter = {"name": "Matter", "device_class": "matter"}
+        catalogs = [({3: {"name": "TV"}}, True), ({3: {"name": "TV"}, 51: matter}, True)]
+        asked: list = []
+        persisted: list = []
+        monkeypatch.setattr(hub._proxy, "get_devices", lambda fetch_if_missing=False: catalogs[0 if not asked else 1])
+        monkeypatch.setattr(hub._proxy, "refresh_matter_device", lambda: asked.append(True) or True)
+        monkeypatch.setattr(hub, "_async_reconcile_deployed_wifi_device_ids", AsyncMock())
+        monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", AsyncMock(side_effect=lambda: persisted.append(True)))
+        assert hub._proxy.last_devices_burst_committed is True  # an engine starts that way
+
+        hub._on_devices_burst("devices")
+        loop.run_until_complete(asyncio.sleep(0.05))
+
+        assert asked == [True]
+        assert 51 in hub.devices
+        assert persisted == [True]
+    finally:
+        loop.close()
+
+
+def test_an_x1s_devices_read_never_asks_for_a_matter_device(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+        hub.version = "X1S"
+        asked: list = []
+        monkeypatch.setattr(hub._proxy, "get_devices", lambda fetch_if_missing=False: ({3: {"name": "TV"}}, True))
+        monkeypatch.setattr(hub._proxy, "refresh_matter_device", lambda: asked.append(True))
+        monkeypatch.setattr(hub, "_async_reconcile_deployed_wifi_device_ids", AsyncMock())
+
+        hub._on_devices_burst("devices")
+        loop.run_until_complete(asyncio.sleep(0.05))
+
+        assert asked == []
     finally:
         loop.close()

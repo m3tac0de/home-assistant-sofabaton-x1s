@@ -11,9 +11,12 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from homeassistant.components import persistent_notification
+from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
+    HUB_VERSION_X2,
     signal_activity,
     signal_hub_events,
     signal_buttons,
@@ -353,8 +356,9 @@ class HubProxyEventsMixin:
             if connected:
                 if self._ota_in_progress:
                     self._ota_in_progress = False
+                    self._cancel_ota_notice()
                     self._log.info(
-                        "[%s] Hub reconnected after OTA pause; dismissing notification",
+                        "[%s] Hub reconnected after closing its session",
                         self.entry_id,
                     )
                     persistent_notification.async_dismiss(
@@ -371,13 +375,14 @@ class HubProxyEventsMixin:
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_ota_update(self) -> None:
-        """Handle the hub's OTA-update push: pause reconnects and notify the user.
+        """Handle the hub's session-close push (family 0x67).
 
-        On opcode 0x0167 the hub goes silent for several minutes while
-        applying a firmware update. We trip a backoff in the transport
-        bridge so reconnect attempts are suppressed during that window
-        and surface a persistent notification so HA users understand why
-        the hub went unavailable.
+        The hub sends it before a firmware update, then stays away for
+        several minutes, and when its back button starts Bluetooth setup,
+        when it dials straight back in. Either way we stop soliciting the
+        hub for a while (the transport still accepts its own reconnect).
+        The notification only appears if the hub is still away after
+        _ota_notice_delay_s, so the Bluetooth case never shows one.
         """
 
         def _inner() -> None:
@@ -385,7 +390,7 @@ class HubProxyEventsMixin:
                 return
             self._ota_in_progress = True
             self._log.warning(
-                "[%s] Hub announced OTA firmware update; pausing reconnects for %.0fs",
+                "[%s] Hub closed its session; pausing CALL_ME for up to %.0fs",
                 self.entry_id,
                 self._ota_pause_seconds,
             )
@@ -395,20 +400,39 @@ class HubProxyEventsMixin:
                 self._log.exception(
                     "[%s] Failed to arm OTA pause on transport", self.entry_id
                 )
-            minutes = max(1, int(round(self._ota_pause_seconds / 60.0)))
-            persistent_notification.async_create(
-                self.hass,
-                (
-                    f"The SofaBaton hub **{self.name}** is installing a firmware "
-                    f"update and will be unavailable for several minutes. Home "
-                    f"Assistant will reconnect automatically; please come back "
-                    f"in about {minutes} minutes."
-                ),
-                title="SofaBaton hub firmware update in progress",
-                notification_id=self._ota_notification_id,
+            self._cancel_ota_notice()
+            self._ota_notice_unsub = async_call_later(
+                self.hass, self._ota_notice_delay_s, self._post_ota_notice
             )
 
         self.hass.loop.call_soon_threadsafe(_inner)
+
+    @callback
+    def _post_ota_notice(self, _now: Any = None) -> None:
+        """Tell the user the hub is still away after closing its session."""
+
+        self._ota_notice_unsub = None
+        if not self._ota_in_progress or self.hub_connected:
+            return
+        minutes = max(1, int(round(self._ota_pause_seconds / 60.0)))
+        persistent_notification.async_create(
+            self.hass,
+            (
+                f"The SofaBaton hub **{self.name}** closed its connection and "
+                f"hasn't come back. It does this when it installs a firmware "
+                f"update, which can take several minutes. Home Assistant will "
+                f"reconnect automatically; please check again in about "
+                f"{minutes} minutes."
+            ),
+            title="SofaBaton hub unavailable, probably updating",
+            notification_id=self._ota_notification_id,
+        )
+
+    def _cancel_ota_notice(self) -> None:
+        unsub = self._ota_notice_unsub
+        self._ota_notice_unsub = None
+        if unsub is not None:
+            unsub()
 
     def _on_devices_burst(self, key: str) -> None:
         # See _on_activities_burst: captured on the frame thread.
@@ -424,8 +448,37 @@ class HubProxyEventsMixin:
                 self._devices_generation += 1
                 self._bump_cache_generation()
                 self.hass.async_create_task(self._async_reconcile_deployed_wifi_device_ids())
+                if self.version == HUB_VERSION_X2:
+                    self.hass.async_create_task(self._async_refresh_matter_device())
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
+
+    async def _async_refresh_matter_device(self) -> None:
+        """Ask the X2 whether a Matter controller has linked it.
+
+        REQ_DEVICES never lists the hub's own Matter device, so every
+        committed devices read is followed by REQ_MATTER_DEVICE: a linked
+        hub's device joins the catalog (read-only, by its class), an
+        unlinked hub's leaves it. Persisted only when the catalog changed.
+        """
+
+        if self._matter_refresh_running:
+            return
+        self._matter_refresh_running = True
+        try:
+            result = await self.hass.async_add_executor_job(self._proxy.refresh_matter_device)
+        finally:
+            self._matter_refresh_running = False
+        if result is None:
+            return
+        devs, ready = self._proxy.get_devices(fetch_if_missing=False)
+        if not ready or devs == self.devices:
+            return
+        self.devices = devs
+        self._devices_generation += 1
+        self._bump_cache_generation()
+        async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        await self._async_persist_cache_if_enabled()
 
     def _on_commands_burst(self, key: str) -> None:
         def _inner() -> None:

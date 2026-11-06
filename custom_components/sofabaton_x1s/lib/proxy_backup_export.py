@@ -436,17 +436,23 @@ class BackupExportMixin(_ProxyHost if TYPE_CHECKING else object):
         # counts as incomplete: restore and sync skip the value when it
         # is absent, so a silent omission would freeze the device's
         # automatic-power setting out of the capture.
+        # The hub's own device (the X2's Matter device) is read without its
+        # key sort, idle byte and macros (backup_device skips them): its names
+        # and bindings are all there is to edit, so those two make it whole.
+        hub_owned = is_hub_owned_device(device_meta)
         complete = all(
             [
                 bool(device_block),
                 dev_lo in self._commands_complete,
                 dev_lo in self.state.buttons,
-                skip_macros or dev_lo in self._macros_complete,
+                hub_owned or skip_macros or dev_lo in self._macros_complete,
                 blobs_complete,
-                key_sort_row is not None,
+                hub_owned or key_sort_row is not None,
                 # A device with no idle record on the hub (0x07 to the read)
                 # is complete without the byte: absent is a known value.
-                idle_behavior is not None or dev_lo in getattr(self, "_idle_behavior_absent", ()),
+                hub_owned
+                or idle_behavior is not None
+                or dev_lo in getattr(self, "_idle_behavior_absent", ()),
             ]
         )
 
