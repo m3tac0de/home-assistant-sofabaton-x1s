@@ -266,7 +266,7 @@ def labeler(world: dict[str, Any]) -> dict[str, str]:
 
 #: Entities whose state is a momentary pulse or a log of recent traffic, not
 #: configuration: their changes say nothing about a step.
-_PULSE_SUFFIXES = ("_wifi_commands", "_recorded_keypress")
+_PULSE_SUFFIXES = ("_wifi_commands",)
 _PULSE_ATTRS = {"recent", "timestamp"}
 
 

@@ -45,8 +45,6 @@ def test_roku_http_post_updates_last_ip_command_state():
     assert ip_command["entity_name"] == "Living Room TV"
     assert ip_command["press_type"] == "short"
 
-    assert hub.get_app_activations() == []
-
     loop.close()
 
 

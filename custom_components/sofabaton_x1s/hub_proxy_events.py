@@ -15,7 +15,6 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
     signal_activity,
-    signal_app_activations,
     signal_hub_events,
     signal_buttons,
     signal_client,
@@ -482,12 +481,5 @@ class HubProxyEventsMixin:
 
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
             async_dispatcher_send(self.hass, signal_macros(self.entry_id))
-
-        self.hass.loop.call_soon_threadsafe(_inner)
-
-    def _on_app_activation(self, record: dict[str, Any]) -> None:
-        def _inner() -> None:
-            self._app_activations = self._proxy.get_app_activations()
-            async_dispatcher_send(self.hass, signal_app_activations(self.entry_id))
 
         self.hass.loop.call_soon_threadsafe(_inner)

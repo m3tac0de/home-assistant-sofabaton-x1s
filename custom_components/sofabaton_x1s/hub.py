@@ -138,7 +138,6 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         self._command_entities: set[int] = set()
         self._buttons_ready_for: set[int] = set()
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
-        self._app_activations: list[dict[str, Any]] = []
         self._last_ip_command: dict[str, Any] | None = None
         self._ir_emissions: deque[dict[str, Any]] = deque(maxlen=20)
         # MQTT press ingress: one subscription on
@@ -246,7 +245,6 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         proxy.on_burst_end("devices", self._on_devices_burst)
         proxy.on_burst_end("commands", self._on_commands_burst)
         proxy.on_burst_end("macros", self._on_macros_burst)
-        proxy.on_app_activation(self._on_app_activation)
         proxy.on_redundant_off_press(self._on_redundant_off_press)
         proxy.transport.set_busy_gate(self.is_long_running_task_active)
         self._hub_event_hooks_armed = False
@@ -421,10 +419,6 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
             else:
                 await asyncio.sleep(min(remaining, 0.25))
         return True
-
-    def get_app_activations(self) -> list[dict[str, Any]]:
-        """Return recent app-originated activation requests."""
-        return list(self._app_activations)
 
     def get_activity_name_by_id(self, act_id: int) -> Optional[str]:
         act = self.activities.get(act_id)

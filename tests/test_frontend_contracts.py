@@ -53,7 +53,7 @@ def test_card_picker_translation_keys_match_the_hub_control_entities() -> None:
     # L-A26: the card picker suggests the tools card for these entities by
     # translation_key. Every other entity is listed here on purpose.
     not_hub_controls = {
-        "remote", "activity", "index", "recorded_keypress", "ir_intercept", "ir_emitter", "hub_ip_address",
+        "remote", "activity", "index", "ir_intercept", "ir_emitter", "hub_ip_address",
         "local_ip_address",
     }
     match = re.search(r"const TOOLS_CONTROL_TRANSLATION_KEYS = new Set\(\[(.*?)\]\)", _ts("tools-card.ts"), re.S)

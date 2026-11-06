@@ -130,7 +130,6 @@ def test_all_entity_names_use_translation_keys() -> None:
             "index",
             "ip_commands",
             "ir_intercept",
-            "recorded_keypress",
         },
         "switch": {"hex_logging", "proxy", "wifi_device"},
         "text": {"hub_ip_address", "local_ip_address"},
@@ -142,7 +141,7 @@ def test_all_entity_names_use_translation_keys() -> None:
         "infrared": 1,
         "remote": 1,
         "select": 1,
-        "sensor": 5,
+        "sensor": 4,
         "switch": 3,
         "text": 2,
     }
