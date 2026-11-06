@@ -88,7 +88,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     deviceCreateFailed: "无法在 Hub 上创建设备。", activityCreateFailed: "无法在 Hub 上创建活动。", activityNameInvalid: "请输入 1 至 30 个字符的活动名称。", reorderFailed: "Hub 未确认新的顺序。", hubNotReady: "Hub 尚未就绪。请关闭 Sofabaton 应用或等待当前操作完成后重试。", hubNoResponse: "Hub 没有响应。请重试。", hubRequestFailed: "Hub 无法完成此请求。", payloadInvalid: "Hub 无法使用此有效载荷。", wifiEventsFull: "所有 Wifi 事件槽位均已占用。", wifiEventPendingDelete: "已删除的 Wifi 事件仍在从 Hub 中移除。请同步 Hub 后重试。", wifiEventNameTaken: "已存在同名的 Wifi 事件。", wifiEventNameInvalid: "请输入 Hub 可以保存的 Wifi 事件名称。", wifiEventFailed: "无法保存 Wifi 事件。", deviceNameInvalid: "请输入 1 至 30 个字符的设备名称。", deviceTypeUnsupported: "无法在此 Hub 上创建该设备类型。", selectedHubUnavailable: "所选 Hub 已不可用。",
   },
   settings: {
-    loading: "正在加载…", noHubsFound: "未找到 Hub。", unknownHubName: "未知", sectionHub: "Hub", sectionGlobal: "全局", activities: "活动", devices: "设备",
+    loading: "正在加载…", noHubsFound: "未找到 Hub。", unknownHubName: "未知", sectionHub: "此 Hub", sectionGlobal: "所有 Hub", activities: "活动", devices: "设备",
     persistentCacheTitle: "持久缓存", persistentCacheDescription: "将活动和设备数据保存在本地，以便更快访问。",
     hubClickActionTitle: "Hub 列表点击操作",
     hubClickActionDescription: "选择在 Hub 选项卡的列表中点击命令、收藏、宏或按键时执行的操作。",

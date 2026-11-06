@@ -190,8 +190,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     unknownHubName: "Unknown",
     // The Settings tab's subtabs: the selected hub's settings, and the
     // ones shared by every hub.
-    sectionHub: "Hub",
-    sectionGlobal: "Global",
+    sectionHub: "This Hub",
+    sectionGlobal: "All Hubs",
     activities: "Activities",
     devices: "Devices",
     persistentCacheTitle: "Persistent Cache",
@@ -226,7 +226,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     findRemoteDescription: "Make the remote beep so you can locate it.",
     syncRemoteTitle: "Sync Remote",
     syncRemoteDescription: "Push the latest configuration to the physical remote.",
-    // The listener ports every hub shares (Global subtab, and its dialog).
+    // The listener ports every hub shares (All Hubs subtab, and its dialog).
     portsTitle: "Network Ports",
     portsDescription: (hub: number, app: number, wifi: number) =>
       `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and Wifi Commands arrive on TCP ${wifi}.`,

@@ -1,5 +1,5 @@
 // The listener ports every hub shares (hub TCP, app UDP, Wifi Commands
-// TCP): the Settings tab's Global "Network Ports" line opens this dialog.
+// TCP): the Settings tab's All Hubs "Network Ports" line opens this dialog.
 //
 // One Save for all three, because a change reconnects every hub whose
 // listeners move. The card owns the save (the store refreshes the state

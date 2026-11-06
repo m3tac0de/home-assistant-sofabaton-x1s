@@ -51,7 +51,7 @@ export function renderSettingsTab(params: {
   onRenameHub: () => void;
   /** Opens the sidebar panel rename dialog (the card owns the dialog state). */
   onRenameSidebarPanel: () => void;
-  /** Hub (the selected hub's settings, left) or Global (every hub's). */
+  /** This Hub (the selected hub's settings, left) or All Hubs (shared by every hub). */
   section: SettingsSectionId;
   onSelectSection: (section: SettingsSectionId) => void;
   /** The listener ports every hub shares; null hides the line. */

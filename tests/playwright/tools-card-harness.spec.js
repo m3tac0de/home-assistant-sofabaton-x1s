@@ -751,7 +751,7 @@ test.describe("tools-card browser harness", () => {
     });
   });
 
-  test("Settings splits into a Hub and a Global subtab, and remembers the choice", async ({ page }) => {
+  test("Settings splits into a This Hub and an All Hubs subtab, and remembers the choice", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("1"));
     const view = () => page.evaluate(() => {
@@ -769,14 +769,14 @@ test.describe("tools-card browser harness", () => {
     await expect.poll(async () => (await view()).rows.length).toBeGreaterThan(0);
     // The hub's own settings, under its card, on the left subtab.
     expect(await view()).toEqual({
-      tabs: [{ label: "Hub", active: true }, { label: "Global", active: false }],
+      tabs: [{ label: "This Hub", active: true }, { label: "All Hubs", active: false }],
       hubCard: true,
       rows: ["Hex Logging", "Proxy", "Wifi Device", "Find Remote", "Sync Remote"],
       pills: 0,
     });
-    await page.locator(".settings-panel .secondary-tab-btn", { hasText: "Global" }).click();
+    await page.locator(".settings-panel .secondary-tab-btn", { hasText: "All Hubs" }).click();
     expect(await view()).toEqual({
-      tabs: [{ label: "Hub", active: false }, { label: "Global", active: true }],
+      tabs: [{ label: "This Hub", active: false }, { label: "All Hubs", active: true }],
       hubCard: false,
       rows: ["Persistent Cache", "Hub Tab Clicks", "Sidebar Panel", "Network Ports"],
       pills: 0,
@@ -898,10 +898,10 @@ test.describe("tools-card browser harness", () => {
     await expect.poll(async () => (await rows()).find((row) => row.broker)?.text ?? "")
       .toContain("The hub is connected to an MQTT broker.");
     const tile = (await rows()).find((row) => row.broker);
-    // A hub row: on the Hub subtab, next to the hub's own settings.
+    // A hub row: on the left (This Hub) subtab, next to the hub's own settings.
     expect(await page.evaluate(() =>
       window.__toolsCardHarness.getCard().shadowRoot.querySelector(".settings-panel .secondary-tab-btn.active")?.textContent.trim()))
-      .toBe("Hub");
+      .toBe("This Hub");
     expect(tile.text).not.toContain("Basement X2");
     expect(tile.text).toContain("Change");
   });
