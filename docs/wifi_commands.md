@@ -236,6 +236,6 @@ X1 firmware sends only one power and one Activity-start callback per Activity tr
 | `binary_sensor.<hub>_hub_connected` | Physical hub connection state; use it to gate automations that send commands to the hub |
 | `binary_sensor.<hub>_app_connected` | Official app proxy connection state; detects when the app owns the hub connection       |
 | `switch.<hub>_wifi_device`          | Shared HTTP callback listener; MQTT devices do not need it                              |
-| `button.<hub>_resync_remote`        | Manually resynchronizes the physical remote; deployments also call it automatically     |
+| `button.<hub>_synchronize_remote`   | Manually resynchronizes the physical remote; deployments also call it automatically     |
 
 See the complete [entity reference](entities.md), [networking guide](networking.md), and [Wifi Commands protocol notes](protocol/wifi-commands.md). If a problem persists, [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) and include [detailed logs](logging.md).
