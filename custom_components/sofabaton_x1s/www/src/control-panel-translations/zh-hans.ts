@@ -541,7 +541,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiEventsStaleRemoveFailed: "移除 Wifi 事件配置失败。",
     activityEventsTitle: "活动事件", activityEventsSubtitle: "指定活动启动或停止时执行 Home Assistant 动作。切换活动时，旧活动会停止，新活动会启动。",
     activityEventStarts: (name: string) => `“${name}”启动时`, activityEventStops: "以及停止时", activityEventStartModalTitle: (name: string) => `“${name}”启动时`,
-    activityEventStopModalTitle: (name: string) => `${name} 停止时`, activityEventFallbackName: (id: string) => `活动 ${id}`, noActivitiesForEvents: "此 Hub 上尚无活动。",
+    activityEventStopModalTitle: (name: string) => `${name} 停止时`, activityEventFallbackName: (id: string) => `活动 ${id}`, matterEventsTitle: "Matter 按钮", matterEventsSubtitle: "当 Hub 的某个 Matter 按钮在 Home Assistant 的 Matter 集成中触发时，执行 Home Assistant 动作。它们也会更新 Wifi Commands 传感器。", matterPressLabels: { multi_press_1: "按下", multi_press_2: "按两下", long_press: "长按", long_release: "松开" }, matterEventModalTitle: (name: string, press: string) => `${name}，${press}`, matterDevicePickTitle: "哪个 Matter 设备是这个 Hub？", matterDevicePickPlaceholder: "请选择…", noActivitiesForEvents: "此 Hub 上尚无活动。",
     favorite: "设为收藏", physicalButtonAssignment: "物理按键分配", enableLongPress: "启用长按", applyToActivities: "应用到这些活动",
     actionModalNote: "每次执行此命令时运行一个动作。动作配置是可选的；你也可以创建由 Wifi Commands 传感器触发的自定义自动化。",
     shortPress: "短按", longPress: "长按", selectLongPressAction: "选择长按动作", selectTriggeredAction: "选择触发的动作", action: "动作", save: "保存",

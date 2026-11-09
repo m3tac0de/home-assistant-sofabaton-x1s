@@ -19,6 +19,8 @@ import type {
   WifiEventsListResponse,
   WifiPressEvent,
   WifiSectionId,
+  MatterEventButton,
+  MatterEventsResponse,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
@@ -36,6 +38,7 @@ import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, r
 import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { renderMatterGlyph } from "../../../../../remote-card/src/entity-icons/matter-icon";
 import { bundleEntityAppearance, renameBundleDevice, setBundleEntityAppearance } from "./backup-state";
 
 const SLOT_COUNT = 10;
@@ -156,7 +159,11 @@ type ActivityEventPhase = "start" | "stop";
 type HubEventEditorTarget =
   | { kind: "hub"; key: HubEventKey }
   | { kind: "activity"; id: string; phase: ActivityEventPhase }
-  | { kind: "wifi_event"; slotIndex: number };
+  | { kind: "wifi_event"; slotIndex: number }
+  | { kind: "matter"; button: number; eventType: string };
+
+// The press types a Matter button can declare, in the order the row shows them.
+const MATTER_EVENT_ORDER = ["multi_press_1", "multi_press_2", "long_press", "long_release"];
 
 interface ActivityEventEntry {
   start: WifiCommandAction;
@@ -287,6 +294,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     _newDeviceTransport: { state: true },
     _hubEventActions: { state: true },
     _activityEventActions: { state: true },
+    _matterEvents: { state: true },
+    _matterActions: { state: true },
     _wifiEventsRows: { state: true },
     _wifiEventsLoading: { state: true },
     _wifiEventsDeviceId: { state: true },
@@ -296,6 +305,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     _wifiEventsStaleError: { state: true },
     _wifiEventsShowUnconfigured: { state: true },
     _activityEventsShowUnconfigured: { state: true },
+    _matterEventsShowUnconfigured: { state: true },
     selectedSection: { attribute: false },
     setSelectedSection: { attribute: false },
     _devicePowerPickerKind: { state: true },
@@ -496,7 +506,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     .hub-event-lines { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
     .hub-event-line { position: relative; display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--primary-text-color); border-radius: var(--tools-radius-sm); }
     .hub-event-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; align-self: center; }
-    .hub-event-icon ha-icon { --mdc-icon-size: 16px; }
+    .hub-event-icon ha-icon, .hub-event-icon svg { --mdc-icon-size: 16px; }
+    .matter-device-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--primary-text-color); }
+    .matter-device-pick select { font: inherit; color: inherit; background: var(--card-background-color, transparent); border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 4px 8px; }
     .hub-event-icon.power-on { color: #2e7d32; }
     .hub-event-icon.power-off { color: #c62828; }
     .hub-event-action-link:disabled { cursor: default; opacity: 0.5; color: var(--secondary-text-color); }
@@ -918,6 +930,10 @@ class SofabatonWifiCommandsTab extends LitElement {
   private readonly _brokerForm = new HubBrokerFormController(this, () => this.hass);
   private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();
   private _activityEventActions: Record<string, ActivityEventEntry> = {};
+  // The X2's Matter buttons (matter-events-plan): null until loaded, and the
+  // section shows only when the backend found this hub's Matter device.
+  private _matterEvents: MatterEventsResponse | null = null;
+  private _matterActions: Record<string, Record<string, WifiCommandAction>> = {};
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
   private _wifiEventsRows: WifiEvent[] | null = null;
   private _wifiEventsLoading = false;
@@ -931,6 +947,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   // One-way expanders: unconfigured rows stay hidden until the user asks.
   private _wifiEventsShowUnconfigured = false;
   private _activityEventsShowUnconfigured = false;
+  private _matterEventsShowUnconfigured = false;
   selectedSection: WifiSectionId = "wifi";
   setSelectedSection: (section: WifiSectionId) => void = () => {};
   private _devicePowerPickerKind: "on" | "off" | null = null;
@@ -1695,6 +1712,40 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
   }
 
+  private async _loadMatterEvents() {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass) return;
+    try {
+      const result = await this.api().getMatterEvents(hubEntryId);
+      if (hubEntryId !== String(this.hub?.entry_id || "").trim()) return;
+      this._applyMatterEventsResult(result);
+    } catch (_error) {
+      // An older backend, or no Matter: the section stays hidden.
+      if (hubEntryId === String(this.hub?.entry_id || "").trim()) this._applyMatterEventsResult(null);
+    }
+  }
+
+  private _applyMatterEventsResult(result: MatterEventsResponse | null | undefined) {
+    this._matterEvents = result ?? null;
+    const actions: Record<string, Record<string, WifiCommandAction>> = {};
+    for (const [button, presses] of Object.entries(result?.actions ?? {})) {
+      actions[button] = Object.fromEntries(
+        Object.entries(presses ?? {}).map(([eventType, action]) => [eventType, this._normalizeCommandAction(action)]),
+      );
+    }
+    this._matterActions = actions;
+  }
+
+  private _matterAction(button: number, eventType: string): WifiCommandAction {
+    return this._normalizeCommandAction(this._matterActions[String(button)]?.[eventType]);
+  }
+
+  /** A Matter button counts as configured when any press type it declares
+   *  has a custom action (the section pill and the unconfigured filter). */
+  private _matterButtonConfigured(button: MatterEventButton): boolean {
+    return button.event_types.some((eventType) => this._commandHasCustomAction(this._matterAction(button.button, eventType)));
+  }
+
   private _activityEventEntry(activityId: string): ActivityEventEntry {
     const entry = this._activityEventActions[String(activityId)];
     return {
@@ -1859,6 +1910,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (target.kind === "wifi_event") {
       return this._normalizeCommandAction(this._wifiEventBySlot(target.slotIndex)?.action);
     }
+    if (target.kind === "matter") return this._matterAction(target.button, target.eventType);
     return this._activityEventEntry(target.id)[target.phase];
   }
 
@@ -1877,6 +1929,14 @@ class SofabatonWifiCommandsTab extends LitElement {
         { ...this._normalizeCommandAction(action) },
       );
       if (result?.events) this._applyWifiEventsState(result);
+      return true;
+    }
+    if (target.kind === "matter") {
+      const next: Record<string, Record<string, WifiCommandAction>> = Object.fromEntries(
+        Object.entries(this._matterActions).map(([button, presses]) => [button, { ...presses }]),
+      );
+      next[String(target.button)] = { ...(next[String(target.button)] ?? {}), [target.eventType]: this._normalizeCommandAction(action) };
+      this._applyMatterEventsResult(await this.api().setMatterEvents(hubEntryId, { actions: next }));
       return true;
     }
     // Both maps ship wholesale; after a failed load they hold defaults, and
@@ -2172,6 +2232,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           </ul>
         </div>
         ${this._renderWifiEventsGroup(this._activeWifiPressFlash())}
+        ${this._renderMatterEventsGroup(flash)}
         <div class="hub-events" ?hidden=${loadFailed}>
           <div class="section-title-wrap">
             <div class="acc-title">${TOOLS_CARD_STRINGS.wifiCommands.activityEventsTitle}</div>
@@ -2192,6 +2253,79 @@ class SofabatonWifiCommandsTab extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** MATTER BUTTONS group: shown only when the backend found this hub's
+   *  Matter device in Home Assistant's Matter integration. One line per
+   *  button in the hub's own name, one action per press type it declares.
+   *  When several Matter devices could be this hub's, a picker instead. */
+  private _renderMatterEventsGroup(flash: HubEventFireEvent | null) {
+    const view = this._matterEvents;
+    const W = TOOLS_CARD_STRINGS.wifiCommands;
+    if (!view) return nothing;
+    const candidates = view.candidates ?? [];
+    if (!view.available && !(view.reason === "ambiguous" && candidates.length)) return nothing;
+    const buttons = view.available ? view.buttons ?? [] : [];
+    const configuredButtons = buttons.filter((button) => this._matterButtonConfigured(button));
+    const visible = this._matterEventsShowUnconfigured ? buttons : configuredButtons;
+    return html`
+      <div class="hub-events matter-events">
+        <div class="section-title-wrap">
+          <div class="acc-title">${W.matterEventsTitle}</div>
+          ${this._renderConfiguredPill(configuredButtons.length, buttons.length)}
+        </div>
+        <div class="section-subtitle">${W.matterEventsSubtitle}</div>
+        ${view.available
+          ? html`
+              ${visible.length ? html`<ul class="hub-event-lines">
+                ${visible.map((button) => this._renderMatterButtonLine(button, flash))}
+              </ul>` : nothing}
+              ${this._renderShowUnconfigured(
+                this._matterEventsShowUnconfigured ? 0 : buttons.length - configuredButtons.length,
+                () => { this._matterEventsShowUnconfigured = true; },
+              )}`
+          : html`<label class="matter-device-pick">
+              <span>${W.matterDevicePickTitle}</span>
+              <select @change=${(event: Event) => { void this._pickMatterDevice((event.target as HTMLSelectElement).value); }}>
+                <option value="" selected>${W.matterDevicePickPlaceholder}</option>
+                ${candidates.map((device) => html`<option value=${device.id}>${device.name}</option>`)}
+              </select>
+            </label>`}
+      </div>
+    `;
+  }
+
+  private _renderMatterButtonLine(button: MatterEventButton, flash: HubEventFireEvent | null) {
+    const W = TOOLS_CARD_STRINGS.wifiCommands;
+    const types = MATTER_EVENT_ORDER.filter((eventType) => button.event_types.includes(eventType));
+    const renderPress = (eventType: string, index: number) => {
+      const action = this._matterAction(button.button, eventType);
+      const configured = this._commandHasCustomAction(action);
+      const target: HubEventEditorTarget = { kind: "matter", button: button.button, eventType };
+      const lit = flash?.type === "matter" && flash.matterButton === button.button && flash.matterEventType === eventType;
+      return html`${index ? "; " : ""}${W.matterPressLabels[eventType] ?? eventType}, <span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+          ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(lit, flash)}</span>${configured ? html`<button
+            class="hub-event-clear"
+            title=${W.hubEventClearTitle}
+            @click=${() => { void this._resetHubEventAction(target); }}
+          ><ha-icon icon="mdi:close"></ha-icon></button>` : nothing}`;
+    };
+    return html`
+      <li class="hub-event-line">
+        <span class="hub-event-icon">${renderMatterGlyph()}</span>
+        <span class="hub-event-text"><span class="phrase-name">${button.name}</span>: ${types.map(renderPress)}.</span>
+      </li>
+    `;
+  }
+
+  private async _pickMatterDevice(deviceId: string) {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !deviceId || !this.hass) return;
+    try {
+      this._applyMatterEventsResult(await this.api().setMatterEvents(hubEntryId, { deviceId }));
+    } catch (_error) {
+      await this._loadMatterEvents();
+    }
   }
 
   private _renderActivityEventLine(activity: { id: number; name: string }, flash: HubEventFireEvent | null) {
@@ -2227,6 +2361,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     if (target.kind === "wifi_event") {
       return TOOLS_CARD_STRINGS.wifiCommands.wifiEventModalTitle(this._wifiEventBySlot(target.slotIndex)?.name || "");
+    }
+    if (target.kind === "matter") {
+      const W = TOOLS_CARD_STRINGS.wifiCommands;
+      const name = this._matterEvents?.buttons?.find((item) => item.button === target.button)?.name || String(target.button);
+      return W.matterEventModalTitle(name, W.matterPressLabels[target.eventType] ?? target.eventType);
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));
     const name = activity?.name || TOOLS_CARD_STRINGS.wifiCommands.activityEventFallbackName(String(target.id));
@@ -2786,6 +2925,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!entryId || !this.hass || this._configLoadedForEntryId !== entryId || this._hubLoad) return;
     await this._loadWifiDevices(true);
     await this._loadHubEventActions(true);
+    await this._loadMatterEvents();
     await this._loadWifiEventsRows();
     if (this._selectedDeviceKey) {
       await this._loadCommandConfigFromBackend(true);
@@ -2826,6 +2966,8 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._syncState = this._defaultSyncState();
       this._hubEventActions = this._defaultHubEventActions();
       this._activityEventActions = {};
+      this._matterEvents = null;
+      this._matterActions = {};
       this._wifiEventsRows = null;
       this._wifiEventsDeviceId = null;
       this._wifiEventsRecordNeedsSync = false;
@@ -2840,6 +2982,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!shouldFinalizeWifiHubLoad({ entryId, deviceListLoaded })) return;
     this._hubLoadFailedAt = null;
     await this._loadHubEventActions(true);
+    await this._loadMatterEvents();
     await this._loadWifiEventsRows();
     if (!this._deviceSessionRestoreTried && !this._selectedDeviceKey) {
       this._deviceSessionRestoreTried = true;

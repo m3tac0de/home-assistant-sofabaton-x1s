@@ -216,11 +216,13 @@ def _install_homeassistant_stubs() -> None:
 
     entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
     entity_registry.async_get = lambda hass=None: None
+    entity_registry.async_entries_for_device = lambda registry, device_id, include_disabled_entities=False: []
     sys.modules.setdefault("homeassistant.helpers.entity_registry", entity_registry)
 
     event = types.ModuleType("homeassistant.helpers.event")
     event.async_call_later = lambda hass, delay, action: None
     event.async_track_time_interval = lambda hass, action, interval: None
+    event.async_track_state_change_event = lambda hass, entity_ids, action: (lambda: None)
     sys.modules.setdefault("homeassistant.helpers.event", event)
 
     util = types.ModuleType("homeassistant.util")

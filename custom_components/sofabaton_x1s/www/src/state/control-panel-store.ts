@@ -1883,7 +1883,9 @@ export class ControlPanelStore {
     if (!message) return;
     const timestamp = Number(message.timestamp);
     if (!Number.isFinite(timestamp)) return;
-    const type = message.type === "redundant_off" ? "redundant_off" : message.type === "activity_change" ? "activity_change" : null;
+    const type = message.type === "redundant_off" || message.type === "activity_change" || message.type === "matter"
+      ? message.type
+      : null;
     if (!type) return;
     const activityId = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
@@ -1892,6 +1894,8 @@ export class ControlPanelStore {
       type,
       fromActivityId: activityId(message.from_activity_id),
       toActivityId: activityId(message.to_activity_id),
+      matterButton: type === "matter" ? activityId(message.button) : null,
+      matterEventType: type === "matter" && typeof message.event_type === "string" ? message.event_type : null,
       timestamp,
       // Same split as wifi presses: the server timestamp is identity, the
       // local receipt time drives the glow animation epoch.

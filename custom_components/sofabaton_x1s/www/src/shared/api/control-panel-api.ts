@@ -11,6 +11,7 @@ import type {
   HassLike,
   HubAction,
   HubEventActionsResponse,
+  MatterEventsResponse,
   HubClickAction,
   HubMqttLinkState,
   SidebarPanelMode,
@@ -526,6 +527,25 @@ export class ControlPanelApi {
       entry_id: hubEntryId,
       actions,
       activity_actions: activityActions,
+    });
+  }
+
+  /** The X2's Matter buttons for the Events subtab. */
+  getMatterEvents(hubEntryId: string) {
+    return this.hass.callWS<MatterEventsResponse>({
+      type: "sofabaton_x1s/matter_events/get",
+      entry_id: hubEntryId,
+    });
+  }
+
+  /** The actions map is stored wholesale; an empty device id forgets the
+   *  hub's picked Matter device. */
+  setMatterEvents(hubEntryId: string, change: { actions?: Record<string, unknown>; deviceId?: string }) {
+    return this.hass.callWS<MatterEventsResponse>({
+      type: "sofabaton_x1s/matter_events/set",
+      entry_id: hubEntryId,
+      ...(change.actions ? { actions: change.actions } : {}),
+      ...(change.deviceId !== undefined ? { device_id: change.deviceId } : {}),
     });
   }
 

@@ -50,10 +50,11 @@ from .wifi_ingress import WifiIngressMixin
 from .hub_fetch import HubFetchMixin
 from .hub_ops import HubOpsMixin
 from .hub_proxy_events import HubProxyEventsMixin
+from .hub_matter_events import HubMatterEventsMixin
 _LOGGER = logging.getLogger(__name__)
 
 
-class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMixin, WifiIngressMixin, HubIdentityMixin, HubCacheViewMixin):
+class SofabatonHub(HubProxyEventsMixin, HubMatterEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMixin, WifiIngressMixin, HubIdentityMixin, HubCacheViewMixin):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -124,6 +125,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         # One REQ_MATTER_DEVICE exchange at a time (X2 only, after each
         # committed devices read; see _async_refresh_matter_device).
         self._matter_refresh_running: bool = False
+        self._matter_events_init()
         self._devices_generation: int = 0
         self._activities_generation: int = 0
         self._cache_generation: int = 0
@@ -261,10 +263,12 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         zc = await async_get_instance(self.hass)
         self._proxy.set_zeroconf(zc)
         await self.hass.async_add_executor_job(self._proxy.start)
+        self._start_matter_events()
 
     async def async_stop(self) -> None:
         self._log.debug("[%s] Stopping proxy", self.entry_id)
         self._cancel_ota_notice()
+        self._stop_matter_events()
         await self.hass.async_add_executor_job(self._proxy.stop)
 
     async def async_apply_new_settings(

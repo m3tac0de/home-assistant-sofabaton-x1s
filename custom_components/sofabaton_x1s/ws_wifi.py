@@ -33,6 +33,7 @@ from .command_config import (
     is_wifi_events_device_key,
     normalize_activity_event_actions,
     normalize_hub_event_actions,
+    normalize_matter_event_actions,
     normalize_deployed_transport,
     normalize_wifi_transport,
     WIFI_TRANSPORT_HTTP,
@@ -366,6 +367,57 @@ async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[s
     connection.send_result(
         msg["id"], {"actions": actions, "activity_actions": activity_actions}
     )
+
+
+async def _matter_events_payload(hass: HomeAssistant, hub: Any) -> dict[str, Any]:
+    store = await runtime._async_get_command_config_store(hass)
+    view = hub.matter_events_view() if hasattr(hub, "matter_events_view") else {"available": False}
+    return {**view, "actions": store.get_matter_event_actions(hub.entry_id)}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/matter_events/get",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_matter_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """The X2's Matter buttons for the Events subtab (matter-events-plan D5)."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    connection.send_result(msg["id"], await _matter_events_payload(hass, hub))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/matter_events/set",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Optional("actions"): dict,
+        # The Matter device this hub's buttons are, when its Matter record
+        # did not settle it; an empty string forgets the choice.
+        vol.Optional("device_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_matter_events(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    if "actions" in msg:
+        await store.async_set_matter_event_actions(hub.entry_id, normalize_matter_event_actions(msg["actions"]))
+    if "device_id" in msg:
+        await store.async_set_matter_device_choice(hub.entry_id, msg["device_id"] or None)
+        if hasattr(hub, "_async_refresh_matter_link"):
+            await hub._async_refresh_matter_link()
+    connection.send_result(msg["id"], await _matter_events_payload(hass, hub))
 
 
 @websocket_api.websocket_command(

@@ -66,6 +66,11 @@ HUB_EVENT_ACTION_KEYS = ("power_off", "redundant_off", "activity_start", "activi
 # activity the hook simply applies to the new activity, and ids that leave
 # the hub's catalog are pruned so the store stays clean over time.
 ACTIVITY_EVENT_PHASES = ("start", "stop")
+# The X2's Matter buttons (matter-events-plan D3): button 1-8, keyed by the
+# button number and the press type Home Assistant's Matter event entity
+# reports, never by entity id, so a re-pair keeps the setup.
+MATTER_BUTTON_NUMBERS = tuple(range(1, 9))
+MATTER_EVENT_TYPES = ("multi_press_1", "multi_press_2", "long_press", "long_release")
 
 _SPACE_RE = re.compile(r"\s+")
 
@@ -241,6 +246,32 @@ def normalize_activity_event_actions(raw: Any) -> dict[str, dict[str, dict[str, 
         if all(entry[phase] == DEFAULT_COMMAND_ACTION for phase in ACTIVITY_EVENT_PHASES):
             continue
         normalized[str(activity_id)] = entry
+    return normalized
+
+
+def normalize_matter_event_actions(raw: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    """Normalize the Matter button actions: ``{"<button>": {"<event type>":
+    action}}`` for buttons 1-8 and the Generic Switch press types. Unset
+    press types and buttons with nothing set are dropped, like the
+    per-activity actions."""
+
+    source = raw if isinstance(raw, dict) else {}
+    normalized: dict[str, dict[str, dict[str, Any]]] = {}
+    for key, value in source.items():
+        try:
+            button = int(str(key).strip())
+        except (TypeError, ValueError):
+            continue
+        if button not in MATTER_BUTTON_NUMBERS:
+            continue
+        presses = value if isinstance(value, dict) else {}
+        entry = {}
+        for event_type in MATTER_EVENT_TYPES:
+            action = _normalize_action(presses.get(event_type))
+            if action != DEFAULT_COMMAND_ACTION:
+                entry[event_type] = action
+        if entry:
+            normalized[str(button)] = entry
     return normalized
 
 
@@ -818,6 +849,7 @@ class CommandConfigStore:
                         "devices": deepcopy(devices),
                         "event_actions": self.get_hub_event_actions(entry_id),
                         "activity_event_actions": self.get_activity_event_actions(entry_id),
+                        "matter_event_actions": self.get_matter_event_actions(entry_id),
                     }
                 }
             },
@@ -1231,6 +1263,37 @@ class CommandConfigStore:
         hub["activity_event_actions"] = normalize_activity_event_actions(actions)
         await self._save()
         return normalize_activity_event_actions(hub.get("activity_event_actions"))
+
+    def get_matter_event_actions(self, entry_id: str) -> dict[str, dict[str, dict[str, Any]]]:
+        """Return the Matter button actions (HA-side only, never synced)."""
+
+        hub = self._hub_record(entry_id)
+        return normalize_matter_event_actions(hub.get("matter_event_actions"))
+
+    async def async_set_matter_event_actions(
+        self,
+        entry_id: str,
+        actions: Any,
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        hub = self._hub_record(entry_id)
+        hub["matter_event_actions"] = normalize_matter_event_actions(actions)
+        await self._save()
+        return normalize_matter_event_actions(hub.get("matter_event_actions"))
+
+    def get_matter_device_choice(self, entry_id: str) -> str | None:
+        """The Matter device the user picked for this hub, when the hub's
+        Matter record did not settle it (matter-events-plan D2)."""
+
+        value = self._hub_record(entry_id).get("matter_device_id")
+        return str(value) if isinstance(value, str) and value else None
+
+    async def async_set_matter_device_choice(self, entry_id: str, device_id: str | None) -> None:
+        hub = self._hub_record(entry_id)
+        if device_id:
+            hub["matter_device_id"] = str(device_id)
+        else:
+            hub.pop("matter_device_id", None)
+        await self._save()
 
     async def async_prune_activity_event_actions(
         self,

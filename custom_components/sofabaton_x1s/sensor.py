@@ -259,9 +259,9 @@ class SofabatonIpCommandsSensor(SensorEntity):
         device = self._display_command.get("entity_name") or "Unknown device"
         command = self._display_command.get("command_label") or "Unknown command"
         press_type = self._display_command.get("press_type") or "short"
-        if press_type == "long":
-            return f"{device}/{command}/longpress"
-        return f"{device}/{command}"
+        # double and release come from the X2's Matter buttons only.
+        suffix = {"long": "/longpress", "double": "/doublepress", "release": "/release"}.get(press_type, "")
+        return f"{device}/{command}{suffix}"
 
     @property
     def extra_state_attributes(self) -> dict:

@@ -1251,6 +1251,19 @@ export const TOOLS_CARD_STRINGS_EN = {
     activityEventStopModalTitle: (name: string) => `When ${name} stops`,
     activityEventFallbackName: (id: string) => `Activity ${id}`,
     noActivitiesForEvents: "No activities on this hub yet.",
+    matterEventsTitle: "Matter Buttons",
+    matterEventsSubtitle:
+      "Perform a Home Assistant Action when one of the hub's Matter buttons fires in Home Assistant's Matter integration. These also update the Wifi Commands sensor.",
+    // Home Assistant's press types for a Matter button, in the order shown.
+    matterPressLabels: {
+      multi_press_1: "pressed",
+      multi_press_2: "pressed twice",
+      long_press: "held",
+      long_release: "released",
+    } as Record<string, string>,
+    matterEventModalTitle: (name: string, press: string) => `${name}, ${press}`,
+    matterDevicePickTitle: "Which Matter device is this hub?",
+    matterDevicePickPlaceholder: "Choose…",
     favorite: "Set as favorite",
     physicalButtonAssignment: "Physical button assignment",
     enableLongPress: "Enable long press",

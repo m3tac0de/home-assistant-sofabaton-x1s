@@ -346,6 +346,25 @@ export interface HubEventActionsResponse {
   activity_actions?: Record<string, unknown>;
 }
 
+/** One of the X2's Matter buttons, as Home Assistant's Matter integration
+ *  reports it: the hub's own name for it and the press types it declares. */
+export interface MatterEventButton {
+  button: number;
+  name: string;
+  entity_id: string;
+  event_types: string[];
+}
+
+/** The Matter section of the Events subtab (matter-events-plan D5). */
+export interface MatterEventsResponse {
+  available: boolean;
+  reason?: string | null;
+  device?: { id: string; name: string } | null;
+  candidates?: Array<{ id: string; name: string }>;
+  buttons?: MatterEventButton[];
+  actions?: Record<string, Record<string, unknown>>;
+}
+
 export interface WifiEventsListResponse {
   events: WifiEvent[];
   /** True when the record's staged config differs from the deployed hash —
@@ -757,9 +776,12 @@ export interface CommandSendFlash {
  *  light every affected row (global rows + per-activity start/stop). */
 export interface HubEventFireEvent {
   entryId: string;
-  type: "activity_change" | "redundant_off";
+  type: "activity_change" | "redundant_off" | "matter";
   fromActivityId: number | null;
   toActivityId: number | null;
+  /** A Matter press: the hub's button number and Home Assistant's event type. */
+  matterButton?: number | null;
+  matterEventType?: string | null;
   timestamp: number;
   receivedAt: number;
 }

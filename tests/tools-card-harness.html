@@ -1983,6 +1983,17 @@
                 actions: mock.hubEventActions,
                 activity_actions: mock.activityEventActions,
               });
+            case "sofabaton_x1s/matter_events/get":
+              return respond(type, {
+                ...(mock.matterEvents ?? { available: false, reason: "no_matter_device", buttons: [] }),
+                actions: mock.matterEventActions ?? {},
+              });
+            case "sofabaton_x1s/matter_events/set":
+              if (message.actions) mock.matterEventActions = clone(message.actions);
+              return respond(type, {
+                ...(mock.matterEvents ?? { available: false, reason: "no_matter_device", buttons: [] }),
+                actions: mock.matterEventActions ?? {},
+              });
             case "sofabaton_x1s/wifi_event/list":
               return respond(type, wifiEventsResponse());
             case "sofabaton_x1s/wifi_event/create": {

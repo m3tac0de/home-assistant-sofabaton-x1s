@@ -111,20 +111,29 @@ These triggers need no Wifi Device, callback listener, or hub sync. Configure th
 
 Activity Actions are stored by numeric Activity ID and removed when an authoritative refresh shows that the Activity was deleted.
 
+### Matter Buttons (X2)
+
+An X2 linked to Matter offers 8 Matter buttons. When the hub is also added to Home Assistant's own [Matter integration](https://www.home-assistant.io/integrations/matter/), that integration creates one event entity per button, and the Events page gains a **Matter Buttons** section with one line per button, under the name the hub gives it.
+
+- Choose an Action for each press type the button reports: pressed, pressed twice, held, and released.
+- The section appears only when the integration finds the hub's Matter device. With more than one X2, it matches the Matter device to its hub through the hub's own Matter network announcement; if that does not settle it, the section asks which Matter device belongs to the hub.
+- Actions are stored by button number and press type, so they survive pairing the hub to Matter again.
+- Every Matter button press also updates the Wifi Commands sensor (below).
+
 ## ◇ Wifi Commands sensor
 
-Every Wifi Command and Wifi Event activated from the physical remote, Sofabaton app, or virtual remote updates `sensor.<hub>_wifi_commands`. This happens whether or not an Action is configured; a configured Action runs in addition to the sensor update.
+Every Wifi Command and Wifi Event activated from the physical remote, Sofabaton app, or virtual remote updates `sensor.<hub>_wifi_commands`, and so does every press of an X2's Matter button. This happens whether or not an Action is configured; a configured Action runs in addition to the sensor update.
 
-The state is `<device>/<command>` (or `<device>/<command>/longpress` for a long press on a Wifi Device command; a Wifi Event always reports `<device>/<event>`) and returns to `Waiting for button press` after about 0.3 seconds. Automations should trigger on a change away from the waiting, `unknown`, and `unavailable` states instead of one fixed command name.
+The state is `<device>/<command>` (or `<device>/<command>/longpress` for a long press on a Wifi Device command; a Wifi Event always reports `<device>/<event>`; a Matter button adds `/doublepress`, `/longpress` or `/release` for its other press types) and returns to `Waiting for button press` after about 0.3 seconds. Automations should trigger on a change away from the waiting, `unknown`, and `unavailable` states instead of one fixed command name.
 
 | Attribute          | Meaning                                      |
 | ------------------ | -------------------------------------------- |
 | `received_command` | Command or event name                        |
 | `from_device`      | Wifi Device name; `Wifi Events` for an event |
-| `press_type`       | `short` or `long`                            |
+| `press_type`       | `short` or `long`; a Matter button also `double` or `release` |
 | `timestamp`        | ISO 8601 receipt time                        |
-| `source_ip`        | Hub IP for HTTP; empty for MQTT              |
-| `transport`        | `http` or `mqtt`                             |
+| `source_ip`        | Hub IP for HTTP; empty for MQTT and Matter   |
+| `transport`        | `http`, `mqtt`, or `matter`                  |
 
 ### Sensor automation example
 
