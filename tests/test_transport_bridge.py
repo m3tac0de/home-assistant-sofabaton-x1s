@@ -811,6 +811,7 @@ def test_get_bridge_stats_defaults():
         "hub_tx_bytes": 0,
         "hub_last_rx": None,
         "hub_last_rx_age_s": None,
+        "hub_connection_age_s": None,
         "select_errors": 0,
         "last_select_error": None,
         "last_select_error_at": None,
@@ -1051,3 +1052,156 @@ def test_a_hub_that_dials_back_in_during_the_ota_pause_is_accepted():
     assert bridge.is_hub_connected is True
     assert bridge._ota_pause_active() is False
     assert states[-3:] == [True, False, True]
+
+
+# ---------------------------------------------------------------------------
+# Disconnect logging (issue #325): one INFO line per lost hub session with
+# the reason, how long the session lasted and how long the hub was quiet.
+# ---------------------------------------------------------------------------
+
+
+class _QuietSocket:
+    """Minimal hub socket for _install_hub_socket / _drop_hub tests."""
+
+    def __init__(self):
+        self.closed = False
+
+    def settimeout(self, *_):
+        pass
+
+    def setsockopt(self, *_):
+        pass
+
+    def shutdown(self, *_):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+def _disconnect_lines(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if "hub disconnected:" in r.getMessage()]
+
+
+def test_format_duration_reads_like_the_issue_report():
+    assert transport_bridge._format_duration(4.34) == "4.3s"
+    assert transport_bridge._format_duration(723) == "12m03s"
+    assert transport_bridge._format_duration(6675.4) == "1h51m15s"
+    assert transport_bridge._format_duration(-1) == "0.0s"
+
+
+def test_socket_error_reason_names_the_errno():
+    exc = OSError(transport_bridge.errno.ETIMEDOUT, "Operation timed out")
+    reason = transport_bridge._socket_error_reason(exc)
+    assert reason.startswith("socket error ")
+    assert transport_bridge.errno.errorcode[transport_bridge.errno.ETIMEDOUT] in reason
+    assert "Operation timed out" in reason
+
+
+def test_hub_eof_logs_one_info_line_with_age_and_quiet_time(caplog):
+    caplog.set_level(logging.INFO, logger="x1proxy.transport")
+    bridge = _make_bridge()
+    bridge._init_wake_channel()
+    states: list[bool] = []
+    bridge.on_hub_state(states.append)
+    hub_side, peer = socket.socketpair()
+    got = threading.Event()
+    bridge.on_hub_frame(lambda _data, _cid: got.set())
+    bridge._install_hub_socket(hub_side, ("192.168.2.10", 51234))
+
+    thr = threading.Thread(target=bridge._bridge_forever, daemon=True)
+    thr.start()
+    try:
+        peer.sendall(b"hello")
+        assert got.wait(5.0)
+        peer.close()  # clean EOF from the hub side
+        deadline = time.monotonic() + 5.0
+        while bridge.is_hub_connected and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        bridge.stop()
+        thr.join(5.0)
+
+    assert states[-1] is False
+    lines = _disconnect_lines(caplog)
+    assert len(lines) == 1
+    message = lines[0].getMessage()
+    assert lines[0].levelno == logging.INFO
+    assert "the hub closed the connection" in message
+    assert "connected for " in message
+    assert "last data from the hub " in message
+    assert bridge.get_bridge_stats()["hub_connection_age_s"] is None
+
+
+def test_hub_recv_error_logs_the_errno(caplog):
+    """The reporter's case: the kernel gives up on keepalive and recv()
+    raises ETIMEDOUT. That used to be DEBUG only."""
+
+    caplog.set_level(logging.INFO, logger="x1proxy.transport")
+
+    class TimedOutSocket(socket.socket):
+        def recv(self, *_args, **_kwargs):
+            raise OSError(transport_bridge.errno.ETIMEDOUT, "Operation timed out")
+
+    bridge = _make_bridge()
+    bridge._init_wake_channel()
+    raw, peer = socket.socketpair()
+    hub_side = TimedOutSocket(raw.family, raw.type, raw.proto, fileno=raw.detach())
+    bridge._install_hub_socket(hub_side, ("192.168.2.10", 51234))
+
+    thr = threading.Thread(target=bridge._bridge_forever, daemon=True)
+    thr.start()
+    try:
+        peer.sendall(b"x")  # readable, so the loop calls recv()
+        deadline = time.monotonic() + 5.0
+        while bridge.is_hub_connected and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        bridge.stop()
+        thr.join(5.0)
+        peer.close()
+
+    lines = _disconnect_lines(caplog)
+    assert len(lines) == 1
+    message = lines[0].getMessage()
+    assert transport_bridge.errno.errorcode[transport_bridge.errno.ETIMEDOUT] in message
+    assert "Operation timed out" in message
+    # Nothing arrived on this connection before it died.
+    assert "nothing received from the hub on this connection" in message
+
+
+def test_a_replaced_socket_is_logged_once_and_its_eof_stays_silent(caplog):
+    caplog.set_level(logging.INFO, logger="x1proxy.transport")
+    bridge = _make_bridge()
+    first = _QuietSocket()
+    bridge._install_hub_socket(first, ("192.168.2.10", 51234))
+    second = _QuietSocket()
+    bridge._install_hub_socket(second, ("192.168.2.10", 51235))
+
+    # The bridge later reads EOF on the old socket: not the hub socket any
+    # more, so nothing is dropped and nothing more is logged.
+    assert bridge._drop_hub(first, "the hub closed the connection") is False
+
+    lines = _disconnect_lines(caplog)
+    assert len(lines) == 1
+    assert lines[0].levelno == logging.WARNING
+    assert "dialled in again from 192.168.2.10:51235" in lines[0].getMessage()
+    assert bridge._hub_sock is second
+
+
+def test_ota_pause_logs_the_session_close(caplog):
+    caplog.set_level(logging.INFO, logger="x1proxy.transport")
+    bridge = _make_bridge()
+    bridge._install_hub_socket(_QuietSocket(), ("192.168.2.10", 51234))
+    bridge.pause_for_ota(300)
+
+    lines = _disconnect_lines(caplog)
+    assert len(lines) == 1
+    assert "closing its session" in lines[0].getMessage()
+
+
+def test_connection_age_is_reported_while_connected():
+    bridge = _make_bridge()
+    bridge._install_hub_socket(_QuietSocket(), ("192.168.2.10", 51234))
+    age = bridge.get_bridge_stats()["hub_connection_age_s"]
+    assert age is not None and 0 <= age < 5

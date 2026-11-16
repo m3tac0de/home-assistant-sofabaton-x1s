@@ -21,9 +21,37 @@ from .notify_demuxer import (
 
 log = logging.getLogger("x1proxy.transport")
 
+# Disconnect reason when a write to the hub fails; the errno is in the
+# DEBUG "send failed" line logged by _flush_buffer.
+_HUB_SEND_FAILED = "sending to the hub failed"
+
 
 def _sum8(b: bytes) -> int:
     return sum(b) & 0xFF
+
+
+def _format_duration(seconds: float) -> str:
+    """Short human duration for log lines: ``4.3s``, ``12m03s``, ``1h51m15s``."""
+
+    seconds = max(0.0, float(seconds))
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    whole = int(seconds)
+    hours, rest = divmod(whole, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    return f"{minutes}m{secs:02d}s"
+
+
+def _socket_error_reason(exc: OSError) -> str:
+    """Name a socket error for the disconnect log line, e.g. ``ETIMEDOUT``."""
+
+    name = errno.errorcode.get(exc.errno) if exc.errno is not None else None
+    text = exc.strerror or str(exc) or type(exc).__name__
+    if name:
+        return f"socket error {name} ({text})"
+    return f"socket error ({text})"
 
 
 def _enable_keepalive(
@@ -183,6 +211,10 @@ class TransportBridge:
         self._hub_rx_bytes = 0
         self._hub_tx_bytes = 0
         self._hub_last_rx_ts: Optional[float] = None
+        # Wall-clock time the current hub session was accepted; written
+        # under _hub_lock together with _hub_sock. Feeds the disconnect
+        # log line (issue #325) and the connection age in diagnostics.
+        self._hub_connected_at: Optional[float] = None
         self._select_error_count = 0
         self._select_failure_streak = 0
         self._last_select_error: Optional[str] = None
@@ -235,12 +267,17 @@ class TransportBridge:
         """Snapshot of bridge-loop health counters for diagnostics."""
 
         last_rx = self._hub_last_rx_ts
+        connected_at = self._hub_connected_at
+        now = time.time()
         return {
             "hub_rx_bytes": self._hub_rx_bytes,
             "hub_tx_bytes": self._hub_tx_bytes,
             "hub_last_rx": last_rx,
             "hub_last_rx_age_s": (
-                round(time.time() - last_rx, 1) if last_rx is not None else None
+                round(now - last_rx, 1) if last_rx is not None else None
+            ),
+            "hub_connection_age_s": (
+                round(now - connected_at, 1) if connected_at is not None else None
             ),
             "select_errors": self._select_error_count,
             "last_select_error": self._last_select_error,
@@ -270,7 +307,9 @@ class TransportBridge:
         existing: Optional[socket.socket] = None
         with self._hub_lock:
             existing = self._hub_sock
+            connected_at = self._hub_connected_at
             self._hub_sock = None
+            self._hub_connected_at = None
         if existing is not None:
             try:
                 existing.shutdown(socket.SHUT_RDWR)
@@ -280,8 +319,37 @@ class TransportBridge:
                 existing.close()
             except Exception:
                 pass
+            self._log_hub_lost("the hub announced it is closing its session", connected_at)
             self._notify_hub_state(False)
             self._signal_wake()
+
+    def _log_hub_lost(
+        self,
+        reason: str,
+        connected_at: Optional[float],
+        *,
+        level: int = logging.INFO,
+    ) -> None:
+        """Log one line per lost hub session: why it ended, how long it
+        lasted and how long the hub had been quiet (issue #325). The
+        accept is logged at INFO too, so both edges of an outage show up
+        without DEBUG logging."""
+
+        now = time.time()
+        age = _format_duration(now - connected_at) if connected_at is not None else "unknown"
+        last_rx = self._hub_last_rx_ts
+        if last_rx is None or (connected_at is not None and last_rx < connected_at):
+            quiet = "nothing received from the hub on this connection"
+        else:
+            quiet = f"last data from the hub {_format_duration(now - last_rx)} ago"
+        self._log.log(
+            level,
+            "%s hub disconnected: %s; connected for %s, %s",
+            LogTag.TRANSPORT,
+            reason,
+            age,
+            quiet,
+        )
 
     def _ota_pause_active(self) -> bool:
         return self._ota_pause_until > time.time()
@@ -381,6 +449,7 @@ class TransportBridge:
                 except Exception:
                     pass
                 self._hub_sock = None
+                self._hub_connected_at = None
                 self._notify_hub_state(False)
 
         with self._app_lock:
@@ -579,12 +648,14 @@ class TransportBridge:
         existing: Optional[socket.socket] = None
         with self._hub_lock:
             existing = self._hub_sock
+            previous_connected_at = self._hub_connected_at
             self._hub_sock = hub_sock
+            self._hub_connected_at = time.time()
         if existing is not None:
-            self._log.warning(
-                "%s replacing existing hub socket on new connection from %s:%d",
-                LogTag.TRANSPORT,
-                *hub_addr,
+            self._log_hub_lost(
+                "the hub dialled in again from %s:%d, replacing the old session" % hub_addr,
+                previous_connected_at,
+                level=logging.WARNING,
             )
             try:
                 existing.shutdown(socket.SHUT_RDWR)
@@ -610,19 +681,28 @@ class TransportBridge:
         except Exception:
             pass
 
-    def _drop_hub(self, hub: socket.socket) -> bool:
+    def _drop_hub(
+        self,
+        hub: socket.socket,
+        reason: str,
+        *,
+        level: int = logging.INFO,
+    ) -> bool:
         """Close ``hub`` and clear it as the hub socket only if it still IS
         the hub socket. A hub that re-dials replaces the socket under the
         bridge thread (``_install_hub_socket``); closing the old one wakes the
         bridge, and that EOF must never clear the replacement. Returns True
         when the current socket was dropped (the caller then reports the
-        hub as disconnected)."""
+        hub as disconnected); only then is ``reason`` logged."""
         with self._hub_lock:
             self._close_quietly(hub)
             if self._hub_sock is not hub:
                 return False
             self._hub_sock = None
-            return True
+            connected_at = self._hub_connected_at
+            self._hub_connected_at = None
+        self._log_hub_lost(reason, connected_at, level=level)
+        return True
 
     def _drop_app(self, app: socket.socket) -> bool:
         """The app-side counterpart of :meth:`_drop_hub`."""
@@ -764,6 +844,7 @@ class TransportBridge:
                 self._drain_wake_socket(wake_reader)
 
             if hub is not None and hub in r:
+                hub_lost_reason = "the hub closed the connection"
                 try:
                     data = hub.recv(65536)
                 except BlockingIOError:
@@ -773,11 +854,12 @@ class TransportBridge:
                         data = None
                     else:
                         self._log.debug("%s hub recv failed", LogTag.TRANSPORT, exc_info=exc)
+                        hub_lost_reason = _socket_error_reason(exc)
                         data = b""
                 if data is None:
                     pass
                 elif not data:
-                    if self._drop_hub(hub):
+                    if self._drop_hub(hub, hub_lost_reason):
                         self._notify_hub_state(False)
                         app_to_hub.clear()
                 else:
@@ -821,7 +903,7 @@ class TransportBridge:
                         app_to_hub.extend(frame)
                         if hub is not None:
                             if self._flush_to_hub(hub, app_to_hub, "client"):
-                                if self._drop_hub(hub):
+                                if self._drop_hub(hub, _HUB_SEND_FAILED):
                                     self._notify_hub_state(False)
                                 break
                             if (
@@ -833,13 +915,13 @@ class TransportBridge:
             if hub is not None and hub in w:
                 if self._local_to_hub:
                     if self._flush_to_hub(hub, self._local_to_hub, "local"):
-                        if self._drop_hub(hub):
+                        if self._drop_hub(hub, _HUB_SEND_FAILED):
                             self._notify_hub_state(False)
                             app_to_hub.clear()
                         continue
                 if app_to_hub:
                     if self._flush_to_hub(hub, app_to_hub, "client"):
-                        if self._drop_hub(hub):
+                        if self._drop_hub(hub, _HUB_SEND_FAILED):
                             self._notify_hub_state(False)
                             app_to_hub.clear()
 
@@ -935,13 +1017,13 @@ class TransportBridge:
             self._select_failure_streak = 0
 
         if hub is not None and (force or not _socket_is_usable(hub)):
-            if self._drop_hub(hub):
+            if self._drop_hub(
+                hub,
+                "dropped after a bridge select failure; CALL_ME will re-dial",
+                level=logging.WARNING,
+            ):
                 app_to_hub.clear()
                 self._notify_hub_state(False)
-                self._log.warning(
-                    "%s dropped hub socket after select failure; CALL_ME will re-dial",
-                    LogTag.TRANSPORT,
-                )
 
         if app is not None and (force or not _socket_is_usable(app)):
             if self._drop_app(app):
