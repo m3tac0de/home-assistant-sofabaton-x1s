@@ -18767,6 +18767,21 @@ function deviceInputEntries(bundle, deviceId) {
     name: String(entry?.name || entry?.label || "").trim()
   })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
 }
+function deviceInputCommandItems(bundle, deviceId) {
+  const commands = deviceCommandItems(bundle, deviceId);
+  const byId = new Map(commands.map((command) => [command.commandId, command]));
+  const inputs = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const input of deviceInputEntries(bundle, deviceId)) {
+    if (seen.has(input.commandId)) continue;
+    seen.add(input.commandId);
+    const command = byId.get(input.commandId);
+    const commandLabel = command?.label ?? "";
+    const label = !input.name ? commandLabel || TOOLS_CARD_STRINGS.common.inputFallback(input.ordinal) : !commandLabel || input.name === commandLabel ? input.name : `${input.name} (${commandLabel})`;
+    inputs.push({ deviceId: Number(deviceId), commandId: input.commandId, label });
+  }
+  return [...inputs, ...commands.filter((command) => !seen.has(command.commandId))];
+}
 function ensureDeviceInput(bundle, deviceId, commandId) {
   const dId = Number(deviceId);
   const cId = Number(commandId);
@@ -24751,6 +24766,11 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     if (deviceId == null || !this._working) return [];
     return deviceCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
   }
+  /** The "Set input" choices: configured inputs first, under their hub (user-renamed) names. */
+  _inputOptions(deviceId) {
+    if (deviceId == null || !this._working) return [];
+    return deviceInputCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
   _openEditBinding(buttonId) {
     this._macroPicker = null;
     const activityId = this.activityId;
@@ -25528,7 +25548,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const isEdit = dialog.editIndex !== null;
     const isInput = dialog.kind === "input";
     const isWifiEvent = dialog.kind === "wifi_event";
-    const commands = this._commandOptions(dialog.deviceId);
+    const commands = isInput ? this._inputOptions(dialog.deviceId) : this._commandOptions(dialog.deviceId);
     const canSave = isInput || (isWifiEvent ? dialog.slot != null : dialog.commandId != null && dialog.deviceId != null);
     const title = isInput ? B2.inputStepTitle : isEdit ? B2.stepDialogEditTitle : B2.stepDialogAddTitle;
     const body = isInput ? b2`<div class="decoded-field">

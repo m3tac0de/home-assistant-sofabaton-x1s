@@ -12910,6 +12910,21 @@ function deviceInputEntries(bundle, deviceId) {
     name: String(entry?.name || entry?.label || "").trim()
   })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
 }
+function deviceInputCommandItems(bundle, deviceId) {
+  const commands = deviceCommandItems(bundle, deviceId);
+  const byId = new Map(commands.map((command) => [command.commandId, command]));
+  const inputs = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const input of deviceInputEntries(bundle, deviceId)) {
+    if (seen.has(input.commandId)) continue;
+    seen.add(input.commandId);
+    const command = byId.get(input.commandId);
+    const commandLabel = command?.label ?? "";
+    const label = !input.name ? commandLabel || TOOLS_CARD_STRINGS.common.inputFallback(input.ordinal) : !commandLabel || input.name === commandLabel ? input.name : `${input.name} (${commandLabel})`;
+    inputs.push({ deviceId: Number(deviceId), commandId: input.commandId, label });
+  }
+  return [...inputs, ...commands.filter((command) => !seen.has(command.commandId))];
+}
 function ensureDeviceInput(bundle, deviceId, commandId) {
   const dId = Number(deviceId);
   const cId = Number(commandId);
@@ -18040,7 +18055,7 @@ var MacroStepEditorController = class {
     const isWifiEvent = this.kind === "wifi_event";
     const devices = this.host._editableDeviceOptions();
     const commandDeviceId = isInput ? this.deviceId : isActivity ? this.deviceId : editor.entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this.host.bundle, commandDeviceId) : [];
+    const commands = commandDeviceId == null ? [] : isInput ? deviceInputCommandItems(this.host.bundle, commandDeviceId) : deviceCommandItems(this.host.bundle, commandDeviceId);
     const canSave = isInput || (isWifiEvent ? !this.host._events.busy && (this.host._events.primary.mode === "existing" ? this.host._events.primary.slot != null : this.host._events.primary.name.trim().length > 0) : this.commandId != null && (!isActivity || this.deviceId != null));
     const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
     return b2`
