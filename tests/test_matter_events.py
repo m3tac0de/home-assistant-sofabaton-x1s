@@ -301,6 +301,17 @@ def _linked_hub(monkeypatch, actions=None) -> _Hub:
     return hub
 
 
+def test_missing_display_names_stay_absent_without_changing_sensor_fallbacks(monkeypatch) -> None:
+    hub = _linked_hub(monkeypatch)
+    hub._proxy.get_commands_for_entity = lambda *args, **kwargs: ({2: "Button 2"}, False)
+
+    buttons = hub.matter_events_view()["buttons"]
+    assert buttons[0]["name"] is None
+    assert buttons[1]["name"] == "Button 2"
+    hub._record_matter_press(1, "multi_press_1")
+    assert hub._last_ip_command["command_label"] == "Button 1"
+
+
 def test_a_press_runs_the_action_pulses_the_sensor_and_lights_the_row(monkeypatch) -> None:
     action = {"action": "perform-action", "perform_action": "light.toggle"}
     hub = _linked_hub(monkeypatch, actions={"1": {"long_press": action}})

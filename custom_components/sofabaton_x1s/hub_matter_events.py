@@ -266,7 +266,8 @@ class HubMatterEventsMixin:
             "buttons": [
                 {
                     "button": button.number,
-                    "name": names.get(button.number) or f"Button {button.number}",
+                    # Leave display fallbacks to the card's active language.
+                    "name": names.get(button.number),
                     "entity_id": button.entity_id,
                     "event_types": list(button.event_types),
                 }

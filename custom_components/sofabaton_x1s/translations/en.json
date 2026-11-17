@@ -10,14 +10,14 @@
       },
       "pick_hub": {
         "title": "Choose your hub",
-        "description": "Home Assistant found these Sofabaton hubs on your network. Setup adds one hub at a time, so choose the one to add now. Hubs that are already set up are not listed. A hub on another network or VLAN cannot be found: choose the last option to enter its IP address.",
+        "description": "Home Assistant found these Sofabaton hubs on your network. Setup adds one hub at a time, so choose the one to add now. Hubs that are already set up are not listed. Hubs on another network or VLAN may not appear unless mDNS is forwarded. If your hub is missing, choose “A hub that is not listed (enter its IP address)”.",
         "data": {
           "hub": "Hub to add"
         }
       },
       "no_hubs": {
         "title": "No hub found",
-        "description": "Home Assistant could not find a Sofabaton hub that is not set up yet.\n\n- Close the Sofabaton app on every phone and tablet. A hub stops announcing itself while the app is connected.\n- A hub on another network or VLAN cannot be found automatically. Enter its IP address instead.",
+        "description": "Home Assistant could not find a Sofabaton hub that is not set up yet.\n\n- Close the Sofabaton app on every phone and tablet. A hub stops announcing itself while the app is connected.\n- Hubs on another network or VLAN may not appear unless mDNS is forwarded. Choose “Enter the hub's IP address” to add your hub manually.",
         "menu_options": {
           "rescan": "Search again",
           "manual": "Enter the hub's IP address"

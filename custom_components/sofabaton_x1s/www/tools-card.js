@@ -2714,25 +2714,26 @@ var TOOLS_CARD_STRINGS_EN = {
     syncRemoteDescription: "Push the latest configuration to the physical remote.",
     // The listener ports every hub shares (All Hubs subtab, and its dialog).
     portsTitle: "Network Ports",
-    portsDescription: (hub, app, wifi) => `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and Wifi Commands arrive on TCP ${wifi}.`,
+    portsDescription: (hub, app, wifi) => `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and HTTP-delivered Wifi Commands arrive on TCP ${wifi}.`,
     portsChange: "Change",
     portsDialogTitle: "Network ports",
     portsIntro: "These ports are shared by all your hubs. Saving reconnects every hub whose port changes.",
     portsDocsLink: "What each port is for",
-    portsHubLabel: "Hub port (TCP)",
+    portsHubLabel: "Hub TCP listener port",
     portsHubHelper: (defaultPort) => `Your hubs connect to Home Assistant on this port. The default is ${defaultPort}.`,
-    portsAppLabel: "App port (UDP)",
+    portsAppLabel: "App UDP listener port",
     portsAppHelper: (defaultPort) => `The Sofabaton app finds Home Assistant on this port. The iOS app only looks on ${defaultPort}.`,
-    portsWifiLabel: "Wifi Commands port (TCP)",
-    portsWifiHelper: (defaultPort) => `Your hubs send Wifi Commands and Wifi Events here. An X1 hub only uses ${defaultPort}, and after a change your Wifi devices need to be synced again.`,
+    portsWifiLabel: "Wifi command HTTP listener port",
+    portsWifiHelper: (defaultPort) => `This HTTP listener receives HTTP-delivered Wifi Commands and Wifi Events. MQTT delivery does not use it. X1 requires port ${defaultPort}: changing it stops X1 HTTP Wifi Commands from working. After changing the port, sync existing HTTP Wifi Devices again.`,
     portsInvalid: "Enter a port number from 1 to 65535.",
     portsSamePort: "The hub port and the Wifi Commands port need to differ.",
     portsInUse: (port, free) => free != null ? `Port ${port} is already in use on the Home Assistant host. Port ${free} is free.` : `Port ${port} is already in use on the Home Assistant host. Enter another port.`,
     portsSave: "Save",
     portsSaving: "Saving\u2026",
-    portsSavingNote: "Hubs reconnect on the new ports, which takes a few seconds.",
+    portsSavingNote: "Saving network ports\u2026",
     portsSaved: "Network ports saved.",
-    portsFailed: "The ports could not be saved."
+    portsFailed: "The ports could not be saved.",
+    portsBusy: "A hub is busy with a backup, restore, sync, or another change. Wait for it to finish and try again."
   },
   cache: {
     loading: "Loading\u2026",
@@ -3215,8 +3216,8 @@ var TOOLS_CARD_STRINGS_EN = {
     renameKind: (kind) => `Rename ${kind}`,
     hubOwnedTitle: "Managed by the hub",
     hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
-    hubOwnedBody: "The hub creates and manages it: you can rename its buttons and assign remote buttons to them, but the device itself can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. It can't be used in activities.",
-    matterCommandsHelp: "Use the pencil to rename a Matter button. Names can't be empty or repeat.",
+    hubOwnedBody: "The hub creates and manages this device. You can rename its Matter buttons and assign them to remote buttons. You cannot rename or delete the device, change its other settings, or use it in activities. Restoring a backup keeps the Matter device already on the hub; its backed-up names and button assignments are not restored.",
+    matterCommandsHelp: "Use the pencil to rename a Matter button. Enter a non-empty name that is not used by another Matter button.",
     matterButtonNameTaken: "Another Matter button already has this name.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
@@ -3654,16 +3655,18 @@ var TOOLS_CARD_STRINGS_EN = {
     activityEventFallbackName: (id) => `Activity ${id}`,
     noActivitiesForEvents: "No activities on this hub yet.",
     matterEventsTitle: "Matter Buttons",
-    matterEventsSubtitle: "Perform a Home Assistant Action when one of the hub's Matter buttons fires in Home Assistant's Matter integration. These also update the Wifi Commands sensor.",
+    matterEventsSubtitle: "Perform a Home Assistant Action when Home Assistant's Matter integration receives an event from one of this hub's Matter buttons. Each event also updates the Wifi Commands sensor.",
     // Home Assistant's press types for a Matter button, in the order shown.
     matterPressLabels: {
       multi_press_1: "pressed",
       multi_press_2: "pressed twice",
       long_press: "held",
-      long_release: "released"
+      long_release: "released after a long press"
     },
+    matterEventRowName: (name) => `${name}: `,
+    matterEventSeparator: "; ",
     matterEventModalTitle: (name, press) => `${name}, ${press}`,
-    matterDevicePickTitle: "Which Matter device is this hub?",
+    matterDevicePickTitle: "Which Matter device belongs to this hub?",
     matterDevicePickPlaceholder: "Choose\u2026",
     favorite: "Set as favorite",
     physicalButtonAssignment: "Physical button assignment",
@@ -5889,7 +5892,7 @@ var ControlPanelStore = class {
    */
   async setListenerPorts(ports) {
     if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
-      return { kind: "error", code: "busy", message: TOOLS_CARD_STRINGS.errors.anotherOperation };
+      return { kind: "error", code: "busy" };
     }
     const entryId = selectedHub(this._snapshot)?.entry_id ?? null;
     this._snapshot = { ...this._snapshot, pendingSettingKey: "listener_ports" };
@@ -5907,7 +5910,7 @@ var ControlPanelStore = class {
       await this.loadControlPanelState();
       return { kind: "saved" };
     } catch (error) {
-      return { kind: "error", code: backendErrorCode(error), message: formatError(error) };
+      return { kind: "error", code: backendErrorCode(error) };
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();
@@ -7688,7 +7691,7 @@ var ListenerPortsFormController = class {
       try {
         outcome = await this.save(ports);
       } catch (error) {
-        outcome = { kind: "error", code: null, message: String(error?.message ?? "") };
+        outcome = { kind: "error", code: backendErrorCode(error) };
       } finally {
         this._busy = false;
       }
@@ -7705,7 +7708,7 @@ var ListenerPortsFormController = class {
       } else if (outcome.code === "same_port") {
         this._fieldErrors = { [this._sameTcpPortField(ports)]: S5.portsSamePort };
       } else {
-        this._error = outcome.message || S5.portsFailed;
+        this._error = outcome.code === "busy" ? S5.portsBusy : S5.portsFailed;
       }
       this.host.requestUpdate();
     };
@@ -23195,7 +23198,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const configured = this._commandHasCustomAction(action);
       const target = { kind: "matter", button: button.button, eventType };
       const lit = flash?.type === "matter" && flash.matterButton === button.button && flash.matterEventType === eventType;
-      return b2`${index ? "; " : ""}${W.matterPressLabels[eventType] ?? eventType}, <span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+      return b2`${index ? W.matterEventSeparator : ""}${W.matterPressLabels[eventType] ?? eventType}, <span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
           ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(lit, flash)}</span>${configured ? b2`<button
             class="hub-event-clear"
             title=${W.hubEventClearTitle}
@@ -23207,7 +23210,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return b2`
       <li class="hub-event-line">
         <span class="hub-event-icon">${renderMatterGlyph()}</span>
-        <span class="hub-event-text"><span class="phrase-name">${button.name}</span>: ${types.map(renderPress)}.</span>
+        <span class="hub-event-text">${phraseWithName(W.matterEventRowName, button.name || TOOLS_CARD_STRINGS.common.buttonFallback(button.button))}${types.map(renderPress)}.</span>
       </li>
     `;
   }
@@ -23257,7 +23260,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     }
     if (target.kind === "matter") {
       const W = TOOLS_CARD_STRINGS.wifiCommands;
-      const name2 = this._matterEvents?.buttons?.find((item) => item.button === target.button)?.name || String(target.button);
+      const name2 = this._matterEvents?.buttons?.find((item) => item.button === target.button)?.name || TOOLS_CARD_STRINGS.common.buttonFallback(target.button);
       return W.matterEventModalTitle(name2, W.matterPressLabels[target.eventType] ?? target.eventType);
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));

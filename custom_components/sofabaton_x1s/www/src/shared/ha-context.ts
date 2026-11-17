@@ -350,7 +350,7 @@ export interface HubEventActionsResponse {
  *  reports it: the hub's own name for it and the press types it declares. */
 export interface MatterEventButton {
   button: number;
-  name: string;
+  name: string | null;
   entity_id: string;
   event_types: string[];
 }

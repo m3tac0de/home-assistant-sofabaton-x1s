@@ -2303,7 +2303,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       const configured = this._commandHasCustomAction(action);
       const target: HubEventEditorTarget = { kind: "matter", button: button.button, eventType };
       const lit = flash?.type === "matter" && flash.matterButton === button.button && flash.matterEventType === eventType;
-      return html`${index ? "; " : ""}${W.matterPressLabels[eventType] ?? eventType}, <span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
+      return html`${index ? W.matterEventSeparator : ""}${W.matterPressLabels[eventType] ?? eventType}, <span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
           ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(lit, flash)}</span>${configured ? html`<button
             class="hub-event-clear"
             title=${W.hubEventClearTitle}
@@ -2313,7 +2313,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     return html`
       <li class="hub-event-line">
         <span class="hub-event-icon">${renderMatterGlyph()}</span>
-        <span class="hub-event-text"><span class="phrase-name">${button.name}</span>: ${types.map(renderPress)}.</span>
+        <span class="hub-event-text">${phraseWithName(W.matterEventRowName, button.name || TOOLS_CARD_STRINGS.common.buttonFallback(button.button))}${types.map(renderPress)}.</span>
       </li>
     `;
   }
@@ -2364,7 +2364,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     if (target.kind === "matter") {
       const W = TOOLS_CARD_STRINGS.wifiCommands;
-      const name = this._matterEvents?.buttons?.find((item) => item.button === target.button)?.name || String(target.button);
+      const name = this._matterEvents?.buttons?.find((item) => item.button === target.button)?.name || TOOLS_CARD_STRINGS.common.buttonFallback(target.button);
       return W.matterEventModalTitle(name, W.matterPressLabels[target.eventType] ?? target.eventType);
     }
     const activity = this._editorActivities().find((item) => String(item.id) === String(target.id));

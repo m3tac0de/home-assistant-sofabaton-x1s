@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import { nothing } from "lit";
 import "../../custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab";
 import type { MatterEventsResponse } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { TOOLS_CARD_STRINGS, setToolsCardLanguage } from "../../custom_components/sofabaton_x1s/www/src/strings";
+import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
 
 const WifiCommandsTabElement = customElements.get("sofabaton-wifi-commands-tab") as {
   new (): HTMLElement;
@@ -52,6 +54,28 @@ function templateText(template: unknown): string {
   }
   return "";
 }
+
+test("missing Matter names are localized in rows and dialogs without translating hub names", () => {
+  const tab = makeTab();
+  const unnamed = { ...FOUND.buttons![1], name: null };
+  tab._applyMatterEventsResult({ ...FOUND, buttons: [unnamed] });
+  try {
+    for (const locale of ["en", "de", "es", "fr", "nl", "zh-hans"]) {
+      setToolsCardLanguage(locale);
+      const name = TOOLS_CARD_STRINGS.common.buttonFallback(2);
+      assert.ok(templateText(tab._renderMatterButtonLine(unnamed, null)).includes(name), locale);
+      assert.ok(tab._hubEventEditorTitle({ kind: "matter", button: 2, eventType: "long_release" }).includes(name), locale);
+      assert.ok(templateText(tab._renderMatterButtonLine(FOUND.buttons![1], null)).includes("Button 2"), locale);
+    }
+    setToolsCardLanguage("fr");
+    const row = templateText(tab._renderMatterButtonLine(FOUND.buttons![0], null));
+    assert.match(row, /<\/span>\u202f: /);
+    assert.match(row, /\u202f; /);
+    assert.match(row, /relâché après un appui long/);
+  } finally {
+    setToolsCardLanguage("en");
+  }
+});
 
 test("the section stays hidden until the backend finds the Matter device", () => {
   const tab = makeTab();
@@ -132,7 +156,7 @@ test("an unsettled link offers the candidate Matter devices and saves the pick",
     return FOUND;
   });
   tab._applyMatterEventsResult({ available: false, reason: "ambiguous", candidates: [{ id: "dev1", name: "Matter device 4" }] });
-  assert.match(templateText(tab._renderMatterEventsGroup(null)), /Which Matter device is this hub\?/);
+  assert.match(templateText(tab._renderMatterEventsGroup(null)), /Which Matter device belongs to this hub\?/);
   await tab._pickMatterDevice("dev1");
   assert.deepEqual(sent[0], { type: "sofabaton_x1s/matter_events/set", entry_id: "entry-1", device_id: "dev1" });
   assert.equal(tab._matterEvents.available, true);

@@ -168,6 +168,17 @@ test.describe("tools-card browser harness", () => {
           await window.__toolsCardHarness.loadScenario(scenarioId);
           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
+          if (scenarioId === "automation-events") {
+            // Include the longer translated release label and a localized name fallback.
+            const tab = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab");
+            tab._applyMatterEventsResult({
+              available: true,
+              buttons: [{ button: 1, name: null, entity_id: "event.matter_button_1", event_types: ["multi_press_1", "multi_press_2", "long_press", "long_release"] }],
+              actions: {},
+            });
+            tab._matterEventsShowUnconfigured = true;
+            await tab.updateComplete;
+          }
           if (scenarioId === "settings-x2-broker") {
             const card = window.__toolsCardHarness.getCard();
             // Wait for the broker status before opening its form.
@@ -201,7 +212,7 @@ test.describe("tools-card browser harness", () => {
 
           const failures = [];
           for (const root of roots) {
-            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-pop, .delivery-head, .delivery-choice, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions")) {
+            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-pop, .delivery-head, .delivery-choice, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions, .ports-dialog, .ports-fields, .matter-events, .matter-events .hub-event-text")) {
               const text = element.textContent?.replace(/\s+/g, " ").trim();
               if (!text || !element.getClientRects().length) continue;
               if (element.scrollWidth > element.clientWidth + 1) {
@@ -790,7 +801,7 @@ test.describe("tools-card browser harness", () => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("settings-global-ports"));
     const tile = page.locator(".setting-ports");
-    await expect(tile).toContainText("Hubs connect on TCP 8200, the Sofabaton app finds Home Assistant on UDP 8102, and Wifi Commands arrive on TCP 8060.");
+    await expect(tile).toContainText("Hubs connect on TCP 8200, the Sofabaton app finds Home Assistant on UDP 8102, and HTTP-delivered Wifi Commands arrive on TCP 8060.");
     await tile.click();
     const dialog = page.locator(".ports-dialog");
     await expect(dialog).toBeVisible();

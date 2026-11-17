@@ -66,7 +66,7 @@ const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache
 export type ListenerPortsOutcome =
   | { kind: "saved" }
   | { kind: "in_use"; inUse: Partial<Record<ListenerPortKey, number | null>> }
-  | { kind: "error"; code: string | null; message: string };
+  | { kind: "error"; code: string | null };
 
 /** activeRefreshLabel sentinel for the whole-hub "Refresh all" operation. */
 export const REFRESH_ALL_KEY = "__refresh_all__";
@@ -876,7 +876,7 @@ export class ControlPanelStore {
    */
   async setListenerPorts(ports: ListenerPorts): Promise<ListenerPortsOutcome> {
     if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
-      return { kind: "error", code: "busy", message: TOOLS_CARD_STRINGS.errors.anotherOperation };
+      return { kind: "error", code: "busy" };
     }
     const entryId = selectedHub(this._snapshot)?.entry_id ?? null;
     this._snapshot = { ...this._snapshot, pendingSettingKey: "listener_ports" };
@@ -894,7 +894,7 @@ export class ControlPanelStore {
       await this.loadControlPanelState();
       return { kind: "saved" };
     } catch (error) {
-      return { kind: "error", code: backendErrorCode(error), message: formatError(error) };
+      return { kind: "error", code: backendErrorCode(error) };
     } finally {
       this._snapshot = { ...this._snapshot, pendingSettingKey: null };
       this.emit();

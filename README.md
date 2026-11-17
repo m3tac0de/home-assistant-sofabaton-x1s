@@ -55,7 +55,7 @@ For ports, firewall rules, containers, VLANs, and iOS discovery behavior, see th
 ### Marketplace (Home Assistant 2026.11 and newer, recommended)
 
 1. Go to **Settings → Marketplace**, find **Sofabaton X**, and install it.
-2. Setup opens when the install finishes, without a restart. Continue with [Add a hub](#add-a-hub) below. If you closed setup, start it from **Settings → Devices & services → Add integration**.
+2. Setup normally opens when the install finishes. If Home Assistant asks for a restart, restart it first. Continue with [Add a hub](#add-a-hub) below. If setup does not open or you closed it, start it from **Settings → Devices & services → Add integration**.
 
 ### HACS (older Home Assistant versions)
 
@@ -80,7 +80,7 @@ After **updating** Sofabaton X, restart Home Assistant to load the new version.
 Keep the official Sofabaton app closed throughout setup.
 
 1. Wait a few seconds while setup searches your network, then choose the hub to add. Hubs that are already set up are not listed.
-2. If your hub is not listed, choose the last option and enter its IP address. If no hub is found, close the app and search again, or enter the IP address.
+2. If your hub is not listed, choose **A hub that is not listed (enter its IP address)**. If no hub is found, close the app and search again, or enter the IP address.
 3. Choose the device name and area when Home Assistant offers them.
 
 Setup adds one hub at a time. To add another, select **Add hub** on the Sofabaton X integration page. A hub that Home Assistant shows under **Discovered** can also be added from there.

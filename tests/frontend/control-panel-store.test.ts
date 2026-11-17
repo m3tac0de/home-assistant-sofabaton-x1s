@@ -354,8 +354,7 @@ test("setListenerPorts sends all three ports and reports saved, in use, or the b
     throw { code: "busy", message: "Another backup, restore, sync or hub write is already running for this hub" };
   };
   const refused = await store.setListenerPorts({ ...PORTS, hub_listen_base: 8300 });
-  assert.equal(refused.kind, "error");
-  assert.equal(refused.kind === "error" ? refused.code : null, "busy");
+    assert.deepEqual(refused, { kind: "error", code: "busy" });
 
   answer = (message) => {
     stored = { hub_listen_base: 8300, proxy_udp_port: 8102, roku_listen_port: 8061 };

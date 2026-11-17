@@ -229,20 +229,20 @@ export const TOOLS_CARD_STRINGS_EN = {
     // The listener ports every hub shares (All Hubs subtab, and its dialog).
     portsTitle: "Network Ports",
     portsDescription: (hub: number, app: number, wifi: number) =>
-      `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and Wifi Commands arrive on TCP ${wifi}.`,
+      `Hubs connect on TCP ${hub}, the Sofabaton app finds Home Assistant on UDP ${app}, and HTTP-delivered Wifi Commands arrive on TCP ${wifi}.`,
     portsChange: "Change",
     portsDialogTitle: "Network ports",
     portsIntro: "These ports are shared by all your hubs. Saving reconnects every hub whose port changes.",
     portsDocsLink: "What each port is for",
-    portsHubLabel: "Hub port (TCP)",
+    portsHubLabel: "Hub TCP listener port",
     portsHubHelper: (defaultPort: number) =>
       `Your hubs connect to Home Assistant on this port. The default is ${defaultPort}.`,
-    portsAppLabel: "App port (UDP)",
+    portsAppLabel: "App UDP listener port",
     portsAppHelper: (defaultPort: number) =>
       `The Sofabaton app finds Home Assistant on this port. The iOS app only looks on ${defaultPort}.`,
-    portsWifiLabel: "Wifi Commands port (TCP)",
+    portsWifiLabel: "Wifi command HTTP listener port",
     portsWifiHelper: (defaultPort: number) =>
-      `Your hubs send Wifi Commands and Wifi Events here. An X1 hub only uses ${defaultPort}, and after a change your Wifi devices need to be synced again.`,
+      `This HTTP listener receives HTTP-delivered Wifi Commands and Wifi Events. MQTT delivery does not use it. X1 requires port ${defaultPort}: changing it stops X1 HTTP Wifi Commands from working. After changing the port, sync existing HTTP Wifi Devices again.`,
     portsInvalid: "Enter a port number from 1 to 65535.",
     portsSamePort: "The hub port and the Wifi Commands port need to differ.",
     portsInUse: (port: number, free: number | null) => free != null
@@ -250,9 +250,10 @@ export const TOOLS_CARD_STRINGS_EN = {
       : `Port ${port} is already in use on the Home Assistant host. Enter another port.`,
     portsSave: "Save",
     portsSaving: "Saving…",
-    portsSavingNote: "Hubs reconnect on the new ports, which takes a few seconds.",
+    portsSavingNote: "Saving network ports…",
     portsSaved: "Network ports saved.",
     portsFailed: "The ports could not be saved.",
+    portsBusy: "A hub is busy with a backup, restore, sync, or another change. Wait for it to finish and try again.",
   },
   cache: {
     loading: "Loading…",
@@ -765,9 +766,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubOwnedTitle: "Managed by the hub",
     hubOwnedIntro: "This is the hub's own Matter device, with a command for each Matter button.",
     hubOwnedBody:
-      "The hub creates and manages it: you can rename its buttons and assign remote buttons to them, but the device itself can't be renamed, edited, or deleted here, and a restore keeps the hub's own copy. It can't be used in activities.",
+      "The hub creates and manages this device. You can rename its Matter buttons and assign them to remote buttons. You cannot rename or delete the device, change its other settings, or use it in activities. Restoring a backup keeps the Matter device already on the hub; its backed-up names and button assignments are not restored.",
     matterCommandsHelp:
-      "Use the pencil to rename a Matter button. Names can't be empty or repeat.",
+      "Use the pencil to rename a Matter button. Enter a non-empty name that is not used by another Matter button.",
     matterButtonNameTaken: "Another Matter button already has this name.",
     managedWifiTitle: "Managed by Wifi Commands",
     managedWifiIntro: "This device was deployed from the Wifi Commands tab.",
@@ -1255,16 +1256,17 @@ export const TOOLS_CARD_STRINGS_EN = {
     noActivitiesForEvents: "No activities on this hub yet.",
     matterEventsTitle: "Matter Buttons",
     matterEventsSubtitle:
-      "Perform a Home Assistant Action when one of the hub's Matter buttons fires in Home Assistant's Matter integration. These also update the Wifi Commands sensor.",
+      "Perform a Home Assistant Action when Home Assistant's Matter integration receives an event from one of this hub's Matter buttons. Each event also updates the Wifi Commands sensor.",
     // Home Assistant's press types for a Matter button, in the order shown.
     matterPressLabels: {
       multi_press_1: "pressed",
       multi_press_2: "pressed twice",
       long_press: "held",
-      long_release: "released",
+      long_release: "released after a long press",
     } as Record<string, string>,
+    matterEventRowName: (name: string) => `${name}: `, matterEventSeparator: "; ",
     matterEventModalTitle: (name: string, press: string) => `${name}, ${press}`,
-    matterDevicePickTitle: "Which Matter device is this hub?",
+    matterDevicePickTitle: "Which Matter device belongs to this hub?",
     matterDevicePickPlaceholder: "Choose…",
     favorite: "Set as favorite",
     physicalButtonAssignment: "Physical button assignment",

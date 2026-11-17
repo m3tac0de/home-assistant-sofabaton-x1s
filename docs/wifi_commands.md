@@ -115,7 +115,7 @@ Activity Actions are stored by numeric Activity ID and removed when an authorita
 
 An X2 linked to Matter offers 8 Matter buttons. When the hub is also added to Home Assistant's own [Matter integration](https://www.home-assistant.io/integrations/matter/), that integration creates one event entity per button, and the Events page gains a **Matter Buttons** section with one line per button, under the name the hub gives it.
 
-- Choose an Action for each press type the button reports: pressed, pressed twice, held, and released.
+- Choose an Action for each press type the button reports: pressed, pressed twice, held, and released after a long press.
 - The section appears only when the integration finds the hub's Matter device. With more than one X2, it matches the Matter device to its hub through the hub's own Matter network announcement; if that does not settle it, the section asks which Matter device belongs to the hub.
 - Actions are stored by button number and press type, so they survive pairing the hub to Matter again.
 - Every Matter button press also updates the Wifi Commands sensor (below).

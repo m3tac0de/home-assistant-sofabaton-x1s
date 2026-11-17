@@ -12,6 +12,7 @@ import type { ListenerPortsOutcome } from "../state/control-panel-store";
 import { DEFAULT_LISTENER_PORTS } from "../shared/utils/control-panel-selectors";
 import { useLegacyTextField } from "../tabs/edit-detail/names";
 import { DOC_URLS } from "../shared/doc-links";
+import { backendErrorCode } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 const FIELDS: ListenerPortKey[] = ["hub_listen_base", "proxy_udp_port", "roku_listen_port"];
@@ -123,7 +124,7 @@ export class ListenerPortsFormController implements ReactiveController {
     try {
       outcome = await this.save(ports);
     } catch (error) {
-      outcome = { kind: "error", code: null, message: String((error as Error)?.message ?? "") };
+      outcome = { kind: "error", code: backendErrorCode(error) };
     } finally {
       this._busy = false;
     }
@@ -140,7 +141,7 @@ export class ListenerPortsFormController implements ReactiveController {
     } else if (outcome.code === "same_port") {
       this._fieldErrors = { [this._sameTcpPortField(ports)]: S.portsSamePort };
     } else {
-      this._error = outcome.message || S.portsFailed;
+      this._error = outcome.code === "busy" ? S.portsBusy : S.portsFailed;
     }
     this.host.requestUpdate();
   };
