@@ -19,6 +19,7 @@ import {
   isWifiEventsBrand,
   clearActivityDeviceInput,
   deviceCommandItems,
+  deviceInputCommandItems,
   deviceMacroStepItems,
   removeActivityMacroStep,
   removeDeviceMacroStep,
@@ -594,7 +595,11 @@ export class MacroStepEditorController implements ReactiveController {
     const isWifiEvent = this.kind === "wifi_event";
     const devices = this.host._editableDeviceOptions();
     const commandDeviceId = isInput ? this.deviceId : (isActivity ? this.deviceId : editor.entityId);
-    const commands = commandDeviceId != null ? deviceCommandItems(this.host.bundle, commandDeviceId) : [];
+    const commands = commandDeviceId == null
+      ? []
+      : isInput
+        ? deviceInputCommandItems(this.host.bundle, commandDeviceId)
+        : deviceCommandItems(this.host.bundle, commandDeviceId);
     const canSave = isInput
       || (isWifiEvent
         ? !this.host._events.busy && (

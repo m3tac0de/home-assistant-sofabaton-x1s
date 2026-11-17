@@ -9,6 +9,8 @@ import {
   roleMappableButtonCount,
   setActivityRoleDevice,
   activityMacroStepItems,
+  deviceCommandItems,
+  deviceInputCommandItems,
   activityMemberRemovalImpact,
   activityMemberViews,
   addActivityMemberDevice,
@@ -889,6 +891,35 @@ test("synthesizeCommandCode mirrors the X1 formula", () => {
 test("activityMemberViews lists members with their input", () => {
   const devices = activityMemberViews(powerEditorBundle(), 101);
   assert.deepEqual(devices.map((d) => [d.deviceId, d.inputOrdinal]), [[1, 0], [2, 0]]);
+});
+
+test("deviceInputCommandItems lists configured inputs first under their hub (renamed) names", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [{
+      device: { device_id: 4, name: "Stereo" },
+      commands: [
+        { command_id: 10, name: "Power" },
+        { command_id: 21, name: "Input 1" },
+        { command_id: 22, name: "Input 2" },
+        { command_id: 23, name: "Input 3" },
+      ],
+      input_record: { entries: [
+        { command_id: 22, input_index: 2, name: "Turntable" },
+        { command_id: 21, input_index: 1, name: "Input 1" },
+      ] },
+    }],
+    activities: [],
+  };
+  assert.deepEqual(
+    deviceInputCommandItems(bundle, 4).map((item) => [item.commandId, item.label]),
+    [[21, "Input 1"], [22, "Turntable (Input 2)"], [10, "Power"], [23, "Input 3"]],
+  );
+  // A device without an inputs page falls back to the plain command list.
+  const plain = { ...bundle, devices: [{ ...bundle.devices[0], input_record: undefined }] };
+  assert.deepEqual(deviceInputCommandItems(plain, 4), deviceCommandItems(plain, 4));
 });
 
 test("setActivityDeviceInput reuses an existing device input", () => {

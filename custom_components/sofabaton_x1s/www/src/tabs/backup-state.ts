@@ -2584,6 +2584,34 @@ export function deviceInputEntries(
 }
 
 /**
+ * On the Set Input dialog, show the configured input sources (with the
+ * configured name from the hub), e.g. Turntable (Input 1) instead of just
+ * Input 1.
+ */
+export function deviceInputCommandItems(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): BackupDeviceCommandItem[] {
+  const commands = deviceCommandItems(bundle, deviceId);
+  const byId = new Map(commands.map((command) => [command.commandId, command]));
+  const inputs: BackupDeviceCommandItem[] = [];
+  const seen = new Set<number>();
+  for (const input of deviceInputEntries(bundle, deviceId)) {
+    if (seen.has(input.commandId)) continue;
+    seen.add(input.commandId);
+    const command = byId.get(input.commandId);
+    const commandLabel = command?.label ?? "";
+    const label = !input.name
+      ? commandLabel || TOOLS_CARD_STRINGS.common.inputFallback(input.ordinal)
+      : !commandLabel || input.name === commandLabel
+        ? input.name
+        : `${input.name} (${commandLabel})`;
+    inputs.push({ deviceId: Number(deviceId), commandId: input.commandId, label });
+  }
+  return [...inputs, ...commands.filter((command) => !seen.has(command.commandId))];
+}
+
+/**
  * Ensure `commandId` exists as an input on the device, returning the new
  * bundle and the input's 1-based ordinal. Reuse-or-append: an existing
  * input for that command keeps its ordinal; otherwise a fresh entry is
