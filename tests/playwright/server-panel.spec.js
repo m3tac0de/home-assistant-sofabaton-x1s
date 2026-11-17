@@ -2342,8 +2342,16 @@ test.describe("control panel, views", () => {
     await expect(editor.locator('[data-step-kind="power"]').filter({ hasText: "Amp" })).toHaveCount(1);
     await editor.locator('[data-step-kind="input"]').nth(0).locator(".step-edit").click();
     await expect(editor.locator("#step-dialog .dialog-title")).toHaveText("Set input");
+    // The TV has no inputs yet: one plain list, no groups.
+    await expect(editor.locator("#sb-step-input optgroup")).toHaveCount(0);
     await editor.locator("#sb-step-input").selectOption("20");
     await editor.locator("#step-save").click();
+    // HDMI 1 is an input now: reopened, the dialog lists it apart from the other commands.
+    await editor.locator('[data-step-kind="input"]').nth(0).locator(".step-edit").click();
+    await expect(editor.locator("#sb-step-input optgroup")).toHaveCount(2);
+    await expect(editor.locator('#sb-step-input optgroup[label="Inputs"] option')).toHaveText(["HDMI 1"]);
+    await expect(editor.locator('#sb-step-input optgroup[label="Other commands"] option[value="20"]')).toHaveCount(0);
+    await editor.locator("#step-dialog .dialog-btn", { hasText: "Cancel" }).click();
     await expect(editor.locator('[data-step-kind="input"]').nth(0).locator(".quick-access-label")).toContainText("HDMI 1");
     await page.screenshot({ path: shot(testInfo, "activity-power-sequence"), fullPage: true });
     // Removing the Roku from the activity takes its shortcut along.

@@ -592,6 +592,8 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     inputStepTitle: "\u8BBE\u7F6E\u4FE1\u6E90",
     inputStepCommand: "\u4FE1\u6E90\u547D\u4EE4",
     inputStepNone: "\u2014 \u65E0\u4FE1\u6E90 \u2014",
+    inputStepGroupInputs: "\u4FE1\u6E90",
+    inputStepGroupOthers: "\u5176\u4ED6\u547D\u4EE4",
     macroStepsCount: (count) => `${count} \u4E2A\u6B65\u9AA4`,
     noMacroSteps: "\u6682\u65E0\u6B65\u9AA4\u3002",
     addStep: "\u6DFB\u52A0\u6B65\u9AA4",

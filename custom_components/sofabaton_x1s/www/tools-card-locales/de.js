@@ -592,6 +592,8 @@ var TOOLS_CARD_STRINGS_DE = {
     inputStepTitle: "Eingang festlegen",
     inputStepCommand: "Eingangsbefehl",
     inputStepNone: "\u2014 kein Eingang \u2014",
+    inputStepGroupInputs: "Eing\xE4nge",
+    inputStepGroupOthers: "Weitere Befehle",
     macroStepsCount: (count) => `${count} ${count === 1 ? "Schritt" : "Schritte"}`,
     noMacroSteps: "Noch keine Schritte.",
     addStep: "Schritt hinzuf\xFCgen",

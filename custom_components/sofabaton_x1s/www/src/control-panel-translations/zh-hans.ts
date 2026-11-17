@@ -331,7 +331,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     powerControlStayOn: "切换活动时保持开启", powerControlStayOnSub: "无需等待再次开机；按下遥控器的关机键时仍会关闭。",
     powerControlAlwaysOn: "始终保持开启", powerControlAlwaysOnSub: "Hub 会开启设备，但不会自动关闭。",
     powerSequencesDisabledNote: "自动电源控制已关闭，因此不会执行这些操作。请先在上方启用后再编辑。",
-    inputStepTitle: "设置信源", inputStepCommand: "信源命令", inputStepNone: "— 无信源 —", macroStepsCount: (count: number) => `${count} 个步骤`,
+    inputStepTitle: "设置信源", inputStepCommand: "信源命令", inputStepNone: "— 无信源 —", inputStepGroupInputs: "信源", inputStepGroupOthers: "其他命令", macroStepsCount: (count: number) => `${count} 个步骤`,
     noMacroSteps: "暂无步骤。", addStep: "添加步骤", stepDialogAddTitle: "添加步骤", stepDialogEditTitle: "编辑步骤", stepDevice: "设备", stepCommand: "命令",
     stepHoldSeconds: "按住时间（秒，0 = 短按）", holdLabel: (seconds: string) => `按住 ${seconds} 秒`, stepAdd: "添加", stepSave: "保存", stepCancel: "取消",
     stepNoCommands: "此设备没有命令。", stepWaitAria: "此步骤后的等待时间（秒）", stepWaitLabel: "延迟", stepWaitUnit: "秒",

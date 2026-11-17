@@ -333,7 +333,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     powerControlStayOn: "Aan laten tussen activiteiten", powerControlStayOnSub: "Slaat het wachten op opnieuw inschakelen over; schakelt nog steeds uit met de Uit-knop van de afstandsbediening.",
     powerControlAlwaysOn: "Altijd aan laten", powerControlAlwaysOnSub: "De hub schakelt het apparaat in, maar nooit automatisch uit.",
     powerSequencesDisabledNote: "Automatisch in- en uitschakelen staat uit, dus deze acties worden niet gebruikt. Schakel het hierboven in om ze te bewerken.",
-    inputStepTitle: "Ingang instellen", inputStepCommand: "Ingangscommando", inputStepNone: "— geen ingang —", macroStepsCount: (count: number) => `${count} ${count === 1 ? "stap" : "stappen"}`,
+    inputStepTitle: "Ingang instellen", inputStepCommand: "Ingangscommando", inputStepNone: "— geen ingang —", inputStepGroupInputs: "Ingangen", inputStepGroupOthers: "Overige commando's", macroStepsCount: (count: number) => `${count} ${count === 1 ? "stap" : "stappen"}`,
     noMacroSteps: "Nog geen stappen.", addStep: "Stap toevoegen", stepDialogAddTitle: "Stap toevoegen", stepDialogEditTitle: "Stap bewerken", stepDevice: "Apparaat", stepCommand: "Commando",
     stepHoldSeconds: "Vasthouden (seconden, 0 = klikken)", holdLabel: (seconds: string) => `${seconds}s vasthouden`, stepAdd: "Toevoegen", stepSave: "Opslaan", stepCancel: "Annuleren",
     stepNoCommands: "Dit apparaat heeft geen commando's.", stepWaitAria: "Wachten na deze stap (seconden)", stepWaitLabel: "Vertraging", stepWaitUnit: "s",

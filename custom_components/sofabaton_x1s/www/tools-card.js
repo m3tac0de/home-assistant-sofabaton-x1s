@@ -1003,7 +1003,8 @@ var cardStyles = [secondaryTabStyles, i`
   /* Native select popups: Chromium paints option rows from these computed
      values; the row colour has to be opaque or a glass theme gets
      white-on-white options (see theme-polarity.ts). */
-  select option {
+  select option,
+  select optgroup {
     background-color: var(--sb-popup-surface);
     color: var(--primary-text-color);
   }
@@ -3123,6 +3124,8 @@ var TOOLS_CARD_STRINGS_EN = {
     inputStepTitle: "Set input",
     inputStepCommand: "Input command",
     inputStepNone: "\u2014 no input \u2014",
+    inputStepGroupInputs: "Inputs",
+    inputStepGroupOthers: "Other commands",
     macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
     noMacroSteps: "No steps yet.",
     addStep: "Add step",
@@ -10336,7 +10339,8 @@ var backupTabStyles = i`
        computed values. The row colour must be opaque (the host measures the
        theme and writes --sb-popup-surface; shared/styles/theme-polarity.ts)
        or a glass theme gets white-on-white options. */
-    select.decoded-field-input option {
+    select.decoded-field-input option,
+    select.decoded-field-input optgroup {
       background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
       color: var(--primary-text-color);
     }
@@ -12910,7 +12914,7 @@ function deviceInputEntries(bundle, deviceId) {
     name: String(entry?.name || entry?.label || "").trim()
   })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
 }
-function deviceInputCommandItems(bundle, deviceId) {
+function deviceInputChoices(bundle, deviceId) {
   const commands = deviceCommandItems(bundle, deviceId);
   const byId = new Map(commands.map((command) => [command.commandId, command]));
   const inputs = [];
@@ -12923,7 +12927,7 @@ function deviceInputCommandItems(bundle, deviceId) {
     const label = !input.name ? commandLabel || TOOLS_CARD_STRINGS.common.inputFallback(input.ordinal) : !commandLabel || input.name === commandLabel ? input.name : `${input.name} (${commandLabel})`;
     inputs.push({ deviceId: Number(deviceId), commandId: input.commandId, label });
   }
-  return [...inputs, ...commands.filter((command) => !seen.has(command.commandId))];
+  return { inputs, others: commands.filter((command) => !seen.has(command.commandId)) };
 }
 function ensureDeviceInput(bundle, deviceId, commandId) {
   const dId = Number(deviceId);
@@ -18055,7 +18059,11 @@ var MacroStepEditorController = class {
     const isWifiEvent = this.kind === "wifi_event";
     const devices = this.host._editableDeviceOptions();
     const commandDeviceId = isInput ? this.deviceId : isActivity ? this.deviceId : editor.entityId;
-    const commands = commandDeviceId == null ? [] : isInput ? deviceInputCommandItems(this.host.bundle, commandDeviceId) : deviceCommandItems(this.host.bundle, commandDeviceId);
+    const commands = commandDeviceId == null || isInput ? [] : deviceCommandItems(this.host.bundle, commandDeviceId);
+    const inputChoices = isInput && commandDeviceId != null ? deviceInputChoices(this.host.bundle, commandDeviceId) : { inputs: [], others: [] };
+    const inputOption = (command) => b2`
+      <option value=${command.commandId} ?selected=${command.commandId === this.commandId}>${command.label}</option>
+    `;
     const canSave = isInput || (isWifiEvent ? !this.host._events.busy && (this.host._events.primary.mode === "existing" ? this.host._events.primary.slot != null : this.host._events.primary.name.trim().length > 0) : this.commandId != null && (!isActivity || this.deviceId != null));
     const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
     return b2`
@@ -18071,9 +18079,10 @@ var MacroStepEditorController = class {
                     <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
                     <select id="sb-step-input" class="decoded-field-input" @change=${this.handleCommandChange}>
                       <option value="" ?selected=${this.commandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
-                      ${commands.map((command) => b2`
-                        <option value=${command.commandId} ?selected=${command.commandId === this.commandId}>${command.label}</option>
-                      `)}
+                      ${inputChoices.inputs.length ? b2`
+                            <optgroup label=${TOOLS_CARD_STRINGS.backup.inputStepGroupInputs}>${inputChoices.inputs.map(inputOption)}</optgroup>
+                            ${inputChoices.others.length ? b2`<optgroup label=${TOOLS_CARD_STRINGS.backup.inputStepGroupOthers}>${inputChoices.others.map(inputOption)}</optgroup>` : A}
+                          ` : inputChoices.others.map(inputOption)}
                     </select>
                   </div>
                 ` : b2`

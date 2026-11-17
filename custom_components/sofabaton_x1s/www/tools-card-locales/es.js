@@ -591,6 +591,8 @@ var TOOLS_CARD_STRINGS_ES = {
     inputStepTitle: "Definir entrada",
     inputStepCommand: "Comando de entrada",
     inputStepNone: "\u2014 sin entrada \u2014",
+    inputStepGroupInputs: "Entradas",
+    inputStepGroupOthers: "Otros comandos",
     macroStepsCount: (count) => `${count} ${count === 1 ? "paso" : "pasos"}`,
     noMacroSteps: "Todav\xEDa no hay pasos.",
     addStep: "A\xF1adir paso",

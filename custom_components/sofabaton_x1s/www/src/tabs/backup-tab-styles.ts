@@ -919,7 +919,8 @@ export const backupTabStyles = css`
        computed values. The row colour must be opaque (the host measures the
        theme and writes --sb-popup-surface; shared/styles/theme-polarity.ts)
        or a glass theme gets white-on-white options. */
-    select.decoded-field-input option {
+    select.decoded-field-input option,
+    select.decoded-field-input optgroup {
       background-color: var(--sb-popup-surface, var(--sb-field-surface, var(--secondary-background-color)));
       color: var(--primary-text-color);
     }

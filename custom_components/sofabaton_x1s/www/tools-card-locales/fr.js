@@ -592,6 +592,8 @@ var TOOLS_CARD_STRINGS_FR = {
     inputStepTitle: "D\xE9finir l\u2019entr\xE9e",
     inputStepCommand: "Commande d\u2019entr\xE9e",
     inputStepNone: "\u2014 aucune entr\xE9e \u2014",
+    inputStepGroupInputs: "Entr\xE9es",
+    inputStepGroupOthers: "Autres commandes",
     macroStepsCount: (count) => `${count} ${count > 1 ? "\xE9tapes" : "\xE9tape"}`,
     noMacroSteps: "Aucune \xE9tape pour le moment.",
     addStep: "Ajouter une \xE9tape",

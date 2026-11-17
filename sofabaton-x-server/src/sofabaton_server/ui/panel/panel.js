@@ -13192,6 +13192,8 @@ var TOOLS_CARD_STRINGS_EN = {
     inputStepTitle: "Set input",
     inputStepCommand: "Input command",
     inputStepNone: "\u2014 no input \u2014",
+    inputStepGroupInputs: "Inputs",
+    inputStepGroupOthers: "Other commands",
     macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
     noMacroSteps: "No steps yet.",
     addStep: "Add step",
@@ -18767,7 +18769,7 @@ function deviceInputEntries(bundle, deviceId) {
     name: String(entry?.name || entry?.label || "").trim()
   })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
 }
-function deviceInputCommandItems(bundle, deviceId) {
+function deviceInputChoices(bundle, deviceId) {
   const commands = deviceCommandItems(bundle, deviceId);
   const byId = new Map(commands.map((command) => [command.commandId, command]));
   const inputs = [];
@@ -18780,7 +18782,7 @@ function deviceInputCommandItems(bundle, deviceId) {
     const label = !input.name ? commandLabel || TOOLS_CARD_STRINGS.common.inputFallback(input.ordinal) : !commandLabel || input.name === commandLabel ? input.name : `${input.name} (${commandLabel})`;
     inputs.push({ deviceId: Number(deviceId), commandId: input.commandId, label });
   }
-  return [...inputs, ...commands.filter((command) => !seen.has(command.commandId))];
+  return { inputs, others: commands.filter((command) => !seen.has(command.commandId)) };
 }
 function ensureDeviceInput(bundle, deviceId, commandId) {
   const dId = Number(deviceId);
@@ -24766,10 +24768,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     if (deviceId == null || !this._working) return [];
     return deviceCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
   }
-  /** The "Set input" choices: configured inputs first, under their hub (user-renamed) names. */
+  /** The "Set input" choices: the configured inputs under their hub (user-renamed) names, then every other command. */
   _inputOptions(deviceId) {
-    if (deviceId == null || !this._working) return [];
-    return deviceInputCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
+    if (deviceId == null || !this._working) return { inputs: [], others: [] };
+    const choices = deviceInputChoices(this._working, deviceId);
+    const toOption = (command) => ({ value: command.commandId, label: command.label });
+    return { inputs: choices.inputs.map(toOption), others: choices.others.map(toOption) };
   }
   _openEditBinding(buttonId) {
     this._macroPicker = null;
@@ -25548,7 +25552,9 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     const isEdit = dialog.editIndex !== null;
     const isInput = dialog.kind === "input";
     const isWifiEvent = dialog.kind === "wifi_event";
-    const commands = isInput ? this._inputOptions(dialog.deviceId) : this._commandOptions(dialog.deviceId);
+    const commands = isInput ? [] : this._commandOptions(dialog.deviceId);
+    const inputChoices = isInput ? this._inputOptions(dialog.deviceId) : { inputs: [], others: [] };
+    const inputOption = (command) => b2`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`;
     const canSave = isInput || (isWifiEvent ? dialog.slot != null : dialog.commandId != null && dialog.deviceId != null);
     const title = isInput ? B2.inputStepTitle : isEdit ? B2.stepDialogEditTitle : B2.stepDialogAddTitle;
     const body = isInput ? b2`<div class="decoded-field">
@@ -25558,7 +25564,8 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       set({ commandId: raw === "" ? null : Number(raw) });
     }}>
             <option value="" ?selected=${dialog.commandId == null}>${B2.inputStepNone}</option>
-            ${commands.map((command) => b2`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
+            ${inputChoices.inputs.length ? b2`<optgroup label=${B2.inputStepGroupInputs}>${inputChoices.inputs.map(inputOption)}</optgroup>
+                  ${inputChoices.others.length ? b2`<optgroup label=${B2.inputStepGroupOthers}>${inputChoices.others.map(inputOption)}</optgroup>` : A}` : inputChoices.others.map(inputOption)}
           </select>
         </div>` : b2`
           ${this._wifiEventsAvailable ? this._kindSegments("sb-step-kind", isWifiEvent ? "wifi_event" : "command", ["command", "wifi_event"], (kind) => set(kind === "wifi_event" ? { kind, slot: this._wifiSlots[0]?.slot ?? null } : { kind: "command" })) : A}

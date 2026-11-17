@@ -595,6 +595,8 @@ var TOOLS_CARD_STRINGS_NL = {
     inputStepTitle: "Ingang instellen",
     inputStepCommand: "Ingangscommando",
     inputStepNone: "\u2014 geen ingang \u2014",
+    inputStepGroupInputs: "Ingangen",
+    inputStepGroupOthers: "Overige commando's",
     macroStepsCount: (count) => `${count} ${count === 1 ? "stap" : "stappen"}`,
     noMacroSteps: "Nog geen stappen.",
     addStep: "Stap toevoegen",

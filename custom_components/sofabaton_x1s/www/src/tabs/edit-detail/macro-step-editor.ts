@@ -19,7 +19,7 @@ import {
   isWifiEventsBrand,
   clearActivityDeviceInput,
   deviceCommandItems,
-  deviceInputCommandItems,
+  deviceInputChoices,
   deviceMacroStepItems,
   removeActivityMacroStep,
   removeDeviceMacroStep,
@@ -595,11 +595,13 @@ export class MacroStepEditorController implements ReactiveController {
     const isWifiEvent = this.kind === "wifi_event";
     const devices = this.host._editableDeviceOptions();
     const commandDeviceId = isInput ? this.deviceId : (isActivity ? this.deviceId : editor.entityId);
-    const commands = commandDeviceId == null
-      ? []
-      : isInput
-        ? deviceInputCommandItems(this.host.bundle, commandDeviceId)
-        : deviceCommandItems(this.host.bundle, commandDeviceId);
+    const commands = commandDeviceId == null || isInput ? [] : deviceCommandItems(this.host.bundle, commandDeviceId);
+    const inputChoices = isInput && commandDeviceId != null
+      ? deviceInputChoices(this.host.bundle, commandDeviceId)
+      : { inputs: [], others: [] };
+    const inputOption = (command: { commandId: number; label: string }) => html`
+      <option value=${command.commandId} ?selected=${command.commandId === this.commandId}>${command.label}</option>
+    `;
     const canSave = isInput
       || (isWifiEvent
         ? !this.host._events.busy && (
@@ -627,9 +629,14 @@ export class MacroStepEditorController implements ReactiveController {
                     <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
                     <select id="sb-step-input" class="decoded-field-input" @change=${this.handleCommandChange}>
                       <option value="" ?selected=${this.commandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
-                      ${commands.map((command) => html`
-                        <option value=${command.commandId} ?selected=${command.commandId === this.commandId}>${command.label}</option>
-                      `)}
+                      ${inputChoices.inputs.length
+                        ? html`
+                            <optgroup label=${TOOLS_CARD_STRINGS.backup.inputStepGroupInputs}>${inputChoices.inputs.map(inputOption)}</optgroup>
+                            ${inputChoices.others.length
+                              ? html`<optgroup label=${TOOLS_CARD_STRINGS.backup.inputStepGroupOthers}>${inputChoices.others.map(inputOption)}</optgroup>`
+                              : nothing}
+                          `
+                        : inputChoices.others.map(inputOption)}
                     </select>
                   </div>
                 `

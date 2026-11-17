@@ -298,7 +298,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     powerControlStayOn: "Zwischen Aktivitäten eingeschaltet lassen", powerControlStayOnSub: "Überspringt die Wartezeit beim erneuten Einschalten; wird weiterhin über die Aus-Taste der Fernbedienung ausgeschaltet.",
     powerControlAlwaysOn: "Immer eingeschaltet lassen", powerControlAlwaysOnSub: "Der Hub schaltet das Gerät ein, aber nie automatisch aus.",
     powerSequencesDisabledNote: "Automatisches Ein- und Ausschalten ist deaktiviert, daher werden diese Aktionen nicht verwendet. Aktiviere es oben, um sie zu bearbeiten.", inputStepTitle: "Eingang festlegen", inputStepCommand: "Eingangsbefehl",
-    inputStepNone: "— kein Eingang —", macroStepsCount: (count: number) => `${count} ${count === 1 ? "Schritt" : "Schritte"}`, noMacroSteps: "Noch keine Schritte.", addStep: "Schritt hinzufügen",
+    inputStepNone: "— kein Eingang —", inputStepGroupInputs: "Eingänge", inputStepGroupOthers: "Weitere Befehle", macroStepsCount: (count: number) => `${count} ${count === 1 ? "Schritt" : "Schritte"}`, noMacroSteps: "Noch keine Schritte.", addStep: "Schritt hinzufügen",
     stepDialogAddTitle: "Schritt hinzufügen", stepDialogEditTitle: "Schritt bearbeiten", stepDevice: "Gerät", stepCommand: "Befehl", stepHoldSeconds: "Halten (Sekunden, 0 = Klick)", holdLabel: (seconds: string) => `${seconds}s halten`,
     stepAdd: "Hinzufügen", stepSave: "Speichern", stepCancel: "Abbrechen", stepNoCommands: "Dieses Gerät hat keine Befehle.", stepWaitAria: "Nach diesem Schritt warten (Sekunden)", stepWaitLabel: "Verzögerung", stepWaitUnit: "s",
     renameMacroAria: "Makro umbenennen", deleteStepAria: "Schritt löschen", editStepAria: "Schritt bearbeiten", newMacroName: "Makro", shortcutChipCommand: "Befehl", shortcutChipAction: "Makro",

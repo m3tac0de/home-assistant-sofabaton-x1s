@@ -225,6 +225,25 @@ test.describe("tools-card activity editor harness", () => {
     await expect(page.locator('[data-kind="member-summary"]')).toContainText("Television");
   });
 
+  test("the Set input dialog lists a device's inputs apart from its other commands", async ({ page }) => {
+    await mountActivityEditor(page);
+    await page.getByRole("button", { name: "Power-on sequence", exact: false }).click();
+    const inputRow = (device) => page.locator("[data-step-index]").filter({ hasText: `Input · ${device}` });
+    const select = page.locator("#sb-step-input");
+
+    // The Television has an input: it gets its own group, the rest follow.
+    await inputRow("Television").getByRole("button", { name: "Edit step", exact: true }).click();
+    await expect(select.locator('optgroup[label="Inputs"] option')).toHaveText(["Input HDMI1"]);
+    await expect(select.locator('optgroup[label="Other commands"] option')).toHaveText(["Power", "Volume Up"]);
+    await expect(select).toHaveValue("12");
+    await page.locator(".dialog-close").click();
+
+    // The Soundbar has none: one plain list, no groups.
+    await inputRow("Soundbar").getByRole("button", { name: "Edit step", exact: true }).click();
+    await expect(select.locator("optgroup")).toHaveCount(0);
+    await expect(select.locator("option")).toHaveText(["— no input —", "Power", "Volume Up", "Volume Down", "Mute"]);
+  });
+
   test("deleting a device's final favorite removes its power linkage", async ({ page }) => {
     await mountActivityEditor(page);
 

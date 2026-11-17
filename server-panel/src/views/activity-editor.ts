@@ -86,7 +86,7 @@ import {
   buttonName,
   clearActivityDeviceInput,
   deviceCommandItems,
-  deviceInputCommandItems,
+  deviceInputChoices,
   removeActivityMacroStep,
   renameBundleActivity,
   bundleEntityAppearance,
@@ -757,10 +757,12 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return deviceCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
   }
 
-  /** The "Set input" choices: configured inputs first, under their hub (user-renamed) names. */
-  private _inputOptions(deviceId: number | null): Array<{ value: number; label: string }> {
-    if (deviceId == null || !this._working) return [];
-    return deviceInputCommandItems(this._working, deviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  /** The "Set input" choices: the configured inputs under their hub (user-renamed) names, then every other command. */
+  private _inputOptions(deviceId: number | null): { inputs: Array<{ value: number; label: string }>; others: Array<{ value: number; label: string }> } {
+    if (deviceId == null || !this._working) return { inputs: [], others: [] };
+    const choices = deviceInputChoices(this._working, deviceId);
+    const toOption = (command: { commandId: number; label: string }) => ({ value: command.commandId, label: command.label });
+    return { inputs: choices.inputs.map(toOption), others: choices.others.map(toOption) };
   }
 
   private _openAddBinding = (): void => {
@@ -1743,7 +1745,9 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     const isEdit = dialog.editIndex !== null;
     const isInput = dialog.kind === "input";
     const isWifiEvent = dialog.kind === "wifi_event";
-    const commands = isInput ? this._inputOptions(dialog.deviceId) : this._commandOptions(dialog.deviceId);
+    const commands = isInput ? [] : this._commandOptions(dialog.deviceId);
+    const inputChoices = isInput ? this._inputOptions(dialog.deviceId) : { inputs: [], others: [] };
+    const inputOption = (command: { value: number; label: string }) => html`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`;
     const canSave = isInput || (isWifiEvent ? dialog.slot != null : dialog.commandId != null && dialog.deviceId != null);
     const title = isInput ? B.inputStepTitle : isEdit ? B.stepDialogEditTitle : B.stepDialogAddTitle;
     const body = isInput
@@ -1751,7 +1755,10 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
           <label class="decoded-field-label" for="sb-step-input">${B.inputStepCommand}</label>
           <select id="sb-step-input" class="decoded-field-input" @change=${(event: Event) => { const raw = (event.currentTarget as HTMLSelectElement).value; set({ commandId: raw === "" ? null : Number(raw) }); }}>
             <option value="" ?selected=${dialog.commandId == null}>${B.inputStepNone}</option>
-            ${commands.map((command) => html`<option value=${command.value} ?selected=${command.value === dialog.commandId}>${command.label}</option>`)}
+            ${inputChoices.inputs.length
+              ? html`<optgroup label=${B.inputStepGroupInputs}>${inputChoices.inputs.map(inputOption)}</optgroup>
+                  ${inputChoices.others.length ? html`<optgroup label=${B.inputStepGroupOthers}>${inputChoices.others.map(inputOption)}</optgroup>` : nothing}`
+              : inputChoices.others.map(inputOption)}
           </select>
         </div>`
       : html`

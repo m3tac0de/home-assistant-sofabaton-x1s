@@ -94,7 +94,8 @@ export const cardStyles = [secondaryTabStyles, css`
   /* Native select popups: Chromium paints option rows from these computed
      values; the row colour has to be opaque or a glass theme gets
      white-on-white options (see theme-polarity.ts). */
-  select option {
+  select option,
+  select optgroup {
     background-color: var(--sb-popup-surface);
     color: var(--primary-text-color);
   }

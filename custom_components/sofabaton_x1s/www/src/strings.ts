@@ -668,6 +668,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     inputStepTitle: "Set input",
     inputStepCommand: "Input command",
     inputStepNone: "— no input —",
+    inputStepGroupInputs: "Inputs",
+    inputStepGroupOthers: "Other commands",
     macroStepsCount: (count: number) => `${count} step${count === 1 ? "" : "s"}`,
     noMacroSteps: "No steps yet.",
     addStep: "Add step",

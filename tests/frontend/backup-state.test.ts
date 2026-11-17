@@ -10,7 +10,7 @@ import {
   setActivityRoleDevice,
   activityMacroStepItems,
   deviceCommandItems,
-  deviceInputCommandItems,
+  deviceInputChoices,
   activityMemberRemovalImpact,
   activityMemberViews,
   addActivityMemberDevice,
@@ -893,7 +893,7 @@ test("activityMemberViews lists members with their input", () => {
   assert.deepEqual(devices.map((d) => [d.deviceId, d.inputOrdinal]), [[1, 0], [2, 0]]);
 });
 
-test("deviceInputCommandItems lists configured inputs first under their hub (renamed) names", () => {
+test("deviceInputChoices groups configured inputs under their hub (renamed) names, then other commands", () => {
   const bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -913,13 +913,18 @@ test("deviceInputCommandItems lists configured inputs first under their hub (ren
     }],
     activities: [],
   };
+  const choices = deviceInputChoices(bundle, 4);
   assert.deepEqual(
-    deviceInputCommandItems(bundle, 4).map((item) => [item.commandId, item.label]),
-    [[21, "Input 1"], [22, "Turntable (Input 2)"], [10, "Power"], [23, "Input 3"]],
+    choices.inputs.map((item) => [item.commandId, item.label]),
+    [[21, "Input 1"], [22, "Turntable (Input 2)"]],
   );
-  // A device without an inputs page falls back to the plain command list.
+  assert.deepEqual(choices.others.map((item) => [item.commandId, item.label]), [[10, "Power"], [23, "Input 3"]]);
+  // A device without an inputs page has no input group: every command is an "other".
   const plain = { ...bundle, devices: [{ ...bundle.devices[0], input_record: undefined }] };
-  assert.deepEqual(deviceInputCommandItems(plain, 4), deviceCommandItems(plain, 4));
+  assert.deepEqual(deviceInputChoices(plain, 4), { inputs: [], others: deviceCommandItems(plain, 4) });
+  // A device whose every command is an input leaves the other group empty.
+  const allInputs = { ...bundle, devices: [{ ...bundle.devices[0], commands: bundle.devices[0].commands.slice(1, 3) }] };
+  assert.deepEqual(deviceInputChoices(allInputs, 4).others, []);
 });
 
 test("setActivityDeviceInput reuses an existing device input", () => {

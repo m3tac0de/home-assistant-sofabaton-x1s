@@ -2584,14 +2584,15 @@ export function deviceInputEntries(
 }
 
 /**
- * On the Set Input dialog, show the configured input sources (with the
- * configured name from the hub), e.g. Turntable (Input 1) instead of just
- * Input 1.
+ * The Set Input dialog's choices, in two groups: the device's configured
+ * inputs under their hub names (e.g. "Turntable (Input 2)" when the input
+ * was renamed), then every other command. A device without inputs has
+ * an empty `inputs` group and all its commands in `others`.
  */
-export function deviceInputCommandItems(
+export function deviceInputChoices(
   bundle: BackupBundlePayload | null,
   deviceId: number,
-): BackupDeviceCommandItem[] {
+): { inputs: BackupDeviceCommandItem[]; others: BackupDeviceCommandItem[] } {
   const commands = deviceCommandItems(bundle, deviceId);
   const byId = new Map(commands.map((command) => [command.commandId, command]));
   const inputs: BackupDeviceCommandItem[] = [];
@@ -2608,7 +2609,7 @@ export function deviceInputCommandItems(
         : `${input.name} (${commandLabel})`;
     inputs.push({ deviceId: Number(deviceId), commandId: input.commandId, label });
   }
-  return [...inputs, ...commands.filter((command) => !seen.has(command.commandId))];
+  return { inputs, others: commands.filter((command) => !seen.has(command.commandId)) };
 }
 
 /**
