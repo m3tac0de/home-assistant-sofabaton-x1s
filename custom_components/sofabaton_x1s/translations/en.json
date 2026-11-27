@@ -679,6 +679,28 @@
         }
       }
     },
+    "set_mqtt_command": {
+      "name": "Set MQTT command",
+      "description": "Adds a command to an MQTT (wifi_mqtt) device on an X2, or renames one of its commands when a command ID is given. Returns the device and command IDs. A press of the command publishes the device ID and the command ID to the hub's MQTT topic.",
+      "fields": {
+        "device": {
+          "name": "Sofabaton hub",
+          "description": "Hub that holds the device."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "ID of the MQTT (wifi_mqtt) device."
+        },
+        "command_id": {
+          "name": "Command ID",
+          "description": "Command to rename. Leave empty to add a new command."
+        },
+        "name": {
+          "name": "Command name",
+          "description": "Name of the new command, or the new name of the command to rename."
+        }
+      }
+    },
     "sync_command_config": {
       "name": "Synchronize command configuration",
       "description": "Deploys the saved command-slot configuration by recreating the managed Wifi device and applying activity mappings.",

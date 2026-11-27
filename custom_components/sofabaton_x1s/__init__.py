@@ -190,6 +190,7 @@ from .services import (  # noqa: F401
     _async_handle_delete_activity,
     _async_handle_create_device,
     _async_handle_set_wifi_command,
+    _async_handle_set_mqtt_command,
     _async_handle_command_to_favorite,
     _async_handle_get_favorites,
     _async_handle_reorder_favorites,

@@ -57,9 +57,10 @@ class _EntitySyncRejected(HomeAssistantError):
     ``code`` mirrors the WS ``connection.send_error`` vocabulary (``busy``
     / ``unavailable`` / ``invalid_payload``) so ``_handle_entity_sync_ws``
     can reproduce its original error codes after the shared prep step; the
-    ``sync_from_snapshot`` service collapses it to a plain
-    ``HomeAssistantError`` (services don't have a separate error-code
-    channel). ``stale_baseline`` belongs to the service-only
+    services raise ``invalid_payload`` and ``stale_baseline`` as a
+    ``ServiceValidationError`` and the rest as a plain
+    ``HomeAssistantError`` (services/_async_run_snapshot_sync; services
+    don't have a separate error-code channel). ``stale_baseline`` belongs to the service-only
     ``expected_generation`` guard and never reaches the WS path, which
     does not send an expected generation.
     """

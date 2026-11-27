@@ -34,6 +34,7 @@ filter by `sofabaton_x1s`.
 | `sofabaton_x1s.delete_activity` | Delete an activity from the hub | No |
 | `sofabaton_x1s.create_device` | Create an empty device of a chosen class and return its id | Yes |
 | `sofabaton_x1s.set_wifi_command` | Write the HTTP request of one command on a Generic HTTP (`wifi_ip`) device | Yes |
+| `sofabaton_x1s.set_mqtt_command` | Add or rename one command on an MQTT (`wifi_mqtt`) device | Yes |
 | `sofabaton_x1s.export_snapshot` | Return the cached structural `hub_bundle` and its cache generation | Yes |
 | `sofabaton_x1s.sync_from_snapshot` | Apply a targeted Activity or Device edit from baseline and edited snapshots | Yes |
 | `sofabaton_x1s.backup_bundle` | Read a `hub_bundle` JSON payload covering devices and (optionally) all activities | Yes |
@@ -42,6 +43,12 @@ filter by `sofabaton_x1s`.
 > **Busy guard:** every action that talks to the hub raises an error while
 > another backup, restore, sync or hub write is running for that hub (from an
 > action or from the Control Panel). Wait for it to finish, then retry.
+
+> **Refused calls:** a call refused for what it asks (a missing or invalid
+> field, an edit a sync cannot make, a snapshot the hub has moved past) fails
+> as a validation error: HTTP 400 with the reason over the REST API. A busy or
+> unreachable hub, or a hub that fails during a write, is an error: HTTP 500
+> with the reason.
 
 ---
 
@@ -630,7 +637,8 @@ data:
 Creates an empty device, the same as **Add device** in the Control Panel's Hub
 tab. The new device is read into the cache straight away. Add its commands
 afterwards: with `set_wifi_command` on a Generic HTTP (`wifi_ip`) device, with
-`persist_ir_blob` on an IR device.
+`set_mqtt_command` on an MQTT (`wifi_mqtt`) device, with `persist_ir_blob` on
+an IR device.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |
@@ -718,8 +726,54 @@ response_variable: written
 > **Writes in a row:** after a write that updates the remotes (every action
 > on this page that writes does), the hub can refuse further writes for up to
 > about a minute while the remote syncs. The next write then fails;
-> `sync_from_snapshot` and `set_wifi_command` say the hub is still updating
-> its remote. Wait, then run it again.
+> `sync_from_snapshot`, `set_wifi_command` and `set_mqtt_command` say the hub
+> is still updating its remote. Wait, then run it again.
+
+---
+
+## ◇ `sofabaton_x1s.set_mqtt_command`
+
+Adds a command to an MQTT (`wifi_mqtt`) device, an X2 device class, or renames
+one of its commands. Without `command_id` it adds a new command named `name`
+at the device's lowest free command id; with `command_id` it renames that
+command.
+
+A command on an MQTT device holds nothing to configure. When it runs, the hub
+publishes `{"device_id": <device id>, "key_id": <command id>}` to the
+`<hub MAC>/up` topic on its MQTT broker, so the name and the id the command
+gets are all there is to it. Listen for that id in whatever handles the
+message.
+
+The write runs through the same checks as `set_wifi_command`, against the
+cached snapshot, and is refused the same way: when the device changed on the
+hub since the cache last read it, or when it is a Wifi Device the integration
+deploys (change those in the Wifi Commands tab).
+
+Persistent cache must be enabled and populated, as for `export_snapshot`.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | :------: | ----------- |
+| `device` | HA Device | Yes | Your Sofabaton hub. |
+| `device_id` | int | Yes | Id of the MQTT device. |
+| `command_id` | int | No | Command to rename. Omit to add a new command. |
+| `name` | string | Yes | Name of the new command, or the new name of the command to rename. |
+
+**Response**
+
+| Field | Description |
+| ----- | ----------- |
+| `device_id` | The device written. |
+| `command_id` | The command written; for an added command, the id the new command got. This is the `key_id` its presses publish. |
+| `status` | The sync engine's result, as `sync_from_snapshot` returns it. |
+
+```yaml
+action: sofabaton_x1s.set_mqtt_command
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e
+  device_id: 8
+  name: Media input 1
+response_variable: written
+```
 
 ---
 

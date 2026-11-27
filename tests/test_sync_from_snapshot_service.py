@@ -187,9 +187,11 @@ def test_sync_from_snapshot_rejects_when_busy(monkeypatch) -> None:
         hass=SimpleNamespace(data={integration.DOMAIN: {operations_module._BACKUP_OPERATIONS_KEY: registry}}),
     )
 
-    with pytest.raises(services_module.HomeAssistantError, match="already running"):
+    with pytest.raises(services_module.HomeAssistantError, match="already running") as info:
         asyncio.run(integration._async_handle_sync_from_snapshot(call))
 
+    # A busy hub is the hub's state, not a fault of the call.
+    assert not isinstance(info.value, services_module.ServiceValidationError)
     assert hub.calls == []
 
 
@@ -198,7 +200,7 @@ def test_sync_from_snapshot_rejects_invalid_bundle_payload(monkeypatch) -> None:
     bad_baseline = _device_bundle([])
     bad_baseline["schema_version"] = 99
 
-    with pytest.raises(services_module.HomeAssistantError, match="schema_version"):
+    with pytest.raises(services_module.ServiceValidationError, match="schema_version"):
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
@@ -281,7 +283,7 @@ def test_sync_from_snapshot_stale_expected_generation_refuses_loudly(monkeypatch
     )
 
     with pytest.raises(
-        services_module.HomeAssistantError,
+        services_module.ServiceValidationError,
         match="expected generation 41, hub cache is at 44",
     ):
         asyncio.run(integration._async_handle_sync_from_snapshot(call))
@@ -365,7 +367,8 @@ def test_sync_from_snapshot_raises_when_engine_reports_failure(monkeypatch) -> N
     baseline = _device_bundle([])
     edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
 
-    with pytest.raises(services_module.HomeAssistantError, match="changed on the hub"):
+    # Refused before any write: the caller re-exports and sends it again.
+    with pytest.raises(services_module.ServiceValidationError, match="changed on the hub"):
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
@@ -373,6 +376,48 @@ def test_sync_from_snapshot_raises_when_engine_reports_failure(monkeypatch) -> N
                 )
             )
         )
+
+
+def test_sync_from_snapshot_refuses_an_out_of_scope_edit_as_a_validation_error(monkeypatch) -> None:
+    """#330: an edit the plan cannot make reached REST callers as an HTTP
+    500. It is the caller's request that is refused, before any write."""
+
+    hub = _wire_hub(monkeypatch)
+    _wire_cache_store(monkeypatch, enabled=False)
+    hub.sync_result = {
+        "status": "failed",
+        "failed_at": "plan",
+        "message": "edited bundle changed device 0x08 outside the live-editable fields (out-of-scope changes)",
+    }
+    baseline = _device_bundle([])
+    edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
+
+    with pytest.raises(services_module.ServiceValidationError, match="out-of-scope changes"):
+        asyncio.run(
+            integration._async_handle_sync_from_snapshot(
+                _FakeCall(
+                    {"entity_kind": "device", "entity_id": 1, "baseline": baseline, "edited": edited}
+                )
+            )
+        )
+
+
+def test_sync_from_snapshot_failure_after_writes_stays_a_hub_error(monkeypatch) -> None:
+    hub = _wire_hub(monkeypatch)
+    _wire_cache_store(monkeypatch, enabled=False)
+    hub.sync_result = {"status": "failed", "failed_at": "commands", "message": "Step rejected."}
+    baseline = _device_bundle([])
+    edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
+
+    with pytest.raises(services_module.HomeAssistantError, match="Step rejected") as info:
+        asyncio.run(
+            integration._async_handle_sync_from_snapshot(
+                _FakeCall(
+                    {"entity_kind": "device", "entity_id": 1, "baseline": baseline, "edited": edited}
+                )
+            )
+        )
+    assert not isinstance(info.value, services_module.ServiceValidationError)
 
 
 def test_sync_from_snapshot_says_when_the_hub_was_updating_its_remote(monkeypatch) -> None:
@@ -390,7 +435,7 @@ def test_sync_from_snapshot_says_when_the_hub_was_updating_its_remote(monkeypatc
     baseline = _device_bundle([])
     edited = _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}])
 
-    with pytest.raises(services_module.HomeAssistantError, match="still updating its remote"):
+    with pytest.raises(services_module.HomeAssistantError, match="still updating its remote") as info:
         asyncio.run(
             integration._async_handle_sync_from_snapshot(
                 _FakeCall(
@@ -398,6 +443,7 @@ def test_sync_from_snapshot_says_when_the_hub_was_updating_its_remote(monkeypatc
                 )
             )
         )
+    assert not isinstance(info.value, services_module.ServiceValidationError)
 
 
 def test_sync_from_snapshot_accepts_string_entity_id(monkeypatch) -> None:

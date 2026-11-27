@@ -6,6 +6,7 @@ runtime.
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from collections.abc import Mapping
@@ -28,8 +29,8 @@ from .lib.blob_decoders import WIFI_HTTPS_METHODS
 from .lib.bundle_validation import validate_new_entity_name
 from .lib.device_class_profiles import supported_create_classes
 from .lib.devices import validate_appearance
-from .lib.payloads import NetworkCommand
-from .lib.protocol_const import DEVICE_CLASS_WIFI_IP, normalize_device_class
+from .lib.payloads import CommandRecord, NetworkCommand
+from .lib.protocol_const import DEVICE_CLASS_WIFI_IP, DEVICE_CLASS_WIFI_MQTT, normalize_device_class
 from . import runtime
 from . import entity_sync
 from .ws_backup import (
@@ -640,6 +641,143 @@ def _wifi_command_payload(
         raise ValueError(f"the hub cannot store this command ({err})") from err
 
 
+def _command_target(call: ServiceCall) -> tuple[int, int | None]:
+    """``device_id`` and the optional ``command_id`` of a command action."""
+
+    device_id = int(call.data["device_id"])
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+    raw_command_id = call.data.get("command_id")
+    command_id: int | None = int(raw_command_id) if raw_command_id is not None else None
+    if command_id is not None and (command_id < 1 or command_id > 255):
+        raise ValueError("command_id must be between 1 and 255")
+    return device_id, command_id
+
+
+def _cached_device_commands(bundle: Mapping[str, Any], block: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The command rows next to ``block`` in the structural snapshot."""
+
+    return next(
+        (
+            entry.get("commands") or []
+            for entry in bundle.get("devices") or []
+            if isinstance(entry, dict) and entry.get("device") is block
+        ),
+        [],
+    )
+
+
+async def _async_cached_command_device(
+    hass: HomeAssistant, hub: Any, device_id: int, *, device_class: str, action: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The cached structural snapshot and the block of ``device_id``.
+
+    The device must be of ``device_class`` and not a Wifi Device this
+    integration deploys: those commands belong to the Wifi Commands tab.
+    """
+
+    store = await runtime._async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        raise HomeAssistantError(
+            f"{action} requires the persistent cache to be enabled "
+            "(Sofabaton X1S integration options)."
+        )
+    bundle = await hub.async_get_structural_bundle()
+    if not bundle:
+        raise HomeAssistantError(
+            "No cached structural snapshot is available yet. Open the "
+            "Control Panel's Hub or Activities tab once (or run a "
+            "whole-hub cache refresh) to populate it, then retry."
+        )
+    block = entity_sync._find_bundle_device_block(bundle, device_id)
+    if block is None:
+        raise ValueError(f"device {device_id} is not in the cached snapshot")
+    if normalize_device_class(block.get("device_class")) != device_class:
+        raise ValueError(f"device {device_id} is not a {device_class} device")
+    if any(_parse_managed_wifi_brand(str(block.get("brand") or ""))):
+        raise HomeAssistantError(
+            f"device {device_id} is a Wifi Device this integration deploys; "
+            "change its commands in the Control Panel's Wifi Commands tab"
+        )
+    return bundle, block
+
+
+#: Prep rejections and sync failures that refuse the request itself: nothing
+#: was written and the call as sent cannot succeed (an edit outside what a
+#: sync may change, a malformed bundle, a baseline the hub moved past). They
+#: raise a ServiceValidationError; a busy, locked or unreachable hub and a
+#: failure after writes stay a HomeAssistantError.
+_CALLER_SYNC_REJECTIONS = frozenset({"invalid_payload", "stale_baseline"})
+_CALLER_SYNC_FAILURES = frozenset({"plan", "stale_check"})
+
+
+async def _async_run_snapshot_sync(
+    hass: HomeAssistant,
+    hub: Any,
+    *,
+    entity_kind: str,
+    sync_input: dict[str, Any],
+    action: str,
+    expected_generation: int | None = None,
+) -> dict[str, Any]:
+    """Run one entity sync through the ``sync_from_snapshot`` gauntlet and
+    return its result; a refusal or failure raises (see
+    ``_CALLER_SYNC_FAILURES`` for which one is the caller's)."""
+
+    try:
+        operation_id, baseline, edited, entity_id = await entity_sync._async_prepare_entity_sync(
+            hass,
+            hub=hub,
+            entity_kind=entity_kind,
+            sync_input=sync_input,
+            operation_label=action,
+            expected_generation=expected_generation,
+        )
+    except entity_sync._EntitySyncRejected as err:
+        if err.code in _CALLER_SYNC_REJECTIONS:
+            raise ServiceValidationError(str(err)) from err
+        raise HomeAssistantError(str(err)) from err
+
+    result = await entity_sync._run_entity_sync_operation(
+        hass,
+        operation_id,
+        hub=hub,
+        baseline=baseline,
+        edited=edited,
+        entity_kind=entity_kind,
+        entity_id=entity_id,
+    )
+    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
+        message = str(result.get("message") or "Sync failed")
+        if (
+            str(result.get("failed_at") or "") in _CALLER_SYNC_FAILURES
+            and result.get("reason") != "remote_syncing"
+        ):
+            raise ServiceValidationError(message)
+        raise HomeAssistantError(message)
+    return result if isinstance(result, dict) else {}
+
+
+async def _async_sync_command_edit(
+    hass: HomeAssistant,
+    hub: Any,
+    *,
+    bundle: dict[str, Any],
+    edited: dict[str, Any],
+    device_id: int,
+    action: str,
+) -> dict[str, Any]:
+    """Write a one-device command edit, the cached snapshot as baseline."""
+
+    return await _async_run_snapshot_sync(
+        hass,
+        hub,
+        entity_kind="device",
+        sync_input={"baseline": bundle, "edited": edited, "device_id": device_id},
+        action=action,
+    )
+
+
 async def _async_handle_set_wifi_command(call: ServiceCall):
     """Service handler for ``sofabaton_x1s.set_wifi_command``.
 
@@ -658,51 +796,18 @@ async def _async_handle_set_wifi_command(call: ServiceCall):
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
-    device_id = int(call.data["device_id"])
-    if device_id < 1 or device_id > 255:
-        raise ValueError("device_id must be between 1 and 255")
-    raw_command_id = call.data.get("command_id")
-    command_id: int | None = int(raw_command_id) if raw_command_id is not None else None
-    if command_id is not None and (command_id < 1 or command_id > 255):
-        raise ValueError("command_id must be between 1 and 255")
+    device_id, command_id = _command_target(call)
     name = str(call.data.get("name") or "").strip()
     if command_id is None and not name:
         raise ValueError("name is required to add a command (no command_id given)")
 
-    store = await runtime._async_get_persistent_cache_store(hass)
-    if not store.enabled:
-        raise HomeAssistantError(
-            "set_wifi_command requires the persistent cache to be enabled "
-            "(Sofabaton X1S integration options)."
-        )
-    bundle = await hub.async_get_structural_bundle()
-    if not bundle:
-        raise HomeAssistantError(
-            "No cached structural snapshot is available yet. Open the "
-            "Control Panel's Hub or Activities tab once (or run a "
-            "whole-hub cache refresh) to populate it, then retry."
-        )
-    block = entity_sync._find_bundle_device_block(bundle, device_id)
-    if block is None:
-        raise ValueError(f"device {device_id} is not in the cached snapshot")
-    if normalize_device_class(block.get("device_class")) != DEVICE_CLASS_WIFI_IP:
-        raise ValueError(f"device {device_id} is not a wifi_ip device")
-    if any(_parse_managed_wifi_brand(str(block.get("brand") or ""))):
-        raise HomeAssistantError(
-            f"device {device_id} is a Wifi Device this integration deploys; "
-            "change its commands in the Control Panel's Wifi Commands tab"
-        )
+    bundle, block = await _async_cached_command_device(
+        hass, hub, device_id, device_class=DEVICE_CLASS_WIFI_IP, action="set_wifi_command"
+    )
 
     existing: Mapping[str, Any] | None = None
     if command_id is not None:
-        rows = next(
-            (
-                entry.get("commands") or []
-                for entry in bundle.get("devices") or []
-                if isinstance(entry, dict) and entry.get("device") is block
-            ),
-            [],
-        )
+        rows = _cached_device_commands(bundle, block)
         if not any(int(row.get("command_id") or 0) == command_id for row in rows):
             raise ValueError(f"device {device_id} has no command {command_id}")
         # The stored record decides its kind and trailer; the structural
@@ -741,34 +846,60 @@ async def _async_handle_set_wifi_command(call: ServiceCall):
     except KeyError as err:
         raise ValueError(str(err.args[0] if err.args else err)) from err
 
-    try:
-        operation_id, baseline, edited, _entity_id = await entity_sync._async_prepare_entity_sync(
-            hass,
-            hub=hub,
-            entity_kind="device",
-            sync_input={"baseline": bundle, "edited": edited, "device_id": device_id},
-            operation_label="set_wifi_command",
-        )
-    except entity_sync._EntitySyncRejected as err:
-        raise HomeAssistantError(str(err)) from err
-
-    result = await entity_sync._run_entity_sync_operation(
-        hass,
-        operation_id,
-        hub=hub,
-        baseline=baseline,
-        edited=edited,
-        entity_kind="device",
-        entity_id=device_id,
+    result = await _async_sync_command_edit(
+        hass, hub, bundle=bundle, edited=edited, device_id=device_id, action="set_wifi_command"
     )
-    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
-        raise HomeAssistantError(str(result.get("message") or "Sync failed"))
     return {
-        **(result if isinstance(result, dict) else {}),
+        **result,
         "device_id": device_id,
         "command_id": command_id,
         "record": "url" if payload.is_url else "request_text",
     }
+
+
+async def _async_handle_set_mqtt_command(call: ServiceCall):
+    """Service handler for ``sofabaton_x1s.set_mqtt_command`` (issue #330).
+
+    Names one command on a ``wifi_mqtt`` (X2 MQTT) device: renames
+    ``command_id``, or adds a command named ``name`` without one. The
+    record is two bytes the hub ignores: a press publishes the hub's own
+    device id and the command id (as ``key_id``) to ``<MAC>/up``, so the
+    name is all a command has to set. A new record carries the
+    ``(device_id, command_id)`` pair the vendor app writes. Written like
+    ``set_wifi_command``: one device sync against the cached snapshot.
+    """
+
+    hass = call.hass
+    hub = await runtime._async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    device_id, command_id = _command_target(call)
+    name = str(call.data.get("name") or "").strip()
+    if not name:
+        raise ValueError("name is required")
+
+    bundle, block = await _async_cached_command_device(
+        hass, hub, device_id, device_class=DEVICE_CLASS_WIFI_MQTT, action="set_mqtt_command"
+    )
+
+    try:
+        if command_id is None:
+            used = {int(row.get("command_id") or 0) & 0xFF for row in _cached_device_commands(bundle, block)}
+            command_id = next((slot for slot in range(1, 256) if slot not in used), None)
+            if command_id is None:
+                raise ValueError(f"device {device_id} already uses all 255 command ids")
+            record = CommandRecord(DEVICE_CLASS_WIFI_MQTT, bytes([device_id, command_id]))
+            edited, command_id = edits.add_command(bundle, device_id, record, name, command_id=command_id)
+        else:
+            edited = edits.rename_command(bundle, device_id, command_id, name)
+    except KeyError as err:
+        raise ValueError(str(err.args[0] if err.args else err)) from err
+
+    result = await _async_sync_command_edit(
+        hass, hub, bundle=bundle, edited=edited, device_id=device_id, action="set_mqtt_command"
+    )
+    return {**result, "device_id": device_id, "command_id": command_id}
 
 
 @runtime._hub_write_service()
@@ -1094,31 +1225,14 @@ async def _async_handle_sync_from_snapshot(call: ServiceCall):
         "edited": edited,
         f"{entity_kind}_id": call.data.get("entity_id"),
     }
-
-    try:
-        operation_id, baseline, edited, entity_id = await entity_sync._async_prepare_entity_sync(
-            hass,
-            hub=hub,
-            entity_kind=entity_kind,
-            sync_input=sync_input,
-            operation_label=f"sync_from_snapshot[{entity_kind}]",
-            expected_generation=expected_generation,
-        )
-    except entity_sync._EntitySyncRejected as err:
-        raise HomeAssistantError(str(err)) from err
-
-    result = await entity_sync._run_entity_sync_operation(
+    return await _async_run_snapshot_sync(
         hass,
-        operation_id,
-        hub=hub,
-        baseline=baseline,
-        edited=edited,
+        hub,
         entity_kind=entity_kind,
-        entity_id=entity_id,
+        sync_input=sync_input,
+        action=f"sync_from_snapshot[{entity_kind}]",
+        expected_generation=expected_generation,
     )
-    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
-        raise HomeAssistantError(str(result.get("message") or "Sync failed"))
-    return result
 
 
 #: Every service: (name, handler, returns a response), in registration order.
@@ -1141,6 +1255,7 @@ SERVICES: tuple[tuple[str, Callable[[ServiceCall], Any], bool], ...] = (
     ("delete_activity", _async_handle_delete_activity, False),
     ("create_device", _async_handle_create_device, True),
     ("set_wifi_command", _async_handle_set_wifi_command, True),
+    ("set_mqtt_command", _async_handle_set_mqtt_command, True),
     ("command_to_favorite", _async_handle_command_to_favorite, False),
     ("get_favorites", _async_handle_get_favorites, True),
     ("reorder_favorites", _async_handle_reorder_favorites, False),
@@ -1152,12 +1267,35 @@ SERVICES: tuple[tuple[str, Callable[[ServiceCall], Any], bool], ...] = (
 )
 
 
+def _validation_errors(
+    handler: Callable[[ServiceCall], Any],
+) -> Callable[[ServiceCall], Any]:
+    """Raise a handler's ``ValueError`` as a ``ServiceValidationError``.
+
+    The handlers check their input with ``ValueError``. Home Assistant
+    treats any exception that is not a ``HomeAssistantError`` as a bug: the
+    REST API answers a bare HTTP 500 and the log gets a traceback (#330). A
+    ``ServiceValidationError`` reaches the caller as a refused call with its
+    message (HTTP 400 over REST).
+    """
+
+    @functools.wraps(handler)
+    async def _wrapped(call: ServiceCall) -> Any:
+        try:
+            return await handler(call)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
+    return _wrapped
+
+
 def async_register_services(hass: HomeAssistant) -> None:
     """Register every service that is not registered yet."""
 
-    for name, handler, responds in SERVICES:
+    for name, raw_handler, responds in SERVICES:
         if hass.services.has_service(DOMAIN, name):
             continue
+        handler = _validation_errors(raw_handler)
         if responds:
             hass.services.async_register(DOMAIN, name, handler, supports_response=SupportsResponse.OPTIONAL)
         else:

@@ -353,6 +353,32 @@ set_wifi_command:
         text:
           multiline: true
 
+set_mqtt_command:
+  fields:
+    device:
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    name:
+      required: true
+      selector:
+        text:
+
 command_to_favorite:
   fields:
     device:
