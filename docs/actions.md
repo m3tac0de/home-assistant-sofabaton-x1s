@@ -44,8 +44,8 @@ filter by `sofabaton_x1s`.
 > another backup, restore, sync or hub write is running for that hub (from an
 > action or from the Control Panel). Wait for it to finish, then retry.
 
-> **Refused calls:** a call refused for what it asks (a missing or invalid
-> field, an edit a sync cannot make, a snapshot the hub has moved past) fails
+> **Refused calls:** a call refused for what it asks (an invalid field value,
+> an edit a sync cannot make, a snapshot the hub has moved past) fails
 > as a validation error: HTTP 400 with the reason over the REST API. A busy or
 > unreachable hub, or a hub that fails during a write, is an error: HTTP 500
 > with the reason.
