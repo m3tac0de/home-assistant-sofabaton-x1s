@@ -218,6 +218,25 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     assert backed_up == [7]
 
 
+def test_backup_hub_bundle_refuses_activity_ids_before_any_read(monkeypatch) -> None:
+    """An activity id in ``device_ids`` fails at once, naming it, with no
+    device read sent for it (#331: it waited out every timeout)."""
+
+    proxy = _proxy(monkeypatch)
+    proxy.state.activities[101] = {"name": "Watch TV"}
+
+    def _backup_device(*_args, **_kwargs):
+        raise AssertionError("no device read may start for an activity id")
+
+    monkeypatch.setattr(proxy, "backup_device", _backup_device)
+
+    with pytest.raises(ValueError, match=r"device ids only; 101 is an activity"):
+        proxy.backup_hub_bundle(
+            device_ids=[7, 101],
+            hub_info={"entry_id": "e", "name": "S", "version": HUB_VERSION_X1S},
+        )
+
+
 def test_backup_hub_bundle_structural_propagates_include_blobs(monkeypatch) -> None:
     """``include_blobs=False`` threads through to every per-device backup."""
 

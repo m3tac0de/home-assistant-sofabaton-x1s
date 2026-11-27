@@ -13,7 +13,7 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from .const import DOMAIN
 from .command_config import (
@@ -135,6 +135,16 @@ async def _async_handle_backup_bundle(call: ServiceCall):
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
     device_ids = _validate_backup_device_ids(call.data.get("device_ids"))
+    # Activities share the id table. A bundle of activities restores by
+    # erasing the hub first, so a partial one is never offered (#331).
+    activity_ids = [dev_id for dev_id in device_ids or () if dev_id in hub.activities]
+    if activity_ids:
+        listed = ", ".join(str(act_id) for act_id in activity_ids)
+        raise ServiceValidationError(
+            f"device_ids takes device ids only; {listed} "
+            f"{'is an activity' if len(activity_ids) == 1 else 'are activities'}. "
+            "Omit device_ids to back up the whole hub, activities included."
+        )
     return await hub.async_backup_hub(device_ids=device_ids)
 
 
@@ -381,17 +391,31 @@ def _validate_create_appearance(hub, data: Mapping[str, Any]) -> tuple[int | Non
     return icon, color_id
 
 
-async def _async_refresh_created_entity(hub, *, kind: str, ent_id: int) -> None:
-    """Read a new entity into the cache, as the Control Panel does after a
-    create, so the next export_snapshot carries it. The create stands
-    either way."""
+async def _async_refresh_entity_cache(hub, *, kind: str, ent_id: int) -> None:
+    """Read an entity into the cache, as the Control Panel does after a
+    create, so the next export_snapshot or get_favorites sees what the hub
+    holds. The write it follows stands either way."""
 
     try:
         await hub.async_refresh_entity_structure(kind=kind, ent_id=ent_id)
-    except Exception:  # noqa: BLE001 - the entity exists on the hub
+    except Exception:  # noqa: BLE001 - the write already landed on the hub
         _LOGGER.warning(
-            "[%s] cache read of new %s %s failed", hub.entry_id, kind, ent_id, exc_info=True
+            "[%s] cache read of %s %s failed", hub.entry_id, kind, ent_id, exc_info=True
         )
+
+
+async def _async_refresh_after_favorite_write(hub, activity_id: int, result: Any) -> Any:
+    """Re-read the activity after a favorite write.
+
+    A favorite write drops the cached favorite slots, and its own
+    follow-up read is the activity map, which carries members only: the
+    slots come from the activity's keymap read. Without this read
+    get_favorites answered "unknown" for every entry (#331).
+    """
+
+    if isinstance(result, dict) and str(result.get("status")) == "success":
+        await _async_refresh_entity_cache(hub, kind="activity", ent_id=activity_id)
+    return result
 
 
 @runtime._hub_write_service()
@@ -415,7 +439,7 @@ async def _async_handle_create_activity(call: ServiceCall):
     activity_id = int((result or {}).get("activity_id") or 0)
     if str((result or {}).get("status")) != "success" or not activity_id:
         raise HomeAssistantError("The hub did not confirm creation of the new activity")
-    await _async_refresh_created_entity(hub, kind="activity", ent_id=activity_id)
+    await _async_refresh_entity_cache(hub, kind="activity", ent_id=activity_id)
     return {"activity_id": activity_id}
 
 
@@ -471,7 +495,7 @@ async def _async_handle_create_device(call: ServiceCall):
     device_id = int((result or {}).get("device_id") or 0)
     if str((result or {}).get("status")) != "success" or not device_id:
         raise HomeAssistantError("The hub did not confirm creation of the new device")
-    await _async_refresh_created_entity(hub, kind="device", ent_id=device_id)
+    await _async_refresh_entity_cache(hub, kind="device", ent_id=device_id)
     return {"device_id": device_id}
 
 
@@ -774,12 +798,13 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
     if slot_id is not None:
         kwargs["slot_id"] = slot_id
 
-    return await hub.async_command_to_favorite(
+    result = await hub.async_command_to_favorite(
         activity_id=activity_id,
         device_id=device_id,
         command_id=command_id,
         **kwargs,
     )
+    return await _async_refresh_after_favorite_write(hub, activity_id, result)
 
 
 @runtime._hub_write_service(persist=False)
@@ -797,7 +822,15 @@ async def _async_handle_get_favorites(call: ServiceCall):
     if order is None:
         raise ValueError(f"Hub did not respond to favorites order request for activity {activity_id}")
 
-    return {"favorites": hub.describe_favorites_order(activity_id, order)}
+    favorites = hub.describe_favorites_order(activity_id, order)
+    if any(entry.get("type") == "unknown" for entry in favorites):
+        # The order is read live, the names and types come from the cache:
+        # an entry the cache cannot place was added since the activity was
+        # last read (by the app, or before this release by an action).
+        # One re-read of the activity, then what the cache knows (#331).
+        await _async_refresh_entity_cache(hub, kind="activity", ent_id=activity_id)
+        favorites = hub.describe_favorites_order(activity_id, order)
+    return {"favorites": favorites}
 
 
 @runtime._hub_write_service()
@@ -819,10 +852,11 @@ async def _async_handle_reorder_favorites(call: ServiceCall):
     if not ordered_fav_ids:
         raise ValueError("ordered_fav_ids must be a non-empty list of fav_ids")
 
-    return await hub.async_reorder_favorites(
+    result = await hub.async_reorder_favorites(
         activity_id=activity_id,
         ordered_fav_ids=ordered_fav_ids,
     )
+    return await _async_refresh_after_favorite_write(hub, activity_id, result)
 
 
 @runtime._hub_write_service()
@@ -844,10 +878,11 @@ async def _async_handle_delete_favorite(call: ServiceCall):
     if fav_id < 1 or fav_id > 255:
         raise ValueError("fav_id must be between 1 and 255")
 
-    return await hub.async_delete_favorite(
+    result = await hub.async_delete_favorite(
         activity_id=activity_id,
         fav_id=fav_id,
     )
+    return await _async_refresh_after_favorite_write(hub, activity_id, result)
 
 
 @runtime._hub_write_service()

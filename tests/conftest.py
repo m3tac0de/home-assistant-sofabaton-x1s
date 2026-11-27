@@ -182,7 +182,11 @@ def _install_homeassistant_stubs() -> None:
     class HomeAssistantError(Exception):
         pass
 
+    class ServiceValidationError(HomeAssistantError):
+        pass
+
     exceptions.HomeAssistantError = HomeAssistantError
+    exceptions.ServiceValidationError = ServiceValidationError
     sys.modules.setdefault("homeassistant.exceptions", exceptions)
 
     device_registry = types.ModuleType("homeassistant.helpers.device_registry")

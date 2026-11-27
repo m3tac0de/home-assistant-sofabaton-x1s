@@ -36,8 +36,16 @@ class _FakeHub:
         self.entry_id = "entry-1"
         self.version = "X1"
         self.calls: list[dict] = []
+        self.activities: dict[int, dict] = {}
         self.favorite_order_result: list[tuple[int, int]] | None = None
         self.favorite_descriptions: list[dict] | None = None
+        self.refreshes: list[tuple[str, int]] = []
+        self.descriptions_after_refresh: list[dict] | None = None
+
+    async def async_refresh_entity_structure(self, *, kind: str, ent_id: int):
+        self.refreshes.append((kind, ent_id))
+        if self.descriptions_after_refresh is not None:
+            self.favorite_descriptions = self.descriptions_after_refresh
 
     async def async_create_wifi_device(
         self,
@@ -487,6 +495,53 @@ def test_command_to_favorite_omits_slot_when_not_provided(monkeypatch) -> None:
     assert result == {"activity_id": 101, "device_id": 6, "command_id": 4}
     assert hub.calls[-1] == result
 
+
+@pytest.mark.parametrize(
+    ("handler", "method", "data"),
+    [
+        (
+            "_async_handle_command_to_favorite",
+            "async_command_to_favorite",
+            {"activity_id": 101, "device_id": 6, "command_id": 4},
+        ),
+        (
+            "_async_handle_reorder_favorites",
+            "async_reorder_favorites",
+            {"activity_id": 101, "ordered_fav_ids": [2, 1]},
+        ),
+        (
+            "_async_handle_delete_favorite",
+            "async_delete_favorite",
+            {"activity_id": 101, "fav_id": 2},
+        ),
+    ],
+)
+@pytest.mark.parametrize("succeeded", [True, False])
+def test_favorite_writes_reread_the_activity_after_success(
+    monkeypatch, handler, method, data, succeeded
+) -> None:
+    """A favorite write drops the cached slots, and only the activity's
+    keymap read brings them back: the action re-reads the activity on
+    success, so get_favorites and the remote entity see the change (#331)."""
+
+    hub = _FakeHub()
+    result_value = {"activity_id": 101, "status": "success"} if succeeded else None
+
+    async def _write(**_kwargs):
+        return result_value
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(hub, method, _write)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(getattr(integration, handler)(_FakeCall(dict(data))))
+
+    assert result == result_value
+    assert hub.refreshes == ([("activity", 101)] if succeeded else [])
+
+
 def test_command_to_button_validates_button_id(monkeypatch) -> None:
     hub = _FakeHub()
 
@@ -723,6 +778,28 @@ def test_backup_bundle_rejects_non_list_device_ids(monkeypatch) -> None:
         )
 
 
+def test_backup_bundle_refuses_activity_ids(monkeypatch) -> None:
+    """An activity id is a validation error before any hub read (#331)."""
+
+    from homeassistant.exceptions import ServiceValidationError
+
+    hub = _FakeHub()
+    hub.activities = {101: {"name": "Watch TV"}, 102: {"name": "Music"}}
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ServiceValidationError, match=r"device ids only; 101, 102 are activities"):
+        asyncio.run(
+            integration._async_handle_backup_bundle(
+                _FakeCall({"device_ids": [11, 101, 102]})
+            )
+        )
+    assert hub.calls == []
+
+
 def test_backup_bundle_returns_action_payload_for_device_subset(
     monkeypatch,
 ) -> None:
@@ -897,6 +974,33 @@ def test_get_favorites_returns_explicit_fav_ids(monkeypatch) -> None:
             },
         ]
     }
+    # Every entry was known: no extra activity read.
+    assert hub.refreshes == []
+
+
+def test_get_favorites_rereads_the_activity_for_unknown_entries(monkeypatch) -> None:
+    """An entry the cache cannot place gets one activity re-read, then the
+    description is rebuilt from the refreshed cache (#331)."""
+
+    hub = _FakeHub()
+    hub.favorite_order_result = [(0x01, 0x01), (0x02, 0x02)]
+    hub.descriptions_after_refresh = [
+        {"fav_id": 0x01, "button_id": 0x01, "slot": 0x01, "type": "favorite", "name": "Lights on"},
+        {"fav_id": 0x02, "button_id": 0x02, "slot": 0x02, "type": "favorite", "name": "Lights off"},
+    ]
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_get_favorites(_FakeCall({"activity_id": 101}))
+    )
+
+    assert hub.refreshes == [("activity", 101)]
+    assert [entry["name"] for entry in result["favorites"]] == ["Lights on", "Lights off"]
+    assert {entry["type"] for entry in result["favorites"]} == {"favorite"}
 
 
 def test_get_favorites_can_include_cached_entries_missing_from_hub_order(monkeypatch) -> None:

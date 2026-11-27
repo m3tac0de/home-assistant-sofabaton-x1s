@@ -707,6 +707,18 @@ class BackupExportMixin(_ProxyHost if TYPE_CHECKING else object):
                     "backup_hub_bundle device_ids must contain at least one device id "
                     "or be omitted entirely (to back up the whole hub)"
                 )
+            # Activities share the id table: a device read of an activity id
+            # waits out every timeout and then fails, with hub traffic the
+            # whole time (#331). Refuse before anything is sent.
+            known_activities = self.get_known_activity_ids()
+            activity_ids = [value for value in normalized if value in known_activities]
+            if activity_ids:
+                raise ValueError(
+                    "backup_hub_bundle device_ids takes device ids only; "
+                    f"{', '.join(str(value) for value in activity_ids)} "
+                    f"{'is an activity' if len(activity_ids) == 1 else 'are activities'}. "
+                    "Omit device_ids to back up the whole hub, activities included."
+                )
             selected_device_ids = normalized
             selected_activity_ids = []
 
