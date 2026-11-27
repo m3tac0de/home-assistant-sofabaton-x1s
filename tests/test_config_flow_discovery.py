@@ -31,6 +31,7 @@ def _service_info(service_type: str, **kwargs) -> ZeroconfServiceInfo:
         name=kwargs.get("name", "X1-HUB._x1hub._udp.local."),
         properties=kwargs.get("properties", {}),
         type=service_type,
+        ip_addresses=kwargs.get("ip_addresses"),
     )
 
 
@@ -424,3 +425,116 @@ def test_a_discovered_card_is_one_confirm_away_from_done() -> None:
     assert result["data"]["mac"] == "aa:bb:cc:dd:ee:50"
     assert result["data"]["mdns_version"] == "X1S"
     assert result["options"]["hub_listen_base"] == 8200
+
+
+# -- issue #334: never store or offer a non-IPv4 host from zeroconf ---------
+
+_X2_PROPS = {"NAME": b"Hub", "MAC": b"aa:bb:cc:dd:ee:ff", "HVER": b"3", "AVER": b"9"}
+_ULA = "fdc1:30aa:3625:530c:a8bb:ccff:fedd:eeff"
+
+
+def _flow_with_entry(entry) -> tuple[ConfigFlow, list]:
+    updated: list = []
+    flow = _flow_with_x2_enabled(True)
+    flow._async_current_entries = lambda **_: [entry]  # type: ignore[assignment]
+    flow.async_set_unique_id = lambda *_args, **_kwargs: asyncio.sleep(0)  # type: ignore[assignment]
+    flow.hass.config_entries = SimpleNamespace(
+        async_update_entry=lambda entry, *, data=None, options=None: updated.append(data)
+    )
+    return flow, updated
+
+
+@pytest.mark.parametrize(
+    ("host", "ip_addresses", "expected"),
+    [
+        ("192.168.2.123", None, "192.168.2.123"),
+        (_ULA, [_ULA, "192.168.2.123"], "192.168.2.123"),
+        (_ULA, [_ULA, "fe80::a8bb:ccff:fedd:eeff"], None),
+        (_ULA, ["169.254.10.20", _ULA], None),
+        ("0.0.0.0", None, None),
+    ],
+)
+def test_prepare_discovered_hub_takes_only_a_usable_ipv4_host(host, ip_addresses, expected) -> None:
+    hub = _prepare_discovered_hub(
+        _service_info(MDNS_SERVICE_TYPES[1], host=host, ip_addresses=ip_addresses, properties=_X2_PROPS)
+    )
+
+    assert hub is not None
+    assert hub["host"] == expected
+
+
+def test_zeroconf_ipv6_only_announcement_keeps_the_stored_host() -> None:
+    entry = SimpleNamespace(
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={"host": "192.168.2.123", "port": 8102, "mdns_txt": {"NAME": "Hub", "MAC": "aa:bb:cc:dd:ee:ff", "HVER": "3"}},
+        options={},
+    )
+    flow, updated = _flow_with_entry(entry)
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(MDNS_SERVICE_TYPES[1], host=_ULA, properties=_X2_PROPS)
+        )
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "no_ipv4_address"
+    assert updated == []
+
+
+def test_zeroconf_ipv6_only_announcement_leaves_a_host_matched_entry_alone() -> None:
+    # A manual entry (synthetic unique id) found through the banner MAC.
+    entry = SimpleNamespace(
+        unique_id="02:11:22:33:44:55",
+        data={"host": "192.168.2.123", "port": 8102, "banner_mac": "AABBCCDDEEFF"},
+        options={},
+    )
+    flow, updated = _flow_with_entry(entry)
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(MDNS_SERVICE_TYPES[1], host=_ULA, properties=_X2_PROPS)
+        )
+    )
+
+    assert result["reason"] == "no_ipv4_address"
+    assert updated == []
+
+
+def test_zeroconf_ipv6_only_announcement_offers_no_new_hub() -> None:
+    flow = _flow_with_x2_enabled(True)
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(MDNS_SERVICE_TYPES[1], host=_ULA, properties=_X2_PROPS)
+        )
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "no_ipv4_address"
+    assert flow._discovered_from_zeroconf is None
+
+
+def test_zeroconf_ipv4_announcement_after_ipv6_host_still_moves_the_host() -> None:
+    # An IPv4 change (a new DHCP lease) keeps working as before, and the
+    # IPv4 address wins over an IPv6 host when the announcement has both.
+    entry = SimpleNamespace(
+        unique_id="aa:bb:cc:dd:ee:ff",
+        data={"host": "192.168.2.123", "port": 8102, "mdns_txt": {"NAME": "Hub", "MAC": "aa:bb:cc:dd:ee:ff", "HVER": "3"}},
+        options={},
+    )
+    flow, updated = _flow_with_entry(entry)
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(
+                MDNS_SERVICE_TYPES[1],
+                host=_ULA,
+                ip_addresses=[_ULA, "192.168.2.124"],
+                properties=_X2_PROPS,
+            )
+        )
+    )
+
+    assert result["reason"] == "already_configured"
+    assert [data["host"] for data in updated] == ["192.168.2.124"]

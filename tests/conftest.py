@@ -139,8 +139,10 @@ def _install_homeassistant_stubs() -> None:
             name: str | None = None,
             properties: dict | None = None,
             type: str | None = None,
+            ip_addresses: list | None = None,
         ) -> None:
             self.host = host
+            self.ip_addresses = ip_addresses if ip_addresses is not None else ([host] if host else [])
             self.port = port
             self.name = name
             self.properties = properties

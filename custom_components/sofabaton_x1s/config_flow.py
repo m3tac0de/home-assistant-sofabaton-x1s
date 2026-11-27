@@ -90,6 +90,29 @@ def _valid_ipv4(value: str) -> bool:
         return False
 
 
+def _discovered_ipv4(discovery_info: ZeroconfServiceInfo) -> str | None:
+    """The hub's IPv4 address in a zeroconf announcement, or None.
+
+    Hubs are reached over IPv4 only: the proxy's sockets are IPv4 and the
+    Wifi listener matches a hub's requests by its exact IPv4 address, so
+    the manual path and the host text entity refuse anything else. An X2
+    also carries IPv6 addresses (its Matter stack needs them), and once a
+    Thread border router advertises a prefix on the LAN one of them is
+    routable. HA then passes that address as ``host`` whenever its cache
+    holds no IPv4 record for the hub (issue #334).
+    """
+
+    candidates = [discovery_info.host, *(getattr(discovery_info, "ip_addresses", None) or ())]
+    for candidate in candidates:
+        try:
+            ip = ipaddress.ip_address(str(candidate))
+        except ValueError:
+            continue
+        if ip.version == 4 and not ip.is_link_local and not ip.is_unspecified:
+            return str(ip)
+    return None
+
+
 def _decode_properties(raw_props: Optional[Dict[str, str | bytes]]) -> Dict[str, str]:
     props: Dict[str, str] = {}
     for k, v in (raw_props or {}).items():
@@ -128,7 +151,9 @@ def _prepare_discovered_hub(discovery_info: ZeroconfServiceInfo) -> Dict[str, An
     return {
         "name": name,
         "mac": mac,
-        "host": discovery_info.host,
+        # None when the announcement holds no usable IPv4 address; the
+        # zeroconf step then aborts and keeps the stored host.
+        "host": _discovered_ipv4(discovery_info),
         "port": discovery_info.port,
         "props": props,
         "version": version,
@@ -532,6 +557,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if version == HUB_VERSION_X2 and not self._x2_enabled():
             return self.async_abort(reason="x2_disabled")
 
+        if host is None:
+            # Never store or offer a non-IPv4 host; the next announcement
+            # that carries the IPv4 address still moves the host as usual.
+            _LOGGER.info(
+                "Ignoring zeroconf announcement for Sofabaton hub %s (%s): no IPv4 "
+                "address in it (host %s, addresses %s); the stored host is kept",
+                name,
+                mac,
+                discovery_info.host,
+                [str(item) for item in getattr(discovery_info, "ip_addresses", None) or ()],
+            )
+            return self.async_abort(reason="no_ipv4_address")
+
         _LOGGER.info(
             "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s with TXT %s via %s",
             name,
@@ -548,7 +586,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_from_zeroconf = {
             "name": name,
             "mac": mac,
-            "host": discovery_info.host,
+            "host": host,
             "port": discovery_info.port,
             "props": props,
             "version": version,
@@ -598,7 +636,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # show a confirm form instead of auto-creating
         return self.async_show_form(
             step_id="zeroconf_confirm",
-            description_placeholders={"name": name, "host": discovery_info.host},
+            description_placeholders={"name": name, "host": host},
             data_schema=vol.Schema({}),
         )
 

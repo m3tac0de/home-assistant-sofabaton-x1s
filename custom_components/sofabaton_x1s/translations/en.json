@@ -51,6 +51,7 @@
     },
     "abort": {
       "already_configured": "This Sofabaton hub is already configured.",
+      "no_ipv4_address": "The hub announced itself without an IPv4 address, so the announcement was ignored. The integration reaches hubs over IPv4 only.",
       "not_x1_hub": "The discovered device is not a supported Sofabaton hub.",
       "unknown": "An unknown error occurred.",
       "x2_disabled": "Sofabaton X2 discovery is disabled in `configuration.yaml`. To enable it, remove `enable_x2_discovery: false` from the `sofabaton_x1s:` section (or set it to `true`) and restart Home Assistant."
