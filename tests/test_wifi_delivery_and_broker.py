@@ -117,13 +117,15 @@ def test_store_keeps_the_delivery_check_and_the_legacy_transport() -> None:
     # alignment leaves its request alone, so it reads as a pending switch.
     record = store._find_hub_device_record("hub-1", key)
     record["deployed_transport"] = LEGACY
-    record["deployed_url"] = "https://192.168.2.50:8123/api/webhook/0123"
+    # Not hex: the device key is random hex and once held "0123" itself.
+    webhook_id = "stored-webhook-id"
+    record["deployed_url"] = f"https://192.168.2.50:8123/api/webhook/{webhook_id}"
     assert not store._normalize_requested_transports()
     payload = _run(store.async_get_hub_config("hub-1", device_key=key))
     assert payload["deployed_transport"] == LEGACY
     assert payload["requested_transport"] == "http"
     assert wifi_transport_switch_pending(payload, mqtt_available=False)
-    assert "0123" not in json.dumps(payload)
+    assert webhook_id not in json.dumps(payload)
 
     # Back to undeployed: transport and delivery go with it.
     _run(store.async_save_deployed_wifi_commands("hub-1", key, [], deployed_device_id=None, commands_hash=""))
